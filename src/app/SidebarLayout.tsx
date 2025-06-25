@@ -1,9 +1,18 @@
 'use client';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const router = useRouter();
+
+  // Placeholder sign-out function
+  const handleSignOut = () => {
+    // TODO: Connect to backend sign-out logic
+    // For now, just redirect to login page
+    router.push('/login');
+  };
 
   return (
     <div className="flex min-h-screen bg-gray-100">
@@ -31,9 +40,8 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold">Dashboard</h1>
+      <main className="flex-1">
+        <div className="flex justify-end items-center mb-8">
           <div className="relative">
             <button
               className="flex items-center gap-2 bg-gray-200 px-4 py-2 rounded-full"
@@ -49,9 +57,21 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                 <div className="px-4 py-2 text-gray-800 font-semibold">Admin User</div>
                 <div className="px-4 py-2 text-gray-500 text-sm">admin@reliance.com</div>
                 <hr />
-                <a href="#" className="block px-4 py-2 hover:bg-gray-100">Your Profile</a>
-                <a href="#" className="block px-4 py-2 hover:bg-gray-100">Settings</a>
-                <a href="#" className="block px-4 py-2 hover:bg-gray-100">Sign out</a>
+                <Link href="/profile" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setDropdownOpen(false)}>
+                  Your Profile
+                </Link>
+                <Link href="/settings" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setDropdownOpen(false)}>
+                  Settings
+                </Link>
+                <button
+                  className="block w-full text-left px-4 py-2 hover:bg-gray-100"
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    handleSignOut();
+                  }}
+                >
+                  Sign out
+                </button>
               </div>
             )}
           </div>

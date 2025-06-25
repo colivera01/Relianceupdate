@@ -1,9 +1,10 @@
+"use client";
 import { useState } from "react";
-import { Card, CardHeader, CardContent, CardTitle } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import { Button } from "../components/ui/button";
-import { Checkbox } from "../components/ui/checkbox";
-import { Badge } from "../components/ui/badge";
+import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 
 export default function AdminSettingsPage() {
   // Mock state
@@ -25,7 +26,7 @@ export default function AdminSettingsPage() {
     paymentMethod: "",
   });
   const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState("idle");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
   const [saveError, setSaveError] = useState("");
 
   // Handlers
@@ -57,21 +58,21 @@ export default function AdminSettingsPage() {
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-2">
             <label className="font-semibold">Notifications</label>
-            <Checkbox checked={settings.notifyNewUser} onChange={e => setSettings(s => ({ ...s, notifyNewUser: e.target.checked }))} /> Notify on new user
-            <Checkbox checked={settings.notifyFlaggedReview} onChange={e => setSettings(s => ({ ...s, notifyFlaggedReview: e.target.checked }))} /> Notify on flagged review
-            <Checkbox checked={settings.weeklySummary} onChange={e => setSettings(s => ({ ...s, weeklySummary: e.target.checked }))} /> Send weekly summary
-            <Checkbox checked={settings.alertVendorDeactivation} onChange={e => setSettings(s => ({ ...s, alertVendorDeactivation: e.target.checked }))} /> Vendor deactivation alerts
-            <Checkbox checked={settings.alertFailedLogins} onChange={e => setSettings(s => ({ ...s, alertFailedLogins: e.target.checked }))} /> Failed login alerts
+            <Checkbox checked={settings.notifyNewUser} onCheckedChange={v => setSettings(s => ({ ...s, notifyNewUser: !!v }))} /> Notify on new user
+            <Checkbox checked={settings.notifyFlaggedReview} onCheckedChange={v => setSettings(s => ({ ...s, notifyFlaggedReview: !!v }))} /> Notify on flagged review
+            <Checkbox checked={settings.weeklySummary} onCheckedChange={v => setSettings(s => ({ ...s, weeklySummary: !!v }))} /> Send weekly summary
+            <Checkbox checked={settings.alertVendorDeactivation} onCheckedChange={v => setSettings(s => ({ ...s, alertVendorDeactivation: !!v }))} /> Vendor deactivation alerts
+            <Checkbox checked={settings.alertFailedLogins} onCheckedChange={v => setSettings(s => ({ ...s, alertFailedLogins: !!v }))} /> Failed login alerts
           </div>
           <div className="flex flex-col gap-2 mt-4">
             <label className="font-semibold">Password & Security</label>
             <label>Min Password Length</label>
             <Input type="number" value={settings.minPasswordLength} onChange={e => setSettings(s => ({ ...s, minPasswordLength: Number(e.target.value) }))} className="w-24" />
-            <Checkbox checked={settings.requireUppercase} onChange={e => setSettings(s => ({ ...s, requireUppercase: e.target.checked }))} /> Require Uppercase
-            <Checkbox checked={settings.requireNumbers} onChange={e => setSettings(s => ({ ...s, requireNumbers: e.target.checked }))} /> Require Numbers
+            <Checkbox checked={settings.requireUppercase} onCheckedChange={v => setSettings(s => ({ ...s, requireUppercase: !!v }))} /> Require Uppercase
+            <Checkbox checked={settings.requireNumbers} onCheckedChange={v => setSettings(s => ({ ...s, requireNumbers: !!v }))} /> Require Numbers
             <label>Password Expiry (days)</label>
             <Input type="number" value={settings.passwordExpiryDays} onChange={e => setSettings(s => ({ ...s, passwordExpiryDays: Number(e.target.value) }))} className="w-24" />
-            <Checkbox checked={settings.enable2FA} onChange={e => setSettings(s => ({ ...s, enable2FA: e.target.checked }))} /> Enable 2FA
+            <Checkbox checked={settings.enable2FA} onCheckedChange={v => setSettings(s => ({ ...s, enable2FA: !!v }))} /> Enable 2FA
           </div>
         </CardContent>
       </Card>
@@ -100,7 +101,7 @@ export default function AdminSettingsPage() {
           <CardTitle>Platform Settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Checkbox checked={settings.autoApproveVendors} onChange={e => setSettings(s => ({ ...s, autoApproveVendors: e.target.checked }))} /> Automatically approve vendor applications
+          <Checkbox checked={settings.autoApproveVendors} onCheckedChange={v => setSettings(s => ({ ...s, autoApproveVendors: !!v }))} /> Automatically approve vendor applications
         </CardContent>
       </Card>
 
@@ -109,7 +110,7 @@ export default function AdminSettingsPage() {
           <CardTitle>Billing</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Checkbox checked={settings.enablePaidFeatures} onChange={e => setSettings(s => ({ ...s, enablePaidFeatures: e.target.checked }))} /> Enable paid features
+          <Checkbox checked={settings.enablePaidFeatures} onCheckedChange={v => setSettings(s => ({ ...s, enablePaidFeatures: !!v }))} /> Enable paid features
           {settings.enablePaidFeatures && (
             <Input placeholder="Payment Method" value={settings.paymentMethod} onChange={e => setSettings(s => ({ ...s, paymentMethod: e.target.value }))} />
           )}
