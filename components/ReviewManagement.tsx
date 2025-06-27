@@ -1,9 +1,12 @@
+"use client";
 import React, { useState, useEffect, useMemo } from "react";
-import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Card, CardHeader, CardContent, CardTitle } from "./ui/card";
+import { Badge } from "./ui/badge";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+import { Tooltip } from './ui/tooltip';
+import { TooltipProvider } from "@radix-ui/react-tooltip";
 
 const TYPES = ["video", "photo"] as const;
 const RATINGS = [5, 4, 3, 2, 1] as const;
@@ -140,117 +143,171 @@ export default function ReviewManagement() {
   ), [reviews, debounced, typeFilter, ratingFilter, flagFilter, sourceFilter, autoFilter, statusFilter, fromDate, toDate]);
 
   return (
-    <div className="p-6 space-y-6">
-      <h2 className="text-2xl font-bold">Review Management</h2>
+    <TooltipProvider>
+      <div className="p-6 space-y-6">
+        <h2 className="text-2xl font-bold mb-4">Review Management</h2>
 
-      {/* KPI Banner */}
-      <div className="flex flex-wrap gap-4 bg-blue-50 p-4 rounded">
-        <div><strong>Total Reviews:</strong> {reviews.length}</div>
-        <div><strong>% Flagged:</strong> {Math.round((reviews.filter(r => r.flagged).length / reviews.length) * 100)}%</div>
-        <div><strong>Avg Rating:</strong> {(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)}★</div>
-        <div><strong>New (24h):</strong> {reviews.filter(r => new Date(r.date) >= new Date(Date.now() - 86400000)).length}</div>
-      </div>
+        {/* KPI Banner */}
+        <div className="flex flex-wrap gap-6 bg-blue-50 p-6 rounded-lg border border-blue-100 shadow-sm items-center">
+          <div className="text-lg font-semibold"><span className="text-blue-700">Total Reviews:</span> {reviews.length}</div>
+          <div className="text-lg font-semibold"><span className="text-blue-700">% Flagged:</span> {Math.round((reviews.filter(r => r.flagged).length / reviews.length) * 100)}%</div>
+          <div className="text-lg font-semibold"><span className="text-blue-700">Avg Rating:</span> {(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)}★</div>
+          <div className="text-lg font-semibold"><span className="text-blue-700">New (24h):</span> {reviews.filter(r => new Date(r.date) >= new Date(Date.now() - 86400000)).length}</div>
+        </div>
 
-      {/* Filters & Bulk */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Input placeholder="Search by vendor/user/content" className="max-w-xs" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search reviews" />
-        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} aria-label="Filter by type">
-          <option value="all">All Types</option>
-          {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={ratingFilter} onChange={e => setRatingFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="Filter by rating">
-          <option value="all">All Ratings</option>
-          {RATINGS.map(r => <option key={r} value={r}>{r}★</option>)}
-        </select>
-        <select value={flagFilter} onChange={e => setFlagFilter(e.target.value)} aria-label="Filter by flagged">
-          <option value="all">All Flags</option>
-          <option value="flagged">Flagged</option>
-          <option value="unflagged">Unflagged</option>
-        </select>
-        <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} aria-label="Filter by source">
-          <option value="all">All Sources</option>
-          {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={autoFilter} onChange={e => setAutoFilter(e.target.value)} aria-label="Filter by review mode">
-          <option value="all">All Modes</option>
-          <option value="auto">Auto</option>
-          <option value="manual">Manual</option>
-        </select>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as Status)} aria-label="Filter by status">
-          <option value="all">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </select>
-        <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-36" aria-label="From date" />
-        <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-36" aria-label="To date" />
-        {selectedIds.length > 0 && (
-          <div className="flex items-center gap-2 bg-gray-100 p-2 rounded ml-auto">
-            <Button size="sm" onClick={() => selectedIds.forEach(id => updateStatus(id, 'approved'))}>Approve</Button>
-            <Button size="sm" onClick={() => selectedIds.forEach(id => updateStatus(id, 'rejected'))}>Reject</Button>
-            <Button size="sm" variant="destructive" onClick={() => {/* delete logic */}}>Delete</Button>
-            <Button size="sm" variant="outline" onClick={() => {/* export logic */}}>Export</Button>
-          </div>
+        {/* Filters & Bulk */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Input placeholder="Search by vendor/user/content" className="max-w-xs" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search reviews" />
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} aria-label="Filter by type" className="border rounded px-2 py-1 text-sm">
+            <option value="all">All Types</option>
+            {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select value={ratingFilter} onChange={e => setRatingFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="Filter by rating" className="border rounded px-2 py-1 text-sm">
+            <option value="all">All Ratings</option>
+            {RATINGS.map(r => <option key={r} value={r}>{r}★</option>)}
+          </select>
+          <select value={flagFilter} onChange={e => setFlagFilter(e.target.value)} aria-label="Filter by flagged" className="border rounded px-2 py-1 text-sm">
+            <option value="all">All Flags</option>
+            <option value="flagged">Flagged</option>
+            <option value="unflagged">Unflagged</option>
+          </select>
+          <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} aria-label="Filter by source" className="border rounded px-2 py-1 text-sm">
+            <option value="all">All Sources</option>
+            {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={autoFilter} onChange={e => setAutoFilter(e.target.value)} aria-label="Filter by review mode" className="border rounded px-2 py-1 text-sm">
+            <option value="all">All Modes</option>
+            <option value="auto">Auto</option>
+            <option value="manual">Manual</option>
+          </select>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as Status)} aria-label="Filter by status" className="border rounded px-2 py-1 text-sm">
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-36" aria-label="From date" />
+          <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-36" aria-label="To date" />
+          {selectedIds.length > 0 && (
+            <div className="flex items-center gap-2 bg-gray-100 p-2 rounded ml-auto">
+              <Button size="sm" onClick={() => selectedIds.forEach(id => updateStatus(id, 'approved'))}>Approve</Button>
+              <Button size="sm" onClick={() => selectedIds.forEach(id => updateStatus(id, 'rejected'))}>Reject</Button>
+              <Button size="sm" variant="destructive" onClick={() => {/* delete logic */}}>Delete</Button>
+              <Button size="sm" variant="outline" onClick={() => {/* export logic */}}>Export</Button>
+            </div>
+          )}
+        </div>
+
+        {/* Review Grid */}
+        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filtered.map(r => {
+            const isDup = dupMap[r.content] > 1;
+            const isIPSpam = ipMap[r.user] > 1;
+            return (
+              <Card key={r.id} className="p-4 shadow-md border hover:ring-2 hover:ring-blue-400 transition" tabIndex={0} onKeyPress={e => { if (e.key === 'Enter') setViewing(r); }}>
+                <div className="flex justify-between mb-2">
+                  <Tooltip content={r.status.charAt(0).toUpperCase() + r.status.slice(1)}>
+                    <Badge variant={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'destructive' : 'outline'}>{r.status}</Badge>
+                  </Tooltip>
+                  <input type="checkbox" checked={selectedIds.includes(r.id)} onChange={() => toggleSelect(r.id)} aria-label={`Select review ${r.id}`} />
+                </div>
+                { (isDup || isIPSpam) && <Badge variant="destructive" title="Duplicate or suspicious reviewer">⚠️ Suspicious Activity</Badge> }
+                <div className="flex justify-center mb-2">
+                  <img src={r.reviewerType === 'vendor' ? r.vendorImage : r.userImage} alt={r.reviewerType === 'vendor' ? r.vendor : r.user} loading="lazy" className="w-12 h-12 rounded-full border" />
+                </div>
+                <div className="flex justify-between items-center mb-2">
+                  <Tooltip content={r.auto ? 'Auto-moderated' : 'Manually reviewed'}>
+                    <Badge variant={r.auto ? 'destructive' : 'secondary'}>{r.auto ? 'Auto' : 'Manual'}</Badge>
+                  </Tooltip>
+                  <Badge variant="outline">{r.rating}★</Badge>
+                </div>
+                <div className="flex gap-2 text-xs text-gray-500 mb-2">
+                  <span>{daysBetween(new Date(), new Date(r.date))} days after review</span>
+                  <span>{daysBetween(new Date(r.date), new Date(r.closedDate))} days since close</span>
+                </div>
+                <CardHeader className="py-1"><CardTitle>{r.content.length > 50 ? r.content.slice(0, 50) + '...' : r.content}</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 truncate">{r.reviewerType === 'vendor' ? r.vendor : r.user}</p>
+                  <Button size="sm" className="mt-2 focus:outline-none focus:ring" onClick={() => { setViewing(r); setContentInput(r.content); }} aria-label={`View details for review ${r.id}`}>Details</Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </ul>
+
+        {/* Detail Modal */}
+        {viewing && (
+          <Dialog open onOpenChange={() => setViewing(null)}>
+            <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto space-y-4">
+              <DialogTitle>Review #{viewing.id} Details</DialogTitle>
+              <div className="flex gap-2 text-xs">
+                <Badge>{viewing.rating}★</Badge>
+                <Badge variant="outline">{viewing.type}</Badge>
+                {viewing.flagged && <Badge variant="destructive" title="Flagged by system or user">Flagged</Badge>}
+                {viewing.auto && <Badge variant="secondary">Auto</Badge>}
+              </div>
+              {viewing.type === 'video'
+                ? <video controls className="w-full" loading="lazy"><source src={viewing.mediaUrl} type="video/mp4" /></video>
+                : <img src={viewing.mediaUrl} alt="media" className="w-full rounded" loading="lazy" />
+              }
+              <div className="mt-2 text-sm">
+                <strong>Content:</strong> {!editingContent
+                  ? (<p>{viewing.content}</p>)
+                  : (<textarea className="w-full border rounded p-2" rows={3} value={contentInput} onChange={e => setContentInput(e.target.value)} />)}
+              </div>
+              {editingContent && <Input placeholder="Reason for edit" value={editReason} onChange={e => setEditReason(e.target.value)} />}
+            </DialogContent>
+          </Dialog>
         )}
+
+        {/* Backend Developer Notes */}
+        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h3 className="font-semibold text-blue-800 mb-2">📋 Backend Developer Notes</h3>
+          <div className="text-sm text-blue-700 space-y-2">
+            <p><strong>Endpoints Needed:</strong></p>
+            <ul className="list-disc list-inside ml-4 space-y-1">
+              <li><code>GET /api/reviews</code> – List reviews (with filters, search, pagination)</li>
+              <li><code>PATCH /api/reviews/:id</code> – Update review status, content, replies</li>
+              <li><code>POST /api/reviews/bulk-action</code> – Bulk approve/reject/delete reviews</li>
+              <li><code>POST /api/reviews/:id/reply</code> – Add reply to review</li>
+            </ul>
+            <p><strong>Review Data Format:</strong></p>
+            <pre className="bg-gray-100 p-2 rounded text-xs mt-2 overflow-x-auto">{`
+{
+  id: number,
+  vendor: string,
+  vendorImage: string,
+  user: string,
+  reviewerType: 'user' | 'vendor',
+  userImage: string,
+  rating: number,
+  type: 'video' | 'photo',
+  date: string,
+  closedDate: string,
+  content: string,
+  mediaUrl: string,
+  flagged: boolean,
+  auto: boolean,
+  status: 'pending' | 'approved' | 'rejected',
+  replies: Reply[]
+}
+`}</pre>
+            <p><strong>Integration Notes:</strong></p>
+            <ul className="list-disc list-inside ml-4 space-y-1">
+              <li>All review actions (approve, reject, edit, reply) should call the appropriate endpoint and update the UI on success.</li>
+              <li>Bulk actions should accept an array of review IDs and an action type.</li>
+              <li>Show loading and error states for all async actions.</li>
+              <li>Paginate review lists on the backend for large datasets.</li>
+            </ul>
+            <p className="mt-2"><strong>Validation & Security:</strong></p>
+            <ul className="list-disc list-inside ml-4 space-y-1">
+              <li>Only admins can approve/reject/edit reviews and add replies.</li>
+              <li>All endpoints should validate user permissions and input data.</li>
+              <li>Return clear error messages for failed actions.</li>
+            </ul>
+          </div>
+        </div>
       </div>
-
-      {/* Review Grid */}
-      <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map(r => {
-          const isDup = dupMap[r.content] > 1;
-          const isIPSpam = ipMap[r.user] > 1;
-          return (
-            <Card key={r.id} className="p-4" tabIndex={0} onKeyPress={e => { if (e.key === 'Enter') setViewing(r); }}>
-              <div className="flex justify-between mb-2">
-                <Badge variant={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'destructive' : 'outline'}>{r.status}</Badge>
-                <input type="checkbox" checked={selectedIds.includes(r.id)} onChange={() => toggleSelect(r.id)} aria-label={`Select review ${r.id}`} />
-              </div>
-              { (isDup || isIPSpam) && <Badge variant="destructive">⚠️ Suspicious Activity</Badge> }
-              <div className="flex justify-center mb-2">
-                <img src={r.reviewerType === 'vendor' ? r.vendorImage : r.userImage} alt={r.reviewerType === 'vendor' ? r.vendor : r.user} loading="lazy" className="w-12 h-12 rounded-full" />
-              </div>
-              <div className="flex justify-between items-center mb-2">
-                <Badge variant={r.auto ? 'destructive' : 'secondary'}>{r.auto ? 'Auto' : 'Manual'}</Badge>
-                <Badge variant="outline">{r.rating}★</Badge>
-              </div>
-              <div className="flex gap-2 text-xs text-gray-500 mb-2">
-                <span>{daysBetween(new Date(), new Date(r.date))} days after review</span>
-                <span>{daysBetween(new Date(r.date), new Date(r.closedDate))} days since close</span>
-              </div>
-              <CardHeader className="py-1"><CardTitle>{r.content.length > 50 ? r.content.slice(0, 50) + '...' : r.content}</CardTitle></CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 truncate">{r.reviewerType === 'vendor' ? r.vendor : r.user}</p>
-                <Button size="sm" className="mt-2 focus:outline-none focus:ring" onClick={() => { setViewing(r); setContentInput(r.content); }} aria-label={`View details for review ${r.id}`}>Details</Button>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </ul>
-
-      {/* Detail Modal */}
-      {viewing && (
-        <Dialog open onOpenChange={() => setViewing(null)}>
-          <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto space-y-4">
-            <DialogTitle>Review #{viewing.id} Details</DialogTitle>
-            <div className="flex gap-2 text-xs">
-              <Badge>{viewing.rating}★</Badge>
-              <Badge variant="outline">{viewing.type}</Badge>
-              {viewing.flagged && <Badge variant="destructive">Flagged</Badge>}
-              {viewing.auto && <Badge variant="secondary">Auto</Badge>}
-            </div>
-            {viewing.type === 'video'
-              ? <video controls className="w-full" loading="lazy"><source src={viewing.mediaUrl} type="video/mp4" /></video>
-              : <img src={viewing.mediaUrl} alt="media" className="w-full rounded" loading="lazy" />
-            }
-            <div className="mt-2 text-sm">
-              <strong>Content:</strong> {!editingContent
-                ? (<p>{viewing.content}</p>)
-                : (<textarea className="w-full border rounded p-2" rows={3} value={contentInput} onChange={e => setContentInput(e.target.value)} />)}
-            </div>
-            {editingContent && <Input placeholder="Reason for edit" value={editReason} onChange={e => setEditReason(e.target.value)} />}
-          </DialogContent>
-        </Dialog>
-      )}
-    </div>
+    </TooltipProvider>
   );
 } 
