@@ -63,6 +63,16 @@ const generateMockAuditLogs = (): AuditLogEntry[] => {
   }));
 };
 
+function useClientFormattedDate(date: Date | string) {
+  const [formatted, setFormatted] = React.useState(typeof date === 'string' ? date : date.toISOString());
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setFormatted(new Date(date).toLocaleString());
+    }
+  }, [date]);
+  return formatted;
+}
+
 export function AuditLog() {
   const [logs, setLogs] = useState<AuditLogEntry[]>(generateMockAuditLogs());
   const [searchTerm, setSearchTerm] = useState("");
@@ -236,7 +246,7 @@ export function AuditLog() {
                 <Tooltip content={log.category.charAt(0).toUpperCase() + log.category.slice(1)}><Badge className={getCategoryColor(log.category)}>{log.category}</Badge></Tooltip>
                 <span className="font-medium">{log.action.replace('_', ' ')}</span>
               </div>
-              <span className="text-sm text-gray-500">{log.timestamp.toLocaleString()}</span>
+              <span className="text-sm text-gray-500">{useClientFormattedDate(log.timestamp)}</span>
             </div>
             <p className="text-sm mb-2">{log.details}</p>
             <div className="text-xs text-gray-400 flex justify-between">
@@ -248,7 +258,7 @@ export function AuditLog() {
         ))}
       </div></CardContent></Card>
       {/* Drilldown Modal */}
-      {selectedLog && <Modal open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}><Card><CardHeader><CardTitle>Log Details</CardTitle></CardHeader><CardContent><div className="space-y-2"><div><b>Action:</b> {selectedLog.action}</div><div><b>Admin:</b> {selectedLog.adminName} ({selectedLog.adminId})</div><div><b>Target:</b> {selectedLog.targetType} {selectedLog.targetId}</div><div><b>Details:</b> {selectedLog.details}</div><div><b>Timestamp:</b> {selectedLog.timestamp.toLocaleString()}</div><div><b>IP Address:</b> {selectedLog.ipAddress}</div><div><b>Severity:</b> {selectedLog.severity}</div><div><b>Category:</b> {selectedLog.category}</div>{selectedLog.changes && (<div><b>Changes:</b><ul className="ml-4 list-disc">{selectedLog.changes.map((c, i) => (<li key={i}>{c.field}: {c.oldValue} → {c.newValue}</li>))}</ul></div>)}</div></CardContent></Card></Modal>}
+      {selectedLog && <Modal open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}><Card><CardHeader><CardTitle>Log Details</CardTitle></CardHeader><CardContent><div className="space-y-2"><div><b>Action:</b> {selectedLog.action}</div><div><b>Admin:</b> {selectedLog.adminName} ({selectedLog.adminId})</div><div><b>Target:</b> {selectedLog.targetType} {selectedLog.targetId}</div><div><b>Details:</b> {selectedLog.details}</div><div><b>Timestamp:</b> {useClientFormattedDate(selectedLog.timestamp)}</div><div><b>IP Address:</b> {selectedLog.ipAddress}</div><div><b>Severity:</b> {selectedLog.severity}</div><div><b>Category:</b> {selectedLog.category}</div>{selectedLog.changes && (<div><b>Changes:</b><ul className="ml-4 list-disc">{selectedLog.changes.map((c, i) => (<li key={i}>{c.field}: {c.oldValue} → {c.newValue}</li>))}</ul></div>)}</div></CardContent></Card></Modal>}
       {/* Retention/Compliance Info */}
       <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600">Audit logs are retained for 1 year and are immutable. Only authorized admins can view or export logs. All access is logged for compliance.</div>
       {/* Backend Developer Notes */}

@@ -1,338 +1,186 @@
-# Backend Integration Guide for Dashboard
+# Backend Integration Guide
 
-## Overview
-This guide explains what the backend developer needs to implement to connect the dashboard with real data, including charts and visualizations.
+This guide provides backend requirements for all major features/pages in the Reliance Admin project. Each section includes endpoints, data contracts, business logic, roles, error handling, and future features.
 
-## API Endpoints Required
+---
 
-### 1. Dashboard Statistics Endpoint
+## Dashboard
+- **Endpoints:**
+  - `GET /api/dashboard/stats` — Returns total users, vendors, reviews, growth rate, last updated
+  - `GET /api/dashboard/user-growth` — Monthly user growth data
+  - `GET /api/dashboard/revenue-trend` — Monthly revenue data
+- **Data Contracts:**
+  - Stats: `{ totalUsers, totalVendors, totalReviews, growthRate, lastUpdated }`
+  - Chart: `{ labels: string[], datasets: { label: string, data: number[] }[] }`
+- **Business Logic:**
+  - Calculate growth rates, aggregate monthly data
+- **Roles:**
+  - Admins only
+- **Error Handling:**
+  - Return 500 for DB errors, 404 for missing data
 
-**Endpoint:** `GET /api/dashboard/stats`
+---
 
-**Expected Response:**
-```typescript
-{
-  totalUsers: number;      // Count of active customers
-  totalVendors: number;    // Count of active service providers
-  totalReviews: number;    // Count of all reviews
-  growthRate: number;      // Percentage growth (can be 0)
-  lastUpdated: string;     // ISO timestamp
-}
-```
+## User Management
+- **Endpoints:**
+  - `GET /api/users` (filters: search, status, role, vendor, pagination, sort)
+  - `POST /api/users` (create new user)
+  - `PATCH /api/users/:id` (update user details, status, role, permissions)
+  - `DELETE /api/users/:id` (delete/deactivate user)
+  - `POST /api/users/import` (bulk import users)
+  - `POST /api/users/:id/notify` (send notification to user)
+- **Data Contracts:**
+  - User: `{ id, name, email, role, status, createdAt, lastLogin, profileImage, vendorId, permissions }`
+- **Business Logic:**
+  - Batch actions, audit logging
+- **Roles:**
+  - Only admins or users with `user:manage`
+- **Error Handling:**
+  - Duplicate emails, invalid roles, permission issues
+- **Future Features:**
+  - User activity logs, advanced search, export, role-based dashboards
 
-### 2. User Growth Chart Data
+---
 
-**Endpoint:** `GET /api/dashboard/user-growth`
+## Vendor Management
+- **Endpoints:**
+  - `GET /api/vendors` (filters: search, status, approval, pagination, sort)
+  - `POST /api/vendors` (create new vendor)
+  - `PATCH /api/vendors/:id` (update vendor details, status, approval)
+  - `DELETE /api/vendors/:id` (delete/deactivate vendor)
+  - `POST /api/vendors/import` (bulk import vendors)
+  - `POST /api/vendors/:id/notify` (send notification to vendor)
+- **Data Contracts:**
+  - Vendor: `{ id, name, contactPerson, email, phone, status, approval, createdAt, services, address, users }`
+- **Business Logic:**
+  - Batch actions, audit logging
+- **Roles:**
+  - Only admins or users with `vendor:manage`
+- **Error Handling:**
+  - Duplicate emails, invalid status, permission issues
+- **Future Features:**
+  - Vendor analytics, document uploads, external integrations
 
-**Expected Response:**
-```typescript
-{
-  labels: string[];        // Month labels: ['Jan', 'Feb', 'Mar', ...]
-  datasets: [
-    {
-      label: string;       // 'New Users' or 'Active Users'
-      data: number[];      // Monthly counts: [120, 145, 180, ...]
-      borderColor: string; // CSS color: '#3B82F6'
-      backgroundColor: string; // CSS color with opacity: 'rgba(59, 130, 246, 0.1)'
-    }
-  ]
-}
-```
+---
 
-### 3. Revenue Trend Chart Data
+## Review Management
+- **Endpoints:**
+  - `GET /api/reviews` (filters: search, vendor, status, rating, flagged, public, source, date range, pagination, sort)
+  - `POST /api/reviews/import` (bulk import reviews)
+  - `POST /api/reviews/:id/flag` (flag/unflag review)
+  - `POST /api/reviews/:id/remove` (remove/hide review)
+  - `POST /api/reviews/:id/public` (toggle public/private)
+  - `POST /api/reviews/:id/note` (add/update admin note)
+  - `POST /api/reviews/:id/escalate` (escalate to quality team)
+  - `POST /api/reviews/:id/notify` (send notification)
+  - `GET /api/vendors` (for vendor filter dropdown)
+- **Data Contracts:**
+  - Review: `{ id, reviewer, type, media, vendorName, jobId, userType, source, flagged, public, adminNote, status, rating, summary, details, createdAt, expiresAt, submittedAt, auditTrail }`
+- **Business Logic:**
+  - Batch actions, audit trail, media handling, notifications
+- **Roles:**
+  - Only users with `review:moderate` or `admin`
+- **Error Handling:**
+  - Permission issues, invalid data
+- **Future Features:**
+  - Review analytics, escalation workflow, real-time updates
 
-**Endpoint:** `GET /api/dashboard/revenue-trend`
+---
 
-**Expected Response:**
-```typescript
-{
-  labels: string[];        // Month labels: ['Jan', 'Feb', 'Mar', ...]
-  datasets: [
-    {
-      label: string;       // 'Subscription Revenue' or 'Ad Revenue'
-      data: number[];      // Monthly amounts: [8500, 9200, 10800, ...]
-      borderColor: string; // CSS color: '#8B5CF6'
-      backgroundColor: string; // CSS color with opacity: 'rgba(139, 92, 246, 0.1)'
-    }
-  ]
-}
-```
+## Activity Monitoring
+- **Endpoints:**
+  - `GET /api/activity` (filters: user, action, entity, date range, pagination, sort)
+  - `POST /api/activity/export` (export activity logs)
+  - `GET /api/users` (for user filter dropdown)
+- **Data Contracts:**
+  - Activity: `{ id, userId, action, entityType, entityId, timestamp, details, ip, location }`
+- **Business Logic:**
+  - Batch export/delete, audit logging
+- **Roles:**
+  - Only admins or users with `activity:view`
+- **Error Handling:**
+  - Invalid filters, permission issues
+- **Future Features:**
+  - Real-time updates, anomaly detection, alerting, retention policy
 
-## Database Queries Needed
+---
 
-### Dashboard Stats
-```sql
--- Total Users (customers)
-SELECT COUNT(*) as totalUsers 
-FROM users 
-WHERE userType = 'customer' AND status = 'active';
+## Audit Logs
+- **Endpoints:**
+  - `GET /api/audit-logs` (filters: user, action, entity, date range, pagination, sort)
+  - `POST /api/audit-logs/export` (export logs)
+  - `GET /api/users` (for user filter dropdown)
+- **Data Contracts:**
+  - Audit Log: `{ id, userId, action, entityType, entityId, timestamp, details, ip, location }`
+- **Business Logic:**
+  - Batch export/delete, audit logging
+- **Roles:**
+  - Only admins or users with `audit:view`
+- **Error Handling:**
+  - Invalid filters, permission issues
+- **Future Features:**
+  - Retention policy, drilldown, alerting, SIEM integration
 
--- Total Vendors (service providers)
-SELECT COUNT(*) as totalVendors 
-FROM users 
-WHERE userType = 'service_provider' AND status = 'active';
+---
 
--- Total Reviews
-SELECT COUNT(*) as totalReviews 
-FROM reviews;
-```
+## Reports & Analytics
+- **Endpoints:**
+  - `GET /api/reports/kpis?range=7d` — All key metrics for selected time range
+  - `GET /api/reports/growth?type=user|vendor&interval=day|week|month&range=30d` — User/vendor growth
+  - `GET /api/reports/churn?type=user|vendor&interval=month&range=12m` — Churn/closure rate
+  - `GET /api/reports/cohort?type=user|vendor&range=12m` — Cohort retention
+  - `GET /api/reports/geo-reviews?region=state|city&range=30d` — Reviews/jobs by region
+  - `GET /api/reports/engagement?by=vendor|user|region&range=30d` — Engagement/quality
+  - `GET /api/reports/funnel?range=30d` — Conversion funnel
+  - `GET /api/reports/compare?entity=vendor|region&id1=xxx&id2=yyy&range=30d` — Compare entities
+  - `GET /api/reports/forecast?metric=users|revenue|jobs&range=90d` — Forecasting
+  - `GET /api/reports/anomalies?range=30d` — Anomaly detection
+- **Data Contracts:**
+  - All events timestamped and geotagged; store churn/closure reasons
+- **Business Logic:**
+  - All endpoints support time range, segmentation, comparison
+- **Roles:**
+  - Admins only
+- **Error Handling:**
+  - Invalid filters, missing data
+- **Future Features:**
+  - Export/sharing, dashboard links
 
-### User Growth Data
-```sql
--- New users by month (current year)
-SELECT 
-  MONTH(createdAt) as month,
-  COUNT(*) as newUsers
-FROM users 
-WHERE YEAR(createdAt) = YEAR(CURRENT_DATE())
-GROUP BY MONTH(createdAt)
-ORDER BY month;
+---
 
--- Active users by month (users who logged in)
-SELECT 
-  MONTH(lastLoginAt) as month,
-  COUNT(*) as activeUsers
-FROM users 
-WHERE YEAR(lastLoginAt) = YEAR(CURRENT_DATE()) 
-  AND status = 'active'
-GROUP BY MONTH(lastLoginAt)
-ORDER BY month;
-```
+## Profile
+- **Endpoints:**
+  - `GET /api/profile` — Fetch admin profile
+  - `PATCH /api/profile` — Update name/email/avatar
+  - `POST /api/profile/change-password` — Change password
+  - `POST /api/profile/toggle-2fa` — Enable/disable 2FA
+  - `GET /api/profile/activity` — Recent admin activity
+- **Data Contracts:**
+  - `{ name, email, role, avatar, lastLogin, twoFA, activity: [{ action, timestamp, device, location }] }`
+- **Business Logic:**
+  - 2FA, password change, activity log
+- **Roles:**
+  - Admins only
+- **Error Handling:**
+  - Invalid credentials, permission issues
 
-### Revenue Data
-```sql
--- Subscription revenue by month
-SELECT 
-  MONTH(createdAt) as month,
-  SUM(amount) as subscriptionRevenue
-FROM payments 
-WHERE type = 'subscription' 
-  AND status = 'completed'
-  AND YEAR(createdAt) = YEAR(CURRENT_DATE())
-GROUP BY MONTH(createdAt)
-ORDER BY month;
+---
 
--- Ad revenue by month
-SELECT 
-  MONTH(createdAt) as month,
-  SUM(amount) as adRevenue
-FROM payments 
-WHERE type = 'advertisement' 
-  AND status = 'completed'
-  AND YEAR(createdAt) = YEAR(CURRENT_DATE())
-GROUP BY MONTH(createdAt)
-ORDER BY month;
-```
+## Settings
+- **Endpoints:**
+  - `GET /api/settings` — Fetch admin settings
+  - `PATCH /api/settings` — Update settings
+  - `PATCH /api/user/profile` — Update user profile
+- **Data Contracts:**
+  - Settings: `{ minPasswordLength, requireUppercase, requireNumbers, passwordExpiryDays, lockoutThreshold, lockoutDuration, autoApproveUsers, autoApproveVendors, notifyNewUser, notifyFlaggedReview, weeklySummary, alertVendorDeactivation, alertFailedLogins, auditLogAccess, theme, fontSize, enablePaidFeatures, paymentMethod, enable2FA, publicProfile, autoLogoutMinutes }`
+  - User Profile: `{ displayName, email, passwordOld?, passwordNew? }`
+- **Business Logic:**
+  - Validation rules, notification triggers
+- **Roles:**
+  - Admins only
+- **Error Handling:**
+  - Validation errors, permission issues
 
-## User Registration Flow
+---
 
-### When a user registers and selects profile type:
-
-1. **Set the correct `userType`:**
-   - `"customer"` for regular users
-   - `"service_provider"` for vendors
-   - `"admin"` for administrators
-
-2. **Set initial status:**
-   - `status: "active"` (or "pending" if verification required)
-
-3. **Example user record:**
-```typescript
-{
-  id: string;
-  name: string;
-  email: string;
-  userType: "customer" | "service_provider" | "admin";
-  status: "active" | "inactive" | "suspended" | "pending";
-  createdAt: Date;
-  lastLoginAt?: Date;
-  // ... other user fields
-}
-```
-
-## Data Models
-
-### User Model
-```typescript
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  userType: "customer" | "service_provider" | "admin";
-  status: "active" | "inactive" | "suspended" | "pending";
-  createdAt: Date;
-  lastLoginAt?: Date;
-  updatedAt: Date;
-  // ... other fields
-}
-```
-
-### Payment Model (for revenue tracking)
-```typescript
-interface Payment {
-  id: string;
-  userId: string;
-  amount: number;
-  type: "subscription" | "advertisement" | "other";
-  status: "pending" | "completed" | "failed" | "refunded";
-  createdAt: Date;
-  // ... other fields
-}
-```
-
-### Review Model (if separate from users)
-```typescript
-interface Review {
-  id: string;
-  userId: string;
-  vendorId: string;
-  rating: number;
-  content: string;
-  createdAt: Date;
-  // ... other fields
-}
-```
-
-## Implementation Steps
-
-### 1. Database Schema
-Ensure your database has:
-- `users` table with `userType`, `status`, `createdAt`, `lastLoginAt` fields
-- `payments` table with `type`, `amount`, `status`, `createdAt` fields
-- `reviews` table (if separate from users)
-- Proper indexes on date fields and status fields for performance
-
-### 2. API Implementation
-Replace the mock implementations in:
-- `/src/app/api/dashboard/stats/route.ts`
-- `/src/app/api/dashboard/user-growth/route.ts`
-- `/src/app/api/dashboard/revenue-trend/route.ts`
-
-### 3. User Registration
-When users register, ensure you set:
-```typescript
-// Based on their profile selection
-const userType = profileSelection === 'vendor' ? 'service_provider' : 'customer';
-
-await db.users.create({
-  data: {
-    name,
-    email,
-    userType,
-    status: 'active', // or 'pending' if verification needed
-    createdAt: new Date(),
-    // ... other fields
-  }
-});
-```
-
-### 4. Chart Data Aggregation
-Implement monthly data aggregation:
-```typescript
-// Example: Aggregate user registrations by month
-const monthlyData = await db.users.groupBy({
-  by: ['createdAt'],
-  _count: {
-    id: true
-  },
-  where: {
-    createdAt: {
-      gte: new Date(new Date().getFullYear(), 0, 1) // Start of current year
-    }
-  }
-});
-
-// Convert to chart format
-const chartData = {
-  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  datasets: [{
-    label: 'New Users',
-    data: monthlyData.map(item => item._count.id),
-    borderColor: '#3B82F6',
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-  }]
-};
-```
-
-## Error Handling
-
-The frontend expects:
-- **200 OK** with data for successful requests
-- **500 Internal Server Error** with error message for failures
-- Proper CORS headers if needed
-
-## Performance Considerations
-
-1. **Caching:** Consider caching dashboard stats for 5 minutes
-2. **Indexing:** Index date fields, `userType`, and `status` fields
-3. **Aggregation:** Use database aggregation functions for better performance
-4. **Real-time updates:** Consider WebSockets for live updates
-
-## Testing
-
-Test your implementation with:
-```bash
-# Dashboard stats
-curl http://localhost:3000/api/dashboard/stats
-
-# User growth data
-curl http://localhost:3000/api/dashboard/user-growth
-
-# Revenue trend data
-curl http://localhost:3000/api/dashboard/revenue-trend
-```
-
-Expected responses:
-```json
-// /api/dashboard/stats
-{
-  "totalUsers": 1250,
-  "totalVendors": 89,
-  "totalReviews": 5670,
-  "growthRate": 12,
-  "lastUpdated": "2024-01-15T10:30:00.000Z"
-}
-
-// /api/dashboard/user-growth
-{
-  "labels": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-  "datasets": [
-    {
-      "label": "New Users",
-      "data": [120, 145, 180, 220, 280, 320, 380, 420, 480, 520, 580, 650],
-      "borderColor": "#3B82F6",
-      "backgroundColor": "rgba(59, 130, 246, 0.1)"
-    }
-  ]
-}
-```
-
-## Frontend Features Ready
-
-The frontend now includes:
-- ✅ Loading states for all components
-- ✅ Error handling with fallback data
-- ✅ Auto-refresh every 5 minutes
-- ✅ Manual refresh button
-- ✅ Interactive charts with mock data
-- ✅ Chart legends and tooltips
-- ✅ Summary statistics for each chart
-- ✅ Last updated timestamp
-- ✅ Proper TypeScript types
-- ✅ Backend developer notes on dashboard
-
-## Visual Chart Requirements
-
-The dashboard now displays:
-1. **User Growth Chart** - Shows new users and active users over time
-2. **Revenue Trend Chart** - Shows subscription and ad revenue over time
-3. **Interactive Elements** - Hover tooltips, legends, and summary stats
-4. **Responsive Design** - Works on all screen sizes
-
-## Questions?
-
-If you need clarification on any part of this integration, please refer to:
-- The API route templates in `/src/app/api/dashboard/`
-- The dashboard component in `/src/app/page.tsx`
-- The user management component for user type examples
-- The mock data examples showing expected data patterns 
+For any questions or updates, contact the frontend team or check the UI "Backend Developer Notes" on each page for live details. 
