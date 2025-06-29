@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import Image from 'next/image';
 
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -17,9 +18,18 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
-      <aside className="w-64 bg-[#232946] text-white flex flex-col justify-between">
+      <aside className="w-64 bg-white text-[#204080] flex flex-col justify-between border-r border-gray-200">
         <div>
-          <div className="p-6 text-2xl font-bold tracking-wide">Reliance</div>
+          <div className="p-8 flex items-center justify-center">
+            <Image 
+              src="/reliance-logo.png" 
+              alt="Reliance Logo" 
+              width={120} 
+              height={60} 
+              priority 
+              className="drop-shadow-none"
+            />
+          </div>
           <nav className="flex flex-col gap-2 px-4">
             <SidebarLink href="/" label="Dashboard" icon="📊" />
             <SidebarLink href="/users" label="User Management" icon="👥" />
@@ -30,11 +40,11 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
             <SidebarLink href="/reports" label="Reports & Analytics" icon="📑" />
           </nav>
         </div>
-        <div className="p-4 flex items-center gap-3 border-t border-[#2a2d3e]">
-          <div className="w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center text-lg font-bold text-[#232946]">N</div>
+        <div className="p-4 flex items-center gap-3 border-t border-gray-200">
+          <div className="w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center text-lg font-bold text-[#204080]">N</div>
           <div>
             <div className="font-semibold">Admin User</div>
-            <div className="text-xs text-gray-300">admin</div>
+            <div className="text-xs text-gray-400">admin</div>
           </div>
         </div>
       </aside>
@@ -84,7 +94,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
 
 function SidebarLink({ href, label, icon, badge }: any) {
   return (
-    <Link href={href} className={`flex items-center gap-3 px-3 py-2 rounded hover:bg-[#2a2d3e]`}>
+    <Link href={href} className={`flex items-center gap-3 px-3 py-2 rounded hover:bg-[#e6f0fa] hover:text-[#204080] transition-colors`}>
       <span className="text-xl">{icon}</span>
       <span className="flex-1">{label}</span>
       {badge && (

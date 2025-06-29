@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import Image from 'next/image';
 
 function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("");
@@ -113,6 +114,9 @@ export default function AdminProfilePage() {
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-8">
+      <div className="flex justify-center mb-4">
+        <Image src="/reliance-logo.png" alt="Reliance Logo" width={140} height={70} priority />
+      </div>
       <h2 className="text-2xl font-bold mb-2">My Profile</h2>
       <Card>
         <CardHeader>
