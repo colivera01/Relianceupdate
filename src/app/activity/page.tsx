@@ -1,0 +1,1 @@
+export { ActivityMonitoring as default } from '../../../components/ActivityMonitoring'; 

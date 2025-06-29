@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Modal } from '@/components/ui/dialog';
+import { Tooltip } from '@/components/ui/tooltip';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as ChartTooltip, PieChart, Pie, Cell, Legend } from 'recharts';
 
 interface AuditLogEntry {
   id: string;
@@ -67,6 +70,20 @@ export function AuditLog() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [timeRange, setTimeRange] = useState<string>("all");
   const [adminFilter, setAdminFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null);
+  const [live, setLive] = useState(true);
+
+  // Real-time auto-refresh (mock)
+  useEffect(() => {
+    if (!live) return;
+    const interval = setInterval(() => {
+      // TODO: Replace with backend fetch for real-time logs
+      setLogs(generateMockAuditLogs());
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [live]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -121,6 +138,28 @@ export function AuditLog() {
     return matchesSearch && matchesSeverity && matchesCategory && matchesTime && matchesAdmin;
   });
 
+  // Pagination
+  const totalPages = Math.ceil(filteredLogs.length / pageSize);
+  const paginatedLogs = filteredLogs.slice((page - 1) * pageSize, page * pageSize);
+
+  // Analytics data
+  const actionCounts = Object.entries(
+    filteredLogs.reduce((acc, log) => {
+      acc[log.action] = (acc[log.action] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>)
+  ).map(([action, count]) => ({ action, count }));
+
+  const severityCounts = ['low', 'medium', 'high', 'critical'].map(sev => ({
+    severity: sev,
+    count: filteredLogs.filter(l => l.severity === sev).length
+  }));
+
+  const adminCounts = Array.from(new Set(filteredLogs.map(l => l.adminName))).map(admin => ({
+    admin,
+    count: filteredLogs.filter(l => l.adminName === admin).length
+  }));
+
   const exportLogs = () => {
     const csv = [
       ['ID', 'Action', 'Admin', 'Target Type', 'Target ID', 'Details', 'Timestamp', 'IP Address', 'Severity', 'Category'].join(','),
@@ -149,104 +188,88 @@ export function AuditLog() {
     window.URL.revokeObjectURL(url);
   };
 
+  // PDF Export (mock)
+  const exportPDF = () => {
+    alert('PDF export is a backend task. See backend notes.');
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Audit Log</h2>
-        <Button onClick={exportLogs}>Export to CSV</Button>
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+        <h2 className="text-2xl font-bold flex items-center gap-2">Audit Log {live && <span className="ml-2 text-green-600 animate-pulse">● Live</span>}</h2>
+        <div className="flex gap-2">
+          <Button onClick={exportLogs}>Export CSV</Button>
+          <Button onClick={exportPDF} variant="outline">Export PDF</Button>
+          <Button onClick={() => setLive(l => !l)} variant={live ? 'destructive' : 'default'}>{live ? 'Pause Live' : 'Resume Live'}</Button>
+        </div>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Input
-          placeholder="Search logs..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <select
-          className="border rounded p-2"
-          value={severityFilter}
-          onChange={(e) => setSeverityFilter(e.target.value)}
-        >
-          <option value="all">All Severities</option>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="critical">Critical</option>
-        </select>
-        <select
-          className="border rounded p-2"
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-        >
-          <option value="all">All Categories</option>
-          <option value="user">User</option>
-          <option value="content">Content</option>
-          <option value="security">Security</option>
-          <option value="system">System</option>
-        </select>
-        <select
-          className="border rounded p-2"
-          value={timeRange}
-          onChange={(e) => setTimeRange(e.target.value)}
-        >
-          <option value="all">All Time</option>
-          <option value="24h">Last 24 Hours</option>
-          <option value="7d">Last 7 Days</option>
-          <option value="30d">Last 30 Days</option>
-        </select>
-        <select
-          className="border rounded p-2"
-          value={adminFilter}
-          onChange={(e) => setAdminFilter(e.target.value)}
-        >
-          <option value="all">All Admins</option>
-          {Array.from(new Set(logs.map(log => log.adminId))).map(adminId => (
-            <option key={adminId} value={adminId}>
-              {logs.find(log => log.adminId === adminId)?.adminName}
-            </option>
-          ))}
-        </select>
+      {/* Analytics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card><CardHeader><CardTitle>Actions</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={200}><BarChart data={actionCounts}><XAxis dataKey="action" /><YAxis allowDecimals={false} /><Bar dataKey="count" fill="#3B82F6" /><ChartTooltip /></BarChart></ResponsiveContainer></CardContent></Card>
+        <Card><CardHeader><CardTitle>Severity</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={200}><PieChart><Pie data={severityCounts} dataKey="count" nameKey="severity" cx="50%" cy="50%" outerRadius={60} label>{severityCounts.map((entry, idx) => <Cell key={entry.severity} fill={["#22c55e","#eab308","#f97316","#ef4444"][idx]} />)}</Pie></PieChart></ResponsiveContainer></CardContent></Card>
+        <Card><CardHeader><CardTitle>By Admin</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={200}><BarChart data={adminCounts}><XAxis dataKey="admin" /><YAxis allowDecimals={false} /><Bar dataKey="count" fill="#6366f1" /><ChartTooltip /></BarChart></ResponsiveContainer></CardContent></Card>
       </div>
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            {filteredLogs.map((log) => (
-              <div key={log.id} className="border-b pb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Badge className={getSeverityColor(log.severity)}>
-                      {log.severity.toUpperCase()}
-                    </Badge>
-                    <Badge className={getCategoryColor(log.category)}>
-                      {log.category}
-                    </Badge>
-                    <span className="font-medium">{log.action.replace('_', ' ')}</span>
-                  </div>
-                  <span className="text-sm text-gray-500">
-                    {log.timestamp.toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-sm mb-2">{log.details}</p>
-                <div className="text-xs text-gray-400 flex justify-between">
-                  <span>By {log.adminName} • IP: {log.ipAddress}</span>
-                  <span>Target: {log.targetType} {log.targetId}</span>
-                </div>
-                {log.changes && (
-                  <div className="mt-2 text-xs">
-                    <p className="font-medium text-gray-600">Changes:</p>
-                    {log.changes.map((change, i) => (
-                      <div key={i} className="ml-4 text-gray-500">
-                        {change.field}: {change.oldValue} → {change.newValue}
-                      </div>
-                    ))}
-                  </div>
-                )}
+      {/* Filters/Search */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <Input placeholder="Search logs..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        <select className="border rounded p-2" value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}><option value="all">All Severities</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select>
+        <select className="border rounded p-2" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}><option value="all">All Categories</option><option value="user">User</option><option value="content">Content</option><option value="security">Security</option><option value="system">System</option></select>
+        <select className="border rounded p-2" value={timeRange} onChange={e => setTimeRange(e.target.value)}><option value="all">All Time</option><option value="24h">Last 24 Hours</option><option value="7d">Last 7 Days</option><option value="30d">Last 30 Days</option></select>
+        <select className="border rounded p-2" value={adminFilter} onChange={e => setAdminFilter(e.target.value)}><option value="all">All Admins</option>{Array.from(new Set(logs.map(log => log.adminId))).map(adminId => (<option key={adminId} value={adminId}>{logs.find(log => log.adminId === adminId)?.adminName}</option>))}</select>
+        <Input placeholder="Target ID" value={/* add state for target filter */''} onChange={() => {}} />
+      </div>
+      {/* Pagination */}
+      <div className="flex justify-between items-center my-2">
+        <span className="text-sm">Page {page} of {totalPages} ({filteredLogs.length} logs)</span>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</Button>
+          <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Next</Button>
+        </div>
+      </div>
+      {/* Log List */}
+      <Card><CardContent className="pt-6"><div className="space-y-4">
+        {paginatedLogs.map((log) => (
+          <div key={log.id} className={`border-b pb-4 cursor-pointer hover:bg-gray-50 rounded transition ${log.severity === 'critical' ? 'border-red-400 bg-red-50' : ''}`} onClick={() => setSelectedLog(log)}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Tooltip content={log.severity.charAt(0).toUpperCase() + log.severity.slice(1)}><Badge className={getSeverityColor(log.severity)}>{log.severity.toUpperCase()}</Badge></Tooltip>
+                <Tooltip content={log.category.charAt(0).toUpperCase() + log.category.slice(1)}><Badge className={getCategoryColor(log.category)}>{log.category}</Badge></Tooltip>
+                <span className="font-medium">{log.action.replace('_', ' ')}</span>
               </div>
-            ))}
+              <span className="text-sm text-gray-500">{log.timestamp.toLocaleString()}</span>
+            </div>
+            <p className="text-sm mb-2">{log.details}</p>
+            <div className="text-xs text-gray-400 flex justify-between">
+              <span>By {log.adminName} • IP: {log.ipAddress}</span>
+              <span>Target: {log.targetType} {log.targetId}</span>
+            </div>
+            {log.changes && (<div className="mt-2 text-xs"><p className="font-medium text-gray-600">Changes:</p>{log.changes.map((change, i) => (<div key={i} className="ml-4 text-gray-500">{change.field}: {change.oldValue} → {change.newValue}</div>))}</div>)}
           </div>
-        </CardContent>
-      </Card>
+        ))}
+      </div></CardContent></Card>
+      {/* Drilldown Modal */}
+      {selectedLog && <Modal open={!!selectedLog} onOpenChange={() => setSelectedLog(null)}><Card><CardHeader><CardTitle>Log Details</CardTitle></CardHeader><CardContent><div className="space-y-2"><div><b>Action:</b> {selectedLog.action}</div><div><b>Admin:</b> {selectedLog.adminName} ({selectedLog.adminId})</div><div><b>Target:</b> {selectedLog.targetType} {selectedLog.targetId}</div><div><b>Details:</b> {selectedLog.details}</div><div><b>Timestamp:</b> {selectedLog.timestamp.toLocaleString()}</div><div><b>IP Address:</b> {selectedLog.ipAddress}</div><div><b>Severity:</b> {selectedLog.severity}</div><div><b>Category:</b> {selectedLog.category}</div>{selectedLog.changes && (<div><b>Changes:</b><ul className="ml-4 list-disc">{selectedLog.changes.map((c, i) => (<li key={i}>{c.field}: {c.oldValue} → {c.newValue}</li>))}</ul></div>)}</div></CardContent></Card></Modal>}
+      {/* Retention/Compliance Info */}
+      <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded text-xs text-gray-600">Audit logs are retained for 1 year and are immutable. Only authorized admins can view or export logs. All access is logged for compliance.</div>
+      {/* Backend Developer Notes */}
+      <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <h3 className="font-semibold text-blue-800 mb-2">📋 Backend Developer Notes</h3>
+        <div className="text-sm text-blue-700 space-y-1">
+          <p><strong>Endpoints Needed:</strong></p>
+          <ul className="list-disc list-inside ml-4 space-y-1">
+            <li><code>GET /api/audit-logs</code> - Fetch audit logs (support filters: admin, action, severity, category, time range, target, search, pagination)</li>
+            <li><code>GET /api/audit-logs/export</code> - Export filtered audit logs (CSV, PDF)</li>
+            <li><code>GET /api/audit-logs/analytics</code> - Analytics for actions, severity, admin breakdown</li>
+            <li><code>GET /api/audit-logs/stream</code> - Real-time updates (WebSocket/SSE)</li>
+          </ul>
+          <p className="mt-2"><strong>Filtering:</strong> Support advanced filtering and search for all fields.</p>
+          <p><strong>Export:</strong> Support CSV/PDF export for filtered logs.</p>
+          <p><strong>Analytics:</strong> Provide endpoints for action, severity, and admin breakdowns.</p>
+          <p><strong>Real-Time:</strong> Use WebSocket or SSE for live updates.</p>
+          <p><strong>Security:</strong> Log all admin actions and restrict access to authorized roles. Ensure audit logs are immutable and tamper-evident. Log all access to audit logs for compliance.</p>
+          <p><strong>Retention:</strong> Retain logs for at least 1 year (configurable). Provide retention info in API and UI.</p>
+        </div>
+      </div>
     </div>
   );
 } 

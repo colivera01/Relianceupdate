@@ -456,7 +456,7 @@ export default function ReviewManagementPage() {
                       />
                     </div>
                     {/* Top Row: Type, Source, Flagged, Public */}
-                    <div className="flex items-center gap-2 mb-2 ml-8">
+                    <div className="flex flex-wrap items-center gap-2 mb-2 ml-8">
                       <Badge className={review.type === "vendor" ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"}>
                         {review.type === "vendor" ? "Vendor" : "User"}
                       </Badge>
@@ -709,6 +709,7 @@ export default function ReviewManagementPage() {
           <li><b>Notifications:</b> Integrate with notification system (email, in-app, etc.) for flagged, escalated, or removed reviews. Log notification events in audit trail.</li>
           <li><b>Pagination & Performance:</b> All list endpoints should support pagination and efficient filtering/sorting. Add DB indexes as needed.</li>
           <li><b>Export/Import:</b> Endpoints for exporting filtered reviews (CSV, PDF). Bulk import endpoint for onboarding/migration.</li>
+          <li><b>Note:</b> Activity Monitoring and Audit Log are now standalone pages accessible from the admin panel, not from User Management.</li>
           <li><b>Future Features:</b> Review trend analytics, escalation workflow, real-time updates (WebSocket or polling).</li>
         </ul>
       </div>

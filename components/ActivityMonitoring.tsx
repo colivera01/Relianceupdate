@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { Input } from '@/components/ui/input';
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select';
+import { Download } from 'lucide-react';
 
 interface UserActivity {
   id: string;
@@ -66,6 +69,11 @@ export function ActivityMonitoring() {
   const [activities, setActivities] = useState<UserActivity[]>([]);
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(true);
+  const [filterUser, setFilterUser] = useState('all');
+  const [filterAction, setFilterAction] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [search, setSearch] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     // Initial load
@@ -128,10 +136,39 @@ export function ActivityMonitoring() {
     });
   };
 
+  // Filtered and searched activities
+  const filteredActivities = activities.filter(a =>
+    (filterUser === 'all' || a.userName === filterUser) &&
+    (filterAction === 'all' || a.action === filterAction) &&
+    (filterStatus === 'all' || a.status === filterStatus) &&
+    (!search || a.userName.toLowerCase().includes(search.toLowerCase()) || a.action.toLowerCase().includes(search.toLowerCase()) || a.details.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  // Export to CSV
+  const handleExportCSV = () => {
+    setExporting(true);
+    const headers = ['User', 'Action', 'Status', 'IP', 'Location', 'Device', 'Timestamp', 'Details'];
+    const rows = filteredActivities.map(a => [a.userName, a.action, a.status, a.ipAddress, a.location, a.deviceInfo, a.timestamp.toLocaleString(), a.details]);
+    const csv = [headers, ...rows].map(r => r.map(x => `"${x}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'activity_log.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    setExporting(false);
+  };
+
+  // Unique values for filters
+  const users = Array.from(new Set(activities.map(a => a.userName)));
+  const actions = Array.from(new Set(activities.map(a => a.action)));
+  const statuses = Array.from(new Set(activities.map(a => a.status)));
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Activity Monitoring</h2>
+        <h2 className="text-2xl font-bold flex items-center gap-2">Activity Monitoring <span className="ml-2 text-green-600 animate-pulse">● Live</span></h2>
         <Button 
           variant={isMonitoring ? "destructive" : "default"}
           onClick={() => setIsMonitoring(!isMonitoring)}
@@ -139,14 +176,51 @@ export function ActivityMonitoring() {
           {isMonitoring ? "Stop Monitoring" : "Start Monitoring"}
         </Button>
       </div>
-
+      {/* Filters and Search */}
+      <div className="flex flex-wrap gap-4 items-end mb-2">
+        <div>
+          <label className="block text-xs font-medium mb-1">User</label>
+          <Select value={filterUser} onValueChange={setFilterUser}>
+            <SelectTrigger>{filterUser === 'all' ? 'All' : filterUser}</SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {users.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Action</label>
+          <Select value={filterAction} onValueChange={setFilterAction}>
+            <SelectTrigger>{filterAction === 'all' ? 'All' : filterAction}</SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {actions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Status</label>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger>{filterStatus === 'all' ? 'All' : filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1)}</SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              {statuses.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Search</label>
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search user, action, details..." className="w-48" />
+        </div>
+        <Button onClick={handleExportCSV} disabled={exporting} variant="outline" className="flex items-center gap-2"><Download className="w-4 h-4" /> Export CSV</Button>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Live User Activity</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {activities.map((activity) => (
+            {filteredActivities.map((activity) => (
               <div key={activity.id} className="border-b pb-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -213,6 +287,22 @@ export function ActivityMonitoring() {
           </div>
         </CardContent>
       </Card>
+      {/* Backend Developer Notes */}
+      <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <h3 className="font-semibold text-blue-800 mb-2">📋 Backend Developer Notes</h3>
+        <div className="text-sm text-blue-700 space-y-1">
+          <p><strong>Endpoints Needed:</strong></p>
+          <ul className="list-disc list-inside ml-4 space-y-1">
+            <li><code>GET /api/activity</code> - Fetch activity logs (support filters: user, action, status, search, date range, pagination)</li>
+            <li><code>GET /api/activity/stream</code> - Real-time activity updates (WebSocket or SSE)</li>
+            <li><code>GET /api/activity/export</code> - Export filtered activity logs (CSV, PDF)</li>
+            <li><code>POST /api/activity/block-user</code> - Block user from activity feed</li>
+          </ul>
+          <p className="mt-2"><strong>Real-Time:</strong> Use WebSocket or Server-Sent Events for live updates.</p>
+          <p><strong>Export:</strong> Support CSV/PDF export for filtered logs.</p>
+          <p><strong>Security:</strong> Log all admin actions and restrict access to authorized roles.</p>
+        </div>
+      </div>
     </div>
   );
 } 
