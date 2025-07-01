@@ -1,32 +1,54 @@
-'use client';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
-import React from 'react';
-import UserManagement from '@/src/components/UserManagement';
+const mockUser = {
+  name: 'Jane Doe',
+  email: 'jane.doe@email.com',
+  recentActivity: [
+    'Requested support for order #1234',
+    'Left a review for Bright Electric',
+    'Updated profile information',
+    'Viewed invoice #5678',
+  ],
+  notifications: [
+    'Your support ticket #1234 has been updated.',
+    'New offer from Spark HVAC!',
+    'Your subscription renews in 3 days.',
+  ],
+};
 
-export default function UsersPage() {
+export default function UserDashboard() {
   return (
-    <div className="p-4">
-      <UserManagement />
-      {/* Backend Developer Notes */}
-      <div className="max-w-3xl mx-auto mt-12 mb-8 p-6 bg-gray-50 border border-gray-200 rounded shadow-sm">
-        <h2 className="text-lg font-bold mb-2">Backend Developer Notes</h2>
-        <ul className="list-disc pl-6 text-sm space-y-2">
-          <li><b>User Data Model:</b> Each user should include: <code>id</code>, <code>name</code>, <code>email</code>, <code>role</code>, <code>status</code>, <code>createdAt</code>, <code>lastLogin</code>, <code>profileImage</code>, <code>vendorId</code> (if applicable), <code>permissions</code>.</li>
-          <li><b>Endpoints:</b>
-            <ul className="list-disc pl-6">
-              <li><code>GET /api/users</code> (filters: search, status, role, vendor, pagination, sort)</li>
-              <li><code>POST /api/users</code> (create new user)</li>
-              <li><code>PATCH /api/users/:id</code> (update user details, status, role, permissions)</li>
-              <li><code>DELETE /api/users/:id</code> (delete/deactivate user)</li>
-              <li><code>POST /api/users/import</code> (bulk import users)</li>
-              <li><code>POST /api/users/:id/notify</code> (send notification to user)</li>
+    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+      <h2 className="text-2xl font-bold mb-4">Welcome, {mockUser.name}!</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="text-sm text-gray-700 space-y-2">
+              {mockUser.recentActivity.map((item, i) => (
+                <li key={i}>• {item}</li>
+              ))}
             </ul>
-          </li>
-          <li><b>Batch Actions:</b> Endpoints should support batch operations (update/delete multiple users by IDs).</li>
-          <li><b>Permissions:</b> Only admins or users with <code>user:manage</code> can perform management actions. Log all changes for audit.</li>
-          <li><b>Error Handling:</b> Return clear error messages for duplicate emails, invalid roles, or permission issues.</li>
-          <li><b>Future Features:</b> User activity logs, advanced search, export to CSV, role-based dashboards.</li>
-        </ul>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Notifications</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="text-sm text-gray-700 space-y-2">
+              {mockUser.notifications.map((note, i) => (
+                <li key={i}>• {note}</li>
+              ))}
+            </ul>
+            <Button className="mt-4 w-full" variant="outline" asChild>
+              <a href="/support">Go to Support</a>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

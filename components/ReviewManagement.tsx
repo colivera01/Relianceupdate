@@ -45,31 +45,145 @@ function daysBetween(d1: Date, d2: Date): number {
   return Math.floor((d1.getTime() - d2.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-const seedReviews: Review[] = Array.from({ length: 24 }, (_, i) => {
-  const reviewDate = new Date(Date.now() - i * 86400000);
-  const closedDate = new Date(reviewDate.getTime() - ((i % 5) + 1) * 86400000);
-  const type = TYPES[i % TYPES.length];
-  return {
-    id: i + 1,
-    vendor: ["Reliable Plumbers", "Bright Electric", "Spark HVAC"][i % 3],
-    vendorImage: vendorLogos[i % vendorLogos.length],
-    user: `User${i + 1}`,
-    reviewerType: SOURCES[i % SOURCES.length],
-    userImage: `https://via.placeholder.com/48?text=U${i + 1}`,
-    rating: RATINGS[i % RATINGS.length],
-    type,
-    date: reviewDate.toISOString().slice(0, 10),
-    closedDate: closedDate.toISOString().slice(0, 10),
-    content: `Sample review content #${i + 1}.`,  
-    mediaUrl: type === "video"
-      ? "https://www.w3schools.com/html/mov_bbb.mp4"
-      : `https://via.placeholder.com/400x200?text=Photo+${i + 1}`,
-    flagged: i % 7 === 0,
-    auto: i % 6 === 0,
+const seedReviews: Review[] = [
+  {
+    id: 1,
+    vendor: "Reliable Plumbers",
+    vendorImage: vendorLogos[0],
+    user: "User1",
+    reviewerType: "user",
+    userImage: "https://randomuser.me/api/portraits/men/11.jpg",
+    rating: 5,
+    type: "video",
+    date: "2024-06-01",
+    closedDate: "2024-06-02",
+    content: "Excellent service! The plumber arrived on time and fixed the issue quickly. Highly recommend.",
+    mediaUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
+    flagged: false,
+    auto: false,
+    status: "approved",
+    replies: [
+      { id: 1, author: "Admin", content: "Thank you for your feedback!", timestamp: "2024-06-02 10:00" }
+    ]
+  },
+  {
+    id: 2,
+    vendor: "Bright Electric",
+    vendorImage: vendorLogos[1],
+    user: "User2",
+    reviewerType: "user",
+    userImage: "https://randomuser.me/api/portraits/women/12.jpg",
+    rating: 2,
+    type: "photo",
+    date: "2024-06-03",
+    closedDate: "2024-06-04",
+    content: "The electrician was late and the problem wasn't fully resolved. Disappointed.",
+    mediaUrl: "https://via.placeholder.com/400x200?text=Photo+2",
+    flagged: true,
+    auto: true,
     status: "pending",
     replies: []
-  };
-});
+  },
+  {
+    id: 3,
+    vendor: "Spark HVAC",
+    vendorImage: vendorLogos[2],
+    user: "User3",
+    reviewerType: "vendor",
+    userImage: "https://randomuser.me/api/portraits/men/13.jpg",
+    rating: 4,
+    type: "photo",
+    date: "2024-06-05",
+    closedDate: "2024-06-06",
+    content: "Great customer, clear instructions, prompt payment.",
+    mediaUrl: "https://via.placeholder.com/400x200?text=Photo+3",
+    flagged: false,
+    auto: false,
+    status: "approved",
+    replies: [
+      { id: 2, author: "Admin", content: "Glad to hear it went well!", timestamp: "2024-06-06 09:30" }
+    ]
+  },
+  {
+    id: 4,
+    vendor: "Reliable Plumbers",
+    vendorImage: vendorLogos[0],
+    user: "User4",
+    reviewerType: "user",
+    userImage: "https://randomuser.me/api/portraits/women/14.jpg",
+    rating: 1,
+    type: "video",
+    date: "2024-06-07",
+    closedDate: "2024-06-08",
+    content: "Terrible experience. The plumber was rude and left a mess.",
+    mediaUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
+    flagged: true,
+    auto: false,
+    status: "rejected",
+    replies: [
+      { id: 3, author: "Admin", content: "We're sorry to hear this. We'll investigate.", timestamp: "2024-06-08 11:15" }
+    ]
+  },
+  {
+    id: 5,
+    vendor: "Bright Electric",
+    vendorImage: vendorLogos[1],
+    user: "User5",
+    reviewerType: "user",
+    userImage: "https://randomuser.me/api/portraits/men/15.jpg",
+    rating: 3,
+    type: "photo",
+    date: "2024-06-09",
+    closedDate: "2024-06-10",
+    content: "Average service. The job was done but took longer than expected.",
+    mediaUrl: "https://via.placeholder.com/400x200?text=Photo+5",
+    flagged: false,
+    auto: true,
+    status: "pending",
+    replies: []
+  },
+  {
+    id: 6,
+    vendor: "Spark HVAC",
+    vendorImage: vendorLogos[2],
+    user: "User6",
+    reviewerType: "user",
+    userImage: "https://randomuser.me/api/portraits/women/16.jpg",
+    rating: 5,
+    type: "video",
+    date: "2024-06-11",
+    closedDate: "2024-06-12",
+    content: "Outstanding! The technician was knowledgeable and friendly.",
+    mediaUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
+    flagged: false,
+    auto: false,
+    status: "approved",
+    replies: []
+  },
+  // Add more reviews to fill the grid and show all features
+  ...Array.from({ length: 18 }, (_, i) => ({
+    id: i + 7,
+    vendor: ["Reliable Plumbers", "Bright Electric", "Spark HVAC"][i % 3],
+    vendorImage: vendorLogos[i % 3],
+    user: `User${i + 7}`,
+    reviewerType: SOURCES[i % SOURCES.length],
+    userImage: `https://randomuser.me/api/portraits/${i % 2 ? "women" : "men"}/${i + 17}.jpg`,
+    rating: RATINGS[i % RATINGS.length],
+    type: TYPES[i % TYPES.length],
+    date: `2024-06-${String(i + 13).padStart(2, "0")}`,
+    closedDate: `2024-06-${String(i + 14).padStart(2, "0")}`,
+    content: `Sample review content #${i + 7}. This is a longer review to demonstrate the UI. Everything went as expected.`,
+    mediaUrl: TYPES[i % TYPES.length] === "video"
+      ? "https://www.w3schools.com/html/mov_bbb.mp4"
+      : `https://via.placeholder.com/400x200?text=Photo+${i + 7}`,
+    flagged: i % 4 === 0,
+    auto: i % 3 === 0,
+    status: ["pending", "approved", "rejected"][i % 3] as Status,
+    replies: i % 5 === 0 ? [
+      { id: i + 100, author: "Admin", content: "Thank you for your review!", timestamp: `2024-06-${String(i + 14).padStart(2, "0")}` }
+    ] : []
+  }))
+];
 
 export default function ReviewManagement() {
   const [reviews, setReviews] = useState<Review[]>(seedReviews);
@@ -158,29 +272,29 @@ export default function ReviewManagement() {
         {/* Filters & Bulk */}
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <Input placeholder="Search by vendor/user/content" className="max-w-xs" value={search} onChange={e => setSearch(e.target.value)} aria-label="Search reviews" />
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} aria-label="Filter by type" className="border rounded px-2 py-1 text-sm">
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} aria-label="Filter by type" className="border rounded px-2 py-1 pr-6 text-sm">
             <option value="all">All Types</option>
             {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={ratingFilter} onChange={e => setRatingFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="Filter by rating" className="border rounded px-2 py-1 text-sm">
+          <select value={ratingFilter} onChange={e => setRatingFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))} aria-label="Filter by rating" className="border rounded px-2 py-1 pr-6 text-sm">
             <option value="all">All Ratings</option>
             {RATINGS.map(r => <option key={r} value={r}>{r}★</option>)}
           </select>
-          <select value={flagFilter} onChange={e => setFlagFilter(e.target.value)} aria-label="Filter by flagged" className="border rounded px-2 py-1 text-sm">
+          <select value={flagFilter} onChange={e => setFlagFilter(e.target.value)} aria-label="Filter by flagged" className="border rounded px-2 py-1 pr-6 text-sm">
             <option value="all">All Flags</option>
             <option value="flagged">Flagged</option>
             <option value="unflagged">Unflagged</option>
           </select>
-          <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} aria-label="Filter by source" className="border rounded px-2 py-1 text-sm">
+          <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} aria-label="Filter by source" className="border rounded px-2 py-1 pr-6 text-sm">
             <option value="all">All Sources</option>
             {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select value={autoFilter} onChange={e => setAutoFilter(e.target.value)} aria-label="Filter by review mode" className="border rounded px-2 py-1 text-sm">
+          <select value={autoFilter} onChange={e => setAutoFilter(e.target.value)} aria-label="Filter by review mode" className="border rounded px-2 py-1 pr-6 text-sm">
             <option value="all">All Modes</option>
             <option value="auto">Auto</option>
             <option value="manual">Manual</option>
           </select>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as Status)} aria-label="Filter by status" className="border rounded px-2 py-1 text-sm">
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as Status)} aria-label="Filter by status" className="border rounded px-2 py-1 pr-6 text-sm">
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="approved">Approved</option>

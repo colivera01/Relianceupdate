@@ -225,32 +225,72 @@ export default function ReportsAnalytics() {
         <Card className="flex items-center justify-between p-4 cursor-pointer" onClick={() => setViewingDetail("users")}> 
           <div>
             <p className="text-sm text-gray-500">Total Users</p>
-            <p className="text-2xl font-semibold flex items-center gap-2">
+            <div className="text-2xl font-semibold flex items-center gap-2">
               {metrics.users}
               <Badge variant={getBadgeVariant(metrics.users, USER_THRESHOLD)}>
                 {metrics.users >= USER_THRESHOLD ? "On Target" : metrics.users >= USER_THRESHOLD * 0.8 ? "Caution" : "Below"}
               </Badge>
-            </p>
+            </div>
           </div>
         </Card>
         <Card className="flex items-center justify-between p-4 cursor-pointer" onClick={() => setViewingDetail("vendors")}> 
           <div>
             <p className="text-sm text-gray-500">Total Vendors</p>
-            <p className="text-2xl font-semibold flex items-center gap-2">
+            <div className="text-2xl font-semibold flex items-center gap-2">
               {metrics.vendors}
               <Badge variant={getBadgeVariant(metrics.vendors, VENDOR_THRESHOLD)}>
                 {metrics.vendors >= VENDOR_THRESHOLD ? "On Target" : metrics.vendors >= VENDOR_THRESHOLD * 0.8 ? "Caution" : "Below"}
               </Badge>
-            </p>
+            </div>
           </div>
         </Card>
         <Card className="flex items-center justify-between p-4 cursor-pointer" onClick={() => setViewingDetail("engagement")}> 
           <div>
             <p className="text-sm text-gray-500">Avg Engagement/Day</p>
-            <p className="text-2xl font-semibold flex items-center gap-2">
+            <div className="text-2xl font-semibold flex items-center gap-2">
               {metrics.engagement}
-            </p>
+            </div>
           </div>
+        </Card>
+      </div>
+
+      {/* Analytics Charts Section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+        <Card className="p-4">
+          <CardTitle className="mb-2">User Growth</CardTitle>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartUsers} margin={{ left: 10, right: 10, top: 10, bottom: 10 }}>
+              <XAxis dataKey="name" />
+              <YAxis allowDecimals={false} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <Tooltip />
+              <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card className="p-4">
+          <CardTitle className="mb-2">Vendor Growth</CardTitle>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartVendors} margin={{ left: 10, right: 10, top: 10, bottom: 10 }}>
+              <XAxis dataKey="name" />
+              <YAxis allowDecimals={false} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <Tooltip />
+              <Line type="monotone" dataKey="value" stroke="#059669" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+        <Card className="p-4">
+          <CardTitle className="mb-2">Engagement Trend</CardTitle>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartEngagement} margin={{ left: 10, right: 10, top: 10, bottom: 10 }}>
+              <XAxis dataKey="name" />
+              <YAxis allowDecimals={false} />
+              <CartesianGrid strokeDasharray="3 3" />
+              <Tooltip />
+              <Line type="monotone" dataKey="value" stroke="#f59e42" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
         </Card>
       </div>
     </div>

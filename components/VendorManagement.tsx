@@ -1,3 +1,4 @@
+'use client';
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -245,7 +246,7 @@ export function VendorManagement() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <Input
           placeholder="Search vendors..."
           value={searchTerm}
@@ -361,7 +362,7 @@ export function VendorManagement() {
 
       {editingVendor && (
         <Dialog open={!!editingVendor} onOpenChange={() => setEditingVendor(null)}>
-          <DialogContent>
+          <DialogContent className="max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Vendor</DialogTitle>
             </DialogHeader>

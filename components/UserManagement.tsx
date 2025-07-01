@@ -1,3 +1,4 @@
+'use client';
 // User Management – fully closed JSX with complete modal (ready for backend)
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -131,7 +132,7 @@ export default function UserManagement() {
   return (
     <div className="p-6 space-y-6">
       {/* Enhanced Admin Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <Input
           placeholder="Search users"
           className="max-w-xs"
@@ -139,7 +140,7 @@ export default function UserManagement() {
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
         />
         <select
-          className="border rounded px-2 py-1 text-sm"
+          className="border rounded px-2 py-1 pr-6 text-sm"
           value={userTypeFilter}
           onChange={(e) => { setUserTypeFilter(e.target.value); setPage(1); }}
         >
@@ -151,7 +152,7 @@ export default function UserManagement() {
           ))}
         </select>
         <select
-          className="border rounded px-2 py-1 text-sm"
+          className="border rounded px-2 py-1 pr-6 text-sm"
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
         >
@@ -159,7 +160,7 @@ export default function UserManagement() {
           {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select
-          className="border rounded px-2 py-1 text-sm"
+          className="border rounded px-2 py-1 pr-6 text-sm"
           value={verificationFilter}
           onChange={(e) => { setVerificationFilter(e.target.value); setPage(1); }}
         >
@@ -171,7 +172,7 @@ export default function UserManagement() {
           ))}
         </select>
         <select
-          className="border rounded px-2 py-1 text-sm"
+          className="border rounded px-2 py-1 pr-6 text-sm"
           value={contentStatusFilter}
           onChange={(e) => { setContentStatusFilter(e.target.value); setPage(1); }}
         >
@@ -183,7 +184,7 @@ export default function UserManagement() {
           ))}
         </select>
         <select
-          className="border rounded px-2 py-1 text-sm"
+          className="border rounded px-2 py-1 pr-6 text-sm"
           value={tierFilter}
           onChange={(e) => { setTierFilter(e.target.value); setPage(1); }}
         >
@@ -250,6 +251,82 @@ export default function UserManagement() {
           </Card>
         ))}
       </div>
+
+      {editing && (
+        <Dialog open onOpenChange={() => setEditing(null)}>
+          <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto space-y-6">
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              Manage User: {editing.name}
+              {editing.userType === 'admin' && <Badge variant="secondary">Admin</Badge>}
+            </DialogTitle>
+            <div className="flex gap-4 items-center">
+              <img src={editing.image} alt={editing.name} className="w-16 h-16 rounded-md object-cover border" />
+              <div>
+                <div className="font-semibold">{editing.email}</div>
+                <div className="flex gap-2 mt-1">
+                  <Badge variant={editing.status === 'active' ? 'success' : editing.status === 'suspended' ? 'destructive' : 'secondary'} className="capitalize text-xs">{editing.status}</Badge>
+                  <Badge variant="outline" className="text-xs">{editing.userType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</Badge>
+                  <Badge variant={editing.verificationStatus === 'verified' ? 'success' : editing.verificationStatus === 'rejected' ? 'destructive' : 'warning'} className="capitalize text-xs">{editing.verificationStatus}</Badge>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Name</label>
+              <Input value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} />
+              <label className="block text-sm font-medium mt-2">Tier</label>
+              <select className="border rounded px-2 py-1 text-sm w-full" value={editing.tier} onChange={e => setEditing({ ...editing, tier: e.target.value })}>
+                {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <label className="block text-sm font-medium mt-2">Status</label>
+              <select className="border rounded px-2 py-1 text-sm w-full" value={editing.status} onChange={e => setEditing({ ...editing, status: e.target.value })}>
+                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <label className="block text-sm font-medium mt-2">Verification Status</label>
+              <select className="border rounded px-2 py-1 text-sm w-full" value={editing.verificationStatus} onChange={e => setEditing({ ...editing, verificationStatus: e.target.value })}>
+                {VERIFICATION_STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              </select>
+              <label className="block text-sm font-medium mt-2">Content Status</label>
+              <select className="border rounded px-2 py-1 text-sm w-full" value={editing.contentStatus} onChange={e => setEditing({ ...editing, contentStatus: e.target.value })}>
+                {CONTENT_STATUSES.map(s => <option key={s} value={s}>{s.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</option>)}
+              </select>
+              <label className="block text-sm font-medium mt-2">Notes</label>
+              <textarea className="border rounded px-2 py-1 text-sm w-full" rows={2} value={editing.notes} onChange={e => setEditing({ ...editing, notes: e.target.value })} />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+              <Button onClick={() => { saveUser(editing); setEditing(null); }}>Save Changes</Button>
+            </div>
+            <div className="mt-6 border-t pt-4 space-y-2">
+              <div className="font-semibold mb-2">Account Actions</div>
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="destructive" onClick={() => { setEditing({ ...editing, status: 'suspended' }); }}>Suspend</Button>
+                <Button size="sm" variant="success" onClick={() => { setEditing({ ...editing, status: 'active' }); }}>Activate</Button>
+                <Button size="sm" variant="outline" onClick={() => { setEditing({ ...editing, verificationStatus: 'verified' }); }}>Verify</Button>
+                <Button size="sm" variant="outline" onClick={() => { setEditing({ ...editing, verificationStatus: 'pending' }); }}>Set Pending Verification</Button>
+              </div>
+            </div>
+            <div className="mt-6 border-t pt-4 space-y-2">
+              <div className="font-semibold mb-2">Activity Log</div>
+              <ul className="text-xs text-gray-600 space-y-1 max-h-32 overflow-y-auto">
+                {editing.activity.map((a, i) => <li key={i}>• {a}</li>)}
+              </ul>
+            </div>
+            {editing.adminPrivileges && (
+              <div className="mt-6 border-t pt-4 space-y-2">
+                <div className="font-semibold mb-2">Admin Privileges</div>
+                <div className="text-xs text-gray-700">
+                  <div>Access Level: {editing.adminPrivileges.accessLevel}</div>
+                  <div>Departments: {editing.adminPrivileges.departmentAccess.join(', ')}</div>
+                  <div>Can Review Content: {editing.adminPrivileges.canReviewContent ? 'Yes' : 'No'}</div>
+                  <div>Can Delete Content: {editing.adminPrivileges.canDeleteContent ? 'Yes' : 'No'}</div>
+                  <div>Can Flag Users: {editing.adminPrivileges.canFlagUsers ? 'Yes' : 'No'}</div>
+                  <div>Can Suspend Accounts: {editing.adminPrivileges.canSuspendAccounts ? 'Yes' : 'No'}</div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 } 
