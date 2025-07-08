@@ -74,6 +74,9 @@ export function ActivityMonitoring() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [displayMode, setDisplayMode] = useState<'scroll' | 'pagination'>('scroll');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     // Initial load
@@ -143,6 +146,9 @@ export function ActivityMonitoring() {
     (filterStatus === 'all' || a.status === filterStatus) &&
     (!search || a.userName.toLowerCase().includes(search.toLowerCase()) || a.action.toLowerCase().includes(search.toLowerCase()) || a.details.toLowerCase().includes(search.toLowerCase()))
   );
+  // Pagination logic
+  const totalPages = Math.ceil(filteredActivities.length / ITEMS_PER_PAGE);
+  const paginatedActivities = filteredActivities.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -174,6 +180,24 @@ export function ActivityMonitoring() {
           onClick={() => setIsMonitoring(!isMonitoring)}
         >
           {isMonitoring ? "Stop Monitoring" : "Start Monitoring"}
+        </Button>
+      </div>
+      {/* Display Mode Toggle */}
+      <div className="flex gap-4 items-center mb-2">
+        <span className="text-sm font-medium">Display Mode:</span>
+        <Button
+          variant={displayMode === 'scroll' ? 'default' : 'outline'}
+          onClick={() => { setDisplayMode('scroll'); setCurrentPage(1); }}
+          size="sm"
+        >
+          Scrollable List
+        </Button>
+        <Button
+          variant={displayMode === 'pagination' ? 'default' : 'outline'}
+          onClick={() => { setDisplayMode('pagination'); setCurrentPage(1); }}
+          size="sm"
+        >
+          Pagination
         </Button>
       </div>
       {/* Filters and Search */}
@@ -214,45 +238,62 @@ export function ActivityMonitoring() {
         </div>
         <Button onClick={handleExportCSV} disabled={exporting} variant="outline" className="flex items-center gap-2"><Download className="w-4 h-4" /> Export CSV</Button>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Live User Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {filteredActivities.map((activity) => (
-              <div key={activity.id} className="border-b pb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{activity.userName}</span>
-                    {getStatusBadge(activity.status)}
+      {/* Activity List */}
+      {displayMode === 'scroll' ? (
+        <div className="border rounded-lg max-h-[400px] overflow-y-auto">
+          {filteredActivities.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">No activities found.</div>
+          ) : (
+            filteredActivities.map(a => (
+              <Card key={a.id} className="border-b last:border-b-0">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">{a.userName}</CardTitle>
+                    <div className="text-xs text-gray-500">{a.action} • {a.location} • {a.timestamp.toLocaleString()}</div>
                   </div>
-                  <span className="text-sm text-gray-500">
-                    {activity.timestamp.toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-sm mb-2">
-                  {activity.action.replace('_', ' ')} • {activity.location}
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-400">
-                    IP: {activity.ipAddress} • {activity.deviceInfo}
+                  {getStatusBadge(a.status)}
+                </CardHeader>
+                <CardContent className="text-sm flex flex-col gap-1">
+                  <div><span className="font-medium">IP:</span> {a.ipAddress}</div>
+                  <div><span className="font-medium">Device:</span> {a.deviceInfo}</div>
+                  <div><span className="font-medium">Details:</span> {a.details}</div>
+                  <Button size="xs" variant="outline" className="mt-2 w-fit" onClick={() => handleBlock(a.userId)}>Block User</Button>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      ) : (
+        <div>
+          {paginatedActivities.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">No activities found.</div>
+          ) : (
+            paginatedActivities.map(a => (
+              <Card key={a.id} className="border-b last:border-b-0">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">{a.userName}</CardTitle>
+                    <div className="text-xs text-gray-500">{a.action} • {a.location} • {a.timestamp.toLocaleString()}</div>
                   </div>
-                  {activity.status === 'suspicious' && (
-                    <Button 
-                      variant="destructive" 
-                      size="sm"
-                      onClick={() => handleBlock(activity.userId)}
-                    >
-                      Block User
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
+                  {getStatusBadge(a.status)}
+                </CardHeader>
+                <CardContent className="text-sm flex flex-col gap-1">
+                  <div><span className="font-medium">IP:</span> {a.ipAddress}</div>
+                  <div><span className="font-medium">Device:</span> {a.deviceInfo}</div>
+                  <div><span className="font-medium">Details:</span> {a.details}</div>
+                  <Button size="xs" variant="outline" className="mt-2 w-fit" onClick={() => handleBlock(a.userId)}>Block User</Button>
+                </CardContent>
+              </Card>
+            ))
+          )}
+          {/* Pagination Controls */}
+          <div className="flex justify-center items-center gap-4 mt-4">
+            <Button size="sm" variant="outline" disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))}>Previous</Button>
+            <span className="text-sm">Page {currentPage} of {totalPages}</span>
+            <Button size="sm" variant="outline" disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}>Next</Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

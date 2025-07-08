@@ -9,6 +9,7 @@ const sidebarLinks = [
   { label: 'Media', icon: HardDrive },
   { label: 'Reviews', icon: Star },
   { label: 'Jobs', icon: Briefcase },
+  { label: 'Employees', icon: Users, href: '/vendor/employees' },
   { label: 'Pending Approvals', icon: AlertTriangle, href: '/vendor/approvals', badge: 2, alert: true },
   { label: 'Billing', icon: DollarSign },
   { label: 'Support', icon: HelpCircle },
@@ -27,7 +28,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
         {/* Blue navigation area */}
         <div className="flex-1 bg-blue-800 text-white flex flex-col py-8 px-4">
           <nav className="flex-1 space-y-1">
-            {sidebarLinks.map((link) => (
+            {sidebarLinks.map((link, idx) => (
               <div key={link.label} className="relative">
                 {link.href ? (
                   <Link href={link.href}>
@@ -62,26 +63,29 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
                     )}
                   </Button>
                 )}
+                {/* Insert toggles directly after Logout button */}
+                {link.label === 'Logout' && (
+                  <div className="flex flex-col gap-2 mt-4">
+                    <button
+                      className="flex items-center gap-2 border border-yellow-400 text-yellow-400 px-3 py-2 rounded hover:bg-yellow-50 hover:text-blue-800 transition-colors font-medium"
+                      onClick={() => window.location.href = '/'}
+                    >
+                      <span className="w-4 h-4 inline-block">🏛️</span>
+                      Switch to Admin View
+                    </button>
+                    <button
+                      className="flex items-center gap-2 border border-green-400 text-green-400 px-3 py-2 rounded hover:bg-green-50 hover:text-blue-800 transition-colors font-medium"
+                      onClick={() => window.location.href = '/users'}
+                    >
+                      <span className="w-4 h-4 inline-block">👤</span>
+                      Switch to User View
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </nav>
           <div className="mt-auto text-xs text-blue-200 px-2 mb-4">Reliance © 2023</div>
-          <div className="flex flex-col gap-2 mb-4">
-            <button
-              className="flex items-center gap-2 border border-yellow-400 text-yellow-400 px-3 py-2 rounded hover:bg-yellow-50 hover:text-blue-800 transition-colors font-medium"
-              onClick={() => window.location.href = '/'}
-            >
-              <span className="w-4 h-4 inline-block">🏛️</span>
-              Switch to Admin View
-            </button>
-            <button
-              className="flex items-center gap-2 border border-green-400 text-green-400 px-3 py-2 rounded hover:bg-green-50 hover:text-blue-800 transition-colors font-medium"
-              onClick={() => window.location.href = '/users'}
-            >
-              <span className="w-4 h-4 inline-block">👤</span>
-              Switch to User View
-            </button>
-          </div>
         </div>
       </aside>
       <main className="flex-1 p-10">{children}</main>

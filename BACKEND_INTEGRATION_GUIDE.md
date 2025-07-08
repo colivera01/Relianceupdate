@@ -42,6 +42,44 @@ This guide provides backend requirements for all major features/pages in the Rel
 
 ---
 
+## User Management – Bulk Actions (Admin Panel)
+
+All endpoints require admin authentication/authorization. All bulk actions should be logged in the audit trail (who performed, when, what action, which users). For destructive actions (delete, suspend), consider requiring a reason and/or double confirmation. For export, ensure data privacy compliance (GDPR, CCPA, etc.). For notifications, support both email and in-app (if available).
+
+### Bulk Actions Endpoints
+
+1. **Bulk Status Update**
+   - `POST /api/admin/users/bulk-update-status`
+   - Payload: `{ userIds: number[], status: "active" | "inactive" | "suspended" }`
+   - Returns: Success/failure, updated user list
+
+2. **Bulk Delete**
+   - `POST /api/admin/users/bulk-delete`
+   - Payload: `{ userIds: number[] }`
+   - Returns: Success/failure
+
+3. **Bulk Role Assignment**
+   - `POST /api/admin/users/bulk-role`
+   - Payload: `{ userIds: number[], role: string }`
+   - Returns: Success/failure
+
+4. **Bulk Notification**
+   - `POST /api/admin/users/bulk-notify`
+   - Payload: `{ userIds: number[], message: string }`
+   - Returns: Success/failure
+
+5. **Bulk Export**
+   - `POST /api/admin/users/bulk-export`
+   - Payload: `{ userIds: number[] }`
+   - Returns: CSV or file download
+
+6. **Bulk Password Reset**
+   - `POST /api/admin/users/bulk-reset-password`
+   - Payload: `{ userIds: number[] }`
+   - Returns: Success/failure
+
+---
+
 ## Vendor Management
 - **Endpoints:**
   - `GET /api/vendors` (filters: search, status, approval, pagination, sort)
