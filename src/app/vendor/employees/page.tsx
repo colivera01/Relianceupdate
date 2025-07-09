@@ -21,7 +21,7 @@ export default function EmployeesPage() {
   const handleDelete = (id) => setEmployees(employees.filter(e => e.id !== id));
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="px-4 md:px-8 py-8">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Employees</h2>
         <Button onClick={() => setShowAdd(true)}>Add Employee</Button>
@@ -67,6 +67,19 @@ export default function EmployeesPage() {
           </form>
         </DialogContent>
       </Dialog>
+      {/* Backend Developer Notes Section */}
+      <div className="mt-10">
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded shadow-sm">
+          <h3 className="font-bold text-yellow-800 mb-2">Backend Developer Notes</h3>
+          <ul className="text-sm text-yellow-900 list-disc pl-5 space-y-1">
+            <li>Fetch employees for this vendor from <b>GET /api/vendor/employees</b></li>
+            <li>Add a new employee via <b>POST /api/vendor/employees</b> with name, email, role, photo, etc.</li>
+            <li>Update employee details via <b>PUT /api/vendor/employees/:employeeId</b></li>
+            <li>Delete employee via <b>DELETE /api/vendor/employees/:employeeId</b></li>
+            <li>All actions should be authenticated as vendor</li>
+          </ul>
+        </div>
+      </div>
     </div>
   );
 } 

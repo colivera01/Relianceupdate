@@ -465,7 +465,7 @@ export default function VendorJobs() {
   const clearMediaSelection = () => setSelectedMedia([]);
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="px-4 md:px-8 py-8">
       {/* Onboarding Banner */}
       <div className="bg-blue-50 border border-blue-200 rounded p-4 flex items-center gap-3 mb-4">
         <Info className="w-5 h-5 text-blue-500" />

@@ -9,8 +9,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Star, MapPin, Briefcase, HardDrive, DollarSign, Users, HelpCircle } from 'lucide-react';
+import { Star, MapPin, Briefcase, HardDrive, DollarSign, Users, HelpCircle, Info, Edit2, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
+import SimpleTooltip from '@/components/ui/tooltip';
 
 const featureCards = [
   {
@@ -18,30 +19,35 @@ const featureCards = [
     description: 'View, accept, and update your job requests.',
     icon: Briefcase,
     action: 'Go to Jobs',
+    href: '/vendor/jobs',
   },
   {
     title: 'View Reviews',
     description: 'See client feedback and performance trends.',
     icon: Star,
     action: 'See Reviews',
+    href: '/vendor/reviews',
   },
   {
     title: 'Billing & Earnings',
     description: 'Track your payments, invoices, and plans.',
     icon: DollarSign,
     action: 'View Billing',
+    href: '/vendor/billing',
   },
   {
     title: 'Profile & Settings',
     description: 'Edit your business info and preferences.',
     icon: Users,
-    action: 'Edit Profile',
+    action: 'Go to Profile',
+    href: '/vendor/profile',
   },
   {
     title: 'Support & Help',
     description: 'Get assistance or open a support ticket.',
     icon: HelpCircle,
     action: 'Get Support',
+    href: '/vendor/support',
   },
 ];
 
@@ -50,7 +56,26 @@ const mockEmployees = [
   { id: 2, name: 'James Lee', jobs: 5, avgScore: 4.7, reviews: ["Quick and efficient.", "Would hire again."] },
 ];
 
+const mockBusinesses = [
+  {
+    id: 1,
+    name: 'Tech Solutions Inc.',
+    location: 'New York, NY',
+    rating: 4.8,
+    logo: '/reliance-logo.png', // Use your logo or a placeholder
+  },
+  {
+    id: 2,
+    name: 'Bright Electric',
+    location: 'Boston, MA',
+    rating: 4.6,
+    logo: '', // No logo, will use initials
+  },
+];
+
 export default function VendorMainPage() {
+  const [selectedBusiness, setSelectedBusiness] = useState(mockBusinesses[0]);
+  const [showDropdown, setShowDropdown] = useState(false);
   const [employees] = useState(mockEmployees);
   // Mock vendor location and user location for distance calculation
   const vendorLocation = { lat: 40.7128, lng: -74.0060 }; // Example: New York
@@ -78,26 +103,42 @@ export default function VendorMainPage() {
   );
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="px-4 md:px-8 py-8 space-y-6">
+      {/* Business Switcher Dropdown */}
+      {mockBusinesses.length > 1 && (
+        <div className="flex items-center gap-4 mb-6">
+          <div className="relative flex items-center gap-2">
+            <button
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 font-medium shadow-sm transition"
+              onClick={() => setShowDropdown((v) => !v)}
+            >
+              {selectedBusiness.logo ? (
+                <img src={selectedBusiness.logo} alt={selectedBusiness.name} className="w-8 h-8 rounded-full border" />
+              ) : (
+                <span className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-lg font-bold text-blue-700 border">
+                  {selectedBusiness.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()}
+                </span>
+              )}
+              <span className="font-semibold">{selectedBusiness.name}</span>
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            </button>
+            <SimpleTooltip content="Switch between your businesses if you manage more than one.">
+              <Info className="w-4 h-4 text-gray-400 cursor-pointer" />
+            </SimpleTooltip>
+          </div>
+        </div>
+      )}
+      {/* Helper Text: Only show if multiple businesses */}
+      {mockBusinesses.length > 1 && (
+        <div className="text-xs text-gray-500 mb-4 ml-2">Click the dropdown to switch between your businesses.</div>
+      )}
       {/* Hero Section */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-10 gap-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Your Vendor Portal</h1>
           <p className="text-gray-600 text-lg">Manage your business, jobs, and performance all in one place.</p>
         </div>
-        <Card className="w-full md:w-80 bg-white border border-gray-200 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-semibold">Your Business</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="font-bold text-xl mb-1">Tech Solutions Inc.</div>
-            <div className="text-sm mb-2 flex items-center text-gray-600"><MapPin className="w-4 h-4 mr-1" /> New York, NY</div>
-            <Badge className="bg-blue-100 text-blue-700 mb-2">{distance} miles from you</Badge>
-            <div className="flex items-center gap-2 text-sm">
-              <Star className="w-4 h-4 text-yellow-400" /> 4.8
-            </div>
-          </CardContent>
-        </Card>
+        {/* Enhanced Business Card */}
       </div>
 
       {/* Feature Grid */}
@@ -111,7 +152,7 @@ export default function VendorMainPage() {
             <CardContent>
               <div className="text-gray-700 mb-4 min-h-[48px]">{card.description}</div>
               <Button asChild>
-                <a href="/vendor/jobs">Go to Jobs</a>
+                <a href={card.href}>{card.action}</a>
               </Button>
             </CardContent>
           </Card>

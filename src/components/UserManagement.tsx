@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import SimpleTooltip from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 
 const PAGE_SIZE = 6;
 const STATUSES = ["active", "inactive", "suspended", "pending_approval"];
@@ -108,6 +110,13 @@ const seedUsers: User[] = Array.from({ length: 6 }, (_, i) => ({
   activity: ["2024-05-12 – Account created"],
   reviews: [],
 }));
+
+// Helper for info cue
+const InfoCue = ({ text }: { text: string }) => (
+  <SimpleTooltip content={text}>
+    <Info className="inline w-4 h-4 ml-1 text-gray-400 cursor-pointer align-text-bottom" />
+  </SimpleTooltip>
+);
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>(seedUsers);

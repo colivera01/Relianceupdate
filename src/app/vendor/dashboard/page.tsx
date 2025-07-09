@@ -155,86 +155,58 @@ export default function VendorDashboard() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="px-4 md:px-8 py-8">
+        {/* Remove business info/company summary card here if present */}
+        {/* Main Dashboard Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-8">
+          {/* Manage Jobs Card */}
           <Card className="bg-white shadow-lg border-0">
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Earnings</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalEarnings)}</p>
-                </div>
-                <div className="p-3 bg-green-100 rounded-full">
-                  <DollarSign className="w-6 h-6 text-green-600" />
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm">
-                  <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-                  <span className="text-green-600">+12% from last month</span>
-                </div>
-              </div>
+              <CardTitle className="text-xl font-semibold mb-2">Manage Jobs</CardTitle>
+              <p className="text-gray-600 mb-4">View, accept, and update your job requests.</p>
+              <Button asChild className="w-full">
+                <a href="/vendor/jobs">Go to Jobs</a>
+              </Button>
             </CardContent>
           </Card>
-
+          {/* View Reviews Card */}
           <Card className="bg-white shadow-lg border-0">
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Active Jobs</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.pendingJobs}</p>
-                </div>
-                <div className="p-3 bg-blue-100 rounded-full">
-                  <Clock className="w-6 h-6 text-blue-600" />
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm">
-                  <Calendar className="w-4 h-4 text-blue-500 mr-1" />
-                  <span className="text-blue-600">8 scheduled this week</span>
-                </div>
-              </div>
+              <CardTitle className="text-xl font-semibold mb-2">View Reviews</CardTitle>
+              <p className="text-gray-600 mb-4">See client feedback and performance trends.</p>
+              <Button asChild className="w-full">
+                <a href="/vendor/reviews">See Reviews</a>
+              </Button>
             </CardContent>
           </Card>
-
+          {/* Billing & Earnings Card */}
           <Card className="bg-white shadow-lg border-0">
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Average Rating</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.averageRating}</p>
-                </div>
-                <div className="p-3 bg-yellow-100 rounded-full">
-                  <Star className="w-6 h-6 text-yellow-600" />
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm">
-                  <Star className="w-4 h-4 text-yellow-500 mr-1" />
-                  <span className="text-yellow-600">142 reviews</span>
-                </div>
-              </div>
+              <CardTitle className="text-xl font-semibold mb-2">Billing & Earnings</CardTitle>
+              <p className="text-gray-600 mb-4">Track your payments, invoices, and plans.</p>
+              <Button asChild className="w-full">
+                <a href="/vendor/billing">Go to Billing</a>
+              </Button>
             </CardContent>
           </Card>
-
+          {/* Profile & Settings Card */}
           <Card className="bg-white shadow-lg border-0">
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Response Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.responseRate}%</p>
-                </div>
-                <div className="p-3 bg-purple-100 rounded-full">
-                  <Users className="w-6 h-6 text-purple-600" />
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm">
-                  <TrendingUp className="w-4 h-4 text-purple-500 mr-1" />
-                  <span className="text-purple-600">+3% this month</span>
-                </div>
-              </div>
+              <CardTitle className="text-xl font-semibold mb-2">Profile & Settings</CardTitle>
+              <p className="text-gray-600 mb-4">Edit your business info and preferences.</p>
+              <Button asChild className="w-full">
+                <a href="/vendor/profile">Go to Profile</a>
+              </Button>
+            </CardContent>
+          </Card>
+          {/* Support & Help Card */}
+          <Card className="bg-white shadow-lg border-0">
+            <CardContent className="p-6">
+              <CardTitle className="text-xl font-semibold mb-2">Support & Help</CardTitle>
+              <p className="text-gray-600 mb-4">Get assistance or open a support ticket.</p>
+              <Button asChild className="w-full">
+                <a href="/vendor/support">Get Support</a>
+              </Button>
             </CardContent>
           </Card>
         </div>

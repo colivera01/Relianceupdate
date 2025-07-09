@@ -5,15 +5,14 @@ import Link from 'next/link';
 
 const sidebarLinks = [
   { label: 'Dashboard', icon: Home, href: '/vendor' },
-  { label: 'Profile', icon: Users },
-  { label: 'Media', icon: HardDrive },
-  { label: 'Reviews', icon: Star },
-  { label: 'Jobs', icon: Briefcase },
-  { label: 'Employees', icon: Users, href: '/vendor/employees' },
+  { label: 'Profile & Settings', icon: Users, href: '/vendor/profile' },
+  { label: 'View Reviews', icon: Star, href: '/vendor/reviews' },
   { label: 'Pending Approvals', icon: AlertTriangle, href: '/vendor/approvals', badge: 2, alert: true },
-  { label: 'Billing', icon: DollarSign },
-  { label: 'Support', icon: HelpCircle },
-  { label: 'Logout', icon: LogOut },
+  { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },
+  { label: 'Employees', icon: Users, href: '/vendor/employees' },
+  { label: 'Billing & Earnings', icon: DollarSign, href: '/vendor/billing' },
+  { label: 'Support & Help', icon: HelpCircle, href: '/vendor/support' },
+  { label: 'Logout', icon: LogOut, href: '/logout' },
 ];
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
@@ -88,7 +87,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
           <div className="mt-auto text-xs text-blue-200 px-2 mb-4">Reliance © 2023</div>
         </div>
       </aside>
-      <main className="flex-1 p-10">{children}</main>
+      <main className="flex-1 px-4 md:px-8 py-8">{children}</main>
     </div>
   );
 } 

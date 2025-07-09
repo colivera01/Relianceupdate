@@ -25,7 +25,7 @@ export default function TeamAnalytics() {
   const toggleExpand = () => setExpanded(e => !e);
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="px-4 md:px-8 py-8 space-y-6">
       <div className="flex items-center gap-4 mb-4">
         <Button variant="outline" asChild>
           <a href="/vendor">Back</a>
@@ -71,6 +71,17 @@ export default function TeamAnalytics() {
           </div>
         </CardContent>
       </Card>
+      {/* Backend Developer Notes Section */}
+      <div className="mt-10">
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded shadow-sm">
+          <h3 className="font-bold text-yellow-800 mb-2">Backend Developer Notes</h3>
+          <ul className="text-sm text-yellow-900 list-disc pl-5 space-y-1">
+            <li>Fetch employee analytics from <b>GET /api/vendor/analytics</b></li>
+            <li>Fetch reviews for each employee from <b>GET /api/vendor/employees/:employeeId/reviews</b></li>
+            <li>All actions should be authenticated as vendor</li>
+          </ul>
+        </div>
+      </div>
     </div>
   );
 } 
