@@ -1,3 +1,14 @@
+// BACKEND DEVELOPER NOTES:
+// - GET /api/vendor/dashboard: Fetch overall dashboard stats (job counts, earnings, active clients, etc.)
+// - GET /api/vendor/performance: Fetch performance metrics (jobCompletionRate, clientSatisfaction, responseTime)
+// - GET /api/vendor/jobs/recent: Fetch recent jobs for the vendor (id, title, client, status, date, amount, location)
+// - GET /api/vendor/reviews/recent: Fetch recent reviews for the vendor (client, rating, comment, date, jobTitle)
+// - All endpoints must be authenticated and scoped to the current vendor
+// - These sections currently use mock data for demonstration
+// - See also: billing and profile pages for payments integration
+//
+// Update these notes as new dashboard features are added or changed.
+
 'use client';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +29,7 @@ import {
   Bell,
   HelpCircle
 } from 'lucide-react';
+import Link from 'next/link';
 
 interface VendorStats {
   totalJobs: number;
@@ -141,16 +153,7 @@ export default function VendorDashboard() {
               <h1 className="text-4xl font-bold mb-2">Welcome back, John!</h1>
               <p className="text-blue-100 text-lg">Here's what's happening with your business today</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm" className="text-white border-white hover:bg-white hover:text-blue-600">
-                <Bell className="w-4 h-4 mr-2" />
-                Notifications
-              </Button>
-              <Button variant="outline" size="sm" className="text-white border-white hover:bg-white hover:text-blue-600">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </Button>
-            </div>
+            {/* Removed Notifications and Settings buttons for a cleaner look */}
           </div>
         </div>
       </div>
@@ -240,10 +243,6 @@ export default function VendorDashboard() {
                               {job.client}
                             </div>
                             <div className="flex items-center">
-                              <MapPin className="w-4 h-4 mr-1" />
-                              {job.location}
-                            </div>
-                            <div className="flex items-center">
                               <Calendar className="w-4 h-4 mr-1" />
                               {new Date(job.date).toLocaleDateString()}
                             </div>
@@ -302,21 +301,23 @@ export default function VendorDashboard() {
               </CardHeader>
               <CardContent className="p-4">
                 <div className="space-y-3">
-                  <Button className="w-full justify-start" variant="outline">
-                    <Calendar className="w-4 h-4 mr-2" />
-                    Schedule Availability
+                  <Button asChild className="w-full justify-start" variant="outline">
+                    <Link href="/vendor/availability">
+                      <Calendar className="w-4 h-4 mr-2" />
+                      Schedule Availability
+                    </Link>
                   </Button>
-                  <Button className="w-full justify-start" variant="outline">
-                    <DollarSign className="w-4 h-4 mr-2" />
-                    Update Pricing
+                  <Button asChild className="w-full justify-start" variant="outline">
+                    <Link href="/vendor/profile/pricing">
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      Update Pricing
+                    </Link>
                   </Button>
-                  <Button className="w-full justify-start" variant="outline">
-                    <MapPin className="w-4 h-4 mr-2" />
-                    Service Areas
-                  </Button>
-                  <Button className="w-full justify-start" variant="outline">
-                    <HelpCircle className="w-4 h-4 mr-2" />
-                    Get Support
+                  <Button asChild className="w-full justify-start" variant="outline">
+                    <Link href="/vendor/support">
+                      <HelpCircle className="w-4 h-4 mr-2" />
+                      Get Support
+                    </Link>
                   </Button>
                 </div>
               </CardContent>

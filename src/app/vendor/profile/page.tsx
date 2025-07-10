@@ -9,6 +9,16 @@ import { Users, HardDrive, Settings, LogOut, HelpCircle, Star, CheckCircle, XCir
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
+// BACKEND DEVELOPER NOTES:
+// - GET /api/vendor/profile: Fetch vendor profile and settings (including Reliance Payments status)
+// - POST /api/vendor/payments/enable: Enable Reliance Payments for the vendor
+// - POST /api/vendor/payments/disable: Disable Reliance Payments for the vendor
+// - Reliance Payments status should be stored in the vendor profile and reflected in both profile and billing pages
+// - All endpoints should be authenticated and scoped to the current vendor
+// - This file currently uses local state for demonstration purposes
+//
+// See also: billing page for payment history and payouts
+
 // DEVELOPER NOTES (Backend API Requirements)
 //
 // 1. Device Pairing:
@@ -44,6 +54,9 @@ export default function VendorProfilePage() {
     { id: 'dev-2', employeeName: 'James Lee', employeePhoto: 'https://randomuser.me/api/portraits/men/45.jpg', employeeRole: 'Technician', lastPaired: '2024-05-28', deviceInfo: 'Samsung Tablet, Android 13' },
   ]);
   const [countdown, setCountdown] = useState(300); // 5 minutes
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [addressQuery, setAddressQuery] = useState('');
+  const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
   // Countdown effect
   useEffect(() => {
     if (!showPairModal) return;
@@ -54,6 +67,21 @@ export default function VendorProfilePage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setProfile({ ...profile, [e.target.name]: e.target.value });
+  };
+
+  const handleAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAddressQuery(e.target.value);
+    setProfile({ ...profile, address: e.target.value });
+    if (e.target.value.length > 2) {
+      setAddressSuggestions(mockAddresses.filter(addr => addr.toLowerCase().includes(e.target.value.toLowerCase())));
+    } else {
+      setAddressSuggestions([]);
+    }
+  };
+  const handleSelectSuggestion = (suggestion: string) => {
+    setProfile({ ...profile, address: suggestion });
+    setAddressQuery(suggestion);
+    setAddressSuggestions([]);
   };
 
   const handleSave = () => {
@@ -90,7 +118,25 @@ export default function VendorProfilePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Business Address</label>
-                  <Input name="address" value={profile.address} onChange={handleChange} />
+                  <Input
+                    name="address"
+                    value={addressQuery || profile.address}
+                    onChange={handleAddressInput}
+                    autoComplete="off"
+                  />
+                  {addressSuggestions.length > 0 && (
+                    <ul className="border rounded bg-white shadow mt-1 absolute z-10 w-96 max-w-full">
+                      {addressSuggestions.map((suggestion, idx) => (
+                        <li
+                          key={idx}
+                          className="px-3 py-2 hover:bg-blue-100 cursor-pointer"
+                          onClick={() => handleSelectSuggestion(suggestion)}
+                        >
+                          {suggestion}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="flex gap-4">
                   <div className="flex-1">
@@ -200,6 +246,27 @@ export default function VendorProfilePage() {
                   <div className="text-2xl font-bold">94%</div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Reliance Payments Section */}
+          <Card className="mt-8">
+            <CardHeader>
+              <CardTitle>Reliance Payments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-2 text-sm">Enable Reliance Payments to bill your customers and receive payouts directly through the platform. You can disable this at any time.</div>
+              <div className="flex items-center gap-4 mb-2">
+                <button
+                  className={`px-4 py-2 rounded font-semibold ${paymentsEnabled ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  onClick={() => setPaymentsEnabled(v => !v)}
+                  type="button"
+                >
+                  {paymentsEnabled ? 'Disable Reliance Payments' : 'Enable Reliance Payments'}
+                </button>
+                <a href="#" className="text-blue-700 underline hover:text-blue-900 text-sm" target="_blank" rel="noopener noreferrer">Learn More</a>
+              </div>
+              <div className="text-xs text-gray-500">Status: <span className={paymentsEnabled ? 'text-green-700' : 'text-gray-700'}>{paymentsEnabled ? 'Enabled' : 'Disabled'}</span></div>
             </CardContent>
           </Card>
         </section>

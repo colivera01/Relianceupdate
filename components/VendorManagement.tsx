@@ -58,6 +58,37 @@ const mockVendors: Vendor[] = [
   },
 ]
 
+// Service Catalog Data Model (starter list)
+const initialServiceCatalog = [
+  'Automotive Repair',
+  'Automotive Detailing',
+  'Adjuster',
+  'Barber',
+  'Body Shop',
+  'Car Wash',
+  'Contractors',
+  'Dealership',
+  'Electrician',
+  'Electronic Device Repair',
+  'HVAC Heating and Air Conditioning',
+  'Home cleaners',
+  'Hair/Nail Salon',
+  'Landscaping',
+  'Locksmith',
+  'Medical Services',
+  'Moving Services',
+  'Pool Cleaning Services',
+  'Pet Grooming',
+  'Plumbing',
+  'Painting Services',
+  'Pest/Exterminating Services',
+  'Security Installation',
+  'Roofing Services',
+  'Towing',
+  'Tree Services',
+  'Other',
+];
+
 export function VendorManagement() {
   const [vendors, setVendors] = useState<Vendor[]>(mockVendors)
   const [searchTerm, setSearchTerm] = useState('')
@@ -115,6 +146,14 @@ export function VendorManagement() {
   const [vendorToImpersonate, setVendorToImpersonate] = useState<any | null>(null);
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+
+  const [serviceCatalog, setServiceCatalog] = useState<string[]>(initialServiceCatalog);
+  const [pendingBusinessRequests, setPendingBusinessRequests] = useState<Array<{id: string, name: string, submittedBy: string, date: string, status: 'pending' | 'approved' | 'rejected'}>>([
+    // Example pending request
+    // { id: '101', name: 'Custom Service Example', submittedBy: 'Vendor X', date: '2024-06-10', status: 'pending' },
+  ]);
+  const [editingBusiness, setEditingBusiness] = useState<{id: string, name: string, submittedBy: string, date: string} | null>(null);
+  const [adminNotifications, setAdminNotifications] = useState<Array<{id: string, type: string, message: string, date: string, resolved: boolean}>>([]);
 
   useEffect(() => {
     // Simulate loading analytics data
@@ -1347,6 +1386,93 @@ export function VendorManagement() {
           </DialogContent>
         </Dialog>
       )}
+      {/* Add a section for pending business/service approval requests */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle>Pending Business/Service Approval</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {pendingBusinessRequests.length === 0 ? (
+            <div className="text-gray-500">No pending business/service requests.</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Business/Service Name</TableHead>
+                  <TableHead>Submitted By</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingBusinessRequests.map((req) => (
+                  <TableRow key={req.id}>
+                    <TableCell>
+                      {editingBusiness && editingBusiness.id === req.id ? (
+                        <Input
+                          value={editingBusiness.name}
+                          onChange={e => setEditingBusiness({ ...editingBusiness, name: e.target.value })}
+                        />
+                      ) : (
+                        req.name
+                      )}
+                    </TableCell>
+                    <TableCell>{req.submittedBy}</TableCell>
+                    <TableCell>{req.date}</TableCell>
+                    <TableCell>
+                      {editingBusiness && editingBusiness.id === req.id ? (
+                        <>
+                          <Button size="sm" onClick={() => {
+                            // Save edit
+                            setPendingBusinessRequests(pendingBusinessRequests.map(r => r.id === req.id ? { ...r, name: editingBusiness.name } : r));
+                            setEditingBusiness(null);
+                          }}>Save</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingBusiness(null)}>Cancel</Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setEditingBusiness(req)}>Edit</Button>
+                          <Button size="sm" variant="success" onClick={() => {
+                            // Approve: add to catalog, mark as approved, notify
+                            setServiceCatalog([...serviceCatalog, req.name]);
+                            setPendingBusinessRequests(pendingBusinessRequests.map(r => r.id === req.id ? { ...r, status: 'approved' } : r));
+                            setAdminNotifications([...adminNotifications, { id: Date.now().toString(), type: 'BusinessApproval', message: `Approved new business/service: ${req.name}`, date: new Date().toISOString(), resolved: false }]);
+                          }}>Approve</Button>
+                          <Button size="sm" variant="destructive" onClick={() => {
+                            setPendingBusinessRequests(pendingBusinessRequests.map(r => r.id === req.id ? { ...r, status: 'rejected' } : r));
+                            setAdminNotifications([...adminNotifications, { id: Date.now().toString(), type: 'BusinessApproval', message: `Rejected business/service: ${req.name}`, date: new Date().toISOString(), resolved: false }]);
+                          }}>Reject</Button>
+                        </>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+      {/* Admin Notifications section (for new business/service requests and approvals) */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle>Admin Notifications</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {adminNotifications.length === 0 ? (
+            <div className="text-gray-500">No notifications.</div>
+          ) : (
+            <ul className="space-y-2">
+              {adminNotifications.map(note => (
+                <li key={note.id} className="border rounded p-2 flex justify-between items-center">
+                  <span>{note.message}</span>
+                  <span className="text-xs text-gray-500">{new Date(note.date).toLocaleString()}</span>
+                  {note.resolved ? <span className="text-green-600 ml-2">Resolved</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 } 
