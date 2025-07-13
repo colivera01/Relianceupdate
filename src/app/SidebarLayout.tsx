@@ -33,25 +33,25 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
               />
             </div>
             <nav className="flex flex-col gap-2 px-4">
-              <SidebarLink href="/" label="Dashboard" icon="📊" />
-              <SidebarLink href="/users" label="User Management" icon="👥" />
-              <SidebarLink href="/vendors" label="Vendor Management" icon="🏢" />
-              <SidebarLink href="/reviews" label="Review Management" icon="⭐" badge="23" />
-              <SidebarLink href="/activity" label="Activity Monitoring" icon="📈" />
-              <SidebarLink href="/audit-logs" label="Audit Logs" icon="📋" />
-              <SidebarLink href="/reports" label="Reports & Analytics" icon="📑" />
+              <SidebarLink href="/admin/dashboard" label="Dashboard" icon="📊" />
+              <SidebarLink href="/admin/users" label="User Management" icon="👥" />
+              <SidebarLink href="/admin/vendors" label="Vendor Management" icon="🏢" />
+              <SidebarLink href="/admin/reviews" label="Review Management" icon="⭐" badge="23" />
+              <SidebarLink href="/admin/activity" label="Activity Monitoring" icon="📈" />
+              <SidebarLink href="/admin/audit-logs" label="Audit Logs" icon="📋" />
+              <SidebarLink href="/admin/reports" label="Reports & Analytics" icon="📑" />
               {/* Toggle buttons below Reports & Analytics */}
               <div className="flex flex-col gap-2 mt-4">
                 <button
                   className="flex items-center gap-2 border border-blue-700 text-blue-700 px-3 py-2 rounded hover:bg-blue-50 transition-colors font-medium"
-                  onClick={() => router.push('/vendor')}
+                  onClick={() => router.push('/vendor/dashboard')}
                 >
                   <Briefcase className="w-4 h-4" />
                   Switch to Vendor View
                 </button>
                 <button
                   className="flex items-center gap-2 border border-green-700 text-green-700 px-3 py-2 rounded hover:bg-green-50 transition-colors font-medium"
-                  onClick={() => router.push('/users')}
+                  onClick={() => router.push('/user-dashboard')}
                 >
                   <span className="w-4 h-4 inline-block">👤</span>
                   Switch to User View
