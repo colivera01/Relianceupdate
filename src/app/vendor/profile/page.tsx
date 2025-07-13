@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 // import { Progress } from '@/components/ui/progress'; // Removed because file does not exist
-import { Users, HardDrive, Settings, LogOut, HelpCircle, Star, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
+import { Users, HardDrive, Settings, LogOut, HelpCircle, Star, CheckCircle, XCircle, ArrowLeft, Info } from 'lucide-react';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
@@ -57,6 +57,11 @@ export default function VendorProfilePage() {
   const [paymentsEnabled, setPaymentsEnabled] = useState(false);
   const [addressQuery, setAddressQuery] = useState('');
   const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
+  // Add state for reminders and notifications
+  const [reminders, setReminders] = useState({ review: true, invoice: false });
+  const [showReminderToast, setShowReminderToast] = useState(false);
+  const [notificationSettings, setNotificationSettings] = useState({ job: true, review: true, payout: false, support: true });
+  const [showNotifToast, setShowNotifToast] = useState(false);
   // Countdown effect
   useEffect(() => {
     if (!showPairModal) return;
@@ -88,6 +93,15 @@ export default function VendorProfilePage() {
     setSaving(true);
     setTimeout(() => setSaving(false), 1000);
   };
+
+  function handleSaveReminders() {
+    setShowReminderToast(true);
+    setTimeout(() => setShowReminderToast(false), 2000);
+  }
+  function handleSaveNotifications() {
+    setShowNotifToast(true);
+    setTimeout(() => setShowNotifToast(false), 2000);
+  }
 
   // Mock pairing code and status
   const pairingCode = 'A1B2C3';
@@ -187,6 +201,93 @@ export default function VendorProfilePage() {
               </div>
             </DialogContent>
           </Dialog>
+          {/* --- Insert Reminders & Notifications Cards Here --- */}
+          <Card className="mb-6 mt-6">
+            <CardHeader>
+              <CardTitle>Automated Reminders & Follow-Ups</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={reminders.review} onChange={e => setReminders(r => ({ ...r, review: e.target.checked }))} />
+                  Auto-send review request after job completion
+                  <span className="ml-1 cursor-pointer group relative">
+                    <Info className="w-4 h-4 text-blue-500" />
+                    <span className="absolute left-6 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      Automatically sends a review request to the client when a job is marked as completed.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={reminders.invoice} onChange={e => setReminders(r => ({ ...r, invoice: e.target.checked }))} />
+                  Auto-remind for unpaid invoices
+                  <span className="ml-1 cursor-pointer group relative">
+                    <Info className="w-4 h-4 text-blue-500" />
+                    <span className="absolute left-6 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      Sends a reminder to clients with outstanding invoices after a set period.
+                    </span>
+                  </span>
+                </label>
+                <Button onClick={handleSaveReminders} className="w-fit mt-2" type="button">Save Settings</Button>
+                {showReminderToast && (
+                  <div className="mt-2 text-green-700 font-medium">Reminder settings saved!</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Notification Settings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={notificationSettings.job} onChange={e => setNotificationSettings(s => ({ ...s, job: e.target.checked }))} />
+                  Job Requests
+                  <span className="ml-1 cursor-pointer group relative">
+                    <Info className="w-4 h-4 text-blue-500" />
+                    <span className="absolute left-6 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      Receive notifications for new job requests.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={notificationSettings.review} onChange={e => setNotificationSettings(s => ({ ...s, review: e.target.checked }))} />
+                  New Reviews
+                  <span className="ml-1 cursor-pointer group relative">
+                    <Info className="w-4 h-4 text-blue-500" />
+                    <span className="absolute left-6 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      Get notified when a new review is submitted.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={notificationSettings.payout} onChange={e => setNotificationSettings(s => ({ ...s, payout: e.target.checked }))} />
+                  Payouts
+                  <span className="ml-1 cursor-pointer group relative">
+                    <Info className="w-4 h-4 text-blue-500" />
+                    <span className="absolute left-6 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      Be alerted when payouts are processed.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={notificationSettings.support} onChange={e => setNotificationSettings(s => ({ ...s, support: e.target.checked }))} />
+                  Support Messages
+                  <span className="ml-1 cursor-pointer group relative">
+                    <Info className="w-4 h-4 text-blue-500" />
+                    <span className="absolute left-6 top-1/2 -translate-y-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                      Receive notifications for new support messages or tickets.
+                    </span>
+                  </span>
+                </label>
+                <Button onClick={handleSaveNotifications} className="w-fit mt-2" type="button">Save Notification Settings</Button>
+                {showNotifToast && (
+                  <div className="mt-2 text-green-700 font-medium">Notification settings saved!</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
           {/* Device Management Section */}
           <Card className="mt-8" id="devices">
             <CardHeader>
