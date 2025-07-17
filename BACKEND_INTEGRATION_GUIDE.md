@@ -1,5 +1,91 @@
 # Backend Integration Guide
 
+## 🆕 **Today's Updates (Latest Changes)**
+
+### **Support System Implementation**
+- **New Support Pages Created:**
+  - `/vendor/support` - Main support page with Quick Help and Contact Information
+  - `/vendor/support/faqs` - Searchable FAQ system with categories
+  - `/vendor/support/help-articles` - Article library with filtering and search
+  - `/vendor/support/contact` - Support ticket submission form
+  - `/vendor/support/chat` - Live chat interface
+
+- **Backend Requirements for Support System:**
+  - `GET /api/support/faqs` - Fetch FAQ categories and questions
+  - `GET /api/support/articles` - Fetch help articles with filtering
+  - `POST /api/support/tickets` - Submit support tickets
+  - `GET /api/support/tickets/:id` - Get ticket status
+  - `POST /api/support/chat/start` - Initialize chat session
+  - `POST /api/support/chat/message` - Send chat message
+  - `GET /api/support/chat/history` - Get chat history
+
+- **Data Contracts:**
+  - FAQ: `{ id, category, question, answer, tags, helpful, notHelpful }`
+  - Article: `{ id, title, category, content, readTime, difficulty, rating, views, tags }`
+  - Ticket: `{ id, subject, category, priority, description, status, createdAt, updatedAt }`
+  - Chat: `{ id, messages: [{ id, text, sender, timestamp }], status }`
+
+### **Vendor Dashboard Enhancements**
+- **Quick Actions Modal System:**
+  - Message Client Modal: Client selection + manual contact input
+  - Send Invoice Modal: Auto-generated invoices with tax/discount calculations
+  - Request Review Modal: 72-hour window restriction with templates
+
+- **Backend Requirements for Quick Actions:**
+  - `GET /api/vendor/clients` - Fetch available clients for messaging
+  - `POST /api/vendor/message` - Send message to client
+  - `POST /api/vendor/invoice` - Create and send invoice
+  - `GET /api/vendor/jobs/reviewable` - Get jobs eligible for review requests
+  - `POST /api/vendor/review-request` - Send review request
+
+- **Data Contracts:**
+  - Client: `{ id, name, email, phone, lastJob, lastContact }`
+  - Invoice: `{ id, jobId, amount, taxRate, discount, dueDate, status }`
+  - ReviewRequest: `{ id, clientId, jobId, message, reviewTypes, followUpDays }`
+
+### **Profile Completeness System**
+- **Features Added:**
+  - Progress tracking with dismissible card
+  - Clickable incomplete steps with navigation
+  - localStorage persistence for dismissal preference
+  - Restore functionality for dismissed card
+
+- **Backend Requirements:**
+  - `GET /api/vendor/profile/completeness` - Get profile completion status
+  - `PATCH /api/vendor/profile/step/:stepId` - Mark step as complete
+  - `GET /api/vendor/profile/steps` - Get all profile steps
+
+### **SSR Issues Resolved**
+- **ToastProvider SSR Fix:**
+  - Created client-only Toaster components
+  - Implemented dynamic imports with `ssr: false`
+  - Separated toast components into dedicated files
+  - Temporarily disabled Toaster usage to prevent hydration errors
+
+- **Technical Changes:**
+  - Updated all Toaster components to use client-side rendering
+  - Added proper error boundaries for SSR compatibility
+  - Implemented conditional rendering for client-only features
+
+### **Navigation Improvements**
+- **Back to Dashboard Buttons:**
+  - Added consistent navigation across all support pages
+  - Implemented breadcrumb-style navigation with separators
+  - Used proper Next.js Link components for client-side routing
+
+### **UI/UX Enhancements**
+- **Tooltip Positioning:**
+  - Moved info icons inside Quick Action buttons
+  - Reduced spacing between text and tooltips
+  - Added proper positioning with `side="top"` and `sideOffset={5}`
+
+- **Support Page Redesign:**
+  - Removed redundant "Support & Resources" section
+  - Simplified page structure for better usability
+  - Added Quick Help cards for common tasks
+
+---
+
 This guide provides backend requirements for all major features/pages in the Reliance Admin project. Each section includes endpoints, data contracts, business logic, roles, error handling, and future features.
 
 ---

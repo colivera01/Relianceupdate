@@ -1,5 +1,4 @@
 "use client";
-import dynamic from 'next/dynamic';
 import {
   Toast,
   ToastClose,
@@ -7,10 +6,10 @@ import {
   ToastProvider,
   ToastTitle,
   ToastViewport,
-} from "./toast"
-import { useToast } from "./use-toast"
+} from "@/components/ui/toast"
+import { useToast } from "@/components/ui/use-toast"
 
-function ToasterComponent() {
+export default function ToastComponents() {
   const { toasts } = useToast()
 
   return (
@@ -32,9 +31,4 @@ function ToasterComponent() {
       <ToastViewport />
     </ToastProvider>
   )
-}
-
-// Export a client-only version to prevent SSR issues
-export const Toaster = dynamic(() => Promise.resolve(ToasterComponent), {
-  ssr: false,
-}); 
+} 

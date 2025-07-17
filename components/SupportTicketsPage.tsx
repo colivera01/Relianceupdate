@@ -18,7 +18,7 @@ import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Info, Eye } from 'lucide-react';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from './ui/dialog';
 import { useToast } from './ui/use-toast';
-import { Toaster } from './ui/toaster';
+// import { Toaster } from './ui/toaster';
 
 // Stub UI components to avoid alias import issues
 const Card = ({ children }) => <div className="border rounded p-4 shadow mb-4">{children}</div>;
@@ -181,7 +181,8 @@ export default function SupportTicketsPage() {
 
   return (
     <div style={{ padding: '1rem' }}>
-      <Toaster />
+      {/* Toaster temporarily disabled to avoid SSR issues */}
+      {/* <Toaster /> */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <h1>Support / Help Tickets</h1>
       </div>
