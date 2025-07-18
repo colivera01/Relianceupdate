@@ -76,16 +76,39 @@ export default function VendorDashboard() {
   ];
 
   const pairedUsers = [
-    { id: 'dev-1', name: 'Maria Lopez', photo: 'https://randomuser.me/api/portraits/women/44.jpg', role: 'Technician', lastPaired: '2024-06-01' },
-    { id: 'dev-2', name: 'James Lee', photo: 'https://randomuser.me/api/portraits/men/45.jpg', role: 'Technician', lastPaired: '2024-05-28' },
+    { 
+      id: 'dev-1', 
+      name: 'Maria Lopez', 
+      photo: 'https://randomuser.me/api/portraits/women/44.jpg', 
+      role: 'Technician', 
+      lastPaired: '2024-06-01',
+      status: 'active',
+      permissions: 'full-access',
+      email: 'maria@vendor.com',
+      phone: '555-0101',
+      sharedJobs: 12,
+      lastActivity: '2 hours ago',
+      pairingDate: '2024-01-15',
+      isOnline: true
+    },
+    { 
+      id: 'dev-2', 
+      name: 'James Lee', 
+      photo: 'https://randomuser.me/api/portraits/men/45.jpg', 
+      role: 'Technician', 
+      lastPaired: '2024-05-28',
+      status: 'inactive',
+      permissions: 'read-only',
+      email: 'james@vendor.com',
+      phone: '555-0102',
+      sharedJobs: 8,
+      lastActivity: '3 days ago',
+      pairingDate: '2024-02-01',
+      isOnline: false
+    },
   ];
 
-  const notifications = [
-    { id: 1, type: 'job', icon: '📝', message: 'New job request: Water Heater Repair', time: '2m ago' },
-    { id: 2, type: 'review', icon: '⭐', message: 'New review from Sarah Johnson', time: '1h ago' },
-    { id: 3, type: 'payment', icon: '💵', message: 'Payment received: $120.00', time: '3h ago' },
-    { id: 4, type: 'approval', icon: '✅', message: 'Job completed: Faucet Installation', time: '1d ago' },
-  ];
+
 
   const earningsSummary = {
     totalEarnings: 12450.75,
@@ -96,12 +119,80 @@ export default function VendorDashboard() {
   // Mock payments enabled status (should be fetched from profile in real app)
   const paymentsEnabled = false; // Set to true to show earnings card
 
-  // Mock job events for the calendar
+  // Enhanced job events for the calendar with more details
   const jobEvents = [
-    { id: 1, title: 'Kitchen Sink Repair', date: '2024-06-10', color: 'bg-blue-500' },
-    { id: 2, title: 'Faucet Installation', date: '2024-06-12', color: 'bg-green-500' },
-    { id: 3, title: 'Garbage Disposal Repair', date: '2024-06-15', color: 'bg-yellow-500' },
-    { id: 4, title: 'Pipe Leak Fix', date: '2024-06-18', color: 'bg-red-500' },
+    { 
+      id: 1, 
+      title: 'Kitchen Sink Repair', 
+      date: '2024-06-10', 
+      color: 'bg-blue-500',
+      client: 'Sarah Johnson',
+      time: '09:00',
+      duration: 90,
+      status: 'scheduled',
+      amount: 120.00,
+      notes: 'Leaky faucet, needs replacement parts'
+    },
+    { 
+      id: 2, 
+      title: 'Faucet Installation', 
+      date: '2024-06-12', 
+      color: 'bg-green-500',
+      client: 'Mike Chen',
+      time: '14:00',
+      duration: 60,
+      status: 'scheduled',
+      amount: 95.00,
+      notes: 'New bathroom faucet installation'
+    },
+    { 
+      id: 3, 
+      title: 'Garbage Disposal Repair', 
+      date: '2024-06-15', 
+      color: 'bg-yellow-500',
+      client: 'Lisa Rodriguez',
+      time: '10:30',
+      duration: 120,
+      status: 'in-progress',
+      amount: 150.00,
+      notes: 'Disposal not working, possible motor issue'
+    },
+    { 
+      id: 4, 
+      title: 'Pipe Leak Fix', 
+      date: '2024-06-18', 
+      color: 'bg-red-500',
+      client: 'David Wilson',
+      time: '08:00',
+      duration: 180,
+      status: 'scheduled',
+      amount: 200.00,
+      notes: 'Emergency repair - water damage in basement'
+    },
+    { 
+      id: 5, 
+      title: 'Kitchen Sink Repair', 
+      date: '2024-06-10', 
+      color: 'bg-blue-500',
+      client: 'Emily Brown',
+      time: '15:00',
+      duration: 60,
+      status: 'completed',
+      amount: 110.00,
+      notes: 'Minor clog, cleared successfully'
+    },
+    { 
+      id: 6, 
+      title: 'Faucet Installation', 
+      date: '2024-06-12', 
+      color: 'bg-green-500',
+      client: 'John Smith',
+      time: '11:00',
+      duration: 90,
+      status: 'scheduled',
+      amount: 85.00,
+      notes: 'Kitchen faucet replacement'
+    },
   ];
 
   const performanceMetrics = [
@@ -139,6 +230,8 @@ export default function VendorDashboard() {
   const [calendarModal, setCalendarModal] = useState({ open: false, day: null, events: [] });
   const [reminders, setReminders] = useState({ review: true, invoice: false });
   const [showReminderToast, setShowReminderToast] = useState(false);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [unavailableDays, setUnavailableDays] = useState(new Set());
   
   // New state for quick action modals
   const [messageModal, setMessageModal] = useState({ open: false, client: null, mode: 'client' });
@@ -528,18 +621,508 @@ export default function VendorDashboard() {
     { id: 5, icon: '✅', description: 'Completed job: Faucet Installation', time: '2d ago' },
   ];
 
-  const insights = [
-    { id: 1, type: 'warning', icon: '⚠️', message: 'You have 3 jobs with overdue invoices.', color: 'bg-yellow-100 text-yellow-800' },
-    { id: 2, type: 'success', icon: '💬', message: 'Clients love your fast response time!', color: 'bg-green-100 text-green-800' },
-    { id: 3, type: 'info', icon: '📈', message: 'Your job volume is up 15% this month.', color: 'bg-blue-100 text-blue-800' },
-  ];
 
-  const clients = [
-    { id: 1, name: 'Sarah Johnson', email: 'sarah@email.com', phone: '555-1234', jobs: 5, notes: 'Prefers morning appointments.' },
-    { id: 2, name: 'Mike Chen', email: 'mike@email.com', phone: '555-5678', jobs: 3, notes: 'Always pays on time.' },
-    { id: 3, name: 'Lisa Rodriguez', email: 'lisa@email.com', phone: '555-8765', jobs: 2, notes: 'Requested eco-friendly products.' },
-  ];
+
+  // Enhanced clients data with more fields
+  const [clients, setClients] = useState([
+    { 
+      id: 1, 
+      name: 'Sarah Johnson', 
+      email: 'sarah@email.com', 
+      phone: '555-1234', 
+      jobs: 5, 
+      totalValue: 850,
+      status: 'active',
+      lastContact: '2024-06-15',
+      notes: 'Prefers morning appointments.',
+      tags: ['VIP', 'Regular'],
+      avatar: 'https://randomuser.me/api/portraits/women/44.jpg'
+    },
+    { 
+      id: 2, 
+      name: 'Mike Chen', 
+      email: 'mike@email.com', 
+      phone: '555-5678', 
+      jobs: 3, 
+      totalValue: 420,
+      status: 'active',
+      lastContact: '2024-06-10',
+      notes: 'Always pays on time.',
+      tags: ['Punctual'],
+      avatar: 'https://randomuser.me/api/portraits/men/45.jpg'
+    },
+    { 
+      id: 3, 
+      name: 'Lisa Rodriguez', 
+      email: 'lisa@email.com', 
+      phone: '555-8765', 
+      jobs: 2, 
+      totalValue: 280,
+      status: 'active',
+      lastContact: '2024-06-12',
+      notes: 'Requested eco-friendly products.',
+      tags: ['Eco-friendly'],
+      avatar: 'https://randomuser.me/api/portraits/women/46.jpg'
+    },
+    { 
+      id: 4, 
+      name: 'David Wilson', 
+      email: 'david@email.com', 
+      phone: '555-4321', 
+      jobs: 1, 
+      totalValue: 150,
+      status: 'inactive',
+      lastContact: '2024-05-20',
+      notes: 'New client, first job completed.',
+      tags: ['New'],
+      avatar: 'https://randomuser.me/api/portraits/men/47.jpg'
+    },
+    { 
+      id: 5, 
+      name: 'Emily Brown', 
+      email: 'emily@email.com', 
+      phone: '555-9876', 
+      jobs: 4, 
+      totalValue: 620,
+      status: 'active',
+      lastContact: '2024-06-14',
+      notes: 'Lives in downtown area.',
+      tags: ['Downtown', 'Regular'],
+      avatar: 'https://randomuser.me/api/portraits/women/48.jpg'
+    }
+  ]);
+
+  // Client management state
   const [clientModal, setClientModal] = useState({ open: false, client: null });
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [selectedClients, setSelectedClients] = useState(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [newClient, setNewClient] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    notes: '',
+    tags: []
+  });
+
+  // Team Members Management State
+  const [pairedUsersList, setPairedUsersList] = useState(pairedUsers);
+  const [showAddPairing, setShowAddPairing] = useState(false);
+  const [selectedPairedUsers, setSelectedPairedUsers] = useState(new Set());
+  const [pairedUserSearch, setPairedUserSearch] = useState('');
+  const [pairedUserFilter, setPairedUserFilter] = useState('all');
+  const [pairedUserModal, setPairedUserModal] = useState({ open: false, user: null, mode: null });
+  const [newPairing, setNewPairing] = useState({
+    name: '',
+    email: '',
+    role: 'Technician',
+    permissions: 'read-only'
+  });
+
+  // Enhanced Insights & Notifications State
+  const [insights, setInsights] = useState([
+    { 
+      id: 1, 
+      type: 'warning', 
+      icon: '⚠️', 
+      message: 'You have 3 jobs with overdue invoices.', 
+      action: 'view-invoices',
+      dismissed: false,
+      priority: 'high'
+    },
+    { 
+      id: 2, 
+      type: 'positive', 
+      icon: '💬', 
+      message: 'Clients love your fast response time!', 
+      action: 'view-reviews',
+      dismissed: false,
+      priority: 'medium'
+    },
+    { 
+      id: 3, 
+      type: 'info', 
+      icon: '📈', 
+      message: 'Your job volume is up 15% this month.', 
+      action: 'view-analytics',
+      dismissed: false,
+      priority: 'low'
+    },
+    { 
+      id: 4, 
+      type: 'warning', 
+      icon: '📅', 
+      message: 'You have 2 upcoming license renewals.', 
+      action: 'view-licenses',
+      dismissed: false,
+      priority: 'medium'
+    },
+    { 
+      id: 5, 
+      type: 'info', 
+      icon: '🎯', 
+      message: 'Kitchen Sink Repair is your top performing service.', 
+      action: 'view-services',
+      dismissed: false,
+      priority: 'low'
+    }
+  ]);
+
+  const [notifications, setNotifications] = useState([
+    { 
+      id: 1, 
+      type: 'job', 
+      icon: '📝', 
+      message: 'New job request: Water Heater Repair', 
+      time: '2m ago',
+      read: false,
+      actions: ['view', 'accept', 'decline'],
+      data: { jobId: 123, clientName: 'John Smith', amount: 150 }
+    },
+    { 
+      id: 2, 
+      type: 'review', 
+      icon: '⭐', 
+      message: 'New review from Sarah Johnson', 
+      time: '1h ago',
+      read: false,
+      actions: ['view', 'reply'],
+      data: { reviewId: 456, rating: 5, clientName: 'Sarah Johnson' }
+    },
+    { 
+      id: 3, 
+      type: 'payment', 
+      icon: '💵', 
+      message: 'Payment received: $120.00', 
+      time: '3h ago',
+      read: true,
+      actions: ['view-invoice', 'mark-processed'],
+      data: { invoiceId: 789, amount: 120, clientName: 'Mike Chen' }
+    },
+    { 
+      id: 4, 
+      type: 'completion', 
+      icon: '✅', 
+      message: 'Job completed: Faucet Installation', 
+      time: '1d ago',
+      read: true,
+      actions: ['view-job', 'send-invoice', 'request-review'],
+      data: { jobId: 101, clientName: 'Lisa Rodriguez', amount: 95 }
+    },
+    { 
+      id: 5, 
+      type: 'reminder', 
+      icon: '⏰', 
+      message: 'Follow up with David Wilson for quote', 
+      time: '2d ago',
+      read: false,
+      actions: ['view-client', 'send-message'],
+      data: { clientId: 202, clientName: 'David Wilson' }
+    }
+  ]);
+
+  const [notificationFilter, setNotificationFilter] = useState('all');
+  const [notificationSearch, setNotificationSearch] = useState('');
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false);
+
+  // Helper functions for client management
+  const filteredClients = clients.filter(client => {
+    const matchesSearch = !searchQuery || 
+      client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      client.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      client.phone.includes(searchQuery);
+    
+    const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const sortedClients = [...filteredClients].sort((a, b) => {
+    let aValue = a[sortBy];
+    let bValue = b[sortBy];
+    
+    if (sortBy === 'totalValue' || sortBy === 'jobs') {
+      aValue = Number(aValue);
+      bValue = Number(bValue);
+    }
+    
+    if (sortDirection === 'asc') {
+      return aValue > bValue ? 1 : -1;
+    } else {
+      return aValue < bValue ? 1 : -1;
+    }
+  });
+
+  const paginatedClients = sortedClients.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const handleEditClient = (client) => {
+    setNewClient({
+      name: client.name,
+      email: client.email,
+      phone: client.phone,
+      notes: client.notes || '',
+      tags: client.tags || []
+    });
+    setClientModal({ open: true, client, mode: 'edit' });
+  };
+
+  const handleContactClient = (client) => {
+    setClientModal({ open: true, client, mode: 'contact' });
+  };
+
+  const handleViewClient = (client) => {
+    setClientModal({ open: true, client, mode: 'view' });
+  };
+
+  const handleSaveClientEdit = () => {
+    if (newClient.name && newClient.email) {
+      setClients(clients.map(c => 
+        c.id === clientModal.client.id 
+          ? { ...c, ...newClient }
+          : c
+      ));
+      setClientModal({ open: false, client: null, mode: null });
+      setNewClient({ name: '', email: '', phone: '', notes: '', tags: [] });
+      console.log('Updated client:', clientModal.client.name);
+    } else {
+      alert('Please fill in at least name and email');
+    }
+  };
+
+  const handleSendEmail = (client) => {
+    window.open(`mailto:${client.email}?subject=Service Inquiry`, '_blank');
+  };
+
+  const handleCallClient = (client) => {
+    window.open(`tel:${client.phone}`, '_blank');
+  };
+
+  const handleSendSMS = (client) => {
+    window.open(`sms:${client.phone}`, '_blank');
+  };
+
+  // Team Members Management Functions
+  const handleRemovePairing = (userId) => {
+    if (confirm('Are you sure you want to remove this team member?')) {
+      setPairedUsersList(pairedUsersList.filter(user => user.id !== userId));
+      console.log('Removed team member:', userId);
+    }
+  };
+
+  const handleUpdatePairingPermissions = (userId, permissions) => {
+    setPairedUsersList(pairedUsersList.map(user => 
+      user.id === userId ? { ...user, permissions } : user
+    ));
+    console.log('Updated permissions for:', userId, 'to:', permissions);
+  };
+
+  const handleContactPairedUser = (user) => {
+    setPairedUserModal({ open: true, user, mode: 'contact' });
+  };
+
+  const handleViewPairedUser = (user) => {
+    setPairedUserModal({ open: true, user, mode: 'view' });
+  };
+
+  const handleAddNewPairing = () => {
+    if (newPairing.name && newPairing.email) {
+      const newUser = {
+        id: `dev-${Date.now()}`,
+        name: newPairing.name,
+        email: newPairing.email,
+        photo: `https://randomuser.me/api/portraits/${Math.random() > 0.5 ? 'men' : 'women'}/${Math.floor(Math.random() * 50)}.jpg`,
+        role: newPairing.role,
+        status: 'active',
+        permissions: newPairing.permissions,
+        phone: '555-0000',
+        sharedJobs: 0,
+        lastActivity: 'Just now',
+        pairingDate: new Date().toISOString().split('T')[0],
+        lastPaired: new Date().toISOString().split('T')[0],
+        isOnline: false
+      };
+      setPairedUsersList([...pairedUsersList, newUser]);
+      setNewPairing({ name: '', email: '', role: 'Technician', permissions: 'read-only' });
+      setShowAddPairing(false);
+      console.log('Added new team member:', newUser);
+    } else {
+      alert('Please fill in name and email');
+    }
+  };
+
+  const handleBulkRemovePairings = () => {
+    if (confirm(`Are you sure you want to remove ${selectedPairedUsers.size} team member(s)?`)) {
+      setPairedUsersList(pairedUsersList.filter(user => !selectedPairedUsers.has(user.id)));
+      setSelectedPairedUsers(new Set());
+      console.log('Removed team members:', Array.from(selectedPairedUsers));
+    }
+  };
+
+  // Filter and search team members
+  const filteredPairedUsers = pairedUsersList.filter(user => {
+    const matchesSearch = !pairedUserSearch || 
+      user.name.toLowerCase().includes(pairedUserSearch.toLowerCase()) ||
+      user.email.toLowerCase().includes(pairedUserSearch.toLowerCase());
+    
+    const matchesFilter = pairedUserFilter === 'all' || user.status === pairedUserFilter;
+    
+    return matchesSearch && matchesFilter;
+  });
+
+  // Insights & Notifications Management Functions
+  const handleInsightAction = (insight) => {
+    console.log('Insight action:', insight.action, insight);
+    switch (insight.action) {
+      case 'view-invoices':
+        alert('Navigating to overdue invoices...');
+        break;
+      case 'view-reviews':
+        alert('Navigating to reviews...');
+        break;
+      case 'view-analytics':
+        alert('Navigating to analytics...');
+        break;
+      case 'view-licenses':
+        alert('Navigating to license management...');
+        break;
+      case 'view-services':
+        alert('Navigating to services...');
+        break;
+      default:
+        console.log('Unknown insight action:', insight.action);
+    }
+  };
+
+  const handleDismissInsight = (insightId) => {
+    setInsights(insights.map(insight => 
+      insight.id === insightId ? { ...insight, dismissed: true } : insight
+    ));
+    console.log('Dismissed insight:', insightId);
+  };
+
+  const handleNotificationAction = (notification, action) => {
+    console.log('Notification action:', action, notification);
+    switch (action) {
+      case 'view':
+        alert(`Viewing ${notification.type}: ${notification.message}`);
+        break;
+      case 'accept':
+        alert(`Accepting job: ${notification.data.jobId}`);
+        break;
+      case 'decline':
+        alert(`Declining job: ${notification.data.jobId}`);
+        break;
+      case 'reply':
+        alert(`Replying to review from ${notification.data.clientName}`);
+        break;
+      case 'view-invoice':
+        alert(`Viewing invoice: ${notification.data.invoiceId}`);
+        break;
+      case 'mark-processed':
+        alert(`Marking payment as processed: ${notification.data.invoiceId}`);
+        break;
+      case 'view-job':
+        alert(`Viewing job: ${notification.data.jobId}`);
+        break;
+      case 'send-invoice':
+        alert(`Sending invoice for job: ${notification.data.jobId}`);
+        break;
+      case 'request-review':
+        alert(`Requesting review from ${notification.data.clientName}`);
+        break;
+      case 'view-client':
+        alert(`Viewing client: ${notification.data.clientName}`);
+        break;
+      case 'send-message':
+        alert(`Sending message to ${notification.data.clientName}`);
+        break;
+      default:
+        console.log('Unknown notification action:', action);
+    }
+  };
+
+  const handleMarkNotificationRead = (notificationId) => {
+    setNotifications(notifications.map(notification => 
+      notification.id === notificationId ? { ...notification, read: true } : notification
+    ));
+    console.log('Marked notification as read:', notificationId);
+  };
+
+  const handleClearAllNotifications = () => {
+    if (confirm('Are you sure you want to clear all notifications?')) {
+      setNotifications([]);
+      console.log('Cleared all notifications');
+    }
+  };
+
+  const handleMarkAllAsRead = () => {
+    setNotifications(notifications.map(notification => ({ ...notification, read: true })));
+    console.log('Marked all notifications as read');
+  };
+
+  // Filter notifications
+  const filteredNotifications = notifications.filter(notification => {
+    const matchesSearch = !notificationSearch || 
+      notification.message.toLowerCase().includes(notificationSearch.toLowerCase()) ||
+      notification.data?.clientName?.toLowerCase().includes(notificationSearch.toLowerCase());
+    
+    const matchesFilter = notificationFilter === 'all' || notification.type === notificationFilter;
+    
+    return matchesSearch && matchesFilter;
+  });
+
+  // Filter insights (show only non-dismissed)
+  const activeInsights = insights.filter(insight => !insight.dismissed);
+
+  const handleBulkExport = () => {
+    const selectedClientData = clients.filter(c => selectedClients.has(c.id));
+    const csvContent = [
+      ['Name', 'Email', 'Phone', 'Jobs', 'Total Value', 'Status', 'Last Contact', 'Notes'],
+      ...selectedClientData.map(client => [
+        client.name,
+        client.email,
+        client.phone,
+        client.jobs,
+        client.totalValue,
+        client.status,
+        client.lastContact,
+        client.notes
+      ])
+    ].map(row => row.join(',')).join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clients-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    console.log('Exported clients:', selectedClientData);
+  };
+
+  const handleBulkMessage = () => {
+    const selectedClientData = clients.filter(c => selectedClients.has(c.id));
+    console.log('Sending bulk message to:', selectedClientData);
+    alert(`Sending message to ${selectedClientData.length} clients`);
+  };
+
+  const handleBulkDelete = () => {
+    if (confirm(`Are you sure you want to delete ${selectedClients.size} client(s)?`)) {
+      setClients(clients.filter(c => !selectedClients.has(c.id)));
+      setSelectedClients(new Set());
+      console.log('Deleted clients:', Array.from(selectedClients));
+    }
+  };
 
   const earningsData = {
     labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
@@ -572,6 +1155,8 @@ export default function VendorDashboard() {
     setShowNotifToast(true);
     setTimeout(() => setShowNotifToast(false), 2000);
   }
+
+
 
   const mediaFiles = [
     { id: 1, name: 'before_kitchen.jpg', type: 'image', url: 'https://via.placeholder.com/150', uploaded: '2024-06-01' },
@@ -613,159 +1198,573 @@ export default function VendorDashboard() {
           </div>
         </CardContent>
       </Card>
-      {/* Actionable Insights & Recommendations */}
+      {/* Enhanced Actionable Insights & Recommendations */}
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>Actionable Insights & Recommendations</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Actionable Insights & Recommendations</CardTitle>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowNotificationSettings(true)}
+            >
+              Settings
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {/* Proactive Insights Section */}
           <div className="space-y-3 mb-6">
-            <div className="bg-yellow-100 rounded px-4 py-3 flex items-center gap-3">
-              <span className="text-xl">⚠️</span>
-              <span>You have 3 jobs with overdue invoices.</span>
-            </div>
-            <div className="bg-green-100 rounded px-4 py-3 flex items-center gap-3">
-              <span className="text-xl">💬</span>
-              <span>Clients love your fast response time!</span>
-            </div>
-            <div className="bg-blue-100 rounded px-4 py-3 flex items-center gap-3">
-              <span className="text-xl">📈</span>
-              <span>Your job volume is up 15% this month.</span>
-            </div>
-          </div>
-          {/* Divider */}
-          <div className="border-t my-4"></div>
-          {/* Notifications/Alerts Section */}
-          <div>
-            <div className="font-semibold text-gray-700 mb-2">Recent Notifications & Alerts</div>
-            <ul className="space-y-2">
-              <li className="flex items-center gap-3 text-gray-800">
-                <span className="text-lg">📝</span>
-                <span className="flex-1">New job request: Water Heater Repair</span>
-                <span className="text-xs text-gray-400 ml-auto">2m ago</span>
-              </li>
-              <li className="flex items-center gap-3 text-gray-800">
-                <span className="text-lg">⭐</span>
-                <span className="flex-1">New review from Sarah Johnson</span>
-                <span className="text-xs text-gray-400 ml-auto">1h ago</span>
-              </li>
-              <li className="flex items-center gap-3 text-gray-800">
-                <span className="text-lg">💵</span>
-                <span className="flex-1">Payment received: $120.00</span>
-                <span className="text-xs text-gray-400 ml-auto">3h ago</span>
-              </li>
-              <li className="flex items-center gap-3 text-gray-800">
-                <span className="text-lg">✅</span>
-                <span className="flex-1">Job completed: Faucet Installation</span>
-                <span className="text-xs text-gray-400 ml-auto">1d ago</span>
-              </li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
-      {/* Client Management & CRM Lite */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Clients</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <table className="w-full text-sm mb-2">
-            <thead>
-              <tr className="text-left text-gray-500">
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Jobs</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {clients.map(client => (
-                <tr key={client.id} className="border-b last:border-b-0">
-                  <td>{client.name}</td>
-                  <td>{client.email}</td>
-                  <td>{client.phone}</td>
-                  <td>{client.jobs}</td>
-                  <td><button className="text-blue-600 hover:underline" onClick={() => setClientModal({ open: true, client })}>View</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-      {/* Top Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Manage Jobs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4 text-gray-700">View, accept, and update your job requests.</p>
-            <Link href="/vendor/jobs" passHref legacyBehavior>
-              <Button className="w-full" as="a">Go to Jobs</Button>
-            </Link>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>View Reviews</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4 text-gray-700">See client feedback and performance trends.</p>
-            <Link href="/vendor/reviews" passHref legacyBehavior>
-              <Button className="w-full" as="a">See Reviews</Button>
-            </Link>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Billing & Earnings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4 text-gray-700">Track your payments, invoices, and plans.</p>
-            <Link href="/vendor/billing" passHref legacyBehavior>
-              <Button className="w-full" as="a">Go to Billing</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile & Settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4 text-gray-700">Edit your business info and preferences.</p>
-            <Link href="/vendor/profile" passHref legacyBehavior>
-              <Button className="w-full" as="a">Go to Profile</Button>
-            </Link>
-          </CardContent>
-        </Card>
-
-      </div>
-      {/* Paired Users Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Paired Users</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-3">
-            {pairedUsers.length === 0 ? (
-              <li className="text-gray-500">No users paired.</li>
+            {activeInsights.length === 0 ? (
+              <div className="text-center py-4 text-gray-500">
+                No active insights at the moment.
+              </div>
             ) : (
-              pairedUsers.map(user => (
-                <li key={user.id} className="flex items-center gap-4 border-b pb-2 last:border-b-0">
-                  <img src={user.photo} alt={user.name} className="w-8 h-8 rounded-full border" />
-                  <div className="flex flex-col">
-                    <span className="font-medium">{user.name}</span>
-                    <span className="text-xs text-gray-500">{user.role}</span>
+              activeInsights.map(insight => (
+                <div 
+                  key={insight.id} 
+                  className={`rounded-lg px-4 py-3 flex items-center justify-between transition-all hover:shadow-md ${
+                    insight.type === 'warning' ? 'bg-yellow-100 border-l-4 border-yellow-500' :
+                    insight.type === 'positive' ? 'bg-green-100 border-l-4 border-green-500' :
+                    'bg-blue-100 border-l-4 border-blue-500'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <span className="text-xl">{insight.icon}</span>
+                    <span className="font-medium">{insight.message}</span>
                   </div>
-                  <span className="ml-auto text-xs text-gray-400">Last paired: {user.lastPaired}</span>
-                </li>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleInsightAction(insight)}
+                    >
+                      Take Action
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => handleDismissInsight(insight.id)}
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                </div>
               ))
             )}
-          </ul>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t my-4"></div>
+
+          {/* Enhanced Notifications Section */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-semibold text-gray-700">Recent Notifications & Alerts</div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={handleMarkAllAsRead}
+                >
+                  Mark All Read
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={handleClearAllNotifications}
+                >
+                  Clear All
+                </Button>
+              </div>
+            </div>
+
+            {/* Search and Filter */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="Search notifications..."
+                  value={notificationSearch}
+                  onChange={(e) => setNotificationSearch(e.target.value)}
+                  className="w-full p-2 border rounded-md text-sm"
+                />
+              </div>
+              <select
+                value={notificationFilter}
+                onChange={(e) => setNotificationFilter(e.target.value)}
+                className="px-3 py-2 border rounded-md bg-white text-sm"
+              >
+                <option value="all">All Types</option>
+                <option value="job">Jobs</option>
+                <option value="review">Reviews</option>
+                <option value="payment">Payments</option>
+                <option value="completion">Completions</option>
+                <option value="reminder">Reminders</option>
+              </select>
+            </div>
+
+            {/* Notifications List */}
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {filteredNotifications.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="text-4xl mb-2">📭</div>
+                  <div>No notifications found</div>
+                </div>
+              ) : (
+                filteredNotifications.map(notification => (
+                  <div 
+                    key={notification.id} 
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all hover:bg-gray-50 ${
+                      !notification.read ? 'bg-blue-50 border-blue-200' : 'bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <span className="text-lg">{notification.icon}</span>
+                      <div className="flex-1">
+                        <div className={`font-medium ${!notification.read ? 'text-blue-900' : 'text-gray-800'}`}>
+                          {notification.message}
+                        </div>
+                        <div className="text-xs text-gray-500">{notification.time}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {notification.actions.map(action => (
+                        <Button 
+                          key={action}
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleNotificationAction(notification, action)}
+                          className="text-xs"
+                        >
+                          {action.charAt(0).toUpperCase() + action.slice(1).replace('-', ' ')}
+                        </Button>
+                      ))}
+                      {!notification.read && (
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => handleMarkNotificationRead(notification.id)}
+                          className="text-xs"
+                        >
+                          Mark Read
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      {/* Enhanced Client Management & CRM */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Clients</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowBulkActions(!showBulkActions)}
+                disabled={selectedClients.size === 0}
+              >
+                Bulk Actions ({selectedClients.size})
+              </Button>
+              <Button 
+                size="sm"
+                onClick={() => setShowAddClient(true)}
+              >
+                Add Client
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="Search clients by name, email, or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full p-2 border rounded-md"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 border rounded-md bg-white min-w-[120px]"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-3 py-2 border rounded-md bg-white min-w-[140px]"
+              >
+                <option value="name">Sort by Name</option>
+                <option value="jobs">Sort by Jobs</option>
+                <option value="totalValue">Sort by Value</option>
+                <option value="lastContact">Sort by Last Contact</option>
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                className="px-3 py-2"
+              >
+                {sortDirection === 'asc' ? '↑' : '↓'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Bulk Actions */}
+          {showBulkActions && selectedClients.size > 0 && (
+            <div className="bg-blue-50 p-4 rounded-lg mb-4">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{selectedClients.size} client(s) selected</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => handleBulkExport()}>
+                    Export Selected
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleBulkMessage()}>
+                    Send Message
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => handleBulkDelete()}>
+                    Delete Selected
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Enhanced Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b">
+                  <th className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedClients.size === filteredClients.length && filteredClients.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedClients(new Set(filteredClients.map(c => c.id)));
+                        } else {
+                          setSelectedClients(new Set());
+                        }
+                      }}
+                    />
+                  </th>
+                  <th className="p-3">Client</th>
+                  <th className="p-3">Contact</th>
+                  <th className="p-3">Jobs</th>
+                  <th className="p-3">Total Value</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Last Contact</th>
+                  <th className="p-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedClients.map(client => (
+                  <tr key={client.id} className="border-b hover:bg-gray-50 transition-colors">
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedClients.has(client.id)}
+                        onChange={(e) => {
+                          const newSelected = new Set(selectedClients);
+                          if (e.target.checked) {
+                            newSelected.add(client.id);
+                          } else {
+                            newSelected.delete(client.id);
+                          }
+                          setSelectedClients(newSelected);
+                        }}
+                      />
+                    </td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={client.avatar} 
+                          alt={client.name} 
+                          className="w-10 h-10 rounded-full border"
+                        />
+                        <div>
+                          <div className="font-medium">{client.name}</div>
+                          <div className="flex gap-1 mt-1">
+                            {client.tags.map(tag => (
+                              <span key={tag} className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <div>
+                        <a href={`mailto:${client.email}`} className="text-blue-600 hover:underline block">
+                          {client.email}
+                        </a>
+                        <a href={`tel:${client.phone}`} className="text-gray-600 hover:text-blue-600 block">
+                          {client.phone}
+                        </a>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <div className="font-medium">{client.jobs}</div>
+                      <div className="text-xs text-gray-500">Total jobs</div>
+                    </td>
+                    <td className="p-3">
+                      <div className="font-medium text-green-600">${client.totalValue}</div>
+                    </td>
+                    <td className="p-3">
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        client.status === 'active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {client.status}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="text-sm">{new Date(client.lastContact).toLocaleDateString()}</div>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleViewClient(client)}
+                        >
+                          View
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleEditClient(client)}
+                        >
+                          Edit
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleContactClient(client)}
+                        >
+                          Contact
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-gray-600">
+              Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredClients.length)} of {filteredClients.length} clients
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="px-3 py-2 text-sm">
+                Page {currentPage} of {Math.ceil(filteredClients.length / itemsPerPage)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.min(Math.ceil(filteredClients.length / itemsPerPage), currentPage + 1))}
+                disabled={currentPage >= Math.ceil(filteredClients.length / itemsPerPage)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+
+          {/* Empty State */}
+          {filteredClients.length === 0 && (
+            <div className="text-center py-8">
+              <div className="text-gray-400 text-6xl mb-4">👥</div>
+              <div className="text-gray-500 mb-2">No clients found</div>
+              <Button onClick={() => setShowAddClient(true)}>
+                Add Your First Client
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      {/* Enhanced Team Members Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Team Members</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setSelectedPairedUsers(new Set())}
+                disabled={selectedPairedUsers.size === 0}
+              >
+                Bulk Actions ({selectedPairedUsers.size})
+              </Button>
+                              <Button 
+                  size="sm"
+                  onClick={() => setShowAddPairing(true)}
+                >
+                  Add Team Member
+                </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="Search team members by name or email..."
+                value={pairedUserSearch}
+                onChange={(e) => setPairedUserSearch(e.target.value)}
+                className="w-full p-2 border rounded-md"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                value={pairedUserFilter}
+                onChange={(e) => setPairedUserFilter(e.target.value)}
+                className="px-3 py-2 border rounded-md bg-white min-w-[120px]"
+              >
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Bulk Actions */}
+          {selectedPairedUsers.size > 0 && (
+            <div className="bg-blue-50 p-4 rounded-lg mb-4">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{selectedPairedUsers.size} team member(s) selected</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="destructive" onClick={handleBulkRemovePairings}>
+                    Remove Selected
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Team Members List */}
+          <div className="space-y-3">
+            {filteredPairedUsers.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-gray-400 text-6xl mb-4">👥</div>
+                <div className="text-gray-500 mb-2">No team members found</div>
+                <Button onClick={() => setShowAddPairing(true)}>
+                  Add Your First Team Member
+                </Button>
+              </div>
+            ) : (
+              filteredPairedUsers.map(user => (
+                <div key={user.id} className="flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={selectedPairedUsers.has(user.id)}
+                    onChange={(e) => {
+                      const newSelected = new Set(selectedPairedUsers);
+                      if (e.target.checked) {
+                        newSelected.add(user.id);
+                      } else {
+                        newSelected.delete(user.id);
+                      }
+                      setSelectedPairedUsers(newSelected);
+                    }}
+                    className="mr-2"
+                  />
+                  
+                  <div className="relative">
+                    <img src={user.photo} alt={user.name} className="w-12 h-12 rounded-full border" />
+                    <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
+                      user.isOnline ? 'bg-green-500' : 'bg-gray-400'
+                    }`}></div>
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium">{user.name}</span>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        user.status === 'active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {user.status}
+                      </span>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        user.permissions === 'full-access' 
+                          ? 'bg-blue-100 text-blue-800' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {user.permissions}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600 mb-1">{user.role}</div>
+                    <div className="text-xs text-gray-500">
+                      {user.sharedJobs} shared jobs • Last activity: {user.lastActivity}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleViewPairedUser(user)}
+                    >
+                      View
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleContactPairedUser(user)}
+                    >
+                      Contact
+                    </Button>
+                    <select
+                      value={user.permissions}
+                      onChange={(e) => handleUpdatePairingPermissions(user.id, e.target.value)}
+                      className="px-3 py-2 text-xs border rounded-md bg-white min-w-[100px]"
+                    >
+                      <option value="read-only">Read Only</option>
+                      <option value="full-access">Full Access</option>
+                    </select>
+                    <Button 
+                      size="sm" 
+                      variant="destructive"
+                      onClick={() => handleRemovePairing(user.id)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </CardContent>
       </Card>
       {/* Earnings & Payouts Summary */}
@@ -799,29 +1798,957 @@ export default function VendorDashboard() {
           <CardTitle>Job/Booking Calendar</CardTitle>
         </CardHeader>
         <CardContent>
-          <CalendarMonth jobEvents={jobEvents} onDayClick={(day, events) => setCalendarModal({ open: true, day, events })} />
+          {/* Calendar Summary Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {jobEvents.filter(ev => new Date(ev.date) >= new Date()).length}
+              </div>
+              <div className="text-sm text-gray-600">Upcoming Jobs</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                ${jobEvents.reduce((sum, ev) => sum + (ev.amount || 0), 0).toFixed(0)}
+              </div>
+              <div className="text-sm text-gray-600">Total Value</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">
+                {jobEvents.filter(ev => ev.status === 'in-progress').length}
+              </div>
+              <div className="text-sm text-gray-600">In Progress</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">
+                {new Set(jobEvents.map(ev => ev.client)).size}
+              </div>
+              <div className="text-sm text-gray-600">Active Clients</div>
+            </div>
+          </div>
+          
+          <CalendarMonth 
+            jobEvents={jobEvents} 
+            onDayClick={(day, events) => setCalendarModal({ open: true, day, events })}
+            currentDate={currentDate}
+            setCurrentDate={setCurrentDate}
+            unavailableDays={unavailableDays}
+            setUnavailableDays={setUnavailableDays}
+          />
         </CardContent>
       </Card>
-      {/* Calendar Day Modal */}
+      {/* Client Modal - View/Edit/Contact */}
+      {clientModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">
+                {clientModal.mode === 'view' && `Client Profile - ${clientModal.client.name}`}
+                {clientModal.mode === 'edit' && `Edit Client - ${clientModal.client.name}`}
+                {clientModal.mode === 'contact' && `Contact ${clientModal.client.name}`}
+              </h3>
+              <button 
+                onClick={() => setClientModal({ open: false, client: null, mode: null })}
+                className="text-gray-400 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* View Mode */}
+            {clientModal.mode === 'view' && (
+              <div className="space-y-6">
+                {/* Client Info */}
+                <div className="flex items-start gap-4">
+                  <img 
+                    src={clientModal.client.avatar} 
+                    alt={clientModal.client.name} 
+                    className="w-16 h-16 rounded-full border"
+                  />
+                  <div className="flex-1">
+                    <h4 className="text-xl font-semibold">{clientModal.client.name}</h4>
+                    <div className="flex gap-2 mt-2">
+                      {clientModal.client.tags.map(tag => (
+                        <span key={tag} className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-2">
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        clientModal.client.status === 'active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {clientModal.client.status}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <a href={`mailto:${clientModal.client.email}`} className="text-blue-600 hover:underline">
+                      {clientModal.client.email}
+                    </a>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <a href={`tel:${clientModal.client.phone}`} className="text-blue-600 hover:underline">
+                      {clientModal.client.phone}
+                    </a>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{clientModal.client.jobs}</div>
+                    <div className="text-sm text-gray-600">Total Jobs</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">${clientModal.client.totalValue}</div>
+                    <div className="text-sm text-gray-600">Total Value</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm text-gray-600">Last Contact</div>
+                    <div className="text-sm font-medium">{new Date(clientModal.client.lastContact).toLocaleDateString()}</div>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                {clientModal.client.notes && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <div className="p-3 bg-gray-50 rounded-md text-sm">
+                      {clientModal.client.notes}
+                    </div>
+                  </div>
+                )}
+
+                {/* Quick Actions */}
+                <div className="flex gap-2 pt-4 border-t">
+                  <Button onClick={() => setClientModal({ ...clientModal, mode: 'edit' })}>
+                    Edit Client
+                  </Button>
+                  <Button onClick={() => setClientModal({ ...clientModal, mode: 'contact' })}>
+                    Contact Client
+                  </Button>
+                  <Button variant="outline" onClick={() => setClientModal({ open: false, client: null, mode: null })}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Edit Mode */}
+            {clientModal.mode === 'edit' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={newClient.name}
+                    onChange={(e) => setNewClient({...newClient, name: e.target.value})}
+                    className="w-full p-2 border rounded-md"
+                    placeholder="Enter client name"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newClient.email}
+                    onChange={(e) => setNewClient({...newClient, email: e.target.value})}
+                    className="w-full p-2 border rounded-md"
+                    placeholder="Enter email address"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    value={newClient.phone}
+                    onChange={(e) => setNewClient({...newClient, phone: e.target.value})}
+                    className="w-full p-2 border rounded-md"
+                    placeholder="Enter phone number"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Notes</label>
+                  <textarea
+                    value={newClient.notes}
+                    onChange={(e) => setNewClient({...newClient, notes: e.target.value})}
+                    className="w-full p-2 border rounded-md"
+                    rows="3"
+                    placeholder="Additional notes..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Status</label>
+                  <select
+                    value={newClient.status || clientModal.client.status}
+                    onChange={(e) => setNewClient({...newClient, status: e.target.value})}
+                    className="w-full p-2 border rounded-md"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+                
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setClientModal({ open: false, client: null, mode: null })}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveClientEdit}
+                    disabled={!newClient.name || !newClient.email}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Contact Mode */}
+            {clientModal.mode === 'contact' && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <img 
+                    src={clientModal.client.avatar} 
+                    alt={clientModal.client.name} 
+                    className="w-16 h-16 rounded-full border mx-auto mb-3"
+                  />
+                  <h4 className="text-lg font-semibold">{clientModal.client.name}</h4>
+                  <p className="text-gray-600">{clientModal.client.email}</p>
+                  <p className="text-gray-600">{clientModal.client.phone}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <Button 
+                    onClick={() => handleSendEmail(clientModal.client)}
+                    className="flex flex-col items-center p-4 h-auto"
+                  >
+                    <span className="text-2xl mb-2">📧</span>
+                    <span className="text-sm">Send Email</span>
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => handleCallClient(clientModal.client)}
+                    className="flex flex-col items-center p-4 h-auto"
+                  >
+                    <span className="text-2xl mb-2">📞</span>
+                    <span className="text-sm">Call Client</span>
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => handleSendSMS(clientModal.client)}
+                    className="flex flex-col items-center p-4 h-auto"
+                  >
+                    <span className="text-2xl mb-2">💬</span>
+                    <span className="text-sm">Send SMS</span>
+                  </Button>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setMessageModal({ open: true, client: clientModal.client, mode: 'client' })}
+                    className="w-full"
+                  >
+                    Send Platform Message
+                  </Button>
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setClientModal({ open: false, client: null, mode: null })}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add Team Member Modal */}
+      {showAddPairing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Add New Team Member</h3>
+              <button 
+                onClick={() => setShowAddPairing(false)}
+                className="text-gray-400 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Name</label>
+                <input
+                  type="text"
+                  value={newPairing.name}
+                  onChange={(e) => setNewPairing({...newPairing, name: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  placeholder="Enter user name"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Email</label>
+                <input
+                  type="email"
+                  value={newPairing.email}
+                  onChange={(e) => setNewPairing({...newPairing, email: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  placeholder="Enter email address"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Role</label>
+                <select
+                  value={newPairing.role}
+                  onChange={(e) => setNewPairing({...newPairing, role: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value="Technician">Technician</option>
+                  <option value="Assistant">Assistant</option>
+                  <option value="Manager">Manager</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Permissions</label>
+                <select
+                  value={newPairing.permissions}
+                  onChange={(e) => setNewPairing({...newPairing, permissions: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value="read-only">Read Only</option>
+                  <option value="full-access">Full Access</option>
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowAddPairing(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddNewPairing}
+                disabled={!newPairing.name || !newPairing.email}
+              >
+                Add Team Member
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Member Modal - View/Contact */}
+      {pairedUserModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">
+                {pairedUserModal.mode === 'view' && `User Profile - ${pairedUserModal.user.name}`}
+                {pairedUserModal.mode === 'contact' && `Contact ${pairedUserModal.user.name}`}
+              </h3>
+              <button 
+                onClick={() => setPairedUserModal({ open: false, user: null, mode: null })}
+                className="text-gray-400 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* View Mode */}
+            {pairedUserModal.mode === 'view' && (
+              <div className="space-y-6">
+                {/* User Info */}
+                <div className="flex items-start gap-4">
+                  <div className="relative">
+                    <img 
+                      src={pairedUserModal.user.photo} 
+                      alt={pairedUserModal.user.name} 
+                      className="w-16 h-16 rounded-full border"
+                    />
+                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white ${
+                      pairedUserModal.user.isOnline ? 'bg-green-500' : 'bg-gray-400'
+                    }`}></div>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-xl font-semibold">{pairedUserModal.user.name}</h4>
+                    <div className="flex gap-2 mt-2">
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        pairedUserModal.user.status === 'active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {pairedUserModal.user.status}
+                      </span>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        pairedUserModal.user.permissions === 'full-access' 
+                          ? 'bg-blue-100 text-blue-800' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {pairedUserModal.user.permissions}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <a href={`mailto:${pairedUserModal.user.email}`} className="text-blue-600 hover:underline">
+                      {pairedUserModal.user.email}
+                    </a>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <a href={`tel:${pairedUserModal.user.phone}`} className="text-blue-600 hover:underline">
+                      {pairedUserModal.user.phone}
+                    </a>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{pairedUserModal.user.sharedJobs}</div>
+                    <div className="text-sm text-gray-600">Shared Jobs</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm text-gray-600">Role</div>
+                    <div className="text-sm font-medium">{pairedUserModal.user.role}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm text-gray-600">Last Activity</div>
+                    <div className="text-sm font-medium">{pairedUserModal.user.lastActivity}</div>
+                  </div>
+                </div>
+
+                {/* Team Member Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Join Date</label>
+                    <div className="text-sm">{pairedUserModal.user.pairingDate}</div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Active</label>
+                    <div className="text-sm">{pairedUserModal.user.lastPaired}</div>
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="flex gap-2 pt-4 border-t">
+                  <Button onClick={() => setPairedUserModal({ ...pairedUserModal, mode: 'contact' })}>
+                    Contact User
+                  </Button>
+                  <Button variant="outline" onClick={() => setPairedUserModal({ open: false, user: null, mode: null })}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Contact Mode */}
+            {pairedUserModal.mode === 'contact' && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <img 
+                    src={pairedUserModal.user.photo} 
+                    alt={pairedUserModal.user.name} 
+                    className="w-16 h-16 rounded-full border mx-auto mb-3"
+                  />
+                  <h4 className="text-lg font-semibold">{pairedUserModal.user.name}</h4>
+                  <p className="text-gray-600">{pairedUserModal.user.email}</p>
+                  <p className="text-gray-600">{pairedUserModal.user.phone}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <Button 
+                    onClick={() => window.open(`mailto:${pairedUserModal.user.email}`, '_blank')}
+                    className="flex flex-col items-center p-4 h-auto"
+                  >
+                    <span className="text-2xl mb-2">📧</span>
+                    <span className="text-sm">Send Email</span>
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => window.open(`tel:${pairedUserModal.user.phone}`, '_blank')}
+                    className="flex flex-col items-center p-4 h-auto"
+                  >
+                    <span className="text-2xl mb-2">📞</span>
+                    <span className="text-sm">Call User</span>
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => window.open(`sms:${pairedUserModal.user.phone}`, '_blank')}
+                    className="flex flex-col items-center p-4 h-auto"
+                  >
+                    <span className="text-2xl mb-2">💬</span>
+                    <span className="text-sm">Send SMS</span>
+                  </Button>
+                </div>
+
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setPairedUserModal({ open: false, user: null, mode: null })}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Notification Settings Modal */}
+      {showNotificationSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Notification Settings</h3>
+              <button 
+                onClick={() => setShowNotificationSettings(false)}
+                className="text-gray-400 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={notificationSettings.job}
+                    onChange={(e) => setNotificationSettings({...notificationSettings, job: e.target.checked})}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium">Job Notifications</span>
+                </label>
+                <p className="text-xs text-gray-500 ml-6">New job requests, updates, and completions</p>
+              </div>
+              
+              <div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={notificationSettings.review}
+                    onChange={(e) => setNotificationSettings({...notificationSettings, review: e.target.checked})}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium">Review Notifications</span>
+                </label>
+                <p className="text-xs text-gray-500 ml-6">New reviews and rating updates</p>
+              </div>
+              
+              <div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={notificationSettings.payout}
+                    onChange={(e) => setNotificationSettings({...notificationSettings, payout: e.target.checked})}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium">Payment Notifications</span>
+                </label>
+                <p className="text-xs text-gray-500 ml-6">Payment received and payout updates</p>
+              </div>
+              
+              <div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={notificationSettings.support}
+                    onChange={(e) => setNotificationSettings({...notificationSettings, support: e.target.checked})}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium">Support Notifications</span>
+                </label>
+                <p className="text-xs text-gray-500 ml-6">Support tickets and system updates</p>
+              </div>
+            </div>
+            
+            <div className="flex gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowNotificationSettings(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  handleSaveNotifications();
+                  setShowNotificationSettings(false);
+                }}
+              >
+                Save Settings
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Client Modal */}
+      {showAddClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Add New Client</h3>
+              <button 
+                onClick={() => setShowAddClient(false)}
+                className="text-gray-400 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Name</label>
+                <input
+                  type="text"
+                  value={newClient.name}
+                  onChange={(e) => setNewClient({...newClient, name: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  placeholder="Enter client name"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Email</label>
+                <input
+                  type="email"
+                  value={newClient.email}
+                  onChange={(e) => setNewClient({...newClient, email: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  placeholder="Enter email address"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone</label>
+                <input
+                  type="tel"
+                  value={newClient.phone}
+                  onChange={(e) => setNewClient({...newClient, phone: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  placeholder="Enter phone number"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Notes</label>
+                <textarea
+                  value={newClient.notes}
+                  onChange={(e) => setNewClient({...newClient, notes: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  rows="3"
+                  placeholder="Additional notes..."
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setShowAddClient(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (newClient.name && newClient.email) {
+                    const client = {
+                      ...newClient,
+                      id: Date.now(),
+                      jobs: 0,
+                      totalValue: 0,
+                      status: 'active',
+                      lastContact: new Date().toISOString().split('T')[0],
+                      tags: [],
+                      avatar: `https://randomuser.me/api/portraits/${Math.random() > 0.5 ? 'men' : 'women'}/${Math.floor(Math.random() * 50)}.jpg`
+                    };
+                    setClients([...clients, client]);
+                    setNewClient({ name: '', email: '', phone: '', notes: '', tags: [] });
+                    setShowAddClient(false);
+                    console.log('Added new client:', client);
+                  } else {
+                    alert('Please fill in at least name and email');
+                  }
+                }}
+                disabled={!newClient.name || !newClient.email}
+              >
+                Add Client
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Enhanced Calendar Day Modal */}
       {calendarModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40" onClick={() => setCalendarModal({ open: false, day: null, events: [] })}>
-          <div onClick={e => e.stopPropagation()} className="bg-white rounded-lg shadow-lg p-6 min-w-[320px] max-w-[90vw]">
+          <div onClick={e => e.stopPropagation()} className="bg-white rounded-lg shadow-lg p-6 min-w-[400px] max-w-[90vw] max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold">Jobs for {calendarModal.day}</h2>
+              <div>
+                <h2 className="text-xl font-bold">
+                  Jobs for {new Date(currentDate.getFullYear(), currentDate.getMonth(), calendarModal.day).toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    day: 'numeric', 
+                    year: 'numeric' 
+                  })}
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {calendarModal.events.length} job{calendarModal.events.length !== 1 ? 's' : ''} scheduled
+                </p>
+              </div>
               <button onClick={() => setCalendarModal({ open: false, day: null, events: [] })} className="text-gray-400 hover:text-gray-700 text-2xl">✕</button>
             </div>
+            
             {calendarModal.events.length === 0 ? (
-              <div className="text-gray-500">No jobs scheduled for this day.</div>
+              <div className="text-center py-8">
+                <div className="text-gray-400 text-6xl mb-4">📅</div>
+                <div className="text-gray-500 mb-2">No jobs scheduled for this day</div>
+                <Button 
+                  size="sm" 
+                  onClick={() => {
+                    setCalendarModal({ open: false, day: null, events: [] });
+                    // Trigger the add booking modal in the calendar component
+                    setTimeout(() => {
+                      const event = new CustomEvent('openAddBooking', { 
+                        detail: { day: calendarModal.day } 
+                      });
+                      window.dispatchEvent(event);
+                    }, 100);
+                  }}
+                >
+                  Add First Booking
+                </Button>
+              </div>
             ) : (
-              <ul className="space-y-3">
-                {calendarModal.events.map(ev => (
-                  <li key={ev.id} className="flex flex-col gap-1 border-b pb-2 last:border-b-0">
-                    <span className="font-semibold">{ev.title}</span>
-                    <span className="text-xs text-gray-500">Status: Scheduled</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-4">
+                {/* Daily Summary */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Total Earnings:</span>
+                      <div className="font-semibold text-green-600">
+                        ${calendarModal.events.reduce((sum, ev) => sum + (ev.amount || 0), 0).toFixed(2)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Total Hours:</span>
+                      <div className="font-semibold">
+                        {calendarModal.events.reduce((sum, ev) => sum + (ev.duration || 0), 0) / 60} hours
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Jobs List */}
+                <div className="space-y-3">
+                  {calendarModal.events.map(ev => (
+                    <div key={ev.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${ev.color}`}></div>
+                          <h3 className="font-semibold text-lg">{ev.title}</h3>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-green-600">${ev.amount?.toFixed(2) || '0.00'}</div>
+                          <div className="text-xs text-gray-500">{ev.duration} min</div>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 text-sm mb-3">
+                        <div>
+                          <span className="text-gray-600">Client:</span>
+                          <div className="font-medium">{ev.client}</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Time:</span>
+                          <div className="font-medium">{ev.time}</div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Status:</span>
+                          <div className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                            ev.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            ev.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800' :
+                            ev.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {ev.status?.replace('-', ' ') || 'scheduled'}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Duration:</span>
+                          <div className="font-medium">{ev.duration} minutes</div>
+                        </div>
+                      </div>
+                      
+                      {ev.notes && (
+                        <div className="mb-3">
+                          <span className="text-gray-600 text-sm">Notes:</span>
+                          <div className="text-sm bg-gray-50 p-2 rounded mt-1">{ev.notes}</div>
+                        </div>
+                      )}
+                      
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => {
+                            console.log('Viewing details for job:', ev);
+                            // In a real app, this would open a detailed job view
+                            alert(`Viewing details for: ${ev.title}\nClient: ${ev.client}\nTime: ${ev.time}\nAmount: $${ev.amount}`);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => {
+                            console.log('Editing job:', ev);
+                            // In a real app, this would open an edit form
+                            alert(`Editing job: ${ev.title}`);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => {
+                            console.log('Contacting client for job:', ev);
+                            // In a real app, this would open a contact form
+                            alert(`Contacting client: ${ev.client}\nPhone/Email would be shown here`);
+                          }}
+                        >
+                          Contact Client
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
+            
+            {/* Quick Actions */}
+            <div className="flex gap-2 mt-6 pt-4 border-t">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => {
+                  setCalendarModal({ open: false, day: null, events: [] });
+                  setTimeout(() => {
+                    const event = new CustomEvent('openAddBooking', { 
+                      detail: { day: calendarModal.day } 
+                    });
+                    window.dispatchEvent(event);
+                  }, 100);
+                }}
+              >
+                Add New Booking
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => {
+                  const dayKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(calendarModal.day).padStart(2, '0')}`;
+                  const newUnavailableDays = new Set(unavailableDays);
+                  
+                  if (newUnavailableDays.has(dayKey)) {
+                    newUnavailableDays.delete(dayKey);
+                    setUnavailableDays(newUnavailableDays);
+                    alert(`Day ${calendarModal.day} marked as available again`);
+                  } else {
+                    newUnavailableDays.add(dayKey);
+                    setUnavailableDays(newUnavailableDays);
+                    alert(`Day ${calendarModal.day} marked as unavailable`);
+                  }
+                  
+                  setCalendarModal({ open: false, day: null, events: [] });
+                  // In a real app, this would be saved to the backend
+                  console.log('Updated unavailable days:', Array.from(newUnavailableDays));
+                }}
+              >
+                {unavailableDays.has(`${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(calendarModal.day).padStart(2, '0')}`) 
+                  ? 'Mark Day Available' 
+                  : 'Mark Day Unavailable'
+                }
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => {
+                  // Export day schedule
+                  const dayData = {
+                    date: `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(calendarModal.day).padStart(2, '0')}`,
+                    jobs: calendarModal.events,
+                    totalEarnings: calendarModal.events.reduce((sum, ev) => sum + (ev.amount || 0), 0),
+                    totalHours: calendarModal.events.reduce((sum, ev) => sum + (ev.duration || 0), 0) / 60
+                  };
+                  
+                  // Create and download CSV
+                  const csvContent = [
+                    ['Date', 'Time', 'Service', 'Client', 'Duration', 'Amount', 'Status', 'Notes'],
+                    ...calendarModal.events.map(ev => [
+                      dayData.date,
+                      ev.time,
+                      ev.title,
+                      ev.client,
+                      `${ev.duration} min`,
+                      `$${ev.amount?.toFixed(2) || '0.00'}`,
+                      ev.status,
+                      ev.notes || ''
+                    ])
+                  ].map(row => row.join(',')).join('\n');
+                  
+                  const blob = new Blob([csvContent], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `schedule-${dayData.date}.csv`;
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                  
+                  setCalendarModal({ open: false, day: null, events: [] });
+                }}
+              >
+                Export Day
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -836,9 +2763,9 @@ export default function VendorDashboard() {
               <span>📅 Schedule Availability</span>
               <UITooltip>
                 <TooltipTrigger asChild>
-                  <button className="ml-2 p-1 text-gray-400 hover:text-gray-600">
+                  <div className="ml-2 p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
                     <Info className="w-4 h-4" />
-                  </button>
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={5}>
                   <p>Set your working hours and availability for client bookings</p>
@@ -852,9 +2779,9 @@ export default function VendorDashboard() {
               <span>💲 Update Pricing</span>
               <UITooltip>
                 <TooltipTrigger asChild>
-                  <button className="ml-2 p-1 text-gray-400 hover:text-gray-600">
+                  <div className="ml-2 p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
                     <Info className="w-4 h-4" />
-                  </button>
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={5}>
                   <p>Modify your service rates and pricing structure</p>
@@ -863,15 +2790,15 @@ export default function VendorDashboard() {
             </div>
           </Button>
           
-          <Link href="/vendor/support" passHref legacyBehavior>
-            <Button variant="outline" className="justify-start w-full" as="a">
+          <Link href="/vendor/support">
+            <Button variant="outline" className="justify-start w-full">
               <div className="flex items-center justify-between w-full">
                 <span>🆘 Get Support</span>
                 <UITooltip>
                   <TooltipTrigger asChild>
-                    <button className="ml-2 p-1 text-gray-400 hover:text-gray-600">
+                    <div className="ml-2 p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
                       <Info className="w-4 h-4" />
-                    </button>
+                    </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" sideOffset={5}>
                     <p>Access help articles, FAQs, and contact support team</p>
@@ -888,9 +2815,9 @@ export default function VendorDashboard() {
               <span>💬 Message Client</span>
               <UITooltip>
                 <TooltipTrigger asChild>
-                  <button className="ml-2 p-1 text-gray-400 hover:text-gray-600">
+                  <div className="ml-2 p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
                     <Info className="w-4 h-4" />
-                  </button>
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={5}>
                   <p>Send messages to clients or new contacts via email or phone</p>
@@ -904,9 +2831,9 @@ export default function VendorDashboard() {
               <span>🧾 Send Invoice</span>
               <UITooltip>
                 <TooltipTrigger asChild>
-                  <button className="ml-2 p-1 text-gray-400 hover:text-gray-600">
+                  <div className="ml-2 p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
                     <Info className="w-4 h-4" />
-                  </button>
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={5}>
                   <p>Create and send professional invoices for completed jobs</p>
@@ -920,9 +2847,9 @@ export default function VendorDashboard() {
               <span>⭐ Request Review</span>
               <UITooltip>
                 <TooltipTrigger asChild>
-                  <button className="ml-2 p-1 text-gray-400 hover:text-gray-600">
+                  <div className="ml-2 p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
                     <Info className="w-4 h-4" />
-                  </button>
+                  </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={5}>
                   <p>Ask clients for reviews on jobs completed within 72 hours</p>
@@ -1746,13 +3673,63 @@ export default function VendorDashboard() {
   );
 }
 
-function CalendarMonth({ jobEvents, onDayClick }) {
+function CalendarMonth({ jobEvents, onDayClick, currentDate, setCurrentDate, unavailableDays, setUnavailableDays }) {
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [showAddBooking, setShowAddBooking] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [newBooking, setNewBooking] = useState({
+    title: '',
+    client: '',
+    time: '09:00',
+    duration: '60',
+    type: 'Kitchen Sink Repair',
+    notes: ''
+  });
+
+  // Listen for external add booking requests
+  useEffect(() => {
+    const handleOpenAddBooking = (event) => {
+      if (event.detail?.day) {
+        setSelectedDate(event.detail.day);
+        setShowAddBooking(true);
+      }
+    };
+
+    window.addEventListener('openAddBooking', handleOpenAddBooking);
+    return () => window.removeEventListener('openAddBooking', handleOpenAddBooking);
+  }, []);
+
   const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
-  const eventMap = jobEvents.reduce((acc, ev) => {
+  
+  // Enhanced job events with more details
+  const enhancedJobEvents = jobEvents.map(ev => ({
+    ...ev,
+    client: ev.client || 'Unknown Client',
+    time: ev.time || '09:00',
+    duration: ev.duration || 60,
+    status: ev.status || 'scheduled',
+    amount: ev.amount || 0,
+    notes: ev.notes || ''
+  }));
+
+  // Filter jobs based on current filters
+  const filteredEvents = enhancedJobEvents.filter(ev => {
+    const matchesType = filterType === 'all' || ev.title.includes(filterType);
+    const matchesStatus = filterStatus === 'all' || ev.status === filterStatus;
+    const matchesSearch = !searchQuery || 
+      ev.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ev.client.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesType && matchesStatus && matchesSearch;
+  });
+
+  const eventMap = filteredEvents.reduce((acc, ev) => {
     const d = new Date(ev.date);
     if (d.getFullYear() === year && d.getMonth() === month) {
       acc[d.getDate()] = acc[d.getDate()] || [];
@@ -1760,6 +3737,7 @@ function CalendarMonth({ jobEvents, onDayClick }) {
     }
     return acc;
   }, {});
+
   const weeks = [];
   let week = [];
   for (let i = 0; i < firstDay; i++) week.push(null);
@@ -1772,45 +3750,504 @@ function CalendarMonth({ jobEvents, onDayClick }) {
   }
   if (week.length) while (week.length < 7) week.push(null);
   if (week.length) weeks.push(week);
-  const monthName = today.toLocaleString('default', { month: 'long' });
+
+  const monthName = currentDate.toLocaleString('default', { month: 'long' });
+  const yearNum = currentDate.getFullYear();
+
+  const navigateMonth = (direction) => {
+    setCurrentDate(prev => {
+      const newDate = new Date(prev);
+      newDate.setMonth(prev.getMonth() + direction);
+      return newDate;
+    });
+  };
+
+  const handleDayClick = (day) => {
+    setSelectedDate(day);
+    const events = eventMap[day] || [];
+    onDayClick(day, events);
+  };
+
+  const handleAddBooking = () => {
+    if (newBooking.title && newBooking.client && selectedDate) {
+      const newEvent = {
+        id: Date.now(),
+        title: newBooking.title,
+        client: newBooking.client,
+        date: `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`,
+        time: newBooking.time,
+        duration: parseInt(newBooking.duration),
+        type: newBooking.type,
+        status: 'scheduled',
+        amount: 0,
+        notes: newBooking.notes,
+        color: getColorForType(newBooking.type)
+      };
+      // In a real app, this would be saved to the backend
+      console.log('New booking:', newEvent);
+      setShowAddBooking(false);
+      setNewBooking({
+        title: '',
+        client: '',
+        time: '09:00',
+        duration: '60',
+        type: 'Kitchen Sink Repair',
+        notes: ''
+      });
+    }
+  };
+
+  const getColorForType = (type) => {
+    const colors = {
+      'Kitchen Sink Repair': 'bg-blue-500',
+      'Faucet Installation': 'bg-green-500',
+      'Garbage Disposal Repair': 'bg-yellow-500',
+      'Pipe Leak Fix': 'bg-red-500'
+    };
+    return colors[type] || 'bg-gray-500';
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      'scheduled': 'bg-blue-100 text-blue-800',
+      'in-progress': 'bg-yellow-100 text-yellow-800',
+      'completed': 'bg-green-100 text-green-800',
+      'cancelled': 'bg-red-100 text-red-800'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const calculateDailyEarnings = (day) => {
+    const events = eventMap[day] || [];
+    return events.reduce((total, ev) => total + (ev.amount || 0), 0);
+  };
+
+  const getAvailabilityStatus = (day) => {
+    const dayKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    
+    // Check if day is marked as unavailable
+    if (unavailableDays.has(dayKey)) {
+      return { status: 'unavailable', text: 'Unavailable', color: 'bg-gray-200' };
+    }
+    
+    const events = eventMap[day] || [];
+    const totalSlots = 8; // Assuming 8 hours of work
+    const bookedSlots = events.length;
+    const availableSlots = totalSlots - bookedSlots;
+    
+    if (availableSlots === 0) return { status: 'full', text: 'Fully Booked', color: 'bg-red-50' };
+    if (availableSlots <= 2) return { status: 'limited', text: `${availableSlots} slots left`, color: 'bg-yellow-50' };
+    return { status: 'available', text: `${availableSlots} slots available`, color: 'bg-green-50' };
+  };
+
   return (
-    <div className="overflow-x-auto">
-      <div className="flex justify-center items-center mb-2">
-        <span className="text-lg font-semibold">{monthName} {year}</span>
+    <div className="space-y-4">
+      {/* Calendar Header with Navigation */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateMonth(-1)}
+            className="p-1"
+          >
+            ←
+          </Button>
+          <h2 className="text-xl font-semibold">{monthName} {yearNum}</h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateMonth(1)}
+            className="p-1"
+          >
+            →
+          </Button>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            Filter
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentDate(new Date())}
+          >
+            Today
+          </Button>
+        </div>
       </div>
-      <table className="w-full text-center border-collapse select-none">
-        <thead>
-          <tr className="text-xs text-gray-500">
-            <th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th>
-          </tr>
-        </thead>
-        <tbody>
-          {weeks.map((week, i) => (
-            <tr key={i}>
-              {week.map((day, j) => (
-                <td key={j} className={`h-12 w-12 border ${day ? 'bg-white cursor-pointer hover:bg-blue-50' : 'bg-gray-50'}`}
-                  onClick={day ? () => onDayClick(day, eventMap[day] || []) : undefined}>
-                  {day && (
-                    <div className="relative flex flex-col items-center justify-center">
-                      <span className={`font-semibold ${day === today.getDate() ? 'text-blue-600' : ''}`}>{day}</span>
-                      <div className="flex gap-1 mt-1">
-                        {(eventMap[day] || []).map(ev => (
-                          <span key={ev.id} className={`w-2 h-2 rounded-full ${ev.color}`} title={ev.title}></span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </td>
-              ))}
+
+      {/* Filters Panel */}
+      {showFilters && (
+        <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Service Type</label>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="w-full p-2 border rounded-md text-sm"
+              >
+                <option value="all">All Types</option>
+                <option value="Kitchen Sink Repair">Kitchen Sink Repair</option>
+                <option value="Faucet Installation">Faucet Installation</option>
+                <option value="Garbage Disposal Repair">Garbage Disposal Repair</option>
+                <option value="Pipe Leak Fix">Pipe Leak Fix</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full p-2 border rounded-md text-sm"
+              >
+                <option value="all">All Status</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="in-progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Search</label>
+              <input
+                type="text"
+                placeholder="Search jobs or clients..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full p-2 border rounded-md text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar Grid */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-center border-collapse select-none">
+          <thead>
+            <tr className="text-xs text-gray-500 border-b">
+              <th className="p-2">Sun</th>
+              <th className="p-2">Mon</th>
+              <th className="p-2">Tue</th>
+              <th className="p-2">Wed</th>
+              <th className="p-2">Thu</th>
+              <th className="p-2">Fri</th>
+              <th className="p-2">Sat</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="flex flex-wrap gap-3 mt-4 text-xs">
-        {jobEvents.map(ev => (
-          <span key={ev.id} className="flex items-center gap-1"><span className={`w-2 h-2 rounded-full ${ev.color}`}></span>{ev.title}</span>
-        ))}
+          </thead>
+          <tbody>
+            {weeks.map((week, i) => (
+              <tr key={i} className="border-b">
+                {week.map((day, j) => {
+                  const isToday = day === today.getDate() && 
+                    month === today.getMonth() && 
+                    year === today.getFullYear();
+                  const isSelected = day === selectedDate;
+                  const events = eventMap[day] || [];
+                  const availability = getAvailabilityStatus(day);
+                  const dailyEarnings = calculateDailyEarnings(day);
+                  
+                  const dayKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const isUnavailable = unavailableDays.has(dayKey);
+                  
+                  return (
+                    <td 
+                      key={j} 
+                      className={`h-24 w-24 border-r border-b relative ${
+                        day 
+                          ? `${availability.color} ${isUnavailable ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-blue-50'} transition-colors ${
+                              isToday ? 'ring-2 ring-blue-500' : ''
+                            } ${
+                              isSelected ? 'bg-blue-100' : ''
+                            }` 
+                          : 'bg-gray-50'
+                      }`}
+                      onClick={day && !isUnavailable ? () => handleDayClick(day) : undefined}
+                    >
+                      {day && (
+                        <div className="p-1 h-full flex flex-col">
+                          {/* Date Number */}
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-sm font-semibold ${
+                              isToday ? 'text-blue-600 bg-blue-100 px-1 rounded' : ''
+                            }`}>
+                              {day}
+                            </span>
+                            {isToday && (
+                              <span className="text-xs text-blue-600 font-medium">TODAY</span>
+                            )}
+                          </div>
+
+                          {/* Job Indicators */}
+                          <div className="flex flex-wrap gap-1 mb-1">
+                            {events.slice(0, 3).map((ev, idx) => (
+                              <div
+                                key={ev.id}
+                                className={`w-2 h-2 rounded-full ${ev.color} cursor-pointer`}
+                                title={`${ev.title} - ${ev.client} (${ev.time})`}
+                              />
+                            ))}
+                            {events.length > 3 && (
+                              <span className="text-xs text-gray-500">+{events.length - 3}</span>
+                            )}
+                          </div>
+
+                          {/* Availability Status */}
+                          <div className="text-xs text-gray-600 mb-1">
+                            {availability.text}
+                          </div>
+
+                          {/* Daily Earnings */}
+                          {dailyEarnings > 0 && (
+                            <div className="text-xs font-medium text-green-600">
+                              ${dailyEarnings}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-4 mt-4 p-3 bg-gray-50 rounded-lg">
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+          <span className="text-sm">Kitchen Sink Repair</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-green-500"></span>
+          <span className="text-sm">Faucet Installation</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
+          <span className="text-sm">Garbage Disposal Repair</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-red-500"></span>
+          <span className="text-sm">Pipe Leak Fix</span>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex flex-wrap gap-2 mt-4">
+        <Button
+          size="sm"
+          onClick={() => setShowAddBooking(true)}
+          disabled={!selectedDate}
+        >
+          Add Booking
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            if (selectedDate) {
+              const dayKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
+              const newUnavailableDays = new Set(unavailableDays);
+              
+              if (newUnavailableDays.has(dayKey)) {
+                newUnavailableDays.delete(dayKey);
+                setUnavailableDays(newUnavailableDays);
+                alert(`Day ${selectedDate} marked as available again`);
+              } else {
+                newUnavailableDays.add(dayKey);
+                setUnavailableDays(newUnavailableDays);
+                alert(`Day ${selectedDate} marked as unavailable`);
+              }
+              
+              // In a real app, this would be saved to the backend
+              console.log('Updated unavailable days:', Array.from(newUnavailableDays));
+            } else {
+              alert('Please select a date first');
+            }
+          }}
+        >
+          {selectedDate && unavailableDays.has(`${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`) 
+            ? 'Mark Available' 
+            : 'Mark Unavailable'
+          }
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            console.log('Viewing week view');
+            alert('Week view would show a detailed weekly schedule');
+          }}
+        >
+          View Week
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            // Export current month schedule
+            const monthData = {
+              month: monthName,
+              year: yearNum,
+              jobs: enhancedJobEvents.filter(ev => {
+                const d = new Date(ev.date);
+                return d.getFullYear() === year && d.getMonth() === month;
+              })
+            };
+            
+            // Create and download CSV
+            const csvContent = [
+              ['Date', 'Time', 'Service', 'Client', 'Duration', 'Amount', 'Status', 'Notes'],
+              ...monthData.jobs.map(ev => [
+                ev.date,
+                ev.time,
+                ev.title,
+                ev.client,
+                `${ev.duration} min`,
+                `$${ev.amount?.toFixed(2) || '0.00'}`,
+                ev.status,
+                ev.notes || ''
+              ])
+            ].map(row => row.join(',')).join('\n');
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `schedule-${monthName}-${yearNum}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            console.log('Exported schedule for:', monthData);
+          }}
+        >
+          Export Schedule
+        </Button>
+      </div>
+
+      {/* Add Booking Modal */}
+      {showAddBooking && selectedDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">
+                Add Booking for {new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDate).toLocaleDateString('en-US', { 
+                  month: 'long', 
+                  day: 'numeric', 
+                  year: 'numeric' 
+                })}
+              </h3>
+              <button 
+                onClick={() => setShowAddBooking(false)}
+                className="text-gray-400 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Service Title</label>
+                <input
+                  type="text"
+                  value={newBooking.title}
+                  onChange={(e) => setNewBooking({...newBooking, title: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  placeholder="Enter service title"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Service Type</label>
+                <select
+                  value={newBooking.type}
+                  onChange={(e) => setNewBooking({...newBooking, type: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value="Kitchen Sink Repair">Kitchen Sink Repair</option>
+                  <option value="Faucet Installation">Faucet Installation</option>
+                  <option value="Garbage Disposal Repair">Garbage Disposal Repair</option>
+                  <option value="Pipe Leak Fix">Pipe Leak Fix</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Client Name</label>
+                <input
+                  type="text"
+                  value={newBooking.client}
+                  onChange={(e) => setNewBooking({...newBooking, client: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  placeholder="Enter client name"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Time</label>
+                  <input
+                    type="time"
+                    value={newBooking.time}
+                    onChange={(e) => setNewBooking({...newBooking, time: e.target.value})}
+                    className="w-full p-2 border rounded-md"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Duration (min)</label>
+                  <select
+                    value={newBooking.duration}
+                    onChange={(e) => setNewBooking({...newBooking, duration: e.target.value})}
+                    className="w-full p-2 border rounded-md"
+                  >
+                    <option value="30">30 min</option>
+                    <option value="60">1 hour</option>
+                    <option value="90">1.5 hours</option>
+                    <option value="120">2 hours</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Notes</label>
+                <textarea
+                  value={newBooking.notes}
+                  onChange={(e) => setNewBooking({...newBooking, notes: e.target.value})}
+                  className="w-full p-2 border rounded-md"
+                  rows="3"
+                  placeholder="Additional notes..."
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setShowAddBooking(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddBooking}
+                disabled={!newBooking.title || !newBooking.client}
+              >
+                Add Booking
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
     </div>
   );
 } 
