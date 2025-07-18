@@ -451,4 +451,87 @@ All endpoints require admin authentication/authorization. All bulk actions shoul
 
 ---
 
+---
+
+## Customer Relationship Management (Vendor Reviews Dashboard)
+
+### **Customer Engagement Analysis**
+- **Endpoints:**
+  - `GET /api/vendor/customers/insights` - Get customer engagement data with filtering
+  - `GET /api/vendor/customers/:id/profile` - Get detailed customer profile
+  - `PATCH /api/vendor/customers/:id/status` - Update customer status (VIP, Active, At Risk)
+  - `GET /api/vendor/customers/segments` - Get customer segmentation data
+- **Data Contracts:**
+  - CustomerInsight: `{ id, name, email, phone, totalJobs, totalReviews, avgRating, lastJob, lastReview, status, riskLevel, engagementScore }`
+  - CustomerSegment: `{ id, name, criteria, customerCount, avgEngagement, avgRating }`
+- **Business Logic:**
+  - Calculate engagement scores based on review behavior and activity
+  - Risk level assessment based on rating trends and inactivity
+  - VIP status assignment based on engagement thresholds
+- **Roles:**
+  - Vendor managers only
+- **Error Handling:**
+  - Invalid customer data, permission issues
+
+### **Customer Recovery Tools**
+- **Endpoints:**
+  - `GET /api/vendor/recovery/tasks` - Get recovery tasks with filtering and pagination
+  - `POST /api/vendor/recovery/tasks` - Create new recovery task
+  - `PATCH /api/vendor/recovery/tasks/:id` - Update task status and details
+  - `DELETE /api/vendor/recovery/tasks/:id` - Delete task
+  - `GET /api/vendor/recovery/templates` - Get recovery action templates
+  - `POST /api/vendor/recovery/tasks/:id/actions` - Log recovery actions taken
+  - `GET /api/vendor/recovery/analytics` - Get recovery success analytics
+- **Data Contracts:**
+  - RecoveryTask: `{ id, customerName, customerEmail, priority, status, assignedTo, dueDate, notes, actions: [{ type, timestamp, outcome }] }`
+  - RecoveryTemplate: `{ id, name, template, category, successRate }`
+  - RecoveryAnalytics: `{ overallSuccessRate, avgRatingImprovement, customerRetentionRate, avgResponseTime, totalRecovered, totalAttempted, byMethod, byEmployee }`
+- **Business Logic:**
+  - Automated task creation based on triggers
+  - Success tracking and analytics
+  - Integration with email/SMS for direct communication
+- **Roles:**
+  - Vendor managers and assigned employees
+- **Error Handling:**
+  - Invalid task data, communication failures
+
+### **Automated Action Triggers**
+- **Endpoints:**
+  - `GET /api/vendor/triggers` - Get automated triggers
+  - `POST /api/vendor/triggers` - Create new trigger
+  - `PATCH /api/vendor/triggers/:id` - Update trigger settings
+  - `DELETE /api/vendor/triggers/:id` - Delete trigger
+  - `POST /api/vendor/triggers/:id/toggle` - Enable/disable trigger
+- **Data Contracts:**
+  - Trigger: `{ id, name, condition, action, priority, enabled, lastTriggered, frequency }`
+- **Business Logic:**
+  - Monitor review data for trigger conditions
+  - Execute automated actions (create tasks, send notifications)
+  - Track trigger effectiveness
+- **Roles:**
+  - Vendor managers only
+- **Error Handling:**
+  - Invalid trigger conditions, action failures
+
+### **Recovery Success Analytics**
+- **Endpoints:**
+  - `GET /api/vendor/recovery/analytics/overview` - Get overall recovery metrics
+  - `GET /api/vendor/recovery/analytics/by-method` - Get success rates by recovery method
+  - `GET /api/vendor/recovery/analytics/by-employee` - Get employee performance in recovery
+  - `GET /api/vendor/recovery/analytics/trends` - Get recovery trends over time
+- **Data Contracts:**
+  - RecoveryMetrics: `{ successRate, avgRatingImprovement, retentionRate, responseTime, totalRecovered, totalAttempted }`
+  - MethodAnalytics: `{ method, successRate, avgImprovement, usageCount }`
+  - EmployeeAnalytics: `{ employee, successRate, actionsCompleted, avgResponseTime }`
+- **Business Logic:**
+  - Calculate success rates and improvements
+  - Track employee performance
+  - Identify most effective recovery methods
+- **Roles:**
+  - Vendor managers only
+- **Error Handling:**
+  - Missing data, calculation errors
+
+---
+
 For any questions or updates, contact the frontend team or check the UI "Backend Developer Notes" on each page for live details. 
