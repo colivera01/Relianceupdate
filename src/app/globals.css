@@ -73,4 +73,70 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Video Archive Calendar Fixes */
+.video-archive-calendar .grid.grid-cols-7 {
+  min-width: 550px !important;
+  gap: 8px !important;
+}
+
+/* Search Input Fixes */
+.search-input-container {
+  min-width: 300px !important;
+  flex: 1 !important;
+}
+
+.search-input-container input {
+  min-width: 280px !important;
+  width: 100% !important;
+}
+
+/* Action Button Fixes */
+.action-button {
+  min-width: 140px !important;
+  white-space: nowrap !important;
+}
+
+/* Video Archive Filter Spacing */
+.video-archive-filters {
+  gap: 3rem !important;
+}
+
+.video-archive-filters > div {
+  min-width: 160px !important;
+  margin-right: 1rem !important;
+}
+
+.video-archive-calendar .grid.grid-cols-7 > div {
+  min-width: 55px !important;
+  letter-spacing: 2px !important;
+  font-weight: 700 !important;
+  text-align: center !important;
+}
+
+/* Video Archive Dropdown Fixes */
+.video-archive-dropdown {
+  padding-right: 3.5rem !important;
+  min-width: 220px !important;
+  width: 100% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  background-position: right 1.75rem center !important;
+  font-size: 14px !important;
+}
+
+/* Ensure dropdown options are fully visible */
+.video-archive-dropdown option {
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  min-width: 200px !important;
+  font-size: 14px !important;
+}
+
+/* Force the dropdown to show full text */
+select.video-archive-dropdown {
+  text-overflow: clip !important;
+  overflow: visible !important;
 } 

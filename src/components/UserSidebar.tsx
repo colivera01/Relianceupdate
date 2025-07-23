@@ -11,9 +11,11 @@ const user = {
 };
 
 const navLinks = [
-  { label: 'Dashboard', icon: Home, href: '/user-dashboard' },
+  { label: 'Home', icon: Home, href: '/user-dashboard' },
   { label: 'Discover', icon: LayoutDashboard, href: '/discover' },
+  { label: 'My Bookings', icon: Briefcase, href: '/my-bookings' },
   { label: 'Favorites', icon: Heart, href: '/favorites' },
+  { label: 'Reviews', icon: Users, href: '/my-reviews' },
   { label: 'Profile', icon: User, href: '/profile' },
   { label: 'Settings', icon: Settings, href: '/settings' },
 ];

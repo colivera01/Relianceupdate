@@ -138,11 +138,11 @@
 //
 // End DEVELOPER NOTES
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Star, ArrowUpRight, ArrowDownRight, AlertTriangle, Lightbulb, ThumbsUp, ThumbsDown, Info, BarChart2, LineChart, ArrowLeft, Settings, Upload, Download, Calendar, DollarSign, BarChart3, Search } from "lucide-react";
+import { Star, ArrowUpRight, ArrowDownRight, AlertTriangle, Lightbulb, ThumbsUp, ThumbsDown, Info, BarChart2, LineChart, ArrowLeft, Settings, Upload, Download, Calendar, DollarSign, BarChart3, Search, X, Filter, Calendar as CalendarIcon, User, Mail, Phone, MapPin, Clock, TrendingUp, TrendingDown, CheckCircle, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import SimpleTooltip from '@/components/ui/tooltip';
+// import SimpleTooltip from '../../../../components/ui/tooltip';
 // TODO: Import authentication/role utilities as needed
 
 // Business Performance Dashboard mock data
@@ -185,7 +185,7 @@ const roiImprovements = [
   { improvement: "Equipment Upgrade", investment: null, revenueIncrease: null, roi: null, hasFinancialData: false }
 ];
 
-// Team Management & Accountability mock data
+// Enhanced Team Management & Accountability mock data
 const employeePerformance = [
   { 
     id: 1, 
@@ -197,7 +197,18 @@ const employeePerformance = [
     completionRate: 98, 
     trainingNeeded: ["Advanced HVAC", "Customer Service"], 
     performanceGoal: 4.7,
-    lastReview: "2024-05-15"
+    lastReview: "2024-05-15",
+    monthlyPerformance: [
+      { month: "Jan 2024", rating: 4.7, reviews: 8, responseTime: "1.3h", completion: 97, trend: "stable" },
+      { month: "Feb 2024", rating: 4.8, reviews: 6, responseTime: "1.1h", completion: 98, trend: "up" },
+      { month: "Mar 2024", rating: 4.9, reviews: 7, responseTime: "1.0h", completion: 99, trend: "up" },
+      { month: "Apr 2024", rating: 4.8, reviews: 5, responseTime: "1.2h", completion: 98, trend: "stable" },
+      { month: "May 2024", rating: 4.8, reviews: 6, responseTime: "1.2h", completion: 98, trend: "stable" }
+    ],
+    strengths: ["Technical expertise", "Customer communication", "Reliability"],
+    areasForImprovement: ["Advanced HVAC systems", "Conflict resolution"],
+    nextReviewDate: "2024-06-15",
+    performanceLevel: "Exceeds Expectations"
   },
   { 
     id: 2, 
@@ -209,7 +220,18 @@ const employeePerformance = [
     completionRate: 92, 
     trainingNeeded: ["Response Time", "Technical Skills"], 
     performanceGoal: 4.5,
-    lastReview: "2024-04-20"
+    lastReview: "2024-04-20",
+    monthlyPerformance: [
+      { month: "Jan 2024", rating: 4.0, reviews: 5, responseTime: "2.5h", completion: 90, trend: "down" },
+      { month: "Feb 2024", rating: 4.1, reviews: 4, responseTime: "2.3h", completion: 91, trend: "up" },
+      { month: "Mar 2024", rating: 4.3, reviews: 6, responseTime: "2.0h", completion: 93, trend: "up" },
+      { month: "Apr 2024", rating: 4.2, reviews: 3, responseTime: "2.1h", completion: 92, trend: "stable" },
+      { month: "May 2024", rating: 4.2, reviews: 3, responseTime: "2.1h", completion: 92, trend: "stable" }
+    ],
+    strengths: ["Problem-solving", "Team collaboration", "Safety awareness"],
+    areasForImprovement: ["Response time", "Advanced troubleshooting"],
+    nextReviewDate: "2024-05-20",
+    performanceLevel: "Meets Expectations"
   },
   { 
     id: 3, 
@@ -221,7 +243,18 @@ const employeePerformance = [
     completionRate: 95, 
     trainingNeeded: ["Advanced Plumbing"], 
     performanceGoal: 4.3,
-    lastReview: "2024-05-10"
+    lastReview: "2024-05-10",
+    monthlyPerformance: [
+      { month: "Jan 2024", rating: 4.2, reviews: 2, responseTime: "2.2h", completion: 92, trend: "up" },
+      { month: "Feb 2024", rating: 4.4, reviews: 3, responseTime: "2.0h", completion: 93, trend: "up" },
+      { month: "Mar 2024", rating: 4.5, reviews: 4, responseTime: "1.9h", completion: 94, trend: "up" },
+      { month: "Apr 2024", rating: 4.6, reviews: 3, responseTime: "1.8h", completion: 95, trend: "up" },
+      { month: "May 2024", rating: 4.6, reviews: 3, responseTime: "1.8h", completion: 95, trend: "stable" }
+    ],
+    strengths: ["Learning ability", "Customer service", "Attention to detail"],
+    areasForImprovement: ["Advanced plumbing techniques", "Time management"],
+    nextReviewDate: "2024-06-10",
+    performanceLevel: "Exceeds Expectations"
   }
 ];
 
@@ -388,8 +421,6 @@ const recoveryTemplates = [
   { name: "Service Improvement", template: "Hi [Name], thank you for your feedback. We're implementing improvements based on your suggestions and would love to show you the changes." }
 ];
 
-
-
 // Automated Action Triggers
 const autoTriggers = [
   { 
@@ -411,7 +442,7 @@ const autoTriggers = [
     lastTriggered: "2024-06-03"
   },
   { 
-    id: 3, 
+    id: 3,
     name: "At Risk Escalation", 
     condition: "Customer becomes 'At Risk'", 
     action: "Recovery campaign", 
@@ -442,8 +473,6 @@ const recoveryAnalytics = {
   ]
 };
 
-
-
 // Placeholder: Only managers can access
 const isManager = true; // Replace with real role check
 
@@ -451,8 +480,6 @@ export default function VendorReviewsPage() {
   if (!isManager) {
     return <div className="p-8 text-center text-red-600 font-semibold">Access denied. Only managers can view reviews.</div>;
   }
-
-
 
   // Mock employees (from vendor/employees/page.tsx)
   const employees = [
@@ -486,18 +513,43 @@ export default function VendorReviewsPage() {
   const [modalCustomer, setModalCustomer] = useState(null);
   // Task creation state (mocked)
   const [createdTasks, setCreatedTasks] = useState([]);
-  // Filter state
-  const [ratingFilter, setRatingFilter] = React.useState('all');
-  const [employeeFilter, setEmployeeFilter] = React.useState('all');
-  const [search, setSearch] = React.useState('');
+  // Enhanced Filter state
+  const [ratingFilter, setRatingFilter] = useState('all');
+  const [employeeFilter, setEmployeeFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [sentimentFilter, setSentimentFilter] = useState('all');
+  const [urgencyFilter, setUrgencyFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
   // Filtered reviews with job type
   const filteredReviews = reviewFeed.filter(r =>
     (ratingFilter === 'all' || r.rating === Number(ratingFilter)) &&
     (employeeFilter === 'all' || r.employeeId === Number(employeeFilter)) &&
     (jobTypeFilter === 'all' || r.jobType === jobTypeFilter)
   );
-  // Repeat issues (mocked)
-  const repeatIssues = ['slow response'];
+  // Enhanced Alert System with Multi-Level Categories
+  const alertCategories = {
+    critical: ['security breach', 'payment fraud'],
+    warning: ['slow response', 'multiple failed logins', 'unusual activity'],
+    info: ['profile incomplete', 'verification pending'],
+    success: ['new user milestone', 'positive feedback trend']
+  };
+
+  // Predictive Analytics Integration
+  const userInsights = {
+    churnRisk: 0.15, // 15% risk based on recent negative reviews
+    engagementScore: 78, // 78/100 engagement score
+    satisfactionTrend: 0.2, // +0.2 trend over last 30 days
+    supportNeeds: 'medium' // low/medium/high support requirement
+  };
+
+  // Enhanced review analysis
+  const analyzeReviewContext = (reviewText, userProfile) => {
+    const sentiment = reviewText.toLowerCase().includes('excellent') || reviewText.toLowerCase().includes('great') ? 'positive' : 'negative';
+    const category = reviewText.toLowerCase().includes('service') ? 'service' : 'platform';
+    const urgency = reviewText.toLowerCase().includes('urgent') || reviewText.toLowerCase().includes('immediate') ? 'high' : 'low';
+    return { sentiment, category, urgency };
+  };
   // Time-based trends (mocked data)
   const trendsData = [
     { month: 'Feb', avg: 4.2 },
@@ -529,8 +581,6 @@ export default function VendorReviewsPage() {
     ],
   };
 
-
-
   // Data configuration state
   const [financialTrackingEnabled, setFinancialTrackingEnabled] = useState(false);
   const [dataSource, setDataSource] = useState('manual'); // 'manual', 'platform', 'external'
@@ -559,6 +609,153 @@ export default function VendorReviewsPage() {
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
+  // Additional state variables for interactive functionality
+  const [modalEmp, setModalEmp] = useState(null);
+  const [openEmpModal, setOpenEmpModal] = useState(false);
+
+  // Enhanced state for new features
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedReview, setSelectedReview] = useState(null);
+  const [showBulkActionModal, setShowBulkActionModal] = useState(false);
+  const [bulkAction, setBulkAction] = useState('');
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFormat, setExportFormat] = useState('csv');
+  const [savedFilters, setSavedFilters] = useState([]);
+  const [currentFilterName, setCurrentFilterName] = useState('');
+  const [showSaveFilterModal, setShowSaveFilterModal] = useState(false);
+
+  // Enhanced filtering logic
+  const enhancedFilteredReviews = reviewFeed.filter(r => {
+    const matchesRating = ratingFilter === 'all' || r.rating === Number(ratingFilter);
+    const matchesEmployee = employeeFilter === 'all' || r.employeeId === Number(employeeFilter);
+    const matchesJobType = jobTypeFilter === 'all' || r.jobType === jobTypeFilter;
+    const matchesSearch = search === '' || 
+      r.reviewer.toLowerCase().includes(search.toLowerCase()) ||
+      r.text.toLowerCase().includes(search.toLowerCase()) ||
+      employees.find(e => e.id === r.employeeId)?.name.toLowerCase().includes(search.toLowerCase());
+    
+    // Date range filtering
+    const reviewDate = new Date(r.date);
+    const matchesDateRange = !dateRange.start || !dateRange.end || 
+      (reviewDate >= new Date(dateRange.start) && reviewDate <= new Date(dateRange.end));
+    
+    // Sentiment filtering
+    const sentiment = r.rating >= 4 ? 'positive' : r.rating <= 2 ? 'negative' : 'neutral';
+    const matchesSentiment = sentimentFilter === 'all' || sentiment === sentimentFilter;
+    
+    return matchesRating && matchesEmployee && matchesJobType && matchesSearch && matchesDateRange && matchesSentiment;
+  });
+
+  // Export functionality
+  const exportReviews = (format) => {
+    const data = enhancedFilteredReviews.map(r => ({
+      Reviewer: r.reviewer,
+      Date: r.date,
+      Rating: r.rating,
+      Employee: employees.find(e => e.id === r.employeeId)?.name || 'N/A',
+      JobType: r.jobType,
+      Review: r.text,
+      CustomerEmail: r.customerEmail
+    }));
+
+    if (format === 'csv') {
+      const csvContent = [
+        Object.keys(data[0]).join(','),
+        ...data.map(row => Object.values(row).map(val => `"${val}"`).join(','))
+      ].join('\n');
+      
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reviews_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+    } else if (format === 'json') {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reviews_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+    }
+    
+    setShowExportModal(false);
+  };
+
+  // Save filter preset
+  const saveFilterPreset = () => {
+    const preset = {
+      name: currentFilterName,
+      filters: {
+        ratingFilter,
+        employeeFilter,
+        jobTypeFilter,
+        search,
+        dateRange,
+        sentimentFilter
+      },
+      createdAt: new Date().toISOString()
+    };
+    setSavedFilters([...savedFilters, preset]);
+    setShowSaveFilterModal(false);
+    setCurrentFilterName('');
+  };
+
+  // Load filter preset
+  const loadFilterPreset = (preset) => {
+    setRatingFilter(preset.filters.ratingFilter);
+    setEmployeeFilter(preset.filters.employeeFilter);
+    setJobTypeFilter(preset.filters.jobTypeFilter);
+    setSearch(preset.filters.search);
+    setDateRange(preset.filters.dateRange);
+    setSentimentFilter(preset.filters.sentimentFilter);
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+A to select all
+      if (e.ctrlKey && e.key === 'a') {
+        e.preventDefault();
+        setSelectedReviews(enhancedFilteredReviews.map(r => r.id));
+      }
+      // Escape to close modals
+      if (e.key === 'Escape') {
+        setOpenEmpModal(false);
+        setOpenCustomerModal(false);
+        setShowReviewModal(false);
+        setShowExportModal(false);
+        setShowSaveFilterModal(false);
+        setShowBulkActionModal(false);
+      }
+      // Ctrl+E to export
+      if (e.ctrlKey && e.key === 'e') {
+        e.preventDefault();
+        setShowExportModal(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [enhancedFilteredReviews]);
+
+  // Real-time metrics calculation
+  const realTimeMetrics = {
+    totalReviews: enhancedFilteredReviews.length,
+    averageRating: enhancedFilteredReviews.length > 0 
+      ? (enhancedFilteredReviews.reduce((sum, r) => sum + r.rating, 0) / enhancedFilteredReviews.length).toFixed(1)
+      : 0,
+    positiveReviews: enhancedFilteredReviews.filter(r => r.rating >= 4).length,
+    negativeReviews: enhancedFilteredReviews.filter(r => r.rating <= 2).length,
+    neutralReviews: enhancedFilteredReviews.filter(r => r.rating === 3).length,
+    sentimentBreakdown: {
+      positive: enhancedFilteredReviews.filter(r => r.rating >= 4).length,
+      neutral: enhancedFilteredReviews.filter(r => r.rating === 3).length,
+      negative: enhancedFilteredReviews.filter(r => r.rating <= 2).length
+    }
+  };
+
   return (
     <div className="p-8 space-y-8">
       {/* Back to Dashboard Button */}
@@ -568,15 +765,108 @@ export default function VendorReviewsPage() {
           Back to Dashboard
         </a>
       </div>
+
+      {/* Real-time Metrics Dashboard */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-purple-100 rounded-lg">
+            <TrendingUp className="w-6 h-6 text-purple-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Real-time Metrics</h2>
+            <p className="text-sm text-gray-600">Live performance indicators</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg">
+            <div className="text-2xl font-bold text-blue-600">{realTimeMetrics.totalReviews}</div>
+            <div className="text-sm text-blue-600">Total Reviews</div>
+          </div>
+          <div className="p-4 bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg">
+            <div className="text-2xl font-bold text-green-600">{realTimeMetrics.averageRating}</div>
+            <div className="text-sm text-green-600">Avg Rating</div>
+          </div>
+          <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-lg">
+            <div className="text-2xl font-bold text-emerald-600">{realTimeMetrics.positiveReviews}</div>
+            <div className="text-sm text-emerald-600">Positive</div>
+          </div>
+          <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-lg">
+            <div className="text-2xl font-bold text-yellow-600">{realTimeMetrics.neutralReviews}</div>
+            <div className="text-sm text-yellow-600">Neutral</div>
+          </div>
+          <div className="p-4 bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-lg">
+            <div className="text-2xl font-bold text-red-600">{realTimeMetrics.negativeReviews}</div>
+            <div className="text-sm text-red-600">Negative</div>
+          </div>
+          <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg">
+            <div className="text-2xl font-bold text-purple-600">{selectedReviews.length}</div>
+            <div className="text-sm text-purple-600">Selected</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sentiment Breakdown Chart */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-indigo-100 rounded-lg">
+            <BarChart2 className="w-6 h-6 text-indigo-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Sentiment Breakdown</h2>
+            <p className="text-sm text-gray-600">Review sentiment analysis</p>
+          </div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-emerald-500 rounded"></div>
+                <span className="text-sm font-medium">Positive (4-5 stars)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-yellow-500 rounded"></div>
+                <span className="text-sm font-medium">Neutral (3 stars)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-red-500 rounded"></div>
+                <span className="text-sm font-medium">Negative (1-2 stars)</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex h-8 rounded-lg overflow-hidden">
+            {realTimeMetrics.totalReviews > 0 && (
+              <>
+                <div 
+                  className="bg-emerald-500 flex items-center justify-center text-white text-xs font-medium"
+                  style={{ width: `${(realTimeMetrics.sentimentBreakdown.positive / realTimeMetrics.totalReviews) * 100}%` }}
+                >
+                  {realTimeMetrics.sentimentBreakdown.positive}
+                </div>
+                <div 
+                  className="bg-yellow-500 flex items-center justify-center text-white text-xs font-medium"
+                  style={{ width: `${(realTimeMetrics.sentimentBreakdown.neutral / realTimeMetrics.totalReviews) * 100}%` }}
+                >
+                  {realTimeMetrics.sentimentBreakdown.neutral}
+                </div>
+                <div 
+                  className="bg-red-500 flex items-center justify-center text-white text-xs font-medium"
+                  style={{ width: `${(realTimeMetrics.sentimentBreakdown.negative / realTimeMetrics.totalReviews) * 100}%` }}
+                >
+                  {realTimeMetrics.sentimentBreakdown.negative}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Data Sources Configuration */}
       <div className="mb-8">
         <div className="bg-gray-50 border border-gray-200 rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
             <Settings className="w-5 h-5 text-gray-600" />
             Data Sources Configuration
-            <SimpleTooltip content="Configure how you want to track your business data. You can enable financial tracking even if you don't use our platform for payments."><Info className="w-5 h-5 text-gray-500 cursor-pointer" /></SimpleTooltip>
           </h2>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Financial Tracking Toggle */}
             <div className="bg-white rounded-lg p-4 shadow border">
@@ -584,7 +874,6 @@ export default function VendorReviewsPage() {
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-4 h-4 text-green-600" />
                   <span className="font-semibold">Financial Tracking</span>
-                  <SimpleTooltip content="Enable this to see financial impact analysis and ROI calculations based on your review data."><Info className="w-4 h-4 text-gray-400 cursor-pointer" /></SimpleTooltip>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input 
@@ -598,13 +887,11 @@ export default function VendorReviewsPage() {
               </div>
               <p className="text-sm text-gray-600">Track revenue, booking rates, and ROI calculations</p>
             </div>
-
             {/* Data Source Selection */}
             <div className="bg-white rounded-lg p-4 shadow border">
               <div className="flex items-center gap-2 mb-3">
                 <Upload className="w-4 h-4 text-blue-600" />
                 <span className="font-semibold">Data Source</span>
-                <SimpleTooltip content="Choose how you want to provide your business data. Manual entry is available for all vendors."><Info className="w-4 h-4 text-gray-400 cursor-pointer" /></SimpleTooltip>
               </div>
               <select 
                 className="w-full p-2 border rounded-md"
@@ -622,7 +909,6 @@ export default function VendorReviewsPage() {
               </p>
             </div>
           </div>
-
           {/* Manual Data Entry Form */}
           {financialTrackingEnabled && dataSource === 'manual' && (
             <div className="mt-6 bg-white rounded-lg p-4 shadow border">
@@ -630,7 +916,6 @@ export default function VendorReviewsPage() {
                 <h3 className="font-semibold flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-blue-600" />
                   Manual Data Entry
-                  <SimpleTooltip content="Enter your business data manually. This will be used for financial impact calculations."><Info className="w-4 h-4 text-gray-400 cursor-pointer" /></SimpleTooltip>
                 </h3>
                 <button 
                   className="text-blue-600 hover:text-blue-800 text-sm"
@@ -639,7 +924,6 @@ export default function VendorReviewsPage() {
                   {showDataEntryForm ? 'Hide Form' : 'Add Data'}
                 </button>
               </div>
-              
               {showDataEntryForm && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -667,13 +951,13 @@ export default function VendorReviewsPage() {
                     <input 
                       type="number" 
                       className="w-full p-2 border rounded-md"
-                      placeholder="e.g., 45"
+                      placeholder="e.g., 200"
                       value={manualData.customerAcquisitionCost}
                       onChange={(e) => setManualData({...manualData, customerAcquisitionCost: e.target.value})}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Investments ($)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Investments ($)</label>
                     <input 
                       type="number" 
                       className="w-full p-2 border rounded-md"
@@ -682,1323 +966,1076 @@ export default function VendorReviewsPage() {
                       onChange={(e) => setManualData({...manualData, investments: e.target.value})}
                     />
                   </div>
-                  <div className="md:col-span-2">
-                    <button className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
-                      Save Data
-                    </button>
-                    <button className="ml-2 text-gray-600 hover:text-gray-800">
-                      Import from CSV
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
           )}
-
-          {/* Data Status Indicator */}
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-blue-600" />
-              <span className="text-sm text-blue-800">
-                {financialTrackingEnabled 
-                  ? `Financial tracking enabled using ${dataSource} data source`
-                  : 'Financial tracking disabled - showing review-only metrics'
-                }
-              </span>
+        </div>
+      </div>
+      {/* Enhanced Alert System & Predictive Analytics Dashboard */}
+      <div className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Alerts */}
+        <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-lg">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <CardTitle className="text-lg text-red-800">Alerts & Warnings</CardTitle>
+                <p className="text-sm text-red-600">Critical issues requiring attention</p>
+              </div>
             </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-red-200">
+              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-red-700">Security breach detected</div>
+                <div className="text-sm text-red-600">Immediate action required</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-yellow-200">
+              <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-yellow-700">Slow response warning</div>
+                <div className="text-sm text-yellow-600">Customer satisfaction at risk</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-blue-200">
+              <Info className="w-5 h-5 text-blue-500 flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-blue-700">Profile incomplete</div>
+                <div className="text-sm text-blue-600">Update required</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-green-200">
+              <ThumbsUp className="w-5 h-5 text-green-500 flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-green-700">Positive feedback trend</div>
+                <div className="text-sm text-green-600">Great job team!</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        {/* Predictive Analytics */}
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-lg">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <BarChart2 className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <CardTitle className="text-lg text-blue-800">Predictive Analytics</CardTitle>
+                <p className="text-sm text-blue-600">AI-powered insights</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-white rounded-lg border border-blue-200">
+                <div className="text-sm text-blue-600 mb-1">Churn Risk</div>
+                <div className="text-2xl font-bold text-red-600">15%</div>
+                <div className="text-xs text-gray-500">Based on recent reviews</div>
+              </div>
+              <div className="p-4 bg-white rounded-lg border border-blue-200">
+                <div className="text-sm text-blue-600 mb-1">Engagement</div>
+                <div className="text-2xl font-bold text-blue-600">78/100</div>
+                <div className="text-xs text-gray-500">Customer engagement score</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-white rounded-lg border border-blue-200">
+                <div className="text-sm text-blue-600 mb-1">Satisfaction</div>
+                <div className="text-2xl font-bold text-green-600">+0.2</div>
+                <div className="text-xs text-gray-500">30-day trend</div>
+              </div>
+              <div className="p-4 bg-white rounded-lg border border-blue-200">
+                <div className="text-sm text-blue-600 mb-1">Support Needs</div>
+                <div className="text-2xl font-bold text-yellow-600">Medium</div>
+                <div className="text-xs text-gray-500">Current level</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      {/* Enhanced Unified Filter System */}
+      <div className="mb-8 bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <Search className="w-5 h-5 text-gray-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Advanced Filters</h3>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowSaveFilterModal(true)}
+              className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Save Filter
+            </button>
+            <select
+              className="px-3 py-1 text-sm border border-gray-300 rounded-lg"
+              onChange={(e) => {
+                const preset = savedFilters.find(f => f.name === e.target.value);
+                if (preset) loadFilterPreset(preset);
+              }}
+              value=""
+            >
+              <option value="">Load Saved Filter</option>
+              {savedFilters.map(filter => (
+                <option key={filter.name} value={filter.name}>{filter.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Rating</label>
+            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value={ratingFilter} onChange={e => setRatingFilter(e.target.value)}>
+              <option value="all">All Ratings</option>
+              <option value="5">5 Stars</option>
+              <option value="4">4 Stars</option>
+              <option value="3">3 Stars</option>
+              <option value="2">2 Stars</option>
+              <option value="1">1 Star</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label>
+            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)}>
+              <option value="all">All Employees</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>{emp.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Job Type</label>
+            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value={jobTypeFilter} onChange={e => setJobTypeFilter(e.target.value)}>
+              <option value="all">All Types</option>
+              {jobTypes.map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Sentiment</label>
+            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value={sentimentFilter} onChange={e => setSentimentFilter(e.target.value)}>
+              <option value="all">All Sentiments</option>
+              <option value="positive">Positive</option>
+              <option value="neutral">Neutral</option>
+              <option value="negative">Negative</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+            <input
+              type="date"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={dateRange.start}
+              onChange={e => setDateRange({...dateRange, start: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+            <input
+              type="date"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={dateRange.end}
+              onChange={e => setDateRange({...dateRange, end: e.target.value})}
+            />
+          </div>
+        </div>
+        
+        <div className="mt-4 flex gap-4">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+            <input 
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
+              placeholder="Search reviews, customers, employees..." 
+            />
+          </div>
+          <div className="flex items-end">
+            <button 
+              onClick={() => {
+                setRatingFilter('all');
+                setEmployeeFilter('all');
+                setJobTypeFilter('all');
+                setSearch('');
+                setDateRange({start: '', end: ''});
+                setSentimentFilter('all');
+              }}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+      </div>
+      {/* Unified Performance Dashboard (conditionally render financial metrics) */}
+      {financialTrackingEnabled && (
+        <div className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-lg">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <BarChart3 className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg text-green-800">Business Performance</CardTitle>
+                  <p className="text-sm text-green-600">Financial impact analysis</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-4">
+                <div className="p-4 bg-white rounded-lg border border-green-200">
+                  <div className="text-sm text-green-600 mb-1">Review Score</div>
+                  <div className="text-2xl font-bold text-green-700">{revenueImpact.reviewScore}</div>
+                </div>
+                <div className="p-4 bg-white rounded-lg border border-green-200">
+                  <div className="text-sm text-green-600 mb-1">Avg Booking Rate</div>
+                  <div className="text-2xl font-bold text-green-700">{(revenueImpact.avgBookingRate * 100).toFixed(1)}%</div>
+                </div>
+                <div className="p-4 bg-white rounded-lg border border-green-200">
+                  <div className="text-sm text-green-600 mb-1">Revenue Change</div>
+                  <div className="text-2xl font-bold text-green-700">${revenueImpact.revenueChange}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 shadow-lg">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <LineChart className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg text-blue-800">Growth Trends</CardTitle>
+                  <p className="text-sm text-blue-600">Monthly performance</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3 items-end h-32">
+                {growth.months.map((month, i) => (
+                  <div key={month} className="flex flex-col items-center flex-1">
+                    <div className="w-full bg-blue-200 rounded-t-lg transition-all duration-300 hover:bg-blue-300" style={{height: `${(growth.reviewScores[i] / 5) * 100}%`}}></div>
+                    <span className="text-xs mt-2 font-medium text-blue-700">{month}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 text-sm text-blue-600">Review scores: {growth.reviewScores.join(" → ")}</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      {/* Enhanced Review List with Smart Actions */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <BarChart2 className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">Review List</h2>
+              <p className="text-sm text-gray-600">
+                {enhancedFilteredReviews.length} reviews found
+                {selectedReviews.length > 0 && ` • ${selectedReviews.length} selected`}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </button>
+          </div>
+        </div>
+        
+        {/* Bulk Action Bar */}
+        {selectedReviews.length > 0 && (
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-medium text-blue-800">{selectedReviews.length} reviews selected</span>
+              <button 
+                className="text-sm text-blue-600 underline hover:text-blue-800" 
+                onClick={() => setSelectedReviews([])}
+              >
+                Clear Selection
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                onClick={() => {
+                  setBulkAction('export');
+                  setShowBulkActionModal(true);
+                }}
+              >
+                Export Selected
+              </button>
+              <button 
+                className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                onClick={() => {
+                  setBulkAction('flag');
+                  setShowBulkActionModal(true);
+                }}
+              >
+                Flag Selected
+              </button>
+            </div>
+          </div>
+        )}
+        
+        <div className="bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                <tr>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                    <input 
+                      type="checkbox" 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedReviews(enhancedFilteredReviews.map(r => r.id));
+                        } else {
+                          setSelectedReviews([]);
+                        }
+                      }}
+                      checked={selectedReviews.length === enhancedFilteredReviews.length && enhancedFilteredReviews.length > 0}
+                    />
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Reviewer</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Date</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Rating</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Employee</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Job Type</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Review</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {enhancedFilteredReviews.map(r => (
+                  <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedReviews.includes(r.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedReviews([...selectedReviews, r.id]);
+                          } else {
+                            setSelectedReviews(selectedReviews.filter(id => id !== r.id));
+                          }
+                        }}
+                      />
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{r.reviewer}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{r.date}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1">
+                        <span className="font-semibold text-gray-900">{r.rating}</span>
+                        <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{employees.find(e => e.id === r.employeeId)?.name || 'N/A'}</td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {r.jobType}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+                      <button
+                        onClick={() => {
+                          setSelectedReview(r);
+                          setShowReviewModal(true);
+                        }}
+                        className="text-left hover:text-blue-600 transition-colors"
+                      >
+                        {r.text}
+                      </button>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col gap-2">
+                        <button
+                          className="text-xs text-blue-600 underline hover:text-blue-800"
+                          onClick={() => { setModalCustomer(r); setOpenCustomerModal(true); }}
+                        >
+                          View Customer
+                        </button>
+                        <button
+                          className="text-xs text-green-600 underline hover:text-green-800"
+                          onClick={() => alert('Note saved!')}
+                        >
+                          Save Note
+                        </button>
+                        <button
+                          className="text-xs text-purple-600 underline hover:text-purple-800"
+                          onClick={() => setCreatedTasks([...createdTasks, r.id])}
+                        >
+                          {createdTasks.includes(r.id) ? 'Task Created' : 'Create Task'}
+                        </button>
+                        <button
+                          className="text-xs text-orange-600 underline hover:text-orange-800"
+                          onClick={() => alert(`Contacting ${r.customerEmail}`)}
+                        >
+                          Contact Customer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {/* Team Management & Accountability (Monthly Performance Reviews) */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-green-100 rounded-lg">
+            <BarChart2 className="w-6 h-6 text-green-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Monthly Employee Performance Reviews</h2>
+            <p className="text-sm text-gray-600">Detailed performance tracking and insights</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {employeePerformance.map(emp => (
+            <Card key={emp.id} className="bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-4">
+                  <img src={employees.find(e => e.id === emp.id)?.photo} alt={emp.name} className="w-12 h-12 rounded-full border-2 border-gray-200" />
+                  <div className="flex-1">
+                    <div className="font-bold text-lg text-gray-900">{emp.name}</div>
+                    <div className="text-sm text-gray-500">{emp.role}</div>
+                    <div className="mt-1">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        emp.performanceLevel === 'Exceeds Expectations' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {emp.performanceLevel}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{emp.avgRating}</div>
+                    <div className="text-xs text-blue-600">Avg Rating</div>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{emp.completionRate}%</div>
+                    <div className="text-xs text-green-600">Completion</div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Response Time:</span>
+                    <span className="font-semibold">{emp.responseTime}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Reviews:</span>
+                    <span className="font-semibold">{emp.reviewCount}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Next Review:</span>
+                    <span className="font-semibold">{emp.nextReviewDate}</span>
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-gray-200">
+                  <div className="text-sm font-semibold text-gray-700 mb-2">Strengths:</div>
+                  <div className="text-sm text-green-700">{emp.strengths.join(", ")}</div>
+                  <div className="text-sm font-semibold text-gray-700 mb-2 mt-3">Areas for Improvement:</div>
+                  <div className="text-sm text-red-700">{emp.areasForImprovement.join(", ")}</div>
+                  <div className="mt-3">
+                    <button 
+                      className="text-xs text-blue-600 underline hover:text-blue-800" 
+                      onClick={() => { setModalEmp(emp); setOpenEmpModal(true); }}
+                    >
+                      View All Details
+                    </button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+      {/* Customer Recovery Tools */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-red-100 rounded-lg">
+            <BarChart2 className="w-6 h-6 text-red-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Customer Recovery Tools</h2>
+            <p className="text-sm text-gray-600">Proactive customer retention strategies</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-red-800">Recovery Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {recoveryActions.map(a => (
+                <div key={a.id} className="p-4 bg-white rounded-lg border border-red-200">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="font-semibold text-red-800">{a.action}</div>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      a.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                      a.status === 'In Progress' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {a.status}
+                    </span>
+                  </div>
+                  <div className="text-sm text-blue-600 mb-1">Customer: {a.customerName}</div>
+                  <div className="text-xs text-gray-500">Due: {a.dueDate} | Priority: {a.priority}</div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-green-800">Recovery Analytics</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-4 bg-white rounded-lg border border-green-200">
+                  <div className="text-3xl font-bold text-green-600">{recoveryAnalytics.overallSuccessRate}%</div>
+                  <div className="text-sm text-green-600">Success Rate</div>
+                </div>
+                <div className="text-center p-4 bg-white rounded-lg border border-green-200">
+                  <div className="text-3xl font-bold text-green-600">{recoveryAnalytics.avgRatingImprovement}</div>
+                  <div className="text-sm text-green-600">Rating Improvement</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-4 bg-white rounded-lg border border-green-200">
+                  <div className="text-3xl font-bold text-green-600">{recoveryAnalytics.customerRetentionRate}%</div>
+                  <div className="text-sm text-green-600">Retention Rate</div>
+                </div>
+                <div className="text-center p-4 bg-white rounded-lg border border-green-200">
+                  <div className="text-3xl font-bold text-green-600">{recoveryAnalytics.totalRecovered}</div>
+                  <div className="text-sm text-green-600">Total Recovered</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      {/* Customer Relationship Management */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-purple-100 rounded-lg">
+            <BarChart2 className="w-6 h-6 text-purple-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Customer Segments</h2>
+            <p className="text-sm text-gray-600">Strategic customer categorization</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {customerSegments.map(seg => (
+            <Card key={seg.segment} className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 shadow-lg hover:shadow-xl transition-shadow">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-purple-800 text-lg">{seg.segment}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-center p-3 bg-white rounded-lg border border-purple-200">
+                  <div className="text-3xl font-bold text-purple-600">{seg.count}</div>
+                  <div className="text-sm text-purple-600">Customers</div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center p-2 bg-white rounded border border-purple-200">
+                    <div className="text-lg font-bold text-purple-600">{seg.avgRating}</div>
+                    <div className="text-xs text-purple-600">Avg Rating</div>
+                  </div>
+                  <div className="text-center p-2 bg-white rounded border border-purple-200">
+                    <div className="text-lg font-bold text-purple-600">{seg.avgReviews}</div>
+                    <div className="text-xs text-purple-600">Avg Reviews</div>
+                  </div>
+                </div>
+                <div className="text-xs text-purple-600 text-center">{seg.lastActivity}</div>
+                <div className="text-xs text-gray-500 text-center">{seg.criteria}</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+      {/* Strategic Decision-Making Tools */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-orange-100 rounded-lg">
+            <BarChart2 className="w-6 h-6 text-orange-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Service Performance</h2>
+            <p className="text-sm text-gray-600">Data-driven service insights</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-orange-800">Service Performance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {servicePerformance.map(s => (
+                <div key={s.service} className="p-4 bg-white rounded-lg border border-orange-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-semibold text-orange-800">{s.service}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold">{s.avgRating}</span>
+                      <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                    </div>
+                  </div>
+                  <div className="text-sm text-gray-600">{s.reviewCount} reviews</div>
+                  {s.hasFinancialData && s.revenue && (
+                    <div className="text-sm font-semibold text-green-600">${s.revenue} revenue</div>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-orange-800">Pricing Impact</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pricingImpact.map(p => (
+                <div key={p.priceRange} className="p-4 bg-white rounded-lg border border-orange-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-semibold text-orange-800">{p.priceRange}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold">{p.avgRating}</span>
+                      <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                    </div>
+                  </div>
+                  {p.hasFinancialData && p.bookingRate && (
+                    <div className="text-sm font-semibold text-green-600">{(p.bookingRate * 100).toFixed(1)}% booking rate</div>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      {/* Internal Notes & Task Management */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-gray-100 rounded-lg">
+            <BarChart2 className="w-6 h-6 text-gray-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Internal Notes & Tasks</h2>
+            <p className="text-sm text-gray-600">Team collaboration tools</p>
+          </div>
+        </div>
+        <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl shadow-lg p-6">
+          <div className="text-center">
+            <div className="text-lg font-semibold text-gray-700 mb-2">Add notes or tasks to reviews</div>
+            <div className="text-sm text-gray-500">Feature coming soon</div>
+          </div>
+        </div>
+      </div>
+      {/* Media Viewing (if any) */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-pink-100 rounded-lg">
+            <BarChart2 className="w-6 h-6 text-pink-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">Media Viewing</h2>
+            <p className="text-sm text-gray-600">Review media content</p>
+          </div>
+        </div>
+        <div className="bg-gradient-to-br from-pink-50 to-pink-100 border border-pink-200 rounded-xl shadow-lg p-6">
+          <div className="text-center">
+            <div className="text-lg font-semibold text-gray-700 mb-2">Media content for reviews</div>
+            <div className="text-sm text-gray-500">Feature coming soon</div>
           </div>
         </div>
       </div>
 
-      {/* Business Performance Dashboard - Conditional */}
-      {financialTrackingEnabled && (
-        <div className="mb-8">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              Business Performance Dashboard
-              <SimpleTooltip content="This dashboard shows how your reviews impact your business performance and growth. All metrics are visible only to managers."><Info className="w-5 h-5 text-blue-500 cursor-pointer" /></SimpleTooltip>
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Revenue Impact */}
-              <div className="bg-white rounded-lg p-4 shadow flex flex-col gap-2 border border-blue-100">
-                <div className="flex items-center gap-2 font-semibold">
-                  Revenue Impact
-                  <SimpleTooltip content="Shows how your average review score affects your booking rate and revenue."><Info className="w-4 h-4 text-blue-400 cursor-pointer" /></SimpleTooltip>
-                </div>
-                <div className="text-2xl font-bold text-blue-700">${revenueImpact.revenueChange.toLocaleString()}</div>
-                <div className="text-sm text-gray-600">Review Score: <span className="font-semibold">{revenueImpact.reviewScore}</span></div>
-                <div className="text-sm text-gray-600">Avg. Booking Rate: <span className="font-semibold">{(revenueImpact.avgBookingRate * 100).toFixed(1)}%</span></div>
-                {dataSource === 'manual' && <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">Manual Data</div>}
+      {/* Keyboard Shortcuts Help */}
+      <div className="fixed bottom-4 right-4 bg-gray-900 text-white p-3 rounded-lg shadow-lg opacity-0 hover:opacity-100 transition-opacity group">
+        <div className="text-xs">
+          <div className="font-semibold mb-1">Keyboard Shortcuts</div>
+          <div>Ctrl+A: Select All</div>
+          <div>Ctrl+E: Export</div>
+          <div>Esc: Close Modals</div>
+        </div>
+      </div>
+
+      {/* MODALS */}
+
+      {/* Employee Performance Modal */}
+      {openEmpModal && modalEmp && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900">Employee Performance Details</h2>
+                <button
+                  onClick={() => setOpenEmpModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
               </div>
-              {/* Customer Acquisition Cost */}
-              <div className="bg-white rounded-lg p-4 shadow flex flex-col gap-2 border border-blue-100">
-                <div className="flex items-center gap-2 font-semibold">
-                  Customer Acquisition Cost
-                  <SimpleTooltip content="Shows your average cost to acquire a new customer and how reviews influence it."><Info className="w-4 h-4 text-blue-400 cursor-pointer" /></SimpleTooltip>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Performance Overview</h3>
+                  <div className="space-y-4">
+                    <div className="p-4 bg-blue-50 rounded-lg">
+                      <div className="text-2xl font-bold text-blue-600">{modalEmp.avgRating}</div>
+                      <div className="text-sm text-blue-600">Average Rating</div>
+                    </div>
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600">{modalEmp.completionRate}%</div>
+                      <div className="text-sm text-green-600">Completion Rate</div>
+                    </div>
+                    <div className="p-4 bg-purple-50 rounded-lg">
+                      <div className="text-2xl font-bold text-purple-600">{modalEmp.reviewCount}</div>
+                      <div className="text-sm text-purple-600">Total Reviews</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-2xl font-bold text-blue-700">${customerAcquisition.avgCAC.toFixed(2)}</div>
-                <div className="text-sm text-gray-600">Review Influence: <span className="font-semibold">{(customerAcquisition.reviewInfluence * 100).toFixed(1)}%</span></div>
-                {dataSource === 'manual' && <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">Manual Data</div>}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Monthly Performance</h3>
+                  <div className="space-y-2">
+                    {modalEmp.monthlyPerformance.map(mp => (
+                      <div key={mp.month} className="p-3 bg-gray-50 rounded-lg">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">{mp.month}</span>
+                          <span className="text-sm text-gray-600">{mp.rating} stars</span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {mp.reviews} reviews • {mp.responseTime} response • {mp.completion}% complete
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              {/* Competitive Benchmarking */}
-              <div className="bg-white rounded-lg p-4 shadow flex flex-col gap-2 border border-blue-100">
-                <div className="flex items-center gap-2 font-semibold">
-                  Competitive Benchmarking
-                  <SimpleTooltip content="Compares your review score to the average of your local competitors."><Info className="w-4 h-4 text-blue-400 cursor-pointer" /></SimpleTooltip>
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-semibold mb-4">Strengths & Areas for Improvement</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="font-semibold text-green-700 mb-2">Strengths</h4>
+                    <ul className="space-y-1">
+                      {modalEmp.strengths.map((strength, index) => (
+                        <li key={index} className="text-sm text-green-600 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          {strength}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-red-700 mb-2">Areas for Improvement</h4>
+                    <ul className="space-y-1">
+                      {modalEmp.areasForImprovement.map((area, index) => (
+                        <li key={index} className="text-sm text-red-600 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4" />
+                          {area}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-                <div className="text-2xl font-bold text-blue-700">{benchmarking.yourScore} <span className="text-gray-500 text-base">/ {benchmarking.competitorAvg}</span></div>
-                <div className="text-sm text-gray-600">Percentile: <span className="font-semibold">Top {benchmarking.percentile}%</span></div>
-              </div>
-              {/* Business Growth */}
-              <div className="bg-white rounded-lg p-4 shadow flex flex-col gap-2 border border-blue-100">
-                <div className="flex items-center gap-2 font-semibold">
-                  Business Growth
-                  <SimpleTooltip content="Shows your review score, bookings, and revenue growth over the last 5 months."><Info className="w-4 h-4 text-blue-400 cursor-pointer" /></SimpleTooltip>
-                </div>
-                <div className="text-sm text-gray-600">Review Scores: <span className="font-semibold">{growth.reviewScores.join(", ")}</span></div>
-                <div className="text-sm text-gray-600">Bookings: <span className="font-semibold">{growth.bookings.join(", ")}</span></div>
-                <div className="text-sm text-gray-600">Revenue: <span className="font-semibold">${growth.revenue[growth.revenue.length-1].toLocaleString()}</span></div>
-                {dataSource === 'manual' && <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">Manual Data</div>}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Non-Financial Performance Overview - Always Visible */}
-      <div className="mb-8">
-        <div className="bg-purple-50 border border-purple-200 rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            Review Performance Overview
-            <SimpleTooltip content="Core review metrics that don't require financial data. Available to all vendors."><Info className="w-5 h-5 text-purple-500 cursor-pointer" /></SimpleTooltip>
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Average Rating */}
-            <div className="bg-white rounded-lg p-4 shadow flex flex-col gap-2 border border-purple-100">
-              <div className="flex items-center gap-2 font-semibold">
-                Average Rating
-                <SimpleTooltip content="Your overall customer satisfaction score based on all reviews."><Info className="w-4 h-4 text-purple-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="flex items-center text-3xl font-bold">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className={`w-7 h-7 ${i < Math.floor(4.6) ? 'text-yellow-400' : 'text-gray-300'}`} fill={i < Math.round(4.6) ? '#facc15' : 'none'} />
-                ))}
-                <span className="ml-2 text-2xl text-gray-700">4.6</span>
-              </div>
-              <div className="text-sm text-gray-600">
-                <span className="font-semibold text-2xl text-purple-700">128</span> total reviews
+      {/* Customer Information Modal */}
+      {openCustomerModal && modalCustomer && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900">Customer Information</h2>
+                <button
+                  onClick={() => setOpenCustomerModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
               </div>
             </div>
-            {/* Response Rate */}
-            <div className="bg-white rounded-lg p-4 shadow flex flex-col gap-2 border border-purple-100">
-              <div className="flex items-center gap-2 font-semibold">
-                Response Rate
-                <SimpleTooltip content="Percentage of reviews you've responded to within 24 hours."><Info className="w-4 h-4 text-purple-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="text-2xl font-bold text-purple-700">87%</div>
-              <div className="text-sm text-gray-600">24-hour response target</div>
-            </div>
-            {/* Customer Satisfaction */}
-            <div className="bg-white rounded-lg p-4 shadow flex flex-col gap-2 border border-purple-100">
-              <div className="flex items-center gap-2 font-semibold">
-                Customer Satisfaction
-                <SimpleTooltip content="Percentage of customers who would recommend your services."><Info className="w-4 h-4 text-purple-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="text-2xl font-bold text-purple-700">94%</div>
-              <div className="text-sm text-gray-600">Would recommend</div>
-            </div>
-            {/* Review Velocity */}
-            <div className="bg-white rounded-lg p-4 shadow flex flex-col gap-2 border border-purple-100">
-              <div className="flex items-center gap-2 font-semibold">
-                Review Velocity
-                <SimpleTooltip content="Average number of reviews received per month."><Info className="w-4 h-4 text-purple-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="text-2xl font-bold text-purple-700">21</div>
-              <div className="text-sm text-gray-600">reviews/month</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Strategic Decision-Making Tools */}
-      <div className="mb-8">
-        <div className="bg-green-50 border border-green-200 rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            Strategic Decision-Making Tools
-            <SimpleTooltip content="These tools help you make informed business decisions about services, pricing, and operations based on review data."><Info className="w-5 h-5 text-green-500 cursor-pointer" /></SimpleTooltip>
-          </h2>
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-            <Info className="w-4 h-4 inline mr-2" />
-            <strong>Note:</strong> Financial data is only available for services processed through our platform. Services with external billing will show "External billing" instead of dollar amounts.
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Service Performance Analysis */}
-            <div className="bg-white rounded-lg p-4 shadow border border-green-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Service Performance Analysis
-                <SimpleTooltip content="Compare review scores and revenue across different services to identify your best and worst performing areas."><Info className="w-4 h-4 text-green-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="space-y-2">
-                {servicePerformance.map((service, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <div>
-                      <div className="font-medium">{service.service}</div>
-                      <div className="text-sm text-gray-600">{service.reviewCount} reviews</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-semibold text-green-600">{service.avgRating} ★</div>
-                      {service.hasFinancialData ? (
-                        <div className="text-sm text-gray-600">${service.revenue.toLocaleString()}</div>
-                      ) : (
-                        <div className="text-sm text-gray-400 italic">External billing</div>
-                      )}
-                    </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <User className="w-5 h-5 text-gray-600" />
+                  <div>
+                    <div className="font-semibold">{modalCustomer.reviewer}</div>
+                    <div className="text-sm text-gray-600">Customer</div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Pricing Impact Analysis */}
-            <div className="bg-white rounded-lg p-4 shadow border border-green-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Pricing Impact Analysis
-                <SimpleTooltip content="See how different price points affect your review scores and booking rates to optimize your pricing strategy."><Info className="w-4 h-4 text-green-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="space-y-2">
-                {pricingImpact.map((price, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <div className="font-medium">{price.priceRange}</div>
-                    <div className="text-right">
-                      <div className="font-semibold text-green-600">{price.avgRating} ★</div>
-                      {price.hasFinancialData ? (
-                        <div className="text-sm text-gray-600">{(price.bookingRate * 100).toFixed(1)}% bookings</div>
-                      ) : (
-                        <div className="text-sm text-gray-400 italic">External billing</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Geographic Performance */}
-            <div className="bg-white rounded-lg p-4 shadow border border-green-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Geographic Performance
-                <SimpleTooltip content="Track review scores by service area to identify where you excel and where you need to improve."><Info className="w-4 h-4 text-green-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="space-y-2">
-                {geographicPerformance.map((area, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <div className="font-medium">{area.area}</div>
-                    <div className="text-right">
-                      <div className="font-semibold text-green-600">{area.avgRating} ★</div>
-                      <div className="text-sm text-gray-600">{area.jobs} jobs</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Seasonal Trends */}
-            <div className="bg-white rounded-lg p-4 shadow border border-green-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Seasonal Trends
-                <SimpleTooltip content="Identify seasonal patterns in review scores to plan staffing and marketing strategies."><Info className="w-4 h-4 text-green-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="space-y-2">
-                {seasonalTrends.map((season, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <div className="font-medium">{season.season}</div>
-                    <div className="text-right">
-                      <div className="font-semibold text-green-600">{season.avgRating} ★</div>
-                      <div className="text-sm text-gray-600">{season.jobs} jobs</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ROI of Improvements */}
-          <div className="mt-6 bg-white rounded-lg p-4 shadow border border-green-100">
-            <div className="flex items-center gap-2 font-semibold mb-3">
-              ROI of Improvements
-              <SimpleTooltip content="Track the return on investment for improvements made based on review feedback."><Info className="w-4 h-4 text-green-400 cursor-pointer" /></SimpleTooltip>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {roiImprovements.map((improvement, index) => (
-                <div key={index} className="p-3 bg-gray-50 rounded border">
-                  <div className="font-medium text-green-700">{improvement.improvement}</div>
-                  {improvement.hasFinancialData ? (
-                    <>
-                      <div className="text-sm text-gray-600">Investment: ${improvement.investment}</div>
-                      <div className="text-sm text-gray-600">Revenue Increase: ${improvement.revenueIncrease}</div>
-                      <div className="font-semibold text-green-600">ROI: {improvement.roi}%</div>
-                    </>
-                  ) : (
-                    <div className="text-sm text-gray-400 italic">External billing - financial data not available</div>
-                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Team Management & Accountability */}
-      <div className="mb-8">
-        <div className="bg-orange-50 border border-orange-200 rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            Team Management & Accountability
-            <SimpleTooltip content="Manage employee performance, track training needs, and implement performance goals based on review data."><Info className="w-5 h-5 text-orange-500 cursor-pointer" /></SimpleTooltip>
-          </h2>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Employee Performance Reviews */}
-            <div className="bg-white rounded-lg p-4 shadow border border-orange-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Employee Performance Reviews
-                <SimpleTooltip content="Track individual employee performance based on review scores and operational metrics."><Info className="w-4 h-4 text-orange-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="space-y-3">
-                {employeePerformance.map((employee) => (
-                  <div key={employee.id} className="p-3 bg-gray-50 rounded border">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <div className="font-medium">{employee.name}</div>
-                        <div className="text-sm text-gray-600">{employee.role}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold text-orange-600">{employee.avgRating} ★</div>
-                        <div className="text-sm text-gray-600">{employee.reviewCount} reviews</div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                      <div>Response: {employee.responseTime}</div>
-                      <div>Completion: {employee.completionRate}%</div>
-                      <div>Goal: {employee.performanceGoal} ★</div>
-                      <div>Last Review: {employee.lastReview}</div>
-                    </div>
+                <div className="flex items-center gap-3">
+                  <Mail className="w-5 h-5 text-gray-600" />
+                  <div>
+                    <div className="font-semibold">{modalCustomer.customerEmail}</div>
+                    <div className="text-sm text-gray-600">Email</div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Training Needs Analysis */}
-            <div className="bg-white rounded-lg p-4 shadow border border-orange-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Training Needs Analysis
-                <SimpleTooltip content="Identify training needs based on review patterns and employee performance gaps."><Info className="w-4 h-4 text-orange-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="space-y-3">
-                {employeePerformance.map((employee) => (
-                  <div key={employee.id} className="p-3 bg-gray-50 rounded border">
-                    <div className="font-medium mb-2">{employee.name}</div>
-                    <div className="space-y-1">
-                      {employee.trainingNeeded.map((training, index) => (
-                        <div key={index} className="text-sm text-red-600 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
-                          {training}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Hiring Insights */}
-            <div className="bg-white rounded-lg p-4 shadow border border-orange-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Hiring Insights
-                <SimpleTooltip content="Data-driven insights to inform hiring decisions and improve team performance."><Info className="w-4 h-4 text-orange-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="space-y-3">
-                {hiringInsights.map((insight, index) => (
-                  <div key={index} className="p-3 bg-gray-50 rounded border">
-                    <div className="text-sm text-gray-700 mb-2">{insight.insight}</div>
-                    <div className="flex justify-between items-center">
-                      <div className="text-xs text-gray-500">Confidence</div>
-                      <div className="text-xs font-semibold text-blue-600">{insight.confidence}%</div>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                      <div className="bg-blue-600 h-2 rounded-full" style={{width: `${insight.confidence}%`}}></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Performance Goals & Tracking */}
-            <div className="bg-white rounded-lg p-4 shadow border border-orange-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Performance Goals & Tracking
-                <SimpleTooltip content="Set and track performance goals for individual employees and the team."><Info className="w-4 h-4 text-orange-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded border">
-                  <div className="font-medium text-orange-700">Team Average Goal</div>
-                  <div className="text-2xl font-bold text-orange-600">4.6 ★</div>
-                  <div className="text-sm text-gray-600">Current: 4.5 ★</div>
-                  <div className="text-xs text-green-600 mt-1">+0.1 to goal</div>
                 </div>
-                <div className="p-3 bg-gray-50 rounded border">
-                  <div className="font-medium text-orange-700">Response Time Goal</div>
-                  <div className="text-2xl font-bold text-orange-600">1.5h</div>
-                  <div className="text-sm text-gray-600">Current: 1.7h</div>
-                  <div className="text-xs text-red-600 mt-1">-0.2h to goal</div>
+                <div className="flex items-center gap-3">
+                  <CalendarIcon className="w-5 h-5 text-gray-600" />
+                  <div>
+                    <div className="font-semibold">{modalCustomer.date}</div>
+                    <div className="text-sm text-gray-600">Review Date</div>
+                  </div>
                 </div>
-                <div className="p-3 bg-gray-50 rounded border">
-                  <div className="font-medium text-orange-700">Completion Rate Goal</div>
-                  <div className="text-2xl font-bold text-orange-600">95%</div>
-                  <div className="text-sm text-gray-600">Current: 95%</div>
-                  <div className="text-xs text-green-600 mt-1">Goal achieved!</div>
+                <div className="flex items-center gap-3">
+                  <Star className="w-5 h-5 text-gray-600" />
+                  <div>
+                    <div className="font-semibold">{modalCustomer.rating} Stars</div>
+                    <div className="text-sm text-gray-600">Rating</div>
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-gray-200">
+                  <h3 className="font-semibold mb-2">Review</h3>
+                  <p className="text-gray-700">{modalCustomer.text}</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Customer Relationship Management */}
-      <div className="mb-8">
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            Customer Relationship Management
-            <SimpleTooltip content="Manage customer relationships, track lifetime value, and implement recovery strategies based on review data."><Info className="w-5 h-5 text-indigo-500 cursor-pointer" /></SimpleTooltip>
-          </h2>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Customer Lifetime Value */}
-            <div className="bg-white rounded-lg p-4 shadow border border-indigo-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Customer Engagement Analysis
-                <SimpleTooltip content="Track customer engagement and identify VIP customers based on review behavior and activity patterns."><Info className="w-4 h-4 text-indigo-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              <div className="space-y-3">
-                {customerInsights.map((customer) => (
-                  <div key={customer.id} className="p-3 bg-gray-50 rounded border">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <div className="font-medium">{customer.name}</div>
-                        <div className="text-sm text-gray-600">{customer.email}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold text-indigo-600">{customer.engagementScore}%</div>
-                        <div className="text-sm text-gray-600">{customer.totalJobs} jobs</div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                      <div>Rating: {customer.avgRating} ★</div>
-                      <div>Status: <span className={`px-2 py-1 rounded text-xs ${
-                        customer.status === 'VIP' ? 'bg-green-100 text-green-700' :
-                        customer.status === 'At Risk' ? 'bg-red-100 text-red-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>{customer.status}</span></div>
-                      <div>Reviews: {customer.totalReviews}</div>
-                      <div>Risk: <span className={`px-2 py-1 rounded text-xs ${
-                        customer.riskLevel === 'Low' ? 'bg-green-100 text-green-700' :
-                        customer.riskLevel === 'High' ? 'bg-red-100 text-red-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }`}>{customer.riskLevel}</span></div>
-                      <div>Last Job: {customer.lastJob}</div>
-                    </div>
-                  </div>
-                ))}
+      {/* Review Detail Modal */}
+      {showReviewModal && selectedReview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full mx-4">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900">Review Details</h2>
+                <button
+                  onClick={() => setShowReviewModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
               </div>
             </div>
-
-            {/* Customer Segmentation */}
-            <div className="bg-white rounded-lg p-4 shadow border border-indigo-100">
-              <div className="flex items-center gap-2 font-semibold mb-3">
-                Customer Segmentation
-                <SimpleTooltip content="View customers by segments based on review behavior and engagement patterns, not financial data."><Info className="w-4 h-4 text-indigo-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-              
-              {/* Categorization Rules */}
-              <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
-                <div className="font-medium text-blue-800 mb-2">Categorization Rules</div>
-                <div className="text-sm text-blue-700 space-y-1">
-                  <div>• <strong>VIP:</strong> 5+ reviews, 4.5+ avg rating, active in last 3 months</div>
-                  <div>• <strong>Regular:</strong> 2-4 reviews, 4.0+ avg rating, active in last 6 months</div>
-                  <div>• <strong>At Risk:</strong> Below 4.0 avg rating OR no activity in 6+ months</div>
-                  <div>• <strong>New:</strong> 1-2 reviews, joined in last 3 months</div>
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                {customerSegments.map((segment, index) => (
-                  <div key={index} className="p-3 bg-gray-50 rounded border">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="font-medium">{segment.segment}</div>
-                      <div className="text-sm font-semibold text-indigo-600">{segment.count} customers</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-2">
-                      <div>Avg Rating: {segment.avgRating} ★</div>
-                      <div>Avg Reviews: {segment.avgReviews}</div>
-                      <div>Last Activity: {segment.lastActivity}</div>
-                    </div>
-                    <div className="text-xs text-gray-500 italic">{segment.criteria}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Customer Recovery Tools */}
-            <div className="bg-white rounded-lg p-4 shadow border border-indigo-100">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 font-semibold">
-                  Customer Recovery Tools
-                  <SimpleTooltip content="Track and manage recovery actions for customers at risk of churning."><Info className="w-4 h-4 text-indigo-400 cursor-pointer" /></SimpleTooltip>
-                </div>
-                <div className="flex gap-2">
-                  <select 
-                    value={priorityFilter} 
-                    onChange={(e) => setPriorityFilter(e.target.value)}
-                    className="text-xs border rounded px-2 py-1"
-                  >
-                    <option value="All">All Priorities</option>
-                    <option value="High">High Priority</option>
-                    <option value="Medium">Medium Priority</option>
-                    <option value="Low">Low Priority</option>
-                  </select>
-                  <select 
-                    value={statusFilter} 
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="text-xs border rounded px-2 py-1"
-                  >
-                    <option value="All">All Status</option>
-                    <option value="Pending">Pending</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                  </select>
-                </div>
-              </div>
-              
-              {/* Automated Triggers Section */}
-              <div className="mb-4 p-3 bg-green-50 rounded border border-green-200">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-medium text-green-800">Automated Triggers</div>
-                  <button 
-                    onClick={() => setShowTriggersModal(true)}
-                    className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
-                  >
-                    Configure Rules
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {autoTriggers.map((trigger) => (
-                    <div key={trigger.id} className="flex items-center justify-between text-xs">
-                      <div>
-                        <span className="font-medium">{trigger.name}</span>
-                        <span className="text-gray-600 ml-2">({trigger.condition})</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded ${
-                          trigger.priority === 'High' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                        }`}>{trigger.priority}</span>
-                        <span className="text-gray-500">Last: {trigger.lastTriggered}</span>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" className="sr-only peer" checked={trigger.enabled} />
-                          <div className="w-6 h-3 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[0px] after:left-[0px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600"></div>
-                        </label>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="space-y-3 mb-4">
-                {recoveryActions
-                  .filter(action => 
-                    (priorityFilter === 'All' || action.priority === priorityFilter) &&
-                    (statusFilter === 'All' || action.status === statusFilter)
-                  )
-                  .slice(0, 3)
-                  .map((action) => (
-                  <div key={action.id} className="p-3 bg-gray-50 rounded border">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <div className="font-medium text-indigo-700">{action.action}</div>
-                        <div className="text-sm text-gray-700">{action.customerName} ({action.customerEmail})</div>
-                        <div className="text-xs text-gray-600 mt-1">{action.reason}</div>
-                      </div>
-                      <div className="text-right ml-4">
-                        <div className={`text-xs px-2 py-1 rounded mb-1 ${
-                          action.priority === 'High' ? 'bg-red-100 text-red-700' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>{action.priority}</div>
-                        <div className={`text-xs px-2 py-1 rounded ${
-                          action.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                          action.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>{action.status}</div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-2">
-                      <div>Assigned to: {action.assignedTo}</div>
-                      <div>Due: {action.dueDate}</div>
-                    </div>
-                    <div className="text-xs text-gray-500 italic mb-2">{action.template}</div>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => {
-                          setSelectedAction(action);
-                          setShowStatusUpdateModal(true);
-                        }}
-                        className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
-                      >
-                        Update Status
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setSelectedAction(action);
-                          // Mark as complete logic would go here
-                          alert(`Marked "${action.action}" for ${action.customerName} as complete!`);
-                        }}
-                        className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
-                      >
-                        Mark Complete
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setSelectedAction(action);
-                          setShowEmailModal(true);
-                        }}
-                        className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
-                      >
-                        Send Email
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setSelectedAction(action);
-                          setShowSMSModal(true);
-                        }}
-                        className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700"
-                      >
-                        Send SMS
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setSelectedCustomer(customerInsights.find(c => c.email === action.customerEmail));
-                          setShowCustomerModal(true);
-                        }}
-                        className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-700"
-                      >
-                        View Customer
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              {/* Recovery Success Analytics */}
-              <div className="border-t pt-3 mb-3">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium">Recovery Success Analytics</span>
-                  <button 
-                    onClick={() => setShowDetailedReport(true)}
-                    className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
-                  >
-                    View Detailed Report
-                  </button>
-                </div>
-                
-                {/* Overall Metrics */}
-                <div className="grid grid-cols-4 gap-4 text-xs mb-3">
-                  <div className="text-center p-2 bg-green-50 rounded">
-                    <div className="font-semibold text-green-700">{recoveryAnalytics.overallSuccessRate}%</div>
-                    <div className="text-gray-600">Success Rate</div>
-                  </div>
-                  <div className="text-center p-2 bg-blue-50 rounded">
-                    <div className="font-semibold text-blue-700">+{recoveryAnalytics.avgRatingImprovement}</div>
-                    <div className="text-gray-600">Avg Rating Improvement</div>
-                  </div>
-                  <div className="text-center p-2 bg-purple-50 rounded">
-                    <div className="font-semibold text-purple-700">{recoveryAnalytics.customerRetentionRate}%</div>
-                    <div className="text-gray-600">Retention Rate</div>
-                  </div>
-                  <div className="text-center p-2 bg-orange-50 rounded">
-                    <div className="font-semibold text-orange-700">{recoveryAnalytics.avgResponseTime}</div>
-                    <div className="text-gray-600">Avg Response Time</div>
-                  </div>
-                </div>
-                
-                {/* Success by Method */}
-                <div className="mb-3">
-                  <div className="text-xs font-medium mb-2">Success by Recovery Method:</div>
-                  <div className="space-y-1">
-                    {recoveryAnalytics.byMethod.map((method, index) => (
-                      <div key={index} className="flex items-center justify-between text-xs">
-                        <span>{method.method}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-green-600">{method.successRate}%</span>
-                          <span className="text-blue-600">+{method.avgImprovement} rating</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* Employee Performance */}
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <div className="text-xs font-medium mb-2">Employee Performance:</div>
-                  <div className="space-y-1">
-                    {recoveryAnalytics.byEmployee.map((emp, index) => (
-                      <div key={index} className="flex items-center justify-between text-xs">
-                        <span>{emp.employee}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-green-600">{emp.successRate}%</span>
-                          <span className="text-gray-600">({emp.actionsCompleted} actions)</span>
-                        </div>
+                  <h3 className="font-semibold mb-4">Review Information</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Reviewer</label>
+                      <div className="font-semibold">{selectedReview.reviewer}</div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Date</label>
+                      <div className="font-semibold">{selectedReview.date}</div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Rating</label>
+                      <div className="flex items-center gap-1">
+                        <span className="font-semibold">{selectedReview.rating}</span>
+                        <Star className="w-4 h-4 text-yellow-400 fill-current" />
                       </div>
-                    ))}
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Employee</label>
+                      <div className="font-semibold">{employees.find(e => e.id === selectedReview.employeeId)?.name || 'N/A'}</div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-600">Job Type</label>
+                      <div className="font-semibold">{selectedReview.jobType}</div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="font-semibold mb-4">Review Content</h3>
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-gray-700 leading-relaxed">{selectedReview.text}</p>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                      Contact Customer
+                    </button>
+                    <button className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                      Save Note
+                    </button>
+                    <button className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                      Create Task
+                    </button>
                   </div>
                 </div>
               </div>
-              
-              {/* Quick Actions */}
-              <div className="border-t pt-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-medium">Quick Actions:</span>
-                  <button 
-                    onClick={() => setShowRecoveryModal(true)}
-                    className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
-                  >
-                    Create Recovery Action
-                  </button>
-                  <button 
-                    onClick={() => setShowAllActions(true)}
-                    className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
-                  >
-                    View All Actions ({recoveryActions.length})
-                  </button>
-                  <button 
-                    onClick={() => setShowTemplatesModal(true)}
-                    className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
-                  >
-                    Recovery Templates
-                  </button>
-                  <button 
-                    onClick={() => setShowTriggersModal(true)}
-                    className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700"
-                  >
-                    Auto-Trigger Rules
-                  </button>
-                </div>
-              </div>
             </div>
-
-
           </div>
-
-
         </div>
-      </div>
+      )}
 
-      {/* Review Feed */}
-      <Card className="shadow-lg rounded-xl border border-gray-200 bg-white">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl font-bold">
-            <BarChart2 className="w-6 h-6 text-blue-600" /> Review Feed
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Average Rating by Month Bar Chart */}
-          <div className="mb-8 p-4 bg-gray-50 rounded-lg shadow-sm">
-            <div className="flex flex-col items-center mb-4">
-              <div className="flex items-center gap-2 font-semibold text-lg">
-                <BarChart2 className="w-5 h-5 text-blue-600" />
-                <span>Average Rating by Month</span>
-                <SimpleTooltip content="Shows the average review rating for each month. Helps track performance trends over time."><Info className="w-4 h-4 text-gray-400 cursor-pointer" /></SimpleTooltip>
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">Export Reviews</h2>
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
               </div>
             </div>
-            <div className="flex gap-8 items-end h-40 w-full">
-              {trendsData.map((d, i) => (
-                <div key={d.month} className="flex flex-col items-center w-16">
-                  <div className="rounded-t w-10 shadow-md" style={{ height: `${d.avg * 30}px`, background: '#3b82f6' }}></div>
-                  <span className="text-xs mt-2 font-semibold text-gray-700">{d.month}</span>
-                  <span className="text-xs text-blue-700 font-bold">{d.avg.toFixed(1)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Employee Comparison Bar Chart */}
-          <div className="mb-8 p-4 bg-gray-50 rounded-lg shadow-sm">
-            <div className="flex flex-col items-center mb-4">
-              <div className="flex items-center gap-2 font-semibold text-lg">
-                <BarChart2 className="w-5 h-5 text-blue-600" />
-                <span>Employee Rating Comparison</span>
-                <SimpleTooltip content="Compares the average review rating for each employee. Helps identify top and low performers."><Info className="w-4 h-4 text-gray-400 cursor-pointer" /></SimpleTooltip>
-              </div>
-            </div>
-            <div className="flex gap-8 items-end h-40 w-full">
-              {employeeComparison.map((e, i) => (
-                <div key={e.name} className="flex flex-col items-center w-24">
-                  <div className="rounded-t w-10 shadow-md" style={{ height: `${e.avg * 30}px`, background: '#60a5fa' }}></div>
-                  <span className="text-xs mt-2 font-semibold text-gray-700">{e.name}</span>
-                  <span className="text-xs text-blue-700 font-bold">{e.avg.toFixed(1)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Repeat Issues */}
-          {repeatIssues.length > 0 && (
-            <div className="mb-6 flex items-center gap-2 bg-red-50 border border-red-200 rounded px-3 py-2">
-              <AlertTriangle className="w-5 h-5 text-red-500" />
-              <span className="text-red-700 font-semibold flex items-center gap-1">
-                Repeat issues
-                <SimpleTooltip content="These are recurring negative comments from recent reviews. Addressing them can improve your ratings."><Info className="w-4 h-4 text-gray-400 cursor-pointer" /></SimpleTooltip>:
-              </span>
-              {repeatIssues.map((issue, idx) => (
-                <span key={idx} className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs ml-1">{issue}</span>
-              ))}
-            </div>
-          )}
-          {/* Sticky Search Bar and Filters */}
-          <div className="mb-4 flex flex-wrap gap-4 items-center sticky top-0 bg-white z-10 py-2 border-b">
-            <input
-              type="text"
-              className="border rounded px-3 py-1 w-64"
-              placeholder="Search reviews..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <label className="text-sm">Filter by rating:
-              <select className="ml-2 border rounded px-2 py-1 pr-6" value={ratingFilter} onChange={e => setRatingFilter(e.target.value)}>
-                <option value="all">All</option>
-                {[5,4,3,2,1].map(r => <option key={r} value={r}>{r}★</option>)}
-              </select>
-            </label>
-            <label className="text-sm">Filter by employee:
-              <select className="ml-2 border rounded px-2 py-1 pr-6" value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)}>
-                <option value="all">All</option>
-                {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-              </select>
-            </label>
-            <label className="text-sm">Filter by job type:
-              <select className="ml-2 border rounded px-2 py-1 pr-6" value={jobTypeFilter} onChange={e => setJobTypeFilter(e.target.value)}>
-                <option value="all">All</option>
-                {jobTypes.map(j => <option key={j} value={j}>{j}</option>)}
-              </select>
-            </label>
-            {/* Bulk Action Bar */}
-            {selectedReviews.length > 0 && (
-              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded px-3 py-1 ml-4">
-                <span className="text-blue-700 font-semibold">{selectedReviews.length} selected</span>
-                <button className="text-xs text-blue-600 underline" onClick={() => setSelectedReviews([])}>Clear</button>
-                <button className="text-xs text-green-600 underline" onClick={() => alert('Exported!')}>Export</button>
-                <button className="text-xs text-red-600 underline" onClick={() => alert('Flagged!')}>Flag</button>
-              </div>
-            )}
-          </div>
-          {/* Review List */}
-          <div className="space-y-4">
-            {filteredReviews.length === 0 ? (
-              <div className="text-gray-500 flex flex-col items-center py-8">
-                <span className="text-2xl mb-2">📝</span>
-                <span>No reviews found for selected filters or search.</span>
-              </div>
-            ) : (
-              filteredReviews
-                .filter(r => search === '' || r.text.toLowerCase().includes(search.toLowerCase()))
-                .map(r => {
-                  const emp = employees.find(e => e.id === r.employeeId);
-                  const isSelected = selectedReviews.includes(r.id);
-                  const customerReviews = reviewFeed.filter(rev => rev.reviewer === r.reviewer);
-                  return (
-                    <div key={r.id} className="border rounded p-4 bg-white shadow-sm flex flex-col md:flex-row md:items-center md:gap-4">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={e => {
-                          setSelectedReviews(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id));
-                        }}
-                        className="mr-2 accent-blue-500"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <button
-                            className="font-semibold text-blue-700 hover:underline"
-                            onClick={() => { setModalCustomer(r); setOpenCustomerModal(true); }}
-                          >
-                            {r.reviewer}
-                          </button>
-                          <span className="text-xs text-gray-400 ml-2">{r.date}</span>
-                          <span className="ml-4 flex items-center text-yellow-600 font-bold">
-                            {Array.from({ length: r.rating }).map((_, i) => <Star className="w-4 h-4" key={i} fill="#facc15" />)}
-                          </span>
-                          <span className="ml-4 text-xs text-gray-500">{r.jobType}</span>
-                        </div>
-                        <div className="text-gray-700 mb-1">{r.text}</div>
-                        {emp && <div className="text-xs text-gray-500">Employee: {emp.name}</div>}
-                        {/* Internal Notes */}
-                        <div className="mt-2 flex flex-col md:flex-row md:items-center md:gap-2">
-                          <input
-                            type="text"
-                            className="border rounded px-2 py-1 text-xs w-full md:w-64"
-                            placeholder="Add internal note..."
-                            value={internalNotes[r.id] || ''}
-                            onChange={e => setInternalNotes({ ...internalNotes, [r.id]: e.target.value })}
-                          />
-                          <button
-                            className="text-xs text-green-600 underline mt-1 md:mt-0"
-                            onClick={() => alert('Note saved!')}
-                          >Save Note</button>
-                          <button
-                            className="text-xs text-purple-600 underline mt-1 md:mt-0"
-                            onClick={() => setCreatedTasks([...createdTasks, r.id])}
-                            disabled={createdTasks.includes(r.id)}
-                          >{createdTasks.includes(r.id) ? 'Task Created' : 'Create Task'}</button>
-                          {r.customerEmail && (
-                            <button
-                              className="text-xs text-blue-600 underline mt-1 md:mt-0"
-                              onClick={() => alert(`Contacting ${r.customerEmail}`)}
-                            >Contact Customer</button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-            )}
-          </div>
-          {/* Customer History Modal */}
-          <Dialog open={openCustomerModal} onOpenChange={setOpenCustomerModal}>
-            <DialogContent className="max-w-md">
-              <DialogTitle>All Reviews from {modalCustomer?.reviewer}</DialogTitle>
-              <ul className="list-disc pl-5 space-y-2 mt-2">
-                {modalCustomer && reviewFeed.filter(rev => rev.reviewer === modalCustomer.reviewer).map((rev, idx) => (
-                  <li key={idx} className="text-gray-700 flex flex-col gap-1">
-                    <span>{rev.text}</span>
-                    <span className="text-xs text-gray-400">{rev.date}</span>
-                    <span className="flex items-center text-yellow-500">{Array.from({ length: rev.rating }).map((_, i) => <Star className="w-3 h-3" key={i} fill="#facc15" />)}</span>
-                  </li>
-                ))}
-              </ul>
-            </DialogContent>
-          </Dialog>
-        </CardContent>
-      </Card>
-
-      {/* Customer Recovery Tools Modals */}
-      
-      {/* Create Recovery Action Modal */}
-      <Dialog open={showRecoveryModal} onOpenChange={setShowRecoveryModal}>
-        <DialogContent className="max-w-md">
-          <DialogTitle>Create Recovery Action</DialogTitle>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Customer</label>
-              <div className="relative">
-                <input 
-                  type="text" 
-                  className="w-full border rounded px-3 py-2 pr-8" 
-                  placeholder="Search by name, email, or phone..."
-                  onChange={(e) => {
-                    // Filter customers based on search input
-                    const searchTerm = e.target.value.toLowerCase();
-                    // This would filter customerInsights based on name, email, or phone
-                  }}
-                />
-                <Search className="absolute right-2 top-2.5 w-4 h-4 text-gray-400" />
-              </div>
-              <div className="mt-1 max-h-32 overflow-y-auto border rounded">
-                {customerInsights.map(customer => (
-                  <div 
-                    key={customer.id} 
-                    className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
-                    onClick={() => {
-                      // Handle customer selection
-                    }}
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Export Format</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={exportFormat}
+                    onChange={(e) => setExportFormat(e.target.value)}
                   >
-                    <div className="font-medium">{customer.name}</div>
-                    <div className="text-gray-600 text-xs">{customer.email} • {customer.phone || 'No phone'}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Action Type</label>
-              <select className="w-full border rounded px-3 py-2">
-                <option>Follow-up call</option>
-                <option>Discount offer</option>
-                <option>VIP check-in</option>
-                <option>Service improvement</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Assigned To 
-                <span className="text-gray-500 text-xs ml-1">(Optional)</span>
-              </label>
-              <select className="w-full border rounded px-3 py-2">
-                <option value="">I'll handle this myself</option>
-                {employees.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.name} - {emp.role}</option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Leave as "I'll handle this myself" if you want to manage the recovery personally
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Due Date</label>
-              <input type="date" className="w-full border rounded px-3 py-2" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Notes</label>
-              <textarea className="w-full border rounded px-3 py-2" rows={3} placeholder="Add notes..."></textarea>
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => {
-                  alert('Recovery action created successfully!');
-                  setShowRecoveryModal(false);
-                }}
-                className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-              >
-                Create Action
-              </button>
-              <button 
-                onClick={() => setShowRecoveryModal(false)}
-                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Recovery Templates Modal */}
-      <Dialog open={showTemplatesModal} onOpenChange={setShowTemplatesModal}>
-        <DialogContent className="max-w-lg">
-          <DialogTitle>Recovery Templates</DialogTitle>
-          <div className="space-y-4">
-            {recoveryTemplates.map((template, index) => (
-              <div key={index} className="p-3 border rounded">
-                <div className="font-medium mb-2">{template.name}</div>
-                <div className="text-sm text-gray-600 mb-2">{template.template}</div>
-                <div className="flex gap-2">
-                  <button className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
-                    Use Template
+                    <option value="csv">CSV</option>
+                    <option value="json">JSON</option>
+                  </select>
+                </div>
+                <div className="text-sm text-gray-600">
+                  Exporting {enhancedFilteredReviews.length} reviews
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => exportReviews(exportFormat)}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Export
                   </button>
-                  <button className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-700">
-                    Edit
+                  <button
+                    onClick={() => setShowExportModal(false)}
+                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
                   </button>
                 </div>
               </div>
-            ))}
-            <button 
-              onClick={() => {
-                alert('New template created!');
-                setShowTemplatesModal(false);
-              }}
-              className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-            >
-              Create New Template
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Auto-Trigger Rules Modal */}
-      <Dialog open={showTriggersModal} onOpenChange={setShowTriggersModal}>
-        <DialogContent className="max-w-lg">
-          <DialogTitle>Auto-Trigger Rules</DialogTitle>
-          <div className="space-y-4">
-            {autoTriggers.map((trigger) => (
-              <div key={trigger.id} className="p-3 border rounded">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-medium">{trigger.name}</div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" defaultChecked={trigger.enabled} />
-                    <div className="w-6 h-3 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[0px] after:left-[0px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600"></div>
-                  </label>
-                </div>
-                <div className="text-sm text-gray-600 mb-2">Condition: {trigger.condition}</div>
-                <div className="text-sm text-gray-600 mb-2">Action: {trigger.action}</div>
-                <div className="text-sm text-gray-600">Last Triggered: {trigger.lastTriggered}</div>
-              </div>
-            ))}
-            <button 
-              onClick={() => {
-                alert('New trigger rule created!');
-                setShowTriggersModal(false);
-              }}
-              className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-            >
-              Create New Rule
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Detailed Report Modal */}
-      <Dialog open={showDetailedReport} onOpenChange={setShowDetailedReport}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogTitle>Recovery Success Analytics - Detailed Report</DialogTitle>
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-green-50 rounded">
-                <div className="text-2xl font-bold text-green-700">{recoveryAnalytics.overallSuccessRate}%</div>
-                <div className="text-sm text-gray-600">Overall Success Rate</div>
-              </div>
-              <div className="p-4 bg-blue-50 rounded">
-                <div className="text-2xl font-bold text-blue-700">+{recoveryAnalytics.avgRatingImprovement}</div>
-                <div className="text-sm text-gray-600">Average Rating Improvement</div>
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="font-medium mb-3">Success by Recovery Method</h3>
-              <div className="space-y-2">
-                {recoveryAnalytics.byMethod.map((method, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <span className="font-medium">{method.method}</span>
-                    <div className="flex items-center gap-4">
-                      <span className="text-green-600 font-semibold">{method.successRate}% success</span>
-                      <span className="text-blue-600">+{method.avgImprovement} rating improvement</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-medium mb-3">Employee Performance</h3>
-              <div className="space-y-2">
-                {recoveryAnalytics.byEmployee.map((emp, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <span className="font-medium">{emp.employee}</span>
-                    <div className="flex items-center gap-4">
-                      <span className="text-green-600 font-semibold">{emp.successRate}% success</span>
-                      <span className="text-gray-600">({emp.actionsCompleted} actions completed)</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
-      {/* View All Actions Modal */}
-      <Dialog open={showAllActions} onOpenChange={setShowAllActions}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogTitle>All Recovery Actions</DialogTitle>
-          <div className="space-y-3">
-            {recoveryActions.map((action) => (
-              <div key={action.id} className="p-3 border rounded">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1">
-                    <div className="font-medium text-indigo-700">{action.action}</div>
-                    <div className="text-sm text-gray-700">{action.customerName} ({action.customerEmail})</div>
-                    <div className="text-xs text-gray-600 mt-1">{action.reason}</div>
-                  </div>
-                  <div className="text-right ml-4">
-                    <div className={`text-xs px-2 py-1 rounded mb-1 ${
-                      action.priority === 'High' ? 'bg-red-100 text-red-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>{action.priority}</div>
-                    <div className={`text-xs px-2 py-1 rounded ${
-                      action.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                      action.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>{action.status}</div>
-                  </div>
+      {/* Save Filter Modal */}
+      {showSaveFilterModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">Save Filter Preset</h2>
+                <button
+                  onClick={() => setShowSaveFilterModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Filter Name</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={currentFilterName}
+                    onChange={(e) => setCurrentFilterName(e.target.value)}
+                    placeholder="Enter filter name..."
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-2">
-                  <div>Assigned to: {action.assignedTo}</div>
-                  <div>Due: {action.dueDate}</div>
-                </div>
-                <div className="text-xs text-gray-500 italic mb-2">{action.template}</div>
-                <div className="flex gap-2">
-                  <button className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700">
-                    Update Status
+                <div className="flex gap-3">
+                  <button
+                    onClick={saveFilterPreset}
+                    disabled={!currentFilterName.trim()}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+                  >
+                    Save
                   </button>
-                  <button className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700">
-                    Mark Complete
-                  </button>
-                  <button className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
-                    Send Email
-                  </button>
-                  <button className="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700">
-                    Send SMS
-                  </button>
-                  <button className="text-xs bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-700">
-                    View Customer
+                  <button
+                    onClick={() => setShowSaveFilterModal(false)}
+                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Status Update Modal */}
-      <Dialog open={showStatusUpdateModal} onOpenChange={setShowStatusUpdateModal}>
-        <DialogContent className="max-w-md">
-          <DialogTitle>Update Action Status</DialogTitle>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Action</label>
-              <div className="text-sm text-gray-600">{selectedAction?.action} for {selectedAction?.customerName}</div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">New Status</label>
-              <select className="w-full border rounded px-3 py-2">
-                <option>Pending</option>
-                <option>In Progress</option>
-                <option>Completed</option>
-                <option>Cancelled</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Notes</label>
-              <textarea className="w-full border rounded px-3 py-2" rows={3} placeholder="Add status update notes..."></textarea>
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => {
-                  alert('Status updated successfully!');
-                  setShowStatusUpdateModal(false);
-                }}
-                className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-              >
-                Update Status
-              </button>
-              <button 
-                onClick={() => setShowStatusUpdateModal(false)}
-                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
-              >
-                Cancel
-              </button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
-      {/* Email Modal */}
-      <Dialog open={showEmailModal} onOpenChange={setShowEmailModal}>
-        <DialogContent className="max-w-md">
-          <DialogTitle>Send Email</DialogTitle>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">To</label>
-              <div className="text-sm text-gray-600">{selectedAction?.customerEmail}</div>
+      {/* Bulk Action Confirmation Modal */}
+      {showBulkActionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">Confirm Bulk Action</h2>
+                <button
+                  onClick={() => setShowBulkActionModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Subject</label>
-              <input type="text" className="w-full border rounded px-3 py-2" placeholder="Email subject..." />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Message</label>
-              <textarea className="w-full border rounded px-3 py-2" rows={6} placeholder="Email message..."></textarea>
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => {
-                  alert('Email sent successfully!');
-                  setShowEmailModal(false);
-                }}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-              >
-                Send Email
-              </button>
-              <button 
-                onClick={() => setShowEmailModal(false)}
-                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
-              >
-                Cancel
-              </button>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div className="text-center">
+                  <div className="text-lg font-semibold mb-2">
+                    {bulkAction === 'export' ? 'Export Selected Reviews' : 'Flag Selected Reviews'}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    This action will affect {selectedReviews.length} reviews
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      if (bulkAction === 'export') {
+                        exportReviews('csv');
+                      } else {
+                        alert('Reviews flagged successfully!');
+                      }
+                      setShowBulkActionModal(false);
+                    }}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={() => setShowBulkActionModal(false)}
+                    className="flex-1 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* SMS Modal */}
-      <Dialog open={showSMSModal} onOpenChange={setShowSMSModal}>
-        <DialogContent className="max-w-md">
-          <DialogTitle>Send SMS</DialogTitle>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">To</label>
-              <div className="text-sm text-gray-600">{selectedAction?.customerName}</div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Message</label>
-              <textarea className="w-full border rounded px-3 py-2" rows={4} placeholder="SMS message..."></textarea>
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => {
-                  alert('SMS sent successfully!');
-                  setShowSMSModal(false);
-                }}
-                className="flex-1 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
-              >
-                Send SMS
-              </button>
-              <button 
-                onClick={() => setShowSMSModal(false)}
-                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Customer Details Modal */}
-      <Dialog open={showCustomerModal} onOpenChange={setShowCustomerModal}>
-        <DialogContent className="max-w-md">
-          <DialogTitle>Customer Details</DialogTitle>
-          {selectedCustomer && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Name</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.name}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.email}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Phone</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.phone}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Total Jobs</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.totalJobs}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Total Reviews</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.totalReviews}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Average Rating</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.avgRating} ★</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Status</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.status}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Risk Level</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.riskLevel}</div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Engagement Score</label>
-                <div className="text-sm text-gray-600">{selectedCustomer.engagementScore}%</div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
   );
 } 
