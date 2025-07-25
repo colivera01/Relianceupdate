@@ -7,7 +7,6 @@ const sidebarLinks = [
   { label: 'Dashboard', icon: Home, href: '/vendor' },
   { label: 'Profile & Settings', icon: Users, href: '/vendor/profile' },
   { label: 'View Reviews', icon: Star, href: '/vendor/reviews' },
-  { label: 'Pending Approvals', icon: AlertTriangle, href: '/vendor/approvals', badge: 2, alert: true },
   { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },
   { label: 'Employees', icon: Users, href: '/vendor/employees' },
   { label: 'Billing & Earnings', icon: DollarSign, href: '/vendor/billing' },

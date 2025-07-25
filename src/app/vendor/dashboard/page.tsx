@@ -967,6 +967,33 @@ export default function VendorDashboard() {
     }
   };
 
+  // Enhanced online/offline status logic
+  const getOnlineStatus = (user) => {
+    // If user has isOnline property, use it
+    if (user.hasOwnProperty('isOnline')) {
+      return user.isOnline;
+    }
+    
+    // Otherwise, determine based on pairing and activity
+    const lastActivity = user.lastActivity;
+    const lastPaired = user.lastPaired;
+    
+    // Check if last activity is recent (within last 30 minutes)
+    const isRecentlyActive = lastActivity && (
+      lastActivity.includes('Just now') || 
+      lastActivity.includes('minutes ago') ||
+      (lastActivity.includes('hour') && parseInt(lastActivity) <= 1)
+    );
+    
+    // Check if paired recently (within last 24 hours)
+    const isRecentlyPaired = lastPaired && (
+      lastPaired === new Date().toISOString().split('T')[0] ||
+      new Date(lastPaired) > new Date(Date.now() - 24 * 60 * 60 * 1000)
+    );
+    
+    return isRecentlyActive || isRecentlyPaired;
+  };
+
   // Filter and search team members
   const filteredPairedUsers = pairedUsersList.filter(user => {
     const matchesSearch = !pairedUserSearch || 
@@ -1363,7 +1390,23 @@ export default function VendorDashboard() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Clients</CardTitle>
+            <div className="flex items-center gap-4">
+              <CardTitle>Clients</CardTitle>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-full">
+                  <span className="text-blue-600 font-medium">Total:</span>
+                  <span className="text-blue-800 font-bold">{clients.length}</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-green-50 rounded-full">
+                  <span className="text-green-600 font-medium">Active:</span>
+                  <span className="text-green-800 font-bold">{clients.filter(c => c.status === 'active').length}</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full">
+                  <span className="text-gray-600 font-medium">Inactive:</span>
+                  <span className="text-gray-800 font-bold">{clients.filter(c => c.status === 'inactive').length}</span>
+                </div>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
@@ -1383,6 +1426,54 @@ export default function VendorDashboard() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Client Statistics Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-blue-800">{clients.length}</div>
+                  <div className="text-sm text-blue-600">Total Clients</div>
+                </div>
+                <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
+                  <span className="text-blue-600 text-lg">👥</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-green-800">{clients.filter(c => c.status === 'active').length}</div>
+                  <div className="text-sm text-green-600">Active Clients</div>
+                </div>
+                <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
+                  <span className="text-green-600 text-lg">✅</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-purple-800">{clients.reduce((sum, c) => sum + c.jobs, 0)}</div>
+                  <div className="text-sm text-purple-600">Total Jobs</div>
+                </div>
+                <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
+                  <span className="text-purple-600 text-lg">📋</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-orange-800">${clients.reduce((sum, c) => sum + c.totalValue, 0).toLocaleString()}</div>
+                  <div className="text-sm text-orange-600">Total Value</div>
+                </div>
+                <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
+                  <span className="text-orange-600 text-lg">💰</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Search and Filters */}
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="flex-1">
@@ -1613,7 +1704,23 @@ export default function VendorDashboard() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Team Members</CardTitle>
+            <div className="flex items-center gap-4">
+              <CardTitle>Team Members</CardTitle>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 rounded-full">
+                  <span className="text-blue-600 font-medium">Total:</span>
+                  <span className="text-blue-800 font-bold">{pairedUsersList.length}</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-green-50 rounded-full">
+                  <span className="text-green-600 font-medium">Online:</span>
+                  <span className="text-green-800 font-bold">{pairedUsersList.filter(u => getOnlineStatus(u)).length}</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full">
+                  <span className="text-gray-600 font-medium">Offline:</span>
+                  <span className="text-gray-800 font-bold">{pairedUsersList.filter(u => !getOnlineStatus(u)).length}</span>
+                </div>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <Button 
                 variant="outline" 
@@ -1633,6 +1740,54 @@ export default function VendorDashboard() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Team Members Statistics Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-blue-800">{pairedUsersList.length}</div>
+                  <div className="text-sm text-blue-600">Total Team Members</div>
+                </div>
+                <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
+                  <span className="text-blue-600 text-lg">👥</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-green-800">{pairedUsersList.filter(u => getOnlineStatus(u)).length}</div>
+                  <div className="text-sm text-green-600">Currently Online</div>
+                </div>
+                <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
+                  <span className="text-green-600 text-lg">🟢</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-purple-800">{pairedUsersList.filter(u => u.permissions === 'full-access').length}</div>
+                  <div className="text-sm text-purple-600">Full Access</div>
+                </div>
+                <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
+                  <span className="text-purple-600 text-lg">🔓</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-orange-800">{pairedUsersList.reduce((sum, u) => sum + u.sharedJobs, 0)}</div>
+                  <div className="text-sm text-orange-600">Total Shared Jobs</div>
+                </div>
+                <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
+                  <span className="text-orange-600 text-lg">📋</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Search and Filters */}
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="flex-1">
@@ -1702,8 +1857,8 @@ export default function VendorDashboard() {
                   <div className="relative">
                     <img src={user.photo} alt={user.name} className="w-12 h-12 rounded-full border" />
                     <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
-                      user.isOnline ? 'bg-green-500' : 'bg-gray-400'
-                    }`}></div>
+                      getOnlineStatus(user) ? 'bg-green-500' : 'bg-gray-400'
+                    }`} title={getOnlineStatus(user) ? 'Online' : 'Offline'}></div>
                   </div>
                   
                   <div className="flex-1">
@@ -2193,8 +2348,8 @@ export default function VendorDashboard() {
                       className="w-16 h-16 rounded-full border"
                     />
                     <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white ${
-                      pairedUserModal.user.isOnline ? 'bg-green-500' : 'bg-gray-400'
-                    }`}></div>
+                      getOnlineStatus(pairedUserModal.user) ? 'bg-green-500' : 'bg-gray-400'
+                    }`} title={getOnlineStatus(pairedUserModal.user) ? 'Online' : 'Offline'}></div>
                   </div>
                   <div className="flex-1">
                     <h4 className="text-xl font-semibold">{pairedUserModal.user.name}</h4>

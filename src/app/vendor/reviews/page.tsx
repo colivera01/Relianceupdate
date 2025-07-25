@@ -140,7 +140,8 @@
 
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Star, ArrowUpRight, ArrowDownRight, AlertTriangle, Lightbulb, ThumbsUp, ThumbsDown, Info, BarChart2, LineChart, ArrowLeft, Settings, Upload, Download, Calendar, DollarSign, BarChart3, Search, X, Filter, Calendar as CalendarIcon, User, Mail, Phone, MapPin, Clock, TrendingUp, TrendingDown, CheckCircle, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Star, ArrowUpRight, ArrowDownRight, AlertTriangle, Lightbulb, ThumbsUp, ThumbsDown, Info, BarChart2, LineChart, ArrowLeft, Settings, Upload, Download, Calendar, DollarSign, BarChart3, Search, X, Filter, Calendar as CalendarIcon, User, Mail, Phone, MapPin, Clock, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 // import SimpleTooltip from '../../../../components/ui/tooltip';
 // TODO: Import authentication/role utilities as needed
@@ -624,6 +625,39 @@ export default function VendorReviewsPage() {
   const [savedFilters, setSavedFilters] = useState([]);
   const [currentFilterName, setCurrentFilterName] = useState('');
   const [showSaveFilterModal, setShowSaveFilterModal] = useState(false);
+  
+  // Pending Approvals state
+  const [activeTab, setActiveTab] = useState('reviews'); // 'reviews' or 'approvals'
+  const [pendingApprovals, setPendingApprovals] = useState([
+    { 
+      id: 1, 
+      jobTitle: 'Water Heater Repair', 
+      employee: 'Maria Lopez', 
+      mediaType: 'video', 
+      uploadedAt: '2024-06-10 10:00',
+      thumbnail: 'https://picsum.photos/200/150?random=1',
+      url: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+      status: 'pending-approval',
+      customerEmail: 'john.smith@email.com',
+      customerName: 'John Smith'
+    },
+    { 
+      id: 2, 
+      jobTitle: 'AC Installation', 
+      employee: 'James Lee', 
+      mediaType: 'photo', 
+      uploadedAt: '2024-06-10 10:05',
+      thumbnail: 'https://picsum.photos/200/150?random=2',
+      url: 'https://picsum.photos/400/300?random=2',
+      status: 'pending-approval',
+      customerEmail: 'sarah.j@email.com',
+      customerName: 'Sarah Johnson'
+    }
+  ]);
+  const [selectedMedia, setSelectedMedia] = useState(null);
+  const [showMediaViewer, setShowMediaViewer] = useState(false);
+  const [showApprovalConfirmation, setShowApprovalConfirmation] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(null);
 
   // Enhanced filtering logic
   const enhancedFilteredReviews = reviewFeed.filter(r => {
@@ -712,6 +746,71 @@ export default function VendorReviewsPage() {
     setSentimentFilter(preset.filters.sentimentFilter);
   };
 
+  // Pending Approvals functions
+  const handleApprove = (approvalId) => {
+    const approvedItem = pendingApprovals.find(a => a.id === approvalId);
+    if (approvedItem) {
+      // Show confirmation popup
+      setPendingApproval(approvedItem);
+      setShowApprovalConfirmation(true);
+    }
+  };
+
+  const confirmApproval = () => {
+    if (pendingApproval) {
+      // Approve and deliver directly to customer
+      const approvedContentItem = {
+        ...pendingApproval,
+        status: 'approved',
+        approvedAt: new Date().toISOString(),
+        approvedBy: 'Manager', // In real app, get from auth context
+        deliveredAt: new Date().toISOString()
+      };
+      
+      // Remove from pending approvals
+      setPendingApprovals(prev => prev.filter(a => a.id !== pendingApproval.id));
+      
+      // Backend calls: 
+      // 1. POST /api/vendor/approvals/:id/approve
+      // 2. POST /api/vendor/deliver/:contentId (automatic delivery)
+      // 3. POST /api/vendor/jobs/:jobId/archive-content (add to content archive)
+      console.log('Content approved and delivered to customer:', approvedContentItem);
+      
+      // Close confirmation popup
+      setShowApprovalConfirmation(false);
+      setPendingApproval(null);
+      
+      // Show success message
+      alert(`Content approved and delivered to ${pendingApproval.customerName}. 72hr countdown will start when they open it.`);
+    }
+  };
+
+  const cancelApproval = () => {
+    setShowApprovalConfirmation(false);
+    setPendingApproval(null);
+  };
+
+  const handleReject = (approvalId) => {
+    const rejectedItem = pendingApprovals.find(a => a.id === approvalId);
+    if (rejectedItem) {
+      // Log rejection for audit trail
+      console.log('Content rejected:', rejectedItem);
+      
+      // Remove from pending approvals
+      setPendingApprovals(prev => prev.filter(a => a.id !== approvalId));
+      
+      // Backend call: POST /api/vendor/approvals/:id/reject
+      console.log('Content rejected:', rejectedItem);
+    }
+  };
+
+  const openMediaViewer = (media) => {
+    setSelectedMedia(media);
+    setShowMediaViewer(true);
+  };
+
+
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -766,17 +865,54 @@ export default function VendorReviewsPage() {
         </a>
       </div>
 
-      {/* Real-time Metrics Dashboard */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-purple-100 rounded-lg">
-            <TrendingUp className="w-6 h-6 text-purple-600" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Real-time Metrics</h2>
-            <p className="text-sm text-gray-600">Live performance indicators</p>
-          </div>
+      {/* Tab Navigation */}
+      <div className="mb-6">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('reviews')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'reviews'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Reviews & Analytics
+            </button>
+            <button
+              onClick={() => setActiveTab('approvals')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                activeTab === 'approvals'
+                  ? 'border-red-500 text-red-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Pending Approvals
+              {pendingApprovals.length > 0 && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                  {pendingApprovals.length}
+                </span>
+              )}
+            </button>
+
+          </nav>
         </div>
+      </div>
+
+      {/* Reviews Tab Content */}
+      {activeTab === 'reviews' && (
+        <>
+          {/* Real-time Metrics Dashboard */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">Real-time Metrics</h2>
+                <p className="text-sm text-gray-600">Live performance indicators</p>
+              </div>
+            </div>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg">
             <div className="text-2xl font-bold text-blue-600">{realTimeMetrics.totalReviews}</div>
@@ -1668,6 +1804,101 @@ export default function VendorReviewsPage() {
         </div>
       </div>
 
+        </>
+      )}
+
+      {/* Pending Approvals Tab Content */}
+      {activeTab === 'approvals' && (
+        <div className="space-y-6">
+          {/* Approvals Header */}
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-800">Pending Approvals</h2>
+              <p className="text-sm text-gray-600">
+                {pendingApprovals.length} items awaiting your review
+              </p>
+            </div>
+          </div>
+
+          {/* Approvals List */}
+          {pendingApprovals.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-gray-500 text-lg mb-2">No pending approvals</div>
+              <div className="text-gray-400 text-sm">All media has been reviewed</div>
+            </div>
+          ) : (
+            <div className="grid gap-6">
+              {pendingApprovals.map((approval) => (
+                <Card key={approval.id} className="bg-gradient-to-br from-red-50 to-red-100 border-red-200 shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="text-red-800">{approval.jobTitle}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-start gap-4">
+                      {/* Media Thumbnail */}
+                      <div className="flex-shrink-0">
+                        <div className="w-32 h-24 bg-gray-200 rounded-lg overflow-hidden">
+                          <img 
+                            src={approval.thumbnail} 
+                            alt="Media thumbnail" 
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Approval Details */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium text-gray-900">{approval.employee}</span>
+                          <span className="text-gray-500">•</span>
+                          <span className="text-sm text-gray-600">{approval.uploadedAt}</span>
+                        </div>
+                        <div className="text-sm text-gray-600 mb-3">
+                          {approval.mediaType === 'video' ? 'Video Upload' : 'Photo Upload'}
+                        </div>
+                        <div className="text-sm text-red-700 font-medium mb-4">Status: Pending Approval</div>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex gap-3">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => openMediaViewer(approval)}
+                            className="text-blue-600 hover:text-blue-700"
+                          >
+                            Review
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="default" 
+                            onClick={() => handleApprove(approval.id)}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            Approve
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="destructive" 
+                            onClick={() => handleReject(approval.id)}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+
+
       {/* Keyboard Shortcuts Help */}
       <div className="fixed bottom-4 right-4 bg-gray-900 text-white p-3 rounded-lg shadow-lg opacity-0 hover:opacity-100 transition-opacity group">
         <div className="text-xs">
@@ -2030,6 +2261,147 @@ export default function VendorReviewsPage() {
                   >
                     Cancel
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approval Confirmation Modal */}
+      {showApprovalConfirmation && pendingApproval && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <CheckCircle className="w-6 h-6 text-green-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Confirm Approval</h2>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div className="text-center">
+                  <div className="text-lg font-semibold mb-2">
+                    Ready to deliver to customer?
+                  </div>
+                  <div className="text-sm text-gray-600 mb-4">
+                    This content will be immediately sent to <strong>{pendingApproval.customerName}</strong> and the 72-hour review period will start when they open it.
+                  </div>
+                </div>
+                
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <div className="text-sm text-blue-800">
+                    <div className="font-semibold mb-2">What happens next:</div>
+                    <ul className="space-y-1 text-xs">
+                      <li>• Customer receives notification with content link</li>
+                      <li>• 72-hour countdown starts when they open the content</li>
+                      <li>• Content moves to archive after customer review</li>
+                      <li>• Customer can provide feedback within the time limit</li>
+                    </ul>
+                  </div>
+                </div>
+                
+                <div className="flex gap-3">
+                  <Button 
+                    onClick={confirmApproval}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
+                    Approve & Deliver
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={cancelApproval}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Media Viewer Modal */}
+      {showMediaViewer && selectedMedia && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">Media Review</h2>
+                <button
+                  onClick={() => {
+                    setShowMediaViewer(false);
+                    setSelectedMedia(null);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-semibold text-lg mb-2">{selectedMedia.jobTitle}</h3>
+                  <div className="text-sm text-gray-600 mb-4">
+                    Uploaded by {selectedMedia.employee} on {selectedMedia.uploadedAt}
+                  </div>
+                </div>
+                
+                {/* Media Display */}
+                <div className="bg-gray-100 rounded-lg p-4">
+                  {selectedMedia.mediaType === 'video' ? (
+                    <video 
+                      controls 
+                      className="w-full max-h-96 object-contain"
+                      src={selectedMedia.url}
+                    >
+                      Your browser does not support the video tag.
+                    </video>
+                  ) : (
+                    <img 
+                      src={selectedMedia.url} 
+                      alt="Media content" 
+                      className="w-full max-h-96 object-contain"
+                    />
+                  )}
+                </div>
+                
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4">
+                  <Button 
+                    variant="default" 
+                    onClick={() => {
+                      handleApprove(selectedMedia.id);
+                      setShowMediaViewer(false);
+                      setSelectedMedia(null);
+                    }}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    Approve
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={() => {
+                      handleReject(selectedMedia.id);
+                      setShowMediaViewer(false);
+                      setSelectedMedia(null);
+                    }}
+                  >
+                    Reject
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setShowMediaViewer(false);
+                      setSelectedMedia(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </div>
             </div>

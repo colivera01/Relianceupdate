@@ -1126,7 +1126,7 @@ export default function VendorJobs() {
                 className="bg-indigo-600 hover:bg-indigo-700"
               >
                 <Video className="w-5 h-5 mr-2" />
-                Video Archive
+                Content Archive
               </Button>
               <Button 
                 onClick={() => setShowArchivedJobs(!showArchivedJobs)}
@@ -1140,13 +1140,13 @@ export default function VendorJobs() {
         </div>
       </div>
 
-      {/* Video Archive Modal */}
+      {/* Content Archive Modal */}
       <Dialog open={showVideoArchive} onOpenChange={setShowVideoArchive}>
         <DialogContent className="max-w-7xl max-h-[90vh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Video className="w-5 h-5" />
-              Video Archive
+              Content Archive
             </DialogTitle>
           </DialogHeader>
 
