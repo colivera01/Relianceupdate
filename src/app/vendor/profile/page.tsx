@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, HardDrive, Settings, LogOut, HelpCircle, CheckCircle, XCircle, ArrowLeft, Info, User, Mail, Phone, MapPin, Clock, Shield, CreditCard, Bell, Smartphone, Wifi, Database, Activity, Zap, Eye, EyeOff, QrCode, Smartphone as DeviceIcon, Database as StorageIcon, Activity as ActivityIcon, Zap as LightningIcon } from 'lucide-react';
+import { Users, HardDrive, Settings, LogOut, HelpCircle, CheckCircle, XCircle, ArrowLeft, Info, User, Mail, Phone, MapPin, Clock, Shield, CreditCard, Bell, Smartphone, Wifi, Database, Activity, Zap, Eye, EyeOff, QrCode, Smartphone as DeviceIcon, Database as StorageIcon, Activity as ActivityIcon, Zap as LightningIcon, Camera } from 'lucide-react';
 import Link from 'next/link';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
@@ -39,20 +39,32 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 export default function VendorProfilePage() {
   const [profile, setProfile] = useState({
-    businessName: 'Tech Solutions Inc.',
+    businessName: 'Sparkle Clean Pro',
     address: '123 Main St',
-    city: 'Springfield',
-    state: 'IL',
-    totalEmployees: 12,
+    city: 'New York',
+    state: 'NY',
+    totalEmployees: 8,
     pairedDevice: true,
-    email: 'contact@techsolutions.com',
+    email: 'contact@sparklecleanpro.com',
     phone: '(555) 123-4567',
-    website: 'www.techsolutions.com',
-    businessType: 'Technology Services',
-    foundedYear: 2020,
-    licenseNumber: 'TECH-2020-001',
-    insuranceProvider: 'TechShield Insurance',
-    insuranceExpiry: '2025-12-31'
+    website: 'www.sparklecleanpro.com',
+    businessType: 'Home Services',
+    foundedYear: 2019,
+    licenseNumber: 'CLEAN-2019-001',
+    insuranceProvider: 'CleanShield Insurance',
+    insuranceExpiry: '2025-12-31',
+    // Enhanced fields for user service detail page
+    yearsInBusiness: 5,
+    insuranceStatus: true,
+    bondingStatus: true,
+    serviceAreas: ['Downtown', 'Midtown', 'Upper East Side'],
+    specializations: ['Deep Cleaning', 'Eco-friendly', 'Same Day Service'],
+    responseTimeSettings: '2 hours',
+    emergencyContact: '(555) 987-6543',
+    // New fields
+    bio: 'Professional cleaning services with over 5 years of experience. We specialize in residential and commercial cleaning with eco-friendly products and same-day service options.',
+    profilePhoto: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&crop=center',
+    serviceTypes: ['House Cleaning', 'Deep Cleaning', 'Move-in/Move-out Cleaning', 'Commercial Cleaning', 'Carpet Cleaning']
   });
   const [saving, setSaving] = useState(false);
   const [showPairModal, setShowPairModal] = useState(false);
@@ -87,6 +99,25 @@ export default function VendorProfilePage() {
     '456 Oak Ave, Springfield, IL',
     '789 Pine Rd, Springfield, IL',
     '321 Elm St, Springfield, IL'
+  ];
+
+  // Service type options
+  const serviceTypeOptions = [
+    'House Cleaning',
+    'Deep Cleaning', 
+    'Move-in/Move-out Cleaning',
+    'Commercial Cleaning',
+    'Carpet Cleaning',
+    'Window Cleaning',
+    'Kitchen Deep Clean',
+    'Bathroom Deep Clean',
+    'Laundry Services',
+    'Pet-friendly Cleaning',
+    'Eco-friendly Cleaning',
+    'Post-Construction Cleaning',
+    'Regular Maintenance',
+    'One-time Cleaning',
+    'Emergency Cleaning'
   ];
 
   // Countdown effect
@@ -165,6 +196,29 @@ export default function VendorProfilePage() {
             </CardHeader>
             <CardContent>
               <form className="space-y-6">
+                {/* Profile Photo Section */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Business Profile Photo</label>
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <img 
+                        src={profile.profilePhoto} 
+                        alt="Business Profile" 
+                        className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200"
+                      />
+                      <button className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 transition-colors">
+                        <Camera className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600 mb-2">Upload a professional photo of your business, team, or workspace</p>
+                      <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                        Change Photo
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-2 text-gray-700">Business Name</label>
@@ -184,6 +238,55 @@ export default function VendorProfilePage() {
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
+                </div>
+
+                {/* Business Bio Section */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Business Bio</label>
+                  <textarea
+                    name="bio"
+                    value={profile.bio}
+                    onChange={handleChange}
+                    rows={4}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    placeholder="Tell customers about your business, experience, and what makes you unique..."
+                  />
+                  <p className="text-sm text-gray-500 mt-1">This will be displayed on your service listings and profile page</p>
+                </div>
+
+                {/* Service Types Section */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Service Types Offered</label>
+                  <p className="text-sm text-gray-600 mb-3">Select all the services your business provides</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {serviceTypeOptions.map((serviceType) => (
+                      <div key={serviceType} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={serviceType}
+                          checked={profile.serviceTypes.includes(serviceType)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setProfile({
+                                ...profile,
+                                serviceTypes: [...profile.serviceTypes, serviceType]
+                              });
+                            } else {
+                              setProfile({
+                                ...profile,
+                                serviceTypes: profile.serviceTypes.filter(type => type !== serviceType)
+                              });
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor={serviceType} className="text-sm text-gray-700 cursor-pointer">
+                          {serviceType}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">Selected: {profile.serviceTypes.length} service types</p>
                 </div>
 
                 <div>
@@ -263,6 +366,47 @@ export default function VendorProfilePage() {
                       onChange={handleChange}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
+                  </div>
+                </div>
+
+                {/* Enhanced Performance Metrics */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Years in Business</label>
+                    <Input 
+                      name="yearsInBusiness" 
+                      type="number"
+                      value={profile.yearsInBusiness} 
+                      onChange={handleChange}
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+
+                </div>
+
+
+
+                {/* Insurance & Bonding */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      name="insuranceStatus"
+                      checked={profile.insuranceStatus}
+                      onChange={(e) => setProfile({...profile, insuranceStatus: e.target.checked})}
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label className="text-sm font-medium text-gray-700">Insured</label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      name="bondingStatus"
+                      checked={profile.bondingStatus}
+                      onChange={(e) => setProfile({...profile, bondingStatus: e.target.checked})}
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label className="text-sm font-medium text-gray-700">Bonded</label>
                   </div>
                 </div>
 

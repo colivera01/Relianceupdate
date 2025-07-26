@@ -15,10 +15,9 @@ const navLinks = [
   { label: 'Discover', icon: LayoutDashboard, href: '/discover' },
   { label: 'My Bookings', icon: Calendar, href: '/my-bookings' },
   { label: 'Favorites', icon: Heart, href: '/favorites' },
-  { label: 'Reviews', icon: Star, href: '/my-reviews' },
+  { label: 'Reviews', icon: Star, href: '/reviews' },
   { label: 'Messages', icon: MessageSquare, href: '/messages' },
-  { label: 'Profile', icon: User, href: '/profile' },
-  { label: 'Settings', icon: Settings, href: '/settings' },
+  { label: 'Profile & Settings', icon: User, href: '/profile-settings' },
 ];
 
 const viewModes = [

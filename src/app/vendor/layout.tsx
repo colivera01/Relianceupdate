@@ -25,6 +25,29 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
         </div>
         {/* Blue navigation area */}
         <div className="flex-1 bg-blue-800 text-white flex flex-col py-8 px-4">
+          {/* Vendor Profile Section */}
+          <div className="flex flex-col items-center mb-8">
+            <div className="relative mb-4">
+              <img
+                src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&crop=center"
+                alt="Business Profile"
+                className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md object-cover"
+              />
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white flex items-center justify-center">
+                <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-lg mb-1">Sparkle Clean Pro</div>
+              <div className="text-blue-100 text-sm">Professional Cleaning</div>
+              <div className="mt-2">
+                <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
+                  Verified Vendor
+                </span>
+              </div>
+            </div>
+          </div>
+
           <nav className="flex-1 space-y-1">
             {sidebarLinks.map((link, idx) => (
               <div key={link.label} className="relative">
