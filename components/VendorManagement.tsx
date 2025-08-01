@@ -21,8 +21,10 @@ import {
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Info, Edit, CheckCircle, XCircle } from 'lucide-react';
+import { Info, Edit, CheckCircle, XCircle, Eye, MessageSquare, Phone, MapPin, Calendar, Clock, Star, Shield, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Vendor {
   id: string
@@ -33,6 +35,32 @@ interface Vendor {
   businessAddress: string
   status: 'Active' | 'Inactive'
   approvalStatus: 'pending' | 'approved' | 'rejected'
+  category?: string
+  registrationDate?: string
+  businessName?: string
+  businessType?: string
+  foundedYear?: string
+  licenseNumber?: string
+  insuranceStatus?: string
+  bondingStatus?: string
+  totalEmployees?: string
+  yearsInBusiness?: string
+  serviceTypes?: string[]
+  specializations?: string[]
+  serviceAreas?: string[]
+  website?: string
+  emergencyContact?: string
+  responseTimeSettings?: string
+  description?: string
+  experience?: string
+  image?: string
+  featured?: boolean
+  verified?: boolean
+  availability?: string
+  videoProfile?: boolean
+  rating?: number
+  reviews?: number
+  distance?: number
 }
 
 const mockVendors: Vendor[] = [
@@ -45,6 +73,32 @@ const mockVendors: Vendor[] = [
     businessAddress: '123 Main St, Springfield, IL',
     status: 'Active',
     approvalStatus: 'approved',
+    category: 'Technology',
+    registrationDate: '2024-01-15',
+    businessName: 'Tech Solutions Inc.',
+    businessType: 'Corporation',
+    foundedYear: '2018',
+    licenseNumber: 'TECH-2024-001',
+    insuranceStatus: 'Active',
+    bondingStatus: 'Active',
+    totalEmployees: '25',
+    yearsInBusiness: '6',
+    serviceTypes: ['Software Development', 'IT Consulting', 'System Integration'],
+    specializations: ['Web Development', 'Mobile Apps', 'Cloud Solutions'],
+    serviceAreas: ['Springfield', 'Chicago', 'Peoria'],
+    website: 'https://techsolutions.com',
+    emergencyContact: '555-0123',
+    responseTimeSettings: '24 hours',
+    description: 'Professional technology solutions for businesses of all sizes.',
+    experience: '6 years',
+    image: 'https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?w=400&h=300&fit=crop&crop=center',
+    featured: true,
+    verified: true,
+    availability: 'immediate',
+    videoProfile: true,
+    rating: 4.8,
+    reviews: 127,
+    distance: 2.3
   },
   {
     id: '2',
@@ -53,9 +107,71 @@ const mockVendors: Vendor[] = [
     email: 'jane@globalsupplies.com',
     phone: '987-654-3210',
     businessAddress: '456 Market Ave, Metropolis, NY',
+    status: 'Inactive',
+    approvalStatus: 'pending',
+    category: 'Supplies',
+    registrationDate: '2024-02-20',
+    businessName: 'Global Supplies Ltd.',
+    businessType: 'LLC',
+    foundedYear: '2020',
+    licenseNumber: 'SUPPLY-2024-002',
+    insuranceStatus: 'Pending',
+    bondingStatus: 'Not Required',
+    totalEmployees: '8',
+    yearsInBusiness: '4',
+    serviceTypes: ['Office Supplies', 'Industrial Equipment', 'Safety Gear'],
+    specializations: ['Bulk Orders', 'Custom Solutions', 'Emergency Supplies'],
+    serviceAreas: ['Metropolis', 'Gotham', 'Central City'],
+    website: 'https://globalsupplies.com',
+    emergencyContact: '555-0456',
+    responseTimeSettings: '48 hours',
+    description: 'Comprehensive supply solutions for businesses and organizations.',
+    experience: '4 years',
+    image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop&crop=center',
+    featured: false,
+    verified: false,
+    availability: 'within_week',
+    videoProfile: false,
+    rating: 0,
+    reviews: 0,
+    distance: 5.1
+  },
+  {
+    id: '3',
+    name: 'CleanCo Professional Services',
+    contactPerson: 'Mike Johnson',
+    email: 'mike@cleanco.com',
+    phone: '555-123-4567',
+    businessAddress: '789 Business Blvd, Commerce City, CA',
     status: 'Active',
     approvalStatus: 'pending',
-  },
+    category: 'Cleaning',
+    registrationDate: '2024-03-10',
+    businessName: 'CleanCo Professional Services',
+    businessType: 'Sole Proprietorship',
+    foundedYear: '2022',
+    licenseNumber: 'CLEAN-2024-003',
+    insuranceStatus: 'Active',
+    bondingStatus: 'Active',
+    totalEmployees: '12',
+    yearsInBusiness: '2',
+    serviceTypes: ['Commercial Cleaning', 'Residential Cleaning', 'Post-Construction'],
+    specializations: ['Eco-Friendly Products', 'Deep Cleaning', 'Regular Maintenance'],
+    serviceAreas: ['Commerce City', 'Downtown', 'Suburbs'],
+    website: 'https://cleanco.com',
+    emergencyContact: '555-0789',
+    responseTimeSettings: 'Same day',
+    description: 'Professional cleaning services with eco-friendly products and attention to detail.',
+    experience: '2 years',
+    image: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&h=300&fit=crop&crop=center',
+    featured: false,
+    verified: false,
+    availability: 'immediate',
+    videoProfile: true,
+    rating: 0,
+    reviews: 0,
+    distance: 1.8
+  }
 ]
 
 // Service Catalog Data Model (starter list)
@@ -147,6 +263,23 @@ export function VendorManagement() {
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
+  // Enhanced approval queue states
+  const [approvalQueueVendors, setApprovalQueueVendors] = useState<Vendor[]>([])
+  const [approvalQueueLoading, setApprovalQueueLoading] = useState(false)
+  const [approvalQueueError, setApprovalQueueError] = useState<string | null>(null)
+  const [selectedApprovalVendors, setSelectedApprovalVendors] = useState<string[]>([])
+  const [approvalQueueSearch, setApprovalQueueSearch] = useState('')
+  const [approvalQueueCategoryFilter, setApprovalQueueCategoryFilter] = useState('all')
+  const [approvalQueueSortBy, setApprovalQueueSortBy] = useState('registrationDate')
+  const [approvalQueueSortDirection, setApprovalQueueSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [showRejectionDialog, setShowRejectionDialog] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [vendorToReject, setVendorToReject] = useState<Vendor | null>(null)
+  const [selectedVendorForDetails, setSelectedVendorForDetails] = useState<Vendor | null>(null)
+  const [showVendorDetails, setShowVendorDetails] = useState(false)
+  const [bulkRejectionReason, setBulkRejectionReason] = useState('')
+  const [showBulkRejectionDialog, setShowBulkRejectionDialog] = useState(false)
+
   const [serviceCatalog, setServiceCatalog] = useState<string[]>(initialServiceCatalog);
   const [pendingBusinessRequests, setPendingBusinessRequests] = useState<Array<{id: string, name: string, submittedBy: string, date: string, status: 'pending' | 'approved' | 'rejected'}>>([
     // Example pending request
@@ -192,6 +325,171 @@ export function VendorManagement() {
       setIsLoadingVendorAnalytics(false);
     }, 1000);
   }, []);
+
+  // Enhanced approval queue functions
+  const loadApprovalQueue = async () => {
+    setApprovalQueueLoading(true);
+    setApprovalQueueError(null);
+    try {
+      // Simulate API call to /api/admin/vendors/pending
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const pendingVendors = mockVendors.filter(v => v.approvalStatus === 'pending');
+      setApprovalQueueVendors(pendingVendors);
+    } catch (error) {
+      setApprovalQueueError('Failed to load approval queue');
+    } finally {
+      setApprovalQueueLoading(false);
+    }
+  };
+
+  const approveVendor = async (vendorId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Simulate API call to /api/admin/vendors/approve
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Update both main vendors list and approval queue
+      setVendors(vendors => vendors.map(v => 
+        v.id === vendorId ? { ...v, approvalStatus: 'approved', status: 'Active' } : v
+      ));
+      setApprovalQueueVendors(queue => queue.filter(v => v.id !== vendorId));
+      
+      // TODO: Send approval email notification
+      console.log('Vendor approved:', vendorId);
+    } catch (error) {
+      setError('Failed to approve vendor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const rejectVendor = async (vendorId: string, reason: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Simulate API call to /api/admin/vendors/reject
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Update both main vendors list and approval queue
+      setVendors(vendors => vendors.map(v => 
+        v.id === vendorId ? { ...v, approvalStatus: 'rejected', status: 'Inactive' } : v
+      ));
+      setApprovalQueueVendors(queue => queue.filter(v => v.id !== vendorId));
+      
+      // TODO: Send rejection email notification
+      console.log('Vendor rejected:', vendorId, 'Reason:', reason);
+    } catch (error) {
+      setError('Failed to reject vendor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const bulkApproveVendors = async () => {
+    if (selectedApprovalVendors.length === 0) return;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      // Simulate API call to /api/admin/vendors/bulk-approve
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Update both main vendors list and approval queue
+      setVendors(vendors => vendors.map(v => 
+        selectedApprovalVendors.includes(v.id) ? { ...v, approvalStatus: 'approved', status: 'Active' } : v
+      ));
+      setApprovalQueueVendors(queue => queue.filter(v => !selectedApprovalVendors.includes(v.id)));
+      setSelectedApprovalVendors([]);
+      
+      // TODO: Send bulk approval email notifications
+      console.log('Bulk approved vendors:', selectedApprovalVendors);
+    } catch (error) {
+      setError('Failed to bulk approve vendors');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const bulkRejectVendors = async (reason: string) => {
+    if (selectedApprovalVendors.length === 0) return;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      // Simulate API call to /api/admin/vendors/bulk-reject
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Update both main vendors list and approval queue
+      setVendors(vendors => vendors.map(v => 
+        selectedApprovalVendors.includes(v.id) ? { ...v, approvalStatus: 'rejected', status: 'Inactive' } : v
+      ));
+      setApprovalQueueVendors(queue => queue.filter(v => !selectedApprovalVendors.includes(v.id)));
+      setSelectedApprovalVendors([]);
+      setShowBulkRejectionDialog(false);
+      setBulkRejectionReason('');
+      
+      // TODO: Send bulk rejection email notifications
+      console.log('Bulk rejected vendors:', selectedApprovalVendors, 'Reason:', reason);
+    } catch (error) {
+      setError('Failed to bulk reject vendors');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectVendor = (vendor: Vendor) => {
+    setVendorToReject(vendor);
+    setShowRejectionDialog(true);
+  };
+
+  const confirmRejectVendor = async () => {
+    if (!vendorToReject || !rejectionReason.trim()) return;
+    
+    await rejectVendor(vendorToReject.id, rejectionReason);
+    setShowRejectionDialog(false);
+    setVendorToReject(null);
+    setRejectionReason('');
+  };
+
+  const handleVendorDetails = (vendor: Vendor) => {
+    setSelectedVendorForDetails(vendor);
+    setShowVendorDetails(true);
+  };
+
+  // Filtered approval queue vendors
+  const filteredApprovalVendors = approvalQueueVendors.filter(vendor => {
+    const matchesSearch = vendor.name.toLowerCase().includes(approvalQueueSearch.toLowerCase()) ||
+                         vendor.email.toLowerCase().includes(approvalQueueSearch.toLowerCase()) ||
+                         vendor.contactPerson.toLowerCase().includes(approvalQueueSearch.toLowerCase());
+    const matchesCategory = approvalQueueCategoryFilter === 'all' || vendor.category === approvalQueueCategoryFilter;
+    return matchesSearch && matchesCategory;
+  });
+
+  // Sorted approval queue vendors
+  const sortedApprovalVendors = [...filteredApprovalVendors].sort((a, b) => {
+    let aValue: any, bValue: any;
+    switch (approvalQueueSortBy) {
+      case 'name':
+        aValue = a.name.toLowerCase();
+        bValue = b.name.toLowerCase();
+        break;
+      case 'category':
+        aValue = a.category || '';
+        bValue = b.category || '';
+        break;
+      case 'registrationDate':
+        aValue = a.registrationDate ? new Date(a.registrationDate) : new Date(0);
+        bValue = b.registrationDate ? new Date(b.registrationDate) : new Date(0);
+        break;
+      default:
+        aValue = a.registrationDate ? new Date(a.registrationDate) : new Date(0);
+        bValue = b.registrationDate ? new Date(b.registrationDate) : new Date(0);
+    }
+    if (aValue < bValue) return approvalQueueSortDirection === 'asc' ? -1 : 1;
+    if (aValue > bValue) return approvalQueueSortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
 
   const filteredVendors = vendors.filter((vendor) => {
     const matchesStatus = statusFilter === 'all' || vendor.status === statusFilter;
@@ -243,32 +541,7 @@ export function VendorManagement() {
     }
   }
 
-  const approveVendor = async (id: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      // Simulate async
-      await new Promise(res => setTimeout(res, 500))
-      setVendors(vendors => vendors.map(v => v.id === id ? { ...v, approvalStatus: 'approved', status: 'Active' } : v))
-    } catch (e) {
-      setError('Failed to approve vendor.')
-    } finally {
-      setLoading(false)
-    }
-  }
-  const rejectVendor = async (id: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      // Simulate async
-      await new Promise(res => setTimeout(res, 500))
-      setVendors(vendors => vendors.map(v => v.id === id ? { ...v, approvalStatus: 'rejected', status: 'Inactive' } : v))
-    } catch (e) {
-      setError('Failed to reject vendor.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Note: Enhanced approveVendor and rejectVendor functions are defined above
 
   const toggleVendorSelection = (id: string) => {
     setSelectedVendors(prev => prev.includes(id) ? prev.filter(vId => vId !== id) : [...prev, id])
@@ -282,7 +555,6 @@ export function VendorManagement() {
     setSelectedVendors([])
   }
 
-  const handleRejectVendor = (vendor: Vendor) => setConfirmAction({ type: 'reject', vendor })
   const handleDeactivateVendor = (vendor: Vendor) => setConfirmAction({ type: 'deactivate', vendor })
   const confirmReject = async () => {
     if (confirmAction?.type === 'reject') await rejectVendor(confirmAction.vendor.id)
@@ -297,7 +569,7 @@ export function VendorManagement() {
         setVendors(vendors => vendors.map(v => v.id === confirmAction.vendor.id ? { ...v, status: 'Inactive' } : v))
       } catch (e) {
         setError('Failed to deactivate vendor.')
-      } finally {
+    } finally {
         setLoading(false)
         setConfirmAction(null)
       }
@@ -470,18 +742,255 @@ export function VendorManagement() {
           </p>
         </CardContent>
       </Card>
-      {/* Approval Queue Banner */}
+      {/* Enhanced Approval Queue Banner */}
       {pendingVendors.length > 0 && (
         <div className="border-orange-200 bg-orange-50 border rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Badge variant="warning" className="text-sm">
               {pendingVendors.length} Pending Vendor Approval
             </Badge>
+            <span className="text-sm text-orange-700">
+              {pendingVendors.length === 1 ? 'Vendor requires' : 'Vendors require'} admin review
+            </span>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowApprovalQueue(!showApprovalQueue)}>
-            {showApprovalQueue ? 'Hide' : 'Show'} Approval Queue
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowApprovalQueue(!showApprovalQueue)}
+            >
+              {showApprovalQueue ? 'Hide' : 'Show'} Approval Queue
+            </Button>
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={loadApprovalQueue}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Refresh Queue
+            </Button>
+          </div>
         </div>
+      )}
+
+      {/* Enhanced Approval Queue Section */}
+      {showApprovalQueue && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span>Approval Queue</span>
+                <Badge variant="warning" className="text-sm">
+                  {approvalQueueVendors.length} Pending
+                </Badge>
+              </div>
+              <div className="flex gap-2">
+                {selectedApprovalVendors.length > 0 && (
+                  <>
+                    <Button 
+                      size="sm" 
+                      onClick={bulkApproveVendors}
+                      disabled={loading}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {loading ? 'Approving...' : `Approve ${selectedApprovalVendors.length}`}
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setShowBulkRejectionDialog(true)}
+                      disabled={loading}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {loading ? 'Rejecting...' : `Reject ${selectedApprovalVendors.length}`}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Approval Queue Filters */}
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <Input
+                placeholder="Search vendors..."
+                value={approvalQueueSearch}
+                onChange={(e) => setApprovalQueueSearch(e.target.value)}
+                className="max-w-xs"
+              />
+              <Select value={approvalQueueCategoryFilter} onValueChange={setApprovalQueueCategoryFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="Technology">Technology</SelectItem>
+                  <SelectItem value="Supplies">Supplies</SelectItem>
+                  <SelectItem value="Cleaning">Cleaning</SelectItem>
+                  <SelectItem value="Plumbing">Plumbing</SelectItem>
+                  <SelectItem value="Electrical">Electrical</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={approvalQueueSortBy} onValueChange={setApprovalQueueSortBy}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="registrationDate">Registration Date</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="category">Category</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setApprovalQueueSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+              >
+                {approvalQueueSortDirection === 'asc' ? '↑' : '↓'}
+              </Button>
+            </div>
+
+            {/* Approval Queue Loading State */}
+            {approvalQueueLoading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-gray-600">Loading approval queue...</span>
+              </div>
+            )}
+
+            {/* Approval Queue Error State */}
+            {approvalQueueError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{approvalQueueError}</span>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="mt-2" 
+                  onClick={() => setApprovalQueueError(null)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            )}
+
+            {/* Approval Queue Empty State */}
+            {!approvalQueueLoading && sortedApprovalVendors.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                <Shield className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                <h3 className="text-lg font-medium mb-2">No Pending Approvals</h3>
+                <p className="text-sm">All vendor applications have been reviewed.</p>
+              </div>
+            )}
+
+            {/* Approval Queue Vendor Cards */}
+            {!approvalQueueLoading && sortedApprovalVendors.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {sortedApprovalVendors.map((vendor) => (
+                  <Card key={vendor.id} className="relative">
+                    <div className="absolute top-2 left-2">
+                      <Checkbox 
+                        checked={selectedApprovalVendors.includes(vendor.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedApprovalVendors(prev => [...prev, vendor.id]);
+                          } else {
+                            setSelectedApprovalVendors(prev => prev.filter(id => id !== vendor.id));
+                          }
+                        }}
+                      />
+                    </div>
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3 mb-3">
+                        <img 
+                          src={vendor.image || `https://api.dicebear.com/7.x/identicon/svg?seed=${vendor.name}`} 
+                          alt={vendor.name} 
+                          className="w-12 h-12 rounded-lg object-cover"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-lg text-gray-900 truncate">{vendor.name}</h3>
+                          <p className="text-sm text-gray-600 truncate">{vendor.email}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-xs">
+                              {vendor.category}
+                            </Badge>
+                            <Badge variant="warning" className="text-xs">
+                              Pending
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-sm text-gray-600 mb-3">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-3 w-3" />
+                          <span className="truncate">{vendor.businessAddress}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-3 w-3" />
+                          <span>Registered: {vendor.registrationDate}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-3 w-3" />
+                          <span>{vendor.experience} experience</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 mb-3">
+                        <p className="text-sm text-gray-700 line-clamp-2">{vendor.description}</p>
+                        {vendor.serviceTypes && vendor.serviceTypes.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {vendor.serviceTypes.slice(0, 2).map((service, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {service}
+                              </Badge>
+                            ))}
+                            {vendor.serviceTypes.length > 2 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{vendor.serviceTypes.length - 2} more
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleVendorDetails(vendor)}
+                          className="flex-1"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Details
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          onClick={() => approveVendor(vendor.id)}
+                          disabled={loading}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Approve
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleRejectVendor(vendor)}
+                          disabled={loading}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Reject
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Analytics Dashboard */}
@@ -507,7 +1016,7 @@ export function VendorManagement() {
         </Card>
         {/* Active Vendors */}
         <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-4">
+                    <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-green-600">Active Vendors</p>
@@ -517,16 +1026,16 @@ export function VendorManagement() {
                 <p className="text-xs text-green-600 mt-1">
                   {vendorAnalytics.totalVendors > 0 ? ((vendorAnalytics.activeVendors / vendorAnalytics.totalVendors) * 100).toFixed(1) : 0}% of total
                 </p>
-              </div>
+                          </div>
               <div className="w-12 h-12 bg-green-200 rounded-lg flex items-center justify-center">
                 <span className="text-green-600 text-xl">✅</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
         {/* Pending Approval */}
         <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200">
-          <CardContent className="p-4">
+              <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-yellow-600">Pending Approval</p>
@@ -536,16 +1045,16 @@ export function VendorManagement() {
                 <p className="text-xs text-yellow-600 mt-1">
                   Requires attention
                 </p>
-              </div>
+                    </div>
               <div className="w-12 h-12 bg-yellow-200 rounded-lg flex items-center justify-center">
                 <span className="text-yellow-600 text-xl">⏳</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
         {/* Suspended Vendors */}
         <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-          <CardContent className="p-4">
+              <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-red-600">Suspended Vendors</p>
@@ -555,14 +1064,14 @@ export function VendorManagement() {
                 <p className="text-xs text-red-600 mt-1">
                   {vendorAnalytics.totalVendors > 0 ? ((vendorAnalytics.suspendedVendors / vendorAnalytics.totalVendors) * 100).toFixed(1) : 0}% of total
                 </p>
-              </div>
+                    </div>
               <div className="w-12 h-12 bg-red-200 rounded-lg flex items-center justify-center">
                 <span className="text-red-600 text-xl">🚫</span>
-              </div>
-            </div>
+                  </div>
+                </div>
           </CardContent>
         </Card>
-      </div>
+                  </div>
       {/* Growth & Insights Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {/* Growth Metrics */}
@@ -576,17 +1085,17 @@ export function VendorManagement() {
               <span className={`font-semibold ${vendorAnalytics.vendorGrowthRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {vendorAnalytics.vendorGrowthRate >= 0 ? '+' : ''}{vendorAnalytics.vendorGrowthRate}%
               </span>
-            </div>
+                  </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">New Vendors (Month)</span>
               <span className="font-semibold text-blue-600">{vendorAnalytics.newVendorsThisMonth}</span>
-            </div>
+                  </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">New Vendors (Week)</span>
               <span className="font-semibold text-blue-600">{vendorAnalytics.newVendorsThisWeek}</span>
-            </div>
-          </CardContent>
-        </Card>
+                </div>
+              </CardContent>
+            </Card>
         {/* Top Categories */}
         <Card>
           <CardHeader>
@@ -598,19 +1107,19 @@ export function VendorManagement() {
                 <span className="text-sm text-gray-600 truncate">
                   {cat.category}
                 </span>
-                <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
                   <div className="w-16 bg-gray-200 rounded-full h-2">
                     <div 
                       className="bg-blue-600 h-2 rounded-full" 
                       style={{ width: `${(cat.count / vendorAnalytics.totalVendors) * 100}%` }}
                     ></div>
-                  </div>
+          </div>
                   <span className="text-sm font-medium">{cat.count}</span>
-                </div>
-              </div>
+        </div>
+        </div>
             ))}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
         {/* Recent Activity */}
         <Card>
           <CardHeader>
@@ -620,17 +1129,17 @@ export function VendorManagement() {
             {vendorAnalytics.recentActivity.map((activity, index) => (
               <div key={index} className="flex items-start gap-2 text-sm">
                 <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
-                <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0">
                   <p className="text-gray-800 truncate">{activity.action}</p>
                   <p className="text-xs text-gray-500">
                     {activity.vendor} • {activity.timestamp}
                   </p>
-                </div>
-              </div>
+                    </div>
+                  </div>
             ))}
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            </Card>
+        </div>
 
       <div className="flex justify-between items-center">
         <Input
@@ -655,7 +1164,7 @@ export function VendorManagement() {
                   value={newVendor.name}
                   onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
                 />
-              </div>
+        </div>
               <div className="space-y-2">
                 <Label htmlFor="contactPerson">Contact Person</Label>
                 <Input
@@ -663,7 +1172,7 @@ export function VendorManagement() {
                   value={newVendor.contactPerson}
                   onChange={(e) => setNewVendor({ ...newVendor, contactPerson: e.target.value })}
                 />
-              </div>
+          </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -672,7 +1181,7 @@ export function VendorManagement() {
                   value={newVendor.email}
                   onChange={(e) => setNewVendor({ ...newVendor, email: e.target.value })}
                 />
-              </div>
+        </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
                 <Input
@@ -688,14 +1197,14 @@ export function VendorManagement() {
                   value={newVendor.businessAddress}
                   onChange={(e) => setNewVendor({ ...newVendor, businessAddress: e.target.value })}
                 />
-              </div>
+                    </div>
               <Button onClick={handleAddVendor} className="w-full">
                 Add Vendor
               </Button>
-            </div>
+                  </div>
           </DialogContent>
         </Dialog>
-      </div>
+                </div>
 
       {/* Advanced Filters & Sorting */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -734,23 +1243,23 @@ export function VendorManagement() {
           placeholder="Registered After"
           title="Registered After"
         />
-        <Button
+                  <Button 
           variant="outline"
-          size="sm"
+                    size="sm" 
           onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
           className="ml-2"
-        >
+                  >
           {showAdvancedFilters ? 'Hide' : 'Show'} Advanced Filters
-        </Button>
-      </div>
+                  </Button>
+                </div>
       {showAdvancedFilters && (
         <div className="bg-gray-50 p-4 rounded-lg mb-4">
           <h4 className="text-sm font-medium mb-3 text-gray-700">Advanced Filters</h4>
           {/* Add more advanced filters here if needed */}
           <div className="flex gap-2 mt-3">
-            <Button
+          <Button 
               variant="outline"
-              size="sm"
+            size="sm" 
               onClick={() => {
                 setStatusFilter('all');
                 setCategoryFilter('all');
@@ -758,8 +1267,8 @@ export function VendorManagement() {
               }}
             >
               Clear Filters
-            </Button>
-          </div>
+          </Button>
+        </div>
         </div>
       )}
       {/* Sorting */}
@@ -775,15 +1284,15 @@ export function VendorManagement() {
           <option value="status">Status</option>
           <option value="registrationDate">Registration Date</option>
         </select>
-        <Button
-          variant="outline"
-          size="sm"
+                  <Button 
+                    variant="outline"
+                    size="sm" 
           onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
           className="flex items-center gap-1"
         >
           {sortDirection === 'asc' ? '↑' : '↓'} {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-        </Button>
-      </div>
+                  </Button>
+                </div>
 
       {/* Bulk Actions Bar */}
       {selectedVendors.length > 0 && (
@@ -836,12 +1345,12 @@ export function VendorManagement() {
             {col.label}
           </label>
         ))}
-      </div>
+                    </div>
       {/* Custom Export Button */}
       <Button onClick={() => setShowExportModal(true)} className="mb-4 w-fit flex items-center gap-2" variant="outline">
         <span className="text-lg">📤</span>
         Custom Export
-      </Button>
+                  </Button>
       {/* Custom Export Modal */}
       {showExportModal && (
         <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
@@ -857,7 +1366,7 @@ export function VendorManagement() {
                   <option value="pdf">PDF</option>
                   <option value="excel">Excel</option>
                 </select>
-              </div>
+                </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Columns</label>
                 <select multiple value={exportColumns} onChange={(e) => setExportColumns(Array.from(e.target.selectedOptions, option => option.value))} className="w-full p-2 border rounded h-20">
@@ -865,13 +1374,13 @@ export function VendorManagement() {
                     <option key={col.key} value={col.key}>{col.label}</option>
                   ))}
                 </select>
-              </div>
+        </div>
               <div className="flex items-end">
                 <Button onClick={handleVendorExport} disabled={isExporting} className="w-full">
                   {isExporting ? 'Exporting...' : 'Export Vendors'}
-                </Button>
-              </div>
-            </div>
+          </Button>
+        </div>
+        </div>
             {/* Export History */}
             {exportHistory.length > 0 && (
               <div>
@@ -882,22 +1391,22 @@ export function VendorManagement() {
                       <div>
                         <span className="text-sm font-medium">{export_.format.toUpperCase()}</span>
                         <span className="text-xs text-gray-500 ml-2">{new Date(export_.timestamp).toLocaleString()}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
+              </div>
+                  <div className="flex items-center gap-2">
                         <Badge variant={export_.status === 'completed' ? 'success' : 'warning'} className="text-xs">
                           {export_.status}
                         </Badge>
                         <Button size="sm" variant="outline">Download</Button>
-                      </div>
                     </div>
-                  ))}
                 </div>
-              </div>
-            )}
+          ))}
+        </div>
+        </div>
+      )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowExportModal(false)}>
                 Close
-              </Button>
+          </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -907,9 +1416,9 @@ export function VendorManagement() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {sortedVendors.map((v) => (
           <Card key={v.id} className="relative">
-            <div className="absolute top-2 left-2">
+              <div className="absolute top-2 left-2">
               <input type="checkbox" checked={selectedVendors.includes(v.id)} onChange={() => handleSelect(v.id)} />
-            </div>
+              </div>
             <div className="flex flex-col items-center gap-3 p-4">
               <img src={`https://api.dicebear.com/7.x/identicon/svg?seed=${v.name}`} alt={v.name} className="w-16 h-16 rounded-full border mb-2" />
               <h3 className="text-xl font-bold mb-1">{v.name}</h3>
@@ -917,14 +1426,14 @@ export function VendorManagement() {
                 <Badge variant={v.status === 'Active' ? 'success' : 'secondary'}>{v.status}</Badge>
                 <Badge variant={v.approvalStatus === 'approved' ? 'success' : v.approvalStatus === 'pending' ? 'warning' : 'destructive'}>
                   {v.approvalStatus.charAt(0).toUpperCase() + v.approvalStatus.slice(1)}
-                </Badge>
-              </div>
+                      </Badge>
+                    </div>
               <div className="w-full grid grid-cols-2 gap-2 text-sm mb-2">
                 <div className="font-semibold">Contact Person:</div><div>{v.contactPerson}</div>
                 <div className="font-semibold">Email:</div><div>{v.email}</div>
                 <div className="font-semibold">Phone:</div><div>{v.phone}</div>
                 <div className="font-semibold">Business Address:</div><div>{v.businessAddress}</div>
-              </div>
+                  </div>
               <div className="flex gap-2 mt-2">
                 <Button size="sm" variant="outline" onClick={() => setEditingVendor(v)}><Edit className="w-4 h-4 mr-1" />Edit</Button>
                 {v.approvalStatus === 'pending' && (
@@ -933,19 +1442,19 @@ export function VendorManagement() {
                     <Button size="sm" variant="destructive" onClick={() => rejectVendor(v.id)}><XCircle className="w-4 h-4 mr-1" />Reject</Button>
                   </>
                 )}
-                <Button 
-                  size="sm" 
+                  <Button 
+                    size="sm" 
                   onClick={() => handleImpersonate(v)} 
                   className="bg-orange-600 hover:bg-orange-700"
                   title="Impersonate this vendor"
                 >
                   👤
-                </Button>
-              </div>
+                  </Button>
+                </div>
             </div>
-          </Card>
-        ))}
-      </div>
+            </Card>
+          ))}
+        </div>
 
       {/* Vendor Detail Modal/Card */}
       {editingVendor && (
@@ -959,7 +1468,7 @@ export function VendorManagement() {
                 <Badge variant={editingVendor.approvalStatus === 'approved' ? 'success' : editingVendor.approvalStatus === 'pending' ? 'warning' : 'destructive'}>
                   {editingVendor.approvalStatus.charAt(0).toUpperCase() + editingVendor.approvalStatus.slice(1)}
                 </Badge>
-              </div>
+        </div>
               <div className="w-full grid grid-cols-2 gap-2 text-sm mb-2">
                 <div className="font-semibold">Contact Person:</div><div>{editingVendor.contactPerson}</div>
                 <div className="font-semibold">Email:</div><div>{editingVendor.email}</div>
@@ -974,8 +1483,8 @@ export function VendorManagement() {
                     <Button size="sm" variant="destructive" onClick={() => rejectVendor(editingVendor.id)}><XCircle className="w-4 h-4 mr-1" />Reject</Button>
                   </>
                 )}
-              </div>
-            </div>
+          </div>
+        </div>
           </DialogContent>
         </Dialog>
       )}
@@ -989,7 +1498,7 @@ export function VendorManagement() {
         <div className="bg-red-100 border border-red-300 text-red-700 px-4 py-2 rounded mb-2">
           {error}
           <Button variant="ghost" size="sm" className="ml-2" onClick={() => setError(null)}>Dismiss</Button>
-        </div>
+              </div>
       )}
 
       {confirmAction && (
@@ -1004,9 +1513,9 @@ export function VendorManagement() {
                 <Button variant="outline" onClick={() => setConfirmAction(null)}>Cancel</Button>
                 <Button variant={confirmAction.type === 'reject' ? 'destructive' : 'outline'} onClick={confirmAction.type === 'reject' ? confirmReject : confirmDeactivate}>
                   Confirm
-                </Button>
-              </div>
-            </div>
+                  </Button>
+                </div>
+        </div>
           </DialogContent>
         </Dialog>
       )}
@@ -1053,7 +1562,7 @@ export function VendorManagement() {
           <li>Show loading and error states for all async actions (approve, reject, save, deactivate).</li>
           <li>Show confirmation dialogs before destructive actions (reject, deactivate).</li>
         </div>
-      </div>
+          </div>
       {/* BACKEND DEVELOPER NOTES:
       <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <h3 className="font-semibold text-blue-800 mb-2">📋 Backend Developer Notes</h3>
@@ -1096,7 +1605,7 @@ export function VendorManagement() {
           </ul>
           <li>Show loading and error states for all async actions (approve, reject, save, deactivate).</li>
           <li>Show confirmation dialogs before destructive actions (reject, deactivate).</li>
-        </div>
+              </div>
       </div> */}
       {/* Quick View Modal */}
       {showQuickView && quickViewVendor && (
@@ -1107,7 +1616,7 @@ export function VendorManagement() {
                 <div>
                   <h2 className="text-xl font-bold">{quickViewVendor.name}</h2>
                   <p className="text-sm text-gray-600">{quickViewVendor.email}</p>
-                </div>
+                    </div>
               </DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1119,25 +1628,25 @@ export function VendorManagement() {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Status:</span>
                       <span className="font-medium">{quickViewVendor.status}</span>
-                    </div>
+                  </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Category:</span>
                       <span className="font-medium">{quickViewVendor.category}</span>
-                    </div>
+                </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Contact:</span>
                       <span className="font-medium">{quickViewVendor.contactPerson}</span>
-                    </div>
+                  </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Email:</span>
                       <span className="font-medium">{quickViewVendor.email}</span>
-                    </div>
+                  </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Registered:</span>
                       <span className="font-medium">{quickViewVendor.registrationDate}</span>
-                    </div>
                   </div>
                 </div>
+                    </div>
                 {/* Job/Service History */}
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="font-semibold mb-3">Job/Service History</h3>
@@ -1150,18 +1659,18 @@ export function VendorManagement() {
                           <div className="text-xs text-gray-500">Date: {job.date}</div>
                           <div className="text-xs font-semibold" style={{ color: job.status === 'completed' ? '#16a34a' : '#b91c1c' }}>
                             {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                          </div>
+                </div>
                           <Button size="sm" variant="outline" className="mt-1 w-fit self-end" onClick={() => { setJobDetails(job); setShowJobDetails(true); }}>
                             View Details
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
+                  </Button>
+                </div>
+          ))}
+        </div>
                   ) : (
                     <p className="text-sm text-gray-500">No jobs found for this vendor.</p>
                   )}
-                </div>
-              </div>
+        </div>
+          </div>
               {/* Admin Notes & Audit Trail */}
               <div className="space-y-4">
                 <div className="bg-gray-50 p-4 rounded-lg">
@@ -1173,9 +1682,9 @@ export function VendorManagement() {
                           <div className="flex justify-between items-start mb-2">
                             <span className="text-sm font-medium text-gray-700 break-words">{note.author}</span>
                             <span className="text-xs text-gray-500">{new Date(note.date).toLocaleString()}</span>
-                          </div>
+        </div>
                           <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{note.text}</p>
-                        </div>
+        </div>
                       ))}
                     </div>
                   ) : (
@@ -1188,7 +1697,7 @@ export function VendorManagement() {
                     <div className="flex items-center justify-center py-4">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2 text-sm text-gray-600">Loading audit trail...</span>
-                    </div>
+                </div>
                   ) : (
                     <div className="space-y-3 max-h-48 overflow-y-auto">
                       {vendorAuditTrail.map((entry) => (
@@ -1196,18 +1705,18 @@ export function VendorManagement() {
                           <div className="flex justify-between items-start mb-1">
                             <span className="text-sm font-medium text-gray-700 break-words">{entry.action}</span>
                             <span className="text-xs text-gray-500">{new Date(entry.timestamp).toLocaleString()}</span>
-                          </div>
+        </div>
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-xs text-gray-600 break-words">By: {entry.admin}</span>
-                          </div>
+        </div>
                           <p className="text-xs text-gray-600 whitespace-pre-wrap break-words">{entry.details}</p>
-                        </div>
+          </div>
                       ))}
-                    </div>
-                  )}
-                </div>
+        </div>
+      )}
+        </div>
               </div>
-            </div>
+                    </div>
             {/* Job Details Modal */}
             {showJobDetails && jobDetails && (
               <Dialog open={showJobDetails} onOpenChange={setShowJobDetails}>
@@ -1219,28 +1728,28 @@ export function VendorManagement() {
                     <div className="flex justify-between">
                       <span className="font-medium">Type:</span>
                       <span>{jobDetails.type}</span>
-                    </div>
+                  </div>
                     <div className="flex justify-between">
                       <span className="font-medium">User:</span>
                       <span>{jobDetails.user}</span>
-                    </div>
+                </div>
                     <div className="flex justify-between">
                       <span className="font-medium">Date:</span>
                       <span>{jobDetails.date}</span>
-                    </div>
+                  </div>
                     <div className="flex justify-between">
                       <span className="font-medium">Status:</span>
                       <span>{jobDetails.status}</span>
-                    </div>
+                  </div>
                     <div>
                       <span className="font-medium">Feedback:</span>
                       <p className="text-sm text-gray-700 mt-1">{jobDetails.feedback}</p>
-                    </div>
+                  </div>
                     <div>
                       <span className="font-medium">Details:</span>
                       <p className="text-sm text-gray-700 mt-1">{jobDetails.details}</p>
+                </div>
                     </div>
-                  </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setShowJobDetails(false)}>
                       Close
@@ -1252,10 +1761,10 @@ export function VendorManagement() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowQuickView(false)}>
                 Close
-              </Button>
+                  </Button>
               <Button onClick={() => {/* Implement edit vendor logic */}}>
                 Edit Vendor
-              </Button>
+                  </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1282,8 +1791,8 @@ export function VendorManagement() {
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => handleEditNote(note.id)} className="bg-green-600 hover:bg-green-700">Save</Button>
                       <Button size="sm" variant="outline" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</Button>
+              </div>
                     </div>
-                  </div>
                 ) : (
                   <>
                     <div className="flex justify-between items-start mb-2">
@@ -1292,18 +1801,18 @@ export function VendorManagement() {
                       <div className="flex gap-1">
                         <Button size="sm" variant="ghost" onClick={() => startEditNote(note)} className="h-6 w-6 p-0 text-gray-500 hover:text-gray-700">✏️</Button>
                         <Button size="sm" variant="ghost" onClick={() => handleDeleteNote(note.id)} className="h-6 w-6 p-0 text-gray-500 hover:text-red-600">🗑️</Button>
-                      </div>
-                    </div>
+                  </div>
+                </div>
                     <p className="text-sm text-gray-600 whitespace-pre-wrap break-words">{note.text}</p>
                   </>
-                )}
-              </div>
-            ))}
-          </div>
+                      )}
+                    </div>
+          ))}
+        </div>
         ) : (
           <p className="text-sm text-gray-500">No admin notes yet.</p>
         )}
-      </div>
+        </div>
       {/* Add Note Modal */}
       {showAddNote && (
         <Dialog open={showAddNote} onOpenChange={setShowAddNote}>
@@ -1322,14 +1831,14 @@ export function VendorManagement() {
                   placeholder="Enter your private note about this vendor..."
                 />
               </div>
-            </div>
+                    </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowAddNote(false)}>
                 Cancel
-              </Button>
+                  </Button>
               <Button onClick={handleAddNote} disabled={!newNoteText.trim() || isAddingNote} className="bg-blue-600 hover:bg-blue-700">
                 {isAddingNote ? 'Adding...' : 'Add Note'}
-              </Button>
+                  </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1351,7 +1860,7 @@ export function VendorManagement() {
                   You are about to impersonate <strong>{vendorToImpersonate.name}</strong>.
                   This action will be logged and you will have access to their account view.
                 </p>
-              </div>
+        </div>
               <div className="bg-gray-50 p-3 rounded">
                 <h4 className="font-medium mb-2">Vendor Details</h4>
                 <div className="text-sm space-y-1">
@@ -1359,8 +1868,8 @@ export function VendorManagement() {
                   <div><strong>Email:</strong> {vendorToImpersonate.email}</div>
                   <div><strong>Category:</strong> {vendorToImpersonate.category}</div>
                   <div><strong>Status:</strong> {vendorToImpersonate.status}</div>
-                </div>
-              </div>
+          </div>
+        </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="font-semibold text-blue-800 mb-2">Important Notes</h4>
                 <ul className="text-sm text-blue-700 space-y-1">
@@ -1369,19 +1878,19 @@ export function VendorManagement() {
                   <li>• Impersonation will automatically expire after 30 minutes</li>
                   <li>• Do not perform sensitive actions while impersonating</li>
                 </ul>
+        </div>
               </div>
-            </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowImpersonateConfirm(false)}>
                 Cancel
-              </Button>
-              <Button 
+                  </Button>
+                  <Button 
                 onClick={confirmImpersonation} 
                 disabled={isImpersonating}
                 className="bg-orange-600 hover:bg-orange-700"
               >
                 {isImpersonating ? 'Starting Impersonation...' : 'Start Impersonation'}
-              </Button>
+                  </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1450,8 +1959,8 @@ export function VendorManagement() {
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
       {/* Admin Notifications section (for new business/service requests and approvals) */}
       <Card className="mb-8">
         <CardHeader>
@@ -1473,6 +1982,304 @@ export function VendorManagement() {
           )}
         </CardContent>
       </Card>
-    </div>
+
+      {/* Rejection Dialog */}
+      {showRejectionDialog && vendorToReject && (
+        <Dialog open={showRejectionDialog} onOpenChange={setShowRejectionDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reject Vendor Application</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h4 className="font-semibold text-red-800 mb-2">Rejecting: {vendorToReject.name}</h4>
+                <p className="text-sm text-red-700">
+                  This action will reject the vendor's application and send them a notification email.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="rejectionReason">Rejection Reason (Required)</Label>
+                <Textarea
+                  id="rejectionReason"
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Please provide a reason for rejection..."
+                  rows={4}
+                  className="mt-2"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowRejectionDialog(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={confirmRejectVendor}
+                disabled={!rejectionReason.trim() || loading}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {loading ? 'Rejecting...' : 'Reject Application'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Bulk Rejection Dialog */}
+      {showBulkRejectionDialog && (
+        <Dialog open={showBulkRejectionDialog} onOpenChange={setShowBulkRejectionDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Bulk Reject Vendor Applications</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h4 className="font-semibold text-red-800 mb-2">
+                  Rejecting {selectedApprovalVendors.length} Vendor{selectedApprovalVendors.length !== 1 ? 's' : ''}
+                </h4>
+                <p className="text-sm text-red-700">
+                  This action will reject all selected vendor applications and send them notification emails.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="bulkRejectionReason">Rejection Reason (Required)</Label>
+                <Textarea
+                  id="bulkRejectionReason"
+                  value={bulkRejectionReason}
+                  onChange={(e) => setBulkRejectionReason(e.target.value)}
+                  placeholder="Please provide a reason for rejection..."
+                  rows={4}
+                  className="mt-2"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowBulkRejectionDialog(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => bulkRejectVendors(bulkRejectionReason)}
+                disabled={!bulkRejectionReason.trim() || loading}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {loading ? 'Rejecting...' : `Reject ${selectedApprovalVendors.length} Application${selectedApprovalVendors.length !== 1 ? 's' : ''}`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Vendor Details Modal */}
+      {showVendorDetails && selectedVendorForDetails && (
+        <Dialog open={showVendorDetails} onOpenChange={setShowVendorDetails}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-3">
+                <img 
+                  src={selectedVendorForDetails.image || `https://api.dicebear.com/7.x/identicon/svg?seed=${selectedVendorForDetails.name}`} 
+                  alt={selectedVendorForDetails.name} 
+                  className="w-12 h-12 rounded-lg object-cover"
+                />
+                <div>
+                  <h2 className="text-xl font-bold">{selectedVendorForDetails.name}</h2>
+                  <p className="text-sm text-gray-600">{selectedVendorForDetails.email}</p>
+                </div>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Vendor Information */}
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Business Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-600">Business Name:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.businessName}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Business Type:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.businessType}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Founded Year:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.foundedYear}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">License Number:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.licenseNumber}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Insurance Status:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.insuranceStatus}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Bonding Status:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.bondingStatus}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Total Employees:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.totalEmployees}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Years in Business:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.yearsInBusiness}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Contact Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-600">Contact Person:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.contactPerson}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Phone:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.phone}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Email:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.email}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Website:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.website || 'Not provided'}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="font-medium text-gray-600">Business Address:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.businessAddress}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Emergency Contact:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.emergencyContact}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Response Time:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.responseTimeSettings}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Services and Specializations */}
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Services & Specializations</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {selectedVendorForDetails.serviceTypes && selectedVendorForDetails.serviceTypes.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Service Types:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {selectedVendorForDetails.serviceTypes.map((service, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {service}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedVendorForDetails.specializations && selectedVendorForDetails.specializations.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Specializations:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {selectedVendorForDetails.specializations.map((spec, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {spec}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedVendorForDetails.serviceAreas && selectedVendorForDetails.serviceAreas.length > 0 && (
+                      <div>
+                        <span className="font-medium text-gray-600">Service Areas:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {selectedVendorForDetails.serviceAreas.map((area, index) => (
+                            <Badge key={index} variant="outline" className="text-xs">
+                              {area}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Description</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-gray-700">{selectedVendorForDetails.description}</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Registration Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-600">Registration Date:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.registrationDate}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Category:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.category}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Experience:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.experience}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-600">Availability:</span>
+                        <p className="text-gray-900">{selectedVendorForDetails.availability}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowVendorDetails(false)}>
+                Close
+              </Button>
+              <Button 
+                onClick={() => approveVendor(selectedVendorForDetails.id)}
+                disabled={loading}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Approve
+              </Button>
+              <Button 
+                onClick={() => {
+                  setVendorToReject(selectedVendorForDetails);
+                  setShowRejectionDialog(true);
+                  setShowVendorDetails(false);
+                }}
+                disabled={loading}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                <XCircle className="h-4 w-4 mr-2" />
+                Reject
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+        </div>
   )
 } 

@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
-import { User, Home, Heart, Settings, LogOut, Users, Briefcase, LayoutDashboard, Star, Calendar, MessageSquare } from 'lucide-react';
+import { User, Home, Heart, Settings, LogOut, Users, Briefcase, LayoutDashboard, Star, Calendar, MessageSquare, Globe } from 'lucide-react';
 import { Button } from './ui/button';
 
 const user = {
@@ -21,6 +21,7 @@ const navLinks = [
 ];
 
 const viewModes = [
+  { label: 'Home Page', icon: Globe, href: '/', active: false },
   { label: 'User View', icon: User, href: '/user-dashboard', active: true },
   { label: 'Vendor View', icon: Briefcase, href: '/vendor/dashboard', active: false },
   { label: 'Admin View', icon: Users, href: '/admin/dashboard', active: false },
@@ -98,12 +99,12 @@ export default function UserSidebar() {
                     variant={mode.active ? "default" : "outline"}
                     className={`w-full flex items-center gap-2 py-2 justify-start transition-colors font-medium ${
                       mode.active 
-                        ? 'bg-white text-blue-800 hover:bg-gray-100' 
-                        : 'border-white/30 text-white hover:bg-white/10 bg-white/5'
+                        ? "bg-white text-blue-800 hover:bg-gray-100" 
+                        : "text-white border-white/20 hover:bg-blue-700"
                     }`}
                   >
                     <mode.icon size={16} />
-                    <span className="font-medium">{mode.label}</span>
+                    {mode.label}
                   </Button>
                 </Link>
               ))}
