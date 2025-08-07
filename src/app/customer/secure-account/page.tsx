@@ -38,6 +38,7 @@ export default function CustomerSecureAccountPage() {
 
     try {
       // Step 1: Get registration options from server
+      console.log('Requesting passkey registration options...');
       const optionsResponse = await fetch('/api/passkey/register-options', {
         method: 'POST',
         headers: {
@@ -49,12 +50,21 @@ export default function CustomerSecureAccountPage() {
       });
 
       if (!optionsResponse.ok) {
-        throw new Error('Failed to get registration options');
+        const errorData = await optionsResponse.json().catch(() => ({}));
+        throw new Error(`Failed to get registration options: ${errorData.error || optionsResponse.statusText}`);
       }
 
       const options = await optionsResponse.json();
+      console.log('Registration options received:', options);
 
       // Step 2: Create credential
+      console.log('Creating credential with options:', {
+        challenge: options.challenge.length,
+        rp: options.rp,
+        user: options.user,
+        timeout: options.timeout
+      });
+      
       const credential = await navigator.credentials.create({
         publicKey: {
           challenge: new Uint8Array(options.challenge),
@@ -68,7 +78,7 @@ export default function CustomerSecureAccountPage() {
             displayName: options.user.displayName,
           },
           pubKeyCredParams: options.pubKeyCredParams,
-          timeout: options.timeout,
+          timeout: 30000, // 30 seconds timeout
           attestation: options.attestation,
           authenticatorSelection: options.authenticatorSelection,
         },
@@ -79,6 +89,7 @@ export default function CustomerSecureAccountPage() {
       }
 
       // Step 3: Send credential to server
+      console.log('Sending credential to server...');
       const credentialData = {
         id: credential.id,
         type: credential.type,
@@ -101,7 +112,8 @@ export default function CustomerSecureAccountPage() {
       });
 
       if (!registerResponse.ok) {
-        throw new Error('Failed to register passkey');
+        const errorData = await registerResponse.json().catch(() => ({}));
+        throw new Error(`Failed to register passkey: ${errorData.error || registerResponse.statusText}`);
       }
 
       setSetupComplete(true);
@@ -120,6 +132,7 @@ export default function CustomerSecureAccountPage() {
   };
 
   const skipPasskey = () => {
+    console.log('Skipping passkey setup, redirecting to dashboard');
     router.push('/user-dashboard');
   };
 

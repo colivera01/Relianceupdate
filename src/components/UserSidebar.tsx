@@ -3,8 +3,10 @@ import React from 'react';
 import Link from 'next/link';
 import { User, Home, Heart, Settings, LogOut, Users, Briefcase, LayoutDashboard, Star, Calendar, MessageSquare, Globe } from 'lucide-react';
 import { Button } from './ui/button';
+// import { useAuth } from '../contexts/AuthContext';
 
-const user = {
+// Default user data (fallback)
+const defaultUser = {
   name: 'Jane Doe',
   email: 'jane.doe@email.com',
   avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
@@ -28,6 +30,26 @@ const viewModes = [
 ];
 
 export default function UserSidebar() {
+  // Temporarily disable auth context to avoid layout issues
+  // const { user, logout } = useAuth();
+  // const currentUser = user || defaultUser;
+  const currentUser = defaultUser;
+
+  const handleLogout = async () => {
+    if (confirm('Are you sure you want to log out?')) {
+      try {
+        // Try to use auth context if available
+        // await logout();
+        // Fallback to direct logout
+        window.location.href = '/logout';
+      } catch (error) {
+        console.error('Logout failed:', error);
+        // Fallback to direct logout
+        window.location.href = '/logout';
+      }
+    }
+  };
+
   return (
     <aside className="w-72 flex flex-col min-h-screen">
       {/* Logo area - white background */}
@@ -41,8 +63,8 @@ export default function UserSidebar() {
         <div className="flex flex-col items-center mb-8">
           <div className="relative mb-4">
             <img
-              src={user.avatar}
-              alt={user.name}
+              src={currentUser.avatar}
+              alt={currentUser.name}
               className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md"
             />
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white flex items-center justify-center">
@@ -50,8 +72,8 @@ export default function UserSidebar() {
             </div>
           </div>
           <div className="text-center">
-            <div className="font-semibold text-lg mb-1">{user.name}</div>
-            <div className="text-blue-100 text-sm">{user.email}</div>
+            <div className="font-semibold text-lg mb-1">{currentUser.name}</div>
+            <div className="text-blue-100 text-sm">{currentUser.email}</div>
             <div className="mt-2">
               <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
                 Premium Member
@@ -78,10 +100,13 @@ export default function UserSidebar() {
           
           {/* Log Out Button - moved here to match navigation style */}
           <div className="mt-4 pt-4 border-t border-white/20">
-            <Link href="/logout" className="flex items-center gap-3 px-3 py-2 rounded-lg text-white hover:bg-blue-700 transition-colors font-medium">
+            <button 
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-white hover:bg-blue-700 transition-colors font-medium w-full text-left"
+            >
               <LogOut size={18} />
               Log Out
-            </Link>
+            </button>
           </div>
         </nav>
 

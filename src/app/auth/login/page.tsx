@@ -30,6 +30,8 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      console.log('Attempting login with:', { email: formData.email, password: '[HIDDEN]' });
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -38,14 +40,24 @@ export default function LoginPage() {
         body: JSON.stringify(formData),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        const data = await response.json();
-        // Redirect based on user role (you'll need to implement this logic)
-        // For now, redirect to user dashboard
-        router.push('/user-dashboard');
+        console.log('Login successful:', data);
+        
+        // Store user data and token
+        localStorage.setItem('userData', JSON.stringify(data.user));
+        localStorage.setItem('authToken', data.token);
+        
+        // Redirect based on user type
+        if (data.user.userType === 'vendor') {
+          router.push('/vendor/dashboard');
+        } else {
+          router.push('/user-dashboard');
+        }
       } else {
-        const error = await response.json();
-        alert(error.message || 'Login failed');
+        console.log('Login failed:', data);
+        alert(data.error || 'Login failed');
       }
     } catch (error) {
       console.error('Login error:', error);

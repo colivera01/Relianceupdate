@@ -3,24 +3,27 @@ import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userType } = await request.json();
+    const body = await request.json();
+    const { userType } = body;
+
+    console.log('Generating passkey registration options for:', userType);
 
     // Generate a random challenge
     const challenge = crypto.randomBytes(32);
+    
+    // Generate a random user ID
+    const userId = crypto.randomBytes(16);
 
-    // Create registration options
     const options = {
       challenge: Array.from(challenge),
       rp: {
         name: 'Reliance',
-        id: process.env.NODE_ENV === 'production' 
-          ? 'yourdomain.com' // Replace with your actual domain
-          : 'localhost',
+        id: 'localhost', // In production, use your actual domain
       },
       user: {
-        id: Array.from(crypto.randomBytes(16)), // Generate a random user ID
-        name: `user@reliance.com`, // This should be the actual user's email
-        displayName: userType === 'vendor' ? 'Vendor User' : 'Customer User',
+        id: Array.from(userId),
+        name: `user@reliance.com`, // In production, use actual user email
+        displayName: 'Reliance User', // In production, use actual user name
       },
       pubKeyCredParams: [
         {
@@ -33,21 +36,20 @@ export async function POST(request: NextRequest) {
         },
       ],
       timeout: 60000, // 60 seconds
-      attestation: 'direct',
+      attestation: 'none',
       authenticatorSelection: {
         authenticatorAttachment: 'platform',
         userVerification: 'preferred',
         requireResidentKey: false,
       },
-      excludeCredentials: [], // No existing credentials to exclude for new registration
     };
 
-    // Store the challenge in session/database for verification later
-    // This is where you'd typically store the challenge associated with the user
+    console.log('Passkey registration options generated successfully');
 
     return NextResponse.json(options);
+
   } catch (error) {
-    console.error('Error generating registration options:', error);
+    console.error('Error generating passkey registration options:', error);
     return NextResponse.json(
       { error: 'Failed to generate registration options' },
       { status: 500 }

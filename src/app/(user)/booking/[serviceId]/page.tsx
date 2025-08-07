@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
   ChevronLeft, 
@@ -29,24 +29,47 @@ export default function BookingPage() {
     notes: ''
   });
   const [currentStep, setCurrentStep] = useState<'date' | 'details' | 'review' | 'payment'>('date');
+  const [service, setService] = useState<any>(null);
+  const [availability, setAvailability] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Mock service data
-  const service = {
-    id: serviceId,
-    name: 'Deep House Cleaning',
-    vendor: {
-      name: 'Sparkle Clean Pro',
-      rating: 4.9,
-      reviewCount: 127
-    },
-    price: 120,
-    originalPrice: 150,
-    discount: 20,
-    duration: '3-4 hours',
-    image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop'
-  };
+  // Fetch service details and availability
+  useEffect(() => {
+    const fetchServiceData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch service details
+        const serviceResponse = await fetch(`/api/services/${serviceId}`);
+        if (!serviceResponse.ok) {
+          throw new Error('Failed to fetch service details');
+        }
+        const serviceData = await serviceResponse.json();
+        setService(serviceData.service);
 
-  // Mock available dates and times
+        // Fetch availability
+        const availabilityResponse = await fetch(`/api/availability/vendor/${serviceData.service.vendor.id}`);
+        if (!availabilityResponse.ok) {
+          throw new Error('Failed to fetch availability');
+        }
+        const availabilityData = await availabilityResponse.json();
+        setAvailability(availabilityData.availability);
+
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (serviceId) {
+      fetchServiceData();
+    }
+  }, [serviceId]);
+
+  // Mock available dates and times (in real app, this would come from availability API)
   const availableDates = [
     { date: '2024-01-25', day: 'Thursday', available: true },
     { date: '2024-01-26', day: 'Friday', available: true },
@@ -62,7 +85,6 @@ export default function BookingPage() {
 
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
-    // Don't auto-advance to next step, let user select time first
   };
 
   const handleTimeSelect = (time: string) => {
@@ -75,7 +97,6 @@ export default function BookingPage() {
 
   const handleContinue = () => {
     if (currentStep === 'date') {
-      // Only allow continuing if both date and time are selected
       if (selectedDate && selectedTime) {
         setCurrentStep('details');
       }
@@ -96,9 +117,70 @@ export default function BookingPage() {
     }
   };
 
-  const handleConfirmBooking = () => {
-    // In real app, this would submit to backend
-    router.push(`/booking/${serviceId}/confirmation`);
+  const handleConfirmBooking = async () => {
+    if (!service || !selectedDate || !selectedTime) {
+      setError('Missing required booking information');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError(null);
+
+      // Convert time format for API
+      const time24Hour = convertTo24Hour(selectedTime);
+      
+      const bookingData = {
+        service_id: parseInt(serviceId),
+        vendor_id: service.vendor.id,
+        booking_date: selectedDate,
+        booking_time: time24Hour,
+        user_notes: userDetails.notes,
+        custom_fields: {
+          customer_name: userDetails.name,
+          customer_email: userDetails.email,
+          customer_phone: userDetails.phone,
+          service_address: userDetails.address
+        }
+      };
+
+      const response = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(bookingData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create booking');
+      }
+
+      const bookingResult = await response.json();
+      
+      // Redirect to confirmation page with booking ID
+      router.push(`/booking/${serviceId}/confirmation?bookingId=${bookingResult.booking.id}`);
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create booking');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const convertTo24Hour = (time12Hour: string) => {
+    const [time, period] = time12Hour.split(' ');
+    const [hours, minutes] = time.split(':');
+    let hour24 = parseInt(hours);
+    
+    if (period === 'PM' && hour24 !== 12) {
+      hour24 += 12;
+    } else if (period === 'AM' && hour24 === 12) {
+      hour24 = 0;
+    }
+    
+    return `${hour24.toString().padStart(2, '0')}:${minutes}:00`;
   };
 
   const isFormValid = () => {
@@ -110,6 +192,50 @@ export default function BookingPage() {
     }
     return true;
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading service details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-500 mb-4">⚠️</div>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button 
+            onClick={() => router.back()}
+            className="bg-purple-500 text-white px-6 py-2 rounded-lg hover:bg-purple-600 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!service) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Service not found</p>
+          <button 
+            onClick={() => router.back()}
+            className="bg-purple-500 text-white px-6 py-2 rounded-lg hover:bg-purple-600 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -339,7 +465,7 @@ export default function BookingPage() {
                     <h3 className="font-semibold text-gray-900 mb-3">Service Details</h3>
                     <div className="flex items-center gap-4">
                       <img 
-                        src={service.image} 
+                        src={service.images?.[0] || '/placeholder-service.jpg'} 
                         alt={service.name}
                         className="w-16 h-16 object-cover rounded-lg"
                       />
@@ -348,7 +474,7 @@ export default function BookingPage() {
                         <div className="text-sm text-gray-600">{service.vendor.name}</div>
                         <div className="flex items-center gap-1 text-sm text-gray-600">
                           <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                          <span>{service.vendor.rating} ({service.vendor.reviewCount} reviews)</span>
+                          <span>{service.vendor.rating} ({service.vendor.review_count} reviews)</span>
                         </div>
                       </div>
                     </div>
@@ -450,6 +576,16 @@ export default function BookingPage() {
               </div>
             )}
 
+            {/* Error Display */}
+            {error && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-2 text-red-800">
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  <span className="text-sm">{error}</span>
+                </div>
+              </div>
+            )}
+
             {/* Navigation Buttons */}
             <div className="flex justify-between mt-6">
               {currentStep !== 'date' && (
@@ -465,9 +601,10 @@ export default function BookingPage() {
                 {currentStep === 'payment' ? (
                   <button
                     onClick={handleConfirmBooking}
-                    className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200"
+                    disabled={submitting}
+                    className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Confirm Booking
+                    {submitting ? 'Creating Booking...' : 'Confirm Booking'}
                   </button>
                 ) : (
                   <button
@@ -490,7 +627,7 @@ export default function BookingPage() {
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <img 
-                    src={service.image} 
+                    src={service.images?.[0] || '/placeholder-service.jpg'} 
                     alt={service.name}
                     className="w-12 h-12 object-cover rounded-lg"
                   />
@@ -529,12 +666,14 @@ export default function BookingPage() {
                 <div className="border-t border-gray-200 pt-4">
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-600">Service Price</span>
-                    <span className="line-through text-gray-500">${service.originalPrice}</span>
+                    <span className="line-through text-gray-500">${service.original_price || service.price}</span>
                   </div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-600">Discount</span>
-                    <span className="text-green-600">-${service.originalPrice - service.price}</span>
-                  </div>
+                  {service.original_price && (
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-gray-600">Discount</span>
+                      <span className="text-green-600">-${service.original_price - service.price}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-semibold text-lg">
                     <span>Total</span>
                     <span>${service.price}</span>

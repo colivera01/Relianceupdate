@@ -39,33 +39,35 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 export default function VendorProfilePage() {
   const [profile, setProfile] = useState({
-    businessName: 'Sparkle Clean Pro',
-    address: '123 Main St',
-    city: 'New York',
-    state: 'NY',
-    totalEmployees: 8,
-    pairedDevice: true,
-    email: 'contact@sparklecleanpro.com',
-    phone: '(555) 123-4567',
-    website: 'www.sparklecleanpro.com',
-    businessType: 'Home Services',
-    foundedYear: 2019,
-    licenseNumber: 'CLEAN-2019-001',
-    insuranceProvider: 'CleanShield Insurance',
-    insuranceExpiry: '2025-12-31',
+    businessName: '',
+    address: '',
+    city: '',
+    state: '',
+    totalEmployees: 1,
+    pairedDevice: false,
+    email: '',
+    phone: '',
+    website: '',
+    businessType: '',
+    foundedYear: new Date().getFullYear(),
+    licenseNumber: '',
+    insuranceProvider: '',
+    insuranceExpiry: '',
     // Enhanced fields for user service detail page
-    yearsInBusiness: 5,
-    insuranceStatus: true,
-    bondingStatus: true,
-    serviceAreas: ['Downtown', 'Midtown', 'Upper East Side'],
-    specializations: ['Deep Cleaning', 'Eco-friendly', 'Same Day Service'],
-    responseTimeSettings: '2 hours',
-    emergencyContact: '(555) 987-6543',
+    yearsInBusiness: 0,
+    insuranceStatus: false,
+    bondingStatus: false,
+    serviceAreas: [],
+    specializations: [],
+    responseTimeSettings: '',
+    emergencyContact: '',
     // New fields
-    bio: 'Professional cleaning services with over 5 years of experience. We specialize in residential and commercial cleaning with eco-friendly products and same-day service options.',
+    bio: '',
     profilePhoto: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&crop=center',
-    serviceTypes: ['House Cleaning', 'Deep Cleaning', 'Move-in/Move-out Cleaning', 'Commercial Cleaning', 'Carpet Cleaning']
+    serviceTypes: []
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [showPairModal, setShowPairModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
@@ -120,6 +122,48 @@ export default function VendorProfilePage() {
     'Emergency Cleaning'
   ];
 
+  // Fetch profile data on component mount
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        setLoading(true);
+        const token = localStorage.getItem('authToken');
+        
+        if (!token) {
+          setError('No authentication token found');
+          setLoading(false);
+          return;
+        }
+
+        const response = await fetch('/api/vendor/profile', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch profile');
+        }
+
+        const data = await response.json();
+        
+        if (data.success && data.profile) {
+          setProfile(data.profile);
+        } else {
+          setError('Failed to load profile data');
+        }
+      } catch (err) {
+        console.error('Error fetching profile:', err);
+        setError('Failed to load profile data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, []);
+
   // Countdown effect
   useEffect(() => {
     if (!showPairModal) return;
@@ -148,9 +192,43 @@ export default function VendorProfilePage() {
     setAddressSuggestions([]);
   };
 
-  const handleSave = () => {
-    setSaving(true);
-    setTimeout(() => setSaving(false), 1000);
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      const token = localStorage.getItem('authToken');
+      
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
+
+      const response = await fetch('/api/vendor/profile', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(profile),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update profile');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Show success message (you could add a toast notification here)
+        console.log('Profile updated successfully');
+      } else {
+        setError('Failed to update profile');
+      }
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      setError('Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
   };
 
   function handleSaveReminders() {
@@ -169,7 +247,31 @@ export default function VendorProfilePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <main className="flex-1 p-8 flex gap-8 max-w-7xl mx-auto">
+      {loading && (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading profile...</p>
+          </div>
+        </div>
+      )}
+      
+      {error && (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-red-600 mb-4">
+              <XCircle className="w-12 h-12 mx-auto" />
+            </div>
+            <p className="text-red-600 mb-4">{error}</p>
+            <Button onClick={() => window.location.reload()}>
+              Try Again
+            </Button>
+          </div>
+        </div>
+      )}
+      
+      {!loading && !error && (
+        <main className="flex-1 p-8 flex gap-8 max-w-7xl mx-auto">
         {/* Profile Form */}
         <section className="flex-1 max-w-2xl space-y-6">
           <div className="flex items-center gap-4 mb-6">
@@ -817,6 +919,7 @@ export default function VendorProfilePage() {
 
         </aside>
       </main>
+      )}
 
       {/* Enhanced Pair Device Modal */}
       <Dialog open={showPairModal} onOpenChange={setShowPairModal}>
@@ -925,6 +1028,7 @@ export default function VendorProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
+      )}
     </div>
   );
 } 

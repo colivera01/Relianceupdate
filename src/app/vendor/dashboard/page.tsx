@@ -28,6 +28,117 @@ import {
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 export default function VendorDashboard() {
+  const [vendorData, setVendorData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // Fetch vendor profile data on component mount
+  useEffect(() => {
+    const fetchVendorData = async () => {
+      try {
+        const response = await fetch('/api/vendor/profile', {
+          headers: {
+            'Authorization': 'Bearer temp-jwt-token'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setVendorData(data.profile);
+        } else {
+          setError('Failed to fetch vendor data');
+        }
+      } catch (error) {
+        console.error('Error fetching vendor data:', error);
+        setError('Failed to fetch vendor data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchVendorData();
+  }, []);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <p className="text-gray-600">{error}</p>
+          <Button onClick={() => window.location.reload()} className="mt-4">
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Display vendor registration data at the top
+  const renderVendorInfo = () => {
+    if (!vendorData) return null;
+
+    return (
+      <div className="mb-8">
+        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              Welcome, {vendorData.firstName} {vendorData.lastName}!
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <h4 className="font-semibold text-gray-700">Business Information</h4>
+                <p className="text-sm text-gray-600">Business: {vendorData.businessName}</p>
+                <p className="text-sm text-gray-600">Type: {vendorData.businessType}</p>
+                <p className="text-sm text-gray-600">Category: {vendorData.category}</p>
+                <p className="text-sm text-gray-600">Founded: {vendorData.foundedYear}</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-700">Contact Information</h4>
+                <p className="text-sm text-gray-600">Email: {vendorData.email}</p>
+                <p className="text-sm text-gray-600">Phone: {vendorData.phone}</p>
+                <p className="text-sm text-gray-600">Location: {vendorData.city}, {vendorData.state}</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-700">Services</h4>
+                <p className="text-sm text-gray-600">
+                  Service Types: {Array.isArray(vendorData.serviceTypes) ? vendorData.serviceTypes.join(', ') : vendorData.serviceTypes}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Specializations: {Array.isArray(vendorData.specializations) ? vendorData.specializations.join(', ') : vendorData.specializations}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Service Areas: {Array.isArray(vendorData.serviceAreas) ? vendorData.serviceAreas.join(', ') : vendorData.serviceAreas}
+                </p>
+              </div>
+            </div>
+            {vendorData.businessBio && (
+              <div className="mt-4">
+                <h4 className="font-semibold text-gray-700">Business Description</h4>
+                <p className="text-sm text-gray-600">{vendorData.businessBio}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   const recentJobs = [
     {
       id: 1,
@@ -1195,6 +1306,9 @@ export default function VendorDashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Display vendor registration data */}
+      {renderVendorInfo()}
+      
       {/* Move the Performance Metrics card to the very top of the dashboard */}
       <Card className="mb-8">
         <CardHeader>

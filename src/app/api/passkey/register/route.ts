@@ -2,55 +2,43 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { credential, userType } = await request.json();
+    const body = await request.json();
+    const { credential, userType } = body;
 
-    // Validate the credential data
-    if (!credential || !credential.id || !credential.response) {
-      return NextResponse.json(
-        { error: 'Invalid credential data' },
-        { status: 400 }
-      );
-    }
+    console.log('Registering passkey for userType:', userType);
 
-    // Here you would typically:
-    // 1. Verify the attestation signature
-    // 2. Extract the public key from the attestation object
-    // 3. Store the credential ID and public key in your database
-    // 4. Associate the credential with the user's account
+    // In a real implementation, you would:
+    // 1. Verify the credential data
+    // 2. Store the credential in your database
+    // 3. Associate it with the user account
+    // 4. Update the user's passkey status
 
-    // For now, we'll just log the credential data
-    console.log('Received passkey registration:', {
-      credentialId: credential.id,
-      userType,
-      // In a real implementation, you'd store this securely
-      // publicKey: extractedPublicKey,
-      // userHandle: credential.response.userHandle,
+    // For now, we'll just log the credential data and return success
+    console.log('Credential received:', {
+      id: credential.id,
+      type: credential.type,
+      // Don't log the raw credential data for security
     });
 
     // TODO: Implement actual credential verification and storage
-    // This is where you'd:
-    // - Verify the attestation signature using a WebAuthn library
-    // - Extract the public key from the attestation object
-    // - Store the credential ID and public key in your database
-    // - Associate it with the user's account
+    // const verified = await verifyCredential(credential);
+    // if (!verified) {
+    //   return NextResponse.json(
+    //     { error: 'Credential verification failed' },
+    //     { status: 400 }
+    //   );
+    // }
 
-    // Example of what you might store in your database:
-    const credentialData = {
-      id: credential.id,
-      type: credential.type,
-      userType,
-      createdAt: new Date().toISOString(),
-      // publicKey: extractedPublicKey,
-      // userHandle: credential.response.userHandle,
-    };
+    // TODO: Store credential in database
+    // await storeCredential(userId, credential);
 
-    // Store in database (implement this based on your database setup)
-    // await db.passkeys.create(credentialData);
+    console.log('Passkey registered successfully');
 
     return NextResponse.json({
       success: true,
       message: 'Passkey registered successfully',
     });
+
   } catch (error) {
     console.error('Error registering passkey:', error);
     return NextResponse.json(

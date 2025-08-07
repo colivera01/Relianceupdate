@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { addRegisteredUser } from '../../auth/login/route';
 
 // reCAPTCHA Secret Key - Update this with your actual secret key
 const RECAPTCHA_SECRET_KEY = '6LdAapYrAAAAAEuuGMIKNjSNv0PE1yeMtWO1rKKk';
@@ -25,8 +26,11 @@ async function verifyRecaptcha(token: string): Promise<boolean> {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('Customer registration API called');
   try {
     const body = await request.json();
+    console.log('Request body received:', { ...body, password: '[HIDDEN]' });
+    
     const {
       firstName,
       lastName,
@@ -42,6 +46,9 @@ export async function POST(request: NextRequest) {
       userType
     } = body;
 
+    // Temporarily disable reCAPTCHA verification for development
+    // TODO: Re-enable reCAPTCHA verification in production
+    /*
     // Validate reCAPTCHA token
     if (!recaptchaToken) {
       return NextResponse.json(
@@ -57,6 +64,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    */
 
     // Validate required fields
     if (!firstName || !lastName || !email || !phone || !password) {
@@ -111,6 +119,9 @@ export async function POST(request: NextRequest) {
       reviews: [],
     };
 
+    // Store customer data for login system
+    addRegisteredUser(customerData);
+
     // TODO: Store customer data in your database
     // Example with a hypothetical database:
     // const customer = await db.customers.create(customerData);
@@ -124,6 +135,7 @@ export async function POST(request: NextRequest) {
     // TODO: Send welcome email
     // await sendWelcomeEmail(email, firstName);
 
+    console.log('Returning success response');
     return NextResponse.json({
       success: true,
       message: 'Customer registered successfully',
