@@ -1,10 +1,11 @@
 'use client';
 import { Users, HardDrive, Star, Briefcase, DollarSign, HelpCircle, LogOut, AlertTriangle, Home } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '../../components/ui/button';
 import Link from 'next/link';
+import ProfileHeader from '../../components/ProfileHeader';
 
 const sidebarLinks = [
-  { label: 'Dashboard', icon: Home, href: '/vendor' },
+  { label: 'Dashboard', icon: Home, href: '/vendor/dashboard' },
   { label: 'Profile & Settings', icon: Users, href: '/vendor/profile' },
   { label: 'View Reviews', icon: Star, href: '/vendor/reviews' },
   { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },
@@ -109,7 +110,26 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
           <div className="mt-auto text-xs text-blue-200 px-2 mb-4">Reliance © 2023</div>
         </div>
       </aside>
-      <main className="flex-1 px-4 md:px-8 py-8">{children}</main>
+      <main className="flex-1 flex flex-col">
+        {/* Profile Header with Toggle */}
+        <ProfileHeader 
+          userData={{
+            id: 'cmipm4d6v0000sosgqvb8tp63', // seeded vendor ID
+            firstName: 'Cesar',
+            lastName: 'Olivera',
+            email: 'sparkle@example.com',
+            businessName: 'Sparkle Clean Pro',
+            category: 'Professional Cleaning',
+          }} 
+          currentProfile="vendor"
+          className="sticky top-0 z-40"
+        />
+        
+        {/* Main Content */}
+        <div className="flex-1 px-4 md:px-8 py-8">
+          {children}
+        </div>
+      </main>
     </div>
   );
 } 

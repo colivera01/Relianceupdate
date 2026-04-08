@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // In-memory storage for registered users (in production, this would be a database)
 // This is just for development - replace with actual database queries
 export let registeredUsers: any[] = [
-  // Test user for development
+  // Test customer user for development
   {
     id: 'test-user-1',
     firstName: 'Cesar',
@@ -18,6 +18,46 @@ export let registeredUsers: any[] = [
     bio: 'test test',
     createdAt: new Date().toISOString(),
     isActive: true,
+  },
+  // Test vendor user for development
+  {
+    id: 'test-vendor-1',
+    firstName: 'John',
+    lastName: 'Smith',
+    email: 'john.smith@sparkleclean.com',
+    password: 'vendor123!',
+    userType: 'vendor',
+    address: '123 Business Ave',
+    city: 'Orlando',
+    state: 'Florida',
+    zipCode: '32801',
+    bio: 'Professional cleaning services',
+    businessName: 'Sparkle Clean Pro',
+    businessType: 'Cleaning Services',
+    category: 'Home Cleaners',
+    businessBio: 'Professional cleaning services for homes and offices',
+    foundedYear: '2020',
+    licenseNumber: 'FL-CLEAN-12345',
+    insuranceStatus: 'Insured',
+    bondingStatus: 'Bonded',
+    totalEmployees: '5',
+    yearsInBusiness: '4',
+    serviceTypes: 'Residential Cleaning, Commercial Cleaning, Deep Cleaning',
+    specializations: 'Eco-friendly cleaning, Move-in/out cleaning, Post-construction cleaning',
+    serviceAreas: 'Orlando, Winter Park, Maitland, Winter Springs',
+    website: 'https://sparklecleanpro.com',
+    emergencyContact: '407-555-0123',
+    responseTime: '2 hours',
+    profileImage: '',
+    isActive: true,
+    isVerified: true,
+    isApproved: true,
+    approvalStatus: 'Approved',
+    rating: 4.8,
+    totalReviews: 127,
+    totalBookings: 89,
+    totalEarnings: 15420,
+    createdAt: new Date().toISOString(),
   }
 ];
 
@@ -64,12 +104,33 @@ export async function POST(request: NextRequest) {
 
     console.log('Login successful for user:', email);
 
+    // Determine available profiles for this user
+    let availableProfiles: string[] = [];
+    
+    // Check if user is a vendor
+    if (user.userType === 'vendor' || user.businessName || user.category || user.serviceTypes) {
+      availableProfiles.push('vendor');
+    }
+    
+    // Check if user is a customer
+    if (user.userType === 'customer' || !user.businessName) {
+      availableProfiles.push('customer');
+    }
+    
+    // If user has both profiles, set userType to 'both'
+    if (availableProfiles.length > 1) {
+      user.userType = 'both';
+    } else if (availableProfiles.length === 1) {
+      user.userType = availableProfiles[0];
+    }
+
     // Return user data (without password)
     const userResponse = {
       id: user.id || 'temp-id',
       name: `${user.firstName} ${user.lastName}`,
       email: user.email,
       userType: user.userType || 'customer',
+      availableProfiles,
       avatar: user.avatar || `https://randomuser.me/api/portraits/${user.userType === 'vendor' ? 'men' : 'women'}/44.jpg`,
     };
 

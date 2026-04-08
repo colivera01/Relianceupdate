@@ -1,0 +1,330 @@
+// Base API Response Types
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+// User Types
+export interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  userType: 'customer' | 'vendor' | 'both';
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  bio?: string;
+  createdAt: string;
+  isActive: boolean;
+  phone?: string;
+}
+
+export interface CustomerProfile extends User {
+  preferences?: {
+    notifications: boolean;
+    emailMarketing: boolean;
+  };
+  favorites: string[];
+  bookingHistory: string[];
+  reviews: string[];
+}
+
+export interface VendorProfile extends User {
+  businessName: string;
+  businessType: string;
+  category: string;
+  businessBio: string;
+  foundedYear: string;
+  licenseNumber: string;
+  insuranceStatus: string;
+  bondingStatus: string;
+  totalEmployees: string;
+  yearsInBusiness: string;
+  serviceTypes: string | string[];
+  specializations: string | string[];
+  serviceAreas: string | string[];
+  website?: string;
+  emergencyContact?: string;
+  responseTime: string;
+  profileImage?: string;
+  isVerified: boolean;
+  isApproved: boolean;
+  approvalStatus: string;
+  rating: number;
+  totalReviews: number;
+  totalBookings: number;
+  totalEarnings: number;
+}
+
+// Authentication Types
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  user: User;
+  token: string;
+  availableProfiles?: string[];
+}
+
+export interface RegisterRequest {
+  userType: 'customer' | 'vendor';
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  bio?: string;
+  // Vendor-specific fields
+  businessName?: string;
+  businessType?: string;
+  category?: string;
+  businessBio?: string;
+  foundedYear?: string;
+  licenseNumber?: string;
+  insuranceStatus?: string;
+  bondingStatus?: string;
+  totalEmployees?: string;
+  yearsInBusiness?: string;
+  serviceTypes?: string[];
+  specializations?: string[];
+  serviceAreas?: string[];
+  website?: string;
+  emergencyContact?: string;
+  responseTime?: string;
+  profilePhoto?: string;
+}
+
+// Service Types
+export interface Service {
+  id: number;
+  name: string;
+  description: string;
+  category: string;
+  price: number;
+  original_price?: number;
+  discount?: number;
+  duration: string;
+  rating: number;
+  review_count: number;
+  vendor: {
+    id: number;
+    name: string;
+    rating: number;
+    review_count: number;
+    verified: boolean;
+    location: string;
+  };
+  features: string[];
+  inclusions: string[];
+  images: string[];
+  available: boolean;
+  created_at: string;
+}
+
+export interface CreateServiceDTO {
+  name: string;
+  description: string;
+  category: string;
+  price: number;
+  duration: string;
+  features: string[];
+  inclusions: string[];
+  images?: string[];
+}
+
+export interface UpdateServiceDTO extends Partial<CreateServiceDTO> {
+  available?: boolean;
+}
+
+// Booking Types
+export interface Booking {
+  id: number;
+  service: {
+    id: number;
+    name: string;
+    price: number;
+    duration: string;
+  };
+  vendor: {
+    id: number;
+    name: string;
+    rating: number;
+    phone: string;
+  };
+  user: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  booking_date: string;
+  booking_time: string;
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
+  total_price: number;
+  user_notes?: string;
+  created_at: string;
+}
+
+export interface CreateBookingDTO {
+  serviceId: number;
+  vendorId: number;
+  bookingDate: string;
+  bookingTime: string;
+  userNotes?: string;
+}
+
+export interface UpdateBookingDTO {
+  status?: 'confirmed' | 'completed' | 'cancelled';
+  userNotes?: string;
+}
+
+// Review Types
+export interface Review {
+  id: number;
+  serviceId: number;
+  vendorId: number;
+  userId: number;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  helpful: number;
+  response?: string;
+  responseDate?: string;
+}
+
+export interface CreateReviewDTO {
+  serviceId: number;
+  vendorId: number;
+  rating: number;
+  comment: string;
+}
+
+export interface UpdateReviewDTO {
+  rating?: number;
+  comment?: string;
+}
+
+// Availability Types
+export interface VendorAvailability {
+  vendorId: string;
+  schedule: {
+    [day: string]: {
+      available: boolean;
+      startTime?: string;
+      endTime?: string;
+      breaks?: Array<{
+        start: string;
+        end: string;
+      }>;
+    };
+  };
+  exceptions?: Array<{
+    date: string;
+    available: boolean;
+    startTime?: string;
+    endTime?: string;
+    reason?: string;
+  }>;
+  responseTime: string;
+  emergencyAvailable: boolean;
+}
+
+export interface UpdateAvailabilityDTO {
+  schedule?: VendorAvailability['schedule'];
+  exceptions?: VendorAvailability['exceptions'];
+  responseTime?: string;
+  emergencyAvailable?: boolean;
+}
+
+// Search Types
+export interface SearchParams {
+  q?: string;
+  category?: string;
+  location?: string;
+  priceRange?: {
+    min: number;
+    max: number;
+  };
+  rating?: number;
+  availability?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface SearchResult {
+  id: string;
+  type: 'service' | 'vendor' | 'category';
+  title: string;
+  description: string;
+  image?: string;
+  rating?: number;
+  price?: number;
+  location?: string;
+  relevance: number;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  suggestions: string[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+// Favorite Types
+export interface Favorite {
+  id: string;
+  userId: string;
+  serviceId?: string;
+  vendorId?: string;
+  type: 'service' | 'vendor';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface CreateFavoriteDTO {
+  serviceId?: string;
+  vendorId?: string;
+  type: 'service' | 'vendor';
+  notes?: string;
+}
+
+// Profile Toggle Types
+export interface ProfileToggleRequest {
+  targetProfile: 'customer' | 'vendor';
+}
+
+export interface ProfileToggleResponse {
+  success: boolean;
+  currentProfile: 'customer' | 'vendor';
+  availableProfiles: string[];
+}
+
+// Error Types
+export interface ApiError {
+  error: string;
+  message?: string;
+  statusCode: number;
+  details?: any;
+}
+
+

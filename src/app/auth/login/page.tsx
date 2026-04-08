@@ -49,10 +49,16 @@ export default function LoginPage() {
         localStorage.setItem('userData', JSON.stringify(data.user));
         localStorage.setItem('authToken', data.token);
         
-        // Redirect based on user type
+        // Check user type and redirect accordingly
         if (data.user.userType === 'vendor') {
+          // Pure vendor user - go to vendor dashboard
           router.push('/vendor/dashboard');
+        } else if (data.user.userType === 'both') {
+          // User with both profiles - go to user dashboard first
+          // They can then toggle to vendor profile if needed
+          router.push('/user-dashboard');
         } else {
+          // Pure customer user - go to user dashboard
           router.push('/user-dashboard');
         }
       } else {

@@ -7,9 +7,9 @@ import { Button } from './ui/button';
 
 // Default user data (fallback)
 const defaultUser = {
-  name: 'Jane Doe',
-  email: 'jane.doe@email.com',
-  avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
+  name: 'Cesar Olivera',
+  email: 'colivera080124@gmail.com',
+  avatar: null, // No avatar uploaded during registration
 };
 
 const navLinks = [
@@ -33,7 +33,25 @@ export default function UserSidebar() {
   // Temporarily disable auth context to avoid layout issues
   // const { user, logout } = useAuth();
   // const currentUser = user || defaultUser;
-  const currentUser = defaultUser;
+  
+  // Try to get user data from localStorage
+  const [currentUser, setCurrentUser] = React.useState(defaultUser);
+  
+  React.useEffect(() => {
+    const userData = localStorage.getItem('userData');
+    if (userData) {
+      try {
+        const parsed = JSON.parse(userData);
+        setCurrentUser({
+          name: `${parsed.firstName} ${parsed.lastName}`,
+          email: parsed.email,
+          avatar: parsed.avatar || parsed.profilePhoto || null,
+        });
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+  }, []);
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to log out?')) {
@@ -62,11 +80,17 @@ export default function UserSidebar() {
         {/* User Profile Section */}
         <div className="flex flex-col items-center mb-8">
           <div className="relative mb-4">
-            <img
-              src={currentUser.avatar}
-              alt={currentUser.name}
-              className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md"
-            />
+            {currentUser.avatar ? (
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xl">
+                {currentUser.name.split(' ').map(n => n[0]).join('')}
+              </div>
+            )}
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white flex items-center justify-center">
               <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
             </div>

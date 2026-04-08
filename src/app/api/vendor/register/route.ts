@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addRegisteredUser } from '../../auth/login/route';
+import { addRegisteredUser, registeredUsers } from '../../auth/login/route';
 
 // reCAPTCHA Secret Key - Update this with your actual secret key
 const RECAPTCHA_SECRET_KEY = '6LdAapYrAAAAAEuuGMIKNjSNv0PE1yeMtWO1rKKk'; // Updated with actual secret key
+
+// Helper function to check if user already exists
+async function checkExistingUser(email: string) {
+  return registeredUsers.find(user => user.email === email);
+}
+
+// Helper function to update existing user
+function updateRegisteredUser(userId: string, updatedData: any) {
+  const userIndex = registeredUsers.findIndex(user => user.id === userId);
+  if (userIndex !== -1) {
+    registeredUsers[userIndex] = updatedData;
+    console.log('User updated in storage:', { ...updatedData, password: '[HIDDEN]' });
+  }
+}
 
 async function verifyRecaptcha(token: string): Promise<boolean> {
   try {
@@ -229,8 +243,29 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Store vendor data for login system
-    addRegisteredUser(vendorData);
+    // Check if user already exists (for adding vendor profile to existing customer account)
+    const existingUser = await checkExistingUser(email);
+    
+    if (existingUser) {
+      // Update existing user with vendor data
+      const updatedUser = {
+        ...existingUser,
+        ...vendorData,
+        userType: 'both', // User now has both customer and vendor profiles
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Update the user in storage
+      updateRegisteredUser(existingUser.id, updatedUser);
+      
+      console.log('Vendor profile added to existing customer account:', {
+        ...updatedUser,
+        password: '[HIDDEN]',
+      });
+    } else {
+      // Store new vendor data for login system
+      addRegisteredUser(vendorData);
+    }
 
     // TODO: Store vendor data in your database
     // Example with a hypothetical database:

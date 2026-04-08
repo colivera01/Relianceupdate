@@ -1,12 +1,14 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Star, Clock, Heart, Share2, Play, TrendingUp, Zap, Users, Calendar, Award } from 'lucide-react';
+import { MapPin, Star, Clock, Heart, TrendingUp, Zap, Users, Calendar, Award, Share2 } from 'lucide-react';
+import AddVendorProfile from '../../../components/AddVendorProfile';
+import ProfileToggle from '../../../components/ProfileToggle';
 
 export default function UserDashboardPage() {
-  const [location, setLocation] = useState('New York, NY');
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [vendorProfileHidden, setVendorProfileHidden] = useState(false);
 
   // Fetch user profile data on component mount
   useEffect(() => {
@@ -21,10 +23,10 @@ export default function UserDashboardPage() {
         if (response.ok) {
           const data = await response.json();
           setUserData(data.profile);
-          // Update location based on user data
-          if (data.profile.city && data.profile.state) {
-            setLocation(`${data.profile.city}, ${data.profile.state}`);
-          }
+          
+          // Check if vendor profile card is hidden
+          const hidden = localStorage.getItem(`vendor-profile-hidden-${data.profile.id || 'temp-id'}`);
+          setVendorProfileHidden(hidden === 'true');
         } else {
           setError('Failed to fetch user data');
         }
@@ -77,7 +79,7 @@ export default function UserDashboardPage() {
       <div className="mb-8">
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/50 shadow-sm">
           <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+            <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
               {userData.firstName?.charAt(0)}{userData.lastName?.charAt(0)}
             </div>
             <div>
@@ -136,46 +138,65 @@ export default function UserDashboardPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
-      {/* Header with Search */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                Reliance
-              </h1>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <MapPin className="w-4 h-4" />
-                <span>{location}</span>
-              </div>
-            </div>
-            
-            {/* Search Bar - TikTok/Instagram Style */}
-            <div className="flex-1 max-w-md mx-8">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Search for services, vendors, or trends..."
-                  className="w-full pl-10 pr-4 py-3 bg-gray-100 rounded-full border-0 focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all duration-200"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                <Heart className="w-5 h-5 text-pink-500" />
-              </button>
-              <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                <Share2 className="w-5 h-5 text-blue-500" />
-              </button>
-            </div>
-          </div>
+      {/* Simple Profile Toggle */}
+      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40 p-4">
+        <div className="max-w-7xl mx-auto flex justify-end">
+          <ProfileToggle
+            currentProfile="customer"
+            availableProfiles={userData?.userType === 'both' ? ['customer', 'vendor'] : ['customer']}
+            userId={userData?.id || 'temp-id'}
+          />
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {renderUserInfo()}
+        
+        {/* Add Vendor Profile Section - Only show if user doesn't have vendor profile */}
+        {userData?.userType !== 'both' && userData?.userType !== 'vendor' && (
+          <div className="mb-8">
+            <AddVendorProfile 
+              userId={userData?.id || 'temp-id'}
+              className="max-w-md"
+              onVisibilityChange={setVendorProfileHidden}
+            />
+            
+            {/* Show Again Option - Only visible if card is hidden */}
+            {vendorProfileHidden && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => {
+                    localStorage.removeItem(`vendor-profile-hidden-${userData?.id || 'temp-id'}`);
+                    setVendorProfileHidden(false);
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  💡 Show "Add Business Profile" option again
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Vendor Profile Already Exists Message */}
+        {(userData?.userType === 'both' || userData?.userType === 'vendor') && (
+          <div className="mb-8">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 max-w-md">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                  <span className="text-green-600 text-sm">✓</span>
+                </div>
+                <div>
+                  <h3 className="font-medium text-green-800">Vendor Profile Active</h3>
+                  <p className="text-sm text-green-600">
+                    You can switch to your vendor dashboard using the profile toggle above.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Quick Stats - Instagram Story Style */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {quickStats.map((stat, index) => (

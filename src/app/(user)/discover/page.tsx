@@ -480,21 +480,21 @@ export default function UserDiscoverPage() {
                   alt={vendor.name}
                   className="w-full h-48 object-cover rounded-t-lg"
                 />
-                <div className="absolute top-2 left-2 flex gap-2">
+                <div className="absolute top-2 left-2 flex flex-col gap-1.5 z-10">
                   {vendor.featured && (
-                    <Badge className="bg-yellow-500 text-white text-xs">
+                    <Badge className="bg-yellow-500 text-white text-xs whitespace-nowrap shadow-md">
                       Featured
                     </Badge>
                   )}
-                  <Badge className={`${getAvailabilityColor(vendor.availability)} text-white text-xs`}>
+                  <Badge className={`${getAvailabilityColor(vendor.availability)} text-white text-xs whitespace-nowrap shadow-md`}>
                     {getAvailabilityText(vendor.availability)}
                   </Badge>
                 </div>
-                <div className="absolute top-2 right-2 flex space-x-2">
+                <div className="absolute top-2 right-2 flex space-x-2 z-10">
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="bg-white/80 hover:bg-white"
+                    className="bg-white/90 hover:bg-white shadow-sm"
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleFavorite(vendor.id);
@@ -502,17 +502,17 @@ export default function UserDiscoverPage() {
                   >
                     <Heart className={`h-4 w-4 ${favorites.includes(vendor.id) ? 'fill-red-500 text-red-500' : ''}`} />
                   </Button>
-                  <Button size="sm" variant="ghost" className="bg-white/80 hover:bg-white">
+                  <Button size="sm" variant="ghost" className="bg-white/90 hover:bg-white shadow-sm">
                     <Share2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
               
               <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold text-lg text-gray-900">{vendor.name}</h3>
+                <div className="flex items-start justify-between mb-2 gap-2">
+                  <h3 className="font-semibold text-lg text-gray-900 flex-1 min-w-0">{vendor.name}</h3>
                   {vendor.verified && (
-                    <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                    <Badge variant="outline" className="text-xs text-green-600 border-green-600 flex-shrink-0">
                       Verified
                     </Badge>
                   )}
@@ -534,34 +534,34 @@ export default function UserDiscoverPage() {
                   {vendor.description}
                 </p>
 
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-4 text-sm text-gray-600">
-                    <span>{vendor.experience} experience</span>
-                    <span className={getPriceRangeColor(vendor.priceRange)}>
+                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                  <div className="flex items-center space-x-4 text-sm text-gray-600 flex-wrap gap-x-4">
+                    <span className="whitespace-nowrap">{vendor.experience} experience</span>
+                    <span className={`${getPriceRangeColor(vendor.priceRange)} whitespace-nowrap`}>
                       {getPriceRangeText(vendor.priceRange)}
                     </span>
                   </div>
                   {vendor.videoProfile && (
-                    <div className="flex items-center text-sm text-blue-600">
+                    <div className="flex items-center text-sm text-blue-600 whitespace-nowrap flex-shrink-0">
                       <Play className="h-3 w-3 mr-1" />
                       <span>Video Profile</span>
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex space-x-2">
-                    <Button size="sm" variant="outline" className="text-xs">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex space-x-2 flex-shrink-0">
+                    <Button size="sm" variant="outline" className="text-xs whitespace-nowrap">
                       <Phone className="h-3 w-3 mr-1" />
                       Call
                     </Button>
-                    <Button size="sm" variant="outline" className="text-xs">
+                    <Button size="sm" variant="outline" className="text-xs whitespace-nowrap">
                       <MessageSquare className="h-3 w-3 mr-1" />
                       Message
                     </Button>
                   </div>
-                  <Link href={`/vendor/${vendor.id}`}>
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                  <Link href={`/vendor/${vendor.id}`} className="flex-shrink-0">
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap">
                       View Profile
                     </Button>
                   </Link>

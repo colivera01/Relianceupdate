@@ -1180,6 +1180,20 @@ export default function RegisterPage() {
 
       console.log('Registration data prepared:', { ...registrationData, password: '[HIDDEN]' });
 
+      // Check if user already exists (for vendor registration)
+      let existingUser = null;
+      if (userType === 'vendor') {
+        try {
+          const checkResponse = await fetch(`/api/profile/check-vendor-eligibility?userId=${formData.email}`);
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json();
+            existingUser = checkData.existingVendorProfile ? formData.email : null;
+          }
+        } catch (error) {
+          console.log('Could not check existing user, proceeding with registration');
+        }
+      }
+
       // Determine the correct API endpoint based on user type
       const apiEndpoint = userType === 'vendor' ? '/api/vendor/register' : '/api/customer/register';
       console.log('Making API call to:', apiEndpoint);

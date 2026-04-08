@@ -1,5 +1,5 @@
 'use client';
-import UserSidebar from '@/src/components/UserSidebar';
+import UserSidebar from '@/components/UserSidebar';
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
   return (

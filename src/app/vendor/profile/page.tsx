@@ -1,12 +1,15 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, HardDrive, Settings, LogOut, HelpCircle, CheckCircle, XCircle, ArrowLeft, Info, User, Mail, Phone, MapPin, Clock, Shield, CreditCard, Bell, Smartphone, Wifi, Database, Activity, Zap, Eye, EyeOff, QrCode, Smartphone as DeviceIcon, Database as StorageIcon, Activity as ActivityIcon, Zap as LightningIcon, Camera } from 'lucide-react';
-import Link from 'next/link';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Settings, CheckCircle, XCircle, Info, User, Shield, CreditCard, Bell, QrCode, Smartphone as DeviceIcon, Database as StorageIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
+import { useVendorProfile } from '@/hooks/useVendorProfile';
+import { useVendorDevices } from '@/hooks/useVendorDevices';
+import { useVendorStorage } from '@/hooks/useVendorStorage';
+import { VendorProfileUpdateRequest } from '@/types/vendor';
 
 // BACKEND DEVELOPER NOTES:
 // - GET /api/vendor/profile: Fetch vendor profile and settings (including Reliance Payments status)
@@ -38,45 +41,38 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 // End DEVELOPER NOTES
 
 export default function VendorProfilePage() {
-  const [profile, setProfile] = useState({
-    businessName: '',
-    address: '',
-    city: '',
-    state: '',
-    totalEmployees: 1,
-    pairedDevice: false,
-    email: '',
-    phone: '',
-    website: '',
-    businessType: '',
-    foundedYear: new Date().getFullYear(),
-    licenseNumber: '',
-    insuranceProvider: '',
-    insuranceExpiry: '',
-    // Enhanced fields for user service detail page
-    yearsInBusiness: 0,
-    insuranceStatus: false,
-    bondingStatus: false,
-    serviceAreas: [],
-    specializations: [],
-    responseTimeSettings: '',
-    emergencyContact: '',
-    // New fields
-    bio: '',
-    profilePhoto: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&crop=center',
-    serviceTypes: []
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { data: profile, loading, error, saving, updateProfile, refetch } = useVendorProfile();
+  
+  const {
+    devices,
+    loading: devicesLoading,
+    error: devicesError,
+    pairing,
+    pairingLoading,
+    fetchDevices,
+    requestPairingCode,
+    revokeDevice,
+    setPairing,
+  } = useVendorDevices();
+
+  // Storage usage
+  const vendorId = profile?.id || null;
+  const { storage, loading: storageLoading, fetchStorage } = useVendorStorage(vendorId);
+  
+  // Photo upload ref and state
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  
+  // Local UI state (not profile data)
+  const [localFormData, setLocalFormData] = useState<Partial<VendorProfileUpdateRequest>>({});
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [showPairModal, setShowPairModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [pairedDevices, setPairedDevices] = useState([
-    { id: 'dev-1', employeeName: 'Maria Lopez', employeePhoto: 'https://randomuser.me/api/portraits/women/44.jpg', employeeRole: 'Technician', lastPaired: '2024-06-01', deviceInfo: 'iPhone 14, iOS 17', status: 'online', batteryLevel: 85 },
-    { id: 'dev-2', employeeName: 'James Lee', employeePhoto: 'https://randomuser.me/api/portraits/men/45.jpg', employeeRole: 'Technician', lastPaired: '2024-05-28', deviceInfo: 'Samsung Tablet, Android 13', status: 'offline', batteryLevel: 23 },
-  ]);
-  const [countdown, setCountdown] = useState(300); // 5 minutes
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [pairingSuccess, setPairingSuccess] = useState(false);
+  const [initialDeviceCount, setInitialDeviceCount] = useState(0);
+  
   const [paymentsEnabled, setPaymentsEnabled] = useState(false);
   const [addressQuery, setAddressQuery] = useState('');
   const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
@@ -84,7 +80,6 @@ export default function VendorProfilePage() {
   const [showReminderToast, setShowReminderToast] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState({ job: true, review: true, payout: false, support: true, marketing: false, updates: true });
   const [showNotifToast, setShowNotifToast] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [securitySettings, setSecuritySettings] = useState({
     twoFactorEnabled: false,
     loginNotifications: true,
@@ -122,128 +117,295 @@ export default function VendorProfilePage() {
     'Emergency Cleaning'
   ];
 
-  // Fetch profile data on component mount
+  // Sync local form data with profile data when it loads
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setLoading(true);
-        const token = localStorage.getItem('authToken');
-        
-        if (!token) {
-          setError('No authentication token found');
-          setLoading(false);
-          return;
-        }
-
-        const response = await fetch('/api/vendor/profile', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch profile');
-        }
-
-        const data = await response.json();
-        
-        if (data.success && data.profile) {
-          setProfile(data.profile);
-        } else {
-          setError('Failed to load profile data');
-        }
-      } catch (err) {
-        console.error('Error fetching profile:', err);
-        setError('Failed to load profile data');
-      } finally {
-        setLoading(false);
+    if (profile) {
+      setLocalFormData({
+        businessName: profile.businessName ?? '',
+        businessType: profile.businessType ?? '',
+        category: profile.category ?? '',
+        bio: profile.bio ?? '',
+        address: profile.address ?? '',
+        city: profile.city ?? '',
+        state: profile.state ?? '',
+        zipCode: profile.zipCode ?? '',
+        foundedYear: profile.foundedYear ?? undefined,
+        email: profile.email ?? '',
+        phone: profile.phone ?? '',
+        website: profile.website ?? '',
+        licenseNumber: profile.licenseNumber ?? '',
+        insuranceProvider: profile.insuranceProvider ?? '',
+        insuranceExpiry: profile.insuranceExpiry ?? undefined,
+        insuranceStatus: profile.insuranceStatus,
+        bondingStatus: profile.bondingStatus,
+        emergencyContact: profile.emergencyContact ?? '',
+        responseTimeSettings: profile.responseTimeSettings ?? '',
+        profilePhoto: profile.profilePhoto ?? '',
+        serviceTypes: profile.serviceTypes ?? [],
+        specializations: profile.specializations ?? [],
+        serviceAreas: profile.serviceAreas ?? [],
+      });
+      
+      // Initialize paymentsEnabled from profile
+      setPaymentsEnabled(profile.paymentsEnabled ?? false);
+      
+      // Initialize reminders from profile
+      
+      // Refresh storage when profile loads
+      if (profile.id) {
+        fetchStorage();
       }
-    };
+      if (profile.reminders) {
+        setReminders({
+          review: profile.reminders.review ?? true,
+          invoice: profile.reminders.invoice ?? false,
+          maintenance: profile.reminders.maintenance ?? true,
+          followUp: profile.reminders.followUp ?? true,
+        });
+      }
+      
+      // Initialize notificationSettings from profile
+      if (profile.notificationSettings) {
+        setNotificationSettings({
+          job: profile.notificationSettings.job ?? true,
+          review: profile.notificationSettings.review ?? true,
+          payout: profile.notificationSettings.payout ?? false,
+          support: profile.notificationSettings.support ?? true,
+          marketing: profile.notificationSettings.marketing ?? false,
+          updates: profile.notificationSettings.updates ?? true,
+        });
+      }
+      
+      // Initialize securitySettings from profile
+      setSecuritySettings({
+        twoFactorEnabled: profile.twoFactorEnabled ?? false,
+        loginNotifications: profile.loginNotifications ?? true,
+        sessionTimeout: profile.sessionTimeout ?? 30,
+        passwordExpiry: profile.passwordExpiry ?? 90,
+        failedLoginLockout: profile.failedLoginLockout ?? 5,
+      });
+    }
+  }, [profile]);
 
-    fetchProfile();
-  }, []);
-
-  // Countdown effect
+  // Countdown effect - derive from pairing.expiresAt
   useEffect(() => {
-    if (!showPairModal) return;
-    if (countdown <= 0) return;
-    const timer = setInterval(() => setCountdown(c => c - 1), 1000);
-    return () => clearInterval(timer);
-  }, [showPairModal, countdown]);
+    if (!pairing) {
+      setCountdown(null);
+      return;
+    }
+    
+    const expires = new Date(pairing.expiresAt).getTime();
+    
+    const update = () => {
+      const remaining = Math.max(0, Math.floor((expires - Date.now()) / 1000));
+      setCountdown(remaining);
+    };
+    
+    update(); // Initial update
+    const id = setInterval(update, 1000);
+    
+    return () => clearInterval(id);
+  }, [pairing]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setProfile({ ...profile, [e.target.name]: e.target.value });
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setLocalFormData(prev => ({
+      ...prev,
+      [name]:
+        name === 'foundedYear'
+          ? (value ? Number(value) : undefined)
+          : value,
+    }));
   };
 
   const handleAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setAddressQuery(e.target.value);
-    setProfile({ ...profile, address: e.target.value });
-    if (e.target.value.length > 2) {
-      setAddressSuggestions(mockAddresses.filter(addr => addr.toLowerCase().includes(e.target.value.toLowerCase())));
+    const value = e.target.value;
+    setAddressQuery(value);
+    setLocalFormData(prev => ({ ...prev, address: value }));
+    if (value.length > 2) {
+      setAddressSuggestions(mockAddresses.filter(addr => addr.toLowerCase().includes(value.toLowerCase())));
     } else {
       setAddressSuggestions([]);
     }
   };
 
   const handleSelectSuggestion = (suggestion: string) => {
-    setProfile({ ...profile, address: suggestion });
+    setLocalFormData(prev => ({ ...prev, address: suggestion }));
     setAddressQuery(suggestion);
     setAddressSuggestions([]);
   };
 
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-      const token = localStorage.getItem('authToken');
-      
-      if (!token) {
-        setError('No authentication token found');
-        return;
-      }
+  const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      const response = await fetch('/api/vendor/profile', {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(profile),
+    // Check storage limit before uploading
+    if (storage?.isOverLimit) {
+      alert('Storage limit reached. Please delete existing media before uploading new files.');
+      e.target.value = ''; // Reset file input
+      return;
+    }
+
+    try {
+      setUploadingPhoto(true);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/vendor/profile/photo', {
+        method: 'POST',
+        body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update profile');
+      if (!res.ok) {
+        throw new Error(`Upload failed with status ${res.status}`);
       }
 
-      const data = await response.json();
+      const { url } = await res.json() as { url: string };
+
+      // Persist on vendor profile
+      await updateProfile({ profilePhoto: url });
+
+      // Update local form state so the preview updates immediately
+      setLocalFormData(prev => ({ ...prev, profilePhoto: url }));
       
-      if (data.success) {
-        // Show success message (you could add a toast notification here)
-        console.log('Profile updated successfully');
-      } else {
-        setError('Failed to update profile');
+      // Refresh storage usage after successful upload
+      if (vendorId) {
+        setTimeout(() => fetchStorage(), 1000);
       }
     } catch (err) {
-      console.error('Error updating profile:', err);
-      setError('Failed to update profile');
+      console.error('Error uploading photo', err);
+      // Check if error is storage limit related
+      if (err instanceof Error && err.message.includes('STORAGE_LIMIT_REACHED')) {
+        alert('Storage limit reached. Please delete existing media before uploading new files.');
+      }
+      // you can show a toast here if you want
     } finally {
-      setSaving(false);
+      setUploadingPhoto(false);
+      // Reset the input so the same file can be selected again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
-  function handleSaveReminders() {
-    setShowReminderToast(true);
-    setTimeout(() => setShowReminderToast(false), 2000);
-  }
+  const handleSave = async () => {
+    try {
+      await updateProfile(localFormData);
+      setShowSuccessToast(true);
+      setTimeout(() => setShowSuccessToast(false), 3000);
+    } catch (err) {
+      // Error already handled in hook
+      console.error('Error updating profile:', err);
+    }
+  };
 
-  function handleSaveNotifications() {
-    setShowNotifToast(true);
-    setTimeout(() => setShowNotifToast(false), 2000);
-  }
+  const handleSaveReminders = async () => {
+    try {
+      await updateProfile({
+        reminders: {
+          review: reminders.review,
+          invoice: reminders.invoice,
+          maintenance: reminders.maintenance,
+          followUp: reminders.followUp,
+        },
+      });
+      setShowReminderToast(true);
+      setTimeout(() => setShowReminderToast(false), 2000);
+    } catch (err) {
+      console.error('Error saving reminders:', err);
+    }
+  };
 
-  // Mock pairing code and status
-  const pairingCode = 'A1B2C3';
-  const pairingStatus = 'Waiting for device to pair...';
+  const handleSaveNotifications = async () => {
+    try {
+      await updateProfile({
+        notificationSettings: {
+          job: notificationSettings.job,
+          review: notificationSettings.review,
+          payout: notificationSettings.payout,
+          support: notificationSettings.support,
+          marketing: notificationSettings.marketing,
+          updates: notificationSettings.updates,
+        },
+      });
+      setShowNotifToast(true);
+      setTimeout(() => setShowNotifToast(false), 2000);
+    } catch (err) {
+      console.error('Error saving notifications:', err);
+    }
+  };
+  
+  const handleTogglePayments = async () => {
+    try {
+      const newValue = !paymentsEnabled;
+      await updateProfile({ paymentsEnabled: newValue });
+      setPaymentsEnabled(newValue);
+    } catch (err) {
+      console.error('Error toggling payments:', err);
+    }
+  };
+  
+  const handleSaveSecuritySettings = async () => {
+    try {
+      await updateProfile({
+        twoFactorEnabled: securitySettings.twoFactorEnabled,
+        loginNotifications: securitySettings.loginNotifications,
+        sessionTimeout: securitySettings.sessionTimeout,
+        passwordExpiry: securitySettings.passwordExpiry,
+        failedLoginLockout: securitySettings.failedLoginLockout,
+      });
+      // Close modal after save
+      setShowSecurityModal(false);
+    } catch (err) {
+      console.error('Error saving security settings:', err);
+    }
+  };
+
+  const handleOpenPairModal = async () => {
+    try {
+      // Store initial device count before opening modal
+      setInitialDeviceCount(devices.length);
+      setPairingSuccess(false);
+      await requestPairingCode();
+      setShowPairModal(true);
+    } catch (err) {
+      console.error('Error requesting pairing code:', err);
+    }
+  };
+
+  // Auto-refresh device list when pairing modal is open (poll every 2 seconds)
+  // Also detect when a new device is paired
+  useEffect(() => {
+    if (showPairModal && pairing) {
+      const interval = setInterval(() => {
+        fetchDevices();
+      }, 2000); // Poll every 2 seconds
+      return () => clearInterval(interval);
+    }
+  }, [showPairModal, pairing, fetchDevices]);
+
+  // Detect successful pairing (device count increased)
+  useEffect(() => {
+    if (showPairModal && pairing && devices.length > initialDeviceCount) {
+      setPairingSuccess(true);
+      // Auto-close modal after 3 seconds
+      const timer = setTimeout(() => {
+        setShowPairModal(false);
+        setPairing(null);
+        setCountdown(null);
+        setPairingSuccess(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [devices.length, initialDeviceCount, showPairModal, pairing]);
+
+  // Refresh device list when pairing modal closes
+  useEffect(() => {
+    if (!showPairModal) {
+      fetchDevices();
+    }
+  }, [showPairModal, fetchDevices]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -256,33 +418,24 @@ export default function VendorProfilePage() {
         </div>
       )}
       
-      {error && (
+      {error && !loading && (
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
             <div className="text-red-600 mb-4">
               <XCircle className="w-12 h-12 mx-auto" />
             </div>
             <p className="text-red-600 mb-4">{error}</p>
-            <Button onClick={() => window.location.reload()}>
+            <Button onClick={refetch}>
               Try Again
             </Button>
           </div>
         </div>
       )}
       
-      {!loading && !error && (
+      {!loading && !error && profile && (
         <main className="flex-1 p-8 flex gap-8 max-w-7xl mx-auto">
         {/* Profile Form */}
         <section className="flex-1 max-w-2xl space-y-6">
-          <div className="flex items-center gap-4 mb-6">
-            <Link href="/vendor">
-              <Button variant="outline" size="sm" className="bg-white shadow-sm hover:shadow-md transition-shadow">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Dashboard
-              </Button>
-            </Link>
-          </div>
-
           {/* Enhanced Profile Information Card */}
           <Card className="bg-gradient-to-br from-white to-blue-50 border-blue-200 shadow-lg">
             <CardHeader className="pb-4">
@@ -304,19 +457,44 @@ export default function VendorProfilePage() {
                   <div className="flex items-center gap-4">
                     <div className="relative">
                       <img 
-                        src={profile.profilePhoto} 
+                        src={localFormData.profilePhoto || profile.profilePhoto || 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&crop=center'} 
                         alt="Business Profile" 
                         className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200"
                       />
-                      <button className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 transition-colors">
+
+                      {/* Hidden file input */}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={fileInputRef}
+                        className="hidden"
+                        onChange={handlePhotoSelected}
+                      />
+
+                      <button
+                        type="button"
+                        className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingPhoto || (storage?.isOverLimit ?? false)}
+                        title={storage?.isOverLimit ? 'Storage limit reached. Delete existing media to upload new files.' : undefined}
+                      >
                         <Camera className="w-4 h-4" />
                       </button>
                     </div>
                     <div className="flex-1">
                       <p className="text-sm text-gray-600 mb-2">Upload a professional photo of your business, team, or workspace</p>
-                      <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
-                        Change Photo
+                      <button
+                        type="button"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingPhoto || (storage?.isOverLimit ?? false)}
+                        title={storage?.isOverLimit ? 'Storage limit reached. Delete existing media to upload new files.' : undefined}
+                      >
+                        {uploadingPhoto ? 'Uploading...' : 'Change Photo'}
                       </button>
+                      {storage?.isOverLimit && (
+                        <p className="text-xs text-red-600 mt-1">Uploads disabled - storage full</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -326,7 +504,7 @@ export default function VendorProfilePage() {
                     <label className="block text-sm font-medium mb-2 text-gray-700">Business Name</label>
                     <Input 
                       name="businessName" 
-                      value={profile.businessName} 
+                      value={localFormData.businessName || ''} 
                       onChange={handleChange}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
@@ -335,11 +513,23 @@ export default function VendorProfilePage() {
                     <label className="block text-sm font-medium mb-2 text-gray-700">Business Type</label>
                     <Input 
                       name="businessType" 
-                      value={profile.businessType} 
+                      value={localFormData.businessType || ''} 
                       onChange={handleChange}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Service Category</label>
+                  <Input 
+                    name="category" 
+                    value={localFormData.category || ''} 
+                    onChange={handleChange}
+                    placeholder="e.g., Cleaning, Landscaping, Plumbing"
+                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">The primary category for your business</p>
                 </div>
 
                 {/* Business Bio Section */}
@@ -347,13 +537,13 @@ export default function VendorProfilePage() {
                   <label className="block text-sm font-medium mb-2 text-gray-700">Business Bio</label>
                   <textarea
                     name="bio"
-                    value={profile.bio}
+                    value={localFormData.bio || ''}
                     onChange={handleChange}
                     rows={4}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                     placeholder="Tell customers about your business, experience, and what makes you unique..."
                   />
-                  <p className="text-sm text-gray-500 mt-1">This will be displayed on your service listings and profile page</p>
+                  <p className="text-sm text-gray-500 mt-1">Shown on your public profile and job listings.</p>
                 </div>
 
                 {/* Service Types Section */}
@@ -366,18 +556,19 @@ export default function VendorProfilePage() {
                         <input
                           type="checkbox"
                           id={serviceType}
-                          checked={profile.serviceTypes.includes(serviceType)}
+                          checked={(localFormData.serviceTypes || []).includes(serviceType)}
                           onChange={(e) => {
+                            const currentTypes = localFormData.serviceTypes || [];
                             if (e.target.checked) {
-                              setProfile({
-                                ...profile,
-                                serviceTypes: [...profile.serviceTypes, serviceType]
-                              });
+                              setLocalFormData(prev => ({
+                                ...prev,
+                                serviceTypes: [...currentTypes, serviceType]
+                              }));
                             } else {
-                              setProfile({
-                                ...profile,
-                                serviceTypes: profile.serviceTypes.filter(type => type !== serviceType)
-                              });
+                              setLocalFormData(prev => ({
+                                ...prev,
+                                serviceTypes: currentTypes.filter(type => type !== serviceType)
+                              }));
                             }
                           }}
                           className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
@@ -388,7 +579,7 @@ export default function VendorProfilePage() {
                       </div>
                     ))}
                   </div>
-                  <p className="text-sm text-gray-500 mt-2">Selected: {profile.serviceTypes.length} service types</p>
+                  <p className="text-sm text-gray-500 mt-2">Selected: {(localFormData.serviceTypes || []).length} service types</p>
                 </div>
 
                 <div>
@@ -396,7 +587,7 @@ export default function VendorProfilePage() {
                   <div className="relative">
                     <Input
                       name="address"
-                      value={addressQuery || profile.address}
+                      value={addressQuery || localFormData.address || ''}
                       onChange={handleAddressInput}
                       autoComplete="off"
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
@@ -418,12 +609,12 @@ export default function VendorProfilePage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-2 text-gray-700">City</label>
                     <Input 
                       name="city" 
-                      value={profile.city} 
+                      value={localFormData.city || ''} 
                       onChange={handleChange}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
@@ -432,7 +623,16 @@ export default function VendorProfilePage() {
                     <label className="block text-sm font-medium mb-2 text-gray-700">State</label>
                     <Input 
                       name="state" 
-                      value={profile.state} 
+                      value={localFormData.state || ''} 
+                      onChange={handleChange}
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">ZIP Code</label>
+                    <Input 
+                      name="zipCode" 
+                      value={localFormData.zipCode || ''} 
                       onChange={handleChange}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
@@ -442,20 +642,26 @@ export default function VendorProfilePage() {
                     <Input 
                       name="foundedYear" 
                       type="number"
-                      value={profile.foundedYear} 
+                      value={localFormData.foundedYear || ''} 
                       onChange={handleChange}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                 </div>
+                
+                {profile.yearsInBusiness !== null && (
+                  <div className="text-sm text-gray-600">
+                    Years in Business: <span className="font-medium">{profile.yearsInBusiness}</span> (calculated from founded year)
+                  </div>
+                )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-2 text-gray-700">Email</label>
                     <Input 
                       name="email" 
                       type="email"
-                      value={profile.email} 
+                      value={localFormData.email || ''} 
                       onChange={handleChange}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
@@ -464,27 +670,47 @@ export default function VendorProfilePage() {
                     <label className="block text-sm font-medium mb-2 text-gray-700">Phone</label>
                     <Input 
                       name="phone" 
-                      value={profile.phone} 
+                      value={localFormData.phone || ''} 
                       onChange={handleChange}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
-                </div>
-
-                {/* Enhanced Performance Metrics */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Years in Business</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Website</label>
                     <Input 
-                      name="yearsInBusiness" 
-                      type="number"
-                      value={profile.yearsInBusiness} 
+                      name="website" 
+                      type="url"
+                      value={localFormData.website || ''} 
                       onChange={handleChange}
+                      placeholder="https://example.com"
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
-
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Emergency Contact</label>
+                    <Input 
+                      name="emergencyContact" 
+                      value={localFormData.emergencyContact || ''} 
+                      onChange={handleChange}
+                      placeholder="Name and phone number"
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Response Time Settings</label>
+                    <Input 
+                      name="responseTimeSettings" 
+                      value={localFormData.responseTimeSettings || ''} 
+                      onChange={handleChange}
+                      placeholder="e.g., Within 2 hours"
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
 
 
 
@@ -494,8 +720,8 @@ export default function VendorProfilePage() {
                     <input
                       type="checkbox"
                       name="insuranceStatus"
-                      checked={profile.insuranceStatus}
-                      onChange={(e) => setProfile({...profile, insuranceStatus: e.target.checked})}
+                      checked={localFormData.insuranceStatus || false}
+                      onChange={(e) => setLocalFormData(prev => ({...prev, insuranceStatus: e.target.checked}))}
                       className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                     <label className="text-sm font-medium text-gray-700">Insured</label>
@@ -504,8 +730,8 @@ export default function VendorProfilePage() {
                     <input
                       type="checkbox"
                       name="bondingStatus"
-                      checked={profile.bondingStatus}
-                      onChange={(e) => setProfile({...profile, bondingStatus: e.target.checked})}
+                      checked={localFormData.bondingStatus || false}
+                      onChange={(e) => setLocalFormData(prev => ({...prev, bondingStatus: e.target.checked}))}
                       className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
                     <label className="text-sm font-medium text-gray-700">Bonded</label>
@@ -517,8 +743,30 @@ export default function VendorProfilePage() {
                     <label className="block text-sm font-medium mb-2 text-gray-700">License Number</label>
                     <Input 
                       name="licenseNumber" 
-                      value={profile.licenseNumber} 
+                      value={localFormData.licenseNumber || ''} 
                       onChange={handleChange}
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Insurance Provider</label>
+                    <Input 
+                      name="insuranceProvider" 
+                      value={localFormData.insuranceProvider || ''} 
+                      onChange={handleChange}
+                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Policy Expiration Date</label>
+                    <Input 
+                      name="insuranceExpiry" 
+                      type="date"
+                      value={localFormData.insuranceExpiry ? new Date(localFormData.insuranceExpiry).toISOString().split('T')[0] : ''} 
+                      onChange={(e) => setLocalFormData(prev => ({...prev, insuranceExpiry: e.target.value ? new Date(e.target.value).toISOString() : undefined}))}
                       className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
@@ -528,33 +776,18 @@ export default function VendorProfilePage() {
                       name="totalEmployees" 
                       type="number" 
                       value={profile.totalEmployees} 
-                      onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      readOnly
+                      className="border-gray-300 bg-gray-50 cursor-not-allowed"
                     />
+                    <p className="text-xs text-gray-500 mt-1">Calculated from your employee list</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <span className="font-medium text-blue-800">Device Pairing Status:</span>
-                  {profile.pairedDevice ? (
-                    <Badge className="bg-green-100 text-green-700 border-green-300">
-                      <CheckCircle className="w-4 h-4 mr-1" /> Active
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-red-100 text-red-700 border-red-300">
-                      <XCircle className="w-4 h-4 mr-1" /> Inactive
-                    </Badge>
-                  )}
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="ml-auto bg-white hover:bg-blue-50"
-                    onClick={() => setShowPairModal(true)}
-                  >
-                    <DeviceIcon className="w-4 h-4 mr-2" />
-                    Manage Devices
-                  </Button>
-                </div>
+                {showSuccessToast && (
+                  <div className="p-3 bg-green-100 border border-green-300 rounded-lg text-green-700 font-medium">
+                    ✓ Profile updated successfully!
+                  </div>
+                )}
 
                 <Button 
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all duration-200" 
@@ -577,7 +810,100 @@ export default function VendorProfilePage() {
             </CardContent>
           </Card>
 
-
+          {/* Enhanced Device Management Card */}
+          <Card className="bg-gradient-to-br from-white to-indigo-50 border-indigo-200 shadow-lg">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-100 rounded-lg">
+                    <DeviceIcon className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl text-gray-800">Device Management</CardTitle>
+                    <p className="text-sm text-gray-600">Manage paired employee devices</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchDevices()}
+                  disabled={devicesLoading}
+                  className="bg-white hover:bg-indigo-50"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${devicesLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {devicesLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                  <p className="text-gray-500">Loading devices...</p>
+                </div>
+              ) : devices.length === 0 ? (
+                <div className="text-center py-8">
+                  <DeviceIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500 mb-4">No devices paired yet</p>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleOpenPairModal}
+                    className="bg-white hover:bg-indigo-50"
+                  >
+                    <DeviceIcon className="w-4 h-4 mr-2" />
+                    Pair New Device
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {devices.map(dev => (
+                    <div key={dev.id} className="flex items-center gap-4 p-4 bg-white rounded-lg border border-indigo-200 hover:shadow-md transition-shadow">
+                      <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center border-2 border-indigo-200">
+                        <DeviceIcon className="w-6 h-6 text-indigo-600" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-gray-800">
+                            {dev.deviceName ?? dev.deviceType ?? "Device"}
+                          </span>
+                          <Badge className="text-xs bg-indigo-100 text-indigo-700">
+                            {dev.deviceType}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-gray-500 flex items-center gap-4">
+                          <span>Last seen: {dev.lastSeenAt ? new Date(dev.lastSeenAt).toLocaleDateString() : "—"}</span>
+                          <span>Added: {dev.createdAt ? new Date(dev.createdAt).toLocaleDateString() : "—"}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await revokeDevice(dev.id);
+                            } catch (err) {
+                              console.error('Error revoking device:', err);
+                            }
+                          }}
+                        >
+                          Revoke
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <Button 
+                    variant="outline" 
+                    onClick={handleOpenPairModal}
+                    className="w-full bg-white hover:bg-indigo-50"
+                  >
+                    <DeviceIcon className="w-4 h-4 mr-2" />
+                    Pair Additional Device
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Enhanced Reminders & Notifications Card */}
           <Card className="bg-gradient-to-br from-white to-purple-50 border-purple-200 shadow-lg">
@@ -594,6 +920,7 @@ export default function VendorProfilePage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                <p className="text-sm text-gray-600 mb-4">These messages are only sent for completed jobs.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors cursor-pointer">
                     <input 
@@ -604,7 +931,7 @@ export default function VendorProfilePage() {
                     />
                     <div>
                       <div className="font-medium text-gray-800">Review Requests</div>
-                      <div className="text-sm text-gray-600">Auto-send after job completion</div>
+                      <div className="text-sm text-gray-600">Auto-send email/SMS after job completion (e.g., 24 hours later).</div>
                     </div>
                     <Info className="w-4 h-4 text-purple-500 ml-auto" />
                   </label>
@@ -714,79 +1041,6 @@ export default function VendorProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Enhanced Device Management Card */}
-          <Card className="bg-gradient-to-br from-white to-indigo-50 border-indigo-200 shadow-lg">
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-100 rounded-lg">
-                  <DeviceIcon className="w-6 h-6 text-indigo-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl text-gray-800">Device Management</CardTitle>
-                  <p className="text-sm text-gray-600">Manage paired employee devices</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {pairedDevices.length === 0 ? (
-                <div className="text-center py-8">
-                  <DeviceIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-4">No devices paired yet</p>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowPairModal(true)}
-                    className="bg-white hover:bg-indigo-50"
-                  >
-                    <DeviceIcon className="w-4 h-4 mr-2" />
-                    Pair New Device
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {pairedDevices.map(dev => (
-                    <div key={dev.id} className="flex items-center gap-4 p-4 bg-white rounded-lg border border-indigo-200 hover:shadow-md transition-shadow">
-                      <img src={dev.employeePhoto} alt={dev.employeeName} className="w-12 h-12 rounded-full border-2 border-indigo-200" />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-gray-800">{dev.employeeName}</span>
-                          <Badge className={`text-xs ${dev.status === 'online' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                            {dev.status === 'online' ? 'Online' : 'Offline'}
-                          </Badge>
-                        </div>
-                        <div className="text-sm text-gray-600 mb-1">{dev.employeeRole}</div>
-                        <div className="text-xs text-gray-500 flex items-center gap-4">
-                          <span>Last paired: {dev.lastPaired}</span>
-                          <span>Battery: {dev.batteryLevel}%</span>
-                          <span>{dev.deviceInfo}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="bg-white hover:bg-indigo-50">
-                          <ActivityIcon className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="destructive" 
-                          size="sm"
-                          onClick={() => setPairedDevices(pairedDevices.filter(d => d.id !== dev.id))}
-                        >
-                          Revoke
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowPairModal(true)}
-                    className="w-full bg-white hover:bg-indigo-50"
-                  >
-                    <DeviceIcon className="w-4 h-4 mr-2" />
-                    Pair Additional Device
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Enhanced Reliance Payments Card */}
           <Card className="bg-gradient-to-br from-white to-emerald-50 border-emerald-200 shadow-lg">
             <CardHeader className="pb-4">
@@ -810,11 +1064,11 @@ export default function VendorProfilePage() {
                     </Badge>
                   </div>
                   <p className="text-sm text-gray-600 mb-4">
-                    Enable Reliance Payments to bill your customers and receive payouts directly through the platform.
+                    Use Reliance to charge customers and receive payouts to your bank account.
                   </p>
                   <div className="flex gap-3">
                     <Button 
-                      onClick={() => setPaymentsEnabled(!paymentsEnabled)}
+                      onClick={handleTogglePayments}
                       className={paymentsEnabled ? 
                         'bg-red-600 hover:bg-red-700 text-white' : 
                         'bg-emerald-600 hover:bg-emerald-700 text-white'
@@ -862,20 +1116,111 @@ export default function VendorProfilePage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Used</span>
-                  <span className="font-medium">75 GB</span>
+              {storageLoading ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p className="text-xs text-gray-500">Loading storage...</p>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full" style={{width: '75%'}}></div>
+              ) : storage ? (
+                <div className="space-y-3">
+                  {/* Used / Limit Display */}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Used</span>
+                    <span className="font-medium">{storage.totalGB} GB</span>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div
+                      className={`h-2.5 rounded-full transition-all ${
+                        storage.percentUsed >= 100
+                          ? 'bg-gradient-to-r from-red-500 to-red-600'
+                          : storage.percentUsed >= 80
+                          ? 'bg-gradient-to-r from-orange-500 to-orange-600'
+                          : 'bg-gradient-to-r from-blue-500 to-blue-600'
+                      }`}
+                      style={{ width: `${Math.min(storage.percentUsed, 100)}%` }}
+                    ></div>
+                  </div>
+                  
+                  {/* Limit Display */}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Total</span>
+                    <span className="font-medium">{storage.limitGB} GB</span>
+                  </div>
+                  
+                  {/* Remaining */}
+                  {storage.percentUsed < 100 && (
+                    <div className="text-xs text-gray-500 text-center">
+                      {(parseFloat(storage.limitGB) - parseFloat(storage.totalGB)).toFixed(2)} GB remaining
+                    </div>
+                  )}
+                  
+                  {/* Warning Banner at ≥80% */}
+                  {storage.percentUsed >= 80 && storage.percentUsed < 100 && (
+                    <div className="p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-600" />
+                        <p className="text-xs font-medium text-orange-800">
+                          Storage is {storage.percentUsed.toFixed(1)}% full. Consider deleting old files.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Red "Uploads Paused" Banner at 100% */}
+                  {storage.percentUsed >= 100 && (
+                    <div className="p-3 bg-red-50 border-2 border-red-300 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <XCircle className="w-5 h-5 text-red-600" />
+                        <p className="text-sm font-bold text-red-800">Uploads Paused</p>
+                      </div>
+                      <p className="text-xs text-red-700 mb-3">
+                        Storage limit reached. Delete existing media to free up space.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 bg-white hover:bg-red-50 border-red-300 text-red-700"
+                          onClick={() => {
+                            // Navigate to media management page or open media list
+                            window.location.href = '/vendor/media';
+                          }}
+                        >
+                          Manage Storage
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 bg-white hover:bg-red-50 border-red-300 text-red-700"
+                          onClick={() => {
+                            // Open support form or upgrade request
+                            window.location.href = '/vendor/support';
+                          }}
+                        >
+                          Request Upgrade
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <p className="text-xs text-gray-500 mt-2">Used for photos, contracts, and other uploaded files.</p>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Total</span>
-                  <span className="font-medium">100 GB</span>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-xs text-gray-500">Unable to load storage information</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={fetchStorage}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Retry
+                  </Button>
                 </div>
-                <div className="text-xs text-gray-500 text-center">25 GB remaining</div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -892,15 +1237,18 @@ export default function VendorProfilePage() {
             <CardContent>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Two-Factor Auth</span>
-                  <Badge className={securitySettings.twoFactorEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
-                    {securitySettings.twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                  <div>
+                    <span className="text-sm text-gray-600">Two-Factor Auth</span>
+                    <p className="text-xs text-gray-500">Protect your account with two-factor authentication.</p>
+                  </div>
+                  <Badge className={(profile?.twoFactorEnabled ?? securitySettings.twoFactorEnabled) ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
+                    {(profile?.twoFactorEnabled ?? securitySettings.twoFactorEnabled) ? 'Enabled' : 'Disabled'}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">Login Notifications</span>
-                  <Badge className={securitySettings.loginNotifications ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
-                    {securitySettings.loginNotifications ? 'On' : 'Off'}
+                  <Badge className={(profile?.loginNotifications ?? securitySettings.loginNotifications) ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
+                    {(profile?.loginNotifications ?? securitySettings.loginNotifications) ? 'On' : 'Off'}
                   </Badge>
                 </div>
                 <Button 
@@ -921,34 +1269,98 @@ export default function VendorProfilePage() {
       </main>
       )}
 
+      {/* Modals - Always rendered (controlled by their own state) */}
       {/* Enhanced Pair Device Modal */}
-      <Dialog open={showPairModal} onOpenChange={setShowPairModal}>
-        <DialogContent className="max-w-md bg-white" aria-modal="true" aria-labelledby="pairing-title">
-          <DialogTitle id="pairing-title" className="flex items-center gap-2">
-            <DeviceIcon className="w-5 h-5 text-blue-600" />
-            Pair Employee Device
-          </DialogTitle>
+      <Dialog 
+        open={showPairModal} 
+        onOpenChange={(open) => {
+          setShowPairModal(open);
+          if (!open) {
+            setPairing(null);
+            setCountdown(null);
+            setPairingSuccess(false);
+            setInitialDeviceCount(0);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DeviceIcon className="w-5 h-5 text-blue-600" />
+              Pair Employee Device
+            </DialogTitle>
+          </DialogHeader>
           <div className="mt-4 flex flex-col items-center gap-4">
-            <div className="text-3xl font-mono tracking-widest bg-gradient-to-r from-blue-100 to-blue-200 px-6 py-3 rounded-lg border-2 border-blue-300" aria-label="Pairing Code">
-              {pairingCode}
-            </div>
-            <div className="my-2" aria-label="QR Code Placeholder">
-              <div className="w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-300">
-                <QrCode className="w-16 h-16" />
+            {pairingSuccess ? (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-10 h-10 text-green-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-green-700 mb-2">Device Paired Successfully!</h3>
+                <p className="text-gray-600 mb-4">The device has been added to your account.</p>
+                <p className="text-sm text-gray-500">This window will close automatically...</p>
               </div>
-            </div>
-            <div className="text-gray-700 text-center text-sm">
-              Ask your employee to enter this code in their mobile app within 5 minutes to pair their device with your business.
-            </div>
-            <div className="text-blue-600 font-semibold mt-2 text-lg" aria-live="polite">
-              {Math.floor(countdown/60)}:{(countdown%60).toString().padStart(2,'0')}
-            </div>
-            <div className="text-green-700 font-medium text-sm" aria-live="polite">
-              {pairingStatus}
-            </div>
-            <Button variant="outline" onClick={() => setShowPairModal(false)} className="w-full bg-white hover:bg-gray-50">
-              Close
-            </Button>
+            ) : pairing && (
+              <>
+                <div className="text-3xl font-mono tracking-widest bg-gradient-to-r from-blue-100 to-blue-200 px-6 py-3 rounded-lg border-2 border-blue-300" aria-label="Pairing Code">
+                  {pairing.code}
+                </div>
+                <div className="my-2" aria-label="QR Code Placeholder">
+                  <div className="w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-300">
+                    <QrCode className="w-16 h-16" />
+                  </div>
+                </div>
+                <div className="text-gray-700 text-center text-sm mb-4">
+                  Ask your employee to enter this code in their mobile app within 5 minutes to pair their device with your business.
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <div className="text-xs text-blue-800 font-medium mb-2">Pairing URL:</div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-white px-2 py-1 rounded border border-blue-200 text-blue-900 break-all">
+                      {typeof window !== 'undefined' ? `${window.location.origin}/device/pair` : '/device/pair'}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const url = typeof window !== 'undefined' ? `${window.location.origin}/device/pair` : '/device/pair';
+                        navigator.clipboard.writeText(url);
+                        // You could add a toast here
+                      }}
+                      className="text-xs"
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+                <div className="text-blue-600 font-semibold mt-2 text-lg" aria-live="polite">
+                  {countdown != null
+                    ? `${Math.floor(countdown / 60)}:${(countdown % 60)
+                        .toString()
+                        .padStart(2, "0")}`
+                    : "00:00"}
+                </div>
+                <div className="text-green-700 font-medium text-sm" aria-live="polite">
+                  {pairingLoading ? "Generating code..." : "Waiting for device to pair..."}
+                </div>
+              </>
+            )}
+            {!pairing && pairingLoading && (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Generating pairing code...</p>
+              </div>
+            )}
+            {!pairing && !pairingLoading && (
+              <div className="text-center py-8">
+                <p className="text-gray-600">Failed to generate pairing code. Please try again.</p>
+              </div>
+            )}
+            {!pairingSuccess && (
+              <Button variant="outline" onClick={() => setShowPairModal(false)} className="w-full bg-white hover:bg-gray-50">
+                Close
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -956,10 +1368,12 @@ export default function VendorProfilePage() {
       {/* Security Settings Modal */}
       <Dialog open={showSecurityModal} onOpenChange={setShowSecurityModal}>
         <DialogContent className="max-w-lg bg-white">
-          <DialogTitle className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-red-600" />
-            Security Settings
-          </DialogTitle>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-red-600" />
+              Security Settings
+            </DialogTitle>
+          </DialogHeader>
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Two-Factor Authentication</span>
@@ -988,7 +1402,10 @@ export default function VendorProfilePage() {
                 className="w-24"
               />
             </div>
-            <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
+            <Button 
+              className="w-full bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleSaveSecuritySettings}
+            >
               Save Security Settings
             </Button>
           </div>
@@ -998,10 +1415,12 @@ export default function VendorProfilePage() {
       {/* Payment Settings Modal */}
       <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
         <DialogContent className="max-w-lg bg-white">
-          <DialogTitle className="flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-emerald-600" />
-            Payment Settings
-          </DialogTitle>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-emerald-600" />
+              Payment Settings
+            </DialogTitle>
+          </DialogHeader>
           <div className="mt-4 space-y-4">
             <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
               <h4 className="font-medium text-emerald-800 mb-2">Current Plan</h4>
@@ -1028,7 +1447,6 @@ export default function VendorProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
-      )}
     </div>
   );
 } 

@@ -1,0 +1,363 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// SQL Server doesn't support Prisma enums, using String instead
+// EmployeeRole: "MANAGER" | "TECHNICIAN"
+// BookingStatus: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELED"
+
+// Membership and Device enums (SQL Server supports these via Prisma)
+enum MembershipRole {
+  MANAGER
+  EMPLOYEE
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  DENIED
+  REVOKED
+}
+
+enum DeviceType {
+  PHONE
+  HEADSET
+}
+
+model Vendor {
+  id                  String    @id @default(cuid())
+  firstName           String?
+  lastName            String?
+  name                String    // Keep for backward compatibility
+  businessName        String?
+  businessType        String?
+  category            String?
+  foundedYear         Int?
+  email               String?   @unique
+  phone               String?
+  city                String?
+  state               String?
+  address             String?
+  zipCode             String?
+  bio                 String?
+  website             String?
+  licenseNumber       String?
+  insuranceStatus     Boolean   @default(false)
+  insuranceProvider   String?
+  insuranceExpiry     DateTime?
+  bondingStatus       Boolean   @default(false)
+  emergencyContact    String?
+  responseTimeSettings String?
+  profilePhoto        String?
+  serviceTypes        String?   // Can be comma-separated for now
+  specializations     String?   // Can be comma-separated for now
+  serviceAreas        String?   // Can be comma-separated for now
+  // Payments
+  paymentsEnabled     Boolean   @default(false)
+  // Reminders
+  reminders_review    Boolean   @default(true)
+  reminders_invoice   Boolean   @default(false)
+  reminders_maintenance Boolean @default(true)
+  reminders_followUp  Boolean   @default(true)
+  // Notifications
+  notifications_job   Boolean   @default(true)
+  notifications_review Boolean @default(true)
+  notifications_payout Boolean   @default(false)
+  notifications_support Boolean  @default(true)
+  notifications_marketing Boolean @default(false)
+  notifications_updates Boolean  @default(true)
+  // Security Settings
+  twoFactorEnabled    Boolean   @default(false)
+  loginNotifications  Boolean   @default(true)
+  sessionTimeout      Int       @default(30)
+  passwordExpiry      Int?      // Optional for now
+  failedLoginLockout  Int?      // Optional for now
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  demo                Boolean   @default(false)
+  seedBatchId         String?
+  
+  // Storage plan & limits
+  planKey             String    @default("FREE") // "FREE" | "STARTER" | "PRO"
+  storageLimitBytes   BigInt    @default(1073741824) // 1GB default for FREE
+  isOverLimit         Boolean   @default(false)
+  overLimitSince      DateTime?
+  
+  // Relations
+  employees           Employee[]
+  services            Service[]
+  bookings            Booking[]
+  reviews             Review[]
+  devices             Device[]
+  devicePairingCodes  DevicePairingCode[]
+  memberships         VendorMembership[]
+  invites             VendorInvite[]
+  deviceAssignments   DeviceAssignment[]
+  mediaAssets         MediaAsset[]
+  storageAlerts       VendorStorageAlert[]
+  adminNotifications AdminNotification[]
+
+  @@map("vendors")
+}
+
+model Employee {
+  id          String      @id @default(cuid())
+  vendorId    String
+  name        String
+  email       String
+  role        String  // "MANAGER" | "TECHNICIAN"
+  photoUrl    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  demo        Boolean     @default(false)
+  seedBatchId String?
+  
+  // Relations
+  vendor      Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("employees")
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  vendorId    String
+  name        String
+  description String?
+  price       Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  demo        Boolean  @default(false)
+  seedBatchId String?
+  
+  // Relations
+  vendor      Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+
+  @@map("services")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  name        String?
+  email       String?  @unique
+  phone       String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  demo        Boolean  @default(false)
+  seedBatchId String?
+  
+  // Relations
+  bookings         Booking[]
+  reviews          Review[]
+  memberships      VendorMembership[]
+  invitesCreated   VendorInvite[] @relation("InvitesCreated")
+
+  @@map("users")
+}
+
+model Booking {
+  id           String        @id @default(cuid())
+  userId       String
+  serviceId    String
+  vendorId     String
+  title        String?       // Job/service title
+  clientName   String?       // Client name (or use user relation)
+  amount       Decimal?      // Booking amount (DECIMAL in SQL for precision)
+  status       String @default("PENDING")  // "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELED"
+  scheduledFor DateTime?
+  date         DateTime?    // Job completion or scheduled date
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  demo         Boolean       @default(false)
+  seedBatchId  String?
+  
+  // Relations
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  vendor       Vendor        @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("bookings")
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  userId      String
+  vendorId    String
+  clientName  String?  // Client name (or use user relation)
+  jobType     String?  // Type of job/service reviewed
+  rating      Int
+  comment     String?
+  date        DateTime? // Review date (defaults to createdAt if not set)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  demo        Boolean  @default(false)
+  seedBatchId String?
+  
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+model Device {
+  id            String     @id @default(cuid())
+  vendorId      String
+  deviceUid     String     @unique
+  deviceType    DeviceType
+  pairedAt      DateTime  @default(now())
+  lastSeenAt    DateTime?
+  isActive      Boolean   @default(true)
+  firmwareVersion String?
+  model         String?
+  os            String?
+  appVersion    String?
+
+  vendor        Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  assignments   DeviceAssignment[]
+
+  @@index([vendorId, deviceType])
+  @@map("devices")
+}
+
+model DevicePairingCode {
+  id         String   @id @default(cuid())
+  vendorId   String
+  code       String   @unique
+  expiresAt  DateTime
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("device_pairing_codes")
+}
+
+// MembershipRole: "MANAGER" | "EMPLOYEE"
+// MembershipStatus: "PENDING" | "ACTIVE" | "DENIED" | "REVOKED"
+model VendorMembership {
+  id              String           @id @default(cuid())
+  vendorId        String
+  userId          String
+  role            MembershipRole   @default(EMPLOYEE)
+  status          MembershipStatus @default(PENDING)
+
+  badgeId         String?
+  requestedAt     DateTime @default(now())
+  approvedAt      DateTime?
+  approvedByUserId String?
+  deniedAt        DateTime?
+  deniedByUserId  String?
+  revokedAt       DateTime?
+  revokedByUserId String?
+
+  // Store phone fingerprint/meta at request time (so manager can see it before approval)
+  pendingPhoneDeviceUid String?
+  pendingDeviceModel    String?
+  pendingDeviceOs       String?
+  pendingAppVersion     String?
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments DeviceAssignment[]
+
+  @@unique([vendorId, userId])
+  @@index([vendorId, status])
+  @@map("vendor_memberships")
+}
+
+model VendorInvite {
+  id            String   @id @default(cuid())
+  vendorId      String
+  code          String   @unique
+  token         String   @unique
+  createdByUserId String
+  expiresAt     DateTime
+  maxUses       Int?
+  usesCount     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  createdBy User @relation("InvitesCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId, isActive])
+  @@map("vendor_invites")
+}
+
+model DeviceAssignment {
+  id            String   @id @default(cuid())
+  vendorId      String
+  deviceId      String   // should refer to a HEADSET device
+  membershipId  String
+  assignedAt    DateTime @default(now())
+  unassignedAt DateTime?
+  assignedByUserId String
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  membership VendorMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId])
+  @@index([deviceId, unassignedAt])
+  @@map("device_assignments")
+}
+
+model MediaAsset {
+  id           String    @id @default(cuid())
+  vendorId     String    // Required: profile owner
+  membershipId String?   // Who captured/uploaded
+  deviceId     String?   // Which headset/phone
+  bytes        BigInt    // File size in bytes
+  mimeType     String    // MIME type (e.g., "image/jpeg", "video/mp4")
+  blobKey      String    // Blob storage key (e.g., "vendor/{vendorId}/media/{assetId}.{ext}")
+  blobUrl      String?   // Full URL to blob (optional, can be generated from blobKey)
+  deletedAt    DateTime? // Soft delete timestamp
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([vendorId, deletedAt])
+  @@index([membershipId])
+  @@index([deviceId])
+  @@map("media_assets")
+}
+
+model VendorStorageAlert {
+  id        String   @id @default(cuid())
+  vendorId String
+  threshold Int      // 80, 95, or 100
+  sentAt    DateTime @default(now())
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, threshold])
+  @@index([vendorId])
+  @@map("vendor_storage_alerts")
+}
+
+model AdminNotification {
+  id        String   @id @default(cuid())
+  vendorId String?
+  type      String   // "STORAGE_ALERT" | "STORAGE_LIMIT_REACHED" | etc.
+  title     String
+  message   String
+  metadata  String?  // JSON string for additional data
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  vendor Vendor? @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([read, createdAt])
+  @@index([vendorId])
+  @@map("admin_notifications")
+}
