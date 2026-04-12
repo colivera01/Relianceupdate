@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Search, 
@@ -12,10 +12,10 @@ import {
   ChevronDown
 } from 'lucide-react';
 
-export default function SearchResultsPage() {
+function SearchResultsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const query = searchParams.get('q') || '';
+  const query = searchParams?.get("q") ?? "";
   
   const [searchTerm, setSearchTerm] = useState(query);
 
@@ -477,4 +477,18 @@ export default function SearchResultsPage() {
       </div>
     </div>
   );
-} 
+}
+
+export default function SearchResultsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-gray-500">
+          Loading search…
+        </div>
+      }
+    >
+      <SearchResultsPageInner />
+    </Suspense>
+  );
+}

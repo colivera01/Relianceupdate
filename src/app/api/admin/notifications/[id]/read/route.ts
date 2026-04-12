@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 // TODO: Add admin authentication check
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -18,7 +18,7 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     // TODO: Add admin authentication check
-    const { id } = params;
+    const { id } = await params;
 
     const notification = await (prisma as any).adminNotification.update({
       where: { id },

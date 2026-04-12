@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { addRegisteredUser, registeredUsers } from '../../auth/login/route';
+import {
+  addRegisteredUser,
+  registeredUsers,
+} from "@/lib/dev-registered-users";
 
 // reCAPTCHA Secret Key - Update this with your actual secret key
 const RECAPTCHA_SECRET_KEY = '6LdAapYrAAAAAEuuGMIKNjSNv0PE1yeMtWO1rKKk'; // Updated with actual secret key

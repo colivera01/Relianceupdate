@@ -3,13 +3,15 @@ import React from 'react';
 import Link from 'next/link';
 import { User, Home, Heart, Settings, LogOut, Users, Briefcase, LayoutDashboard, Star, Calendar, MessageSquare, Globe } from 'lucide-react';
 import { Button } from './ui/button';
-// import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
-// Default user data (fallback)
-const defaultUser = {
+type SidebarUser = { name: string; email: string; avatar: string | null };
+
+// Default user data (fallback when not signed in)
+const defaultUser: SidebarUser = {
   name: 'Cesar Olivera',
   email: 'colivera080124@gmail.com',
-  avatar: null, // No avatar uploaded during registration
+  avatar: null,
 };
 
 const navLinks = [
@@ -29,29 +31,48 @@ const viewModes = [
   { label: 'Admin View', icon: Users, href: '/admin/dashboard', active: false },
 ];
 
+function displayNameFromStoredUser(parsed: Record<string, unknown>): string {
+  if (typeof parsed.name === 'string' && parsed.name.trim()) return parsed.name.trim();
+  const fn = typeof parsed.firstName === 'string' ? parsed.firstName : '';
+  const ln = typeof parsed.lastName === 'string' ? parsed.lastName : '';
+  const combined = `${fn} ${ln}`.trim();
+  if (combined) return combined;
+  if (typeof parsed.email === 'string' && parsed.email) return parsed.email;
+  return defaultUser.name;
+}
+
 export default function UserSidebar() {
-  // Temporarily disable auth context to avoid layout issues
-  // const { user, logout } = useAuth();
-  // const currentUser = user || defaultUser;
-  
-  // Try to get user data from localStorage
-  const [currentUser, setCurrentUser] = React.useState(defaultUser);
-  
+  const { user, isLoading } = useAuth();
+  const [currentUser, setCurrentUser] = React.useState<SidebarUser>(defaultUser);
+
   React.useEffect(() => {
+    if (user) {
+      setCurrentUser({
+        name: user.name || user.email || defaultUser.name,
+        email: user.email || defaultUser.email,
+        avatar: user.avatar || null,
+      });
+      return;
+    }
     const userData = localStorage.getItem('userData');
     if (userData) {
       try {
-        const parsed = JSON.parse(userData);
+        const parsed = JSON.parse(userData) as Record<string, unknown>;
         setCurrentUser({
-          name: `${parsed.firstName} ${parsed.lastName}`,
-          email: parsed.email,
-          avatar: parsed.avatar || parsed.profilePhoto || null,
+          name: displayNameFromStoredUser(parsed),
+          email: typeof parsed.email === 'string' ? parsed.email : defaultUser.email,
+          avatar:
+            (typeof parsed.avatar === 'string' && parsed.avatar) ||
+            (typeof parsed.profilePhoto === 'string' && parsed.profilePhoto) ||
+            null,
         });
       } catch (error) {
         console.error('Error parsing user data:', error);
       }
+    } else if (!isLoading) {
+      setCurrentUser(defaultUser);
     }
-  }, []);
+  }, [user, isLoading]);
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to log out?')) {

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth as useAuthSession } from '@/contexts/AuthContext';
 import { authSDK } from '../sdk/auth';
 import type { LoginRequest, RegisterRequest, ProfileToggleRequest } from '../types/api';
 
@@ -44,7 +45,9 @@ export const useLogout = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: authSDK.logout,
+    mutationFn: async () => {
+      authSDK.logout();
+    },
     onSuccess: () => {
       // Clear all queries and user data
       queryClient.clear();
@@ -95,18 +98,21 @@ export const useUpdateVendorProfile = () => {
 
 // Profile toggle hooks
 export const useAvailableProfiles = () => {
+  const { user } = useAuthSession();
   return useQuery({
-    queryKey: authKeys.availableProfiles(),
-    queryFn: authSDK.getAvailableProfiles,
+    queryKey: [...authKeys.availableProfiles(), user?.id ?? ''],
+    queryFn: () => authSDK.getAvailableProfiles(user?.id),
     enabled: false, // Don't auto-fetch, call manually when needed
   });
 };
 
 export const useToggleProfile = () => {
   const queryClient = useQueryClient();
-  
+  const { user } = useAuthSession();
+
   return useMutation({
-    mutationFn: authSDK.toggleProfile,
+    mutationFn: (request: ProfileToggleRequest) =>
+      authSDK.toggleProfile({ ...request, userId: user?.id }),
     onSuccess: () => {
       // Invalidate profile queries
       queryClient.invalidateQueries({ queryKey: authKeys.all });

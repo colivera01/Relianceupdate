@@ -605,9 +605,10 @@ export default function UserManagement() {
                             type="checkbox"
                             checked={editing.adminPrivileges?.departmentAccess.includes(dept)}
                             onChange={(e) => {
+                              const current = editing.adminPrivileges?.departmentAccess ?? [];
                               const newDepts = e.target.checked
-                                ? [...(editing.adminPrivileges?.departmentAccess || []), dept]
-                                : editing.adminPrivileges?.departmentAccess.filter(d => d !== dept);
+                                ? [...current, dept]
+                                : current.filter(d => d !== dept);
                               setEditing({
                                 ...editing,
                                 adminPrivileges: {

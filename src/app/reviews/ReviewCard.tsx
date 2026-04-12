@@ -3,7 +3,7 @@ import React from "react";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tooltip } from '@/components/ui/tooltip';
+import SimpleTooltip from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
 
 export interface ReviewCardProps {
@@ -20,9 +20,9 @@ export default function ReviewCard({ review: r, isSelected, onSelect, onDetails,
   return (
     <Card className="p-4 shadow-md border hover:ring-2 hover:ring-blue-400 transition" tabIndex={0}>
       <div className="flex justify-between mb-2">
-        <Tooltip content={r.status.charAt(0).toUpperCase() + r.status.slice(1)}>
+        <SimpleTooltip content={r.status.charAt(0).toUpperCase() + r.status.slice(1)}>
           <Badge variant={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'destructive' : 'outline'}>{r.status}</Badge>
-        </Tooltip>
+        </SimpleTooltip>
         <input type="checkbox" checked={isSelected} onChange={onSelect} aria-label={`Select review ${r.id}`} />
       </div>
       { (r.isDup || r.isIPSpam) && <Badge variant="destructive" title="Duplicate or suspicious reviewer">⚠️ Suspicious Activity</Badge> }
@@ -33,9 +33,9 @@ export default function ReviewCard({ review: r, isSelected, onSelect, onDetails,
         <img src={r.reviewerType === 'vendor' ? r.vendorImage : r.userImage} alt={r.reviewerType === 'vendor' ? r.vendor : r.user} loading="lazy" className="w-12 h-12 rounded-full border" />
       </div>
       <div className="flex justify-between items-center mb-2">
-        <Tooltip content={r.auto ? 'Auto-moderated' : 'Manually reviewed'}>
+        <SimpleTooltip content={r.auto ? 'Auto-moderated' : 'Manually reviewed'}>
           <Badge variant={r.auto ? 'destructive' : 'secondary'}>{r.auto ? 'Auto' : 'Manual'}</Badge>
-        </Tooltip>
+        </SimpleTooltip>
         <Badge variant="outline">{r.rating}★</Badge>
       </div>
       {/* Countdown Timer + Progress Bar + Info Tooltip */}
@@ -43,7 +43,7 @@ export default function ReviewCard({ review: r, isSelected, onSelect, onDetails,
         {countdown
           ? <>
               <span>Auto review will apply in: {countdown.hours}h {countdown.minutes}m {countdown.seconds}s</span>
-              <Tooltip content="If not manually reviewed, this review will be auto-reviewed after 72 hours."><Info className="w-4 h-4 text-blue-400 inline-block" /></Tooltip>
+              <SimpleTooltip content="If not manually reviewed, this review will be auto-reviewed after 72 hours."><Info className="w-4 h-4 text-blue-400 inline-block" /></SimpleTooltip>
               {countdown.hours < 1 && <Badge variant="destructive">Expiring soon!</Badge>}
             </>
           : <span>Auto review applied</span>

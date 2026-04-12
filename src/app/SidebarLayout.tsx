@@ -36,7 +36,9 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
               <SidebarLink href="/admin/dashboard" label="Dashboard" icon="📊" />
               <SidebarLink href="/admin/users" label="User Management" icon="👥" />
               <SidebarLink href="/admin/vendors" label="Vendor Management" icon="🏢" />
-              <SidebarLink href="/admin/reviews" label="Review Management" icon="⭐" badge="23" />
+              <SidebarLink href="/admin/publish-management" label="Publish Management" icon="📢" />
+              <SidebarLink href="/admin/media-moderation" label="Media Moderation" icon="🎬" />
+              <SidebarLink href="/admin/reviews" label="Review Moderation" icon="⭐" />
               <SidebarLink href="/admin/activity" label="Activity Monitoring" icon="📈" />
               <SidebarLink href="/admin/audit-logs" label="Audit Logs" icon="📋" />
               <SidebarLink href="/admin/reports" label="Reports & Analytics" icon="📑" />

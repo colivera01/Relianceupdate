@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
 
 interface RouteParams {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }
 
 /**
@@ -17,7 +17,7 @@ export async function GET(
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId } = params;
+    const { vendorId } = await params;
     await requireVendorManager(request, vendorId);
 
     const { searchParams } = new URL(request.url);

@@ -116,7 +116,7 @@ export default function ProfileHeader({
           <ProfileToggle
             currentProfile={currentProfile}
             availableProfiles={availableProfiles}
-            userId={userData.id}
+            userId={userData.id ?? ''}
           />
         )}
 

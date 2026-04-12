@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '@/server/db';
 
-// Guard against production
-if (process.env.NODE_ENV === 'production') {
-  throw new Error('Seeding not allowed in production');
-}
-
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { error: 'Seeding not allowed in production' },
+      { status: 403 }
+    );
+  }
+
   // Check authorization
   const authHeader = request.headers.get('authorization');
   const expectedToken = `Bearer ${process.env.SEED_SECRET}`;

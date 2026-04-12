@@ -19,7 +19,7 @@ const mockEmployees = [
 
 export default function TeamAnalytics() {
   const [employees] = useState(mockEmployees);
-  const [starFilter, setStarFilter] = useState(null);
+  const [starFilter, setStarFilter] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   const toggleExpand = () => setExpanded(e => !e);

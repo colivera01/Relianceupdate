@@ -1,0 +1,121 @@
+# Project State (Execution + Management Stabilization Pass)
+
+## Handoff refresh (2026-04-12)
+- Canonical maps and narrative docs were re-synced to the repo: **`ROUTE_MAP.md`** (pages + all 102 API routes), **`SCHEMA_MAP.md`** (Review + smart-review/consent models), **`UI_MAP.md`** (my-bookings, consent, admin vendors hub, notifications footnotes), **`RELIANCE_PRODUCT_ALIGNMENT.md`** (model/API list, gap list trimmed for implemented routes).
+- **`CHANGELOG_LATEST.md`** prepend documents this refresh batch.
+- Operational audits remain: **`MY_BOOKINGS_FUNCTION_AUDIT.md`**, **`NOTIFICATIONS_INTEGRATION_CHECK.md`**, **`CONSOLIDATION_CHECK.md`**, **`INTERRUPTED_WORK_AUDIT.md`** (older; cross-check if paths changed).
+
+## Recovery + consolidation (2026-04-11)
+- **Client providers:** `src/components/ClientProviders.tsx` is the only app-level client wrapper used by `src/app/layout.tsx` (`@/components/ClientProviders`). It combines Radix `TooltipProvider`, `AuthProvider`, and optional MSW when `NEXT_PUBLIC_API_MODE=mock`. The duplicate root `components/ClientProviders.tsx` was removed.
+- **Component tree:** Large prototypes that previously sat directly under `components/` were moved to `components/legacy-pages-router/` (see README there). They remain for **Pages Router** only (`pages/support.js`, `pages/notifications.js`). The App Router continues to use `@/components/*` → `src/components/`.
+- **Duplicate UI tree:** The parallel `components/ui/` copy was removed; shared primitives live under `src/components/ui/`. `popover.tsx` was added under `src/components/ui/` so legacy `ReviewManagement` (now under `legacy-pages-router`) resolves `@/components/ui/popover`.
+- **Scaffold removal:** Empty `src/components/SupportTickets.tsx` deleted (unused).
+- **Dev script:** `temp-create-job-check.cjs` removed from repo root; equivalent lives at `scripts/dev/vendor-job-dashboard-persist-check.cjs` (see `scripts/dev/README.md`).
+
+## Notifications (Resend + Twilio) — 2026-04-12
+- **Email:** `src/lib/email/resend.ts` sends via Resend HTTPS API using `RESEND_API_KEY`, `EMAIL_FROM`, optional `EMAIL_REPLY_TO` (`reply_to`), gated by `EMAIL_ENABLED`.
+- **SMS:** `src/lib/sms/twilio.ts` uses `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, gated by `SMS_ENABLED` (trial / unverified-number errors surfaced in logs and API payloads).
+- **Orchestration:** `send-consent-link`, `send-review-reminder`, `send-review-expired` under `src/lib/notifications/`; absolute links use `APP_BASE_URL` when set.
+- **Consent:** `POST /api/consent/request` loads booking user contact, sends consent link, returns `manualLinkRequired` when no channel succeeds; writes `notification_dispatch` consent events and `notification_attempt` admin audit rows (redacted recipient).
+- **Review flows:** No durable scheduler — `scheduleReviewReminder` performs **immediate** best-effort reminder when a window is created; `POST /api/reviews/window/expire` triggers expiry notification and returns `expiryNotification` in JSON.
+- **Dev test:** `POST /api/dev/notifications-test` (non-production only; requires `NOTIFICATIONS_TEST_SECRET` + header `x-notifications-test-secret`).
+- **Startup warnings:** `src/instrumentation.ts` + explicit `logNotificationEnvWarnings()` on consent/dev routes.
+
+## Booking–media–review trust loop (2026-04-12)
+- **Materially hardened:** The customer path from **`/my-bookings`** list/media through **`SmartVideoPlayer`** now aligns identity: the player sends **`x-user-id`** on **every** review `POST` when a **`userId`** is provided (same resolver as booking list/media); **missing `userId`** forces **watch-only** (no review API calls). Server-side, **`POST /api/reviews/create`** enforces **active review window ↔ submitted `bookingId` / `vendorId`** (and optional **`mediaSessionId`**) before writing a review; **`POST /api/reviews/window/expire`** requires **`getUserIdFromRequest`** and that the **booking owner** matches the window’s booking.
+- **Optional future hardening (lower priority):** **`POST /api/reviews/window/start`**, **`/prompt-event`**, and **`/sentiment`** still rely on consent + window state / UUID secrecy rather than authenticated booking ownership (TODOs on those route files; details in **`REVIEW_ROUTE_SERVER_HARDENING_AUDIT.md`** and **`BOOKING_MEDIA_REVIEW_CHAIN_AUDIT.md`**).
+
+## Fully working
+- Admin governance surfaces remain intact and connected:
+  - `/admin/publish-management`
+  - `/admin/media-moderation`
+  - `/admin/audit-logs`
+- Admin vendors hard defect fixed:
+  - `/admin/vendors` no longer depends on missing `@/components/VendorManagement`
+- Dynamic API `params` fixes applied on affected routes:
+  - `src/app/api/bookings/[id]/route.ts`
+  - `src/app/api/services/[id]/route.ts`
+  - `src/app/api/availability/vendor/[vendorId]/route.ts`
+- Bookings core API contract stabilized for shared shape:
+  - `/api/bookings`
+  - `/api/bookings/[id]`
+  - `/api/bookings/[id]/cancel`
+- Env tracking stabilized:
+  - `.gitignore` repaired and normalized for `.env*`
+  - `.env.local` and `.env.new` untracked from git index
+
+## Partially working
+- Bookings UI is now mostly real-data backed end-to-end:
+  - `/my-bookings` uses live API and real actions (customer id from `AuthProvider` / `localStorage.userData` + `x-user-id`; login syncs context; sidebar display name fixed — see `MY_BOOKINGS_FUNCTION_AUDIT.md`)
+  - `/booking/[serviceId]` create flow uses canonical contract and reliable booking ID handoff
+  - `/booking/[serviceId]/confirmation` now loads persisted booking via `/api/bookings/[id]`
+  - `/booking/[serviceId]` date/time picker now reads backend slot availability and performs pre-submit slot revalidation
+  - remaining gap: slot generation is booking-derived and fixed-hour-window based (no vendor-custom schedule persistence yet)
+- Vendor jobs remains hybrid:
+  - media/session/upload/playback flows are live
+  - targeted duplicate/stale-state guards added
+  - wider page still contains mixed mock/live orchestration
+- DB startup resilience improved:
+  - Prisma init no longer hard-crashes app startup on env-fragile failure
+  - route-level DB usage still fails at runtime if DB unavailable (expected, now deterministic)
+- Smart review capture active path implemented with constraints:
+  - API routes added for review window start/events/sentiment/create/expire
+  - customer video overlay prompts wired in `/my-bookings` media playback via `SmartVideoPlayer` (see **Booking–media–review trust loop** above for latest client + server enforcement)
+  - consent request/accept/decline/token routes added with timestamp/IP/user-agent/version capture
+  - remaining gap: vendor-side consent request initiation is API-ready but has limited first-class UI orchestration; email/SMS delivery depends on env + user contact on the booking
+
+## Mocked
+- Vendor management pages are still mostly local-state/mock:
+  - `/vendor/services`
+  - `/vendor/employees`
+  - `/vendor/reviews`
+  - `/vendor/analytics`
+  - `/vendor/billing`
+- Admin management pages below still depend on placeholder/component-local mock behavior:
+  - `/admin/dashboard`
+  - `/admin/users`
+  - `/admin/reports`
+  - `/admin/settings`
+  - `/admin/activity`
+
+## Broken
+- No new hard runtime break introduced in this pass.
+- Known remaining contract gaps are documented in `API_CONTRACT_MATRIX.md` (not mass-refactored by design).
+
+## What was fixed vs documented
+- Fixed now:
+  - hard defect in admin vendors page
+  - dynamic route params handling defects (targeted)
+  - booking API contract consistency and booking create alignment
+  - booking confirmation page converted from mock to real API-backed state
+  - availability read route now returns stable slot-based contract from backend booking state
+  - availability slot check route added at `/api/availability/check`
+  - booking create conflict guard added (`SLOT_UNAVAILABLE`, 409)
+  - booking page migrated off local static date/time arrays to API-provided slots
+  - smart review capture schema foundation (`ReviewWindow`, `ReviewPromptEvent`, `ReviewSentiment`, `ConsentRecord`, `ConsentEvent`)
+  - review model fields for explicit customer source and submission channel
+  - admin review audit API + UI (`/api/admin/review-audit`, `/admin/review-audit`)
+  - consent capture page (`/consent/[token]`) and consent-gated review window start
+  - env gitignore/tracking issue
+  - vendor jobs duplicate action guard for upload/playback actions
+- Documented only (not fully implemented):
+  - broader management-layer API build-out
+  - non-booking SDK/API mismatches outside stabilized low-risk scope
+  - full vendor jobs architecture cleanup
+
+## Top risks now
+- DB/network availability to SQL Server still causes runtime API failures when DB unreachable.
+- Management pages remain mostly mock and can drift from real backend behavior.
+- SDK endpoint drift still exists outside bookings low-risk fixes.
+- Vendor jobs page size/complexity still poses regression risk without tests.
+- Availability currently assumes fixed slot windows and single-booking-per-slot semantics.
+- Review **reminder** email/SMS is immediate best-effort only (no background job queue); durable delayed reminders are not implemented.
+
+## Next recommended tasks
+1. Add integration tests for booking create -> confirmation -> list -> cancel flow.
+2. Add integration tests for availability read/check and slot-conflict booking rejection.
+3. Add vendor-managed schedule persistence (working hours/blackouts) to availability slot generation.
+4. Add runtime DB availability guard helper usage in critical routes for clearer 503 responses.
+5. Add vendor-side consent-request initiation UX over existing `/api/consent/request` route for media sessions.
+6. Add integration tests for smart review capture + consent + admin audit flow.
+7. Execute management-layer implementation order from `MANAGEMENT_LAYER_GAP_REPORT.md`.

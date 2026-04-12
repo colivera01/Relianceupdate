@@ -1,10 +1,19 @@
 'use client';
+import type { LucideIcon } from 'lucide-react';
 import { Users, HardDrive, Star, Briefcase, DollarSign, HelpCircle, LogOut, AlertTriangle, Home } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import Link from 'next/link';
 import ProfileHeader from '../../components/ProfileHeader';
 
-const sidebarLinks = [
+type SidebarLink = {
+  label: string;
+  icon: LucideIcon;
+  href: string;
+  alert?: boolean;
+  badge?: number | string;
+};
+
+const sidebarLinks: SidebarLink[] = [
   { label: 'Dashboard', icon: Home, href: '/vendor/dashboard' },
   { label: 'Profile & Settings', icon: Users, href: '/vendor/profile' },
   { label: 'View Reviews', icon: Star, href: '/vendor/reviews' },

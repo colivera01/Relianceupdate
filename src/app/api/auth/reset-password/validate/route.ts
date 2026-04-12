@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateResetToken } from '../../forgot-password/route';
+import { validateResetToken } from "@/lib/password-reset-tokens";
 
 export async function GET(request: NextRequest) {
   try {

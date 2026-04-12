@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
 
 interface RouteParams {
-  params: { vendorId: string; deviceId: string };
+  params: Promise<{ vendorId: string; deviceId: string }>;
 }
 
 /**
@@ -17,7 +17,7 @@ export async function POST(
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId, deviceId } = params;
+    const { vendorId, deviceId } = await params;
     await requireVendorManager(request, vendorId);
 
     // Verify device exists

@@ -146,6 +146,43 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 // import SimpleTooltip from '../../../../components/ui/tooltip';
 // TODO: Import authentication/role utilities as needed
 
+type SavedFilterPreset = {
+  name: string;
+  filters: {
+    ratingFilter: string;
+    employeeFilter: string;
+    jobTypeFilter: string;
+    search: string;
+    dateRange: { start: string; end: string };
+    sentimentFilter: string;
+  };
+  createdAt: string;
+};
+
+type PendingApprovalItem = {
+  id: number;
+  jobTitle: string;
+  employee: string;
+  mediaType: string;
+  uploadedAt: string;
+  thumbnail: string;
+  url: string;
+  status: string;
+  customerEmail: string;
+  customerName: string;
+};
+
+type VendorReviewFeedItem = {
+  id: number;
+  reviewer: string;
+  date: string;
+  rating: number;
+  text: string;
+  employeeId: number;
+  jobType: string;
+  customerEmail: string;
+};
+
 // Business Performance Dashboard mock data
 const revenueImpact = { reviewScore: 4.6, avgBookingRate: 0.23, revenueChange: 1200 };
 const customerAcquisition = { avgCAC: 45.00, reviewInfluence: 0.15 };
@@ -258,6 +295,8 @@ const employeePerformance = [
     performanceLevel: "Exceeds Expectations"
   }
 ];
+
+type EmployeePerformanceRow = (typeof employeePerformance)[number];
 
 const hiringInsights = [
   { insight: "HVAC technicians with 4.5+ ratings earn 15% more", confidence: 85 },
@@ -496,7 +535,7 @@ export default function VendorReviewsPage() {
   // Mock job types for reviews
   const jobTypes = ['Plumbing', 'Electrical', 'HVAC'];
   // Add jobType and customerEmail to reviewFeed
-  const reviewFeed = [
+  const reviewFeed: VendorReviewFeedItem[] = [
     { id: 1, reviewer: 'John Smith', date: '2024-06-01', rating: 5, text: 'Excellent service, very satisfied!', employeeId: 1, jobType: 'Plumbing', customerEmail: 'john@example.com' },
     { id: 2, reviewer: 'Alice Brown', date: '2024-05-28', rating: 5, text: 'Maria was great, but the job took longer than expected.', employeeId: 1, jobType: 'Electrical', customerEmail: 'alice@example.com' },
     { id: 3, reviewer: 'Carlos Rivera', date: '2024-05-25', rating: 4, text: 'James was friendly, but there was a delay.', employeeId: 2, jobType: 'HVAC', customerEmail: 'carlos@example.com' },
@@ -506,14 +545,14 @@ export default function VendorReviewsPage() {
   // Job type filter
   const [jobTypeFilter, setJobTypeFilter] = useState('all');
   // Bulk selection state
-  const [selectedReviews, setSelectedReviews] = useState([]);
+  const [selectedReviews, setSelectedReviews] = useState<number[]>([]);
   // Internal notes state
   const [internalNotes, setInternalNotes] = useState({});
   // Customer history modal state
   const [openCustomerModal, setOpenCustomerModal] = useState(false);
-  const [modalCustomer, setModalCustomer] = useState(null);
+  const [modalCustomer, setModalCustomer] = useState<VendorReviewFeedItem | null>(null);
   // Task creation state (mocked)
-  const [createdTasks, setCreatedTasks] = useState([]);
+  const [createdTasks, setCreatedTasks] = useState<number[]>([]);
   // Enhanced Filter state
   const [ratingFilter, setRatingFilter] = useState('all');
   const [employeeFilter, setEmployeeFilter] = useState('all');
@@ -545,7 +584,7 @@ export default function VendorReviewsPage() {
   };
 
   // Enhanced review analysis
-  const analyzeReviewContext = (reviewText, userProfile) => {
+  const analyzeReviewContext = (reviewText: string, userProfile: Record<string, unknown>) => {
     const sentiment = reviewText.toLowerCase().includes('excellent') || reviewText.toLowerCase().includes('great') ? 'positive' : 'negative';
     const category = reviewText.toLowerCase().includes('service') ? 'service' : 'platform';
     const urgency = reviewText.toLowerCase().includes('urgent') || reviewText.toLowerCase().includes('immediate') ? 'high' : 'low';
@@ -611,24 +650,24 @@ export default function VendorReviewsPage() {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   // Additional state variables for interactive functionality
-  const [modalEmp, setModalEmp] = useState(null);
+  const [modalEmp, setModalEmp] = useState<EmployeePerformanceRow | null>(null);
   const [openEmpModal, setOpenEmpModal] = useState(false);
 
   // Enhanced state for new features
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [selectedReview, setSelectedReview] = useState(null);
+  const [selectedReview, setSelectedReview] = useState<VendorReviewFeedItem | null>(null);
   const [showBulkActionModal, setShowBulkActionModal] = useState(false);
   const [bulkAction, setBulkAction] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportFormat, setExportFormat] = useState('csv');
-  const [savedFilters, setSavedFilters] = useState([]);
+  const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv');
+  const [savedFilters, setSavedFilters] = useState<SavedFilterPreset[]>([]);
   const [currentFilterName, setCurrentFilterName] = useState('');
   const [showSaveFilterModal, setShowSaveFilterModal] = useState(false);
   
   // Pending Approvals state
   const [activeTab, setActiveTab] = useState('reviews'); // 'reviews' or 'approvals'
-  const [pendingApprovals, setPendingApprovals] = useState([
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([
     { 
       id: 1, 
       jobTitle: 'Water Heater Repair', 
@@ -654,10 +693,10 @@ export default function VendorReviewsPage() {
       customerName: 'Sarah Johnson'
     }
   ]);
-  const [selectedMedia, setSelectedMedia] = useState(null);
+  const [selectedMedia, setSelectedMedia] = useState<PendingApprovalItem | null>(null);
   const [showMediaViewer, setShowMediaViewer] = useState(false);
   const [showApprovalConfirmation, setShowApprovalConfirmation] = useState(false);
-  const [pendingApproval, setPendingApproval] = useState(null);
+  const [pendingApproval, setPendingApproval] = useState<PendingApprovalItem | null>(null);
 
   // Enhanced filtering logic
   const enhancedFilteredReviews = reviewFeed.filter(r => {
@@ -682,7 +721,7 @@ export default function VendorReviewsPage() {
   });
 
   // Export functionality
-  const exportReviews = (format) => {
+  const exportReviews = (format: "csv" | "json") => {
     const data = enhancedFilteredReviews.map(r => ({
       Reviewer: r.reviewer,
       Date: r.date,
@@ -737,7 +776,7 @@ export default function VendorReviewsPage() {
   };
 
   // Load filter preset
-  const loadFilterPreset = (preset) => {
+  const loadFilterPreset = (preset: SavedFilterPreset) => {
     setRatingFilter(preset.filters.ratingFilter);
     setEmployeeFilter(preset.filters.employeeFilter);
     setJobTypeFilter(preset.filters.jobTypeFilter);
@@ -747,7 +786,7 @@ export default function VendorReviewsPage() {
   };
 
   // Pending Approvals functions
-  const handleApprove = (approvalId) => {
+  const handleApprove = (approvalId: number) => {
     const approvedItem = pendingApprovals.find(a => a.id === approvalId);
     if (approvedItem) {
       // Show confirmation popup
@@ -790,7 +829,7 @@ export default function VendorReviewsPage() {
     setPendingApproval(null);
   };
 
-  const handleReject = (approvalId) => {
+  const handleReject = (approvalId: number) => {
     const rejectedItem = pendingApprovals.find(a => a.id === approvalId);
     if (rejectedItem) {
       // Log rejection for audit trail
@@ -804,7 +843,7 @@ export default function VendorReviewsPage() {
     }
   };
 
-  const openMediaViewer = (media) => {
+  const openMediaViewer = (media: PendingApprovalItem) => {
     setSelectedMedia(media);
     setShowMediaViewer(true);
   };
@@ -813,7 +852,7 @@ export default function VendorReviewsPage() {
 
   // Keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl+A to select all
       if (e.ctrlKey && e.key === 'a') {
         e.preventDefault();
@@ -2139,7 +2178,7 @@ export default function VendorReviewsPage() {
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     value={exportFormat}
-                    onChange={(e) => setExportFormat(e.target.value)}
+                    onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json')}
                   >
                     <option value="csv">CSV</option>
                     <option value="json">JSON</option>

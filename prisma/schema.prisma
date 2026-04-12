@@ -14,23 +14,8 @@ datasource db {
 // EmployeeRole: "MANAGER" | "TECHNICIAN"
 // BookingStatus: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELED"
 
-// Membership and Device enums (SQL Server supports these via Prisma)
-enum MembershipRole {
-  MANAGER
-  EMPLOYEE
-}
-
-enum MembershipStatus {
-  PENDING
-  ACTIVE
-  DENIED
-  REVOKED
-}
-
-enum DeviceType {
-  PHONE
-  HEADSET
-}
+// SQL Server in this environment does not support Prisma enums.
+// Keep enum-like values as strings at the application layer.
 
 model Vendor {
   id                  String    @id @default(cuid())
@@ -90,6 +75,8 @@ model Vendor {
   storageLimitBytes   BigInt    @default(1073741824) // 1GB default for FREE
   isOverLimit         Boolean   @default(false)
   overLimitSince      DateTime?
+  isPubliclyListed    Boolean   @default(false)
+  publiclyListedAt    DateTime?
   
   // Relations
   employees           Employee[]
@@ -102,6 +89,9 @@ model Vendor {
   invites             VendorInvite[]
   deviceAssignments   DeviceAssignment[]
   mediaAssets         MediaAsset[]
+  mediaSessions       MediaSession[]
+  reviewWindows       ReviewWindow[]
+  consentRecords      ConsentRecord[]
   storageAlerts       VendorStorageAlert[]
   adminNotifications AdminNotification[]
 
@@ -122,6 +112,7 @@ model Employee {
   
   // Relations
   vendor      Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  mediaSessions MediaSession[]
 
   @@map("employees")
 }
@@ -136,10 +127,14 @@ model Service {
   updatedAt   DateTime @updatedAt
   demo        Boolean  @default(false)
   seedBatchId String?
+  isPublished Boolean  @default(false)
+  publishedAt DateTime?
   
   // Relations
   vendor      Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   bookings    Booking[]
+  mediaSessions MediaSession[]
+  favorites   Favorite[]
 
   @@map("services")
 }
@@ -159,6 +154,8 @@ model User {
   reviews          Review[]
   memberships      VendorMembership[]
   invitesCreated   VendorInvite[] @relation("InvitesCreated")
+  mediaSessions    MediaSession[]
+  favorites        Favorite[]
 
   @@map("users")
 }
@@ -178,11 +175,17 @@ model Booking {
   updatedAt    DateTime      @updatedAt
   demo         Boolean       @default(false)
   seedBatchId  String?
-  
+  /** JSON string (snake_case keys). SQL Server provider has no Prisma `Json` type — use `String` + app parse/stringify. */
+  customerMetadata String? @db.NVarChar(Max)
+
   // Relations
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   vendor       Vendor        @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSessions MediaSession[]
+  reviewWindows ReviewWindow[]
+  consentRecords ConsentRecord[]
+  reviews      Review[]
 
   @@map("bookings")
 }
@@ -191,10 +194,19 @@ model Review {
   id          String   @id @default(cuid())
   userId      String
   vendorId    String
+  bookingId   String?
+  mediaSessionId String?
   clientName  String?  // Client name (or use user relation)
   jobType     String?  // Type of job/service reviewed
   rating      Int
   comment     String?
+  source      String   @default("customer")
+  submittedVia String  @default("manual")
+  moderationStatus String @default("approved")
+  visibilityStatus String @default("private")
+  moderationReason String?
+  moderatedAt DateTime?
+  moderatedByUserId String?
   date        DateTime? // Review date (defaults to createdAt if not set)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -202,8 +214,11 @@ model Review {
   seedBatchId String?
   
   // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking     Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  mediaSession MediaSession? @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  reviewWindow ReviewWindow?
 
   @@map("reviews")
 }
@@ -212,7 +227,7 @@ model Device {
   id            String     @id @default(cuid())
   vendorId      String
   deviceUid     String     @unique
-  deviceType    DeviceType
+  deviceType    String     // "PHONE" | "HEADSET"
   pairedAt      DateTime  @default(now())
   lastSeenAt    DateTime?
   isActive      Boolean   @default(true)
@@ -223,6 +238,7 @@ model Device {
 
   vendor        Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   assignments   DeviceAssignment[]
+  mediaSessions MediaSession[]
 
   @@index([vendorId, deviceType])
   @@map("devices")
@@ -247,8 +263,8 @@ model VendorMembership {
   id              String           @id @default(cuid())
   vendorId        String
   userId          String
-  role            MembershipRole   @default(EMPLOYEE)
-  status          MembershipStatus @default(PENDING)
+  role            String   @default("EMPLOYEE") // "MANAGER" | "EMPLOYEE"
+  status          String   @default("PENDING")  // "PENDING" | "ACTIVE" | "DENIED" | "REVOKED"
 
   badgeId         String?
   requestedAt     DateTime @default(now())
@@ -302,9 +318,9 @@ model DeviceAssignment {
   unassignedAt DateTime?
   assignedByUserId String
 
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  membership VendorMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membership VendorMembership @relation(fields: [membershipId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([vendorId])
   @@index([deviceId, unassignedAt])
@@ -314,22 +330,69 @@ model DeviceAssignment {
 model MediaAsset {
   id           String    @id @default(cuid())
   vendorId     String    // Required: profile owner
+  mediaSessionId String?
   membershipId String?   // Who captured/uploaded
+  uploadedByMembershipId String?
   deviceId     String?   // Which headset/phone
   bytes        BigInt    // File size in bytes
   mimeType     String    // MIME type (e.g., "image/jpeg", "video/mp4")
   blobKey      String    // Blob storage key (e.g., "vendor/{vendorId}/media/{assetId}.{ext}")
   blobUrl      String?   // Full URL to blob (optional, can be generated from blobKey)
+  moderationStatus String @default("pending_review")
+  visibilityStatus String @default("private")
+  archiveStatus String @default("active")
+  moderationReason String?
+  moderatedAt DateTime?
+  moderatedByUserId String?
   deletedAt    DateTime? // Soft delete timestamp
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSession MediaSession? @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([vendorId, deletedAt])
+  @@index([mediaSessionId])
   @@index([membershipId])
   @@index([deviceId])
   @@map("media_assets")
+}
+
+model MediaSession {
+  id          String     @id @default(cuid())
+  vendorId    String
+  userId      String?
+  employeeId  String?
+  bookingId   String?
+  serviceId   String?
+  deviceId    String?
+  deviceType  String?    // "PHONE" | "HEADSET"
+  sessionType String     @default("SERVICE_RECORD")
+  status      String     @default("CREATED")
+  title       String?
+  description String?
+  startedAt   DateTime   @default(now())
+  endedAt     DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  vendor      Vendor     @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user        User?      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee    Employee?  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking     Booking?   @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  service     Service?   @relation(fields: [serviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  device      Device?    @relation(fields: [deviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAssets MediaAsset[]
+  reviewWindows ReviewWindow[]
+  consentRecords ConsentRecord[]
+  reviews     Review[]
+
+  @@index([vendorId, createdAt])
+  @@index([vendorId, status])
+  @@index([vendorId, sessionType])
+  @@index([deviceId])
+  @@index([bookingId])
+  @@map("media_sessions")
 }
 
 model VendorStorageAlert {
@@ -360,4 +423,135 @@ model AdminNotification {
   @@index([read, createdAt])
   @@index([vendorId])
   @@map("admin_notifications")
+}
+
+model AdminAuditLog {
+  id           String   @id @default(cuid())
+  actionType   String
+  entityType   String
+  entityId     String
+  actorUserId  String
+  previousValue String?
+  newValue     String?
+  metadata     String?
+  createdAt    DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([actionType, createdAt])
+  @@map("admin_audit_logs")
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  serviceId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, serviceId])
+  @@index([userId, createdAt])
+  @@index([serviceId])
+  @@map("favorites")
+}
+
+model ReviewWindow {
+  id            String   @id @default(cuid())
+  bookingId      String
+  vendorId       String
+  mediaSessionId String
+  reviewId       String?  @unique
+  status         String   @default("active")
+  openedAt       DateTime @default(now())
+  expiresAt      DateTime
+  closedAt       DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor         Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSession   MediaSession @relation(fields: [mediaSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  review         Review?  @relation(fields: [reviewId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  promptEvents   ReviewPromptEvent[]
+  sentiments     ReviewSentiment[]
+
+  @@index([bookingId, status])
+  @@index([vendorId, createdAt])
+  @@index([mediaSessionId])
+  @@map("review_windows")
+}
+
+model ReviewPromptEvent {
+  id             String   @id @default(cuid())
+  reviewWindowId String
+  eventType      String
+  metadata       String?
+  createdAt      DateTime @default(now())
+
+  reviewWindow   ReviewWindow @relation(fields: [reviewWindowId], references: [id], onDelete: Cascade)
+
+  @@index([reviewWindowId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("review_prompt_events")
+}
+
+model ReviewSentiment {
+  id             String   @id @default(cuid())
+  reviewWindowId String
+  sentiment      String
+  createdAt      DateTime @default(now())
+
+  reviewWindow   ReviewWindow @relation(fields: [reviewWindowId], references: [id], onDelete: Cascade)
+
+  @@index([reviewWindowId, createdAt])
+  @@index([sentiment, createdAt])
+  @@map("review_sentiments")
+}
+
+model ConsentRecord {
+  id            String   @id @default(cuid())
+  token         String   @unique
+  bookingId      String
+  vendorId       String
+  mediaSessionId String
+  consentType   String
+  status        String   @default("requested")
+  requestedAt   DateTime @default(now())
+  acceptedAt    DateTime?
+  declinedAt    DateTime?
+  expiresAt     DateTime?
+  termsVersion  String?
+  privacyVersion String?
+  ipAddress     String?
+  userAgent     String?
+  documentHash  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  booking       Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor        Vendor @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSession  MediaSession @relation(fields: [mediaSessionId], references: [id], onDelete: Cascade)
+  events        ConsentEvent[]
+
+  @@index([bookingId, status])
+  @@index([vendorId, createdAt])
+  @@index([mediaSessionId])
+  @@map("consent_records")
+}
+
+model ConsentEvent {
+  id             String   @id @default(cuid())
+  consentRecordId String
+  eventType      String
+  metadata       String?
+  createdAt      DateTime @default(now())
+
+  consentRecord  ConsentRecord @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
+
+  @@index([consentRecordId, createdAt])
+  @@index([eventType, createdAt])
+  @@map("consent_events")
 }

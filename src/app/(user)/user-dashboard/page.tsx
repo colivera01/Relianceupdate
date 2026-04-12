@@ -4,8 +4,22 @@ import { MapPin, Star, Clock, Heart, TrendingUp, Zap, Users, Calendar, Award, Sh
 import AddVendorProfile from '../../../components/AddVendorProfile';
 import ProfileToggle from '../../../components/ProfileToggle';
 
+type CustomerProfile = {
+  id?: string;
+  userType?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  state?: string;
+  createdAt?: string;
+  isActive?: boolean;
+  bio?: string;
+};
+
 export default function UserDashboardPage() {
-  const [userData, setUserData] = useState(null);
+  const [userData, setUserData] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [vendorProfileHidden, setVendorProfileHidden] = useState(false);
@@ -99,7 +113,7 @@ export default function UserDashboardPage() {
             </div>
             <div>
               <h4 className="font-semibold text-gray-700">Account Details</h4>
-              <p className="text-sm text-gray-600">Member since: {new Date(userData.createdAt).toLocaleDateString()}</p>
+              <p className="text-sm text-gray-600">Member since: {userData.createdAt ? new Date(userData.createdAt).toLocaleDateString() : '—'}</p>
               <p className="text-sm text-gray-600">Status: {userData.isActive ? 'Active' : 'Inactive'}</p>
             </div>
             {userData.bio && (

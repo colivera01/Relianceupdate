@@ -6,7 +6,7 @@ import { requireVendorManager } from "@/lib/membership-auth";
 import crypto from "crypto";
 
 interface RouteParams {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }
 
 /**
@@ -18,7 +18,7 @@ export async function POST(
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId } = params;
+    const { vendorId } = await params;
     const { userId } = await requireVendorManager(request, vendorId);
 
     const body = await request.json();
@@ -83,7 +83,7 @@ export async function GET(
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId } = params;
+    const { vendorId } = await params;
     await requireVendorManager(request, vendorId);
 
     const invites = await (prisma as any).vendorInvite.findMany({

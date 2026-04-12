@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 // Types for the reviews page
 interface Review {
   id: string;
-  type: 'written'; // written by user
+  type: "written" | "video";
   creationType: 'manual' | 'auto'; // manually written or automatically generated
   vendorId: string;
   vendorName: string;
@@ -265,6 +265,7 @@ export default function ReviewsPage() {
   const [creationType, setCreationType] = useState<'all' | 'manual' | 'auto'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'pending'>('all');
   const [ratingFilter, setRatingFilter] = useState<number>(0);
+  const [reviewType] = useState<"all" | "written" | "video">("all");
 
   // Filter and sort reviews
   const filteredAndSortedReviews = reviews
@@ -278,6 +279,10 @@ export default function ReviewsPage() {
       
       // Category filter
       if (selectedCategory !== 'All Categories' && review.category !== selectedCategory.toLowerCase().replace(/\s+/g, '-')) {
+        return false;
+      }
+
+      if (reviewType !== "all" && review.type !== reviewType) {
         return false;
       }
       
@@ -719,7 +724,12 @@ export default function ReviewsPage() {
 
             {/* Creation Type Filter */}
             <div className="min-w-40">
-              <Select value={creationType} onValueChange={setCreationType}>
+              <Select
+                value={creationType}
+                onValueChange={(v) =>
+                  setCreationType(v as "all" | "manual" | "auto")
+                }
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -733,7 +743,12 @@ export default function ReviewsPage() {
 
             {/* Status Filter */}
             <div className="min-w-40">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select
+                value={statusFilter}
+                onValueChange={(v) =>
+                  setStatusFilter(v as "all" | "published" | "pending")
+                }
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -764,7 +779,12 @@ export default function ReviewsPage() {
 
             {/* Sort */}
             <div className="flex items-center gap-2">
-              <Select value={sortBy} onValueChange={setSortBy}>
+              <Select
+                value={sortBy}
+                onValueChange={(v) =>
+                  setSortBy(v as "recent" | "rating" | "helpful" | "price")
+                }
+              >
                 <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>

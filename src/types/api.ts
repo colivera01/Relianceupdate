@@ -154,6 +154,62 @@ export interface UpdateServiceDTO extends Partial<CreateServiceDTO> {
   available?: boolean;
 }
 
+export interface DiscoverServiceResult {
+  serviceId: string;
+  serviceName: string;
+  serviceDescription: string;
+  vendorId: string;
+  vendorName: string;
+  vendorCategory: string | null;
+  vendorBusinessType: string | null;
+  location: string | null;
+  previewMediaUrl: string | null;
+  price: number;
+  rating: number | null;
+  reviewCount: number | null;
+  badges: {
+    verified: boolean | null;
+    featured: boolean | null;
+  };
+  publicListing: {
+    serviceEligible: boolean;
+    hasPublicMedia: boolean;
+  };
+}
+
+export interface DiscoverServicesResponse {
+  success: boolean;
+  results: DiscoverServiceResult[];
+  pagination: Pagination;
+  appliedFilters: {
+    q: string | null;
+    category: string | null;
+    sortBy: string;
+  };
+  notes?: {
+    distance?: string;
+    reviews?: string;
+  };
+}
+
+export interface PublicCategoryAggregate {
+  key: string;
+  label: string;
+  serviceCount: number;
+  vendorCount: number;
+  sampleServices: string[];
+}
+
+export interface PublicCategoriesResponse {
+  success: boolean;
+  categories: PublicCategoryAggregate[];
+  meta?: {
+    countedServices: number;
+    eligibilityRule?: string;
+    note?: string;
+  };
+}
+
 // Booking Types
 export interface Booking {
   id: number;
@@ -306,6 +362,33 @@ export interface CreateFavoriteDTO {
   vendorId?: string;
   type: 'service' | 'vendor';
   notes?: string;
+}
+
+export interface FavoriteServiceItem {
+  favoriteId: string;
+  serviceId: string;
+  serviceName: string;
+  serviceDescription: string;
+  price: number;
+  vendorId: string;
+  vendorName: string;
+  vendorCategory: string | null;
+  vendorBusinessType: string | null;
+  location: string | null;
+  rating: number | null;
+  reviewCount: number | null;
+  previewMediaUrl: string | null;
+  publicListing: {
+    serviceEligible: boolean;
+    hasPublicMedia: boolean;
+  };
+  favoritedAt: string;
+}
+
+export interface FavoritesListResponse {
+  success: boolean;
+  favorites: FavoriteServiceItem[];
+  pagination: Pagination;
 }
 
 // Profile Toggle Types

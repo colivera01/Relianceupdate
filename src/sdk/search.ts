@@ -24,10 +24,13 @@ export const searchSDK = {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }): Promise<{ results: SearchResult[]; total: number; page: number; limit: number }> {
-    return api.get<{ results: SearchResult[]; total: number; page: number; limit: number }>(
-      '/api/search/services',
-      { q: query, ...params }
-    );
+    const response = await api.get<any>('/api/search', { q: query, type: 'service', ...params });
+    return {
+      results: response?.services || [],
+      total: response?.pagination?.total || 0,
+      page: response?.pagination?.page || 1,
+      limit: response?.pagination?.limit || 20,
+    };
   },
 
   // Search vendors
@@ -41,25 +44,37 @@ export const searchSDK = {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }): Promise<{ results: SearchResult[]; total: number; page: number; limit: number }> {
-    return api.get<{ results: SearchResult[]; total: number; page: number; limit: number }>(
-      '/api/search/vendors',
-      { q: query, ...params }
-    );
+    const response = await api.get<any>('/api/search', { q: query, type: 'vendor', ...params });
+    return {
+      results: response?.vendors || [],
+      total: response?.pagination?.total || 0,
+      page: response?.pagination?.page || 1,
+      limit: response?.pagination?.limit || 20,
+    };
   },
 
-  // Get search suggestions
+  // Get search suggestions (`GET /api/search` requires `q`, `category`, or `location`)
   async getSearchSuggestions(query: string, limit?: number): Promise<{ suggestions: string[] }> {
-    return api.get<{ suggestions: string[] }>('/api/search/suggestions', { q: query, limit });
+    const q = String(query || '').trim();
+    if (!q) {
+      return { suggestions: [] };
+    }
+    const response = await api.get<any>('/api/search', { q, limit });
+    return { suggestions: response?.suggestions || [] };
   },
 
   // Get popular searches
   async getPopularSearches(limit?: number): Promise<{ searches: string[] }> {
-    return api.get<{ searches: string[] }>('/api/search/popular', { limit });
+    // Deferred specialized endpoint; use base search suggestions as fallback.
+    const response = await api.get<any>('/api/search', { q: 'popular', limit });
+    return { searches: response?.suggestions || [] };
   },
 
   // Get trending searches
   async getTrendingSearches(limit?: number): Promise<{ searches: string[] }> {
-    return api.get<{ searches: string[] }>('/api/search/trending', { limit });
+    // Deferred specialized endpoint; use base search suggestions as fallback.
+    const response = await api.get<any>('/api/search', { q: 'trending', limit });
+    return { searches: response?.suggestions || [] };
   },
 
   // Get search filters
@@ -69,25 +84,31 @@ export const searchSDK = {
     locations: string[];
     ratings: number[];
   }> {
-    return api.get<{
-      categories: string[];
-      priceRanges: Array<{ min: number; max: number; label: string }>;
-      locations: string[];
-      ratings: number[];
-    }>('/api/search/filters');
+    const response = await api.get<any>('/api/search', { q: 'filters' });
+    const categories = (response?.filters?.categories || []).map((c: any) => String(c?.name || '')).filter(Boolean);
+    const priceRanges = response?.filters?.price_ranges || [];
+    const ratings = (response?.filters?.ratings || []).map((r: any) => Number(r?.rating)).filter((r: number) => Number.isFinite(r));
+    return {
+      categories,
+      priceRanges,
+      locations: [],
+      ratings,
+    };
   },
 
   // Save search query (for analytics)
   async saveSearchQuery(query: string, filters?: Record<string, any>): Promise<{ success: boolean }> {
-    return api.post<{ success: boolean }>('/api/search/analytics', { query, filters });
+    // Deferred analytics endpoint; no-op success keeps active UI stable.
+    void query;
+    void filters;
+    return { success: true };
   },
 
   // Get search history for user
   async getSearchHistory(limit?: number): Promise<{ searches: Array<{ query: string; timestamp: string; filters?: Record<string, any> }> }> {
-    return api.get<{ searches: Array<{ query: string; timestamp: string; filters?: Record<string, any> }> }>(
-      '/api/search/history',
-      { limit }
-    );
+    void limit;
+    // Deferred user-history endpoint; return empty history for now.
+    return { searches: [] };
   }
 };
 

@@ -1,44 +1,138 @@
-import { cookies } from 'next/headers';
 // import jwt from 'jsonwebtoken'; // Uncomment when ready to use real JWT
 
-interface JWTPayload {
+export interface JWTPayload {
+  sub?: string;
   userId?: string;
   vendorId?: string;
   email?: string;
   role?: string;
+  [key: string]: unknown;
 }
 
 /**
- * Extract and verify JWT token from cookies or headers
- * For now, this is stubbed to return vendorId: 1
- * TODO: Replace with real JWT verification when auth is fully implemented
+ * Decode JWT payload without signature verification.
+ * NOTE: This is an interim parser for ID extraction only.
+ * Replace with full signature verification before production hardening.
  */
 export async function verifyJwt(token: string): Promise<JWTPayload> {
-  // TODO: Replace this stub with real JWT verification
-  // Example implementation:
-  // const secret = process.env.JWT_SECRET;
-  // if (!secret) throw new Error('JWT_SECRET not configured');
-  // const decoded = jwt.verify(token, secret) as JWTPayload;
-  // return decoded;
-
-  // Stub: For now, accept temp token and return default vendorId
-  if (token === 'temp-jwt-token' || !token) {
-    return { vendorId: '1', userId: '1' };
+  if (!token) {
+    throw new Error("Missing token");
   }
 
-  // In production, verify the actual JWT token here
-  throw new Error('Invalid token');
+  const parts = token.split(".");
+  if (parts.length !== 3 || !parts[1]) {
+    throw new Error("Invalid token");
+  }
+
+  try {
+    const payloadBase64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const normalized = payloadBase64.padEnd(
+      payloadBase64.length + ((4 - (payloadBase64.length % 4)) % 4),
+      "="
+    );
+    const payloadJson = Buffer.from(normalized, "base64").toString("utf8");
+    const payload = JSON.parse(payloadJson) as JWTPayload;
+    return payload;
+  } catch {
+    throw new Error("Invalid token");
+  }
+}
+
+function getBearerTokenFromRequest(request: Request): string | null {
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader) return null;
+
+  const [scheme, token] = authHeader.split(" ");
+  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
+  return token.trim();
+}
+
+function parseCookieHeader(request: Request): Record<string, string> {
+  const raw = request.headers.get("cookie");
+  if (!raw) return {};
+
+  const cookies: Record<string, string> = {};
+  for (const part of raw.split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (!name) continue;
+    cookies[name] = decodeURIComponent(rest.join("=") || "");
+  }
+  return cookies;
+}
+
+function getCookieCandidate(
+  cookieMap: Record<string, string>,
+  names: string[]
+): string | null {
+  for (const name of names) {
+    const value = cookieMap[name];
+    if (value && value.trim()) return value.trim();
+  }
+  return null;
 }
 
 /**
- * Get vendor ID from request (checks cookies first, then Authorization header)
- * 
- * TEMPORARY: For local development, this returns a hardcoded vendorId.
- * Replace with real auth extraction when JWT is fully implemented.
+ * Extract userId from request in this order:
+ * 1) JWT bearer token payload
+ * 2) cookie/session values
+ * 3) temporary fallback header x-user-id
  */
-export async function getVendorIdFromRequest(_request: Request): Promise<string | null> {
-  // TEMPORARY: Local development only
-  // Use your seeded vendor ID from Prisma Studio / seed script
-  return 'cmipm4d6v0000sosgqvb8tp63'; // Sparkle Cleaning Pro (Cesar)
+export async function getUserIdFromRequest(request: Request): Promise<string | null> {
+  const bearerToken = getBearerTokenFromRequest(request);
+  if (bearerToken) {
+    try {
+      const payload = await verifyJwt(bearerToken);
+      const jwtUserId = (payload.userId || payload.sub) as string | undefined;
+      if (jwtUserId) return jwtUserId;
+    } catch {
+      // Fall through to cookie/header extraction for compatibility.
+    }
+  }
+
+  const cookieMap = parseCookieHeader(request);
+  const cookieUserId = getCookieCandidate(cookieMap, [
+    "userId",
+    "user_id",
+    "uid",
+    "session_user_id",
+  ]);
+  if (cookieUserId) return cookieUserId;
+
+  const headerUserId = request.headers.get("x-user-id");
+  if (headerUserId && headerUserId.trim()) return headerUserId.trim();
+
+  return null;
 }
 
+/**
+ * Extract vendorId from request in this order:
+ * 1) JWT bearer token payload
+ * 2) cookie/session values
+ * 3) temporary fallback header x-vendor-id
+ */
+export async function getVendorIdFromRequest(request: Request): Promise<string | null> {
+  const bearerToken = getBearerTokenFromRequest(request);
+  if (bearerToken) {
+    try {
+      const payload = await verifyJwt(bearerToken);
+      const jwtVendorId = payload.vendorId as string | undefined;
+      if (jwtVendorId) return jwtVendorId;
+    } catch {
+      // Fall through to cookie/header extraction for compatibility.
+    }
+  }
+
+  const cookieMap = parseCookieHeader(request);
+  const cookieVendorId = getCookieCandidate(cookieMap, [
+    "vendorId",
+    "vendor_id",
+    "vid",
+    "session_vendor_id",
+  ]);
+  if (cookieVendorId) return cookieVendorId;
+
+  const headerVendorId = request.headers.get("x-vendor-id");
+  if (headerVendorId && headerVendorId.trim()) return headerVendorId.trim();
+
+  return null;
+}

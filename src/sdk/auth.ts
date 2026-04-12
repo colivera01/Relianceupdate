@@ -1,4 +1,5 @@
 import { api } from '../lib/api';
+import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import type {
   LoginRequest,
   LoginResponse,
@@ -52,14 +53,42 @@ export const authSDK = {
     return api.put<{ success: boolean; profile: VendorProfile }>('/api/vendor/profile', profileData);
   },
 
-  // Toggle between profiles
-  async toggleProfile(request: ProfileToggleRequest): Promise<ProfileToggleResponse> {
-    return api.post<ProfileToggleResponse>('/api/profile/toggle', request);
+  /**
+   * POST `/api/profile/toggle` expects `userId` + `targetProfileType` (`customer` | `vendor`).
+   * `ProfileToggleRequest.targetProfile` is mapped to `targetProfileType`. Pass `userId` or rely on `resolveCustomerUserId`.
+   */
+  async toggleProfile(
+    request: ProfileToggleRequest & { userId?: string }
+  ): Promise<ProfileToggleResponse> {
+    const userId = resolveCustomerUserId(request.userId);
+    if (!userId) {
+      throw new Error('toggleProfile requires a user id (pass userId or sign in)');
+    }
+    const targetProfileType = request.targetProfile;
+    const raw = await api.post<{
+      success: boolean;
+      activeProfile?: string;
+      message?: string;
+    }>('/api/profile/toggle', { userId, targetProfileType });
+    return {
+      success: Boolean(raw?.success),
+      currentProfile: (raw?.activeProfile || targetProfileType) as 'customer' | 'vendor',
+      availableProfiles: ['customer', 'vendor'],
+    };
   },
 
-  // Get available profiles
-  async getAvailableProfiles(): Promise<{ availableProfiles: string[] }> {
-    return api.get<{ availableProfiles: string[] }>('/api/profile/toggle');
+  /** GET `/api/profile/toggle?userId=` — pass auth user id or use storage fallbacks via `resolveCustomerUserId`. */
+  async getAvailableProfiles(authUserIdFromCaller?: string): Promise<{
+    success: boolean;
+    availableProfiles: string[];
+    currentProfile?: string;
+    canSwitch?: boolean;
+  }> {
+    const userId = resolveCustomerUserId(authUserIdFromCaller);
+    if (!userId) {
+      throw new Error('getAvailableProfiles requires a user id (pass userId or sign in)');
+    }
+    return api.get('/api/profile/toggle', { userId });
   },
 
   // Check vendor eligibility

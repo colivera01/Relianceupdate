@@ -90,13 +90,18 @@ export default function CustomerSecureAccountPage() {
 
       // Step 3: Send credential to server
       console.log('Sending credential to server...');
+      const attestation = credential.response as AuthenticatorAttestationResponse;
       const credentialData = {
         id: credential.id,
         type: credential.type,
         rawId: Array.from(new Uint8Array(credential.rawId)),
         response: {
-          clientDataJSON: Array.from(new Uint8Array(credential.response.clientDataJSON)),
-          attestationObject: Array.from(new Uint8Array(credential.response.attestationObject)),
+          clientDataJSON: Array.from(
+            new Uint8Array(credential.response.clientDataJSON)
+          ),
+          attestationObject: Array.from(
+            new Uint8Array(attestation.attestationObject)
+          ),
         },
       };
 

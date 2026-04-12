@@ -6,7 +6,7 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 
 interface RouteParams {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }
 
 /**
@@ -18,7 +18,7 @@ export async function GET(
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId } = params;
+    const { vendorId } = await params;
     await requireVendorMembership(request, vendorId);
 
     // Calculate storage usage

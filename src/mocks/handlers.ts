@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import type { MockEmployee } from './fixtures/employees';
 import { mockEmployees } from './fixtures/employees';
 import { mockServices } from './fixtures/services';
 import { mockBookings } from './fixtures/bookings';
@@ -42,18 +43,18 @@ export const handlers = [
   }),
 
   http.post('/api/employees', async ({ request }) => {
-    const newEmployee = await request.json();
+    const newEmployee = (await request.json()) as Record<string, unknown>;
     const employee = {
       ...newEmployee,
       id: Date.now().toString(),
       createdAt: new Date().toISOString()
     };
-    mockEmployees.push(employee);
+    mockEmployees.push(employee as unknown as MockEmployee);
     return HttpResponse.json({ success: true, data: employee });
   }),
 
   http.put('/api/employees/:id', async ({ params, request }) => {
-    const updates = await request.json();
+    const updates = (await request.json()) as Record<string, unknown>;
     const index = mockEmployees.findIndex(emp => emp.id === params.id);
     if (index === -1) {
       return HttpResponse.json(
@@ -103,13 +104,13 @@ export const handlers = [
   }),
 
   http.post('/api/services', async ({ request }) => {
-    const newService = await request.json();
+    const newService = (await request.json()) as Record<string, unknown>;
     const service = {
       ...newService,
       id: Date.now().toString(),
       createdAt: new Date().toISOString()
     };
-    mockServices.push(service);
+    mockServices.push(service as unknown as (typeof mockServices)[number]);
     return HttpResponse.json({ success: true, data: service });
   }),
 
@@ -139,13 +140,13 @@ export const handlers = [
   }),
 
   http.post('/api/bookings', async ({ request }) => {
-    const newBooking = await request.json();
+    const newBooking = (await request.json()) as Record<string, unknown>;
     const booking = {
       ...newBooking,
       id: Date.now().toString(),
       createdAt: new Date().toISOString()
     };
-    mockBookings.push(booking);
+    mockBookings.push(booking as unknown as (typeof mockBookings)[number]);
     return HttpResponse.json({ success: true, data: booking });
   }),
 
@@ -175,13 +176,13 @@ export const handlers = [
   }),
 
   http.post('/api/reviews', async ({ request }) => {
-    const newReview = await request.json();
+    const newReview = (await request.json()) as Record<string, unknown>;
     const review = {
       ...newReview,
       id: Date.now().toString(),
       createdAt: new Date().toISOString()
     };
-    mockReviews.push(review);
+    mockReviews.push(review as unknown as (typeof mockReviews)[number]);
     return HttpResponse.json({ success: true, data: review });
   }),
 
@@ -195,7 +196,7 @@ export const handlers = [
   }),
 
   http.put('/api/availability/:vendorId', async ({ params, request }) => {
-    const updates = await request.json();
+    const updates = (await request.json()) as Record<string, unknown>;
     const index = mockAvailability.findIndex(av => av.vendorId === params.vendorId);
     if (index === -1) {
       return HttpResponse.json(
@@ -233,7 +234,7 @@ export const handlers = [
   }),
 
   http.put('/api/users/:id', async ({ params, request }) => {
-    const updates = await request.json();
+    const updates = (await request.json()) as Record<string, unknown>;
     const index = mockUsers.findIndex(u => u.id === params.id);
     if (index === -1) {
       return HttpResponse.json(
@@ -247,7 +248,10 @@ export const handlers = [
 
   // Auth handlers (keeping existing functionality)
   http.post('/api/auth/login', async ({ request }) => {
-    const { email, password } = await request.json();
+    const { email, password } = (await request.json()) as {
+      email?: string;
+      password?: string;
+    };
     // Mock login logic
     return HttpResponse.json({
       success: true,
@@ -259,7 +263,7 @@ export const handlers = [
   }),
 
   http.post('/api/auth/register', async ({ request }) => {
-    const userData = await request.json();
+    const userData = (await request.json()) as Record<string, unknown>;
     // Mock registration logic
     return HttpResponse.json({
       success: true,

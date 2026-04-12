@@ -15,13 +15,15 @@ import {
   useLogin,
   useListServices,
   useCreateBooking,
-  useSearchServices,
-  
+  useDiscoverServices,
+  useCreateService,
+
   // Types
   type LoginRequest,
   type CreateServiceDTO,
   type CreateBookingDTO,
-  type SearchParams
+  type SearchParams,
+  type Service,
 } from '../sdk';
 
 // Example 1: Direct SDK usage (for non-React contexts)
@@ -73,13 +75,13 @@ export function exampleReactQueryUsage() {
     limit: 20
   });
   
-  // Search services query
-  const searchQuery = useSearchServices('house cleaning', {
-    location: 'Orlando, FL'
+  const discoverQuery = useDiscoverServices({
+    q: 'house cleaning',
+    limit: 20,
   });
-  
-  // Create booking mutation
+
   const createBookingMutation = useCreateBooking();
+  const createServiceMutation = useCreateService();
   
   // Handle login
   const handleLogin = async (credentials: LoginRequest) => {
@@ -92,9 +94,11 @@ export function exampleReactQueryUsage() {
   };
   
   // Handle service creation
-  const handleCreateService = async (serviceData: CreateServiceDTO) => {
+  const handleCreateService = async (
+    serviceData: CreateServiceDTO & { vendorId?: string | number; vendor_id?: string | number }
+  ) => {
     try {
-      const result = await createBookingMutation.mutateAsync(serviceData);
+      const result = await createServiceMutation.mutateAsync(serviceData);
       console.log('Service created:', result.service);
     } catch (error) {
       console.error('Service creation failed:', error);
@@ -114,9 +118,9 @@ export function exampleReactQueryUsage() {
   return {
     // State
     services: servicesQuery.data?.services || [],
-    searchResults: searchQuery.data?.results || [],
-    isLoading: servicesQuery.isLoading || searchQuery.isLoading,
-    isError: servicesQuery.isError || searchQuery.isError,
+    searchResults: discoverQuery.data?.results || [],
+    isLoading: servicesQuery.isLoading || discoverQuery.isLoading,
+    isError: servicesQuery.isError || discoverQuery.isError,
     
     // Actions
     handleLogin,
@@ -125,7 +129,8 @@ export function exampleReactQueryUsage() {
     
     // Mutations
     loginMutation,
-    createBookingMutation
+    createBookingMutation,
+    createServiceMutation,
   };
 }
 

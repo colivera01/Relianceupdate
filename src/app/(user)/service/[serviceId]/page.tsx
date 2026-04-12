@@ -1,6 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import { 
   MapPin, 
   Star, 
@@ -21,7 +23,8 @@ import {
 export default function ServiceDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const serviceId = params.serviceId as string;
+  const { user } = useAuth();
+  const serviceId = String(params?.serviceId ?? "");
   
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string>('');
@@ -31,6 +34,7 @@ export default function ServiceDetailPage() {
   const [service, setService] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [availability, setAvailability] = useState<any>(null);
+  const [favoriteId, setFavoriteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
@@ -66,13 +70,18 @@ export default function ServiceDetailPage() {
         }
 
         // Check if service is in favorites
-        const favoritesResponse = await fetch('/api/users/favorites');
+        const userId = resolveCustomerUserId(user?.id);
+        const favoritesQuery = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+        const favoritesResponse = await fetch(`/api/users/favorites${favoritesQuery}`, {
+          headers: {
+            ...(userId ? { 'x-user-id': userId } : {}),
+          },
+        });
         if (favoritesResponse.ok) {
           const favoritesData = await favoritesResponse.json();
-          const isInFavorites = favoritesData.favorites?.some((fav: any) => 
-            fav.type === 'service' && fav.service?.id === parseInt(serviceId)
-          );
-          setIsFavorite(isInFavorites);
+          const existingFavorite = favoritesData.favorites?.find((fav: any) => fav.serviceId === serviceId);
+          setIsFavorite(Boolean(existingFavorite));
+          setFavoriteId(existingFavorite?.favoriteId || null);
         }
 
       } catch (err) {
@@ -85,7 +94,7 @@ export default function ServiceDetailPage() {
     if (serviceId) {
       fetchServiceData();
     }
-  }, [serviceId]);
+  }, [serviceId, user?.id]);
 
   const handleBookNow = () => {
     router.push(`/booking/${serviceId}`);
@@ -105,29 +114,38 @@ export default function ServiceDetailPage() {
       
       if (isFavorite) {
         // Remove from favorites
-        const response = await fetch(`/api/users/favorites/${serviceId}`, {
+        const userId = resolveCustomerUserId(user?.id);
+        const removeQuery = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+        const response = await fetch(`/api/users/favorites/${favoriteId || serviceId}${removeQuery}`, {
           method: 'DELETE',
+          headers: {
+            ...(userId ? { 'x-user-id': userId } : {}),
+          },
         });
         
         if (response.ok) {
           setIsFavorite(false);
+          setFavoriteId(null);
         }
       } else {
         // Add to favorites
+        const userId = resolveCustomerUserId(user?.id);
         const response = await fetch('/api/users/favorites', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(userId ? { 'x-user-id': userId } : {}),
           },
           body: JSON.stringify({
-            type: 'service',
-            service_id: parseInt(serviceId),
-            vendor_id: service.vendor.id,
+            serviceId,
+            ...(userId ? { userId } : {}),
           }),
         });
         
         if (response.ok) {
+          const payload = await response.json();
           setIsFavorite(true);
+          setFavoriteId(payload?.favorite?.favoriteId || null);
         }
       }
     } catch (err) {
@@ -210,7 +228,10 @@ export default function ServiceDetailPage() {
             </button>
             
             <div className="flex items-center gap-3">
-              <button 
+              <button
+                type="button"
+                data-testid="service-page-favorite-toggle"
+                aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                 onClick={handleToggleFavorite}
                 disabled={favoriteLoading}
                 className={`p-2 rounded-full transition-colors ${

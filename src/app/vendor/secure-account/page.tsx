@@ -79,14 +79,16 @@ export default function VendorSecureAccountPage() {
         throw new Error('Failed to create credential');
       }
 
+      const attestation = credential.response as AuthenticatorAttestationResponse;
+
       // Step 3: Send credential to server
       const credentialData = {
         id: credential.id,
         type: credential.type,
         rawId: Array.from(new Uint8Array(credential.rawId)),
         response: {
-          clientDataJSON: Array.from(new Uint8Array(credential.response.clientDataJSON)),
-          attestationObject: Array.from(new Uint8Array(credential.response.attestationObject)),
+          clientDataJSON: Array.from(new Uint8Array(attestation.clientDataJSON)),
+          attestationObject: Array.from(new Uint8Array(attestation.attestationObject)),
         },
       };
 

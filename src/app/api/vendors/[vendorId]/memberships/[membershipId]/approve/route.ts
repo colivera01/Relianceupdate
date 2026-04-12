@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
 
 interface RouteParams {
-  params: { vendorId: string; membershipId: string };
+  params: Promise<{ vendorId: string; membershipId: string }>;
 }
 
 /**
@@ -17,7 +17,7 @@ export async function POST(
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId, membershipId } = params;
+    const { vendorId, membershipId } = await params;
     const { userId } = await requireVendorManager(request, vendorId);
 
     // Get membership

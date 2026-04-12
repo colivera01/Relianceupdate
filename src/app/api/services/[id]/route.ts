@@ -1,17 +1,100 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from '@/lib/media-visibility';
+import { getVendorReviewAggregatesForPublic } from '@/lib/public-review-aggregates';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const serviceId = parseInt(params.id);
+    const { id: serviceIdParam } = await params;
+    const serviceId = String(serviceIdParam);
+    const numericServiceId = parseInt(serviceId, 10);
 
-    if (isNaN(serviceId)) {
-      return NextResponse.json(
-        { error: 'Invalid service ID' },
-        { status: 400 }
-      );
+    // DB-first service lookup (real service IDs are string/cuid).
+    const dbService = await prisma.service.findUnique({
+      where: { id: serviceId },
+      include: {
+        vendor: {
+          select: {
+            id: true,
+            name: true,
+            businessName: true,
+            category: true,
+            city: true,
+            state: true,
+            phone: true,
+            email: true,
+            isPubliclyListed: true,
+          },
+        },
+      },
+    });
+
+    if (dbService) {
+      if (!dbService.isPublished || !dbService.vendor?.isPubliclyListed) {
+        return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+      }
+
+      // Public-safe media only: approved + public + active.
+      const publicAssets = await (prisma as any).mediaAsset.findMany({
+        where: {
+          ...getApprovedActiveBaseWhere(),
+          visibilityStatus: {
+            in: getVisibilityStatusesForAudience('public'),
+          },
+          mediaSession: {
+            serviceId: dbService.id,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          mimeType: true,
+          blobUrl: true,
+        },
+      });
+
+      const mediaUrls = publicAssets
+        .map((asset: any) => String(asset?.blobUrl || '').trim())
+        .filter(Boolean);
+
+      const images = publicAssets
+        .filter((asset: any) => String(asset?.mimeType || '').startsWith('image/'))
+        .map((asset: any) => String(asset.blobUrl));
+      const videos = publicAssets
+        .filter((asset: any) => String(asset?.mimeType || '').startsWith('video/'))
+        .map((asset: any) => String(asset.blobUrl));
+      const vendorReviewAgg = (await getVendorReviewAggregatesForPublic([dbService.vendor.id])).get(dbService.vendor.id);
+
+      return NextResponse.json({
+        service: {
+          id: dbService.id,
+          name: dbService.name,
+          description: dbService.description || '',
+          category: dbService.vendor?.category || 'General',
+          price: dbService.price,
+          duration: 'Varies',
+          vendor: {
+            id: dbService.vendor.id,
+            name: dbService.vendor.businessName || dbService.vendor.name,
+            location:
+              [dbService.vendor.city, dbService.vendor.state].filter(Boolean).join(', ') || 'Unknown',
+            phone: dbService.vendor.phone || null,
+            email: dbService.vendor.email || null,
+            rating: vendorReviewAgg?.rating ?? null,
+            reviewCount: vendorReviewAgg?.reviewCount ?? null,
+          },
+          images,
+          videos,
+          mediaCount: mediaUrls.length,
+          status: 'active',
+        },
+      });
+    }
+
+    if (isNaN(numericServiceId)) {
+      return NextResponse.json({ error: 'Invalid service ID' }, { status: 400 });
     }
 
     // TODO: Replace with actual database query
@@ -50,7 +133,7 @@ export async function GET(
 
     // Mock service data
     const mockService = {
-      id: serviceId,
+      id: numericServiceId,
       name: 'Deep House Cleaning',
       description: 'Complete house cleaning service including kitchen, bathrooms, and living areas. Professional cleaning with eco-friendly products. Our team is fully insured and bonded for your peace of mind.',
       category: 'Cleaning',
@@ -101,9 +184,8 @@ export async function GET(
         'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&h=300&fit=crop',
         'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&h=300&fit=crop',
       ],
-      videos: [
-        'https://example.com/video1.mp4',
-      ],
+      // Public-safe fallback for legacy mock path: no unmoderated videos.
+      videos: [],
       availability: {
         response_time: '30-60 minutes',
         available_now: true,
@@ -157,10 +239,11 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const serviceId = parseInt(params.id);
+    const { id } = await params;
+    const serviceId = parseInt(id);
     const body = await request.json();
     const {
       name,
@@ -238,10 +321,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const serviceId = parseInt(params.id);
+    const { id } = await params;
+    const serviceId = parseInt(id);
 
     if (isNaN(serviceId)) {
       return NextResponse.json(

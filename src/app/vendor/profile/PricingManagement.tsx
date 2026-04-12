@@ -26,8 +26,21 @@ const serviceCatalog = {
 };
 
 export default function PricingManagement() {
-  const [pricing, setPricing] = useState<{service: string, price: string, custom?: boolean, pending?: boolean}[]>(
-    serviceCatalog[vendorBusinessType].map(service => ({ service, price: '', custom: service === 'Other' }))
+  const [pricing, setPricing] = useState<
+    {
+      service: string;
+      price: string;
+      custom?: boolean;
+      pending?: boolean;
+      enabled?: boolean;
+    }[]
+  >(
+    serviceCatalog[vendorBusinessType].map((service) => ({
+      service,
+      price: "",
+      custom: service === "Other",
+      enabled: false,
+    }))
   );
   const [customService, setCustomService] = useState('');
   const [customPrice, setCustomPrice] = useState('');

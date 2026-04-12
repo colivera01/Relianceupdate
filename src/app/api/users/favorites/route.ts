@@ -1,129 +1,136 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/server/db";
+import { getUserIdFromRequest } from "@/lib/auth";
+import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
+import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregates";
+
+function normalizePage(value: string | null): number {
+  const parsed = Number.parseInt(String(value || "1"), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function normalizeLimit(value: string | null): number {
+  const parsed = Number.parseInt(String(value || "20"), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 20;
+  return Math.min(parsed, 50);
+}
 
 export async function GET(request: NextRequest) {
   try {
-    // TODO: Get current user from session/token
-    // const user = await getCurrentUser(request);
-    // if (!user) {
-    //   return NextResponse.json(
-    //     { error: 'Authentication required' },
-    //     { status: 401 }
-    //   );
-    // }
-
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type'); // 'service' or 'vendor'
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-
-    // TODO: Replace with actual database query
-    // const favorites = await FavoriteModel.findMany({
-    //   where: {
-    //     user_id: user.id,
-    //     ...(type && { type }),
-    //   },
-    //   include: {
-    //     service: {
-    //       include: {
-    //         vendor: {
-    //           select: {
-    //             id: true,
-    //             name: true,
-    //             rating: true,
-    //             verified: true,
-    //           },
-    //         },
-    //       },
-    //     },
-    //     vendor: {
-    //       select: {
-    //         id: true,
-    //         name: true,
-    //         rating: true,
-    //         verified: true,
-    //         category: true,
-    //       },
-    //     },
-    //   },
-    //   orderBy: { created_at: 'desc' },
-    //   skip: (page - 1) * limit,
-    //   take: limit,
-    // });
-
-    // Mock favorites data
-    const mockFavorites = [
-      {
-        id: 1,
-        type: 'service',
-        service: {
-          id: 1,
-          name: 'Deep House Cleaning',
-          price: 120,
-          rating: 4.9,
-          vendor: {
-            id: 1,
-            name: 'Sparkle Clean Pro',
-            rating: 4.9,
-            verified: true,
-          },
-        },
-        created_at: '2024-01-10T10:30:00Z',
-      },
-      {
-        id: 2,
-        type: 'service',
-        service: {
-          id: 2,
-          name: 'Plumbing Repair',
-          price: 85,
-          rating: 4.7,
-          vendor: {
-            id: 2,
-            name: 'Quick Fix Plumbing',
-            rating: 4.7,
-            verified: true,
-          },
-        },
-        created_at: '2024-01-12T14:20:00Z',
-      },
-      {
-        id: 3,
-        type: 'vendor',
-        vendor: {
-          id: 3,
-          name: 'Green Thumb Gardens',
-          rating: 4.8,
-          verified: true,
-          category: 'Landscaping',
-        },
-        created_at: '2024-01-08T09:15:00Z',
-      },
-    ];
-
-    // Filter by type if specified
-    let filteredFavorites = mockFavorites;
-    if (type) {
-      filteredFavorites = mockFavorites.filter(fav => fav.type === type);
+    const requestedUserId = String(searchParams.get("userId") || "").trim();
+    const authUserId = await getUserIdFromRequest(request);
+    const userId = authUserId || requestedUserId || null;
+    if (!userId) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
-    // Pagination
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedFavorites = filteredFavorites.slice(startIndex, endIndex);
+    const page = normalizePage(searchParams.get("page"));
+    const limit = normalizeLimit(searchParams.get("limit"));
+    const skip = (page - 1) * limit;
+
+    const [total, favorites] = await Promise.all([
+      prisma.favorite.count({ where: { userId } }),
+      prisma.favorite.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          createdAt: true,
+          service: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              price: true,
+              vendorId: true,
+              isPublished: true,
+              vendor: {
+                select: {
+                  id: true,
+                  name: true,
+                  businessName: true,
+                  businessType: true,
+                  category: true,
+                  city: true,
+                  state: true,
+                  isPubliclyListed: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const serviceIds = favorites.map((fav) => fav.service.id);
+    const media = serviceIds.length
+      ? await (prisma as any).mediaAsset.findMany({
+          where: {
+            ...getApprovedActiveBaseWhere(),
+            visibilityStatus: { in: getVisibilityStatusesForAudience("public") },
+            mediaSession: {
+              serviceId: { in: serviceIds },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            blobUrl: true,
+            mediaSession: { select: { serviceId: true } },
+          },
+        })
+      : [];
+
+    const previewByServiceId = new Map<string, string>();
+    for (const item of media) {
+      const serviceId = String(item?.mediaSession?.serviceId || "");
+      const blobUrl = String(item?.blobUrl || "").trim();
+      if (!serviceId || !blobUrl || previewByServiceId.has(serviceId)) continue;
+      previewByServiceId.set(serviceId, blobUrl);
+    }
+
+    const vendorIds = Array.from(new Set(favorites.map((fav) => fav.service.vendorId)));
+    const vendorReviewAggregates = await getVendorReviewAggregatesForPublic(vendorIds);
 
     return NextResponse.json({
-      favorites: paginatedFavorites,
+      success: true,
+      favorites: favorites.map((fav) => {
+        const vendorAggregate = vendorReviewAggregates.get(fav.service.vendorId);
+        const vendorName = fav.service.vendor.businessName || fav.service.vendor.name || "Unknown Vendor";
+        return {
+          favoriteId: fav.id,
+          serviceId: fav.service.id,
+          serviceName: fav.service.name,
+          serviceDescription: fav.service.description || "",
+          price: Number(fav.service.price),
+          vendorId: fav.service.vendor.id,
+          vendorName,
+          vendorCategory: fav.service.vendor.category || null,
+          vendorBusinessType: fav.service.vendor.businessType || null,
+          location: [fav.service.vendor.city, fav.service.vendor.state].filter(Boolean).join(", ") || null,
+          rating: vendorAggregate?.rating ?? null,
+          reviewCount: vendorAggregate?.reviewCount ?? null,
+          previewMediaUrl: previewByServiceId.get(fav.service.id) || null,
+          publicListing: {
+            serviceEligible: Boolean(fav.service.isPublished && fav.service.vendor.isPubliclyListed),
+            hasPublicMedia: Boolean(previewByServiceId.get(fav.service.id)),
+          },
+          favoritedAt: fav.createdAt.toISOString(),
+        };
+      }),
       pagination: {
         page,
         limit,
-        total: filteredFavorites.length,
-        totalPages: Math.ceil(filteredFavorites.length / limit),
+        total,
+        totalPages: Math.ceil(total / limit),
       },
     });
-  } catch (error) {
-    console.error('Error fetching favorites:', error);
+  } catch (error: any) {
+    console.error("[users/favorites] GET error:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch favorites' },
+      { error: "Failed to fetch favorites", details: error?.message || "Unknown error" },
       { status: 500 }
     );
   }
@@ -131,90 +138,94 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const authUserId = await getUserIdFromRequest(request);
+    const { searchParams } = new URL(request.url);
+    const headerUserId = String(request.headers.get("x-user-id") || "").trim();
+
     const body = await request.json();
-    const { type, service_id, vendor_id, notes } = body;
-
-    // TODO: Get current user from session/token
-    // const user = await getCurrentUser(request);
-    // if (!user) {
-    //   return NextResponse.json(
-    //     { error: 'Authentication required' },
-    //     { status: 401 }
-    //   );
-    // }
-
-    // Validate required fields
-    if (!type || (!service_id && !vendor_id)) {
+    const requestedUserId = String(body?.userId || searchParams.get("userId") || "").trim();
+    const userId = authUserId || headerUserId || requestedUserId || null;
+    if (!userId) {
       return NextResponse.json(
-        { error: 'Type and either service_id or vendor_id are required' },
-        { status: 400 }
+        {
+          error: "Authentication required",
+          ...(process.env.NODE_ENV === "development"
+            ? {
+                details:
+                  "No user identity found from auth token/cookies, x-user-id header, or userId fallback",
+              }
+            : {}),
+        },
+        { status: 401 }
       );
     }
+    const serviceId = String(body?.serviceId || body?.service_id || "").trim();
+    if (!serviceId) {
+      return NextResponse.json({ error: "serviceId is required" }, { status: 400 });
+    }
 
-    // TODO: Validate service or vendor exists
-    // if (service_id) {
-    //   const service = await ServiceModel.findById(service_id);
-    //   if (!service) {
-    //     return NextResponse.json(
-    //       { error: 'Service not found' },
-    //       { status: 404 }
-    //     );
-    //   }
-    // }
-    // if (vendor_id) {
-    //   const vendor = await VendorModel.findById(vendor_id);
-    //   if (!vendor) {
-    //     return NextResponse.json(
-    //       { error: 'Vendor not found' },
-    //       { status: 404 }
-    //     );
-    //   }
-    // }
+    const service = await prisma.service.findUnique({
+      where: { id: serviceId },
+      select: {
+        id: true,
+        vendor: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
 
-    // TODO: Check if already favorited
-    // const existingFavorite = await FavoriteModel.findFirst({
-    //   where: {
-    //     user_id: user.id,
-    //     ...(service_id && { service_id }),
-    //     ...(vendor_id && { vendor_id }),
-    //   },
-    // });
-    // if (existingFavorite) {
-    //   return NextResponse.json(
-    //     { error: 'Already favorited' },
-    //     { status: 400 }
-    //   );
-    // }
+    if (!service) {
+      return NextResponse.json({ error: "Service not found" }, { status: 404 });
+    }
 
-    // TODO: Create favorite in database
-    // const favorite = await FavoriteModel.create({
-    //   user_id: user.id,
-    //   type,
-    //   service_id,
-    //   vendor_id,
-    //   notes,
-    // });
+    // Transitional compatibility: ensure user row exists for FK-backed favorites.
+    // Some signed-in customer surfaces currently operate with local auth context IDs.
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: {
+        id: userId,
+        name: String(body?.userName || "Customer"),
+        email: String(body?.userEmail || `${userId}@reliance.local`),
+      },
+      select: { id: true },
+    });
 
-    // Mock favorite creation
-    const mockFavorite = {
-      id: Math.floor(Math.random() * 1000) + 1,
-      type,
-      service_id,
-      vendor_id,
-      notes,
-      created_at: new Date().toISOString(),
-    };
+    const favorite = await prisma.favorite.upsert({
+      where: {
+        userId_serviceId: {
+          userId,
+          serviceId,
+        },
+      },
+      update: {},
+      create: {
+        userId,
+        serviceId,
+      },
+      select: {
+        id: true,
+        serviceId: true,
+        createdAt: true,
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      favorite: mockFavorite,
-      message: 'Added to favorites successfully',
+      favorite: {
+        favoriteId: favorite.id,
+        serviceId: favorite.serviceId,
+        favoritedAt: favorite.createdAt.toISOString(),
+      },
+      message: "Added to favorites",
     });
-  } catch (error) {
-    console.error('Error adding favorite:', error);
+  } catch (error: any) {
+    console.error("[users/favorites] POST error:", error);
     return NextResponse.json(
-      { error: 'Failed to add favorite' },
+      { error: "Failed to add favorite", details: error?.message || "Unknown error" },
       { status: 500 }
     );
   }
-} 
+}

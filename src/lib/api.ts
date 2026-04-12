@@ -35,14 +35,15 @@ class ApiClient {
     init: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    
+    const isFormData = init.body instanceof FormData;
+
     const config: RequestInit = {
       credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...init.headers,
-      },
       ...init,
+      headers: {
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(init.headers as Record<string, string> | undefined),
+      },
     };
 
     try {
@@ -83,6 +84,12 @@ class ApiClient {
   }
 
   async post<T>(path: string, body?: any): Promise<T> {
+    if (body instanceof FormData) {
+      return this.typedFetch<T>(path, {
+        method: 'POST',
+        body,
+      });
+    }
     return this.typedFetch<T>(path, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
@@ -109,19 +116,21 @@ class ApiClient {
 
   // Helper to build URLs with query parameters
   private buildUrl(path: string, params: Record<string, any>): string {
-    const url = new URL(path, this.baseUrl);
-    
+    const [rawPath, existingQuery = ''] = path.split('?');
+    const searchParams = new URLSearchParams(existingQuery);
+
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         if (Array.isArray(value)) {
-          value.forEach(v => url.searchParams.append(key, String(v)));
+          value.forEach(v => searchParams.append(key, String(v)));
         } else {
-          url.searchParams.append(key, String(value));
+          searchParams.append(key, String(value));
         }
       }
     });
-    
-    return url.pathname + url.search;
+
+    const query = searchParams.toString();
+    return query ? `${rawPath}?${query}` : rawPath;
   }
 
   // Helper to add authorization header
@@ -173,4 +182,4 @@ class ApiClient {
 export const api = new ApiClient(API_BASE);
 
 // Export individual methods for convenience
-export const { get, post, put, patch, del: delete_ } = api;
+export const { get, post, put, patch, delete: delete_ } = api;

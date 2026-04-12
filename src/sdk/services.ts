@@ -3,12 +3,20 @@ import type {
   Service,
   CreateServiceDTO,
   UpdateServiceDTO,
-  Pagination
+  Pagination,
+  DiscoverServicesResponse,
+  PublicCategoriesResponse
 } from '../types/api';
 
-// Services SDK
+/**
+ * Services SDK — Next.js App Router routes under `/api/services/*`.
+ *
+ * **Canonical product paths:** `discoverServices` → `GET /api/services/discover`; `getService` → `GET /api/services/[id]`; `getCategories` → `GET /api/services/categories`. `listServices` hits the legacy mock list route.
+ * **Service media uploads:** use vendor APIs (`/api/vendors/[vendorId]/media/...`), not this module.
+ * **Service search across vendors:** use `searchSDK.searchServices` → `GET /api/search` (not `/api/services/search`).
+ */
+
 export const servicesSDK = {
-  // Get all services with filters
   async listServices(params?: {
     search?: string;
     category?: string;
@@ -25,102 +33,68 @@ export const servicesSDK = {
     return api.get<{ services: Service[]; pagination: Pagination }>('/api/services', params);
   },
 
-  // Get service by ID
   async getService(id: string): Promise<Service> {
-    return api.get<Service>(`/api/services/${id}`);
+    const res = await api.get<{ service?: Service } & Record<string, unknown>>(`/api/services/${id}`);
+    const wrapped = res?.service;
+    if (wrapped != null) {
+      return wrapped as Service;
+    }
+    if (res && typeof res === 'object' && 'id' in res && 'name' in res) {
+      return res as unknown as Service;
+    }
+    throw new Error('Invalid service response');
   },
 
-  // Create new service
-  async createService(serviceData: CreateServiceDTO): Promise<{ success: boolean; service: Service }> {
-    return api.post<{ success: boolean; service: Service }>('/api/services', serviceData);
+  /** POST `/api/services` — body uses snake_case `vendor_id` per route. */
+  async createService(
+    serviceData: CreateServiceDTO & { vendorId?: string | number; vendor_id?: string | number }
+  ): Promise<{ success: boolean; service: Service }> {
+    const vendor_id = serviceData.vendor_id ?? serviceData.vendorId;
+    if (vendor_id === undefined || vendor_id === null || String(vendor_id).trim() === '') {
+      throw new Error('createService requires vendor_id or vendorId');
+    }
+    return api.post<{ success: boolean; service: Service }>('/api/services', {
+      name: serviceData.name,
+      description: serviceData.description,
+      category: serviceData.category,
+      price: serviceData.price,
+      duration: serviceData.duration,
+      features: serviceData.features,
+      inclusions: serviceData.inclusions,
+      images: serviceData.images ?? [],
+      vendor_id,
+    });
   },
 
-  // Update service
   async updateService(id: string, serviceData: UpdateServiceDTO): Promise<{ success: boolean; service: Service }> {
     return api.put<{ success: boolean; service: Service }>(`/api/services/${id}`, serviceData);
   },
 
-  // Delete service
   async deleteService(id: string): Promise<{ success: boolean }> {
     return api.delete<{ success: boolean }>(`/api/services/${id}`);
   },
 
-  // Get popular services
-  async getPopularServices(limit?: number): Promise<{ services: Service[] }> {
-    return api.get<{ services: Service[] }>('/api/services/popular', { limit });
+  async getCategories(): Promise<PublicCategoriesResponse> {
+    return api.get<PublicCategoriesResponse>('/api/services/categories');
   },
 
-  // Get services by category
-  async getServicesByCategory(category: string, params?: {
-    page?: number;
-    limit?: number;
-    sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
-  }): Promise<{ services: Service[]; pagination: Pagination }> {
-    return api.get<{ services: Service[]; pagination: Pagination }>(`/api/services/category/${category}`, params);
-  },
-
-  // Get services by vendor
-  async getServicesByVendor(vendorId: string, params?: {
-    page?: number;
-    limit?: number;
-    available?: boolean;
-  }): Promise<{ services: Service[]; pagination: Pagination }> {
-    return api.get<{ services: Service[]; pagination: Pagination }>(`/api/services/vendor/${vendorId}`, params);
-  },
-
-  // Get service categories
-  async getCategories(): Promise<{ categories: string[] }> {
-    return api.get<{ categories: string[] }>('/api/services/categories');
-  },
-
-  // Search services
-  async searchServices(query: string, params?: {
+  async discoverServices(params?: {
+    q?: string;
     category?: string;
-    location?: string;
-    priceRange?: { min: number; max: number };
-    rating?: number;
+    sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'name';
     page?: number;
     limit?: number;
-  }): Promise<{ services: Service[]; pagination: Pagination }> {
-    return api.get<{ services: Service[]; pagination: Pagination }>('/api/services/search', {
-      q: query,
-      ...params
-    });
+  }): Promise<DiscoverServicesResponse> {
+    return api.get<DiscoverServicesResponse>('/api/services/discover', params);
   },
-
-  // Upload service media
-  async uploadServiceMedia(serviceId: string, mediaFile: File): Promise<{ success: boolean; mediaId: string; url: string }> {
-    const formData = new FormData();
-    formData.append('media', mediaFile);
-    
-    return api.post<{ success: boolean; mediaId: string; url: string }>(
-      `/api/services/${serviceId}/media`,
-      formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } }
-    );
-  },
-
-  // Delete service media
-  async deleteServiceMedia(serviceId: string, mediaId: string): Promise<{ success: boolean }> {
-    return api.delete<{ success: boolean }>(`/api/services/${serviceId}/media/${mediaId}`);
-  }
 };
 
-// Export individual functions for convenience
 export const {
   listServices,
   getService,
   createService,
   updateService,
   deleteService,
-  getPopularServices,
-  getServicesByCategory,
-  getServicesByVendor,
   getCategories,
-  searchServices,
-  uploadServiceMedia,
-  deleteServiceMedia
+  discoverServices,
 } = servicesSDK;
-
-

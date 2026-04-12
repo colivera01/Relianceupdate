@@ -6,7 +6,7 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { generateDownloadUrl } from "@/lib/azure-blob-storage";
 
 interface RouteParams {
-  params: { vendorId: string; assetId: string };
+  params: Promise<{ vendorId: string; assetId: string }>;
 }
 
 /**
@@ -18,7 +18,7 @@ export async function GET(
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId, assetId } = params;
+    const { vendorId, assetId } = await params;
     await requireVendorMembership(request, vendorId);
 
     // Find asset and verify it belongs to this vendor
@@ -47,10 +47,21 @@ export async function GET(
       );
     }
 
+    const runtimeStorageConfig = {
+      accountConfigured: Boolean(process.env.AZURE_STORAGE_ACCOUNT_NAME?.trim()),
+      keyConfigured: Boolean(process.env.AZURE_STORAGE_ACCOUNT_KEY?.trim()),
+      containerName: process.env.AZURE_STORAGE_CONTAINER_NAME?.trim() || "media",
+    };
+    console.info("[media/download] runtime storage config", runtimeStorageConfig);
+
     // Generate SAS URL for Azure Blob Storage (60 minute expiration)
     let downloadUrl: string;
     try {
       downloadUrl = await generateDownloadUrl(asset.blobKey, 60);
+      console.info("[media/download] generateDownloadUrl result", {
+        hasUrl: Boolean(downloadUrl),
+        isAzureBlobHost: /\.blob\.core\.windows\.net/i.test(downloadUrl || ""),
+      });
     } catch (error: any) {
       // Fallback if Azure Storage not configured
       console.warn("Azure Storage not configured, using stored URL or placeholder:", error.message);
@@ -58,14 +69,17 @@ export async function GET(
         `${process.env.BLOB_STORAGE_URL || 'https://storage.example.com'}/${asset.blobKey}?sas_token=...`;
     }
 
-    return NextResponse.json({
+    const responseBody = {
       assetId: asset.id,
       blobKey: asset.blobKey,
       downloadUrl,
+      url: downloadUrl,
       mimeType: asset.mimeType,
       bytes: asset.bytes.toString(),
       expiresIn: 3600, // 60 minutes in seconds
-    });
+    };
+    console.info("[media/download] response body", responseBody);
+    return NextResponse.json(responseBody);
   } catch (error: any) {
     console.error("[media/download] GET error:", error);
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {

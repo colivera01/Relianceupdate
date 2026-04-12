@@ -7,16 +7,26 @@ import 'react-clock/dist/Clock.css';
 const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const defaultAvailability = daysOfWeek.map(day => ({ day, enabled: false, start: '09:00', end: '17:00' }));
 
+type DayAvailability = (typeof defaultAvailability)[number];
+
 export function VendorAvailabilityPanel({ onClose }: { onClose?: () => void }) {
-  const [availability, setAvailability] = useState(defaultAvailability);
+  const [availability, setAvailability] = useState<DayAvailability[]>(defaultAvailability);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const handleToggle = idx => {
-    setAvailability(avail => avail.map((a, i) => i === idx ? { ...a, enabled: !a.enabled } : a));
+  const handleToggle = (idx: number) => {
+    setAvailability((avail) =>
+      avail.map((a, i) => (i === idx ? { ...a, enabled: !a.enabled } : a))
+    );
   };
-  const handleTimeChange = (idx, field, value) => {
-    setAvailability(avail => avail.map((a, i) => i === idx ? { ...a, [field]: value } : a));
+  const handleTimeChange = (
+    idx: number,
+    field: keyof DayAvailability,
+    value: string | boolean | null
+  ) => {
+    setAvailability((avail) =>
+      avail.map((a, i) => (i === idx ? { ...a, [field]: value } : a))
+    );
   };
   const handleSave = () => {
     setSaving(true);

@@ -1,4 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { getUserIdFromRequest } from '@/lib/auth';
+import { mapBookingToContract } from '@/lib/booking-shape';
+import { checkVendorSlotAvailability } from '@/lib/availability-slots';
+
+/** Structured payload stored as JSON string in `Booking.customerMetadata` (snake_case keys). */
+function buildCustomerMetadataForCreate(body: {
+  user_notes?: unknown;
+  client_email?: unknown;
+  client_phone?: unknown;
+  custom_fields?: unknown;
+}): Record<string, unknown> | undefined {
+  const out: Record<string, unknown> = {};
+  const notes = typeof body.user_notes === 'string' ? body.user_notes.trim() : '';
+  if (notes) out.user_notes = notes;
+  const email = typeof body.client_email === 'string' ? body.client_email.trim() : '';
+  if (email) out.client_email = email;
+  const phone = typeof body.client_phone === 'string' ? body.client_phone.trim() : '';
+  if (phone) out.client_phone = phone;
+  if (body.custom_fields && typeof body.custom_fields === 'object' && !Array.isArray(body.custom_fields)) {
+    const cf = body.custom_fields as Record<string, unknown>;
+    if (Object.keys(cf).length > 0) out.custom_fields = cf;
+  }
+  if (Object.keys(out).length === 0) return undefined;
+  return out;
+}
 
 // TODO: Import your database models
 // import { BookingModel } from '@/lib/models/Booking';
@@ -8,92 +34,79 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const requestedUserId = searchParams.get('userId');
     const vendorId = searchParams.get('vendorId');
     const status = searchParams.get('status');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
+    const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 100)) : 10;
+    const skip = (safePage - 1) * safeLimit;
 
-    // TODO: Replace with actual database query
-    // const bookings = await BookingModel.findMany({
-    //   where: {
-    //     ...(userId && { user_id: parseInt(userId) }),
-    //     ...(vendorId && { vendor_id: parseInt(vendorId) }),
-    //     ...(status && { status }),
-    //   },
-    //   include: {
-    //     service: true,
-    //     vendor: true,
-    //     user: true,
-    //   },
-    //   orderBy: { created_at: 'desc' },
-    //   skip: (page - 1) * limit,
-    //   take: limit,
-    // });
+    const authUserId = await getUserIdFromRequest(request);
+    const userId = authUserId || (requestedUserId ? String(requestedUserId) : null);
+    if (!userId && !vendorId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: user context is required' },
+        { status: 401 }
+      );
+    }
 
-    // Mock data for development
-    const mockBookings = [
-      {
-        id: 1,
-        service: {
-          id: 1,
-          name: 'Deep House Cleaning',
-          price: 120,
-          duration: '3-4 hours',
+    const where: any = {
+      ...(userId ? { userId: String(userId) } : {}),
+      ...(vendorId ? { vendorId: String(vendorId) } : {}),
+      ...(status ? { status: String(status).toUpperCase() } : {}),
+    };
+
+    const [total, records] = await Promise.all([
+      prisma.booking.count({ where }),
+      prisma.booking.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: safeLimit,
+        select: {
+          id: true,
+          serviceId: true,
+          vendorId: true,
+          userId: true,
+          title: true,
+          clientName: true,
+          amount: true,
+          status: true,
+          scheduledFor: true,
+          date: true,
+          createdAt: true,
+          updatedAt: true,
+          customerMetadata: true,
+          service: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+            },
+          },
+          vendor: {
+            select: {
+              id: true,
+              name: true,
+              businessName: true,
+              phone: true,
+            },
+          },
         },
-        vendor: {
-          id: 1,
-          name: 'Sparkle Clean Pro',
-          rating: 4.9,
-          phone: '(555) 123-4567',
-        },
-        user: {
-          id: 1,
-          name: 'John Doe',
-          email: 'john@example.com',
-        },
-        booking_date: '2024-01-26',
-        booking_time: '10:00:00',
-        status: 'confirmed',
-        total_price: 120,
-        user_notes: 'Please clean the kitchen thoroughly',
-        created_at: '2024-01-15T10:30:00Z',
-      },
-      {
-        id: 2,
-        service: {
-          id: 2,
-          name: 'Plumbing Repair',
-          price: 85,
-          duration: '1-2 hours',
-        },
-        vendor: {
-          id: 2,
-          name: 'Quick Fix Plumbing',
-          rating: 4.7,
-          phone: '(555) 987-6543',
-        },
-        user: {
-          id: 1,
-          name: 'John Doe',
-          email: 'john@example.com',
-        },
-        booking_date: '2024-01-28',
-        booking_time: '14:00:00',
-        status: 'pending',
-        total_price: 85,
-        user_notes: 'Leaky faucet in bathroom',
-        created_at: '2024-01-16T14:20:00Z',
-      },
-    ];
+      }),
+    ]);
+
+    const bookings = records.map((booking) => mapBookingToContract(booking as any));
 
     return NextResponse.json({
-      bookings: mockBookings,
+      bookings,
       pagination: {
-        page,
-        limit,
-        total: mockBookings.length,
-        totalPages: Math.ceil(mockBookings.length / limit),
+        page: safePage,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
       },
     });
   } catch (error) {
@@ -107,6 +120,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const authUserId = await getUserIdFromRequest(request);
     const body = await request.json();
     const {
       service_id,
@@ -115,78 +129,169 @@ export async function POST(request: NextRequest) {
       booking_time,
       user_notes,
       custom_fields,
+      title,
+      client_name,
+      client_email,
+      client_phone,
+      amount,
+      user_id,
     } = body;
 
-    // Validate required fields
-    if (!service_id || !vendor_id || !booking_date || !booking_time) {
+    // Validate minimum required fields for vendor job creation flow
+    if (!vendor_id) {
       return NextResponse.json(
-        { error: 'Service ID, vendor ID, date, and time are required' },
+        { error: 'vendor_id is required' },
         { status: 400 }
       );
     }
 
-    // TODO: Validate service and vendor exist
-    // const service = await ServiceModel.findById(service_id);
-    // const vendor = await VendorModel.findById(vendor_id);
-    // if (!service || !vendor) {
-    //   return NextResponse.json(
-    //     { error: 'Service or vendor not found' },
-    //     { status: 404 }
-    //   );
-    // }
+    const vendorId = String(vendor_id);
+    const vendor = await prisma.vendor.findUnique({
+      where: { id: vendorId },
+      select: { id: true },
+    });
+    if (!vendor) {
+      return NextResponse.json(
+        { error: 'Vendor not found' },
+        { status: 404 }
+      );
+    }
 
-    // TODO: Check availability
-    // const isAvailable = await checkAvailability(vendor_id, booking_date, booking_time);
-    // if (!isAvailable) {
-    //   return NextResponse.json(
-    //     { error: 'Selected time slot is not available' },
-    //     { status: 400 }
-    //   );
-    // }
+    // Resolve service for required Booking.serviceId FK.
+    let serviceId: string | null = null;
+    if (service_id) {
+      const existingService = await prisma.service.findFirst({
+        where: { id: String(service_id), vendorId },
+        select: { id: true },
+      });
+      serviceId = existingService?.id || null;
+    }
+    if (!serviceId) {
+      const firstVendorService = await prisma.service.findFirst({
+        where: { vendorId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      serviceId = firstVendorService?.id || null;
+    }
+    if (!serviceId) {
+      const createdService = await prisma.service.create({
+        data: {
+          vendorId,
+          name: 'General Service Job',
+          description: 'Auto-created default service for vendor jobs',
+          price: 0,
+        },
+      });
+      serviceId = createdService.id;
+    }
 
-    // TODO: Get current user from session/token
-    // const user = await getCurrentUser(request);
-    // if (!user) {
-    //   return NextResponse.json(
-    //     { error: 'Authentication required' },
-    //     { status: 401 }
-    //   );
-    // }
+    // Use existing authenticated user (required Booking.userId FK).
+    const userId = authUserId || (user_id ? String(user_id) : null);
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: user context is required for booking creation' },
+        { status: 401 }
+      );
+    }
 
-    // TODO: Create booking in database
-    // const booking = await BookingModel.create({
-    //   user_id: user.id,
-    //   service_id,
-    //   vendor_id,
-    //   booking_date,
-    //   booking_time,
-    //   status: 'pending',
-    //   total_price: service.price,
-    //   user_notes,
-    //   custom_fields,
-    // });
+    const combinedDateTime =
+      booking_date && booking_time
+        ? new Date(`${booking_date}T${booking_time}`)
+        : new Date();
+    const scheduledFor = Number.isNaN(combinedDateTime.getTime()) ? new Date() : combinedDateTime;
 
-    // Mock booking creation
-    const mockBooking = {
-      id: Math.floor(Math.random() * 1000) + 1,
-      service_id,
-      vendor_id,
-      booking_date,
-      booking_time,
-      status: 'pending',
-      total_price: 120, // Mock price
+    if (booking_date && booking_time) {
+      const slotCheck = await checkVendorSlotAvailability({
+        vendorId,
+        serviceId,
+        booking_date: String(booking_date),
+        booking_time: String(booking_time),
+      });
+      if (!slotCheck.available) {
+        return NextResponse.json(
+          {
+            error: slotCheck.reason || 'Selected slot is unavailable',
+            code: 'SLOT_UNAVAILABLE',
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    const customerMetadataPayload = buildCustomerMetadataForCreate({
       user_notes,
+      client_email,
+      client_phone,
       custom_fields,
-      created_at: new Date().toISOString(),
-    };
+    });
+    const customerMetadata =
+      customerMetadataPayload !== undefined ? JSON.stringify(customerMetadataPayload) : undefined;
 
-    // TODO: Send notifications
-    // await sendBookingNotifications(mockBooking);
+    let resolvedAmount = 0;
+    if (amount !== undefined && amount !== null && String(amount).trim() !== '') {
+      const n = Number(amount);
+      if (Number.isFinite(n) && n >= 0) resolvedAmount = n;
+    } else {
+      const priceRow = await prisma.service.findUnique({
+        where: { id: serviceId },
+        select: { price: true },
+      });
+      if (priceRow?.price != null) {
+        const n = Number(priceRow.price);
+        if (Number.isFinite(n) && n >= 0) resolvedAmount = n;
+      }
+    }
+
+    const booking = await prisma.booking.create({
+      data: {
+        vendorId,
+        serviceId,
+        userId,
+        title: title ? String(title) : null,
+        clientName: client_name ? String(client_name) : null,
+        status: 'PENDING',
+        scheduledFor,
+        date: scheduledFor,
+        amount: resolvedAmount,
+        ...(customerMetadata != null ? { customerMetadata } : {}),
+      },
+    });
+
+    const hydrated = await prisma.booking.findUnique({
+      where: { id: booking.id },
+      select: {
+        id: true,
+        userId: true,
+        vendorId: true,
+        serviceId: true,
+        title: true,
+        clientName: true,
+        amount: true,
+        status: true,
+        scheduledFor: true,
+        date: true,
+        createdAt: true,
+        updatedAt: true,
+        customerMetadata: true,
+        service: { select: { id: true, name: true, description: true, price: true } },
+        vendor: { select: { id: true, name: true, businessName: true, phone: true, email: true, city: true, state: true } },
+      },
+    });
+
+    const contract = mapBookingToContract((hydrated || booking) as any);
 
     return NextResponse.json({
       success: true,
-      booking: mockBooking,
+      booking: contract,
       message: 'Booking created successfully',
+      /** @deprecated Prefer `booking.customer_metadata` — kept for older clients. */
+      meta: {
+        user_notes: (contract.customer_metadata as { user_notes?: string } | null)?.user_notes ?? null,
+        custom_fields: (contract.customer_metadata as { custom_fields?: unknown } | null)?.custom_fields ?? null,
+        client_email: (contract.customer_metadata as { client_email?: string } | null)?.client_email ?? null,
+        client_phone: (contract.customer_metadata as { client_phone?: string } | null)?.client_phone ?? null,
+      },
     });
   } catch (error) {
     console.error('Error creating booking:', error);

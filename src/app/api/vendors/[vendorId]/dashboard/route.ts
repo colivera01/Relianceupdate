@@ -5,12 +5,36 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 
 interface RouteParams {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }
 
 // Simple in-memory cache (60 seconds TTL per vendor)
 const cache = new Map<string, { data: any; expiresAt: number }>();
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+const USE_DASHBOARD_CACHE = process.env.NODE_ENV !== "development";
+
+function isTransientDbConnectivityError(error: any): boolean {
+  const message = String(error?.message || '');
+  return (
+    message.includes("Can't reach database server") ||
+    message.includes('PrismaClientInitializationError') ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('ETIMEDOUT')
+  );
+}
+
+async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isTransientDbConnectivityError(error)) {
+      throw error;
+    }
+    // Minimal retry for intermittent Azure SQL network hiccups.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return operation();
+  }
+}
 
 /**
  * GET /api/vendors/[vendorId]/dashboard
@@ -19,16 +43,16 @@ const CACHE_TTL_MS = 60 * 1000; // 60 seconds
  */
 export async function GET(
   request: Request,
-  { params }: RouteParams
+  context: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId } = params;
-    await requireVendorMembership(request, vendorId);
+    const { vendorId } = await context.params;
+    await withTransientDbRetry(() => requireVendorMembership(request, vendorId));
 
     // Check cache
     const cacheKey = `dashboard:${vendorId}`;
-    const cached = cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
+    const cached = USE_DASHBOARD_CACHE ? cache.get(cacheKey) : null;
+    if (USE_DASHBOARD_CACHE && cached && cached.expiresAt > Date.now()) {
       return NextResponse.json(cached.data);
     }
 
@@ -48,6 +72,7 @@ export async function GET(
       vendor,
       statsAgg,
       recentBookings,
+      archivedBookings,
       recentReviews,
       confirmedOrCompletedBookings, // For client count (CONFIRMED + COMPLETED only)
       allReviews,
@@ -58,7 +83,8 @@ export async function GET(
       reviewsThisMonth,
       earningsLastMonth,
       earningsThisMonth,
-    ] = await Promise.all([
+    ] = await withTransientDbRetry(() =>
+      Promise.all([
       // Vendor profile
       prisma.vendor.findUnique({
         where: { id: vendorId },
@@ -76,18 +102,54 @@ export async function GET(
       prisma.booking.findMany({
         where: { vendorId },
         include: {
-          user: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
           service: true,
         },
         orderBy: { createdAt: "desc" },
         take: 5,
+      }),
+      // Archived bookings for archived-jobs view
+      prisma.booking.findMany({
+        where: {
+          vendorId,
+          status: "ARCHIVED",
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          service: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 100,
       }),
 
       // Recent reviews (last 5)
       prisma.review.findMany({
         where: { vendorId },
         include: {
-          user: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 5,
@@ -184,7 +246,8 @@ export async function GET(
         },
         _sum: { amount: true },
       }),
-    ]);
+      ])
+    );
 
     if (!vendor) {
       return NextResponse.json(
@@ -223,7 +286,9 @@ export async function GET(
         : 0;
 
     // Map bookings to VendorJob format with explicit status mapping
-    const recentJobs = recentBookings.map((booking: any) => {
+    const recentJobs = recentBookings
+      .filter((booking: any) => booking.status !== "ARCHIVED")
+      .map((booking: any) => {
       // Explicit mapping for all Booking.status values: PENDING, CONFIRMED, COMPLETED, CANCELED
       const statusMap: Record<string, "completed" | "in progress" | "scheduled" | "canceled"> = {
         COMPLETED: "completed",
@@ -243,6 +308,8 @@ export async function GET(
 
       return {
         id: booking.id,
+        serviceId: booking.serviceId,
+        serviceName: booking.service?.name || "",
         title: booking.title || booking.service?.name || "Untitled Job",
         client: booking.clientName || booking.user?.name || "Unknown Client",
         amount: amountValue,
@@ -253,6 +320,21 @@ export async function GET(
           booking.createdAt.toISOString(),
       };
     });
+
+    const archivedJobs = archivedBookings.map((booking: any) => ({
+      id: booking.id,
+      serviceId: booking.serviceId,
+      serviceName: booking.service?.name || "",
+      title: booking.title || booking.service?.name || "Untitled Job",
+      client: booking.clientName || booking.user?.name || "Unknown Client",
+      amount: booking.amount ? Number(booking.amount) : 0,
+      status: "archived",
+      date:
+        booking.date?.toISOString() ||
+        booking.scheduledFor?.toISOString() ||
+        booking.updatedAt?.toISOString() ||
+        booking.createdAt.toISOString(),
+    }));
 
     // Map reviews to VendorReview format
     const recentReviewsMapped = recentReviews.map((review: any) => ({
@@ -329,16 +411,18 @@ export async function GET(
 
     // Fetch vendor-specific notifications (from AdminNotification filtered by vendorId)
     // Note: Model name in Prisma client is camelCase based on @@map
-    const vendorNotifications = await (prisma as any).adminNotification.findMany({
-      where: {
-        vendorId,
-        read: false,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    });
+    const vendorNotifications = await withTransientDbRetry(() =>
+      (prisma as any).adminNotification.findMany({
+        where: {
+          vendorId,
+          read: false,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      })
+    );
 
-    const notifications = vendorNotifications.map((notif: any) => ({
+    const notifications = (vendorNotifications as any[]).map((notif: any) => ({
       id: notif.id,
       type: notif.type.toLowerCase().includes("job")
         ? ("job" as const)
@@ -390,32 +474,45 @@ export async function GET(
         rating: Math.round(rating * 10) / 10,
       },
       recentJobs,
+      archivedJobs,
       recentReviews: recentReviewsMapped,
       insights,
       notifications,
     };
 
     // Cache the response
-    cache.set(cacheKey, {
-      data: response,
-      expiresAt: Date.now() + CACHE_TTL_MS,
-    });
-
-    // Clean up expired cache entries (simple cleanup)
-    if (cache.size > 100) {
-      const now = Date.now();
-      const keysToDelete: string[] = [];
-      cache.forEach((value, key) => {
-        if (value.expiresAt <= now) {
-          keysToDelete.push(key);
-        }
+    if (USE_DASHBOARD_CACHE) {
+      cache.set(cacheKey, {
+        data: response,
+        expiresAt: Date.now() + CACHE_TTL_MS,
       });
-      keysToDelete.forEach(key => cache.delete(key));
+
+      // Clean up expired cache entries (simple cleanup)
+      if (cache.size > 100) {
+        const now = Date.now();
+        const keysToDelete: string[] = [];
+        cache.forEach((value, key) => {
+          if (value.expiresAt <= now) {
+            keysToDelete.push(key);
+          }
+        });
+        keysToDelete.forEach(key => cache.delete(key));
+      }
     }
 
     return NextResponse.json(response);
   } catch (error: any) {
     console.error("[vendors/dashboard] GET error:", error);
+    if (isTransientDbConnectivityError(error)) {
+      console.error("[vendors/dashboard] transient DB connectivity issue (Azure SQL/network)");
+      return NextResponse.json(
+        {
+          error: "Failed to fetch dashboard",
+          details: "Transient database connectivity issue. Please retry shortly.",
+        },
+        { status: 503 }
+      );
+    }
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }

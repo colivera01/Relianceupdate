@@ -8,7 +8,7 @@ import { generateUploadUrl } from "@/lib/azure-blob-storage";
 import crypto from "crypto";
 
 interface RouteParams {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }
 
 /**
@@ -18,10 +18,10 @@ interface RouteParams {
  */
 export async function POST(
   request: Request,
-  { params }: RouteParams
+  context: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId } = params;
+    const { vendorId } = await context.params;
     const { userId, membershipId, role } = await requireVendorMembership(request, vendorId);
 
     const body = await request.json();

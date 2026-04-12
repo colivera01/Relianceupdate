@@ -150,7 +150,10 @@ export async function GET(request: Request) {
     const totalBookings = statsData?._count._all ?? 0;
 
     // Calculate earnings only from COMPLETED bookings
-    const totalEarnings = completedBookings.reduce((sum, b) => sum + (b.amount ?? 0), 0);
+    const totalEarnings = completedBookings.reduce(
+      (sum, b) => sum + Number(b.amount ?? 0),
+      0
+    );
 
     const totalClients = new Set(allBookings.map((b) => b.userId).filter(Boolean)).size;
 

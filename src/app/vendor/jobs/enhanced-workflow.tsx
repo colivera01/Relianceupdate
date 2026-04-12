@@ -140,13 +140,13 @@ export default function EnhancedWorkflow() {
     setWorkflowStep(3);
   };
 
-  const handleApproveVideo = (videoId) => {
+  const handleApproveVideo = (videoId: string | number) => {
     // Simulate video approval
     console.log('Video approved:', videoId);
     setShowVideoApproval(false);
   };
 
-  const handleRejectVideo = (videoId, reason) => {
+  const handleRejectVideo = (videoId: string | number, reason: string) => {
     // Simulate video rejection
     console.log('Video rejected:', videoId, 'Reason:', reason);
     setShowVideoApproval(false);

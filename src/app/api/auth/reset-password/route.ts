@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateResetToken, markTokenAsUsed } from '../forgot-password/route';
+import {
+  markTokenAsUsed,
+  validateResetToken,
+} from "@/lib/password-reset-tokens";
 
 // Function to update user password (in production, this would update the database)
 function updateUserPassword(email: string, newPassword: string) {

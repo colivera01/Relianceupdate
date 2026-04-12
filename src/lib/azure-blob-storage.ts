@@ -10,31 +10,117 @@ import {
 } from "@azure/storage-blob";
 
 // Azure Storage configuration from environment variables
-const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME;
-const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY;
-const containerName = process.env.AZURE_STORAGE_CONTAINER_NAME || "media";
+const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING?.trim();
+const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME?.trim();
+const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY?.trim();
+const containerName =
+  process.env.AZURE_STORAGE_CONTAINER_NAME?.trim() ||
+  process.env.AZURE_STORAGE_CONTAINER?.trim() ||
+  "media";
 
-if (!accountName || !accountKey) {
+const hasConnectionString = Boolean(connectionString);
+const hasContainerEnv = Boolean(
+  process.env.AZURE_STORAGE_CONTAINER?.trim() ||
+    process.env.AZURE_STORAGE_CONTAINER_NAME?.trim()
+);
+const hasAccountKeyConfig = Boolean(accountName && accountKey);
+const storageConfigBranch = hasConnectionString
+  ? "connection-string"
+  : hasAccountKeyConfig
+    ? "account-key"
+    : "fallback";
+const sasGenerationAvailable = hasConnectionString || hasAccountKeyConfig;
+
+console.info("[azure-blob-storage] runtime env detection", {
+  hasConnectionString,
+  hasContainerEnv,
+  hasAccountName: Boolean(accountName),
+  hasAccountKey: Boolean(accountKey),
+  containerName,
+  branch: storageConfigBranch,
+  connectionStringModeActive: hasConnectionString,
+  sasGenerationAvailable,
+});
+
+if (!hasConnectionString && !hasAccountKeyConfig) {
   console.warn(
-    "Azure Storage credentials not configured. Set AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY"
+    "Azure Storage is not fully configured. Set either AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_ACCOUNT_KEY"
   );
+}
+
+function parseConnectionStringValue(key: string): string | null {
+  if (!connectionString) return null;
+  const parts = connectionString.split(";");
+  for (const part of parts) {
+    const [rawKey, ...valueParts] = part.split("=");
+    if (!rawKey || valueParts.length === 0) continue;
+    if (rawKey.trim().toLowerCase() !== key.toLowerCase()) continue;
+    return valueParts.join("=").trim() || null;
+  }
+  return null;
+}
+
+function getAccountConfigFromConnectionString(): {
+  accountName: string;
+  accountKey: string;
+} | null {
+  const parsedAccountName = parseConnectionStringValue("AccountName");
+  const parsedAccountKey = parseConnectionStringValue("AccountKey");
+  if (!parsedAccountName || !parsedAccountKey) return null;
+  return {
+    accountName: parsedAccountName,
+    accountKey: parsedAccountKey,
+  };
+}
+
+function getStorageSharedKeyCredential():
+  | { credential: StorageSharedKeyCredential; accountName: string }
+  | null {
+  if (hasConnectionString) {
+    const fromConnectionString = getAccountConfigFromConnectionString();
+    if (fromConnectionString) {
+      return {
+        credential: new StorageSharedKeyCredential(
+          fromConnectionString.accountName,
+          fromConnectionString.accountKey
+        ),
+        accountName: fromConnectionString.accountName,
+      };
+    }
+  }
+
+  if (accountName && accountKey) {
+    return {
+      credential: new StorageSharedKeyCredential(accountName, accountKey),
+      accountName,
+    };
+  }
+
+  return null;
 }
 
 /**
  * Get Azure Blob Service Client
  */
 function getBlobServiceClient(): BlobServiceClient | null {
-  if (!accountName || !accountKey) {
-    return null;
+  if (connectionString) {
+    try {
+      return BlobServiceClient.fromConnectionString(connectionString);
+    } catch (error) {
+      console.error("[azure-blob-storage] Invalid connection string configuration", error);
+      return null;
+    }
   }
 
-  const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
-  const blobServiceClient = new BlobServiceClient(
-    `https://${accountName}.blob.core.windows.net`,
-    sharedKeyCredential
-  );
+  if (accountName && accountKey) {
+    const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+    return new BlobServiceClient(
+      `https://${accountName}.blob.core.windows.net`,
+      sharedKeyCredential
+    );
+  }
 
-  return blobServiceClient;
+  return null;
 }
 
 /**
@@ -47,11 +133,13 @@ export async function generateUploadSAS(
   blobKey: string,
   expiresInMinutes: number = 60
 ): Promise<string> {
-  if (!accountName || !accountKey) {
-    throw new Error("Azure Storage not configured");
+  const sharedKeyConfig = getStorageSharedKeyCredential();
+  if (!sharedKeyConfig) {
+    throw new Error(
+      "Azure Storage not configured for SAS generation. Provide AZURE_STORAGE_CONNECTION_STRING (with AccountName/AccountKey) or AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_ACCOUNT_KEY"
+    );
   }
 
-  const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
   const expiresOn = new Date();
   expiresOn.setMinutes(expiresOn.getMinutes() + expiresInMinutes);
 
@@ -62,7 +150,10 @@ export async function generateUploadSAS(
     expiresOn,
   };
 
-  const sasToken = generateBlobSASQueryParameters(sasOptions, sharedKeyCredential).toString();
+  const sasToken = generateBlobSASQueryParameters(
+    sasOptions,
+    sharedKeyConfig.credential
+  ).toString();
   return sasToken;
 }
 
@@ -76,11 +167,13 @@ export async function generateDownloadSAS(
   blobKey: string,
   expiresInMinutes: number = 60
 ): Promise<string> {
-  if (!accountName || !accountKey) {
-    throw new Error("Azure Storage not configured");
+  const sharedKeyConfig = getStorageSharedKeyCredential();
+  if (!sharedKeyConfig) {
+    throw new Error(
+      "Azure Storage not configured for SAS generation. Provide AZURE_STORAGE_CONNECTION_STRING (with AccountName/AccountKey) or AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_ACCOUNT_KEY"
+    );
   }
 
-  const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
   const expiresOn = new Date();
   expiresOn.setMinutes(expiresOn.getMinutes() + expiresInMinutes);
 
@@ -91,7 +184,10 @@ export async function generateDownloadSAS(
     expiresOn,
   };
 
-  const sasToken = generateBlobSASQueryParameters(sasOptions, sharedKeyCredential).toString();
+  const sasToken = generateBlobSASQueryParameters(
+    sasOptions,
+    sharedKeyConfig.credential
+  ).toString();
   return sasToken;
 }
 
@@ -105,8 +201,14 @@ export async function generateUploadUrl(
   blobKey: string,
   expiresInMinutes: number = 60
 ): Promise<string> {
+  const sharedKeyConfig = getStorageSharedKeyCredential();
+  if (!sharedKeyConfig) {
+    throw new Error(
+      "Azure Storage not configured for SAS URL generation. Provide AZURE_STORAGE_CONNECTION_STRING (with AccountName/AccountKey) or AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_ACCOUNT_KEY"
+    );
+  }
   const sasToken = await generateUploadSAS(blobKey, expiresInMinutes);
-  const url = `https://${accountName}.blob.core.windows.net/${containerName}/${blobKey}?${sasToken}`;
+  const url = `https://${sharedKeyConfig.accountName}.blob.core.windows.net/${containerName}/${blobKey}?${sasToken}`;
   return url;
 }
 
@@ -120,8 +222,14 @@ export async function generateDownloadUrl(
   blobKey: string,
   expiresInMinutes: number = 60
 ): Promise<string> {
+  const sharedKeyConfig = getStorageSharedKeyCredential();
+  if (!sharedKeyConfig) {
+    throw new Error(
+      "Azure Storage not configured for SAS URL generation. Provide AZURE_STORAGE_CONNECTION_STRING (with AccountName/AccountKey) or AZURE_STORAGE_ACCOUNT_NAME + AZURE_STORAGE_ACCOUNT_KEY"
+    );
+  }
   const sasToken = await generateDownloadSAS(blobKey, expiresInMinutes);
-  const url = `https://${accountName}.blob.core.windows.net/${containerName}/${blobKey}?${sasToken}`;
+  const url = `https://${sharedKeyConfig.accountName}.blob.core.windows.net/${containerName}/${blobKey}?${sasToken}`;
   return url;
 }
 
@@ -136,16 +244,12 @@ export async function getBlobProperties(blobKey: string): Promise<{
   contentType?: string;
   lastModified?: Date;
 } | null> {
-  if (!accountName || !accountKey) {
+  const blobServiceClient = getBlobServiceClient();
+  if (!blobServiceClient) {
     return null;
   }
 
   try {
-    const blobServiceClient = getBlobServiceClient();
-    if (!blobServiceClient) {
-      return null;
-    }
-
     const containerClient = blobServiceClient.getContainerClient(containerName);
     const blobClient = containerClient.getBlobClient(blobKey);
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { registeredUsers } from '../../auth/login/route';
+import { registeredUsers } from "@/lib/dev-registered-users";
 
 export async function GET(request: NextRequest) {
   try {

@@ -12,16 +12,18 @@ const mockEmployees = [
   { id: 2, name: 'James Lee', email: 'james@vendor.com', role: 'Technician', photo: 'https://randomuser.me/api/portraits/men/45.jpg' },
 ];
 
+type Employee = (typeof mockEmployees)[number];
+
 const roleOptions = [
   { value: 'Manager', label: 'Manager', description: 'Can manage jobs, employees, and view all data' },
   { value: 'Technician', label: 'Technician', description: 'Can view assigned jobs and update status' },
 ];
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState(mockEmployees);
+  const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
   const [showAdd, setShowAdd] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState(null);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [newEmp, setNewEmp] = useState({ name: '', email: '', role: 'Technician', photo: '' });
   const [editEmp, setEditEmp] = useState({ name: '', email: '', role: '', photo: '' });
 
@@ -31,13 +33,14 @@ export default function EmployeesPage() {
     setNewEmp({ name: '', email: '', role: 'Technician', photo: '' });
   };
 
-  const handleEdit = (employee) => {
+  const handleEdit = (employee: Employee) => {
     setEditingEmployee(employee);
     setEditEmp({ name: employee.name, email: employee.email, role: employee.role, photo: employee.photo });
     setShowEdit(true);
   };
 
   const handleSaveEdit = () => {
+    if (!editingEmployee) return;
     setEmployees(employees.map(emp => 
       emp.id === editingEmployee.id ? { ...emp, ...editEmp } : emp
     ));
@@ -46,13 +49,13 @@ export default function EmployeesPage() {
     setEditEmp({ name: '', email: '', role: '', photo: '' });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = (id: number) => {
     if (window.confirm('Are you sure you want to delete this employee?')) {
       setEmployees(employees.filter(e => e.id !== id));
     }
   };
 
-  const getRoleBadgeVariant = (role) => {
+  const getRoleBadgeVariant = (role: string) => {
     return role === 'Manager' ? 'default' : 'secondary';
   };
 

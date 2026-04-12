@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 
 interface RouteParams {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }
 
 /**
@@ -17,7 +17,7 @@ export async function GET(
   { params }: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId } = params;
+    const { vendorId } = await params;
     await requireVendorMembership(request, vendorId);
 
     // Calculate storage usage (SUM(bytes) WHERE vendorId = X AND deletedAt IS NULL)

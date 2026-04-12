@@ -5,7 +5,7 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 
 interface RouteParams {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }
 
 /**
@@ -14,10 +14,10 @@ interface RouteParams {
  */
 export async function GET(
   request: Request,
-  { params }: RouteParams
+  context: RouteParams
 ): Promise<NextResponse> {
   try {
-    const { vendorId } = params;
+    const { vendorId } = await context.params;
     await requireVendorMembership(request, vendorId);
 
     const { searchParams } = new URL(request.url);
@@ -56,12 +56,19 @@ export async function GET(
       assets: assets.map((asset: any) => ({
         id: asset.id,
         vendorId: asset.vendorId,
+        mediaSessionId: asset.mediaSessionId,
         membershipId: asset.membershipId,
+        uploadedByMembershipId: asset.uploadedByMembershipId,
         deviceId: asset.deviceId,
         bytes: asset.bytes.toString(),
         mimeType: asset.mimeType,
         blobKey: asset.blobKey,
         blobUrl: asset.blobUrl,
+        moderationStatus: asset.moderationStatus,
+        visibilityStatus: asset.visibilityStatus,
+        archiveStatus: asset.archiveStatus,
+        moderationReason: asset.moderationReason,
+        moderatedAt: asset.moderatedAt,
         createdAt: asset.createdAt,
         deletedAt: asset.deletedAt,
       })),

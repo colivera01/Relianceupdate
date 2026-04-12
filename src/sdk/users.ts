@@ -1,10 +1,14 @@
+/**
+ * Users SDK — profile + favorites paths aligned to Next routes where implemented.
+ * Admin-style helpers (`getUserById`, `getUserPreferences`, …) still call URLs with **no** matching `src/app/api` handlers and will 404 until routes exist.
+ */
 import { api } from '../lib/api';
 import type {
   User,
   CustomerProfile,
   VendorProfile,
-  Favorite,
-  CreateFavoriteDTO
+  CreateFavoriteDTO,
+  FavoritesListResponse,
 } from '../types/api';
 
 // Users SDK
@@ -77,42 +81,50 @@ export const usersSDK = {
     
     return api.post<{ success: boolean; photoUrl: string }>(
       '/api/users/upload-photo',
-      formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } }
+      formData
     );
   },
 
-  // Get user favorites
+  /**
+   * Lists favorites for the authenticated user (`GET /api/users/favorites`).
+   * Prefer `@/sdk/favorites` + `favoritesSDK` when you need `x-user-id` / storage fallbacks.
+   * `type` is accepted for call-site compatibility but is not sent (API is service-favorites only).
+   */
   async listFavorites(params?: {
     type?: 'service' | 'vendor';
     page?: number;
     limit?: number;
-  }): Promise<{ favorites: Favorite[]; total: number }> {
-    return api.get<{ favorites: Favorite[]; total: number }>('/api/favorites', params);
+  }): Promise<FavoritesListResponse> {
+    const { page, limit } = params || {};
+    const query: Record<string, string | number> = {};
+    if (page != null) query.page = page;
+    if (limit != null) query.limit = limit;
+    return api.get<FavoritesListResponse>('/api/users/favorites', query);
   },
 
-  // Add favorite
-  async addFavorite(favoriteData: CreateFavoriteDTO): Promise<{ success: boolean; favorite: Favorite }> {
-    return api.post<{ success: boolean; favorite: Favorite }>('/api/favorites', favoriteData);
+  /**
+   * Adds a service favorite (`POST /api/users/favorites`).
+   * Prefer `@/sdk/favorites` when you need explicit customer id resolution.
+   */
+  async addFavorite(favoriteData: CreateFavoriteDTO): Promise<{
+    success: boolean;
+    favorite: { favoriteId: string; serviceId: string; favoritedAt: string };
+    message: string;
+  }> {
+    const serviceId = String(favoriteData.serviceId || '').trim();
+    if (!serviceId) {
+      throw new Error('usersSDK.addFavorite requires serviceId (vendor-only favorites are not supported by the API)');
+    }
+    return api.post('/api/users/favorites', { serviceId });
   },
 
-  // Remove favorite
-  async removeFavorite(favoriteId: string): Promise<{ success: boolean }> {
-    return api.delete<{ success: boolean }>(`/api/favorites/${favoriteId}`);
-  },
-
-  // Update favorite notes
-  async updateFavoriteNotes(favoriteId: string, notes: string): Promise<{ success: boolean; favorite: Favorite }> {
-    return api.put<{ success: boolean; favorite: Favorite }>(`/api/favorites/${favoriteId}/notes`, { notes });
-  },
-
-  // Check if item is favorited
-  async checkFavorite(params: {
-    serviceId?: string;
-    vendorId?: string;
-    type: 'service' | 'vendor';
-  }): Promise<{ isFavorited: boolean; favoriteId?: string }> {
-    return api.get<{ isFavorited: boolean; favoriteId?: string }>('/api/favorites/check', params);
+  /** Removes a favorite by favorite id or service id (`DELETE /api/users/favorites/[id]`). */
+  async removeFavorite(favoriteOrServiceId: string): Promise<{
+    success: boolean;
+    removed: { favoriteId: string; serviceId: string };
+    message: string;
+  }> {
+    return api.delete(`/api/users/favorites/${encodeURIComponent(favoriteOrServiceId)}`);
   },
 
   // Get user activity
@@ -141,8 +153,6 @@ export const {
   listFavorites,
   addFavorite,
   removeFavorite,
-  updateFavoriteNotes,
-  checkFavorite,
   getUserActivity
 } = usersSDK;
 

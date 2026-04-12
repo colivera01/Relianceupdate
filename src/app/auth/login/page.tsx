@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import { ArrowLeft, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -48,7 +50,18 @@ export default function LoginPage() {
         // Store user data and token
         localStorage.setItem('userData', JSON.stringify(data.user));
         localStorage.setItem('authToken', data.token);
-        
+
+        const rawType = String(data.user.userType || 'customer');
+        const normalizedType: 'customer' | 'vendor' | 'admin' =
+          rawType === 'vendor' ? 'vendor' : rawType === 'admin' ? 'admin' : 'customer';
+        login({
+          id: String(data.user.id),
+          name: String(data.user.name || data.user.email || 'User'),
+          email: String(data.user.email),
+          userType: normalizedType,
+          avatar: data.user.avatar,
+        });
+
         // Check user type and redirect accordingly
         if (data.user.userType === 'vendor') {
           // Pure vendor user - go to vendor dashboard

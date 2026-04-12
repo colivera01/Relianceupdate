@@ -1,576 +1,461 @@
 'use client';
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  Star, 
-  CheckCircle, 
-  X, 
-  AlertCircle,
-  ChevronLeft,
-  Filter,
-  Search
-} from 'lucide-react';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { Calendar, Clock, RefreshCw } from 'lucide-react';
+import { SmartVideoPlayer } from '@/components/reviews/SmartVideoPlayer';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  bookingMatchesSearch,
+  bookingMatchesTab,
+  classifyCancelBookingAction,
+  formatMyBookingsStatusDisplay,
+  normalizeBookingStatusKey,
+  resolveBookingScheduleInstant,
+  sanitizeMyBookingsRow,
+  safeSortByCreatedAtDesc,
+  shouldEnableReviewCaptureForStatus,
+  type MyBookingsRow,
+} from '@/lib/my-bookings';
+import { resolveCustomerUserId } from '@/lib/customer-user-id';
+
+type MediaState = {
+  loading: boolean;
+  error: string | null;
+  total: number | null;
+  videos?: Array<{
+    id: string;
+    title: string;
+    blobUrl: string | null;
+    mediaSessionId: string | null;
+  }>;
+};
 
 export default function MyBookingsPage() {
-  const router = useRouter();
+  const { user, isLoading: authLoading } = useAuth();
+  const [bookings, setBookings] = useState<MyBookingsRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past' | 'cancelled'>('upcoming');
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [sortBy, setSortBy] = useState<'date' | 'price' | 'service'>('date');
-  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [mediaByBooking, setMediaByBooking] = useState<Record<string, MediaState>>({});
+  const [activeVideoByBooking, setActiveVideoByBooking] = useState<Record<string, string>>({});
 
-  // Mock booking data
-  const bookings = {
-    upcoming: [
-      {
-        id: 'BK001',
-        service: {
-          name: 'Deep House Cleaning',
-          vendor: 'Sparkle Clean Pro',
-          image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=300&h=200&fit=crop',
-          rating: 4.9,
-          reviewCount: 127
-        },
-        date: '2024-01-26',
-        time: '10:00 AM',
-        duration: '3-4 hours',
-        price: 120,
-        status: 'confirmed',
-        address: '123 Main St, New York, NY 10001',
-        notes: 'Please use eco-friendly products'
-      },
-      {
-        id: 'BK002',
-        service: {
-          name: 'TikTok Style Haircut',
-          vendor: 'Style Studio NYC',
-          image: 'https://images.unsplash.com/photo-1562322140-8baeececf3df?w=300&h=200&fit=crop',
-          rating: 4.8,
-          reviewCount: 89
-        },
-        date: '2024-01-28',
-        time: '2:00 PM',
-        duration: '1 hour',
-        price: 45,
-        status: 'confirmed',
-        address: '456 Fashion Ave, New York, NY 10002',
-        notes: 'Bring reference photos'
+  const fetchBookings = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const userId = resolveCustomerUserId(user?.id);
+      if (!userId) {
+        setBookings([]);
+        setError(null);
+        setLoading(false);
+        return;
       }
-    ],
-    past: [
-      {
-        id: 'BK003',
-        service: {
-          name: 'Plumbing Repair',
-          vendor: 'Quick Fix Plumbing',
-          image: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=300&h=200&fit=crop',
-          rating: 4.7,
-          reviewCount: 156
-        },
-        date: '2024-01-15',
-        time: '11:00 AM',
-        duration: '2 hours',
-        price: 85,
-        status: 'completed',
-        address: '123 Main St, New York, NY 10001',
-        notes: 'Fixed leaky faucet in kitchen'
-      },
-      {
-        id: 'BK004',
-        service: {
-          name: 'Instagram-Worthy Nails',
-          vendor: 'Nail Art Collective',
-          image: 'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=300&h=200&fit=crop',
-          rating: 4.9,
-          reviewCount: 203
-        },
-        date: '2024-01-10',
-        time: '3:00 PM',
-        duration: '1.5 hours',
-        price: 35,
-        status: 'completed',
-        address: '789 Beauty Blvd, New York, NY 10003',
-        notes: 'Gel manicure with nail art'
-      }
-    ],
-    cancelled: [
-      {
-        id: 'BK005',
-        service: {
-          name: 'Pet Grooming',
-          vendor: 'Pawsome Grooming',
-          image: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=300&h=200&fit=crop',
-          rating: 4.6,
-          reviewCount: 78
-        },
-        date: '2024-01-20',
-        time: '1:00 PM',
-        duration: '2 hours',
-        price: 45,
-        status: 'cancelled',
-        address: '321 Pet Street, New York, NY 10004',
-        notes: 'Pet was sick, had to reschedule',
-        cancellationReason: 'Pet was not feeling well'
-      }
-    ]
-  };
+      const query = new URLSearchParams();
+      query.set('userId', userId);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'confirmed':
-        return 'bg-green-100 text-green-800';
-      case 'completed':
-        return 'bg-blue-100 text-blue-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      const res = await fetch(`/api/bookings?${query.toString()}`, {
+        method: 'GET',
+        headers: {
+          'x-user-id': userId,
+        },
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || `Failed to load bookings (${res.status})`);
+      }
+      const raw = Array.isArray(json?.bookings) ? json.bookings : [];
+      const next = raw
+        .map(sanitizeMyBookingsRow)
+        .filter((row: MyBookingsRow | null): row is MyBookingsRow => row != null);
+      setBookings(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load bookings');
+      setBookings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    void fetchBookings();
+  }, [authLoading, user?.id, fetchBookings]);
+
+  const filtered = useMemo(() => {
+    const now = new Date();
+    return bookings
+      .filter((b) => {
+        const statusKey = normalizeBookingStatusKey(b.status);
+        const { instant: scheduleInstant } = resolveBookingScheduleInstant(
+          b.booking_date,
+          b.booking_time,
+          b.created_at
+        );
+        if (!bookingMatchesTab(activeTab, statusKey, scheduleInstant, now)) return false;
+        return bookingMatchesSearch(b, searchTerm);
+      })
+      .sort(safeSortByCreatedAtDesc);
+  }, [bookings, activeTab, searchTerm]);
+
+  const cancelBooking = async (bookingId: string) => {
+    if (!confirm('Cancel this booking?')) return;
+    setActionMessage(null);
+    setCancellingId(bookingId);
+    try {
+      const userId = resolveCustomerUserId(user?.id);
+      if (!userId) {
+        setActionMessage('Sign in required to cancel a booking.');
+        return;
+      }
+      const res = await fetch(`/api/bookings/${bookingId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userId ? { 'x-user-id': userId } : {}),
+        },
+        body: JSON.stringify({ reason: 'Customer requested cancellation', refund_requested: false }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || `Failed to cancel booking (${res.status})`);
+      }
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === bookingId
+            ? { ...b, status: String(json?.booking?.status || json?.status || 'cancelled') }
+            : b
+        )
+      );
+      setActionMessage(json?.message || 'Booking cancelled');
+    } catch (e) {
+      setActionMessage(e instanceof Error ? e.message : 'Failed to cancel booking');
+    } finally {
+      setCancellingId(null);
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'confirmed':
-        return <CheckCircle className="w-4 h-4" />;
-      case 'completed':
-        return <CheckCircle className="w-4 h-4" />;
-      case 'cancelled':
-        return <X className="w-4 h-4" />;
-      default:
-        return <AlertCircle className="w-4 h-4" />;
+  const loadBookingMedia = async (bookingId: string) => {
+    const userId = resolveCustomerUserId(user?.id);
+    if (!userId) {
+      setMediaByBooking((prev) => ({
+        ...prev,
+        [bookingId]: { loading: false, error: 'Sign in required to load media.', total: null },
+      }));
+      return;
     }
-  };
-
-  const filteredBookings = bookings[activeTab]
-    .filter(booking =>
-      booking.service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.service.vendor.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    .filter(booking => 
-      filterCategory === 'all' || 
-      booking.service.name.toLowerCase().includes(filterCategory.toLowerCase())
-    )
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'date':
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        case 'price':
-          return b.price - a.price;
-        case 'service':
-          return a.service.name.localeCompare(b.service.name);
-        default:
-          return 0;
+    setMediaByBooking((prev) => ({
+      ...prev,
+      [bookingId]: { loading: true, error: null, total: prev[bookingId]?.total ?? null },
+    }));
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/media`, {
+        method: 'GET',
+        headers: {
+          ...(userId ? { 'x-user-id': userId } : {}),
+        },
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || `Failed to load booking media (${res.status})`);
       }
-    });
-
-  const handleCancelBooking = (bookingId: string) => {
-    // In real app, this would call an API
-    if (confirm('Are you sure you want to cancel this booking?')) {
-      console.log('Cancelling booking:', bookingId);
-      alert('Booking cancelled successfully!');
+      const total = Array.isArray(json?.assets) ? json.assets.length : 0;
+      const videos = Array.isArray(json?.videos)
+        ? json.videos.map((v: { id?: unknown; title?: unknown; blobUrl?: unknown; mediaSessionId?: unknown }) => ({
+            id: String(v.id),
+            title: String(v.title || 'Service Video'),
+            blobUrl: v.blobUrl ? String(v.blobUrl) : null,
+            mediaSessionId: v.mediaSessionId ? String(v.mediaSessionId) : null,
+          }))
+        : [];
+      setMediaByBooking((prev) => ({
+        ...prev,
+        [bookingId]: { loading: false, error: null, total, videos },
+      }));
+      if (videos.length > 0) {
+        setActiveVideoByBooking((prev) => ({
+          ...prev,
+          [bookingId]: prev[bookingId] || videos[0].id,
+        }));
+      }
+    } catch (e) {
+      setMediaByBooking((prev) => ({
+        ...prev,
+        [bookingId]: {
+          loading: false,
+          error: e instanceof Error ? e.message : 'Failed to load media',
+          total: null,
+        },
+      }));
     }
   };
 
-  const handleRescheduleBooking = (bookingId: string) => {
-    // In real app, this would navigate to reschedule page
-    console.log('Rescheduling booking:', bookingId);
-    alert('Redirecting to reschedule page...');
-    // router.push(`/booking/${bookingId}/reschedule`);
-  };
-
-  const handleContactVendor = (vendorName: string) => {
-    // In real app, this would open chat or contact form
-    console.log('Contacting vendor:', vendorName);
-    alert(`Opening chat with ${vendorName}...`);
-    // router.push(`/messages?vendor=${vendorName}`);
-  };
-
-  const handleViewBookingDetails = (bookingId: string) => {
-    // In real app, this would navigate to detailed booking page
-    console.log('Viewing booking details:', bookingId);
-  };
-
-  const handleLeaveReview = (bookingId: string) => {
-    // In real app, this would navigate to review page
-    console.log('Leaving review for booking:', bookingId);
-  };
-
-  const handleReBook = (bookingId: string) => {
-    // In real app, this would navigate to booking page with pre-filled service
-    console.log('Re-booking service:', bookingId);
-  };
-
-  const handleAddToCalendar = (booking: any) => {
-    // In real app, this would add to user's calendar
-    const event = {
-      title: `${booking.service.name} - ${booking.service.vendor}`,
-      start: new Date(`${booking.date}T${booking.time}`),
-      end: new Date(`${booking.date}T${booking.time}`),
-      location: booking.address,
-      description: booking.notes || ''
-    };
-    console.log('Adding to calendar:', event);
-    alert('Event added to your calendar!');
-  };
-
-  const handleDownloadReceipt = (bookingId: string) => {
-    // In real app, this would generate and download PDF receipt
-    console.log('Downloading receipt for booking:', bookingId);
-    alert('Receipt downloaded successfully!');
-  };
-
-  const getDaysUntilBooking = (date: string) => {
-    const today = new Date();
-    const bookingDate = new Date(date);
-    const diffTime = bookingDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Tomorrow';
-    if (diffDays < 0) return 'Past';
-    return `In ${diffDays} days`;
-  };
+  const listNow = new Date();
+  const customerUserIdForReview = resolveCustomerUserId(user?.id);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={() => router.back()}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-                <span>Back</span>
-              </button>
-              <h1 className="text-2xl font-bold text-gray-900">My Bookings</h1>
-            </div>
-            
-            {/* Search and Filters */}
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Search bookings..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-              
-              {/* Quick Book Button */}
-              <button
-                onClick={() => router.push('/user-dashboard')}
-                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200"
-              >
-                + New Booking
-              </button>
-              
-              {/* View Mode Toggle */}
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                    viewMode === 'list' 
-                      ? 'bg-white text-purple-600 shadow-sm' 
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  List
-                </button>
-                <button
-                  onClick={() => setViewMode('calendar')}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                    viewMode === 'calendar' 
-                      ? 'bg-white text-purple-600 shadow-sm' 
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Calendar
-                </button>
-              </div>
-            </div>
+      <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">My Bookings</h1>
+            <p className="text-sm text-gray-600">Canonical customer booking history powered by backend data.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <ButtonLike onClick={fetchBookings} disabled={loading}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </ButtonLike>
+            <Link
+              href="/discover"
+              title="Browse services to book (Discover)"
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+            >
+              Book New Service
+            </Link>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Tabs */}
-        <div className="bg-white rounded-2xl shadow-sm mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6">
-              {[
-                { id: 'upcoming', label: 'Upcoming', count: bookings.upcoming.length },
-                { id: 'past', label: 'Past', count: bookings.past.length },
-                { id: 'cancelled', label: 'Cancelled', count: bookings.cancelled.length }
-              ].map((tab) => (
+        <div className="bg-white border rounded-lg p-3">
+          <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+            <div className="w-full md:w-96 space-y-1">
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search service, vendor, title, client name, or booking ID"
+                aria-describedby="my-bookings-search-hint"
+                className="border rounded px-3 py-2 text-sm w-full"
+              />
+              <p id="my-bookings-search-hint" className="text-xs text-gray-500">
+                Matches service name, vendor name, booking title, client name on the booking, or the booking ID.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {(['upcoming', 'past', 'cancelled'] as const).map((tab) => (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === tab.id
-                      ? 'border-purple-500 text-purple-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-1 rounded text-sm border ${
+                    activeTab === tab ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
                   }`}
                 >
-                  {tab.label} ({tab.count})
+                  {tab[0].toUpperCase() + tab.slice(1)}
                 </button>
               ))}
-            </nav>
-          </div>
-        </div>
-
-        {/* Enhanced Filters and Sorting */}
-        <div className="bg-white rounded-2xl shadow-sm mb-6 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              {/* Sort By */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Sort by:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                >
-                  <option value="date">Date</option>
-                  <option value="price">Price</option>
-                  <option value="service">Service Name</option>
-                </select>
-              </div>
-
-              {/* Filter by Category */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Filter:</span>
-                <select
-                  value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                  className="px-3 py-1 pr-8 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent min-w-[140px]"
-                >
-                  <option value="all">All Services</option>
-                  <option value="cleaning">Cleaning</option>
-                  <option value="beauty">Beauty</option>
-                  <option value="plumbing">Plumbing</option>
-                  <option value="pet">Pet Services</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Results Count */}
-            <div className="text-sm text-gray-600">
-              {filteredBookings.length} booking{filteredBookings.length !== 1 ? 's' : ''} found
             </div>
           </div>
         </div>
 
-        {/* Bookings List/Calendar View */}
-        <div className="space-y-4">
-          {viewMode === 'calendar' && (
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Calendar View</h3>
-                <p className="text-sm text-gray-600">Coming soon! For now, use the list view.</p>
+        {actionMessage ? (
+          <div className="text-sm rounded border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2">
+            {actionMessage}
+          </div>
+        ) : null}
+
+        {authLoading ? (
+          <PanelText text="Checking your session…" />
+        ) : !resolveCustomerUserId(user?.id) ? (
+          <div className="rounded border border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900 space-y-2">
+            <p className="font-medium">Sign in to see your bookings</p>
+            <p className="text-amber-800">We could not find a customer id in your session. Use the same account you book with.</p>
+            <Link href="/auth/login" className="inline-block text-blue-700 font-medium underline">
+              Go to sign in
+            </Link>
+          </div>
+        ) : loading ? (
+          <PanelText text="Loading bookings..." />
+        ) : error ? (
+          <div className="space-y-3">
+            <PanelText text={error} danger />
+            {/unauthorized|sign in/i.test(error) ? (
+              <div className="text-center text-sm">
+                <Link href="/auth/login" className="text-blue-700 font-medium underline">
+                  Sign in
+                </Link>
               </div>
-              <div className="flex justify-center">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+            ) : null}
+          </div>
+        ) : filtered.length === 0 ? (
+          <PanelText
+            text={`No ${activeTab} bookings found.`}
+            hint="Try another tab or book a service from Discover."
+          />
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((booking) => {
+              const mediaState = mediaByBooking[booking.id];
+              const statusKey = normalizeBookingStatusKey(booking.status);
+              const { instant: scheduleInstant } = resolveBookingScheduleInstant(
+                booking.booking_date,
+                booking.booking_time,
+                booking.created_at
+              );
+              const cancelState = classifyCancelBookingAction({
+                statusKey,
+                scheduleInstant,
+                now: listNow,
+              });
+              const vendorIdOk = Boolean((booking.vendor_id || '').trim());
+              const mediaButtonDisabled = !vendorIdOk || Boolean(mediaState?.loading);
+              const mediaButtonTitle = !vendorIdOk
+                ? 'A vendor is required on this booking before media can load.'
+                : mediaState?.loading
+                  ? 'Loading media…'
+                  : undefined;
+
+              return (
+                <div
+                  key={booking.id}
+                  className="bg-white border rounded-lg p-4"
+                  data-testid={`my-bookings-row-${booking.id}`}
                 >
-                  Switch to List View
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {viewMode === 'list' && (
-            <>
-              {filteredBookings.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center">
-              <div className="text-gray-400 mb-4">
-                <Calendar className="w-16 h-16 mx-auto" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No {activeTab} bookings</h3>
-              <p className="text-gray-600">
-                {activeTab === 'upcoming' 
-                  ? "You don't have any upcoming bookings. Start exploring services!"
-                  : activeTab === 'past'
-                  ? "You haven't completed any bookings yet."
-                  : "You haven't cancelled any bookings."
-                }
-              </p>
-              {activeTab === 'upcoming' && (
-                <div className="flex gap-3 mt-4">
-                  <button
-                    onClick={() => router.push('/user-dashboard')}
-                    className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200"
-                  >
-                    🚀 Start Booking
-                  </button>
-                  <button
-                    onClick={() => router.push('/search')}
-                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    🔍 Browse Services
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-                         filteredBookings.map((booking) => (
-               <div key={booking.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleViewBookingDetails(booking.id)}>
-                 <div className="p-6">
-                   <div className="flex items-start gap-4">
-                    {/* Service Image */}
-                    <img 
-                      src={booking.service.image} 
-                      alt={booking.service.name}
-                      className="w-20 h-20 object-cover rounded-lg flex-shrink-0"
-                    />
-                    
-                    {/* Booking Details */}
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900">{booking.service.name}</h3>
-                          <p className="text-gray-600">{booking.service.vendor}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                            <span className="text-sm text-gray-600">
-                              {booking.service.rating} ({booking.service.reviewCount} reviews)
-                            </span>
-                          </div>
-                        </div>
-                        
-                                                 {/* Status Badge and Countdown */}
-                         <div className="flex flex-col items-end gap-2">
-                           <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(booking.status)}`}>
-                             {getStatusIcon(booking.status)}
-                             <span className="capitalize">{booking.status}</span>
-                           </div>
-                           {activeTab === 'upcoming' && (
-                             <div className="text-xs text-purple-600 font-medium">
-                               {getDaysUntilBooking(booking.date)}
-                             </div>
-                           )}
-                         </div>
-                      </div>
-
-                      {/* Date & Time */}
-                      <div className="flex items-center gap-6 text-sm text-gray-600 mb-3">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          <span>{new Date(booking.date).toLocaleDateString('en-US', { 
-                            weekday: 'long', 
-                            year: 'numeric', 
-                            month: 'long', 
-                            day: 'numeric' 
-                          })}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          <span>{booking.time} ({booking.duration})</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <MapPin className="w-4 h-4" />
-                          <span>{booking.address}</span>
-                        </div>
-                      </div>
-
-                      {/* Notes */}
-                      {booking.notes && (
-                        <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                          <p className="text-sm text-gray-700">{booking.notes}</p>
-                        </div>
-                      )}
-
-                      {/* Cancellation Reason */}
-                      {booking.cancellationReason && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-                          <p className="text-sm text-red-700">
-                            <strong>Cancellation Reason:</strong> {booking.cancellationReason}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Price */}
-                      <div className="flex items-center justify-between">
-                        <div className="text-lg font-semibold text-gray-900">
-                          ${booking.price}
-                        </div>
-                        
-                                                 {/* Action Buttons */}
-                         <div className="flex items-center gap-2">
-                           {activeTab === 'upcoming' && (
-                             <>
-                               <button
-                                 onClick={(e) => { e.stopPropagation(); handleAddToCalendar(booking); }}
-                                 className="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-                                 title="Add to Calendar"
-                               >
-                                 📅
-                               </button>
-                               <button
-                                 onClick={(e) => { e.stopPropagation(); handleRescheduleBooking(booking.id); }}
-                                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                               >
-                                 Reschedule
-                               </button>
-                               <button
-                                 onClick={(e) => { e.stopPropagation(); handleCancelBooking(booking.id); }}
-                                 className="px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors"
-                               >
-                                 Cancel
-                               </button>
-                             </>
-                           )}
-                           
-                           {activeTab === 'past' && (
-                             <>
-                               <button
-                                 onClick={(e) => { e.stopPropagation(); handleLeaveReview(booking.id); }}
-                                 className="px-4 py-2 border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 transition-colors"
-                               >
-                                 Leave Review
-                               </button>
-                               <button
-                                 onClick={(e) => { e.stopPropagation(); handleReBook(booking.id); }}
-                                 className="px-4 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors"
-                               >
-                                 Re-book
-                               </button>
-                               <button
-                                 onClick={(e) => { e.stopPropagation(); handleDownloadReceipt(booking.id); }}
-                                 className="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-                                 title="Download Receipt"
-                               >
-                                 📄
-                               </button>
-                             </>
-                           )}
-                           
-                           <button
-                             onClick={(e) => { e.stopPropagation(); handleContactVendor(booking.service.vendor); }}
-                             className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200"
-                           >
-                             Contact Vendor
-                           </button>
-                         </div>
-                      </div>
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="font-semibold text-gray-900">{booking.service.name}</p>
+                      <p className="text-sm text-gray-600">Vendor: {booking.vendor.name}</p>
+                      <p className="text-sm text-gray-600">Booking ID: {booking.id}</p>
+                      {booking.title ? <p className="text-sm text-gray-600">Title: {booking.title}</p> : null}
+                    </div>
+                    <div className="text-sm text-right">
+                      <p className="font-semibold text-gray-900">${Number(booking.total_price || 0).toFixed(2)}</p>
+                      <p className="text-gray-600">Status: {formatMyBookingsStatusDisplay(booking.status)}</p>
                     </div>
                   </div>
+
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-700">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      {booking.booking_date || '-'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      {booking.booking_time || '-'}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {cancelState.mode === 'hidden' ? null : (
+                      <button
+                        type="button"
+                        disabled={cancelState.mode === 'disabled' || cancellingId === booking.id}
+                        title={cancelState.mode === 'disabled' ? cancelState.reason : undefined}
+                        onClick={() => {
+                          if (cancelState.mode !== 'enabled') return;
+                          void cancelBooking(booking.id);
+                        }}
+                        className="px-3 py-2 rounded border border-red-300 text-red-700 text-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {cancellingId === booking.id ? 'Cancelling...' : 'Cancel Booking'}
+                      </button>
+                    )}
+                    {cancelState.mode === 'disabled' && cancelState.reason ? (
+                      <span className="text-xs text-gray-600 max-w-xs">{cancelState.reason}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={mediaButtonDisabled}
+                      title={mediaButtonTitle}
+                      onClick={() => {
+                        if (mediaButtonDisabled) return;
+                        void loadBookingMedia(booking.id);
+                      }}
+                      className="px-3 py-2 rounded border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Load Authorized Media
+                    </button>
+                    {mediaState?.loading ? <span className="text-xs text-gray-500">Loading media...</span> : null}
+                    {typeof mediaState?.total === 'number' ? (
+                      <span className="text-xs text-green-700">Media assets: {mediaState.total}</span>
+                    ) : null}
+                    {mediaState?.error ? <span className="text-xs text-red-700">{mediaState.error}</span> : null}
+                  </div>
+                  {Array.isArray(mediaState?.videos) && mediaState.videos.length > 0 ? (
+                    <div className="mt-3 rounded border bg-gray-50 p-3">
+                      <p className="mb-2 text-sm font-medium text-gray-800">Service Video Review Capture</p>
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {mediaState.videos.map((video) => (
+                          <button
+                            type="button"
+                            key={video.id}
+                            onClick={() => setActiveVideoByBooking((prev) => ({ ...prev, [booking.id]: video.id }))}
+                            className={`rounded border px-2 py-1 text-xs ${
+                              activeVideoByBooking[booking.id] === video.id
+                                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                : 'border-gray-300 bg-white text-gray-700'
+                            }`}
+                          >
+                            {video.title}
+                          </button>
+                        ))}
+                      </div>
+                      {(() => {
+                        const activeVideoId = activeVideoByBooking[booking.id];
+                        const video = mediaState.videos.find((v) => v.id === activeVideoId) || mediaState.videos[0];
+                        if (!video || !video.blobUrl || !video.mediaSessionId) {
+                          return <p className="text-xs text-gray-500">Video playback unavailable for this media asset.</p>;
+                        }
+                        if (!vendorIdOk) {
+                          return (
+                            <p className="text-xs text-gray-500">
+                              Video review capture needs a vendor on this booking. Load media is disabled until vendor data is present.
+                            </p>
+                          );
+                        }
+                        return (
+                          <SmartVideoPlayer
+                            src={video.blobUrl}
+                            bookingId={booking.id}
+                            vendorId={booking.vendor_id}
+                            mediaSessionId={video.mediaSessionId}
+                            reviewCaptureEnabled={shouldEnableReviewCaptureForStatus(statusKey)}
+                            userId={customerUserIdForReview ?? undefined}
+                          />
+                        );
+                      })()}
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-            ))
-          )}
-            </>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
-} 
+}
+
+function PanelText({ text, danger = false, hint }: { text: string; danger?: boolean; hint?: string }) {
+  return (
+    <div className={`rounded border px-4 py-8 text-center text-sm ${danger ? 'border-red-200 bg-red-50 text-red-700' : 'border-gray-200 bg-white text-gray-600'}`}>
+      <p>{text}</p>
+      {hint ? <p className="mt-2 text-xs text-gray-500">{hint}</p> : null}
+    </div>
+  );
+}
+
+function ButtonLike({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  children: import('react').ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {children}
+    </button>
+  );
+}

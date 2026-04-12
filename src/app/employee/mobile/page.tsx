@@ -38,8 +38,35 @@ import Link from 'next/link';
 // - POST /api/employee/device/heartbeat - Send device status updates
 // - All endpoints require employee authentication via paired device
 
+type EmployeeJobVideo = {
+  id: number;
+  title: string;
+  duration: number;
+  uploadedAt: string;
+  status: string;
+};
+
+type EmployeeJob = {
+  id: number;
+  title: string;
+  client: string;
+  phone: string;
+  email: string;
+  address: string;
+  status: string;
+  priority: string;
+  estimatedDuration: string;
+  assignedAt: string;
+  acceptedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  notes: string;
+  videos: EmployeeJobVideo[];
+  managerNotes: string;
+};
+
 // Mock data for employee view
-const mockEmployeeJobs = [
+const mockEmployeeJobs: EmployeeJob[] = [
   {
     id: 1,
     title: 'Water Heater Repair',
@@ -92,9 +119,9 @@ const mockEmployeeProfile = {
 };
 
 export default function EmployeeMobilePage() {
-  const [jobs, setJobs] = useState(mockEmployeeJobs);
+  const [jobs, setJobs] = useState<EmployeeJob[]>(mockEmployeeJobs);
   const [profile, setProfile] = useState(mockEmployeeProfile);
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [selectedJob, setSelectedJob] = useState<EmployeeJob | null>(null);
   const [showJobDetails, setShowJobDetails] = useState(false);
   const [showVideoRecording, setShowVideoRecording] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -106,16 +133,18 @@ export default function EmployeeMobilePage() {
 
   // Recording timer effect
   useEffect(() => {
-    let interval;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (recordingState === 'recording') {
       interval = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
+        setRecordingTime((prev) => prev + 1);
       }, 1000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval !== undefined) clearInterval(interval);
+    };
   }, [recordingState]);
 
-  const handleAcceptJob = (jobId) => {
+  const handleAcceptJob = (jobId: number) => {
     setJobs(jobs.map(job => 
       job.id === jobId 
         ? { ...job, status: 'accepted', acceptedAt: new Date().toISOString() }
@@ -126,7 +155,7 @@ export default function EmployeeMobilePage() {
     console.log('Job accepted:', jobId);
   };
 
-  const handleStartJob = (jobId) => {
+  const handleStartJob = (jobId: number) => {
     setJobs(jobs.map(job => 
       job.id === jobId 
         ? { ...job, status: 'in-progress', startedAt: new Date().toISOString() }
@@ -137,7 +166,7 @@ export default function EmployeeMobilePage() {
     console.log('Job started:', jobId);
   };
 
-  const handleCompleteJob = (jobId) => {
+  const handleCompleteJob = (jobId: number) => {
     setJobs(jobs.map(job => 
       job.id === jobId 
         ? { ...job, status: 'completed', completedAt: new Date().toISOString() }
@@ -194,7 +223,7 @@ export default function EmployeeMobilePage() {
     }, 2000);
   };
 
-  const handleAddNote = (jobId) => {
+  const handleAddNote = (jobId: number) => {
     if (newNote.trim()) {
       setJobs(jobs.map(job => 
         job.id === jobId 
@@ -208,7 +237,7 @@ export default function EmployeeMobilePage() {
     }
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case 'assigned': return 'bg-yellow-100 text-yellow-800';
       case 'accepted': return 'bg-blue-100 text-blue-800';
@@ -218,7 +247,7 @@ export default function EmployeeMobilePage() {
     }
   };
 
-  const getPriorityColor = (priority) => {
+  const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'high': return 'bg-red-100 text-red-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
@@ -227,7 +256,7 @@ export default function EmployeeMobilePage() {
     }
   };
 
-  const formatTime = (seconds) => {
+  const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;

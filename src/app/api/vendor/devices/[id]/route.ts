@@ -3,7 +3,7 @@ import { prisma } from "@/server/db";
 import { getVendorIdFromRequest } from "@/lib/auth";
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export async function DELETE(request: Request, { params }: RouteParams) {
@@ -14,7 +14,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     const device = await (prisma as any).device.findUnique({
       where: { id },

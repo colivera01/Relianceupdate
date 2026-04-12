@@ -1,6 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import { 
   ChevronLeft, 
   Calendar, 
@@ -8,7 +10,6 @@ import {
   MapPin, 
   Star, 
   CheckCircle,
-  CreditCard,
   User,
   Phone,
   Mail
@@ -17,7 +18,8 @@ import {
 export default function BookingPage() {
   const params = useParams();
   const router = useRouter();
-  const serviceId = params.serviceId as string;
+  const { user } = useAuth();
+  const serviceId = String(params?.serviceId ?? "");
   
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string>('');
@@ -28,12 +30,14 @@ export default function BookingPage() {
     address: '',
     notes: ''
   });
-  const [currentStep, setCurrentStep] = useState<'date' | 'details' | 'review' | 'payment'>('date');
+  const [currentStep, setCurrentStep] = useState<'date' | 'details' | 'review'>('date');
   const [service, setService] = useState<any>(null);
   const [availability, setAvailability] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
 
   // Fetch service details and availability
   useEffect(() => {
@@ -50,7 +54,8 @@ export default function BookingPage() {
         setService(serviceData.service);
 
         // Fetch availability
-        const availabilityResponse = await fetch(`/api/availability/vendor/${serviceData.service.vendor.id}`);
+        setAvailabilityLoading(true);
+        const availabilityResponse = await fetch(`/api/availability/vendor/${serviceData.service.vendor.id}?serviceId=${encodeURIComponent(String(serviceId))}`);
         if (!availabilityResponse.ok) {
           throw new Error('Failed to fetch availability');
         }
@@ -60,6 +65,7 @@ export default function BookingPage() {
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
+        setAvailabilityLoading(false);
         setLoading(false);
       }
     };
@@ -69,22 +75,31 @@ export default function BookingPage() {
     }
   }, [serviceId]);
 
-  // Mock available dates and times (in real app, this would come from availability API)
-  const availableDates = [
-    { date: '2024-01-25', day: 'Thursday', available: true },
-    { date: '2024-01-26', day: 'Friday', available: true },
-    { date: '2024-01-27', day: 'Saturday', available: true },
-    { date: '2024-01-28', day: 'Sunday', available: false },
-    { date: '2024-01-29', day: 'Monday', available: true },
-    { date: '2024-01-30', day: 'Tuesday', available: true },
-  ];
+  type DateOption = { date: string; day: string; available: boolean };
+  const availableDates: DateOption[] = Array.isArray(availability?.dates)
+    ? availability.dates.map((entry: { date: string; available?: boolean }) => ({
+        date: String(entry.date),
+        day: new Date(String(entry.date)).toLocaleDateString("en-US", {
+          weekday: "long",
+        }),
+        available: Boolean(entry.available),
+      }))
+    : [];
 
-  const availableTimes = [
-    '9:00 AM', '10:00 AM', '11:00 AM', '2:00 PM', '3:00 PM', '4:00 PM'
-  ];
+  const selectedDateData = Array.isArray(availability?.dates)
+    ? availability.dates.find((entry: any) => String(entry.date) === selectedDate)
+    : null;
+
+  const availableTimes = Array.isArray(selectedDateData?.slots)
+    ? selectedDateData.slots.map((slot: any) => ({
+        time: String(slot.time).slice(0, 5),
+        available: Boolean(slot.available),
+      }))
+    : [];
 
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
+    setSelectedTime('');
   };
 
   const handleTimeSelect = (time: string) => {
@@ -102,8 +117,6 @@ export default function BookingPage() {
       }
     } else if (currentStep === 'details') {
       setCurrentStep('review');
-    } else if (currentStep === 'review') {
-      setCurrentStep('payment');
     }
   };
 
@@ -112,9 +125,17 @@ export default function BookingPage() {
       setCurrentStep('date');
     } else if (currentStep === 'review') {
       setCurrentStep('details');
-    } else if (currentStep === 'payment') {
-      setCurrentStep('review');
     }
+  };
+
+  const formatSlotTime = (time24Hour: string) => {
+    const [hoursRaw, minutesRaw] = String(time24Hour).split(':');
+    const hours = Number(hoursRaw);
+    const minutes = minutesRaw || '00';
+    if (!Number.isFinite(hours)) return time24Hour;
+    const suffix = hours >= 12 ? 'PM' : 'AM';
+    const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+    return `${displayHour}:${minutes} ${suffix}`;
   };
 
   const handleConfirmBooking = async () => {
@@ -127,15 +148,38 @@ export default function BookingPage() {
       setSubmitting(true);
       setError(null);
 
-      // Convert time format for API
-      const time24Hour = convertTo24Hour(selectedTime);
-      
+      const userId = resolveCustomerUserId(user?.id);
+
+      const slotValidation = await fetch('/api/availability/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vendorId: service.vendor.id,
+          serviceId: String(serviceId),
+          booking_date: selectedDate,
+          booking_time: selectedTime,
+        }),
+      });
+      const slotValidationJson = await slotValidation.json();
+      if (!slotValidation.ok || slotValidationJson?.available === false) {
+        throw new Error(slotValidationJson?.reason || 'The selected time is no longer available. Please choose another slot.');
+      }
+
+      const catalogPrice = Number(service?.price);
+      const resolvedPrice = Number.isFinite(catalogPrice) && catalogPrice >= 0 ? catalogPrice : 0;
+
       const bookingData = {
-        service_id: parseInt(serviceId),
+        service_id: String(serviceId),
         vendor_id: service.vendor.id,
         booking_date: selectedDate,
-        booking_time: time24Hour,
+        booking_time: selectedTime,
+        amount: resolvedPrice,
         user_notes: userDetails.notes,
+        title: service.name,
+        client_name: userDetails.name,
+        client_email: userDetails.email,
+        client_phone: userDetails.phone,
+        user_id: userId,
         custom_fields: {
           customer_name: userDetails.name,
           customer_email: userDetails.email,
@@ -148,6 +192,7 @@ export default function BookingPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(userId ? { 'x-user-id': userId } : {}),
         },
         body: JSON.stringify(bookingData),
       });
@@ -158,29 +203,21 @@ export default function BookingPage() {
       }
 
       const bookingResult = await response.json();
-      
-      // Redirect to confirmation page with booking ID
-      router.push(`/booking/${serviceId}/confirmation?bookingId=${bookingResult.booking.id}`);
+      const createdBookingId = bookingResult?.booking?.id ? String(bookingResult.booking.id) : '';
+      if (!createdBookingId) {
+        throw new Error('Booking was created but response is missing booking ID');
+      }
+
+      // Redirect to confirmation page with canonical persisted booking ID.
+      router.push(`/booking/${serviceId}/confirmation?bookingId=${encodeURIComponent(createdBookingId)}`);
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create booking');
+      const message = err instanceof Error ? err.message : 'Failed to create booking';
+      setSubmitError(message);
+      setError(message);
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const convertTo24Hour = (time12Hour: string) => {
-    const [time, period] = time12Hour.split(' ');
-    const [hours, minutes] = time.split(':');
-    let hour24 = parseInt(hours);
-    
-    if (period === 'PM' && hour24 !== 12) {
-      hour24 += 12;
-    } else if (period === 'AM' && hour24 === 12) {
-      hour24 = 0;
-    }
-    
-    return `${hour24.toString().padStart(2, '0')}:${minutes}:00`;
   };
 
   const isFormValid = () => {
@@ -266,26 +303,24 @@ export default function BookingPage() {
               <div className="flex items-center gap-2">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                   currentStep === 'details' ? 'bg-purple-500 text-white' : 
-                  ['review', 'payment'].includes(currentStep) ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+                  currentStep === 'review' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
                 }`}>
                   2
                 </div>
                 <span className={`text-sm ${currentStep === 'details' ? 'text-purple-600 font-medium' : 
-                  ['review', 'payment'].includes(currentStep) ? 'text-green-600' : 'text-gray-500'}`}>
+                  currentStep === 'review' ? 'text-green-600' : 'text-gray-500'}`}>
                   Details
                 </span>
               </div>
               <div className="w-8 h-0.5 bg-gray-200"></div>
               <div className="flex items-center gap-2">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  currentStep === 'review' ? 'bg-purple-500 text-white' : 
-                  currentStep === 'payment' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+                  currentStep === 'review' ? 'bg-purple-500 text-white' : 'bg-gray-200 text-gray-600'
                 }`}>
                   3
                 </div>
-                <span className={`text-sm ${currentStep === 'review' ? 'text-purple-600 font-medium' : 
-                  currentStep === 'payment' ? 'text-green-600' : 'text-gray-500'}`}>
-                  Review
+                <span className={`text-sm ${currentStep === 'review' ? 'text-purple-600 font-medium' : 'text-gray-500'}`}>
+                  Review & confirm
                 </span>
               </div>
             </div>
@@ -312,10 +347,15 @@ export default function BookingPage() {
                       <span>Unavailable</span>
                     </div>
                   </div>
+                  {availabilityLoading && (
+                    <p className="text-sm text-gray-500 mb-3">Loading live availability...</p>
+                  )}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {availableDates.map((date) => (
                       <button
                         key={date.date}
+                        type="button"
+                        data-testid={date.available ? `booking-slot-date-${date.date}` : undefined}
                         onClick={() => handleDateSelect(date.date)}
                         disabled={!date.available}
                         className={`p-4 rounded-xl border-2 text-left transition-all ${
@@ -353,20 +393,28 @@ export default function BookingPage() {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Available Times</h3>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {availableTimes.map((time) => (
+                      {availableTimes.map((timeSlot: any) => (
                         <button
-                          key={time}
-                          onClick={() => handleTimeSelect(time)}
+                          key={timeSlot.time}
+                          type="button"
+                          data-testid={timeSlot.available ? `booking-slot-time-${timeSlot.time}` : undefined}
+                          onClick={() => handleTimeSelect(timeSlot.time)}
+                          disabled={!timeSlot.available}
                           className={`p-3 rounded-lg border-2 transition-all ${
-                            selectedTime === time 
+                            selectedTime === timeSlot.time 
                               ? 'border-purple-500 bg-purple-50 text-purple-700' 
-                              : 'border-gray-200 hover:border-purple-300'
+                              : timeSlot.available
+                                ? 'border-gray-200 hover:border-purple-300'
+                                : 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
                           }`}
                         >
-                          {time}
+                          {formatSlotTime(timeSlot.time)}
                         </button>
                       ))}
                     </div>
+                    {!availableTimes.some((slot: any) => slot.available) && (
+                      <p className="text-sm text-gray-500 mt-3">No available slots for this date. Please select another date.</p>
+                    )}
                   </div>
                 )}
 
@@ -494,7 +542,7 @@ export default function BookingPage() {
                     </div>
                     <div className="flex items-center gap-2 text-gray-700 mt-1">
                       <Clock className="w-4 h-4" />
-                      <span>{selectedTime}</span>
+                      <span>{formatSlotTime(selectedTime)}</span>
                     </div>
                   </div>
 
@@ -527,61 +575,23 @@ export default function BookingPage() {
                     )}
                   </div>
                 </div>
-              </div>
-            )}
 
-            {currentStep === 'payment' && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Payment</h2>
-                
-                <div className="space-y-6">
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-3">Payment Method</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3 p-3 border border-purple-500 bg-purple-50 rounded-lg">
-                        <CreditCard className="w-5 h-5 text-purple-600" />
-                        <span className="font-medium">Credit/Debit Card</span>
-                        <CheckCircle className="w-5 h-5 text-purple-600 ml-auto" />
-                      </div>
-                      <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
-                        <div className="w-5 h-5 border-2 border-gray-300 rounded"></div>
-                        <span>PayPal</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <h3 className="font-semibold text-gray-900 mb-3">Card Details</h3>
-                    <div className="space-y-4">
-                      <input
-                        type="text"
-                        placeholder="Card Number"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      />
-                      <div className="grid grid-cols-2 gap-4">
-                        <input
-                          type="text"
-                          placeholder="MM/YY"
-                          className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        />
-                        <input
-                          type="text"
-                          placeholder="CVC"
-                          className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-sm text-amber-900 font-medium mb-1">No in-app payment yet</p>
+                  <p className="text-sm text-amber-800">
+                    Reliance does not collect card or wallet payments on this step. Confirming saves your booking and
+                    service price to your account; the vendor may contact you for payment separately.
+                  </p>
                 </div>
               </div>
             )}
 
             {/* Error Display */}
-            {error && (
+            {(error || submitError) && (
               <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <div className="flex items-center gap-2 text-red-800">
                   <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <span className="text-sm">{error}</span>
+                  <span className="text-sm">{submitError || error}</span>
                 </div>
               </div>
             )}
@@ -598,13 +608,13 @@ export default function BookingPage() {
               )}
               
               <div className="ml-auto">
-                {currentStep === 'payment' ? (
+                {currentStep === 'review' ? (
                   <button
                     onClick={handleConfirmBooking}
                     disabled={submitting}
                     className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {submitting ? 'Creating Booking...' : 'Confirm Booking'}
+                    {submitting ? 'Creating Booking...' : 'Confirm booking'}
                   </button>
                 ) : (
                   <button
@@ -648,7 +658,7 @@ export default function BookingPage() {
                     {selectedTime && (
                       <>
                         <span>•</span>
-                        <span>{selectedTime}</span>
+                        <span>{formatSlotTime(selectedTime)}</span>
                       </>
                     )}
                   </div>

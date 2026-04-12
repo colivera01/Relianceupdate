@@ -1,84 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { getUserIdFromRequest } from '@/lib/auth';
+import { mapBookingToContract } from '@/lib/booking-shape';
 
 // TODO: Import your database models
 // import { BookingModel } from '@/lib/models/Booking';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const bookingId = parseInt(params.id);
-
-    if (isNaN(bookingId)) {
+    const { id: bookingId } = await params;
+    if (!bookingId) {
       return NextResponse.json(
         { error: 'Invalid booking ID' },
         { status: 400 }
       );
     }
 
-    // TODO: Replace with actual database query
-    // const booking = await BookingModel.findById(bookingId, {
-    //   include: {
-    //     service: true,
-    //     vendor: true,
-    //     user: true,
-    //   },
-    // });
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: customer context is required' },
+        { status: 401 }
+      );
+    }
 
-    // Mock booking data
-    const mockBooking = {
-      id: bookingId,
-      service: {
-        id: 1,
-        name: 'Deep House Cleaning',
-        description: 'Complete house cleaning service including kitchen, bathrooms, and living areas',
-        price: 120,
-        duration: '3-4 hours',
-        features: ['Kitchen deep clean', 'Bathroom sanitization', 'Dusting', 'Vacuuming'],
-        inclusions: ['Cleaning supplies', 'Equipment', 'Insurance'],
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        userId: true,
+        vendorId: true,
+        serviceId: true,
+        title: true,
+        clientName: true,
+        amount: true,
+        status: true,
+        scheduledFor: true,
+        date: true,
+        createdAt: true,
+        updatedAt: true,
+        customerMetadata: true,
+        vendor: {
+          select: {
+            id: true,
+            name: true,
+            businessName: true,
+            phone: true,
+            email: true,
+            city: true,
+            state: true,
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            price: true,
+          },
+        },
       },
-      vendor: {
-        id: 1,
-        name: 'Sparkle Clean Pro',
-        rating: 4.9,
-        reviewCount: 127,
-        phone: '(555) 123-4567',
-        email: 'contact@sparklecleanpro.com',
-        address: '123 Main St, Springfield, IL',
-        verified: true,
-        insured: true,
-        bonded: true,
-      },
-      user: {
-        id: 1,
-        name: 'John Doe',
-        email: 'john@example.com',
-        phone: '(555) 987-6543',
-        address: '456 Oak Ave, Springfield, IL',
-      },
-      booking_date: '2024-01-26',
-      booking_time: '10:00:00',
-      status: 'confirmed',
-      total_price: 120,
-      original_price: 150,
-      discount_amount: 30,
-      user_notes: 'Please clean the kitchen thoroughly, especially the oven',
-      vendor_notes: 'Will bring extra supplies for kitchen deep clean',
-      payment_status: 'paid',
-      payment_method: 'credit_card',
-      created_at: '2024-01-15T10:30:00Z',
-      updated_at: '2024-01-15T10:30:00Z',
-    };
+    });
 
-    if (!mockBooking) {
+    if (!booking) {
       return NextResponse.json(
         { error: 'Booking not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ booking: mockBooking });
+    if (booking.userId !== userId) {
+      return NextResponse.json(
+        { error: 'Forbidden: booking does not belong to this user' },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.json({
+      booking: mapBookingToContract(booking as any),
+    });
   } catch (error) {
     console.error('Error fetching booking:', error);
     return NextResponse.json(
@@ -90,49 +93,87 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const bookingId = parseInt(params.id);
+    const { id: bookingId } = await params;
     const body = await request.json();
-    const { user_notes, custom_fields, status } = body;
+    const { status, booking_date, booking_time, title, client_name } = body || {};
 
-    if (isNaN(bookingId)) {
+    if (!bookingId) {
       return NextResponse.json(
         { error: 'Invalid booking ID' },
         { status: 400 }
       );
     }
 
-    // TODO: Validate booking exists and user has permission
-    // const booking = await BookingModel.findById(bookingId);
-    // if (!booking) {
-    //   return NextResponse.json(
-    //     { error: 'Booking not found' },
-    //     { status: 404 }
-    //   );
-    // }
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: customer context is required' },
+        { status: 401 }
+      );
+    }
 
-    // TODO: Update booking in database
-    // const updatedBooking = await BookingModel.update(bookingId, {
-    //   user_notes,
-    //   custom_fields,
-    //   status,
-    //   updated_at: new Date(),
-    // });
+    const existing = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, userId: true },
+    });
 
-    // Mock update
-    const mockUpdatedBooking = {
-      id: bookingId,
-      user_notes,
-      custom_fields,
-      status: status || 'confirmed',
-      updated_at: new Date().toISOString(),
-    };
+    if (!existing) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+    }
+    if (existing.userId !== userId) {
+      return NextResponse.json(
+        { error: 'Forbidden: booking does not belong to this user' },
+        { status: 403 }
+      );
+    }
+
+    let scheduledForUpdate: Date | undefined;
+    if (booking_date || booking_time) {
+      const date = booking_date || new Date().toISOString().split('T')[0];
+      const time = booking_time || '00:00:00';
+      const combined = new Date(`${date}T${time}`);
+      if (!Number.isNaN(combined.getTime())) {
+        scheduledForUpdate = combined;
+      }
+    }
+
+    const updated = await prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        ...(status ? { status: String(status).toUpperCase() } : {}),
+        ...(title !== undefined ? { title: title ? String(title) : null } : {}),
+        ...(client_name !== undefined ? { clientName: client_name ? String(client_name) : null } : {}),
+        ...(scheduledForUpdate ? { scheduledFor: scheduledForUpdate, date: scheduledForUpdate } : {}),
+      },
+      select: {
+        id: true,
+        userId: true,
+        vendorId: true,
+        serviceId: true,
+        title: true,
+        clientName: true,
+        amount: true,
+        status: true,
+        scheduledFor: true,
+        date: true,
+        createdAt: true,
+        updatedAt: true,
+        customerMetadata: true,
+        vendor: {
+          select: { id: true, name: true, businessName: true, phone: true, email: true, city: true, state: true },
+        },
+        service: {
+          select: { id: true, name: true, description: true, price: true },
+        },
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      booking: mockUpdatedBooking,
+      booking: mapBookingToContract(updated as any),
       message: 'Booking updated successfully',
     });
   } catch (error) {
@@ -146,32 +187,44 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const bookingId = parseInt(params.id);
+    const { id: bookingId } = await params;
 
-    if (isNaN(bookingId)) {
+    if (!bookingId) {
       return NextResponse.json(
         { error: 'Invalid booking ID' },
         { status: 400 }
       );
     }
 
-    // TODO: Validate booking exists and user has permission
-    // const booking = await BookingModel.findById(bookingId);
-    // if (!booking) {
-    //   return NextResponse.json(
-    //     { error: 'Booking not found' },
-    //     { status: 404 }
-    //   );
-    // }
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: customer context is required' },
+        { status: 401 }
+      );
+    }
 
-    // TODO: Soft delete or mark as cancelled
-    // await BookingModel.update(bookingId, {
-    //   status: 'cancelled',
-    //   cancelled_at: new Date(),
-    // });
+    const existing = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, userId: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+    }
+    if (existing.userId !== userId) {
+      return NextResponse.json(
+        { error: 'Forbidden: booking does not belong to this user' },
+        { status: 403 }
+      );
+    }
+
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: 'CANCELED' },
+    });
 
     return NextResponse.json({
       success: true,

@@ -17,6 +17,21 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+type ServiceFormData = {
+  name: string;
+  category: string;
+  description: string;
+  basePrice: string;
+  currentPrice: string;
+  discount: string;
+  duration: string;
+  features: string[];
+  inclusions: string[];
+  images: string[];
+  videos: string[];
+  mediaType: string;
+};
+
 export default function VendorServicesPage() {
   const [services, setServices] = useState([
     {
@@ -64,8 +79,8 @@ export default function VendorServicesPage() {
   ]);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingService, setEditingService] = useState(null);
-  const [formData, setFormData] = useState({
+  const [editingService, setEditingService] = useState<(typeof services)[number] | null>(null);
+  const [formData, setFormData] = useState<ServiceFormData>({
     name: '',
     category: '',
     description: '',
@@ -102,13 +117,15 @@ export default function VendorServicesPage() {
       duration: '',
       features: [''],
       inclusions: [''],
-      images: []
+      images: [],
+      videos: [],
+      mediaType: 'all'
     });
     setEditingService(null);
     setShowCreateModal(true);
   };
 
-  const handleEditService = (service) => {
+  const handleEditService = (service: (typeof services)[number]) => {
     setFormData({
       name: service.name,
       category: service.category,
@@ -119,7 +136,9 @@ export default function VendorServicesPage() {
       duration: service.duration,
       features: [...service.features, ''],
       inclusions: [...service.inclusions, ''],
-      images: service.images
+      images: service.images,
+      videos: service.videos ?? [],
+      mediaType: 'all'
     });
     setEditingService(service);
     setShowCreateModal(true);
@@ -138,6 +157,7 @@ export default function VendorServicesPage() {
       features: formData.features.filter(f => f.trim()),
       inclusions: formData.inclusions.filter(i => i.trim()),
       images: formData.images,
+      videos: formData.videos,
       isActive: true,
       createdAt: editingService ? editingService.createdAt : new Date().toISOString().split('T')[0]
     };
@@ -152,11 +172,11 @@ export default function VendorServicesPage() {
     setEditingService(null);
   };
 
-  const handleDeleteService = (serviceId) => {
+  const handleDeleteService = (serviceId: number) => {
     setServices(services.filter(s => s.id !== serviceId));
   };
 
-  const handleToggleActive = (serviceId) => {
+  const handleToggleActive = (serviceId: number) => {
     setServices(services.map(s => 
       s.id === serviceId ? { ...s, isActive: !s.isActive } : s
     ));
@@ -169,14 +189,14 @@ export default function VendorServicesPage() {
     }));
   };
 
-  const handleRemoveFeature = (index) => {
+  const handleRemoveFeature = (index: number) => {
     setFormData(prev => ({
       ...prev,
       features: prev.features.filter((_, i) => i !== index)
     }));
   };
 
-  const handleUpdateFeature = (index, value) => {
+  const handleUpdateFeature = (index: number, value: string) => {
     setFormData(prev => ({
       ...prev,
       features: prev.features.map((f, i) => i === index ? value : f)
@@ -190,22 +210,22 @@ export default function VendorServicesPage() {
     }));
   };
 
-  const handleRemoveInclusion = (index) => {
+  const handleRemoveInclusion = (index: number) => {
     setFormData(prev => ({
       ...prev,
       inclusions: prev.inclusions.filter((_, i) => i !== index)
     }));
   };
 
-  const handleUpdateInclusion = (index, value) => {
+  const handleUpdateInclusion = (index: number, value: string) => {
     setFormData(prev => ({
       ...prev,
       inclusions: prev.inclusions.map((i, idx) => idx === index ? value : i)
     }));
   };
 
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
     const imageUrls = files.map(file => URL.createObjectURL(file));
     setFormData(prev => ({
       ...prev,
@@ -213,15 +233,15 @@ export default function VendorServicesPage() {
     }));
   };
 
-  const handleRemoveImage = (index) => {
+  const handleRemoveImage = (index: number) => {
     setFormData(prev => ({
       ...prev,
       images: prev.images.filter((_, i) => i !== index)
     }));
   };
 
-  const handleVideoUpload = (e) => {
-    const files = Array.from(e.target.files);
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
     const videoUrls = files.map(file => URL.createObjectURL(file));
     setFormData(prev => ({
       ...prev,
@@ -229,14 +249,14 @@ export default function VendorServicesPage() {
     }));
   };
 
-  const handleRemoveVideo = (index) => {
+  const handleRemoveVideo = (index: number) => {
     setFormData(prev => ({
       ...prev,
       videos: prev.videos.filter((_, i) => i !== index)
     }));
   };
 
-  const handleMediaTypeChange = (type) => {
+  const handleMediaTypeChange = (type: string) => {
     setFormData(prev => ({
       ...prev,
       mediaType: type

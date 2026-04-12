@@ -1,12 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/server/db';
-
-// Guard against production
-if (process.env.NODE_ENV === 'production') {
-  throw new Error('Reset not allowed in production');
-}
+import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
+import { prisma } from "@/server/db";
 
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { error: "Reset not allowed in production" },
+      { status: 403 }
+    );
+  }
+
   // Check authorization
   const authHeader = request.headers.get('authorization');
   const expectedToken = `Bearer ${process.env.SEED_SECRET}`;
@@ -22,21 +25,35 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { seedBatchId } = body;
 
-    let deleteCriteria = 'all demo data';
-    let whereClause = { demo: true };
+    let deleteCriteria = "all demo data";
+    const whereClause =
+      seedBatchId != null && seedBatchId !== ""
+        ? { seedBatchId: String(seedBatchId) }
+        : { demo: true };
 
-    if (seedBatchId) {
+    if (seedBatchId != null && seedBatchId !== "") {
       deleteCriteria = `seedBatchId: ${seedBatchId}`;
-      whereClause = { seedBatchId };
     }
 
+    const w = whereClause as Prisma.ReviewWhereInput;
+
     // Delete in reverse order due to foreign key constraints
-    const deletedReviews = await prisma.review.deleteMany({ where: whereClause });
-    const deletedBookings = await prisma.booking.deleteMany({ where: whereClause });
-    const deletedServices = await prisma.service.deleteMany({ where: whereClause });
-    const deletedEmployees = await prisma.employee.deleteMany({ where: whereClause });
-    const deletedUsers = await prisma.user.deleteMany({ where: whereClause });
-    const deletedVendors = await prisma.vendor.deleteMany({ where: whereClause });
+    const deletedReviews = await prisma.review.deleteMany({ where: w });
+    const deletedBookings = await prisma.booking.deleteMany({
+      where: w as Prisma.BookingWhereInput,
+    });
+    const deletedServices = await prisma.service.deleteMany({
+      where: w as Prisma.ServiceWhereInput,
+    });
+    const deletedEmployees = await prisma.employee.deleteMany({
+      where: w as Prisma.EmployeeWhereInput,
+    });
+    const deletedUsers = await prisma.user.deleteMany({
+      where: w as Prisma.UserWhereInput,
+    });
+    const deletedVendors = await prisma.vendor.deleteMany({
+      where: w as Prisma.VendorWhereInput,
+    });
 
     const summary = {
       ok: true,

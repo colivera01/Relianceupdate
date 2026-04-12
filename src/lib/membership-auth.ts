@@ -2,18 +2,8 @@
 // Authorization helpers for vendor membership system
 
 import { prisma } from "@/server/db";
-import { getVendorIdFromRequest } from "./auth";
-
-/**
- * Get current user ID from request
- * TEMPORARY: For local development, returns a hardcoded userId
- * TODO: Replace with real auth extraction when JWT is fully implemented
- */
-export async function getUserIdFromRequest(_request: Request): Promise<string | null> {
-  // TEMPORARY: Local development only
-  // In production, extract from JWT token
-  return 'user-1'; // Replace with actual user ID from auth
-}
+import { getUserIdFromRequest, getVendorIdFromRequest } from "./auth";
+export { getUserIdFromRequest };
 
 export type MembershipRole = "MANAGER" | "EMPLOYEE";
 export type MembershipStatus = "PENDING" | "ACTIVE" | "DENIED" | "REVOKED";
@@ -109,6 +99,15 @@ export async function requireVendorMembership(
   vendorId: string
 ): Promise<{ userId: string; membershipId: string; role: string }> {
   const userId = await getUserIdFromRequest(request);
+  if (process.env.NODE_ENV === "development") {
+    console.log("[requireVendorMembership][dev]", {
+      vendorId,
+      extractedUserId: userId,
+      headerUserId: request.headers.get("x-user-id"),
+      headerVendorId: request.headers.get("x-vendor-id"),
+      hasAuthorization: Boolean(request.headers.get("authorization")),
+    });
+  }
   if (!userId) {
     throw new Error("Unauthorized");
   }

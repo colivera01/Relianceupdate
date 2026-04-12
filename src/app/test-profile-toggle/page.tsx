@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import ProfileHeader from '../../../components/ProfileHeader';
-import ProfileToggle from '../../../components/ProfileToggle';
-import AddVendorProfile from '../../../components/AddVendorProfile';
+import ProfileHeader from '@/components/ProfileHeader';
+import ProfileToggle from '@/components/ProfileToggle';
+import AddVendorProfile from '@/components/AddVendorProfile';
 
 export default function TestProfileTogglePage() {
   const [userData, setUserData] = useState<any>(null);

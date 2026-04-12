@@ -8,7 +8,7 @@ import { calculateStorageUsage } from "@/lib/storage-helpers";
 import crypto from "crypto";
 
 interface RouteParams {
-  params: { vendorId: string };
+  params: Promise<{ vendorId: string }>;
 }
 
 /**
@@ -23,7 +23,7 @@ export async function POST(
   request: Request,
   { params }: RouteParams
 ): Promise<NextResponse> {
-  const { vendorId } = params;
+  const { vendorId } = await params;
   let testAssetId: string | null = null;
 
   try {

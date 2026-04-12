@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -873,7 +873,7 @@ const generateRecaptchaToken = () => {
   return 'mock-recaptcha-token-' + Date.now();
 };
 
-export default function RegisterPage() {
+function RegisterPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const type = searchParams?.get('type') as 'vendor' | 'user';
@@ -2618,4 +2618,18 @@ export default function RegisterPage() {
       </div>
     </div>
   );
-} 
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-gray-500">
+          Loading…
+        </div>
+      }
+    >
+      <RegisterPageInner />
+    </Suspense>
+  );
+}
