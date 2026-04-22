@@ -1,4 +1,5 @@
 // import jwt from 'jsonwebtoken'; // Uncomment when ready to use real JWT
+import { prisma } from "@/server/db";
 
 export interface JWTPayload {
   sub?: string;
@@ -133,6 +134,27 @@ export async function getVendorIdFromRequest(request: Request): Promise<string |
 
   const headerVendorId = request.headers.get("x-vendor-id");
   if (headerVendorId && headerVendorId.trim()) return headerVendorId.trim();
+
+  // Active vendor context fallback:
+  // when vendorId is not explicitly present in token/cookie/header, derive it from
+  // the user's ACTIVE vendor membership.
+  const userId = await getUserIdFromRequest(request);
+  if (userId) {
+    const activeMembership = await (prisma as any).vendorMembership.findFirst({
+      where: {
+        userId,
+        status: "ACTIVE",
+      },
+      select: {
+        vendorId: true,
+      },
+      orderBy: [{ approvedAt: "desc" }, { requestedAt: "desc" }],
+    });
+
+    if (activeMembership?.vendorId) {
+      return String(activeMembership.vendorId);
+    }
+  }
 
   return null;
 }

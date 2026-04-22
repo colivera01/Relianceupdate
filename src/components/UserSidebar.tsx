@@ -17,7 +17,7 @@ const defaultUser: SidebarUser = {
 const navLinks = [
   { label: 'Home', icon: Home, href: '/user-dashboard' },
   { label: 'Discover', icon: LayoutDashboard, href: '/discover' },
-  { label: 'My Bookings', icon: Calendar, href: '/my-bookings' },
+  { label: 'My Services', icon: Calendar, href: '/my-bookings' },
   { label: 'Favorites', icon: Heart, href: '/favorites' },
   { label: 'Reviews', icon: Star, href: '/reviews' },
   { label: 'Messages', icon: MessageSquare, href: '/messages' },

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RefreshCw, Video, ShieldAlert } from 'lucide-react';
 
@@ -37,8 +38,69 @@ type ModerationAction =
   | 'approve_public'
   | 'approve_customer_only'
   | 'approve_vendor_archive_only'
+  | 'approve_private'
+  | 'set_visibility_public'
+  | 'set_visibility_customer_only'
+  | 'set_visibility_vendor_archive_only'
+  | 'set_visibility_private'
   | 'reject'
   | 'flag';
+
+/** Visibility tier when approving or updating an already-approved asset (maps to API enums). */
+type VisibilityLevel = 'public' | 'customer_only' | 'vendor_archive_only' | 'private';
+
+const APPROVE_BY_VISIBILITY: Record<VisibilityLevel, ModerationAction> = {
+  public: 'approve_public',
+  customer_only: 'approve_customer_only',
+  vendor_archive_only: 'approve_vendor_archive_only',
+  private: 'approve_private',
+};
+
+const SET_VISIBILITY_BY_LEVEL: Record<VisibilityLevel, ModerationAction> = {
+  public: 'set_visibility_public',
+  customer_only: 'set_visibility_customer_only',
+  vendor_archive_only: 'set_visibility_vendor_archive_only',
+  private: 'set_visibility_private',
+};
+
+const VISIBILITY_OPTIONS: { value: VisibilityLevel; label: string; shortHint: string }[] = [
+  {
+    value: 'public',
+    label: 'Public',
+    shortHint: 'Public + customer + vendor (discovery & booking-safe media APIs)',
+  },
+  {
+    value: 'customer_only',
+    label: 'Customer only',
+    shortHint: 'Customer + vendor only — not on public discovery',
+  },
+  {
+    value: 'vendor_archive_only',
+    label: 'Vendor archive only',
+    shortHint: 'Vendor only (archive)',
+  },
+  {
+    value: 'private',
+    label: 'Private / internal',
+    shortHint: 'Internal only — not public or customer-facing',
+  },
+];
+
+function visibilityLevelFromAsset(status: string): VisibilityLevel {
+  const n = String(status || '').trim().toLowerCase();
+  if (n === 'public') return 'public';
+  if (n === 'customer_only') return 'customer_only';
+  if (n === 'vendor_archive_only') return 'vendor_archive_only';
+  return 'private';
+}
+
+/** Approve/re-approve uses approve_*; already-approved assets use set_visibility_* to change tier only. */
+function actionForApproveOrUpdateVisibility(asset: QueueAsset, level: VisibilityLevel): ModerationAction {
+  if (asset.moderationStatus === 'approved') {
+    return SET_VISIBILITY_BY_LEVEL[level];
+  }
+  return APPROVE_BY_VISIBILITY[level];
+}
 
 function bytesToReadable(bytesText: string): string {
   const value = Number(bytesText || '0');
@@ -47,6 +109,65 @@ function bytesToReadable(bytesText: string): string {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function AssetModerationControls({
+  asset,
+  actionBusy,
+  applyModerationAction,
+  openRejectModal,
+}: {
+  asset: QueueAsset;
+  actionBusy: boolean;
+  applyModerationAction: (asset: QueueAsset, action: ModerationAction, moderationReason?: string) => Promise<void>;
+  openRejectModal: (asset: QueueAsset) => void;
+}) {
+  const [visibility, setVisibility] = useState<VisibilityLevel>(() => visibilityLevelFromAsset(asset.visibilityStatus));
+
+  useEffect(() => {
+    setVisibility(visibilityLevelFromAsset(asset.visibilityStatus));
+  }, [asset.assetId, asset.visibilityStatus]);
+
+  const selectedHint = VISIBILITY_OPTIONS.find((o) => o.value === visibility)?.shortHint ?? '';
+  const primaryLabel = asset.moderationStatus === 'approved' ? 'Update visibility' : 'Approve';
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="space-y-1">
+        <Label htmlFor={`visibility-${asset.assetId}`} className="text-xs text-gray-600">
+          Visibility level
+        </Label>
+        <select
+          id={`visibility-${asset.assetId}`}
+          value={visibility}
+          onChange={(e) => setVisibility(e.target.value as VisibilityLevel)}
+          disabled={actionBusy}
+          className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+        >
+          {VISIBILITY_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-[11px] text-gray-500 leading-snug">{selectedHint}</p>
+      </div>
+      <Button
+        size="sm"
+        disabled={actionBusy}
+        onClick={() => applyModerationAction(asset, actionForApproveOrUpdateVisibility(asset, visibility))}
+      >
+        {primaryLabel}
+      </Button>
+      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openRejectModal(asset)}>
+        Reject
+      </Button>
+      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => applyModerationAction(asset, 'flag')}>
+        <ShieldAlert className="w-4 h-4 mr-1" />
+        Flag
+      </Button>
+    </div>
+  );
 }
 
 export default function AdminMediaModerationPage() {
@@ -211,7 +332,9 @@ export default function AdminMediaModerationPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Media Moderation</h1>
-          <p className="text-gray-600 mt-1">Review vendor uploads and apply visibility decisions.</p>
+          <p className="text-gray-600 mt-1">
+            Approve or reject each asset, and set a single visibility level. Reject hides the asset from customers and public listings.
+          </p>
         </div>
         <Button variant="outline" onClick={fetchQueue} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -298,7 +421,7 @@ export default function AdminMediaModerationPage() {
         </Card>
       ) : queueEmpty ? (
         <Card>
-          <CardContent className="py-12 text-center text-gray-500">No media pending moderation.</CardContent>
+          <CardContent className="py-12 text-center text-gray-500">No media items matched the current filters.</CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
@@ -330,44 +453,26 @@ export default function AdminMediaModerationPage() {
                       </div>
                     </div>
                     <div className="lg:col-span-2 space-y-2">
-                      <Badge className="block w-fit">{asset.moderationStatus}</Badge>
+                      <Badge className="block w-fit">Moderation: {asset.moderationStatus}</Badge>
                       <Badge variant="outline" className="block w-fit">
-                        {asset.visibilityStatus}
+                        Visibility:{' '}
+                        {VISIBILITY_OPTIONS.find((o) => o.value === visibilityLevelFromAsset(asset.visibilityStatus))?.label ||
+                          asset.visibilityStatus}
                       </Badge>
                       <Badge variant="outline" className="block w-fit">
-                        {asset.archiveStatus}
+                        Archive: {asset.archiveStatus}
                       </Badge>
                     </div>
                     <div className="lg:col-span-2 flex flex-col gap-2">
                       <Button size="sm" variant="outline" onClick={() => setSelectedAsset(asset)}>
                         Details
                       </Button>
-                      <Button size="sm" disabled={actionBusy} onClick={() => applyModerationAction(asset, 'approve_public')}>
-                        Approve Public
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={actionBusy}
-                        onClick={() => applyModerationAction(asset, 'approve_customer_only')}
-                      >
-                        Approve Customer
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={actionBusy}
-                        onClick={() => applyModerationAction(asset, 'approve_vendor_archive_only')}
-                      >
-                        Approve Archive
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openRejectModal(asset)}>
-                        Reject
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => applyModerationAction(asset, 'flag')}>
-                        <ShieldAlert className="w-4 h-4 mr-1" />
-                        Flag
-                      </Button>
+                      <AssetModerationControls
+                        asset={asset}
+                        actionBusy={actionBusy}
+                        applyModerationAction={applyModerationAction}
+                        openRejectModal={openRejectModal}
+                      />
                     </div>
                   </div>
                 </CardContent>
@@ -412,6 +517,19 @@ export default function AdminMediaModerationPage() {
                 <div>Visibility: {selectedAsset.visibilityStatus}</div>
                 <div>Archive: {selectedAsset.archiveStatus}</div>
                 <div>Size: {bytesToReadable(selectedAsset.bytes)}</div>
+              </div>
+              <div className="rounded border p-3 space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Approve / visibility / reject / flag</div>
+                <p className="text-[11px] text-gray-500">
+                  Choose one visibility, then <strong>Approve</strong> (or <strong>Update visibility</strong> if already approved).{' '}
+                  <strong>Public</strong> includes everyone: discovery, customers with bookings, and vendor tools.
+                </p>
+                <AssetModerationControls
+                  asset={selectedAsset}
+                  actionBusy={Boolean(assetActionLoadingId?.startsWith(`${selectedAsset.assetId}:`))}
+                  applyModerationAction={applyModerationAction}
+                  openRejectModal={openRejectModal}
+                />
               </div>
               {selectedAsset.moderationReason && (
                 <div className="p-2 rounded bg-amber-50 border border-amber-200">

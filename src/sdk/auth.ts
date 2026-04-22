@@ -100,6 +100,8 @@ export const authSDK = {
   logout(): void {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userData');
     }
   }
 };

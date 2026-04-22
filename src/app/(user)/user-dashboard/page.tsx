@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Star, Clock, Heart, TrendingUp, Zap, Users, Calendar, Award, Share2 } from 'lucide-react';
 import AddVendorProfile from '../../../components/AddVendorProfile';
 import ProfileToggle from '../../../components/ProfileToggle';
+import { useAuth } from '@/contexts/AuthContext';
+import { getClientSessionHeaders } from '@/lib/client-session';
 
 type CustomerProfile = {
   id?: string;
@@ -19,6 +21,7 @@ type CustomerProfile = {
 };
 
 export default function UserDashboardPage() {
+  const { user: authUser, isLoading: authLoading, isAuthenticated } = useAuth();
   const [userData, setUserData] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -26,23 +29,34 @@ export default function UserDashboardPage() {
 
   // Fetch user profile data on component mount
   useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    if (!isAuthenticated || !authUser?.id) {
+      setError('Please sign in to view your dashboard.');
+      setLoading(false);
+      return;
+    }
+
     const fetchUserData = async () => {
       try {
         const response = await fetch('/api/customer/profile', {
           headers: {
-            'Authorization': 'Bearer temp-jwt-token'
-          }
+            'Content-Type': 'application/json',
+            ...getClientSessionHeaders(authUser.id),
+          },
         });
 
         if (response.ok) {
           const data = await response.json();
           setUserData(data.profile);
-          
+
           // Check if vendor profile card is hidden
           const hidden = localStorage.getItem(`vendor-profile-hidden-${data.profile.id || 'temp-id'}`);
           setVendorProfileHidden(hidden === 'true');
         } else {
-          setError('Failed to fetch user data');
+          const payload = await response.json().catch(() => ({}));
+          setError(String(payload?.error || 'Failed to fetch user data'));
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -52,8 +66,8 @@ export default function UserDashboardPage() {
       }
     };
 
-    fetchUserData();
-  }, []);
+    void fetchUserData();
+  }, [authLoading, isAuthenticated, authUser?.id]);
 
   // Show loading state
   if (loading) {

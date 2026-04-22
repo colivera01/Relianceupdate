@@ -1,26 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { requireAdmin } from '@/lib/admin-auth';
+import { trySetVendorApprovalStatus } from '@/lib/vendor-status';
 
 export async function POST(request: NextRequest) {
   try {
+    const admin = await requireAdmin(request);
     const body = await request.json();
-    const { vendorIds, adminId, adminEmail, notes } = body;
+    const { vendorIds } = body;
 
     // Validate required fields
-    if (!vendorIds || !Array.isArray(vendorIds) || vendorIds.length === 0 || !adminId || !adminEmail) {
+    if (!vendorIds || !Array.isArray(vendorIds) || vendorIds.length === 0) {
       return NextResponse.json(
-        { error: 'Vendor IDs array, Admin ID, and Admin Email are required' },
+        { error: 'Vendor IDs array is required' },
         { status: 400 }
       );
     }
-
-    // TODO: Verify admin permissions
-    // const admin = await verifyAdminPermissions(adminId);
-    // if (!admin) {
-    //   return NextResponse.json(
-    //     { error: 'Unauthorized: Admin permissions required' },
-    //     { status: 403 }
-    //   );
-    // }
 
     const results = [];
     const errors = [];
@@ -28,57 +23,66 @@ export async function POST(request: NextRequest) {
     // Process each vendor
     for (const vendorId of vendorIds) {
       try {
-        // TODO: Update vendor status in database
-        // const updatedVendor = await db.vendors.update({
-        //   where: { id: vendorId },
-        //   data: {
-        //     isActive: true,
-        //     isApproved: true,
-        //     approvalStatus: 'approved',
-        //     approvalDate: new Date().toISOString(),
-        //     approvedBy: adminId,
-        //   }
-        // });
+        const result = await (prisma as any).$transaction(async (tx: any) => {
+          const vendor = await tx.vendor.findUnique({
+            where: { id: String(vendorId) },
+            select: { id: true },
+          });
+          if (!vendor) return { ok: false, reason: 'Vendor not found' };
 
-        // TODO: Send approval email to vendor
-        // await sendVendorApprovalEmail(vendor.email, vendor.businessName);
+          const pendingManagerMembership = await tx.vendorMembership.findFirst({
+            where: {
+              vendorId: String(vendorId),
+              role: 'MANAGER',
+              status: 'PENDING',
+            },
+            orderBy: [{ requestedAt: 'desc' }],
+          });
+          if (!pendingManagerMembership) {
+            return { ok: false, reason: 'No pending manager membership found' };
+          }
+
+          const membership = await tx.vendorMembership.update({
+            where: { id: pendingManagerMembership.id },
+            data: {
+              status: 'ACTIVE',
+              approvedAt: new Date(),
+              approvedByUserId: admin.userId,
+              deniedAt: null,
+              deniedByUserId: null,
+              revokedAt: null,
+              revokedByUserId: null,
+            },
+          });
+
+          return { ok: true, membershipId: String(membership.id) };
+        });
+
+        if (!result.ok) {
+          errors.push({
+            vendorId,
+            error: result.reason,
+          });
+          continue;
+        }
+
+        await trySetVendorApprovalStatus(String(vendorId), 'APPROVED');
 
         results.push({
           vendorId,
           status: 'approved',
-          approvedBy: adminId,
+          approvedBy: admin.userId,
           approvalDate: new Date().toISOString(),
+          membershipId: (result as any).membershipId,
         });
-
       } catch (error) {
         console.error(`Error approving vendor ${vendorId}:`, error);
         errors.push({
           vendorId,
-          error: 'Failed to approve vendor',
+          error: error instanceof Error ? error.message : 'Failed to approve vendor',
         });
       }
     }
-
-    // TODO: Log bulk admin action
-    // await logAdminAction({
-    //   action: 'bulk_vendor_approved',
-    //   adminId,
-    //   adminEmail,
-    //   vendorIds,
-    //   notes,
-    //   timestamp: new Date().toISOString(),
-    // });
-
-    // For now, just log the action
-    console.log('Bulk vendor approval:', {
-      vendorIds,
-      adminId,
-      adminEmail,
-      notes,
-      results,
-      errors,
-      timestamp: new Date().toISOString(),
-    });
 
     return NextResponse.json({
       success: true,
@@ -92,6 +96,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Bulk vendor approval error:', error);
+    if (error instanceof Error && (error.message === 'Unauthorized' || error.message.includes('Forbidden'))) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json(
       { error: 'Failed to process bulk approval. Please try again.' },
       { status: 500 }

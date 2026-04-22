@@ -2,6 +2,51 @@
 
 Scope: current active session changes in working tree (from current repo state).
 
+## 2026-04-19 — Handoff refresh: vendor jobs, My Services linkage, auth/login, customer profile
+
+**Handoff docs:** `PROJECT_STATE.md` prepended with **2026-04-19** section; this changelog entry summarizes the same batch.
+
+### Vendor team + job assignment
+- **`src/lib/vendor-team-members.ts`:** shared ACTIVE membership fetch for UI.
+- **`src/app/vendor/employees/page.tsx`:** real roster (removed mock Maria/James CRUD).
+- **`src/app/vendor/jobs/page.tsx`:** `teamMembers`, assignment by **`assignedMembershipIds`**, dashboard **`assignedMembershipIds`** on jobs; employee-view filter uses membership ids when available.
+- **`src/app/api/vendors/[vendorId]/jobs/[jobId]/actions/route.ts`:** `ASSIGN_JOB` validates ACTIVE memberships, writes **`vendor_job_assigned_membership_ids`** + resolved display names.
+- **`src/app/api/vendors/[vendorId]/dashboard/route.ts`:** returns **`assignedMembershipIds`** per job.
+
+### My Services (customer) + vendor-created jobs
+- **`src/app/api/bookings/route.ts`:** vendor staff (`ACTIVE` **`VendorMembership`** for `vendor_id`) requires **`client_email`**, resolves customer **`User.id`** by email, sets **`Booking.userId`**; non-vendor flow unchanged (`auth` / body **`user_id`**).
+- **`src/lib/resolve-booking-owner-user-id.ts`:** case-insensitive email → user id helper for booking create.
+
+### Auth session + customer profile + login UX
+- **`src/contexts/AuthContext.tsx`:** `login(user, token?)`, **`AuthUser`** includes **`both`**; migrate legacy **`localStorage.user`** → **`userData`**; dev-only hydrate/login logs.
+- **`src/app/auth/login/page.tsx`:** single write path via `login()`; safe JSON parse with wrong-port hint; dev alerts include **`code`** / **`details`**.
+- **`src/lib/client-session.ts`:** legacy **`user`** fallback; dev header preview logs.
+- **`src/app/api/customer/profile/route.ts`:** `getUserIdFromRequest` + dev bearer tokens; profile by session user (Prisma +/`dev-registered-users`); includes **`id`** on profile.
+- **`src/app/(user)/user-dashboard/page.tsx`:** waits for `useAuth`, **`getClientSessionHeaders(authUser.id)`** for profile fetch.
+- **`src/app/api/auth/login/route.ts`:** normalized email lookup; dev **`USER_NOT_FOUND`**, **`INVALID_PASSWORD`**; **non-production:** on Prisma failure after password OK, continue with dev-registry **`id`** + JSON **`devWarning`** (Azure **40615** / DB down).
+
+## 2026-04-15 — Integration coverage: execution flow stabilization (vendor jobs/media/admin moderation)
+
+- Added **route-level integration suites** (Vitest, mocked Prisma/auth like existing passes):
+  - **`src/app/api/vendors/[vendorId]/jobs/vendor-job-actions.integration.test.ts`**
+  - **`src/app/api/admin/media/admin-media-moderation.integration.test.ts`**
+  - **`src/app/api/vendors/[vendorId]/media/vendor-media-archive.integration.test.ts`**
+  - **`src/app/api/vendors/[vendorId]/memberships/memberships.integration.test.ts`**
+- Coverage now includes:
+  - **Vendor job actions:** success/error transitions for `ARCHIVE_JOB`, `MOVE_CONTENT_TO_ARCHIVE`, delete eligibility and transactional linked-content archival behavior.
+  - **Admin media moderation:** auth/validation and canonical moderation/visibility transitions (`approve_*`, `set_visibility_*`, reject path).
+  - **Content archive listing behavior:** empty states, ownership guards, archive/restore status transitions, enriched archive row mapping.
+  - **Vendor employees API path:** memberships manager guard + empty/normalized list behavior.
+- Added **`MEDIA_EXECUTION_FLOW_INTEGRATION_TESTS_NOTES.md`** with behavior matrix and intentionally uncovered gaps.
+- Verification: `npx vitest run` against the 4 new suites passed (**26 tests**).
+
+## 2026-04-15 — Reliance handoff refresh (auth-login E2E audit sync)
+
+- **`AUTH_LOGIN_E2E_FAILURE_AUDIT.md`:** Added a focused audit of the E2E smoke login failure mode where `/auth/login` does not transition after submit.
+- **Root cause documented:** in mock mode, MSW `POST /api/auth/login` returns a nested `data.user` payload while `src/app/auth/login/page.tsx` expects top-level `user`, causing success-path runtime error and no redirect.
+- **`PROJECT_STATE.md`:** Prepend refreshed with current auth-login E2E findings, risk statement, and immediate mitigation path (force live mode for smoke or align MSW login handler contract).
+- **Operational handoff update:** auth-login mode mismatch is now explicitly listed as a top risk and as the first next-task item so execution order matches observed failures.
+
 ## 2026-04-12 — E2E smoke pass 3 (review happy path: window start → create)
 
 - **`e2e/review-smoke.spec.ts`:** Playwright smoke — login → **`/my-bookings`** ( **Past** ) → **Load Authorized Media** → **`SmartVideoPlayer`** triggers **`POST /api/reviews/window/start`** → **`video.play()`** → overlay **Positive** → **Quick Review** → **`POST /api/reviews/create`**; asserts **`success`** + persisted **`review.id`** on the create response, modal closes, no red inline error. No mocks for consent or review CRUD.

@@ -6,9 +6,11 @@ import { CheckCircle, Calendar, DollarSign, Users, Star, TrendingUp } from 'luci
 import { useVendorDashboard } from '@/hooks/useVendorDashboard';
 
 export default function VendorDashboard() {
-  const { data, loading, error, refetch } = useVendorDashboard();
+  const { data, loading, error, refetch, approvalPending } = useVendorDashboard();
   const [showAvailability, setShowAvailability] = useState(false);
   const [showPricing, setShowPricing] = useState(false);
+  const pageShellClass = "bg-gray-50";
+  const pageContentClass = "max-w-7xl mx-auto px-4 py-6";
 
   // Formatting utilities
   const formatDate = (dateString: string) => {
@@ -26,11 +28,28 @@ export default function VendorDashboard() {
     }).format(amount);
   };
 
+  if (approvalPending) {
+    return (
+      <div className={pageShellClass}>
+        <div className={pageContentClass}>
+          <div className="flex min-h-[50vh] w-full flex-col items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-6">
+            <p className="text-amber-700 font-semibold">Vendor account pending approval</p>
+            <p className="text-xs text-gray-600">You can access dashboard features after admin approval.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Show loading state
   if (loading) {
     return (
-      <div className="flex h-full w-full items-center justify-center">
-        <p className="text-sm text-gray-500">Loading dashboard...</p>
+      <div className={pageShellClass}>
+        <div className={pageContentClass}>
+          <div className="flex min-h-[50vh] w-full items-center justify-center rounded-xl border border-gray-200 bg-white p-6">
+            <p className="text-sm text-gray-500">Loading dashboard...</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -38,15 +57,19 @@ export default function VendorDashboard() {
   // Show error state
   if (error) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-        <p className="text-red-500 font-medium">Failed to fetch vendor dashboard</p>
-        <p className="text-xs text-gray-500">{error}</p>
-        <button
-          onClick={refetch}
-          className="mt-2 rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white"
-        >
-          Retry
-        </button>
+      <div className={pageShellClass}>
+        <div className={pageContentClass}>
+          <div className="flex min-h-[50vh] w-full flex-col items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 p-6">
+            <p className="text-red-500 font-medium">Failed to fetch vendor dashboard</p>
+            <p className="text-xs text-gray-500">{error}</p>
+            <button
+              onClick={refetch}
+              className="mt-2 rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -54,9 +77,13 @@ export default function VendorDashboard() {
   // Should be rare now
   if (!data) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-        <p className="font-medium text-gray-700">No dashboard data</p>
-        <p className="text-xs text-gray-500">We couldn&apos;t load your vendor information.</p>
+      <div className={pageShellClass}>
+        <div className={pageContentClass}>
+          <div className="flex min-h-[50vh] w-full flex-col items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white p-6">
+            <p className="font-medium text-gray-700">No dashboard data</p>
+            <p className="text-xs text-gray-500">We couldn&apos;t load your vendor information.</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -127,8 +154,8 @@ export default function VendorDashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className={pageShellClass}>
+      <div className={pageContentClass}>
         {renderVendorInfo()}
         
         {/* Stats Grid */}

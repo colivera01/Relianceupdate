@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { VendorDevice, PairingRequestResponse } from "@/types/vendor";
+import { getClientSessionHeaders } from "@/lib/client-session";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function useVendorDevices() {
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const userId = user?.id || null;
   const [devices, setDevices] = useState<VendorDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -11,10 +15,24 @@ export function useVendorDevices() {
   const [pairingLoading, setPairingLoading] = useState(false);
 
   const fetchDevices = useCallback(async () => {
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+    if (!isAuthenticated || !userId) {
+      setDevices([]);
+      setLoading(false);
+      setError("Vendor session context unavailable. Please sign in again.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/devices", { cache: "no-store" });
+      const res = await fetch("/api/devices", {
+        cache: "no-store",
+        headers: getClientSessionHeaders(userId),
+      });
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const json = (await res.json()) as { devices: VendorDevice[] };
       setDevices(json.devices);
@@ -23,15 +41,24 @@ export function useVendorDevices() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authLoading, isAuthenticated, userId]);
 
   const requestPairingCode = useCallback(async () => {
+    if (!isAuthenticated || !userId) {
+      const noSessionError = new Error("Vendor session context unavailable. Please sign in again.");
+      setError(noSessionError.message);
+      throw noSessionError;
+    }
+
     setPairingLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/device/pairing/request", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getClientSessionHeaders(userId),
+        },
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -49,13 +76,20 @@ export function useVendorDevices() {
     } finally {
       setPairingLoading(false);
     }
-  }, []);
+  }, [isAuthenticated, userId]);
 
   const revokeDevice = useCallback(async (deviceId: string) => {
+    if (!isAuthenticated || !userId) {
+      const noSessionError = new Error("Vendor session context unavailable. Please sign in again.");
+      setError(noSessionError.message);
+      throw noSessionError;
+    }
+
     setError(null);
     try {
       const res = await fetch(`/api/vendor/devices/${deviceId}`, {
         method: "DELETE",
+        headers: getClientSessionHeaders(userId),
       });
       if (!res.ok) throw new Error(`Status ${res.status}`);
       await fetchDevices();
@@ -63,7 +97,7 @@ export function useVendorDevices() {
       setError(err instanceof Error ? err.message : "Unknown error");
       throw err;
     }
-  }, [fetchDevices]);
+  }, [fetchDevices, isAuthenticated, userId]);
 
   useEffect(() => {
     fetchDevices();

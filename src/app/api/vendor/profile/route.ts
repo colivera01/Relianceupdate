@@ -1,18 +1,46 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { getVendorIdFromRequest } from "@/lib/auth";
+import { getUserIdFromRequest } from "@/lib/auth";
+import { resolveVendorAccessFromRequest } from "@/lib/vendor-context";
 import { VendorProfileResponse, VendorProfileUpdateRequest } from "@/types/vendor";
 
 export async function GET(request: Request) {
   try {
-    const vendorId = await getVendorIdFromRequest(request);
-
-    if (!vendorId) {
+    if (process.env.NODE_ENV !== "production") {
+      const cookieHeader = request.headers.get("cookie") || "";
+      const resolvedUserId = await getUserIdFromRequest(request);
+      console.info("[api/vendor/profile][GET] auth-debug", {
+        hasCookieHeader: Boolean(cookieHeader),
+        hasUserIdCookie: cookieHeader.includes("userId="),
+        hasSessionUserIdCookie: cookieHeader.includes("session_user_id="),
+        headerUserId: request.headers.get("x-user-id"),
+        hasAuthorization: Boolean(request.headers.get("authorization")),
+        resolvedUserId,
+      });
+    }
+    const vendorContext = await resolveVendorAccessFromRequest(request);
+    if (!vendorContext) {
       return NextResponse.json(
-        { error: "Unauthorized: no vendor ID" },
+        { code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE", error: "Vendor session context unavailable. Please sign in again." },
         { status: 401 }
       );
     }
+    if (vendorContext.state === "PENDING") {
+      return NextResponse.json(
+        { code: "VENDOR_PENDING_APPROVAL", error: "Vendor account pending approval" },
+        { status: 403 }
+      );
+    }
+    if (vendorContext.state !== "ACTIVE" || !vendorContext.vendorId) {
+      return NextResponse.json(
+        {
+          code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE",
+          error: "Vendor session context unavailable. Please sign in again.",
+        },
+        { status: 401 }
+      );
+    }
+    const vendorId = vendorContext.vendorId;
 
     // Fetch vendor from Prisma
     const vendor = await prisma.vendor.findUnique({
@@ -113,14 +141,41 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const vendorId = await getVendorIdFromRequest(request);
-
-    if (!vendorId) {
+    if (process.env.NODE_ENV !== "production") {
+      const cookieHeader = request.headers.get("cookie") || "";
+      const resolvedUserId = await getUserIdFromRequest(request);
+      console.info("[api/vendor/profile][PUT] auth-debug", {
+        hasCookieHeader: Boolean(cookieHeader),
+        hasUserIdCookie: cookieHeader.includes("userId="),
+        hasSessionUserIdCookie: cookieHeader.includes("session_user_id="),
+        headerUserId: request.headers.get("x-user-id"),
+        hasAuthorization: Boolean(request.headers.get("authorization")),
+        resolvedUserId,
+      });
+    }
+    const vendorContext = await resolveVendorAccessFromRequest(request);
+    if (!vendorContext) {
       return NextResponse.json(
-        { error: "Unauthorized: no vendor ID" },
+        { code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE", error: "Vendor session context unavailable. Please sign in again." },
         { status: 401 }
       );
     }
+    if (vendorContext.state === "PENDING") {
+      return NextResponse.json(
+        { code: "VENDOR_PENDING_APPROVAL", error: "Vendor account pending approval" },
+        { status: 403 }
+      );
+    }
+    if (vendorContext.state !== "ACTIVE" || !vendorContext.vendorId) {
+      return NextResponse.json(
+        {
+          code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE",
+          error: "Vendor session context unavailable. Please sign in again.",
+        },
+        { status: 401 }
+      );
+    }
+    const vendorId = vendorContext.vendorId;
 
     const body = (await request.json()) as VendorProfileUpdateRequest;
 

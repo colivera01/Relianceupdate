@@ -206,7 +206,7 @@ function BookingConfirmationPageInner() {
                 onClick={handleViewBookings}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
               >
-                Go to My Bookings
+                Go to My Services
               </button>
             </div>
           </div>
@@ -218,7 +218,7 @@ function BookingConfirmationPageInner() {
               onClick={handleViewBookings}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
             >
-              Go to My Bookings
+              Go to My Services
             </button>
           </div>
         ) : (
@@ -362,7 +362,7 @@ function BookingConfirmationPageInner() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">What&apos;s Next?</h3>
               <div className="space-y-3">
                 <p className="text-sm text-gray-700">
-                  Your booking has been persisted and can be viewed from <strong>My Bookings</strong>.
+                  Your booking has been persisted and can be viewed from <strong>My Services</strong>.
                 </p>
                 <p className="text-sm text-gray-700">
                   Use this page URL later to reload the same booking confirmation.
@@ -400,7 +400,7 @@ function BookingConfirmationPageInner() {
                 onClick={handleViewBookings}
                 className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
               >
-                View All Bookings
+                View My Services
               </button>
             </div>
           </>

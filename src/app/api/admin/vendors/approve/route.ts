@@ -1,71 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { requireAdmin } from '@/lib/admin-auth';
+import { trySetVendorApprovalStatus } from '@/lib/vendor-status';
 
 export async function POST(request: NextRequest) {
   try {
+    const admin = await requireAdmin(request);
     const body = await request.json();
-    const { vendorId, adminId, adminEmail, notes } = body;
+    const { vendorId } = body;
 
     // Validate required fields
-    if (!vendorId || !adminId || !adminEmail) {
+    if (!vendorId) {
       return NextResponse.json(
-        { error: 'Vendor ID, Admin ID, and Admin Email are required' },
+        { error: 'Vendor ID is required' },
         { status: 400 }
       );
     }
 
-    // TODO: Verify admin permissions
-    // const admin = await verifyAdminPermissions(adminId);
-    // if (!admin) {
-    //   return NextResponse.json(
-    //     { error: 'Unauthorized: Admin permissions required' },
-    //     { status: 403 }
-    //   );
-    // }
+    const approvalResult = await (prisma as any).$transaction(async (tx: any) => {
+      const vendor = await tx.vendor.findUnique({
+        where: { id: String(vendorId) },
+        select: { id: true },
+      });
+      if (!vendor) {
+        return { notFound: true };
+      }
 
-    // TODO: Update vendor status in database
-    // const updatedVendor = await db.vendors.update({
-    //   where: { id: vendorId },
-    //   data: {
-    //     isActive: true,
-    //     isApproved: true,
-    //     approvalStatus: 'approved',
-    //     approvalDate: new Date().toISOString(),
-    //     approvedBy: adminId,
-    //   }
-    // });
+      const pendingManagerMembership = await tx.vendorMembership.findFirst({
+        where: {
+          vendorId: String(vendorId),
+          role: 'MANAGER',
+          status: 'PENDING',
+        },
+        orderBy: [{ requestedAt: 'desc' }],
+      });
 
-    // TODO: Send approval email to vendor
-    // await sendVendorApprovalEmail(vendor.email, vendor.businessName);
+      if (!pendingManagerMembership) {
+        return { notFound: false, noPendingMembership: true };
+      }
 
-    // TODO: Log admin action
-    // await logAdminAction({
-    //   action: 'vendor_approved',
-    //   adminId,
-    //   adminEmail,
-    //   vendorId,
-    //   notes,
-    //   timestamp: new Date().toISOString(),
-    // });
+      const membership = await tx.vendorMembership.update({
+        where: { id: pendingManagerMembership.id },
+        data: {
+          status: 'ACTIVE',
+          approvedAt: new Date(),
+          approvedByUserId: admin.userId,
+          deniedAt: null,
+          deniedByUserId: null,
+          revokedAt: null,
+          revokedByUserId: null,
+        },
+      });
 
-    // For now, just log the action
-    console.log('Vendor approved:', {
-      vendorId,
-      adminId,
-      adminEmail,
-      notes,
-      timestamp: new Date().toISOString(),
+      return { notFound: false, noPendingMembership: false, membership };
     });
+
+    if (approvalResult.notFound) {
+      return NextResponse.json({ error: 'Vendor not found' }, { status: 404 });
+    }
+    if (approvalResult.noPendingMembership) {
+      return NextResponse.json(
+        { error: 'No pending manager membership found for this vendor' },
+        { status: 422 }
+      );
+    }
+
+    await trySetVendorApprovalStatus(String(vendorId), 'APPROVED');
 
     return NextResponse.json({
       success: true,
       message: 'Vendor approved successfully',
       vendorId,
-      approvedBy: adminId,
+      approvedBy: admin.userId,
       approvalDate: new Date().toISOString(),
+      membershipId: String((approvalResult as any).membership.id),
     });
 
   } catch (error) {
     console.error('Vendor approval error:', error);
+    if (error instanceof Error && (error.message === 'Unauthorized' || error.message.includes('Forbidden'))) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json(
       { error: 'Failed to approve vendor. Please try again.' },
       { status: 500 }

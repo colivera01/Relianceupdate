@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import {
+  MODERATION_APPROVED,
+  MODERATION_FLAGGED,
+  MODERATION_REJECTED,
+  VISIBILITY_CUSTOMER_ONLY,
+  VISIBILITY_PRIVATE,
+  VISIBILITY_PUBLIC,
+  VISIBILITY_VENDOR_ARCHIVE_ONLY,
+} from "@/lib/media-visibility";
 
 interface RouteParams {
   params: Promise<{ assetId: string }>;
@@ -10,6 +19,11 @@ type ModerationAction =
   | "approve_public"
   | "approve_customer_only"
   | "approve_vendor_archive_only"
+  | "approve_private"
+  | "set_visibility_public"
+  | "set_visibility_customer_only"
+  | "set_visibility_vendor_archive_only"
+  | "set_visibility_private"
   | "reject"
   | "flag";
 
@@ -17,6 +31,11 @@ const ACTIONS = new Set<ModerationAction>([
   "approve_public",
   "approve_customer_only",
   "approve_vendor_archive_only",
+  "approve_private",
+  "set_visibility_public",
+  "set_visibility_customer_only",
+  "set_visibility_vendor_archive_only",
+  "set_visibility_private",
   "reject",
   "flag",
 ]);
@@ -65,24 +84,40 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     };
 
     if (action === "approve_public") {
-      data.moderationStatus = "approved";
-      data.visibilityStatus = "public";
+      data.moderationStatus = MODERATION_APPROVED;
+      data.visibilityStatus = VISIBILITY_PUBLIC;
       data.moderationReason = moderationReason || null;
     } else if (action === "approve_customer_only") {
-      data.moderationStatus = "approved";
-      data.visibilityStatus = "customer_only";
+      data.moderationStatus = MODERATION_APPROVED;
+      data.visibilityStatus = VISIBILITY_CUSTOMER_ONLY;
       data.moderationReason = moderationReason || null;
     } else if (action === "approve_vendor_archive_only") {
-      data.moderationStatus = "approved";
-      data.visibilityStatus = "vendor_archive_only";
+      data.moderationStatus = MODERATION_APPROVED;
+      data.visibilityStatus = VISIBILITY_VENDOR_ARCHIVE_ONLY;
+      data.moderationReason = moderationReason || null;
+    } else if (action === "approve_private") {
+      data.moderationStatus = MODERATION_APPROVED;
+      data.visibilityStatus = VISIBILITY_PRIVATE;
+      data.moderationReason = moderationReason || null;
+    } else if (action === "set_visibility_public") {
+      data.visibilityStatus = VISIBILITY_PUBLIC;
+      data.moderationReason = moderationReason || null;
+    } else if (action === "set_visibility_customer_only") {
+      data.visibilityStatus = VISIBILITY_CUSTOMER_ONLY;
+      data.moderationReason = moderationReason || null;
+    } else if (action === "set_visibility_vendor_archive_only") {
+      data.visibilityStatus = VISIBILITY_VENDOR_ARCHIVE_ONLY;
+      data.moderationReason = moderationReason || null;
+    } else if (action === "set_visibility_private") {
+      data.visibilityStatus = VISIBILITY_PRIVATE;
       data.moderationReason = moderationReason || null;
     } else if (action === "reject") {
-      data.moderationStatus = "rejected";
-      data.visibilityStatus = "private";
+      data.moderationStatus = MODERATION_REJECTED;
+      data.visibilityStatus = VISIBILITY_PRIVATE;
       data.moderationReason = moderationReason;
     } else if (action === "flag") {
-      data.moderationStatus = "flagged";
-      data.visibilityStatus = "private";
+      data.moderationStatus = MODERATION_FLAGGED;
+      data.visibilityStatus = VISIBILITY_PRIVATE;
       data.moderationReason = moderationReason || null;
     }
 

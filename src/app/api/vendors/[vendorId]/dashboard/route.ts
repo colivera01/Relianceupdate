@@ -2,7 +2,8 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { requireVendorMembership } from "@/lib/membership-auth";
+import { getUserIdFromRequest, getVendorMembership, requireVendorMembership } from "@/lib/membership-auth";
+import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -12,6 +13,50 @@ interface RouteParams {
 const cache = new Map<string, { data: any; expiresAt: number }>();
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds
 const USE_DASHBOARD_CACHE = process.env.NODE_ENV !== "development";
+const DASHBOARD_DEBUG_LOG = process.env.NODE_ENV !== "production";
+
+function errorResponse(
+  code: string,
+  error: string,
+  status: number,
+  extra: Record<string, unknown> = {}
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      code,
+      error,
+      ...extra,
+    },
+    { status }
+  );
+}
+
+function parseCustomerMetadata(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function extractAssignedEmployeesFromMetadata(value: string | null | undefined): string[] {
+  const metadata = parseCustomerMetadata(value);
+  const raw = metadata.vendor_job_assigned_employees;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function extractAssignedMembershipIdsFromMetadata(value: string | null | undefined): string[] {
+  const metadata = parseCustomerMetadata(value);
+  const raw = metadata.vendor_job_assigned_membership_ids;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => String(item || "").trim()).filter(Boolean);
+}
 
 function isTransientDbConnectivityError(error: any): boolean {
   const message = String(error?.message || '');
@@ -45,8 +90,81 @@ export async function GET(
   request: Request,
   context: RouteParams
 ): Promise<NextResponse> {
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     const { vendorId } = await context.params;
+    const resolvedUserId = await getUserIdFromRequest(request);
+    const headerUserId = request.headers.get("x-user-id");
+    const headerVendorId = request.headers.get("x-vendor-id");
+
+    if (DASHBOARD_DEBUG_LOG) {
+      console.info("[vendors/dashboard] request:start", {
+        requestId,
+        vendorId,
+        resolvedUserId,
+        headerUserId,
+        headerVendorId,
+        hasAuthorization: Boolean(request.headers.get("authorization")),
+      });
+    }
+
+    if (!resolvedUserId) {
+      if (DASHBOARD_DEBUG_LOG) {
+        console.warn("[vendors/dashboard] auth:missing-user", {
+          requestId,
+          vendorId,
+          headerUserId,
+        });
+      }
+      return errorResponse("UNAUTHORIZED_NO_USER", "Unauthorized", 401, {
+        vendorId,
+      });
+    }
+
+    const membership = await withTransientDbRetry(() => getVendorMembership(vendorId, resolvedUserId));
+    if (DASHBOARD_DEBUG_LOG) {
+      console.info("[vendors/dashboard] auth:membership-check", {
+        requestId,
+        vendorId,
+        userId: resolvedUserId,
+        membershipFound: Boolean(membership),
+        membershipStatus: membership?.status || null,
+        membershipRole: membership?.role || null,
+      });
+    }
+    if (!membership || membership.status !== "ACTIVE") {
+      const fallbackMembership = await withTransientDbRetry(() =>
+        (prisma as any).vendorMembership.findFirst({
+          where: {
+            userId: resolvedUserId,
+            status: "ACTIVE",
+          },
+          select: {
+            vendorId: true,
+            role: true,
+            status: true,
+          },
+          orderBy: { approvedAt: "desc" },
+        })
+      ) as { vendorId?: string | null } | null;
+      if (DASHBOARD_DEBUG_LOG) {
+        console.warn("[vendors/dashboard] auth:forbidden-membership", {
+          requestId,
+          vendorId,
+          userId: resolvedUserId,
+          fallbackVendorId: fallbackMembership?.vendorId || null,
+        });
+      }
+      return errorResponse("FORBIDDEN_ACTIVE_MEMBERSHIP_REQUIRED", "Forbidden: Active membership required", 403, {
+        vendorId,
+        userId: resolvedUserId,
+        ...(fallbackMembership?.vendorId
+          ? { suggestedVendorId: fallbackMembership.vendorId }
+          : {}),
+      });
+    }
+
+    // Preserve legacy helper validation path for behavioral consistency.
     await withTransientDbRetry(() => requireVendorMembership(request, vendorId));
 
     // Check cache
@@ -111,8 +229,8 @@ export async function GET(
           },
           service: true,
         },
-        orderBy: { createdAt: "desc" },
-        take: 5,
+        orderBy: { updatedAt: "desc" },
+        take: 100,
       }),
       // Archived bookings for archived-jobs view
       prisma.booking.findMany({
@@ -142,7 +260,14 @@ export async function GET(
       // Recent reviews (last 5)
       prisma.review.findMany({
         where: { vendorId },
-        include: {
+        select: {
+          id: true,
+          clientName: true,
+          rating: true,
+          comment: true,
+          date: true,
+          jobType: true,
+          createdAt: true,
           user: {
             select: {
               id: true,
@@ -250,10 +375,14 @@ export async function GET(
     );
 
     if (!vendor) {
-      return NextResponse.json(
-        { error: "Vendor not found" },
-        { status: 404 }
-      );
+      if (DASHBOARD_DEBUG_LOG) {
+        console.warn("[vendors/dashboard] data:vendor-not-found", {
+          requestId,
+          vendorId,
+          userId: resolvedUserId,
+        });
+      }
+      return errorResponse("VENDOR_NOT_FOUND", "Vendor not found", 404, { vendorId });
     }
 
     // Calculate stats
@@ -286,6 +415,33 @@ export async function GET(
         : 0;
 
     // Map bookings to VendorJob format with explicit status mapping
+    const bookingIds = recentBookings.map((booking: any) => String(booking.id));
+    const sessionsByBooking = bookingIds.length
+      ? await withTransientDbRetry(() =>
+          (prisma as any).mediaSession.findMany({
+            where: {
+              vendorId,
+              bookingId: { in: bookingIds },
+            },
+            select: {
+              id: true,
+              bookingId: true,
+              _count: { select: { mediaAssets: true } },
+            },
+          })
+        )
+      : [];
+    const mediaSummaryByBookingId = new Map<string, { linkedSessionCount: number; linkedMediaCount: number }>();
+    for (const session of sessionsByBooking as any[]) {
+      const key = String(session.bookingId || "");
+      if (!key) continue;
+      const current = mediaSummaryByBookingId.get(key) || { linkedSessionCount: 0, linkedMediaCount: 0 };
+      mediaSummaryByBookingId.set(key, {
+        linkedSessionCount: current.linkedSessionCount + 1,
+        linkedMediaCount: current.linkedMediaCount + Number(session?._count?.mediaAssets || 0),
+      });
+    }
+
     const recentJobs = recentBookings
       .filter((booking: any) => booking.status !== "ARCHIVED")
       .map((booking: any) => {
@@ -297,6 +453,17 @@ export async function GET(
         CANCELED: "canceled",
       };
       const mappedStatus = statusMap[booking.status] || "scheduled";
+
+      const mediaSummary = mediaSummaryByBookingId.get(String(booking.id)) || {
+        linkedSessionCount: 0,
+        linkedMediaCount: 0,
+      };
+      const operationalPhase = resolveOperationalPhase({
+        bookingStatus: booking.status,
+        customerMetadata: booking.customerMetadata,
+        linkedMediaCount: mediaSummary.linkedMediaCount,
+        assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
+      });
 
       // Handle Decimal amount
       const amount = booking.amount;
@@ -310,10 +477,18 @@ export async function GET(
         id: booking.id,
         serviceId: booking.serviceId,
         serviceName: booking.service?.name || "",
+        serviceType: booking.service?.name || "",
         title: booking.title || booking.service?.name || "Untitled Job",
         client: booking.clientName || booking.user?.name || "Unknown Client",
         amount: amountValue,
         status: mappedStatus,
+        operationalPhase,
+        assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
+        assignedMembershipIds: extractAssignedMembershipIdsFromMetadata(booking.customerMetadata),
+        createdAt: booking.createdAt?.toISOString() || null,
+        updatedAt: booking.updatedAt?.toISOString() || booking.createdAt?.toISOString() || null,
+        linkedMediaCount: mediaSummary.linkedMediaCount,
+        linkedSessionCount: mediaSummary.linkedSessionCount,
         date:
           booking.date?.toISOString() ||
           booking.scheduledFor?.toISOString() ||
@@ -321,20 +496,38 @@ export async function GET(
       };
     });
 
-    const archivedJobs = archivedBookings.map((booking: any) => ({
+    const archivedJobs = archivedBookings.map((booking: any) => {
+      const archMedia = mediaSummaryByBookingId.get(String(booking.id)) || {
+        linkedSessionCount: 0,
+        linkedMediaCount: 0,
+      };
+      const operationalPhaseArchived = resolveOperationalPhase({
+        bookingStatus: booking.status,
+        customerMetadata: booking.customerMetadata,
+        linkedMediaCount: archMedia.linkedMediaCount,
+        assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
+      });
+      return {
       id: booking.id,
       serviceId: booking.serviceId,
       serviceName: booking.service?.name || "",
+      serviceType: booking.service?.name || "",
       title: booking.title || booking.service?.name || "Untitled Job",
       client: booking.clientName || booking.user?.name || "Unknown Client",
       amount: booking.amount ? Number(booking.amount) : 0,
       status: "archived",
+      operationalPhase: operationalPhaseArchived,
+      assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
+      assignedMembershipIds: extractAssignedMembershipIdsFromMetadata(booking.customerMetadata),
+      createdAt: booking.createdAt?.toISOString() || null,
+      updatedAt: booking.updatedAt?.toISOString() || booking.createdAt?.toISOString() || null,
       date:
         booking.date?.toISOString() ||
         booking.scheduledFor?.toISOString() ||
         booking.updatedAt?.toISOString() ||
         booking.createdAt.toISOString(),
-    }));
+    };
+    });
 
     // Map reviews to VendorReview format
     const recentReviewsMapped = recentReviews.map((review: any) => ({
@@ -500,25 +693,26 @@ export async function GET(
       }
     }
 
-    return NextResponse.json(response);
+    return NextResponse.json({ success: true, ...response });
   } catch (error: any) {
     console.error("[vendors/dashboard] GET error:", error);
     if (isTransientDbConnectivityError(error)) {
       console.error("[vendors/dashboard] transient DB connectivity issue (Azure SQL/network)");
-      return NextResponse.json(
-        {
-          error: "Failed to fetch dashboard",
-          details: "Transient database connectivity issue. Please retry shortly.",
-        },
-        { status: 503 }
+      return errorResponse(
+        "DASHBOARD_DB_CONNECTIVITY",
+        "Failed to fetch dashboard",
+        503,
+        { details: "Transient database connectivity issue. Please retry shortly." }
       );
     }
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
+      return errorResponse("DASHBOARD_FORBIDDEN", error.message, 403);
     }
-    return NextResponse.json(
-      { error: "Failed to fetch dashboard", details: error.message },
-      { status: 500 }
+    return errorResponse(
+      "DASHBOARD_INTERNAL_ERROR",
+      "Failed to fetch dashboard",
+      500,
+      { details: error.message }
     );
   }
 }

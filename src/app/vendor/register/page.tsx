@@ -44,20 +44,40 @@ export default function VendorRegisterPage() {
   const [businessType, setBusinessType] = useState('');
   const [customBusinessType, setCustomBusinessType] = useState('');
   const [submitted, setSubmitted] = useState(false);
-  const [pendingRequest, setPendingRequest] = useState(false);
-  // Mock: toggle this to control if registration is auto-approved
-  const autoApprove = false; // Set to true for instant registration, false for pending approval
+  const [pendingRequest, setPendingRequest] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (businessType === 'Other' && customBusinessType) {
-      setPendingRequest(true);
+    if (!businessName.trim() || !businessType.trim()) return;
+    if (businessType === 'Other' && !customBusinessType.trim()) return;
+
+    setError('');
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/vendor/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          businessName: businessName.trim(),
+          businessType: businessType.trim(),
+          customBusinessType: customBusinessType.trim(),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error || 'Failed to register vendor account'));
+      }
+
+      setPendingRequest(Boolean(payload?.requiresApproval ?? true));
       setSubmitted(true);
-      // Would add to pending business/service requests for admin approval
-    } else if (businessType) {
-      setSubmitted(true);
-      setPendingRequest(!autoApprove);
-      // Would proceed with normal registration or pending approval
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to register vendor account');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -68,6 +88,11 @@ export default function VendorRegisterPage() {
           <CardTitle>Register as a Vendor</CardTitle>
         </CardHeader>
         <CardContent>
+          {error && (
+            <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
           {submitted ? (
             pendingRequest ? (
               <div className="text-center text-yellow-700 font-medium">
@@ -113,7 +138,9 @@ export default function VendorRegisterPage() {
                   />
                 </div>
               )}
-              <Button type="submit" className="w-full">Register</Button>
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Register'}
+              </Button>
             </form>
           )}
         </CardContent>

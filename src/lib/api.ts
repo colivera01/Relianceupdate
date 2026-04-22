@@ -138,13 +138,14 @@ class ApiClient {
     // Store token for future requests
     if (typeof window !== 'undefined') {
       localStorage.setItem('auth_token', token);
+      localStorage.setItem('authToken', token);
     }
   }
 
   // Helper to get authorization header
   private getAuthHeaders(): Record<string, string> {
     if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('authToken');
       if (token) {
         return { Authorization: `Bearer ${token}` };
       }

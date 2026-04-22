@@ -41,7 +41,7 @@ import { VendorProfileUpdateRequest } from '@/types/vendor';
 // End DEVELOPER NOTES
 
 export default function VendorProfilePage() {
-  const { data: profile, loading, error, saving, updateProfile, refetch } = useVendorProfile();
+  const { data: profile, loading, error, saving, approvalPending, updateProfile, refetch } = useVendorProfile();
   
   const {
     devices,
@@ -408,18 +408,30 @@ export default function VendorProfilePage() {
   }, [showPairModal, fetchDevices]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="mx-auto w-full max-w-7xl px-4 md:px-8 py-8">
       {loading && (
-        <div className="flex items-center justify-center min-h-screen">
+        <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-gray-600">Loading profile...</p>
           </div>
         </div>
       )}
+
+      {approvalPending && !loading && (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="max-w-md w-full rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+            <h2 className="text-xl font-semibold text-amber-900 mb-2">Vendor account pending approval</h2>
+            <p className="text-sm text-amber-800">
+              You can access profile settings after admin approval.
+            </p>
+          </div>
+        </div>
+      )}
       
-      {error && !loading && (
-        <div className="flex items-center justify-center min-h-screen">
+      {error && !loading && !approvalPending && (
+        <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="text-red-600 mb-4">
               <XCircle className="w-12 h-12 mx-auto" />
@@ -432,8 +444,8 @@ export default function VendorProfilePage() {
         </div>
       )}
       
-      {!loading && !error && profile && (
-        <main className="flex-1 p-8 flex gap-8 max-w-7xl mx-auto">
+      {!loading && !error && !approvalPending && profile && (
+        <main className="flex flex-col xl:flex-row gap-8">
         {/* Profile Form */}
         <section className="flex-1 max-w-2xl space-y-6">
           {/* Enhanced Profile Information Card */}
@@ -1104,7 +1116,7 @@ export default function VendorProfilePage() {
         </section>
 
         {/* Enhanced Right Panel */}
-        <aside className="w-80 space-y-6">
+        <aside className="w-full xl:w-80 space-y-6">
           {/* Enhanced Storage Usage Card */}
           <Card className="bg-gradient-to-br from-white to-blue-50 border-blue-200 shadow-lg">
             <CardHeader className="pb-3">
@@ -1268,6 +1280,7 @@ export default function VendorProfilePage() {
         </aside>
       </main>
       )}
+      </div>
 
       {/* Modals - Always rendered (controlled by their own state) */}
       {/* Enhanced Pair Device Modal */}

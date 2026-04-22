@@ -838,7 +838,7 @@ export default function ReviewsPage() {
               : 'Start writing reviews for services you\'ve used to see them here.'}
             </p>
             <Button onClick={() => router.push('/my-bookings')}>
-              View My Bookings
+              View My Services
             </Button>
           </div>
         ) : (

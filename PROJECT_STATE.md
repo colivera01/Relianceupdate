@@ -1,5 +1,20 @@
 # Project State (Execution + Management Stabilization Pass)
 
+## Handoff refresh (2026-04-19)
+- **Vendor team vs Manage Jobs:** One roster — `GET /api/vendors/{vendorId}/memberships?status=ACTIVE` via shared `src/lib/vendor-team-members.ts`. `/vendor/employees` lists real ACTIVE members (mock CRUD removed). Job assignment stores **`vendor_job_assigned_membership_ids`** plus server-resolved names in booking metadata; dashboard returns **`assignedMembershipIds`**.
+- **My Services / vendor-created bookings:** `POST /api/bookings` detects **ACTIVE vendor membership** for `vendor_id`; requires **`client_email`**, resolves customer **`User.id`** by email, sets **`Booking.userId`** so **`GET /api/bookings`** and **`GET /api/bookings/[id]/media`** work for that customer.
+- **Auth client session:** `AuthProvider.login(user, authToken?)` persists the **API token** (no overwrite with a placeholder). Canonical storage: **`localStorage.userData`**, **`localStorage.authToken`** / **`auth_token`**; legacy key **`user`** is migrated to **`userData`** on hydrate. **`getClientSessionHeaders`** reads **`userData`** (and legacy **`user`** fallback).
+- **Customer profile:** `GET/PUT /api/customer/profile` uses **`getUserIdFromRequest`** + Bearer dev tokens (`temp-jwt-token`, `temp-token`); profile resolved by session user id against Prisma and/or **`dev-registered-users`**.
+- **User dashboard:** Loads profile with **`getClientSessionHeaders(authUser.id)`** (Bearer + **`x-user-id`**), not a hardcoded bearer.
+- **Login / Azure SQL:** Dev credentials live in **`src/lib/dev-registered-users.ts`** (e.g. `colivera080124@gmail.com` / `Co080124!`). If Prisma fails after password check (**firewall 40615**, unreachable DB), **non-production** login **still succeeds** using the dev-registry **`id`**, with JSON **`devWarning`** — fix by adding client public IP to **Azure SQL firewall** so ids match Prisma for bookings/My Services.
+- **Dev ports:** Default **`npm run dev`** → **`localhost:3000`**. **`package.json`** `seed:dev` / `reset:dev` target **`localhost:3001`** — not the same process unless you start a second server on 3001.
+
+## Handoff refresh (2026-04-15)
+- Added **`AUTH_LOGIN_E2E_FAILURE_AUDIT.md`** to capture the current E2E login blocker analysis (`/auth/login` staying on page after submit).
+- Current high-confidence root cause: when **`NEXT_PUBLIC_API_MODE=mock`**, the MSW `POST /api/auth/login` response shape (`data.user`) does not match the login page expectation (`user` at top level), causing success-path runtime failure and no redirect.
+- Recommended execution guard for smoke runs: force live auth API mode for Playwright `webServer` or align MSW login payload shape with the live route contract.
+- Handoff pointers below remain valid; this refresh adds auth-login E2E failure context and concrete recovery options.
+
 ## Handoff refresh (2026-04-12)
 - Canonical maps and narrative docs were re-synced to the repo: **`ROUTE_MAP.md`** (pages + all 102 API routes), **`SCHEMA_MAP.md`** (Review + smart-review/consent models), **`UI_MAP.md`** (my-bookings, consent, admin vendors hub, notifications footnotes), **`RELIANCE_PRODUCT_ALIGNMENT.md`** (model/API list, gap list trimmed for implemented routes).
 - **`CHANGELOG_LATEST.md`** prepend documents this refresh batch.
@@ -55,6 +70,7 @@
   - media/session/upload/playback flows are live
   - targeted duplicate/stale-state guards added
   - wider page still contains mixed mock/live orchestration
+- **`/vendor/employees`:** roster is **live** (ACTIVE memberships); not the old mock list. Add/invite flows still product TBD.
 - DB startup resilience improved:
   - Prisma init no longer hard-crashes app startup on env-fragile failure
   - route-level DB usage still fails at runtime if DB unavailable (expected, now deterministic)
@@ -67,7 +83,6 @@
 ## Mocked
 - Vendor management pages are still mostly local-state/mock:
   - `/vendor/services`
-  - `/vendor/employees`
   - `/vendor/reviews`
   - `/vendor/analytics`
   - `/vendor/billing`
@@ -104,7 +119,9 @@
   - full vendor jobs architecture cleanup
 
 ## Top risks now
-- DB/network availability to SQL Server still causes runtime API failures when DB unreachable.
+- **Azure SQL firewall / connectivity:** client IP must be allowed on the server or Prisma routes fail; dev login may fall back to dev-registry **`id`** (see **Handoff refresh 2026-04-19**).
+- DB/network availability to SQL Server still causes runtime API failures for routes that require DB (expected when unreachable).
+- E2E smoke can fail at login with a "stuck on `/auth/login`" symptom when mock mode is active and auth payload shape diverges from login-page expectations.
 - Management pages remain mostly mock and can drift from real backend behavior.
 - SDK endpoint drift still exists outside bookings low-risk fixes.
 - Vendor jobs page size/complexity still poses regression risk without tests.
@@ -112,10 +129,11 @@
 - Review **reminder** email/SMS is immediate best-effort only (no background job queue); durable delayed reminders are not implemented.
 
 ## Next recommended tasks
-1. Add integration tests for booking create -> confirmation -> list -> cancel flow.
-2. Add integration tests for availability read/check and slot-conflict booking rejection.
-3. Add vendor-managed schedule persistence (working hours/blackouts) to availability slot generation.
-4. Add runtime DB availability guard helper usage in critical routes for clearer 503 responses.
-5. Add vendor-side consent-request initiation UX over existing `/api/consent/request` route for media sessions.
-6. Add integration tests for smart review capture + consent + admin audit flow.
-7. Execute management-layer implementation order from `MANAGEMENT_LAYER_GAP_REPORT.md`.
+1. Resolve auth-login E2E mode mismatch (force live API mode for smoke or align MSW `POST /api/auth/login` payload with live route contract).
+2. Add integration tests for booking create -> confirmation -> list -> cancel flow.
+3. Add integration tests for availability read/check and slot-conflict booking rejection.
+4. Add vendor-managed schedule persistence (working hours/blackouts) to availability slot generation.
+5. Add runtime DB availability guard helper usage in critical routes for clearer 503 responses.
+6. Add vendor-side consent-request initiation UX over existing `/api/consent/request` route for media sessions.
+7. Add integration tests for smart review capture + consent + admin audit flow.
+8. Execute management-layer implementation order from `MANAGEMENT_LAYER_GAP_REPORT.md`.

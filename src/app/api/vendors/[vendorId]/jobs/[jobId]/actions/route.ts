@@ -1,12 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import {
+  getRelianceOps,
+  operationalPhaseForBookingStatusUpdate,
+  resolveOperationalPhase,
+  setOperationalPhaseOnMetadataJson,
+} from "@/lib/vendor-job-operational-phase";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
 }
 
-type JobAction = "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "UNARCHIVE_JOB";
+type JobAction =
+  | "ARCHIVE_JOB"
+  | "MOVE_CONTENT_TO_ARCHIVE"
+  | "UNARCHIVE_JOB"
+  | "UPDATE_JOB"
+  | "ASSIGN_JOB"
+  | "UPDATE_STATUS";
 
 function apiResponse(
   success: boolean,
@@ -19,6 +31,122 @@ function apiResponse(
 
 function normalizeBookingStatus(status: string | null | undefined): string {
   return String(status || "").trim().toUpperCase();
+}
+
+function parseCustomerMetadata(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function displayNameForMembershipUser(user: { name: string | null; email: string | null } | null | undefined) {
+  if (!user) return "Team member";
+  const name = String(user.name || "").trim();
+  const email = String(user.email || "").trim();
+  return name || email || "Team member";
+}
+
+async function resolveJobAssignmentForVendor(
+  vendorId: string,
+  assignedMembershipIds: unknown,
+  assignedEmployees: unknown
+): Promise<
+  | { ok: true; membershipIds: string[]; displayNames: string[] }
+  | { ok: false; response: NextResponse }
+> {
+  const normalizedIds = Array.isArray(assignedMembershipIds)
+    ? Array.from(
+        new Set(assignedMembershipIds.map((id) => String(id || "").trim()).filter(Boolean))
+      )
+    : [];
+  const normalizedNames = Array.isArray(assignedEmployees)
+    ? assignedEmployees.map((n) => String(n || "").trim()).filter(Boolean)
+    : [];
+
+  if (normalizedIds.length > 0) {
+    const rows = await prisma.vendorMembership.findMany({
+      where: {
+        vendorId,
+        id: { in: normalizedIds },
+        status: "ACTIVE",
+      },
+      include: {
+        user: { select: { name: true, email: true } },
+      },
+    });
+    if (rows.length !== normalizedIds.length) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          apiResponse(
+            false,
+            "INVALID_MEMBERSHIP",
+            "One or more selected team members are not active on this vendor."
+          ),
+          { status: 422 }
+        ),
+      };
+    }
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const displayNames = normalizedIds.map((id) => displayNameForMembershipUser(byId.get(id)?.user));
+    return { ok: true, membershipIds: normalizedIds, displayNames };
+  }
+
+  if (normalizedNames.length === 0) {
+    return { ok: true, membershipIds: [], displayNames: [] };
+  }
+
+  const activeMembers = await prisma.vendorMembership.findMany({
+    where: { vendorId, status: "ACTIVE" },
+    include: { user: { select: { name: true, email: true } } },
+  });
+
+  const membershipIdsOut: string[] = [];
+  const displayNamesOut: string[] = [];
+
+  for (const requestedName of normalizedNames) {
+    const lower = requestedName.toLowerCase();
+    const match = activeMembers.find((m) => {
+      const n = String(m.user?.name || "").trim().toLowerCase();
+      const e = String(m.user?.email || "").trim().toLowerCase();
+      return n === lower || e === lower;
+    });
+    if (!match) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          apiResponse(false, "UNKNOWN_EMPLOYEE", `No active team member matches "${requestedName}".`, {
+            requestedName,
+          }),
+          { status: 422 }
+        ),
+      };
+    }
+    if (!membershipIdsOut.includes(match.id)) {
+      membershipIdsOut.push(match.id);
+      displayNamesOut.push(displayNameForMembershipUser(match.user));
+    }
+  }
+
+  return { ok: true, membershipIds: membershipIdsOut, displayNames: displayNamesOut };
+}
+
+function normalizeUiStatusToBookingStatus(value: string | null | undefined): string | null {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "archived") return "ARCHIVED";
+  if (normalized === "completed") return "COMPLETED";
+  if (normalized === "cancelled" || normalized === "canceled") return "CANCELED";
+  if (normalized === "pending" || normalized === "scheduled") return "PENDING";
+  if (normalized === "in progress" || normalized === "in-progress" || normalized === "in_progress") return "CONFIRMED";
+  if (normalized === "confirmed") return "CONFIRMED";
+  return null;
 }
 
 async function getLinkedMediaSummary(vendorId: string, bookingId: string) {
@@ -62,6 +190,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         id: true,
         vendorId: true,
         status: true,
+        customerMetadata: true,
       },
     });
 
@@ -97,6 +226,165 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         action,
         job: updated,
         message: "Job restored to active jobs",
+      });
+    }
+
+    if (action === "UPDATE_JOB") {
+      const title = body?.title !== undefined ? String(body.title || "").trim() : undefined;
+      const clientName =
+        body?.clientName !== undefined ? String(body.clientName || "").trim() : undefined;
+      const serviceId =
+        body?.serviceId !== undefined && body?.serviceId !== null
+          ? String(body.serviceId || "").trim()
+          : undefined;
+
+      const data: any = {};
+      if (title !== undefined) data.title = title || null;
+      if (clientName !== undefined) data.clientName = clientName || null;
+      if (serviceId !== undefined) {
+        if (serviceId) {
+          const service = await prisma.service.findFirst({
+            where: { id: serviceId, vendorId },
+            select: { id: true },
+          });
+          if (!service) {
+            return NextResponse.json(
+              apiResponse(false, "SERVICE_NOT_FOUND", "Selected service does not belong to this vendor."),
+              { status: 404 }
+            );
+          }
+          data.serviceId = service.id;
+        }
+      }
+
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data,
+        select: { id: true, status: true, title: true, clientName: true, serviceId: true, updatedAt: true },
+      });
+      return NextResponse.json({
+        success: true,
+        action,
+        job: updated,
+        message: "Job details updated successfully",
+      });
+    }
+
+    if (action === "ASSIGN_JOB") {
+      const resolved = await resolveJobAssignmentForVendor(
+        vendorId,
+        body?.assignedMembershipIds,
+        body?.assignedEmployees
+      );
+      if (!resolved.ok) {
+        return resolved.response;
+      }
+      const { membershipIds, displayNames } = resolved;
+      const existing = await prisma.booking.findUnique({
+        where: { id: booking.id },
+        select: { customerMetadata: true, status: true },
+      });
+      const metadata = parseCustomerMetadata(existing?.customerMetadata || null);
+      metadata.vendor_job_assigned_membership_ids = membershipIds;
+      metadata.vendor_job_assigned_employees = displayNames;
+      const bookingUpper = normalizeBookingStatus(existing?.status);
+      if (bookingUpper === "PENDING" && displayNames.length > 0) {
+        const ops = getRelianceOps(metadata);
+        metadata.reliance_ops = { ...ops, operational_phase: "ASSIGNED" };
+      }
+      if (bookingUpper === "PENDING" && displayNames.length === 0) {
+        const ops = getRelianceOps(metadata);
+        metadata.reliance_ops = { ...ops, operational_phase: "PENDING" };
+      }
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: { customerMetadata: JSON.stringify(metadata) },
+        select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+      });
+      return NextResponse.json({
+        success: true,
+        action,
+        job: {
+          id: updated.id,
+          status: updated.status,
+          assignedMembershipIds: membershipIds,
+          assignedEmployees: displayNames,
+          updatedAt: updated.updatedAt,
+        },
+        message: "Job assignment updated successfully",
+      });
+    }
+
+    if (action === "UPDATE_STATUS") {
+      const requestedStatus = normalizeUiStatusToBookingStatus(body?.status);
+      if (!requestedStatus) {
+        return NextResponse.json(
+          apiResponse(false, "INVALID_STATUS", "Unsupported status transition request."),
+          { status: 422 }
+        );
+      }
+      const requestedUpper = normalizeBookingStatus(requestedStatus);
+      const assignedFromMeta = (() => {
+        const m = parseCustomerMetadata(booking.customerMetadata || null);
+        const raw = m.vendor_job_assigned_employees;
+        if (!Array.isArray(raw)) return [] as string[];
+        return raw.map((item) => String(item || "").trim()).filter(Boolean);
+      })();
+
+      const { linkedAssetCount } = await getLinkedMediaSummary(vendorId, booking.id);
+      const currentPhase = resolveOperationalPhase({
+        bookingStatus: booking.status,
+        customerMetadata: booking.customerMetadata,
+        linkedMediaCount: linkedAssetCount,
+        assignedEmployees: assignedFromMeta,
+      });
+
+      if (requestedUpper === "COMPLETED") {
+        if (linkedAssetCount < 1) {
+          return NextResponse.json(
+            apiResponse(
+              false,
+              "COMPLETION_REQUIRES_MEDIA",
+              "Mark complete only after at least one media asset is linked to this job.",
+              { linkedAssetCount }
+            ),
+            { status: 409 }
+          );
+        }
+        if (currentPhase !== "AWAITING_VENDOR_REVIEW") {
+          return NextResponse.json(
+            apiResponse(
+              false,
+              "COMPLETION_REQUIRES_VENDOR_REVIEW_PHASE",
+              "Mark complete only after service video is uploaded and the job is awaiting your review (upload moves the job to that phase).",
+              { operationalPhase: currentPhase }
+            ),
+            { status: 409 }
+          );
+        }
+      }
+
+      const nextOpsPhase = operationalPhaseForBookingStatusUpdate(requestedUpper, assignedFromMeta);
+      const metadataUpdate =
+        nextOpsPhase != null
+          ? setOperationalPhaseOnMetadataJson(booking.customerMetadata, nextOpsPhase)
+          : booking.customerMetadata;
+
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: requestedStatus,
+          ...(metadataUpdate !== undefined && metadataUpdate !== booking.customerMetadata
+            ? { customerMetadata: metadataUpdate }
+            : {}),
+        },
+        select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+      });
+      return NextResponse.json({
+        success: true,
+        action,
+        job: updated,
+        message: "Job status updated successfully",
       });
     }
 

@@ -3,6 +3,7 @@ import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { mapBookingToContract } from '@/lib/booking-shape';
 import { checkVendorSlotAvailability } from '@/lib/availability-slots';
+import { findUserIdByEmailCaseInsensitive } from '@/lib/resolve-booking-owner-user-id';
 
 /** Structured payload stored as JSON string in `Booking.customerMetadata` (snake_case keys). */
 function buildCustomerMetadataForCreate(body: {
@@ -135,7 +136,8 @@ export async function POST(request: NextRequest) {
       client_phone,
       amount,
       user_id,
-    } = body;
+      userId: bodyUserIdCamel,
+    } = body as Record<string, unknown>;
 
     // Validate minimum required fields for vendor job creation flow
     if (!vendor_id) {
@@ -186,9 +188,55 @@ export async function POST(request: NextRequest) {
       serviceId = createdService.id;
     }
 
-    // Use existing authenticated user (required Booking.userId FK).
-    const userId = authUserId || (user_id ? String(user_id) : null);
-    if (!userId) {
+    const clientEmailCombined =
+      (typeof client_email === 'string' && client_email.trim()) ||
+      (typeof body.clientEmail === 'string' && String(body.clientEmail).trim()) ||
+      '';
+
+    let isVendorStaffForThisVendor = false;
+    if (authUserId) {
+      const staffMembership = await prisma.vendorMembership.findFirst({
+        where: { vendorId, userId: String(authUserId), status: 'ACTIVE' },
+        select: { id: true },
+      });
+      isVendorStaffForThisVendor = Boolean(staffMembership);
+    }
+
+    let bookingUserId: string | null = null;
+
+    if (isVendorStaffForThisVendor) {
+      if (!clientEmailCombined) {
+        return NextResponse.json(
+          {
+            error:
+              'Client email is required for vendor-created jobs so the booking is linked to the customer\'s Reliance account (My Services).',
+            code: 'CLIENT_EMAIL_REQUIRED',
+          },
+          { status: 400 }
+        );
+      }
+      const customerId = await findUserIdByEmailCaseInsensitive(prisma, clientEmailCombined);
+      if (!customerId) {
+        return NextResponse.json(
+          {
+            error:
+              'No Reliance customer account uses that email. The customer must sign up (or you must use the email on their profile) before this job can appear in their My Services.',
+            code: 'CUSTOMER_EMAIL_NOT_FOUND',
+          },
+          { status: 422 }
+        );
+      }
+      bookingUserId = customerId;
+    } else {
+      const fromBody =
+        (user_id != null && String(user_id).trim() ? String(user_id).trim() : null) ||
+        (bodyUserIdCamel != null && String(bodyUserIdCamel).trim()
+          ? String(bodyUserIdCamel).trim()
+          : null);
+      bookingUserId = authUserId || fromBody;
+    }
+
+    if (!bookingUserId) {
       return NextResponse.json(
         { error: 'Unauthorized: user context is required for booking creation' },
         { status: 401 }
@@ -247,7 +295,7 @@ export async function POST(request: NextRequest) {
       data: {
         vendorId,
         serviceId,
-        userId,
+        userId: bookingUserId,
         title: title ? String(title) : null,
         clientName: client_name ? String(client_name) : null,
         status: 'PENDING',

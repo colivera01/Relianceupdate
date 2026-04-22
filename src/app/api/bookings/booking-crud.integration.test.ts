@@ -15,6 +15,9 @@ const hoisted = vi.hoisted(() => {
   const serviceFindFirst = vi.fn();
   const serviceFindUnique = vi.fn();
   const serviceCreate = vi.fn();
+  const vendorMembershipFindFirst = vi.fn();
+  const userFindFirst = vi.fn();
+  const queryRaw = vi.fn();
 
   const prisma = {
     booking: {
@@ -26,6 +29,9 @@ const hoisted = vi.hoisted(() => {
     },
     vendor: { findUnique: vendorFindUnique },
     service: { findFirst: serviceFindFirst, findUnique: serviceFindUnique, create: serviceCreate },
+    vendorMembership: { findFirst: vendorMembershipFindFirst },
+    user: { findFirst: userFindFirst },
+    $queryRaw: queryRaw,
   };
 
   return {
@@ -39,6 +45,9 @@ const hoisted = vi.hoisted(() => {
     serviceFindFirst,
     serviceFindUnique,
     serviceCreate,
+    vendorMembershipFindFirst,
+    userFindFirst,
+    queryRaw,
   };
 });
 
@@ -176,6 +185,12 @@ describe('POST /api/bookings', () => {
     hoisted.serviceCreate.mockReset();
     hoisted.bookingCreate.mockReset();
     hoisted.bookingFindUnique.mockReset();
+    hoisted.vendorMembershipFindFirst.mockReset();
+    hoisted.userFindFirst.mockReset();
+    hoisted.queryRaw.mockReset();
+    hoisted.vendorMembershipFindFirst.mockResolvedValue(null);
+    hoisted.userFindFirst.mockResolvedValue(null);
+    hoisted.queryRaw.mockResolvedValue([]);
   });
 
   it('returns 400 when vendor_id is missing', async () => {
@@ -321,6 +336,73 @@ describe('POST /api/bookings', () => {
     expect(hoisted.bookingCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ amount: 88 }),
     });
+  });
+
+  it('links vendor-staff-created bookings to the customer user resolved from client_email', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
+    hoisted.bookingCreate.mockResolvedValue({ id: 'vendor-created-book' });
+    hoisted.bookingFindUnique.mockResolvedValue(
+      baseHydratedBooking({
+        id: 'vendor-created-book',
+        userId: 'customer-by-email',
+        title: 'Fade Haircut',
+      })
+    );
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          booking_date: '2024-09-02',
+          booking_time: '10:00:00',
+          title: 'Fade Haircut',
+          client_name: 'Alex',
+          client_email: 'alex@example.com',
+        },
+        'POST'
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(hoisted.bookingCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        vendorId: 'ven-1',
+        serviceId: 'svc-1',
+        userId: 'customer-by-email',
+      }),
+    });
+    expect(hoisted.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 CLIENT_EMAIL_REQUIRED when vendor staff omits client_email', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          booking_date: '2024-09-02',
+          booking_time: '10:00:00',
+          title: 'Walk-in',
+          client_name: 'Alex',
+        },
+        'POST'
+      )
+    );
+    expect(res.status).toBe(400);
+    const j = await readJson(res);
+    expect(j.code).toBe('CLIENT_EMAIL_REQUIRED');
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
   });
 });
 

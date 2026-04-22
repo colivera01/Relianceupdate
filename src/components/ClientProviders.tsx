@@ -15,11 +15,23 @@ interface ClientProvidersProps {
  */
 export default function ClientProviders({ children }: ClientProvidersProps) {
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_API_MODE === 'mock') {
-      import('@/mocks/start').then(({ startMockWorker }) => {
-        startMockWorker();
+    if (process.env.NEXT_PUBLIC_API_MODE !== 'mock') return;
+
+    let cancelled = false;
+
+    import('@/mocks/start')
+      .then(({ startMockWorker }) => {
+        if (!cancelled) {
+          return startMockWorker();
+        }
+      })
+      .catch((error) => {
+        console.error('[ClientProviders] Failed to start mock worker:', error);
       });
-    }
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

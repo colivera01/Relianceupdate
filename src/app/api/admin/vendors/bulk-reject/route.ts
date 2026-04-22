@@ -1,26 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { requireAdmin } from '@/lib/admin-auth';
+import { trySetVendorApprovalStatus } from '@/lib/vendor-status';
 
 export async function POST(request: NextRequest) {
   try {
+    const admin = await requireAdmin(request);
     const body = await request.json();
-    const { vendorIds, adminId, adminEmail, rejectionReason, notes } = body;
+    const { vendorIds, rejectionReason } = body;
 
     // Validate required fields
-    if (!vendorIds || !Array.isArray(vendorIds) || vendorIds.length === 0 || !adminId || !adminEmail || !rejectionReason) {
+    if (!vendorIds || !Array.isArray(vendorIds) || vendorIds.length === 0 || !rejectionReason) {
       return NextResponse.json(
-        { error: 'Vendor IDs array, Admin ID, Admin Email, and Rejection Reason are required' },
+        { error: 'Vendor IDs array and rejection reason are required' },
         { status: 400 }
       );
     }
-
-    // TODO: Verify admin permissions
-    // const admin = await verifyAdminPermissions(adminId);
-    // if (!admin) {
-    //   return NextResponse.json(
-    //     { error: 'Unauthorized: Admin permissions required' },
-    //     { status: 403 }
-    //   );
-    // }
 
     const results = [];
     const errors = [];
@@ -28,61 +23,65 @@ export async function POST(request: NextRequest) {
     // Process each vendor
     for (const vendorId of vendorIds) {
       try {
-        // TODO: Update vendor status in database
-        // const updatedVendor = await db.vendors.update({
-        //   where: { id: vendorId },
-        //   data: {
-        //     isActive: false,
-        //     isApproved: false,
-        //     approvalStatus: 'rejected',
-        //     approvalDate: new Date().toISOString(),
-        //     approvedBy: adminId,
-        //     rejectionReason,
-        //   }
-        // });
+        const result = await (prisma as any).$transaction(async (tx: any) => {
+          const vendor = await tx.vendor.findUnique({
+            where: { id: String(vendorId) },
+            select: { id: true },
+          });
+          if (!vendor) return { ok: false, reason: 'Vendor not found' };
 
-        // TODO: Send rejection email to vendor
-        // await sendVendorRejectionEmail(vendor.email, vendor.businessName, rejectionReason);
+          const pendingManagerMembership = await tx.vendorMembership.findFirst({
+            where: {
+              vendorId: String(vendorId),
+              role: 'MANAGER',
+              status: 'PENDING',
+            },
+            orderBy: [{ requestedAt: 'desc' }],
+          });
+          if (!pendingManagerMembership) {
+            return { ok: false, reason: 'No pending manager membership found' };
+          }
+
+          const membership = await tx.vendorMembership.update({
+            where: { id: pendingManagerMembership.id },
+            data: {
+              status: 'DENIED',
+              deniedAt: new Date(),
+              deniedByUserId: admin.userId,
+              approvedAt: null,
+              approvedByUserId: null,
+            },
+          });
+
+          return { ok: true, membershipId: String(membership.id) };
+        });
+
+        if (!result.ok) {
+          errors.push({
+            vendorId,
+            error: result.reason,
+          });
+          continue;
+        }
+
+        await trySetVendorApprovalStatus(String(vendorId), 'REJECTED');
 
         results.push({
           vendorId,
           status: 'rejected',
-          rejectedBy: adminId,
+          rejectedBy: admin.userId,
           rejectionDate: new Date().toISOString(),
           rejectionReason,
+          membershipId: (result as any).membershipId,
         });
-
       } catch (error) {
         console.error(`Error rejecting vendor ${vendorId}:`, error);
         errors.push({
           vendorId,
-          error: 'Failed to reject vendor',
+          error: error instanceof Error ? error.message : 'Failed to reject vendor',
         });
       }
     }
-
-    // TODO: Log bulk admin action
-    // await logAdminAction({
-    //   action: 'bulk_vendor_rejected',
-    //   adminId,
-    //   adminEmail,
-    //   vendorIds,
-    //   rejectionReason,
-    //   notes,
-    //   timestamp: new Date().toISOString(),
-    // });
-
-    // For now, just log the action
-    console.log('Bulk vendor rejection:', {
-      vendorIds,
-      adminId,
-      adminEmail,
-      rejectionReason,
-      notes,
-      results,
-      errors,
-      timestamp: new Date().toISOString(),
-    });
 
     return NextResponse.json({
       success: true,
@@ -96,6 +95,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Bulk vendor rejection error:', error);
+    if (error instanceof Error && (error.message === 'Unauthorized' || error.message.includes('Forbidden'))) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json(
       { error: 'Failed to process bulk rejection. Please try again.' },
       { status: 500 }

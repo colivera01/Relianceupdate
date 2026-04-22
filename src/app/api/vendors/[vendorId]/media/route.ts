@@ -3,9 +3,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import { ARCHIVE_ACTIVE, ARCHIVE_ARCHIVED, normalizeArchiveStatus } from "@/lib/media-visibility";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
+}
+
+function deriveMediaPurposeFromSessionType(sessionType: unknown): "progress" | "completion" {
+  const normalized = String(sessionType || "").trim().toLowerCase();
+  return normalized.includes("completion") ? "completion" : "progress";
 }
 
 /**
@@ -35,7 +41,29 @@ export async function GET(
       where,
       orderBy: { createdAt: "desc" },
       include: {
-        // Could include membership and device info if needed
+        mediaSession: {
+          include: {
+            booking: {
+              select: {
+                id: true,
+                title: true,
+                clientName: true,
+              },
+            },
+            service: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            employee: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -54,6 +82,7 @@ export async function GET(
 
     return NextResponse.json({
       assets: assets.map((asset: any) => ({
+        assetId: asset.id,
         id: asset.id,
         vendorId: asset.vendorId,
         mediaSessionId: asset.mediaSessionId,
@@ -66,9 +95,21 @@ export async function GET(
         blobUrl: asset.blobUrl,
         moderationStatus: asset.moderationStatus,
         visibilityStatus: asset.visibilityStatus,
-        archiveStatus: asset.archiveStatus,
+        archiveStatus:
+          asset.deletedAt != null
+            ? ARCHIVE_ARCHIVED
+            : normalizeArchiveStatus(asset.archiveStatus || ARCHIVE_ACTIVE),
         moderationReason: asset.moderationReason,
         moderatedAt: asset.moderatedAt,
+        title: asset.mediaSession?.title || asset.mediaSession?.booking?.title || "Service Media",
+        jobTitle: asset.mediaSession?.booking?.title || null,
+        bookingId: asset.mediaSession?.booking?.id || null,
+        clientName: asset.mediaSession?.booking?.clientName || null,
+        serviceId: asset.mediaSession?.service?.id || asset.mediaSession?.serviceId || null,
+        serviceName: asset.mediaSession?.service?.name || null,
+        sessionType: asset.mediaSession?.sessionType || null,
+        mediaPurpose: deriveMediaPurposeFromSessionType(asset.mediaSession?.sessionType),
+        employeeName: asset.mediaSession?.employee?.name || null,
         createdAt: asset.createdAt,
         deletedAt: asset.deletedAt,
       })),

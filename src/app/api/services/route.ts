@@ -1,209 +1,127 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
 
-// TODO: Import your database models
-// import { ServiceModel } from '@/lib/models/Service';
+function parsePositiveNumber(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function mapServiceRow(service: any) {
+  return {
+    id: service.id,
+    name: service.name,
+    description: service.description || '',
+    price: Number(service.price),
+    vendor_id: service.vendorId,
+    vendorId: service.vendorId,
+    isPublished: Boolean(service.isPublished),
+    publishedAt: service.publishedAt ? new Date(service.publishedAt).toISOString() : null,
+    created_at: service.createdAt ? new Date(service.createdAt).toISOString() : null,
+    updated_at: service.updatedAt ? new Date(service.updatedAt).toISOString() : null,
+    vendor: service.vendor
+      ? {
+          id: service.vendor.id,
+          name: service.vendor.businessName || service.vendor.name,
+          businessName: service.vendor.businessName || null,
+          category: service.vendor.category || null,
+          businessType: service.vendor.businessType || null,
+          location:
+            [service.vendor.city, service.vendor.state].filter(Boolean).join(', ') || null,
+          isPubliclyListed: Boolean(service.vendor.isPubliclyListed),
+        }
+      : null,
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search');
-    const category = searchParams.get('category');
-    const vendorId = searchParams.get('vendorId');
-    const priceMin = searchParams.get('priceMin');
-    const priceMax = searchParams.get('priceMax');
-    const location = searchParams.get('location');
-    const rating = searchParams.get('rating');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const sortBy = searchParams.get('sortBy') || 'created_at';
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
+    const search = String(searchParams.get('search') || '').trim();
+    const category = String(searchParams.get('category') || '').trim();
+    const vendorId = String(searchParams.get('vendorId') || '').trim();
+    const priceMin = parsePositiveNumber(searchParams.get('priceMin'));
+    const priceMax = parsePositiveNumber(searchParams.get('priceMax'));
+    const page = Math.max(parseInt(searchParams.get('page') || '1', 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '20', 10) || 20, 1), 100);
+    const skip = (page - 1) * limit;
+    const sortBy = String(searchParams.get('sortBy') || 'created_at').trim().toLowerCase();
+    const sortOrder = String(searchParams.get('sortOrder') || 'desc').trim().toLowerCase() === 'asc' ? 'asc' : 'desc';
 
-    // TODO: Replace with actual database query
-    // const services = await ServiceModel.findMany({
-    //   where: {
-    //     ...(search && {
-    //       OR: [
-    //         { name: { contains: search, mode: 'insensitive' } },
-    //         { description: { contains: search, mode: 'insensitive' } },
-    //       ],
-    //     }),
-    //     ...(category && { category }),
-    //     ...(vendorId && { vendor_id: parseInt(vendorId) }),
-    //     ...(priceMin && { price: { gte: parseFloat(priceMin) } }),
-    //     ...(priceMax && { price: { lte: parseFloat(priceMax) } }),
-    //     ...(rating && { rating: { gte: parseFloat(rating) } }),
-    //   },
-    //   include: {
-    //     vendor: {
-    //       select: {
-    //         id: true,
-    //         name: true,
-    //         rating: true,
-    //         review_count: true,
-    //         verified: true,
-    //         location: true,
-    //       },
-    //     },
-    //   },
-    //   orderBy: {
-    //     [sortBy]: sortOrder,
-    //   },
-    //   skip: (page - 1) * limit,
-    //   take: limit,
-    // });
+    const where: any = {
+      ...(vendorId ? { vendorId } : {}),
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search } },
+              { description: { contains: search } },
+            ],
+          }
+        : {}),
+      ...(priceMin != null || priceMax != null
+        ? {
+            price: {
+              ...(priceMin != null ? { gte: priceMin } : {}),
+              ...(priceMax != null ? { lte: priceMax } : {}),
+            },
+          }
+        : {}),
+      ...(category
+        ? {
+            OR: [
+              { vendor: { category } },
+              { vendor: { businessType: category } },
+            ],
+          }
+        : {}),
+    };
 
-    // Mock services data
-    const mockServices = [
-      {
-        id: 1,
-        name: 'Deep House Cleaning',
-        description: 'Complete house cleaning service including kitchen, bathrooms, and living areas. Professional cleaning with eco-friendly products.',
-        category: 'Cleaning',
-        price: 120,
-        original_price: 150,
-        discount: 20,
-        duration: '3-4 hours',
-        rating: 4.9,
-        review_count: 127,
-        vendor: {
-          id: 1,
-          name: 'Sparkle Clean Pro',
-          rating: 4.9,
-          review_count: 127,
-          verified: true,
-          location: 'Springfield, IL',
+    const orderBy: any =
+      sortBy === 'price'
+        ? { price: sortOrder }
+        : sortBy === 'name'
+        ? { name: sortOrder }
+        : { createdAt: sortOrder };
+
+    const [total, rows] = await Promise.all([
+      prisma.service.count({ where }),
+      prisma.service.findMany({
+        where,
+        include: {
+          vendor: {
+            select: {
+              id: true,
+              name: true,
+              businessName: true,
+              businessType: true,
+              category: true,
+              city: true,
+              state: true,
+              isPubliclyListed: true,
+            },
+          },
         },
-        features: ['Kitchen deep clean', 'Bathroom sanitization', 'Dusting', 'Vacuuming'],
-        inclusions: ['Cleaning supplies', 'Equipment', 'Insurance'],
-        images: [
-          'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop',
-          'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&h=300&fit=crop',
-        ],
-        available: true,
-        created_at: '2024-01-10T10:30:00Z',
-      },
-      {
-        id: 2,
-        name: 'Plumbing Repair',
-        description: 'Professional plumbing repair services for all types of issues. Emergency service available 24/7.',
-        category: 'Plumbing',
-        price: 85,
-        original_price: 100,
-        discount: 15,
-        duration: '1-2 hours',
-        rating: 4.7,
-        review_count: 89,
-        vendor: {
-          id: 2,
-          name: 'Quick Fix Plumbing',
-          rating: 4.7,
-          review_count: 89,
-          verified: true,
-          location: 'Springfield, IL',
-        },
-        features: ['Leak repair', 'Pipe replacement', 'Fixture installation', 'Emergency service'],
-        inclusions: ['Parts warranty', 'Labor guarantee', 'Emergency response'],
-        images: [
-          'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=400&h=300&fit=crop',
-        ],
-        available: true,
-        created_at: '2024-01-12T14:20:00Z',
-      },
-      {
-        id: 3,
-        name: 'Landscape Design',
-        description: 'Professional landscape design and installation services. Create your dream outdoor space.',
-        category: 'Landscaping',
-        price: 200,
-        original_price: 250,
-        discount: 20,
-        duration: '4-6 hours',
-        rating: 4.8,
-        review_count: 56,
-        vendor: {
-          id: 3,
-          name: 'Green Thumb Gardens',
-          rating: 4.8,
-          review_count: 56,
-          verified: true,
-          location: 'Springfield, IL',
-        },
-        features: ['Design consultation', 'Plant selection', 'Installation', 'Maintenance plan'],
-        inclusions: ['Design drawings', 'Plant warranty', 'Follow-up care'],
-        images: [
-          'https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=400&h=300&fit=crop',
-        ],
-        available: true,
-        created_at: '2024-01-08T09:15:00Z',
-      },
-    ];
-
-    // Filter mock data based on search parameters
-    let filteredServices = mockServices;
-
-    if (search) {
-      filteredServices = filteredServices.filter(service =>
-        service.name.toLowerCase().includes(search.toLowerCase()) ||
-        service.description.toLowerCase().includes(search.toLowerCase())
-      );
-    }
-
-    if (category) {
-      filteredServices = filteredServices.filter(service =>
-        service.category.toLowerCase() === category.toLowerCase()
-      );
-    }
-
-    if (priceMin) {
-      filteredServices = filteredServices.filter(service =>
-        service.price >= parseFloat(priceMin)
-      );
-    }
-
-    if (priceMax) {
-      filteredServices = filteredServices.filter(service =>
-        service.price <= parseFloat(priceMax)
-      );
-    }
-
-    if (rating) {
-      filteredServices = filteredServices.filter(service =>
-        service.rating >= parseFloat(rating)
-      );
-    }
-
-    // Sort services
-    filteredServices.sort((a, b) => {
-      if (sortBy === 'price') {
-        return sortOrder === 'asc' ? a.price - b.price : b.price - a.price;
-      }
-      if (sortBy === 'rating') {
-        return sortOrder === 'asc' ? a.rating - b.rating : b.rating - a.rating;
-      }
-      return sortOrder === 'asc' 
-        ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        : new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-
-    // Pagination
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedServices = filteredServices.slice(startIndex, endIndex);
+        orderBy,
+        skip,
+        take: limit,
+      }),
+    ]);
 
     return NextResponse.json({
-      services: paginatedServices,
+      services: rows.map(mapServiceRow),
       pagination: {
         page,
         limit,
-        total: filteredServices.length,
-        totalPages: Math.ceil(filteredServices.length / limit),
+        total,
+        totalPages: Math.ceil(total / limit),
       },
       filters: {
-        search,
-        category,
+        search: search || null,
+        category: category || null,
         priceMin,
         priceMax,
-        rating,
+        vendorId: vendorId || null,
       },
     });
   } catch (error) {
@@ -218,68 +136,55 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const {
-      name,
-      description,
-      category,
-      price,
-      duration,
-      features,
-      inclusions,
-      images,
-      vendor_id,
-    } = body;
+    const name = String(body?.name || '').trim();
+    const description = String(body?.description || '').trim();
+    const priceValue = Number(body?.price);
+    const vendorId = String(body?.vendor_id ?? body?.vendorId ?? '').trim();
 
-    // Validate required fields
-    if (!name || !description || !category || !price || !vendor_id) {
+    if (!name || !description || !vendorId || !Number.isFinite(priceValue) || priceValue < 0) {
       return NextResponse.json(
-        { error: 'Name, description, category, price, and vendor ID are required' },
+        { error: 'Name, description, non-negative price, and vendor ID are required' },
         { status: 400 }
       );
     }
 
-    // TODO: Validate vendor exists and user has permission
-    // const vendor = await VendorModel.findById(vendor_id);
-    // if (!vendor) {
-    //   return NextResponse.json(
-    //     { error: 'Vendor not found' },
-    //     { status: 404 }
-    //   );
-    // }
+    const vendor = await prisma.vendor.findUnique({
+      where: { id: vendorId },
+      select: { id: true },
+    });
+    if (!vendor) {
+      return NextResponse.json(
+        { error: 'Vendor not found' },
+        { status: 404 }
+      );
+    }
 
-    // TODO: Create service in database
-    // const service = await ServiceModel.create({
-    //   name,
-    //   description,
-    //   category,
-    //   price: parseFloat(price),
-    //   duration,
-    //   features: features || [],
-    //   inclusions: inclusions || [],
-    //   images: images || [],
-    //   vendor_id: parseInt(vendor_id),
-    //   status: 'active',
-    // });
-
-    // Mock service creation
-    const mockService = {
-      id: Math.floor(Math.random() * 1000) + 1,
-      name,
-      description,
-      category,
-      price: parseFloat(price),
-      duration,
-      features: features || [],
-      inclusions: inclusions || [],
-      images: images || [],
-      vendor_id: parseInt(vendor_id),
-      status: 'active',
-      created_at: new Date().toISOString(),
-    };
+    const created = await prisma.service.create({
+      data: {
+        vendorId,
+        name,
+        description,
+        price: priceValue,
+      },
+      include: {
+        vendor: {
+          select: {
+            id: true,
+            name: true,
+            businessName: true,
+            businessType: true,
+            category: true,
+            city: true,
+            state: true,
+            isPubliclyListed: true,
+          },
+        },
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      service: mockService,
+      service: mapServiceRow(created),
       message: 'Service created successfully',
     });
   } catch (error) {
@@ -289,4 +194,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}
+

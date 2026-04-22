@@ -36,11 +36,15 @@ export default function ProfileToggle({
 
     setIsLoading(true);
     try {
+      const token =
+        localStorage.getItem('authToken') ||
+        localStorage.getItem('auth_token') ||
+        '';
       const response = await fetch('/api/profile/toggle', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken') || 'temp-jwt-token'}`
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           userId,

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true});\" && next dev",
     "dev:mock": "cross-env NEXT_PUBLIC_API_MODE=mock next dev",
     "dev:live": "cross-env NEXT_PUBLIC_API_MODE=live next dev",
     "promote:mock-to-live": "cross-env SEED_SECRET=devsecret node -e \"fetch('http://localhost:3000/api/admin/seed-from-mock',{method:'POST',headers:{Authorization:'Bearer devsecret'}}).then(r=>r.text()).then(console.log)\"",

@@ -57,7 +57,7 @@ test('customer review: my-bookings media → window/start → quick review creat
   await waitForSignInToLeaveLoginPage(page);
 
   await page.goto('/my-bookings');
-  await expect(page.getByRole('heading', { name: 'My Bookings' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: 'My Services' })).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole('button', { name: 'Past' }).click();
 

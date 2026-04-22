@@ -4,6 +4,7 @@ import { Users, HardDrive, Star, Briefcase, DollarSign, HelpCircle, LogOut, Aler
 import { Button } from '../../components/ui/button';
 import Link from 'next/link';
 import ProfileHeader from '../../components/ProfileHeader';
+import { useVendorProfile } from '@/hooks/useVendorProfile';
 
 type SidebarLink = {
   label: string;
@@ -25,6 +26,14 @@ const sidebarLinks: SidebarLink[] = [
 ];
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
+  const { data: vendorProfile } = useVendorProfile();
+  const vendorDisplayName =
+    vendorProfile?.businessName ||
+    vendorProfile?.name ||
+    [vendorProfile?.firstName, vendorProfile?.lastName].filter(Boolean).join(" ") ||
+    "Vendor Account";
+  const vendorCategory = vendorProfile?.category || vendorProfile?.businessType || "Vendor";
+
   return (
     <div className="min-h-screen flex bg-gray-100">
       {/* Sidebar */}
@@ -48,11 +57,11 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
               </div>
             </div>
             <div className="text-center">
-              <div className="font-semibold text-lg mb-1">Sparkle Clean Pro</div>
-              <div className="text-blue-100 text-sm">Professional Cleaning</div>
+              <div className="font-semibold text-lg mb-1">{vendorDisplayName}</div>
+              <div className="text-blue-100 text-sm">{vendorCategory}</div>
               <div className="mt-2">
                 <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
-                  Verified Vendor
+                  {vendorProfile ? 'Verified Vendor' : 'Vendor Context Loading'}
                 </span>
               </div>
             </div>
@@ -122,14 +131,19 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
       <main className="flex-1 flex flex-col">
         {/* Profile Header with Toggle */}
         <ProfileHeader 
-          userData={{
-            id: 'cmipm4d6v0000sosgqvb8tp63', // seeded vendor ID
-            firstName: 'Cesar',
-            lastName: 'Olivera',
-            email: 'sparkle@example.com',
-            businessName: 'Sparkle Clean Pro',
-            category: 'Professional Cleaning',
-          }} 
+          userData={
+            vendorProfile
+              ? {
+                  id: vendorProfile.id,
+                  firstName: vendorProfile.firstName || '',
+                  lastName: vendorProfile.lastName || '',
+                  email: vendorProfile.email || '',
+                  businessName: vendorProfile.businessName || '',
+                  category: vendorProfile.category || '',
+                  profilePhoto: vendorProfile.profilePhoto || undefined,
+                }
+              : null
+          }
           currentProfile="vendor"
           className="sticky top-0 z-40"
         />

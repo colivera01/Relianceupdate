@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import { ARCHIVE_ACTIVE, ARCHIVE_ARCHIVED } from "@/lib/media-visibility";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; assetId: string }>;
@@ -51,6 +52,7 @@ export async function DELETE(
       where: { id: assetId },
       data: {
         deletedAt: new Date(),
+        archiveStatus: ARCHIVE_ARCHIVED,
       },
     });
 
@@ -129,7 +131,7 @@ export async function PATCH(
 
     const updatedAsset = await (prisma as any).mediaAsset.update({
       where: { id: assetId },
-      data: { deletedAt: null },
+      data: { deletedAt: null, archiveStatus: ARCHIVE_ACTIVE },
     });
 
     return NextResponse.json({

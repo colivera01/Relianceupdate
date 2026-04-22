@@ -61,6 +61,18 @@ export default function ApprovalQueuePage() {
     name: 'Admin User',
   };
 
+  const getAdminHeaders = () => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (process.env.NODE_ENV === 'development') {
+      headers['x-admin'] = 'true';
+      headers['x-user-role'] = 'admin';
+      headers['x-user-id'] = adminData.id;
+    }
+    return headers;
+  };
+
   useEffect(() => {
     fetchPendingVendors();
   }, [searchTerm, categoryFilter, sortBy, sortOrder]);
@@ -70,77 +82,25 @@ export default function ApprovalQueuePage() {
     setError(null);
     
     try {
-      // In real app, call the API endpoint
-      // const response = await fetch(`/api/admin/vendors/pending?search=${searchTerm}&category=${categoryFilter}&sortBy=${sortBy}&sortOrder=${sortOrder}`);
-      // const data = await response.json();
-      
-      // For now, use mock data
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
-      
-      const mockData = [
+      const response = await fetch(
+        `/api/admin/vendors/pending?search=${encodeURIComponent(searchTerm)}&category=${encodeURIComponent(
+          categoryFilter
+        )}&sortBy=${encodeURIComponent(sortBy)}&sortOrder=${encodeURIComponent(sortOrder)}`,
         {
-          id: '1',
-          businessName: 'CleanCo Services',
-          firstName: 'John',
-          lastName: 'Doe',
-          email: 'john@cleanco.com',
-          phone: '555-123-4567',
-          category: 'Cleaning',
-          businessType: 'LLC',
-          foundedYear: 2020,
-          totalEmployees: 5,
-          yearsInBusiness: 4,
-          address: '123 Main St',
-          city: 'Springfield',
-          state: 'IL',
-          zipCode: '62701',
-          createdAt: '2024-01-15T10:30:00Z',
-          submittedAt: '2024-01-15T10:30:00Z',
-        },
-        {
-          id: '2',
-          businessName: 'PlumbPro Solutions',
-          firstName: 'Jane',
-          lastName: 'Smith',
-          email: 'jane@plumbpro.com',
-          phone: '555-987-6543',
-          category: 'Plumbing',
-          businessType: 'Corporation',
-          foundedYear: 2018,
-          totalEmployees: 12,
-          yearsInBusiness: 6,
-          address: '456 Oak Ave',
-          city: 'Metropolis',
-          state: 'NY',
-          zipCode: '10001',
-          createdAt: '2024-01-14T14:20:00Z',
-          submittedAt: '2024-01-14T14:20:00Z',
-        },
-        {
-          id: '3',
-          businessName: 'PaintMaster Pro',
-          firstName: 'Mike',
-          lastName: 'Johnson',
-          email: 'mike@paintmaster.com',
-          phone: '555-456-7890',
-          category: 'Painting',
-          businessType: 'Sole Proprietorship',
-          foundedYear: 2022,
-          totalEmployees: 3,
-          yearsInBusiness: 2,
-          address: '789 Pine St',
-          city: 'Chicago',
-          state: 'IL',
-          zipCode: '60601',
-          createdAt: '2024-01-13T09:15:00Z',
-          submittedAt: '2024-01-13T09:15:00Z',
-        },
-      ];
-
-      setPendingVendors(mockData);
+          method: 'GET',
+          headers: getAdminHeaders(),
+          cache: 'no-store',
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to load pending vendors');
+      }
+      const vendors = payload?.data?.vendors;
+      setPendingVendors(Array.isArray(vendors) ? vendors : []);
     } catch (error) {
       console.error('Error fetching pending vendors:', error);
-      setError('Failed to load pending vendors');
+      setError(error instanceof Error ? error.message : 'Failed to load pending vendors');
     } finally {
       setLoading(false);
     }
@@ -150,20 +110,20 @@ export default function ApprovalQueuePage() {
     setProcessingAction(`approve-${vendorId}`);
     
     try {
-      // In real app, call the approval API
-      // const response = await fetch('/api/admin/vendors/approve', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     vendorId,
-      //     adminId: adminData.id,
-      //     adminEmail: adminData.email,
-      //     notes: adminNotes,
-      //   }),
-      // });
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch('/api/admin/vendors/approve', {
+        method: 'POST',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({
+          vendorId,
+          adminId: adminData.id,
+          adminEmail: adminData.email,
+          notes: adminNotes,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to approve vendor');
+      }
       
       // Remove vendor from pending list
       setPendingVendors(prev => prev.filter(v => v.id !== vendorId));
@@ -189,21 +149,21 @@ export default function ApprovalQueuePage() {
     setProcessingAction(`reject-${vendorId}`);
     
     try {
-      // In real app, call the rejection API
-      // const response = await fetch('/api/admin/vendors/reject', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     vendorId,
-      //     adminId: adminData.id,
-      //     adminEmail: adminData.email,
-      //     rejectionReason,
-      //     notes: adminNotes,
-      //   }),
-      // });
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch('/api/admin/vendors/reject', {
+        method: 'POST',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({
+          vendorId,
+          adminId: adminData.id,
+          adminEmail: adminData.email,
+          rejectionReason,
+          notes: adminNotes,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to reject vendor');
+      }
       
       // Remove vendor from pending list
       setPendingVendors(prev => prev.filter(v => v.id !== vendorId));
@@ -228,24 +188,30 @@ export default function ApprovalQueuePage() {
     setProcessingAction('bulk-approve');
     
     try {
-      // In real app, call the bulk approval API
-      // const response = await fetch('/api/admin/vendors/bulk-approve', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     vendorIds: selectedVendors,
-      //     adminId: adminData.id,
-      //     adminEmail: adminData.email,
-      //     notes: adminNotes,
-      //   }),
-      // });
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const response = await fetch('/api/admin/vendors/bulk-approve', {
+        method: 'POST',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({
+          vendorIds: selectedVendors,
+          adminId: adminData.id,
+          adminEmail: adminData.email,
+          notes: adminNotes,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to bulk approve vendors');
+      }
+      if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+        setError(`Some approvals failed: ${payload.errors.map((item: any) => item?.vendorId).join(', ')}`);
+      }
+      const approvedIds = Array.isArray(payload?.results)
+        ? payload.results.map((item: any) => String(item?.vendorId))
+        : [];
       
       // Remove approved vendors from pending list
-      setPendingVendors(prev => prev.filter(v => !selectedVendors.includes(v.id)));
-      setSelectedVendors([]);
+      setPendingVendors(prev => prev.filter(v => !approvedIds.includes(v.id)));
+      setSelectedVendors(prev => prev.filter(id => !approvedIds.includes(id)));
       setAdminNotes('');
       
       console.log(`Bulk approved ${selectedVendors.length} vendors by ${adminData.email}`);
@@ -266,25 +232,31 @@ export default function ApprovalQueuePage() {
     setProcessingAction('bulk-reject');
     
     try {
-      // In real app, call the bulk rejection API
-      // const response = await fetch('/api/admin/vendors/bulk-reject', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     vendorIds: selectedVendors,
-      //     adminId: adminData.id,
-      //     adminEmail: adminData.email,
-      //     rejectionReason,
-      //     notes: adminNotes,
-      //   }),
-      // });
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const response = await fetch('/api/admin/vendors/bulk-reject', {
+        method: 'POST',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({
+          vendorIds: selectedVendors,
+          adminId: adminData.id,
+          adminEmail: adminData.email,
+          rejectionReason,
+          notes: adminNotes,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to bulk reject vendors');
+      }
+      if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+        setError(`Some rejections failed: ${payload.errors.map((item: any) => item?.vendorId).join(', ')}`);
+      }
+      const rejectedIds = Array.isArray(payload?.results)
+        ? payload.results.map((item: any) => String(item?.vendorId))
+        : [];
       
       // Remove rejected vendors from pending list
-      setPendingVendors(prev => prev.filter(v => !selectedVendors.includes(v.id)));
-      setSelectedVendors([]);
+      setPendingVendors(prev => prev.filter(v => !rejectedIds.includes(v.id)));
+      setSelectedVendors(prev => prev.filter(id => !rejectedIds.includes(id)));
       setRejectionReason('');
       setAdminNotes('');
       

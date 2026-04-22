@@ -1,134 +1,154 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import { registeredUsers } from "@/lib/dev-registered-users";
+import { prisma } from "@/server/db";
+import { getUserIdFromRequest } from "@/lib/auth";
+
+/** Dev / interim login tokens accepted by customer profile routes. */
+const DEV_BEARER_TOKENS = new Set(["temp-jwt-token", "temp-token"]);
+
+function parseBearer(request: NextRequest): string | null {
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+  return authHeader.replace("Bearer ", "").trim();
+}
+
+function splitDisplayName(name: string | null | undefined) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  const firstName = parts[0] || "";
+  const lastName = parts.slice(1).join(" ") || "";
+  return { firstName, lastName };
+}
 
 export async function GET(request: NextRequest) {
   try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = parseBearer(request);
+    if (!token) {
+      return NextResponse.json({ error: "Authorization header required" }, { status: 401 });
+    }
+
+    if (!DEV_BEARER_TOKENS.has(token)) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
+
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
       return NextResponse.json(
-        { error: 'Authorization header required' },
+        { error: "Unauthorized: missing user context (cookie or x-user-id)" },
         { status: 401 }
       );
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    
-    // For development, accept any token
-    // In production, validate the JWT token
-    if (token !== 'temp-jwt-token') {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, phone: true, createdAt: true },
+    });
+
+    const devRow =
+      registeredUsers.find((u) => String(u.id) === String(userId)) ||
+      (dbUser?.email
+        ? registeredUsers.find(
+            (u) =>
+              u.email && String(u.email).toLowerCase() === String(dbUser.email).toLowerCase()
+          )
+        : undefined);
+
+    if (!dbUser && !devRow) {
+      return NextResponse.json({ error: "Customer profile not found" }, { status: 404 });
     }
 
-    // Find the customer user (first customer in the array)
-    const customerUser = registeredUsers.find(user => user.userType === 'customer');
-    
-    if (!customerUser) {
-      return NextResponse.json(
-        { error: 'Customer profile not found' },
-        { status: 404 }
-      );
-    }
+    const canonicalId = dbUser?.id ?? devRow?.id ?? userId;
+    const email = dbUser?.email ?? devRow?.email ?? "";
+    const { firstName, lastName } = devRow
+      ? { firstName: String(devRow.firstName || ""), lastName: String(devRow.lastName || "") }
+      : splitDisplayName(dbUser?.name);
 
-    // Return customer profile data
     const profileData = {
-      // Personal information
-      firstName: customerUser.firstName,
-      lastName: customerUser.lastName,
-      email: customerUser.email,
-      phone: customerUser.phone,
-      address: customerUser.address,
-      city: customerUser.city,
-      state: customerUser.state,
-      zipCode: customerUser.zipCode,
-      bio: customerUser.bio,
-      
-      // Account information
-      userType: customerUser.userType,
-      createdAt: customerUser.createdAt,
-      isActive: customerUser.isActive,
-      
-      // Preferences
-      preferences: customerUser.preferences || {
-        notifications: true,
-        emailMarketing: false,
-      },
-      
-      // User activity
-      favorites: customerUser.favorites || [],
-      bookingHistory: customerUser.bookingHistory || [],
-      reviews: customerUser.reviews || [],
+      id: canonicalId,
+      firstName,
+      lastName,
+      email,
+      phone: devRow?.phone ?? dbUser?.phone ?? "",
+      address: devRow?.address ?? "",
+      city: devRow?.city ?? "",
+      state: devRow?.state ?? "",
+      zipCode: devRow?.zipCode ?? "",
+      bio: devRow?.bio ?? "",
+      userType: devRow?.userType || "customer",
+      createdAt: devRow?.createdAt ?? dbUser?.createdAt?.toISOString() ?? new Date().toISOString(),
+      isActive: devRow?.isActive ?? true,
+      preferences:
+        devRow?.preferences ||
+        ({
+          notifications: true,
+          emailMarketing: false,
+        } as Record<string, unknown>),
+      favorites: devRow?.favorites || [],
+      bookingHistory: devRow?.bookingHistory || [],
+      reviews: devRow?.reviews || [],
     };
 
     return NextResponse.json({
       success: true,
-      profile: profileData
+      profile: profileData,
     });
-
   } catch (error) {
-    console.error('Error fetching customer profile:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch customer profile' },
-      { status: 500 }
-    );
+    console.error("Error fetching customer profile:", error);
+    return NextResponse.json({ error: "Failed to fetch customer profile" }, { status: 500 });
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Authorization header required' },
-        { status: 401 }
-      );
+    const token = parseBearer(request);
+    if (!token) {
+      return NextResponse.json({ error: "Authorization header required" }, { status: 401 });
     }
 
-    const token = authHeader.replace('Bearer ', '');
-    
-    // For development, accept any token
-    if (token !== 'temp-jwt-token') {
+    if (!DEV_BEARER_TOKENS.has(token)) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
+
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+
+    const customerIndex = registeredUsers.findIndex(
+      (u) =>
+        String(u.id) === String(userId) ||
+        Boolean(
+          dbUser?.email &&
+            u.email &&
+            String(u.email).toLowerCase() === String(dbUser.email).toLowerCase()
+        )
+    );
+
+    if (customerIndex === -1) {
       return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
+        { error: "Customer profile not found in dev registry; cannot update in-memory row." },
+        { status: 404 }
       );
     }
 
     const body = await request.json();
 
-    // Find the customer user index
-    const customerIndex = registeredUsers.findIndex(user => user.userType === 'customer');
-    
-    if (customerIndex === -1) {
-      return NextResponse.json(
-        { error: 'Customer profile not found' },
-        { status: 404 }
-      );
-    }
-
-    // Update the customer's data
     registeredUsers[customerIndex] = {
       ...registeredUsers[customerIndex],
-      ...body
+      ...body,
     };
 
     return NextResponse.json({
       success: true,
-      message: 'Profile updated successfully',
-      profile: registeredUsers[customerIndex]
+      message: "Profile updated successfully",
+      profile: registeredUsers[customerIndex],
     });
-
   } catch (error) {
-    console.error('Error updating customer profile:', error);
-    return NextResponse.json(
-      { error: 'Failed to update customer profile' },
-      { status: 500 }
-    );
+    console.error("Error updating customer profile:", error);
+    return NextResponse.json({ error: "Failed to update customer profile" }, { status: 500 });
   }
-} 
+}

@@ -673,7 +673,7 @@ export default function ProfileSettingsPage() {
                   className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <Calendar className="w-5 h-5" />
-                  <span>View My Bookings</span>
+                  <span>View My Services</span>
                 </button>
                 <button
                   onClick={() => router.push('/search')}

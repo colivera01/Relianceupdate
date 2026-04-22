@@ -1,7 +1,7 @@
 // @ts-nocheck — large vendor jobs surface; strict implicit-any cleanup tracked separately
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +10,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { ArrowLeft, Plus, Search, Filter, Download, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, MessageSquare, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
 import Link from 'next/link';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
-import { runVendorJobMediaUpload, type VendorJobMediaLifecycleState } from '@/lib/vendor-job-media';
+import {
+  runVendorJobMediaUpload,
+  type VendorJobMediaLifecycleState,
+  type VendorJobMediaPurpose,
+} from '@/lib/vendor-job-media';
+import {
+  ARCHIVE_ARCHIVED,
+  MODERATION_APPROVED,
+  MODERATION_FLAGGED,
+  MODERATION_PENDING_REVIEW,
+  MODERATION_REJECTED,
+  normalizeArchiveStatus as normalizeMediaArchiveStatus,
+  normalizeModerationStatus,
+} from '@/lib/media-visibility';
+import { getClientSessionHeaders } from '@/lib/client-session';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  fetchVendorTeamMembers,
+  avatarUrlForName,
+  type VendorTeamMember,
+} from '@/lib/vendor-team-members';
 
 // BACKEND DEVELOPER NOTES:
 // - Fetch jobs for this vendor from GET /api/vendor/jobs
@@ -80,13 +100,6 @@ const mockJobs = [
   }
 ];
 
-const mockEmployees = [
-  { id: 1, name: "Mike Johnson", photo: "https://randomuser.me/api/portraits/men/32.jpg" },
-  { id: 2, name: "Lisa Chen", photo: "https://randomuser.me/api/portraits/women/44.jpg" },
-  { id: 3, name: "David Wilson", photo: "https://randomuser.me/api/portraits/men/45.jpg" },
-  { id: 4, name: "Maria Garcia", photo: "https://randomuser.me/api/portraits/women/46.jpg" }
-];
-
 const BUSINESS_ADDRESS = { lat: 28.5383, lng: -81.3792 }; // Example: Orlando, FL
 const LOCATION_RADIUS_METERS = 100;
 
@@ -106,13 +119,6 @@ const getDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 };
 
-const FALLBACK_SERVICE_TYPES = [
-  { id: 'fallback-cleaning', name: 'General Cleaning' },
-  { id: 'fallback-maintenance', name: 'General Maintenance' },
-  { id: 'fallback-installation', name: 'Installation Service' },
-  { id: 'fallback-repair', name: 'Repair Service' },
-];
-
 const getPhoneDigits = (value: string) => value.replace(/\D/g, '').slice(0, 10);
 
 const formatPhoneNumber = (value: string) => {
@@ -125,16 +131,22 @@ const formatPhoneNumber = (value: string) => {
 };
 
 export default function VendorJobs() {
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  const { data: vendorProfile, loading: vendorProfileLoading } = useVendorProfile();
-  // Keep jobs page aligned with active vendor view context used by vendor layout/profile header.
-  // This is the same seeded vendor ID passed in vendor layout userData.
-  const activeVendorId = 'cmipm4d6v0000sosgqvb8tp63';
-  const vendorId = vendorProfile?.id || activeVendorId;
+  const dashboardDebug = process.env.NODE_ENV !== 'production';
+  const { user } = useAuth();
+  const authUserId = user?.id || null;
+  const {
+    data: vendorProfile,
+    loading: vendorProfileLoading,
+    approvalPending,
+    error: vendorProfileError,
+  } = useVendorProfile();
+  const vendorId = vendorProfile?.id || '';
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsLoadError, setJobsLoadError] = useState('');
   const [showCreateJob, setShowCreateJob] = useState(false);
+  const [jobModalMode, setJobModalMode] = useState<'create' | 'edit'>('create');
+  const [jobFormTargetId, setJobFormTargetId] = useState<string | null>(null);
   const [showVideoUpload, setShowVideoUpload] = useState(false);
   const [showSelectJobModal, setShowSelectJobModal] = useState(false);
   const [selectedJobForVideoId, setSelectedJobForVideoId] = useState<string>('');
@@ -150,9 +162,11 @@ export default function VendorJobs() {
     serviceId: '',
   });
   const [serviceOptions, setServiceOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [teamMembers, setTeamMembers] = useState<VendorTeamMember[]>([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [employeesLoadError, setEmployeesLoadError] = useState('');
   const [servicesLoading, setServicesLoading] = useState(false);
   const [servicesLoadError, setServicesLoadError] = useState('');
-  const [usingFallbackServices, setUsingFallbackServices] = useState(false);
   const jobTitleInputRef = useRef<HTMLInputElement | null>(null);
   const clientNameInputRef = useRef<HTMLInputElement | null>(null);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
@@ -240,10 +254,12 @@ export default function VendorJobs() {
   const [editingJob, setEditingJob] = useState(null);
   const [newStatus, setNewStatus] = useState('');
   const [statusReason, setStatusReason] = useState('');
+  const [jobMutationLoadingId, setJobMutationLoadingId] = useState<string | null>(null);
   
   // Enhancement 2: Employee Assignment Management
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
-  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [selectedAssignmentMembershipIds, setSelectedAssignmentMembershipIds] = useState<string[]>([]);
+  const [bulkAssignmentMembershipIds, setBulkAssignmentMembershipIds] = useState<string[]>([]);
   
   // Enhancement 3: Job Notes/Comments System
   const [showNotesModal, setShowNotesModal] = useState(false);
@@ -256,7 +272,7 @@ export default function VendorJobs() {
   const [selectedVideoForApproval, setSelectedVideoForApproval] = useState(null);
   const [approvalReason, setApprovalReason] = useState('');
   const [showVideoArchive, setShowVideoArchive] = useState(false);
-  const [archiveFilter, setArchiveFilter] = useState('all'); // all, pending, approved, rejected, flagged, archived
+  const [archiveFilter, setArchiveFilter] = useState('all'); // all, pending_review, approved, rejected, flagged, archived
   const [archiveDateFilter, setArchiveDateFilter] = useState('');
   const [archiveEmployeeFilter, setArchiveEmployeeFilter] = useState('all');
   const [archiveJobFilter, setArchiveJobFilter] = useState('all');
@@ -313,11 +329,12 @@ export default function VendorJobs() {
   const trimmedEmail = newJob.email.trim();
   const selectedServiceId = newJob.serviceId.trim();
   const isCreateJobEmailValid = trimmedEmail.includes('@') && trimmedEmail.includes('.');
+  const isEditMode = jobModalMode === 'edit';
   const canCreateJob = Boolean(
     trimmedJobTitle &&
     trimmedClientName &&
-    phoneDigits.length === 10 &&
-    isCreateJobEmailValid &&
+    (isEditMode || phoneDigits.length === 10) &&
+    (isEditMode || isCreateJobEmailValid) &&
     selectedServiceId &&
     serviceOptions.length > 0 &&
     vendorId &&
@@ -343,7 +360,6 @@ export default function VendorJobs() {
     const loadServiceOptions = async () => {
       if (!vendorId) {
         setServiceOptions([]);
-        setUsingFallbackServices(false);
         return;
       }
 
@@ -364,20 +380,10 @@ export default function VendorJobs() {
           .filter((service: any) => service.id && service.name);
 
         const vendorScoped = normalized.filter((service: any) => service.vendorId === String(vendorId));
-        if (vendorScoped.length > 0) {
-          setServiceOptions(vendorScoped.map(({ id, name }: any) => ({ id, name })));
-          setUsingFallbackServices(false);
-          return;
-        }
-
-        // Temporary fallback until vendor-scoped services endpoint is fully wired.
-        setServiceOptions(FALLBACK_SERVICE_TYPES);
-        setUsingFallbackServices(true);
+        setServiceOptions(vendorScoped.map(({ id, name }: any) => ({ id, name })));
       } catch (error) {
-        // Temporary fallback until vendor-scoped services endpoint is fully wired.
-        setServiceOptions(FALLBACK_SERVICE_TYPES);
-        setUsingFallbackServices(true);
-        setServicesLoadError('Could not load vendor services. Showing fallback service types.');
+        setServiceOptions([]);
+        setServicesLoadError('Could not load vendor services.');
       } finally {
         setServicesLoading(false);
       }
@@ -385,21 +391,41 @@ export default function VendorJobs() {
 
     loadServiceOptions().catch(() => {
       setServicesLoading(false);
-      setServiceOptions(FALLBACK_SERVICE_TYPES);
-      setUsingFallbackServices(true);
-      setServicesLoadError('Could not load vendor services. Showing fallback service types.');
+      setServiceOptions([]);
+      setServicesLoadError('Could not load vendor services.');
     });
   }, [vendorId]);
 
-  const getDevAuthHeaders = () => {
-    const headers = { 'Content-Type': 'application/json' } as Record<string, string>;
-    if (process.env.NODE_ENV === 'development') {
-      // Keep dev-safe auth context for protected vendor media routes.
-      headers['x-user-id'] = 'D43B6BB3-1A72-45EC-A362-A6E1E0580EA0';
-      if (vendorId) headers['x-vendor-id'] = String(vendorId);
-    }
-    return headers;
-  };
+  const getRequestHeaders = () => ({
+    'Content-Type': 'application/json',
+    ...getClientSessionHeaders(authUserId),
+  } as Record<string, string>);
+
+  useEffect(() => {
+    const loadTeamMembers = async () => {
+      if (!vendorId) {
+        setTeamMembers([]);
+        setEmployeesLoadError('');
+        return;
+      }
+      setEmployeesLoading(true);
+      setEmployeesLoadError('');
+      try {
+        const members = await fetchVendorTeamMembers(String(vendorId), () => getRequestHeaders());
+        setTeamMembers(members);
+      } catch {
+        setTeamMembers([]);
+        setEmployeesLoadError('Could not load employees.');
+      } finally {
+        setEmployeesLoading(false);
+      }
+    };
+    loadTeamMembers().catch(() => {
+      setTeamMembers([]);
+      setEmployeesLoadError('Could not load employees.');
+      setEmployeesLoading(false);
+    });
+  }, [vendorId, authUserId]);
 
   const parseResponsePayload = (rawText: string) => {
     if (!rawText || !rawText.trim()) return null;
@@ -485,7 +511,7 @@ export default function VendorJobs() {
           `/api/vendors/${vendorId}/media/${assetId}/download`,
           {
             method: 'GET',
-            headers: getDevAuthHeaders(),
+            headers: getRequestHeaders(),
           }
         );
         const rawText = await res.text().catch(() => '');
@@ -561,29 +587,58 @@ export default function VendorJobs() {
     return 'pending';
   };
 
+  const deriveMediaPurposeFromJobStatus = (status: string | null | undefined): VendorJobMediaPurpose => {
+    const normalized = String(status || '').trim().toLowerCase();
+    return normalized === 'completed' ? 'completion' : 'progress';
+  };
+
+  const deriveMediaPurposeFromSessionType = (
+    sessionType: string | null | undefined
+  ): VendorJobMediaPurpose => {
+    const normalized = String(sessionType || '').trim().toLowerCase();
+    return normalized.includes('completion') ? 'completion' : 'progress';
+  };
+
+  const formatMediaPurposeLabel = (purpose: VendorJobMediaPurpose | string | null | undefined) =>
+    String(purpose || 'progress').trim().toLowerCase() === 'completion' ? 'Completion' : 'Progress';
+
   const adaptRecentJobToUiJob = (job: any) => {
     const status = mapDashboardStatusToJobStatus(job?.status);
-    const isoDate =
-      job?.date && !Number.isNaN(new Date(job.date).getTime())
-        ? new Date(job.date).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0];
+    const createdAtIso =
+      job?.createdAt && !Number.isNaN(new Date(job.createdAt).getTime())
+        ? new Date(job.createdAt).toISOString()
+        : job?.date && !Number.isNaN(new Date(job.date).getTime())
+        ? new Date(job.date).toISOString()
+        : new Date().toISOString();
+    const updatedAtIso =
+      job?.updatedAt && !Number.isNaN(new Date(job.updatedAt).getTime())
+        ? new Date(job.updatedAt).toISOString()
+        : createdAtIso;
 
     return {
       id: String(job?.id ?? ''),
       bookingId: String(job?.id ?? ''),
       serviceId: job?.serviceId ? String(job.serviceId) : '',
-      serviceName: job?.serviceName || '',
+      serviceName: job?.serviceName || job?.serviceType || '',
+      serviceType: job?.serviceType || job?.serviceName || '',
       vendorId: String(vendorId || ''),
       title: job?.title || 'Untitled Job',
       client: job?.client || 'Unknown Client',
       clientName: job?.client || 'Unknown Client',
+      operationalPhase: job?.operationalPhase ? String(job.operationalPhase) : undefined,
       status,
-      createdAt: isoDate,
+      createdAt: createdAtIso,
+      updatedAt: updatedAtIso,
+      linkedMediaCount: Number(job?.linkedMediaCount || 0),
+      linkedSessionCount: Number(job?.linkedSessionCount || 0),
       estimatedCompletion: null,
-      completedAt: status === 'completed' ? isoDate : null,
+      completedAt: status === 'completed' ? createdAtIso : null,
       phone: '',
       email: '',
-      assignedEmployees: [],
+      assignedEmployees: Array.isArray(job?.assignedEmployees) ? job.assignedEmployees : [],
+      assignedMembershipIds: Array.isArray(job?.assignedMembershipIds)
+        ? job.assignedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+        : [],
       videos: [],
       notes: [],
       audit: [],
@@ -594,6 +649,22 @@ export default function VendorJobs() {
       archivedAt: status === 'archived' ? (job?.date || new Date().toISOString()) : null,
       archiveReason: status === 'archived' ? 'Archived job' : '',
     };
+  };
+
+  const resolveMembershipIdsForJob = (job: any): string[] => {
+    const rawIds = Array.isArray(job?.assignedMembershipIds)
+      ? job.assignedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+      : [];
+    if (rawIds.length > 0) return rawIds;
+    const names = Array.isArray(job?.assignedEmployees) ? job.assignedEmployees : [];
+    if (!names.length || !teamMembers.length) return [];
+    return names
+      .map((n: string) => {
+        const needle = String(n).trim().toLowerCase();
+        const t = teamMembers.find((m) => m.name.trim().toLowerCase() === needle);
+        return t?.membershipId;
+      })
+      .filter(Boolean) as string[];
   };
   
   // Memory tracking state
@@ -634,7 +705,7 @@ export default function VendorJobs() {
             `/api/vendors/${vendorId}/media/sessions?bookingId=${encodeURIComponent(bookingId)}`,
             {
               method: 'GET',
-              headers: getDevAuthHeaders(),
+              headers: getRequestHeaders(),
             }
           );
           if (!sessionsRes.ok) return job;
@@ -650,7 +721,7 @@ export default function VendorJobs() {
                 `/api/vendors/${vendorId}/media/sessions/${session.id}`,
                 {
                   method: 'GET',
-                  headers: getDevAuthHeaders(),
+                  headers: getRequestHeaders(),
                 }
               );
               if (!detailRes.ok) return null;
@@ -664,10 +735,8 @@ export default function VendorJobs() {
             .flatMap((session: any) => {
               const mediaAssets = Array.isArray(session.mediaAssets) ? session.mediaAssets : [];
               return mediaAssets.map((asset: any) => {
-                const moderationStatus = String(asset?.moderationStatus || '').toLowerCase();
-                const derivedStatus = ['approved', 'rejected', 'flagged'].includes(moderationStatus)
-                  ? moderationStatus
-                  : (session.status === 'COMPLETED' ? 'uploaded' : String(session.status || 'uploaded').toLowerCase());
+                const derivedStatus = normalizeModerationStatus(asset?.moderationStatus);
+                const mediaPurpose = deriveMediaPurposeFromSessionType(session?.sessionType);
                 return ({
                 id: asset.id,
                 title: session.title || 'Service Video',
@@ -683,6 +752,7 @@ export default function VendorJobs() {
                 moderatedAt: asset?.moderatedAt || null,
                 mediaSessionId: session.id,
                 mimeType: asset.mimeType || '',
+                mediaPurpose,
                 persisted: true,
               });
               });
@@ -711,71 +781,90 @@ export default function VendorJobs() {
     setJobs(mergedJobs);
   };
 
-  useEffect(() => {
-    const bootstrapJobsFromBackend = async () => {
-      if (!vendorId) {
-        setJobsLoading(true);
-        setJobsLoadError('');
-        return;
-      }
-
+  const reloadJobsFromBackend = useCallback(async () => {
+    if (!vendorId) {
       setJobsLoading(true);
       setJobsLoadError('');
-      try {
-        const fetchDashboardOnce = async () => {
-          const res = await fetch(`/api/vendors/${vendorId}/dashboard`, {
-            method: 'GET',
-            headers: getDevAuthHeaders(),
-            cache: 'no-store',
+      return;
+    }
+
+    setJobsLoading(true);
+    setJobsLoadError('');
+    try {
+      const fetchDashboardOnce = async (targetVendorId: string) => {
+        const headers = getRequestHeaders();
+        const fetchUrl = `/api/vendors/${targetVendorId}/dashboard`;
+        if (dashboardDebug) {
+          console.info("[vendor/jobs] dashboard fetch", {
+            vendorId: targetVendorId,
+            fetchUrl,
+            resolvedUserId: 'cookie/session-auth',
+            headers,
+            vendorProfileId: vendorProfile?.id || null,
           });
-          const rawText = await res.text().catch(() => '');
-          const parsed = parseResponsePayload(rawText);
-          return { res, rawText, parsed };
-        };
-
-        let dashboardAttempt = await fetchDashboardOnce();
-        if (!dashboardAttempt.res.ok) {
-          // One retry for transient backend/database connectivity blips.
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          dashboardAttempt = await fetchDashboardOnce();
         }
+        const res = await fetch(fetchUrl, {
+          method: 'GET',
+          headers,
+          cache: 'no-store',
+        });
+        const rawText = await res.text().catch(() => '');
+        const parsed = parseResponsePayload(rawText);
+        return { res, rawText, parsed, targetVendorId };
+      };
 
-        if (!dashboardAttempt.res.ok) {
-          const msg =
-            (dashboardAttempt.parsed &&
-              (dashboardAttempt.parsed.error ||
-                dashboardAttempt.parsed.message ||
-                dashboardAttempt.parsed.details)) ||
-            dashboardAttempt.rawText ||
-            `Failed to load jobs (${dashboardAttempt.res.status})`;
-          throw new Error(String(msg));
-        }
-
-        const recentJobs = Array.isArray(dashboardAttempt.parsed?.recentJobs)
-          ? dashboardAttempt.parsed.recentJobs
-          : [];
-        const archivedFromApi = Array.isArray(dashboardAttempt.parsed?.archivedJobs)
-          ? dashboardAttempt.parsed.archivedJobs
-          : [];
-        const adaptedJobs = recentJobs.map(adaptRecentJobToUiJob);
-        const adaptedArchivedJobs = archivedFromApi.map(adaptRecentJobToUiJob);
-        setJobs(adaptedJobs);
-        setArchivedJobs(adaptedArchivedJobs);
-        await hydratePersistedVideos(adaptedJobs);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to load jobs';
-        setJobs([]);
-        setJobsLoadError(message);
-      } finally {
-        setJobsLoading(false);
+      let dashboardAttempt = await fetchDashboardOnce(vendorId);
+      if (!dashboardAttempt.res.ok) {
+        // One retry for transient backend/database connectivity blips.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        dashboardAttempt = await fetchDashboardOnce(String(dashboardAttempt.targetVendorId || vendorId));
       }
-    };
 
-    bootstrapJobsFromBackend().catch(() => {
+      if (!dashboardAttempt.res.ok) {
+        const backendCode = dashboardAttempt.parsed?.code ? String(dashboardAttempt.parsed.code) : '';
+        const backendError = dashboardAttempt.parsed?.error || dashboardAttempt.parsed?.message || dashboardAttempt.parsed?.details;
+        const backendDetails = dashboardAttempt.parsed?.details
+          ? String(dashboardAttempt.parsed.details)
+          : '';
+        const msg = backendCode
+          ? `${backendCode}: ${String(backendError || `Request failed (${dashboardAttempt.res.status})`)}${
+              backendDetails && backendDetails !== backendError ? ` (${backendDetails})` : ''
+            }`
+          : String(
+              backendError ||
+                dashboardAttempt.rawText ||
+                `Failed to load jobs (${dashboardAttempt.res.status})`
+            );
+        throw new Error(String(msg));
+      }
+
+      const recentJobs = Array.isArray(dashboardAttempt.parsed?.recentJobs)
+        ? dashboardAttempt.parsed.recentJobs
+        : [];
+      const archivedFromApi = Array.isArray(dashboardAttempt.parsed?.archivedJobs)
+        ? dashboardAttempt.parsed.archivedJobs
+        : [];
+      const adaptedJobs = recentJobs.map(adaptRecentJobToUiJob);
+      const adaptedArchivedJobs = archivedFromApi.map(adaptRecentJobToUiJob);
+      setJobs(adaptedJobs);
+      setArchivedJobs(adaptedArchivedJobs);
+      await hydratePersistedVideos(adaptedJobs);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load jobs';
+      setJobs([]);
+      setArchivedJobs([]);
+      setJobsLoadError(message);
+    } finally {
+      setJobsLoading(false);
+    }
+  }, [vendorId, dashboardDebug, vendorProfile?.id]);
+
+  useEffect(() => {
+    reloadJobsFromBackend().catch(() => {
       setJobsLoading(false);
       setJobsLoadError('Failed to load jobs');
     });
-  }, [vendorId]);
+  }, [reloadJobsFromBackend]);
 
   // Filter jobs based on view mode and search
   const filteredJobs = jobs.filter(job => {
@@ -788,13 +877,30 @@ export default function VendorJobs() {
     
     // In employee view, only show jobs assigned to current employee
     if (isEmployeeView) {
-      const isAssignedToMe = job.assignedEmployees.includes('Mike Johnson'); // Mock current employee
+      const currentEmployeeName = String(vendorProfile?.name || '').trim();
+      const myMembershipIds = teamMembers
+        .filter((m) => authUserId && m.userId === authUserId)
+        .map((m) => m.membershipId);
+      const assignedIds = Array.isArray(job.assignedMembershipIds)
+        ? job.assignedMembershipIds.map((id: unknown) => String(id))
+        : [];
+      const assignedNames = Array.isArray(job.assignedEmployees) ? job.assignedEmployees : [];
+
+      let isAssignedToMe = true;
+      if (myMembershipIds.length > 0) {
+        isAssignedToMe =
+          assignedIds.some((id) => myMembershipIds.includes(id)) ||
+          (currentEmployeeName ? assignedNames.includes(currentEmployeeName) : false);
+      } else if (currentEmployeeName) {
+        isAssignedToMe = assignedNames.includes(currentEmployeeName);
+      }
       return matchesStatus && matchesSearch && isAssignedToMe;
     }
     
     return matchesStatus && matchesSearch;
   });
   const selectedJobForVideo = filteredJobs.find((job) => String(job.id) === selectedJobForVideoId) || null;
+  const selectedJobMediaPurpose = deriveMediaPurposeFromJobStatus(selectedJob?.status);
 
   const handleCreateJob = async () => {
     if (isCreatingJob) {
@@ -809,11 +915,12 @@ export default function VendorJobs() {
     const serviceId = newJob.serviceId.trim();
     const selectedService = serviceOptions.find((service) => service.id === serviceId);
     const isValidEmail = email.includes('@') && email.includes('.');
+    const requiresContactValidation = jobModalMode !== 'edit';
     const nextJobErrors = {
       title: title ? '' : 'Job title is required',
       client: client ? '' : 'Client name is required',
-      phone: normalizedPhoneDigits.length === 10 ? '' : 'Valid phone number is required',
-      email: isValidEmail ? '' : 'Valid email is required',
+      phone: !requiresContactValidation || normalizedPhoneDigits.length === 10 ? '' : 'Valid phone number is required',
+      email: !requiresContactValidation || isValidEmail ? '' : 'Valid email is required',
       serviceId: serviceId ? '' : 'Service type is required',
     };
     setJobFieldErrors(nextJobErrors);
@@ -843,12 +950,43 @@ export default function VendorJobs() {
       setCreateJobError('Vendor context is not ready. Please try again.');
       return;
     }
+
+    if (jobModalMode === 'edit') {
+      if (!jobFormTargetId) {
+        setCreateJobError('No job selected for editing.');
+        return;
+      }
+      setCreateJobError('');
+      setIsCreatingJob(true);
+      try {
+        await runPersistedJobAction(
+          { id: jobFormTargetId },
+          "UPDATE_JOB",
+          {
+            title,
+            clientName: client,
+            serviceId: serviceId || undefined,
+          }
+        );
+        await reloadJobsFromBackend();
+        setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
+        setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
+        setJobModalMode('create');
+        setJobFormTargetId(null);
+        setShowCreateJob(false);
+      } catch (error) {
+        setCreateJobError(error instanceof Error ? error.message : 'Failed to update job');
+      } finally {
+        setIsCreatingJob(false);
+      }
+      return;
+    }
+
     setCreateJobError('');
     setIsCreatingJob(true);
     const now = new Date();
     const payload = {
       vendor_id: vendorId,
-      user_id: process.env.NODE_ENV === 'development' ? 'D43B6BB3-1A72-45EC-A362-A6E1E0580EA0' : undefined,
       service_id: serviceId,
       title: selectedService?.name ? `${selectedService.name} - ${title}` : title,
       client_name: client,
@@ -862,7 +1000,7 @@ export default function VendorJobs() {
     try {
       const res = await fetch('/api/bookings', {
         method: 'POST',
-        headers: getDevAuthHeaders(),
+        headers: getRequestHeaders(),
         body: JSON.stringify(payload),
       });
       const rawText = await res.text().catch(() => '');
@@ -876,28 +1014,16 @@ export default function VendorJobs() {
       }
 
       const booking = parsed?.booking || {};
-      const job = {
-        id: String(booking.id || Date.now()),
-        bookingId: String(booking.id || Date.now()),
-        serviceId: String(booking.service_id || serviceId || ''),
-        serviceName: selectedService?.name || '',
-        vendorId: String(vendorId),
-        title: title || booking.title || 'Untitled Job',
-        client: client || booking.client_name || 'Unknown Client',
-        clientName: client || booking.client_name || 'Unknown Client',
-        phone: formattedPhone || '',
-        email: email || '',
-        status: 'pending',
-        assignedEmployees: [],
-        createdAt: now.toISOString().split('T')[0],
-        notes: [],
-        audit: [`Job created on ${new Date().toLocaleDateString()}`],
-        videos: []
-      };
-      setJobs([...jobs, job]);
+      const persistedId = String(booking?.id || "");
+      if (!persistedId) {
+        throw new Error("Booking create response did not include an id.");
+      }
+      await reloadJobsFromBackend();
       setJobsLoadError('');
       setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
       setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
+      setJobModalMode('create');
+      setJobFormTargetId(null);
       setShowCreateJob(false);
     } catch (error) {
       setCreateJobError(error instanceof Error ? error.message : 'Failed to create job');
@@ -916,6 +1042,7 @@ export default function VendorJobs() {
     const file = newVideo.file;
     const selectedJobSnapshot: any = selectedJob;
     const selectedJobId = selectedJobSnapshot?.id ? String(selectedJobSnapshot.id) : '';
+    const mediaPurpose = deriveMediaPurposeFromJobStatus(selectedJobSnapshot?.status);
     const uploadKey = `${selectedJobId}:${title}:${file?.name || ''}:${file?.size || 0}`;
 
     const nextErrors = {
@@ -953,7 +1080,8 @@ export default function VendorJobs() {
         title,
         description,
         file,
-        getHeaders: getDevAuthHeaders,
+        mediaPurpose,
+        getHeaders: getRequestHeaders,
         onLifecycleState: setUploadLifecycleState,
       });
       const video = uploadResult.video;
@@ -998,47 +1126,81 @@ export default function VendorJobs() {
   };
 
   // Enhancement 1: Job Status Management Functions
-  const handleStatusUpdate = (job: any, newStatus: string, reason = "") => {
-    const updatedJob = {
-      ...job,
-      status: newStatus,
-      audit: [...job.audit, `Status changed to ${newStatus} on ${new Date().toLocaleDateString()}${reason ? ` - Reason: ${reason}` : ''}`]
-    };
-    
-    if (newStatus === 'completed') {
-      updatedJob.completedAt = new Date().toISOString().split('T')[0];
+  const handleStatusUpdate = async (job: any, nextStatus: string, reason = "") => {
+    if (jobMutationLoadingId) return;
+    setJobMutationLoadingId(`status:${String(job?.id || '')}`);
+    setJobActionFeedback(null);
+    try {
+      const payload = await runPersistedJobAction(job, "UPDATE_STATUS", { status: nextStatus, reason });
+      await reloadJobsFromBackend();
+      setJobActionFeedback({ type: 'success', message: payload?.message || 'Job status updated.' });
+      setShowStatusModal(false);
+      setEditingJob(null);
+      setNewStatus('');
+      setStatusReason('');
+    } catch (error) {
+      setJobActionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to update job status',
+      });
+    } finally {
+      setJobMutationLoadingId(null);
     }
-    
-    setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
-    setShowStatusModal(false);
-    setEditingJob(null);
-    setNewStatus('');
-    setStatusReason('');
   };
 
   const openStatusModal = (job: any) => {
     setEditingJob(job);
-    setNewStatus(job.status);
+    const normalized = String(job?.status || '').trim().toLowerCase();
+    let initial = normalized === 'in-progress' ? 'in progress' : normalized || 'pending';
+    if (initial === 'completed' && !canVendorMarkJobCompleted(job)) {
+      initial = 'in progress';
+    }
+    setNewStatus(initial);
     setShowStatusModal(true);
   };
 
+  const openEditModal = (job: any) => {
+    setJobModalMode('edit');
+    setJobFormTargetId(String(job?.id || ''));
+    setNewJob({
+      title: String(job?.title || ''),
+      client: String(job?.client || job?.clientName || ''),
+      phone: String(job?.phone || ''),
+      email: String(job?.email || ''),
+      serviceId: String(job?.serviceId || ''),
+    });
+    setCreateJobError('');
+    setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
+    setShowCreateJob(true);
+  };
+
   // Enhancement 2: Employee Assignment Management Functions
-  const handleAssignmentUpdate = (job: any, selectedEmployees: string[]) => {
-    const updatedJob = {
-      ...job,
-      assignedEmployees: selectedEmployees,
-      audit: [...job.audit, `Employees updated to: ${selectedEmployees.join(', ')} on ${new Date().toLocaleDateString()}`]
-    };
-    
-    setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
-    setShowAssignmentModal(false);
-    setSelectedJob(null);
-    setSelectedEmployees([]);
+  const handleAssignmentUpdate = async (job: any, nextMembershipIds: string[]) => {
+    if (jobMutationLoadingId) return;
+    setJobMutationLoadingId(`assign:${String(job?.id || '')}`);
+    setJobActionFeedback(null);
+    try {
+      const payload = await runPersistedJobAction(job, "ASSIGN_JOB", {
+        assignedMembershipIds: nextMembershipIds,
+      });
+      await reloadJobsFromBackend();
+      setJobActionFeedback({ type: 'success', message: payload?.message || 'Job assignment updated.' });
+      setShowAssignmentModal(false);
+      setSelectedJob(null);
+      setSelectedAssignmentMembershipIds([]);
+    } catch (error) {
+      setJobActionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to update assignment',
+      });
+    } finally {
+      setJobMutationLoadingId(null);
+    }
   };
 
   const openAssignmentModal = (job: any) => {
     setSelectedJob(job);
-    setSelectedEmployees(job.assignedEmployees || []);
+    setSelectedAssignmentMembershipIds(resolveMembershipIdsForJob(job));
     setShowAssignmentModal(true);
   };
 
@@ -1127,19 +1289,31 @@ export default function VendorJobs() {
     setSelectedJobIds([]);
   };
 
-  const handleBulkAssignment = (selectedEmployees: string[]) => {
-    setJobs(jobs.map(job => 
-      selectedJobIds.includes(job.id)
-        ? { 
-            ...job, 
-            assignedEmployees: selectedEmployees,
-            audit: [...job.audit, `Bulk assigned to ${selectedEmployees.join(', ')} on ${new Date().toLocaleDateString()}`]
-          }
-        : job
-    ));
-    setSelectedJobIds([]);
-    setIsBulkMode(false);
-    setShowBulkAssignmentModal(false);
+  const handleBulkAssignment = async (bulkMembershipIds: string[]) => {
+    if (jobMutationLoadingId) return;
+    if (selectedJobIds.length === 0) return;
+    setJobMutationLoadingId('assign:bulk');
+    setJobActionFeedback(null);
+    try {
+      for (const selectedId of selectedJobIds) {
+        await runPersistedJobAction({ id: selectedId }, "ASSIGN_JOB", {
+          assignedMembershipIds: bulkMembershipIds,
+        });
+      }
+      await reloadJobsFromBackend();
+      setJobActionFeedback({ type: 'success', message: 'Bulk assignment saved.' });
+      setSelectedJobIds([]);
+      setIsBulkMode(false);
+      setShowBulkAssignmentModal(false);
+      setBulkAssignmentMembershipIds([]);
+    } catch (error) {
+      setJobActionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to apply bulk assignment',
+      });
+    } finally {
+      setJobMutationLoadingId(null);
+    }
   };
 
   // Auto-approval functions
@@ -1267,19 +1441,14 @@ export default function VendorJobs() {
   };
 
   const normalizeArchiveStatus = (item: any) => {
-    const moderationStatus = String(item?.moderationStatus || "").toLowerCase();
-    if (moderationStatus === "approved") return "approved";
-    if (moderationStatus === "rejected") return "rejected";
-    if (moderationStatus === "flagged") return "flagged";
+    const archiveStatus = normalizeMediaArchiveStatus(item?.archiveStatus);
+    if (archiveStatus === ARCHIVE_ARCHIVED || item?.deletedAt) return ARCHIVE_ARCHIVED;
 
-    const sessionStatus = String(item?.sessionStatus || "").toLowerCase();
-    if (item?.isArchived || item?.deletedAt) return "archived";
-    if (sessionStatus === "approved") return "approved";
-    if (sessionStatus === "rejected" || sessionStatus === "failed" || sessionStatus === "cancelled") {
-      return "rejected";
-    }
-    if (sessionStatus === "archived") return "archived";
-    return "pending";
+    const moderationStatus = normalizeModerationStatus(item?.moderationStatus);
+    if (moderationStatus === MODERATION_APPROVED) return MODERATION_APPROVED;
+    if (moderationStatus === MODERATION_REJECTED) return MODERATION_REJECTED;
+    if (moderationStatus === MODERATION_FLAGGED) return MODERATION_FLAGGED;
+    return MODERATION_PENDING_REVIEW;
   };
 
   const getFilteredArchiveVideos = () => {
@@ -1349,7 +1518,7 @@ export default function VendorJobs() {
         const bookingId = String(job.bookingId || job.id);
         const sessionsRes = await fetch(
           `/api/vendors/${vendorId}/media/sessions?bookingId=${encodeURIComponent(bookingId)}`,
-          { method: 'GET', headers: getDevAuthHeaders(), cache: 'no-store' }
+          { method: 'GET', headers: getRequestHeaders(), cache: 'no-store' }
         );
         if (!sessionsRes.ok) return;
         const sessionsJson = await sessionsRes.json().catch(() => ({}));
@@ -1361,7 +1530,7 @@ export default function VendorJobs() {
             if (!session?.id) return null;
             const detailRes = await fetch(`/api/vendors/${vendorId}/media/sessions/${session.id}`, {
               method: 'GET',
-              headers: getDevAuthHeaders(),
+              headers: getRequestHeaders(),
               cache: 'no-store',
             });
             if (!detailRes.ok) return null;
@@ -1375,10 +1544,8 @@ export default function VendorJobs() {
           .flatMap((session: any) => {
             const mediaAssets = Array.isArray(session.mediaAssets) ? session.mediaAssets : [];
             return mediaAssets.map((asset: any) => {
-              const moderationStatus = String(asset?.moderationStatus || '').toLowerCase();
-              const derivedStatus = ['approved', 'rejected', 'flagged'].includes(moderationStatus)
-                ? moderationStatus
-                : (session.status === 'COMPLETED' ? 'uploaded' : String(session.status || 'uploaded').toLowerCase());
+              const derivedStatus = normalizeModerationStatus(asset?.moderationStatus);
+              const mediaPurpose = deriveMediaPurposeFromSessionType(session?.sessionType);
               return {
                 id: asset.id,
                 title: session.title || 'Service Video',
@@ -1394,6 +1561,7 @@ export default function VendorJobs() {
                 moderatedAt: asset?.moderatedAt || null,
                 mediaSessionId: session.id,
                 mimeType: asset.mimeType || '',
+                mediaPurpose,
                 persisted: true,
               };
             });
@@ -1493,7 +1661,7 @@ export default function VendorJobs() {
         const isGoodAccuracy = accuracy <= 50;
         const isAcceptableAccuracy = accuracy <= 150;
         const isValidResponseTime = responseTime > 100 && responseTime < 10000; // Prevent spoofing
-        const isDevBypass = isDevelopment;
+        const isDevBypass = process.env.NODE_ENV === 'development';
         
         if ((isValidLocation && isValidResponseTime && isAcceptableAccuracy) || isDevBypass) {
           setGeoError('');
@@ -1508,7 +1676,7 @@ export default function VendorJobs() {
           // Log successful verification with full metadata
           const verificationData = {
             jobId: selectedJob?.id,
-            vendorId: 'current-vendor-id', // From auth context
+            vendorId: String(vendorId || ''),
             latitude,
             longitude,
             accuracy,
@@ -1542,7 +1710,7 @@ export default function VendorJobs() {
           // Log failed attempt
           const failedAttempt = {
             jobId: selectedJob?.id,
-            vendorId: 'current-vendor-id',
+            vendorId: String(vendorId || ''),
             latitude,
             longitude,
             accuracy,
@@ -1573,7 +1741,7 @@ export default function VendorJobs() {
         // Log geolocation error
         const errorData = {
           jobId: selectedJob?.id,
-          vendorId: 'current-vendor-id',
+          vendorId: String(vendorId || ''),
           timestamp: Date.now(),
           userAgent: navigator.userAgent,
           screenResolution: `${screen.width}x${screen.height}`,
@@ -1603,7 +1771,7 @@ export default function VendorJobs() {
     // Enhanced consent request with fraud prevention
     const consentRequestData = {
       jobId: selectedJob?.id,
-      vendorId: 'current-vendor-id',
+      vendorId: String(vendorId || ''),
       customerEmail: selectedJob?.email,
       customerPhone: selectedJob?.phone,
       requestType: location === 'residence' ? 'residential_recording' : 'business_recording',
@@ -1681,7 +1849,7 @@ export default function VendorJobs() {
     // Log the compliance flow initiation with enhanced security
     const complianceFlowData = {
       jobId: selectedJob.id,
-      vendorId: 'current-vendor-id',
+      vendorId: String(vendorId || ''),
       locationType: location,
       timestamp: now,
       userAgent: navigator.userAgent,
@@ -1726,7 +1894,9 @@ export default function VendorJobs() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'pending':
+      case 'pending_review':
+        return 'bg-yellow-100 text-yellow-800';
       case 'approved': return 'bg-blue-100 text-blue-800';
       case 'rejected': return 'bg-red-100 text-red-800';
       case 'flagged': return 'bg-purple-100 text-purple-800';
@@ -1738,7 +1908,41 @@ export default function VendorJobs() {
     }
   };
 
-  const formatJobStatusLabel = (status: string | null | undefined) => {
+  const getOperationalPhaseBadgeClass = (phase: string | null | undefined) => {
+    const p = String(phase || '').trim().toUpperCase();
+    if (p === 'AWAITING_VENDOR_REVIEW') return 'bg-amber-100 text-amber-900 border-amber-200';
+    if (p === 'ASSIGNED') return 'bg-sky-100 text-sky-900 border-sky-200';
+    if (p === 'IN_PROGRESS') return 'bg-blue-100 text-blue-800 border-blue-200';
+    if (p === 'PENDING') return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    if (p === 'COMPLETED') return 'bg-green-100 text-green-800 border-green-200';
+    return 'bg-gray-100 text-gray-700 border-gray-200';
+  };
+
+  const canVendorMarkJobCompleted = (job: any) =>
+    String(job?.operationalPhase || '').toUpperCase() === 'AWAITING_VENDOR_REVIEW' &&
+    Number(job?.linkedMediaCount || 0) > 0;
+
+  const getJobListBadgeColor = (job: any) => {
+    if (String(job?.operationalPhase || '').toUpperCase() === 'AWAITING_VENDOR_REVIEW') {
+      return 'bg-amber-100 text-amber-900';
+    }
+    return getStatusColor(job.status);
+  };
+
+  const formatJobStatusLabel = (status: string | null | undefined, operationalPhase?: string | null) => {
+    const phase = String(operationalPhase || '').trim().toUpperCase();
+    if (phase === 'AWAITING_VENDOR_REVIEW') {
+      return 'Job: Awaiting vendor review';
+    }
+    if (phase === 'ASSIGNED') {
+      return 'Job: Assigned';
+    }
+    if (phase === 'IN_PROGRESS') {
+      return 'Job: In progress';
+    }
+    if (phase === 'PENDING') {
+      return 'Job: Pending';
+    }
     const normalized = String(status || '').trim().toLowerCase();
     if (!normalized) return 'Job: Pending';
     const pretty = normalized
@@ -1748,19 +1952,11 @@ export default function VendorJobs() {
   };
 
   const getVideoModerationState = (video: any): 'rejected' | 'flagged' | 'pending_review' | 'approved' | null => {
-    const moderationStatus = String(video?.moderationStatus || '').trim().toLowerCase();
-    const fallbackStatus = String(video?.status || '').trim().toLowerCase();
-    const status = moderationStatus || fallbackStatus;
+    const status = normalizeModerationStatus(video?.moderationStatus);
     if (status === 'rejected') return 'rejected';
     if (status === 'flagged') return 'flagged';
     if (status === 'approved') return 'approved';
-    if (
-      status === 'pending_review' ||
-      status === 'pending' ||
-      status === 'uploaded' ||
-      status === 'uploading' ||
-      status === 'completed'
-    ) {
+    if (status === 'pending_review') {
       return 'pending_review';
     }
     return null;
@@ -1829,71 +2025,61 @@ export default function VendorJobs() {
     setArchiveMediaLoading(true);
     setArchiveMediaError("");
     try {
-      const [assetsRes, sessionsRes] = await Promise.all([
-        fetch(`/api/vendors/${vendorId}/media?includeDeleted=true`, {
-          method: "GET",
-          headers: getDevAuthHeaders(),
-          cache: "no-store",
-        }),
-        fetch(`/api/vendors/${vendorId}/media/sessions`, {
-          method: "GET",
-          headers: getDevAuthHeaders(),
-          cache: "no-store",
-        }),
-      ]);
-
+      const assetsRes = await fetch(`/api/vendors/${vendorId}/media?includeDeleted=true`, {
+        method: "GET",
+        headers: getRequestHeaders(),
+        cache: "no-store",
+      });
       const assetsJson = await assetsRes.json().catch(() => ({}));
-      const sessionsJson = await sessionsRes.json().catch(() => ({}));
       if (!assetsRes.ok) {
         throw new Error(assetsJson?.error || assetsJson?.message || "Failed to load media assets");
       }
-      if (!sessionsRes.ok) {
-        throw new Error(sessionsJson?.error || sessionsJson?.message || "Failed to load media sessions");
-      }
-
       const assets = Array.isArray(assetsJson?.assets) ? assetsJson.assets : [];
-      const sessions = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
-      const sessionsById = new Map(sessions.map((session: any) => [String(session.id), session]));
       const jobsByBookingId = new Map(
         jobs.map((job: any) => [String(job.bookingId || job.id), job])
       );
 
       const items = assets.map((asset: any) => {
-        const sessionId = asset?.mediaSessionId ? String(asset.mediaSessionId) : "";
-        const session = sessionId ? sessionsById.get(sessionId) : null;
-        const bookingId = session?.bookingId ? String(session.bookingId) : "";
+        const bookingId = asset?.bookingId ? String(asset.bookingId) : "";
         const relatedJob = bookingId ? jobsByBookingId.get(bookingId) : null;
+        const mediaPurpose = asset?.mediaPurpose
+          ? deriveMediaPurposeFromSessionType(String(asset.mediaPurpose))
+          : asset?.sessionType
+          ? deriveMediaPurposeFromSessionType(String(asset.sessionType))
+          : deriveMediaPurposeFromJobStatus(relatedJob?.status);
 
         const item = {
           id: String(asset.id),
-          title: session?.title || "Service Video",
-          description: session?.description || "",
-          jobName: relatedJob?.title || "Unknown Job",
-          clientName: relatedJob?.client || "Unknown Client",
+          title: String(asset?.title || "Service Media"),
+          description: "",
+          jobName: String(asset?.jobTitle || relatedJob?.title || "Unknown Job"),
+          clientName: String(asset?.clientName || relatedJob?.client || "Unknown Client"),
           employee:
+            asset?.employeeName ||
             relatedJob?.assignedEmployees?.[0] ||
-            (session?.employeeId ? `Employee ${String(session.employeeId).slice(0, 6)}` : "Unassigned"),
+            (asset?.uploadedByMembershipId ? `Member ${String(asset.uploadedByMembershipId).slice(0, 6)}` : "Unassigned"),
           uploadDate: asset?.createdAt
             ? new Date(asset.createdAt).toISOString().split("T")[0]
             : "",
-          status: "pending",
+          status: MODERATION_PENDING_REVIEW,
           createdAt: asset?.createdAt,
           bytes: asset?.bytes || "0",
           mimeType: asset?.mimeType || "",
           blobKey: asset?.blobKey || "",
           blobUrl: asset?.blobUrl || null,
-          moderationStatus: String(asset?.moderationStatus || ""),
+          moderationStatus: normalizeModerationStatus(asset?.moderationStatus),
           visibilityStatus: String(asset?.visibilityStatus || ""),
-          archiveStatus: String(asset?.archiveStatus || ""),
+          archiveStatus: normalizeMediaArchiveStatus(asset?.archiveStatus),
           moderationReason: asset?.moderationReason ? String(asset.moderationReason) : "",
           moderatedAt: asset?.moderatedAt || null,
-          sessionId,
-          sessionStatus: String(session?.status || "CREATED").toUpperCase(),
+          sessionId: asset?.mediaSessionId ? String(asset.mediaSessionId) : "",
+          sessionStatus: "",
           bookingId,
-          serviceId: session?.serviceId ? String(session.serviceId) : "",
-          serviceType: relatedJob?.serviceName || "General Service",
-          isArchived: Boolean(asset?.deletedAt) || String(session?.status || "").toUpperCase() === "ARCHIVED",
+          serviceId: asset?.serviceId ? String(asset.serviceId) : "",
+          serviceType: String(asset?.serviceName || relatedJob?.serviceName || "General Service"),
+          isArchived: Boolean(asset?.deletedAt) || normalizeMediaArchiveStatus(asset?.archiveStatus) === ARCHIVE_ARCHIVED,
           deletedAt: asset?.deletedAt || null,
+          mediaPurpose,
         };
         return { ...item, status: normalizeArchiveStatus(item) };
       });
@@ -1907,55 +2093,37 @@ export default function VendorJobs() {
     }
   };
 
-  const updateMediaItemSessionStatus = async (item: any, nextStatus: "APPROVED" | "REJECTED" | "ARCHIVED") => {
-    if (!vendorId || !item?.sessionId) {
-      throw new Error("Media session is required for this action.");
-    }
-    const res = await fetch(`/api/vendors/${vendorId}/media/sessions/${item.sessionId}`, {
-      method: "PATCH",
-      headers: getDevAuthHeaders(),
-      body: JSON.stringify({ status: nextStatus }),
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(payload?.error || payload?.message || `Failed to update media status (${res.status})`);
-    }
-    return payload;
-  };
-
   const handleArchiveMediaItemAction = async (
     item: any,
-    action: "approve" | "reject" | "archive" | "restore" | "delete"
+    action: "archive" | "restore" | "delete"
   ) => {
     if (!vendorId) return;
     setArchiveActionLoadingId(`${action}:${item.id}`);
     setArchiveMediaError("");
     try {
-      if (action === "approve") {
-        await updateMediaItemSessionStatus(item, "APPROVED");
-      } else if (action === "reject") {
-        await updateMediaItemSessionStatus(item, "REJECTED");
-      } else if (action === "archive") {
-        if (item.sessionId) {
-          await updateMediaItemSessionStatus(item, "ARCHIVED");
-        }
-        await fetch(`/api/vendors/${vendorId}/media/${item.id}`, {
+      if (action === "archive") {
+        const archiveRes = await fetch(`/api/vendors/${vendorId}/media/${item.id}`, {
           method: "DELETE",
-          headers: getDevAuthHeaders(),
+          headers: getRequestHeaders(),
         });
+        if (!archiveRes.ok) {
+          const payload = await archiveRes.json().catch(() => ({}));
+          throw new Error(payload?.error || payload?.message || "Failed to move media to archive");
+        }
       } else if (action === "restore") {
-        await fetch(`/api/vendors/${vendorId}/media/${item.id}`, {
+        const restoreRes = await fetch(`/api/vendors/${vendorId}/media/${item.id}`, {
           method: "PATCH",
-          headers: getDevAuthHeaders(),
+          headers: getRequestHeaders(),
           body: JSON.stringify({ action: "RESTORE" }),
         });
-        if (item.sessionId) {
-          await updateMediaItemSessionStatus(item, "COMPLETED");
+        if (!restoreRes.ok) {
+          const payload = await restoreRes.json().catch(() => ({}));
+          throw new Error(payload?.error || payload?.message || "Failed to restore media asset");
         }
       } else if (action === "delete") {
         const deleteRes = await fetch(`/api/vendors/${vendorId}/media/${item.id}`, {
           method: "DELETE",
-          headers: getDevAuthHeaders(),
+          headers: getRequestHeaders(),
         });
         if (!deleteRes.ok) {
           const payload = await deleteRes.json().catch(() => ({}));
@@ -1973,20 +2141,40 @@ export default function VendorJobs() {
 
   // Get available employees (those without assigned jobs)
   const getAvailableEmployees = () => {
-    const assignedEmployees = new Set();
-    jobs.forEach(job => {
-      if (job.assignedEmployees) {
-        job.assignedEmployees.forEach(emp => assignedEmployees.add(emp));
+    const assignedMembershipIdSet = new Set<string>();
+    jobs.forEach((job) => {
+      const ids = Array.isArray(job.assignedMembershipIds) ? job.assignedMembershipIds : [];
+      ids.forEach((id: string) => assignedMembershipIdSet.add(String(id)));
+      if (ids.length === 0 && Array.isArray(job.assignedEmployees) && teamMembers.length > 0) {
+        job.assignedEmployees.forEach((empName: string) => {
+          const m = teamMembers.find(
+            (t) => t.name.trim().toLowerCase() === String(empName).trim().toLowerCase()
+          );
+          if (m) assignedMembershipIdSet.add(m.membershipId);
+        });
       }
     });
-    
-    return mockEmployees.filter(emp => !assignedEmployees.has(emp.name));
+
+    return teamMembers
+      .filter((m) => !assignedMembershipIdSet.has(m.membershipId))
+      .map((m) => ({
+        id: m.membershipId,
+        name: m.name,
+        photo: avatarUrlForName(m.name),
+      }));
   };
 
   // Persisted job action functions
   const runPersistedJobAction = async (
     job: any,
-    action: "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "UNARCHIVE_JOB"
+    action:
+      | "ARCHIVE_JOB"
+      | "MOVE_CONTENT_TO_ARCHIVE"
+      | "UNARCHIVE_JOB"
+      | "UPDATE_JOB"
+      | "ASSIGN_JOB"
+      | "UPDATE_STATUS",
+    extra: Record<string, unknown> = {}
   ) => {
     if (!vendorId) {
       throw new Error("Vendor context is not ready");
@@ -1994,8 +2182,8 @@ export default function VendorJobs() {
 
     const res = await fetch(`/api/vendors/${vendorId}/jobs/${encodeURIComponent(String(job.id))}/actions`, {
       method: "PATCH",
-      headers: getDevAuthHeaders(),
-      body: JSON.stringify({ action }),
+      headers: getRequestHeaders(),
+      body: JSON.stringify({ action, ...extra }),
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2006,46 +2194,19 @@ export default function VendorJobs() {
 
   const archiveJob = async (job: any) => {
     const payload = await runPersistedJobAction(job, "ARCHIVE_JOB");
-    const archivedJob = {
-      ...job,
-      status: "archived",
-      archivedAt: new Date().toISOString(),
-      archiveReason: "Manually archived",
-    };
-    setArchivedJobs((prev) => [archivedJob, ...prev.filter((j) => String(j.id) !== String(job.id))]);
-    setJobs((prev) => prev.filter((j) => String(j.id) !== String(job.id)));
+    await reloadJobsFromBackend();
     return payload;
   };
 
   const moveContentToArchive = async (job: any) => {
     const payload = await runPersistedJobAction(job, "MOVE_CONTENT_TO_ARCHIVE");
-    setJobs((prev) =>
-      prev.map((j) =>
-        String(j.id) === String(job.id)
-          ? {
-              ...j,
-              videos: Array.isArray(j.videos)
-                ? j.videos.map((video: any) => ({ ...video, archived: true }))
-                : [],
-              audit: [...(j.audit || []), `Job content moved to archive on ${new Date().toLocaleDateString()}`],
-            }
-          : j
-      )
-    );
+    await reloadJobsFromBackend();
     return payload;
   };
 
   const unarchiveJob = async (archivedJob: any) => {
     await runPersistedJobAction(archivedJob, "UNARCHIVE_JOB");
-    const restoredJob = {
-      ...archivedJob,
-      status: "pending",
-      archivedAt: undefined,
-      archiveReason: undefined,
-    };
-
-    setJobs((prev) => [restoredJob, ...prev.filter((j) => String(j.id) !== String(restoredJob.id))]);
-    setArchivedJobs((prev) => prev.filter((j) => String(j.id) !== String(archivedJob.id)));
+    await reloadJobsFromBackend();
   };
 
   const deleteJobPermanently = async (job: any) => {
@@ -2054,14 +2215,13 @@ export default function VendorJobs() {
     }
     const res = await fetch(`/api/vendors/${vendorId}/jobs/${encodeURIComponent(String(job.id))}/actions`, {
       method: "DELETE",
-      headers: getDevAuthHeaders(),
+      headers: getRequestHeaders(),
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(payload?.error || payload?.message || `Delete failed (${res.status})`);
     }
-    setJobs((prev) => prev.filter((j) => String(j.id) !== String(job.id)));
-    setArchivedJobs((prev) => prev.filter((j) => String(j.id) !== String(job.id)));
+    await reloadJobsFromBackend();
     return payload;
   };
 
@@ -2072,7 +2232,11 @@ export default function VendorJobs() {
       filtered = filtered.filter(job => job.status === jobArchiveFilter);
     }
     
-    return filtered.sort((a, b) => new Date(b.archivedAt) - new Date(a.archivedAt));
+    return filtered.sort(
+      (a, b) =>
+        new Date(String(b.updatedAt || b.archivedAt || b.createdAt || 0)).getTime() -
+        new Date(String(a.updatedAt || a.archivedAt || a.createdAt || 0)).getTime()
+    );
   };
 
   // Enhanced job approval with archiving
@@ -2120,7 +2284,7 @@ export default function VendorJobs() {
       });
       fetch(`/api/vendors/${vendorId}/jobs/${encodeURIComponent(String(job.id))}/actions`, {
         method: "GET",
-        headers: getDevAuthHeaders(),
+        headers: getRequestHeaders(),
       })
         .then(async (res) => {
           const payload = await res.json().catch(() => ({}));
@@ -2214,8 +2378,38 @@ export default function VendorJobs() {
     return "Please confirm this job action.";
   })();
 
+  if (approvalPending) {
+    return (
+      <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+        <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="max-w-md w-full bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
+          <h2 className="text-xl font-semibold text-amber-900 mb-2">Vendor account pending approval</h2>
+          <p className="text-sm text-amber-800">
+            You can access job management once an admin approves your vendor account.
+          </p>
+        </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!vendorProfileLoading && !approvalPending && !vendorId) {
+    return (
+      <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+        <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="max-w-md w-full bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+          <h2 className="text-xl font-semibold text-red-900 mb-2">Vendor session context unavailable</h2>
+          <p className="text-sm text-red-800">
+            {vendorProfileError || 'Please sign in again to restore your active vendor context.'}
+          </p>
+        </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
+    <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
       {/* Enhanced Welcome Banner */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl p-6 mb-6 shadow-lg">
         <div className="flex items-center gap-4">
@@ -2319,6 +2513,7 @@ export default function VendorJobs() {
                     toggleBulkMode();
                   }
                 }} 
+                disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
                 className={`action-button ${isBulkMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-600 hover:bg-gray-700'}`}
               >
                 <Users className="w-5 h-5 mr-2" />
@@ -2326,10 +2521,14 @@ export default function VendorJobs() {
               </Button>
               <Button 
                 onClick={() => {
-                  console.log('Create Job button clicked');
+                  setJobModalMode('create');
+                  setJobFormTargetId(null);
+                  setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
+                  setCreateJobError('');
+                  setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
                   setShowCreateJob(true);
-                  alert('Opening Create Job modal...');
                 }} 
+                disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
                 className="action-button bg-blue-600 hover:bg-blue-700"
               >
                 <Plus className="w-5 h-5 mr-2" />
@@ -2415,7 +2614,7 @@ export default function VendorJobs() {
                   className="w-full p-2 border border-gray-300 rounded-lg appearance-none bg-white video-archive-dropdown"
                 >
                   <option value="all">All Statuses</option>
-                  <option value="pending">Pending</option>
+                  <option value="pending_review">Pending Review</option>
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
                   <option value="flagged">Flagged</option>
@@ -2641,13 +2840,21 @@ export default function VendorJobs() {
                       <div className="mt-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <Badge className={getStatusColor(video.status)}>
-                            {video.status}
+                            {`Moderation: ${String(video.moderationStatus || video.status || MODERATION_PENDING_REVIEW).replace(/_/g, " ")}`}
                           </Badge>
                           {video.visibilityStatus ? (
                             <Badge className="bg-slate-100 text-slate-700">
-                              {String(video.visibilityStatus).replace(/_/g, " ")}
+                              {`Visibility: ${String(video.visibilityStatus).replace(/_/g, " ")}`}
                             </Badge>
                           ) : null}
+                          {video.archiveStatus ? (
+                            <Badge className="bg-orange-100 text-orange-800">
+                              {`Archive: ${String(video.archiveStatus).replace(/_/g, " ")}`}
+                            </Badge>
+                          ) : null}
+                          <Badge className="bg-indigo-100 text-indigo-800">
+                            {`Media Type: ${formatMediaPurposeLabel(video.mediaPurpose)}`}
+                          </Badge>
                         </div>
                         <div className="flex flex-wrap gap-2 justify-end">
                           <Button
@@ -2661,24 +2868,8 @@ export default function VendorJobs() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleArchiveMediaItemAction(video, "approve")}
-                            disabled={video.status === "approved" || video.status === "archived" || Boolean(archiveActionLoadingId)}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleArchiveMediaItemAction(video, "reject")}
-                            disabled={video.status === "rejected" || video.status === "archived" || Boolean(archiveActionLoadingId)}
-                          >
-                            Reject
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
                             onClick={() => handleArchiveMediaItemAction(video, "archive")}
-                            disabled={video.status === "archived" || Boolean(archiveActionLoadingId)}
+                            disabled={video.archiveStatus === ARCHIVE_ARCHIVED || Boolean(archiveActionLoadingId)}
                           >
                             Move to Archive
                           </Button>
@@ -2686,7 +2877,7 @@ export default function VendorJobs() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleArchiveMediaItemAction(video, "restore")}
-                            disabled={video.status !== "archived" || Boolean(archiveActionLoadingId)}
+                            disabled={video.archiveStatus !== ARCHIVE_ARCHIVED || Boolean(archiveActionLoadingId)}
                           >
                             Restore
                           </Button>
@@ -2695,7 +2886,7 @@ export default function VendorJobs() {
                             variant="outline"
                             className="text-red-700 border-red-200 hover:bg-red-50"
                             onClick={() => handleArchiveMediaItemAction(video, "delete")}
-                            disabled={video.status === "archived" || Boolean(archiveActionLoadingId)}
+                            disabled={Boolean(archiveActionLoadingId)}
                           >
                             Delete
                           </Button>
@@ -2752,8 +2943,8 @@ export default function VendorJobs() {
                     <h3 className="text-lg font-semibold text-gray-900">{selectedJobForDetails.title}</h3>
                     <p className="text-sm text-gray-600 mt-1">Job ID: {selectedJobForDetails.id}</p>
                   </div>
-                  <Badge className={getStatusColor(selectedJobForDetails.status)}>
-                    {formatJobStatusLabel(selectedJobForDetails.status)}
+                  <Badge className={getJobListBadgeColor(selectedJobForDetails)}>
+                    {formatJobStatusLabel(selectedJobForDetails.status, selectedJobForDetails.operationalPhase)}
                   </Badge>
                 </div>
               </div>
@@ -2821,6 +3012,9 @@ export default function VendorJobs() {
                           <div className="flex items-center gap-2">
                           <Badge className={getStatusColor(video.status)}>
                             {`Media Moderation: ${String(video.status || 'pending').replace(/_/g, ' ')}`}
+                            </Badge>
+                            <Badge className="bg-indigo-100 text-indigo-800">
+                              {`Media Type: ${formatMediaPurposeLabel(video.mediaPurpose)}`}
                             </Badge>
                             {video.visibilityStatus ? (
                               <Badge className="bg-slate-100 text-slate-700">
@@ -3139,12 +3333,23 @@ export default function VendorJobs() {
       </Dialog>
 
       {/* Create Job Modal */}
-      <Dialog open={showCreateJob} onOpenChange={setShowCreateJob}>
+      <Dialog
+        open={showCreateJob}
+        onOpenChange={(open) => {
+          setShowCreateJob(open);
+          if (!open) {
+            setJobModalMode('create');
+            setJobFormTargetId(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Create New Job</DialogTitle>
+            <DialogTitle>{jobModalMode === 'edit' ? 'Edit Job' : 'Create New Job'}</DialogTitle>
             <DialogDescription>
-              Create a new service job with client details and requirements.
+              {jobModalMode === 'edit'
+                ? 'Update persisted job details.'
+                : 'Create a new service job with client details and requirements.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -3194,7 +3399,7 @@ export default function VendorJobs() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number <span aria-hidden="true">*</span>
+                Phone Number {jobModalMode === 'edit' ? null : <span aria-hidden="true">*</span>}
               </label>
               <Input
                 ref={phoneInputRef}
@@ -3218,7 +3423,7 @@ export default function VendorJobs() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email <span aria-hidden="true">*</span>
+                Email {jobModalMode === 'edit' ? null : <span aria-hidden="true">*</span>}
               </label>
               <Input
                 ref={emailInputRef}
@@ -3272,11 +3477,6 @@ export default function VendorJobs() {
               {!servicesLoading && serviceOptions.length === 0 && (
                 <p className="mt-1 text-sm text-amber-700">No services available. Add a service first.</p>
               )}
-              {usingFallbackServices && (
-                <p className="mt-1 text-xs text-amber-700">
-                  Using fallback service types until vendor-filtered services are fully connected.
-                </p>
-              )}
               {servicesLoadError && (
                 <p className="mt-1 text-xs text-amber-700">{servicesLoadError}</p>
               )}
@@ -3292,7 +3492,7 @@ export default function VendorJobs() {
               Cancel
             </Button>
             <Button onClick={handleCreateJob} disabled={!canCreateJob}>
-              {isCreatingJob ? 'Creating...' : 'Create Job'}
+              {isCreatingJob ? (jobModalMode === 'edit' ? 'Saving...' : 'Creating...') : (jobModalMode === 'edit' ? 'Save Job' : 'Create Job')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3337,7 +3537,14 @@ export default function VendorJobs() {
                     <div className="flex-1">
                       <div className="font-medium text-gray-900">{job.title}</div>
                       <div className="text-sm text-gray-600">Client: {job.client}</div>
+                      <div className="text-sm text-gray-600">Service: {job.serviceName || job.serviceType || 'General Service'}</div>
                       <div className="text-sm text-gray-600">Status: {job.status}</div>
+                      <div className="text-sm text-gray-600">
+                        Upload Type: {formatMediaPurposeLabel(deriveMediaPurposeFromJobStatus(job.status))}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Media: {Number(job.linkedMediaCount || 0)} asset(s)
+                      </div>
                       {getJobMediaModerationSummary(job) && (
                         <div className="text-sm text-gray-600">
                           {getJobMediaModerationSummary(job)?.label}
@@ -3381,6 +3588,16 @@ export default function VendorJobs() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+              <p>
+                {selectedJobMediaPurpose === 'completion'
+                  ? 'This video will be treated as completion media.'
+                  : 'This video will be treated as a progress update until the job is completed.'}
+              </p>
+              <p className="mt-1">
+                All uploads remain private and pending admin moderation before any visibility release.
+              </p>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Video Title <span aria-hidden="true">*</span>
@@ -3467,7 +3684,13 @@ export default function VendorJobs() {
       </Dialog>
 
       {/* Bulk Assignment Modal */}
-      <Dialog open={showBulkAssignmentModal} onOpenChange={setShowBulkAssignmentModal}>
+      <Dialog
+        open={showBulkAssignmentModal}
+        onOpenChange={(open) => {
+          setShowBulkAssignmentModal(open);
+          if (open) setBulkAssignmentMembershipIds([]);
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Bulk Assign Jobs</DialogTitle>
@@ -3478,33 +3701,59 @@ export default function VendorJobs() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Select Employees</label>
-              <div className="space-y-2">
-                {['John Smith', 'Mike Johnson', 'Sarah Wilson', 'David Brown'].map(employee => (
-                  <label key={employee} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedEmployees.includes(employee)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedEmployees([...selectedEmployees, employee]);
-                        } else {
-                          setSelectedEmployees(selectedEmployees.filter(emp => emp !== employee));
-                        }
-                      }}
-                      className="rounded"
-                    />
-                    <span className="text-sm">{employee}</span>
-                  </label>
-                ))}
-              </div>
+              {employeesLoading ? (
+                <p className="text-sm text-gray-600">Loading employees...</p>
+              ) : employeesLoadError ? (
+                <p className="text-sm text-red-700">{employeesLoadError}</p>
+              ) : teamMembers.length === 0 ? (
+                <p className="text-sm text-amber-700">No active employees available for assignment.</p>
+              ) : (
+                <div className="space-y-2">
+                  {teamMembers.map((m) => (
+                    <label key={m.membershipId} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={bulkAssignmentMembershipIds.includes(m.membershipId)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setBulkAssignmentMembershipIds([...bulkAssignmentMembershipIds, m.membershipId]);
+                          } else {
+                            setBulkAssignmentMembershipIds(
+                              bulkAssignmentMembershipIds.filter((id) => id !== m.membershipId)
+                            );
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-sm">
+                        {m.name}
+                        {m.role ? (
+                          <span className="text-gray-500">
+                            {' '}
+                            ({m.role === 'MANAGER' ? 'Manager' : 'Team member'})
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBulkAssignmentModal(false)}>
               Cancel
             </Button>
-            <Button onClick={() => handleBulkAssignment(selectedEmployees)}>
-              Assign Jobs
+            <Button
+              onClick={() => handleBulkAssignment(bulkAssignmentMembershipIds).catch(() => undefined)}
+              disabled={
+                Boolean(jobMutationLoadingId) ||
+                bulkAssignmentMembershipIds.length === 0 ||
+                employeesLoading ||
+                teamMembers.length === 0
+              }
+            >
+              {jobMutationLoadingId === 'assign:bulk' ? 'Assigning...' : 'Assign Jobs'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3527,33 +3776,124 @@ export default function VendorJobs() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Select Employees</label>
-              <div className="space-y-2">
-                {['John Smith', 'Mike Johnson', 'Sarah Wilson', 'David Brown'].map(employee => (
-                  <label key={employee} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedEmployees.includes(employee)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedEmployees([...selectedEmployees, employee]);
-                        } else {
-                          setSelectedEmployees(selectedEmployees.filter(emp => emp !== employee));
-                        }
-                      }}
-                      className="rounded"
-                    />
-                    <span className="text-sm">{employee}</span>
-                  </label>
-                ))}
-              </div>
+              {employeesLoading ? (
+                <p className="text-sm text-gray-600">Loading employees...</p>
+              ) : employeesLoadError ? (
+                <p className="text-sm text-red-700">{employeesLoadError}</p>
+              ) : teamMembers.length === 0 ? (
+                <p className="text-sm text-amber-700">No active employees available for assignment.</p>
+              ) : (
+                <div className="space-y-2">
+                  {teamMembers.map((m) => (
+                    <label key={m.membershipId} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedAssignmentMembershipIds.includes(m.membershipId)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedAssignmentMembershipIds([
+                              ...selectedAssignmentMembershipIds,
+                              m.membershipId,
+                            ]);
+                          } else {
+                            setSelectedAssignmentMembershipIds(
+                              selectedAssignmentMembershipIds.filter((id) => id !== m.membershipId)
+                            );
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-sm">
+                        {m.name}
+                        {m.role ? (
+                          <span className="text-gray-500">
+                            {' '}
+                            ({m.role === 'MANAGER' ? 'Manager' : 'Team member'})
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAssignmentModal(false)}>
               Cancel
             </Button>
-            <Button onClick={() => handleAssignmentUpdate(selectedJob, selectedEmployees)}>
-              {selectedJob?.assignedEmployees?.length > 0 ? 'Reassign' : 'Assign'}
+            <Button
+              onClick={() =>
+                handleAssignmentUpdate(selectedJob, selectedAssignmentMembershipIds).catch(() => undefined)
+              }
+              disabled={Boolean(jobMutationLoadingId) || employeesLoading || teamMembers.length === 0}
+            >
+              {jobMutationLoadingId?.startsWith('assign:') ? 'Saving...' : (selectedJob?.assignedEmployees?.length > 0 ? 'Reassign' : 'Assign')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Job Status Modal */}
+      <Dialog open={showStatusModal} onOpenChange={setShowStatusModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Job Status</DialogTitle>
+            <DialogDescription>
+              Persist a backend status update for this job.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <select
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg bg-white"
+              >
+                <option value="pending">Pending</option>
+                <option value="in progress">In Progress</option>
+                <option
+                  value="completed"
+                  disabled={Boolean(editingJob) && !canVendorMarkJobCompleted(editingJob)}
+                >
+                  Completed
+                  {editingJob && !canVendorMarkJobCompleted(editingJob)
+                    ? ' (needs media + awaiting review)'
+                    : ''}
+                </option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              {editingJob && !canVendorMarkJobCompleted(editingJob) ? (
+                <p className="text-xs text-gray-600">
+                  To mark <strong>Completed</strong>: upload service video on an in-progress job (moves to{' '}
+                  <strong>Awaiting vendor review</strong>), then finish here or use <strong>Review &amp; complete</strong>{' '}
+                  on the job card.
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Reason (optional)</label>
+              <textarea
+                value={statusReason}
+                onChange={(e) => setStatusReason(e.target.value)}
+                className="w-full min-h-[90px] rounded border border-gray-300 px-3 py-2 text-sm"
+                placeholder="Reason for status change"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStatusModal(false)} disabled={Boolean(jobMutationLoadingId)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!editingJob) return;
+                handleStatusUpdate(editingJob, newStatus, statusReason).catch(() => undefined);
+              }}
+              disabled={!editingJob || !newStatus || Boolean(jobMutationLoadingId)}
+            >
+              {jobMutationLoadingId?.startsWith('status:') ? 'Saving...' : 'Save Status'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3952,7 +4292,15 @@ export default function VendorJobs() {
             </Badge>
           </div>
           
-          {getAvailableEmployees().length > 0 ? (
+          {employeesLoading ? (
+            <div className="text-center py-4">
+              <p className="text-gray-600">Loading employees...</p>
+            </div>
+          ) : employeesLoadError ? (
+            <div className="text-center py-4">
+              <p className="text-red-700">{employeesLoadError}</p>
+            </div>
+          ) : getAvailableEmployees().length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               {getAvailableEmployees().map(employee => (
                 <div key={employee.id} className="bg-white border border-green-200 rounded-lg p-3 flex items-center gap-3">
@@ -3970,7 +4318,7 @@ export default function VendorJobs() {
             </div>
           ) : (
             <div className="text-center py-4">
-              <p className="text-gray-600">All employees are currently assigned to jobs</p>
+              <p className="text-gray-600">No active employees available for assignment.</p>
             </div>
           )}
         </div>
@@ -4011,29 +4359,41 @@ export default function VendorJobs() {
                         <h4 className="font-medium text-gray-900">{job.title}</h4>
                         <div className="text-sm text-gray-600 mt-1">
                           <p>Client: {job.client}</p>
-                          <p>Archived: {new Date(job.archivedAt).toLocaleDateString()}</p>
-                          <p className="text-orange-600">Reason: {job.archiveReason}</p>
+                          <p>Service: {job.serviceName || job.serviceType || 'General Service'}</p>
+                          <p>
+                            Archived:{' '}
+                            {job.updatedAt || job.archivedAt
+                              ? new Date(String(job.updatedAt || job.archivedAt)).toLocaleDateString()
+                              : '-'}
+                          </p>
+                          <p>Media: {Number(job.linkedMediaCount || 0)} asset(s)</p>
+                          {job.archiveReason ? <p className="text-orange-600">Reason: {job.archiveReason}</p> : null}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge className={getStatusColor(job.status)}>
-                          {formatJobStatusLabel(job.status)}
+                        <Badge className={getJobListBadgeColor(job)}>
+                          {formatJobStatusLabel(job.status, job.operationalPhase)}
                         </Badge>
                         <Button 
                           size="sm" 
                           variant="outline" 
                           onClick={() => {
+                            if (jobMutationLoadingId) return;
+                            setJobMutationLoadingId(`unarchive:${String(job.id)}`);
                             unarchiveJob(job).catch((error) => {
                               setJobActionFeedback({
                                 type: 'error',
                                 message: error instanceof Error ? error.message : 'Failed to restore archived job',
                               });
+                            }).finally(() => {
+                              setJobMutationLoadingId(null);
                             });
                           }}
+                          disabled={Boolean(jobMutationLoadingId)}
                           className="text-blue-600 border-blue-200 hover:bg-blue-50"
                         >
                           <ArrowLeft className="w-4 h-4 mr-1" />
-                          Restore
+                          {jobMutationLoadingId === `unarchive:${String(job.id)}` ? 'Restoring...' : 'Restore'}
                         </Button>
                       </div>
                     </div>
@@ -4108,7 +4468,15 @@ export default function VendorJobs() {
               </div>
             )}
             {filteredJobs.map(job => (
-          <Card key={job.id} className={`hover:shadow-md transition-shadow ${selectedJobIds.includes(job.id) ? 'ring-2 ring-blue-500 bg-blue-50' : ''}`}>
+          <Card
+            key={job.id}
+            className={`cursor-pointer select-none transition-all hover:shadow-md ${
+              selectedJobIds.includes(job.id)
+                ? 'ring-2 ring-blue-500 ring-offset-2 bg-blue-50 border-blue-300 shadow-md'
+                : ''
+            }`}
+            onClick={() => toggleJobSelection(job.id)}
+          >
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -4116,13 +4484,18 @@ export default function VendorJobs() {
                     type="checkbox"
                     checked={selectedJobIds.includes(job.id)}
                     onChange={() => toggleJobSelection(job.id)}
+                    onClick={(e) => e.stopPropagation()}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
                   <div>
                     <CardTitle className="text-xl">{job.title}</CardTitle>
                     <p className="text-gray-600">Client: {job.client}</p>
-                    <p className="text-gray-600">Phone: {job.phone}</p>
-                    <p className="text-gray-600">Created: {job.createdAt}</p>
+                    <p className="text-gray-600">Service Type: {job.serviceName || job.serviceType || 'General Service'}</p>
+                    <p className="text-gray-600">Created: {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : '-'}</p>
+                    <p className="text-gray-600">Updated: {job.updatedAt ? new Date(job.updatedAt).toLocaleDateString() : '-'}</p>
+                    <p className="text-gray-600">
+                      Media: {Number(job.linkedMediaCount || 0)} asset(s) across {Number(job.linkedSessionCount || 0)} session(s)
+                    </p>
                     {job.assignedEmployees && job.assignedEmployees.length > 0 && (
                       <p className="text-sm text-blue-600 mt-1">
                         Assigned: {job.assignedEmployees.join(', ')}
@@ -4130,28 +4503,39 @@ export default function VendorJobs() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge className={getStatusColor(job.status)}>
-                    {formatJobStatusLabel(job.status)}
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <Badge className={getJobListBadgeColor(job)}>
+                    {formatJobStatusLabel(job.status, job.operationalPhase)}
                   </Badge>
+                  {String(job.operationalPhase || '').toUpperCase() === 'AWAITING_VENDOR_REVIEW' ? (
+                    <Badge variant="outline" className={getOperationalPhaseBadgeClass(job.operationalPhase)}>
+                      Awaiting your review
+                    </Badge>
+                  ) : null}
                   {getJobMediaModerationSummary(job) && (
                     <Badge className={getJobMediaModerationSummary(job)?.className}>
                       {getJobMediaModerationSummary(job)?.label}
                     </Badge>
                   )}
-                  <div className="relative">
+                  <div className="relative" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() =>
-                        setActiveJobActionMenuId((prev) => (prev === String(job.id) ? null : String(job.id)))
-                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveJobActionMenuId((prev) => (prev === String(job.id) ? null : String(job.id)));
+                      }}
+                      disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
                     >
                       Actions
                       <ChevronDown className="w-4 h-4 ml-1" />
                     </Button>
                     {activeJobActionMenuId === String(job.id) && (
-                      <div className="absolute right-0 mt-2 w-56 rounded-md border bg-white shadow-lg z-20">
+                      <div
+                        className="absolute right-0 mt-2 w-56 rounded-md border bg-white shadow-lg z-20"
+                        onClick={(e) => e.stopPropagation()}
+                        role="menu"
+                      >
                         <button
                           className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
                           onClick={() => {
@@ -4167,8 +4551,39 @@ export default function VendorJobs() {
                             openEditModal(job);
                             setActiveJobActionMenuId(null);
                           }}
+                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
                         >
                           Edit
+                        </button>
+                        <button
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                          onClick={() => {
+                            openStatusModal(job);
+                            setActiveJobActionMenuId(null);
+                          }}
+                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                        >
+                          Update Status
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={
+                            canVendorMarkJobCompleted(job)
+                              ? 'Mark the job completed after reviewing uploaded media.'
+                              : 'Complete is available only when the job is awaiting your review and has media.'
+                          }
+                          disabled={
+                            Boolean(jobMutationLoadingId) ||
+                            jobActionLoading ||
+                            !canVendorMarkJobCompleted(job)
+                          }
+                          onClick={() => {
+                            setActiveJobActionMenuId(null);
+                            handleStatusUpdate(job, 'completed').catch(() => undefined);
+                          }}
+                        >
+                          Review &amp; complete
                         </button>
                         <button
                           className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
@@ -4176,6 +4591,7 @@ export default function VendorJobs() {
                             openAssignmentModal(job);
                             setActiveJobActionMenuId(null);
                           }}
+                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
                         >
                           Assign
                         </button>
@@ -4192,18 +4608,21 @@ export default function VendorJobs() {
                         <button
                           className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
                           onClick={() => openJobActionConfirm(job, "ARCHIVE_JOB")}
+                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
                         >
                           Archive Job
                         </button>
                         <button
                           className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
                           onClick={() => openJobActionConfirm(job, "MOVE_CONTENT_TO_ARCHIVE")}
+                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
                         >
                           Move Content to Archive
                         </button>
                         <button
                           className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
                           onClick={() => openJobActionConfirm(job, "DELETE_PERMANENTLY")}
+                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
                         >
                           Delete Permanently
                         </button>
@@ -4272,6 +4691,7 @@ export default function VendorJobs() {
               onClick={executeConfirmedJobAction}
               disabled={
                 jobActionLoading ||
+                Boolean(jobMutationLoadingId) ||
                 (pendingJobAction === "DELETE_PERMANENTLY" &&
                   (deleteImpactPreview?.loading || deleteImpactPreview?.canVendorDelete === false))
               }

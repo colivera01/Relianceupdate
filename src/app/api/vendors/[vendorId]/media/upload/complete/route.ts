@@ -5,6 +5,7 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 import { getBlobProperties } from "@/lib/azure-blob-storage";
+import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -170,6 +171,38 @@ export async function POST(
     
     // Check and create alerts (may have crossed threshold after upload)
     await checkAndCreateStorageAlerts(vendorId, updatedUsage);
+
+    // Vendor workflow: first-class operational phase — video on an in-progress (CONFIRMED) job → AWAITING_VENDOR_REVIEW
+    if (validMediaSessionId && String(mimeType || "").toLowerCase().startsWith("video/")) {
+      try {
+        const sessionRow = await (prisma as any).mediaSession.findFirst({
+          where: { id: validMediaSessionId, vendorId },
+          select: { bookingId: true },
+        });
+        const bookingId = sessionRow?.bookingId ? String(sessionRow.bookingId) : null;
+        if (bookingId) {
+          const bookingRow = await prisma.booking.findFirst({
+            where: { id: bookingId, vendorId },
+            select: { id: true, status: true, customerMetadata: true },
+          });
+          const st = String(bookingRow?.status || "")
+            .trim()
+            .toUpperCase();
+          if (bookingRow && st === "CONFIRMED") {
+            const nextMeta = setOperationalPhaseOnMetadataJson(
+              bookingRow.customerMetadata,
+              "AWAITING_VENDOR_REVIEW"
+            );
+            await prisma.booking.update({
+              where: { id: bookingRow.id },
+              data: { customerMetadata: nextMeta },
+            });
+          }
+        }
+      } catch (phaseErr: any) {
+        console.warn("[media/upload/complete] operational phase update skipped:", phaseErr?.message || phaseErr);
+      }
+    }
 
     return NextResponse.json({
       success: true,

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, type AuthUser } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -42,31 +42,61 @@ export default function LoginPage() {
         body: JSON.stringify(formData),
       });
 
-      const data = await response.json();
+      const rawText = await response.text();
+      let data: Record<string, unknown> = {};
+      try {
+        data = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
+      } catch {
+        console.error('[auth/login] non-JSON response', {
+          status: response.status,
+          preview: rawText.slice(0, 200),
+        });
+        alert(
+          `Login response was not JSON (HTTP ${response.status}). You may be on the wrong dev port or the server returned an error page. Use the app on the same host as this page (default: http://localhost:3000 for npm run dev).`
+        );
+        return;
+      }
 
       if (response.ok) {
         console.log('Login successful:', data);
-        
-        // Store user data and token
-        localStorage.setItem('userData', JSON.stringify(data.user));
-        localStorage.setItem('authToken', data.token);
 
-        const rawType = String(data.user.userType || 'customer');
-        const normalizedType: 'customer' | 'vendor' | 'admin' =
-          rawType === 'vendor' ? 'vendor' : rawType === 'admin' ? 'admin' : 'customer';
-        login({
-          id: String(data.user.id),
-          name: String(data.user.name || data.user.email || 'User'),
-          email: String(data.user.email),
+        const u = data.user as Record<string, unknown>;
+        const rawType = String(u.userType || 'customer');
+        const normalizedType: AuthUser['userType'] =
+          rawType === 'vendor'
+            ? 'vendor'
+            : rawType === 'admin'
+              ? 'admin'
+              : rawType === 'both'
+                ? 'both'
+                : 'customer';
+
+        const sessionUser: AuthUser = {
+          id: String(u.id),
+          name: String(u.name || u.email || 'User'),
+          email: String(u.email),
           userType: normalizedType,
-          avatar: data.user.avatar,
-        });
+          avatar: u.avatar as string | undefined,
+          availableProfiles: Array.isArray(u.availableProfiles)
+            ? (u.availableProfiles as string[])
+            : undefined,
+        };
+
+        // Single source of truth: AuthProvider persists userData + authToken + cookies
+        login(sessionUser, data.token != null ? String(data.token) : null);
+
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[auth/login] session write delegated to AuthProvider', {
+            userId: sessionUser.id,
+            tokenPreview: data.token != null ? `${String(data.token).slice(0, 14)}…` : null,
+          });
+        }
 
         // Check user type and redirect accordingly
-        if (data.user.userType === 'vendor') {
+        if (u.userType === 'vendor') {
           // Pure vendor user - go to vendor dashboard
           router.push('/vendor/dashboard');
-        } else if (data.user.userType === 'both') {
+        } else if (u.userType === 'both') {
           // User with both profiles - go to user dashboard first
           // They can then toggle to vendor profile if needed
           router.push('/user-dashboard');
@@ -75,12 +105,23 @@ export default function LoginPage() {
           router.push('/user-dashboard');
         }
       } else {
-        console.log('Login failed:', data);
-        alert(data.error || 'Login failed');
+        const code = data.code != null ? String(data.code) : '';
+        const err = data.error != null ? String(data.error) : 'Login failed';
+        const details = data.details != null ? String(data.details) : '';
+        console.warn('[auth/login] rejected', { status: response.status, code, err, details });
+        const devHint =
+          process.env.NODE_ENV !== 'production' && code
+            ? `\n\n(code: ${code})`
+            : '';
+        const detailSuffix = details && process.env.NODE_ENV !== 'production' ? `\n\n${details}` : '';
+        alert(`${err}${devHint}${detailSuffix}`);
       }
     } catch (error) {
       console.error('Login error:', error);
-      alert('Login failed. Please try again.');
+      const msg = error instanceof Error ? error.message : String(error);
+      alert(
+        `Network or unexpected error: ${msg}\n\nIf the app is open on localhost:3001 but API runs on :3000, open the login page on the same port as the Next dev server (see terminal "Local:" URL).`
+      );
     } finally {
       setIsLoading(false);
     }

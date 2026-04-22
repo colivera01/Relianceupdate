@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { requireAdmin } from '@/lib/admin-auth';
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAdmin(request);
+
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -10,147 +14,77 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'createdAt';
     const sortOrder = searchParams.get('sortOrder') || 'desc';
 
-    // TODO: Get pending vendors from database with pagination and filters
-    // const pendingVendors = await db.vendors.findMany({
-    //   where: {
-    //     approvalStatus: 'pending',
-    //     ...(search && {
-    //       OR: [
-    //         { businessName: { contains: search, mode: 'insensitive' } },
-    //         { email: { contains: search, mode: 'insensitive' } },
-    //         { firstName: { contains: search, mode: 'insensitive' } },
-    //         { lastName: { contains: search, mode: 'insensitive' } },
-    //       ],
-    //     }),
-    //     ...(category && { category }),
-    //   },
-    //   orderBy: {
-    //     [sortBy]: sortOrder,
-    //   },
-    //   skip: (page - 1) * limit,
-    //   take: limit,
-    //   include: {
-    //     // Include related data if needed
-    //   },
-    // });
-
-    // TODO: Get total count for pagination
-    // const totalCount = await db.vendors.count({
-    //   where: {
-    //     approvalStatus: 'pending',
-    //     ...(search && {
-    //       OR: [
-    //         { businessName: { contains: search, mode: 'insensitive' } },
-    //         { email: { contains: search, mode: 'insensitive' } },
-    //         { firstName: { contains: search, mode: 'insensitive' } },
-    //         { lastName: { contains: search, mode: 'insensitive' } },
-    //       ],
-    //     }),
-    //     ...(category && { category }),
-    //   },
-    // });
-
-    // Mock data for now
-    const mockPendingVendors = [
-      {
-        id: '1',
-        businessName: 'CleanCo Services',
-        firstName: 'John',
-        lastName: 'Doe',
-        email: 'john@cleanco.com',
-        phone: '555-123-4567',
-        category: 'Cleaning',
-        businessType: 'LLC',
-        foundedYear: 2020,
-        totalEmployees: 5,
-        yearsInBusiness: 4,
-        address: '123 Main St',
-        city: 'Springfield',
-        state: 'IL',
-        zipCode: '62701',
-        createdAt: '2024-01-15T10:30:00Z',
-        submittedAt: '2024-01-15T10:30:00Z',
+    const pendingMemberships = await (prisma as any).vendorMembership.findMany({
+      where: {
+        status: 'PENDING',
+        role: 'MANAGER',
       },
-      {
-        id: '2',
-        businessName: 'PlumbPro Solutions',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        email: 'jane@plumbpro.com',
-        phone: '555-987-6543',
-        category: 'Plumbing',
-        businessType: 'Corporation',
-        foundedYear: 2018,
-        totalEmployees: 12,
-        yearsInBusiness: 6,
-        address: '456 Oak Ave',
-        city: 'Metropolis',
-        state: 'NY',
-        zipCode: '10001',
-        createdAt: '2024-01-14T14:20:00Z',
-        submittedAt: '2024-01-14T14:20:00Z',
+      include: {
+        vendor: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
       },
-      {
-        id: '3',
-        businessName: 'PaintMaster Pro',
-        firstName: 'Mike',
-        lastName: 'Johnson',
-        email: 'mike@paintmaster.com',
-        phone: '555-456-7890',
-        category: 'Painting',
-        businessType: 'Sole Proprietorship',
-        foundedYear: 2022,
-        totalEmployees: 3,
-        yearsInBusiness: 2,
-        address: '789 Pine St',
-        city: 'Chicago',
-        state: 'IL',
-        zipCode: '60601',
-        createdAt: '2024-01-13T09:15:00Z',
-        submittedAt: '2024-01-13T09:15:00Z',
-      },
-    ];
+    });
 
-    // Filter mock data based on search and category
-    let filteredVendors = mockPendingVendors;
-    
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredVendors = filteredVendors.filter(vendor =>
-        vendor.businessName.toLowerCase().includes(searchLower) ||
-        vendor.email.toLowerCase().includes(searchLower) ||
-        `${vendor.firstName} ${vendor.lastName}`.toLowerCase().includes(searchLower)
-      );
-    }
+    const searchLower = search.toLowerCase();
+    let filteredVendors = pendingMemberships
+      .map((membership: any) => {
+        const vendor = membership.vendor;
+        const user = membership.user;
+        const firstName = String(user?.name || '').split(' ').slice(0, 1).join('') || '';
+        const lastName = String(user?.name || '').split(' ').slice(1).join(' ') || '';
+        const foundedYear = vendor?.foundedYear || null;
+        const yearsInBusiness =
+          foundedYear && Number.isFinite(foundedYear) ? Math.max(0, new Date().getFullYear() - foundedYear) : 0;
 
-    if (category) {
-      filteredVendors = filteredVendors.filter(vendor => vendor.category === category);
-    }
+        return {
+          id: String(vendor.id),
+          membershipId: String(membership.id),
+          businessName: String(vendor.businessName || vendor.name || 'Unnamed Vendor'),
+          firstName,
+          lastName,
+          email: String(vendor.email || user?.email || ''),
+          phone: String(vendor.phone || user?.phone || ''),
+          category: String(vendor.category || vendor.businessType || 'General'),
+          businessType: String(vendor.businessType || 'Unknown'),
+          foundedYear: foundedYear || null,
+          totalEmployees: 0,
+          yearsInBusiness,
+          address: String(vendor.address || ''),
+          city: String(vendor.city || ''),
+          state: String(vendor.state || ''),
+          zipCode: String(vendor.zipCode || ''),
+          createdAt: membership.requestedAt?.toISOString() || vendor.createdAt?.toISOString(),
+          submittedAt: membership.requestedAt?.toISOString() || vendor.createdAt?.toISOString(),
+        };
+      })
+      .filter((vendor: any) => {
+        const matchesSearch =
+          !searchLower ||
+          vendor.businessName.toLowerCase().includes(searchLower) ||
+          vendor.email.toLowerCase().includes(searchLower) ||
+          `${vendor.firstName} ${vendor.lastName}`.toLowerCase().includes(searchLower);
+        const matchesCategory = !category || category === 'all' || vendor.category === category;
+        return matchesSearch && matchesCategory;
+      });
 
-    // Sort mock data
-    filteredVendors.sort((a, b) => {
-      let aValue, bValue;
-      switch (sortBy) {
-        case 'businessName':
-          aValue = a.businessName.toLowerCase();
-          bValue = b.businessName.toLowerCase();
-          break;
-        case 'category':
-          aValue = a.category.toLowerCase();
-          bValue = b.category.toLowerCase();
-          break;
-        case 'createdAt':
-        default:
-          aValue = new Date(a.createdAt).getTime();
-          bValue = new Date(b.createdAt).getTime();
-          break;
+    filteredVendors.sort((a: any, b: any) => {
+      const direction = sortOrder === 'asc' ? 1 : -1;
+      if (sortBy === 'businessName') {
+        return a.businessName.localeCompare(b.businessName) * direction;
       }
-      
-      if (sortOrder === 'asc') {
-        return aValue > bValue ? 1 : -1;
-      } else {
-        return aValue < bValue ? 1 : -1;
+      if (sortBy === 'category') {
+        return a.category.localeCompare(b.category) * direction;
       }
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return (aTime - bTime) * direction;
     });
 
     // Paginate mock data
@@ -181,6 +115,9 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Get pending vendors error:', error);
+    if (error instanceof Error && (error.message === 'Unauthorized' || error.message.includes('Forbidden'))) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json(
       { error: 'Failed to fetch pending vendors. Please try again.' },
       { status: 500 }

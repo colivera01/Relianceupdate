@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Calendar, Clock, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, ExternalLink, Info, RefreshCw } from 'lucide-react';
 import { SmartVideoPlayer } from '@/components/reviews/SmartVideoPlayer';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -23,6 +23,10 @@ type MediaState = {
   loading: boolean;
   error: string | null;
   total: number | null;
+  /** True after a successful GET (even when total is 0). Used for truthful empty vs not-yet-loaded. */
+  loaded: boolean;
+  /** Count of image assets returned (GET includes approved customer-visible images). */
+  imageCount?: number;
   videos?: Array<{
     id: string;
     title: string;
@@ -30,6 +34,17 @@ type MediaState = {
     mediaSessionId: string | null;
   }>;
 };
+
+function mediaHintForError(message: string): string | null {
+  const m = message.toLowerCase();
+  if (m.includes('consent')) {
+    return 'Complete any consent request from your vendor (email or link) if you have not already.';
+  }
+  if (m.includes('forbidden') || m.includes('not belong')) {
+    return 'If this keeps happening, sign out and back in with the account that owns this service.';
+  }
+  return null;
+}
 
 export default function MyBookingsPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -66,7 +81,7 @@ export default function MyBookingsPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(json?.error || `Failed to load bookings (${res.status})`);
+        throw new Error(json?.error || `Failed to load services (${res.status})`);
       }
       const raw = Array.isArray(json?.bookings) ? json.bookings : [];
       const next = raw
@@ -74,7 +89,7 @@ export default function MyBookingsPage() {
         .filter((row: MyBookingsRow | null): row is MyBookingsRow => row != null);
       setBookings(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load bookings');
+      setError(e instanceof Error ? e.message : 'Failed to load services');
       setBookings([]);
     } finally {
       setLoading(false);
@@ -144,13 +159,19 @@ export default function MyBookingsPage() {
     if (!userId) {
       setMediaByBooking((prev) => ({
         ...prev,
-        [bookingId]: { loading: false, error: 'Sign in required to load media.', total: null },
+        [bookingId]: { loading: false, error: 'Sign in required to load media.', total: null, loaded: false, imageCount: 0 },
       }));
       return;
     }
     setMediaByBooking((prev) => ({
       ...prev,
-      [bookingId]: { loading: true, error: null, total: prev[bookingId]?.total ?? null },
+      [bookingId]: {
+        loading: true,
+        error: null,
+        total: prev[bookingId]?.total ?? null,
+        loaded: prev[bookingId]?.loaded ?? false,
+        imageCount: prev[bookingId]?.imageCount ?? 0,
+      },
     }));
     try {
       const res = await fetch(`/api/bookings/${bookingId}/media`, {
@@ -165,6 +186,7 @@ export default function MyBookingsPage() {
         throw new Error(json?.error || `Failed to load booking media (${res.status})`);
       }
       const total = Array.isArray(json?.assets) ? json.assets.length : 0;
+      const imageCount = Array.isArray(json?.images) ? json.images.length : 0;
       const videos = Array.isArray(json?.videos)
         ? json.videos.map((v: { id?: unknown; title?: unknown; blobUrl?: unknown; mediaSessionId?: unknown }) => ({
             id: String(v.id),
@@ -175,7 +197,7 @@ export default function MyBookingsPage() {
         : [];
       setMediaByBooking((prev) => ({
         ...prev,
-        [bookingId]: { loading: false, error: null, total, videos },
+        [bookingId]: { loading: false, error: null, total, loaded: true, imageCount, videos },
       }));
       if (videos.length > 0) {
         setActiveVideoByBooking((prev) => ({
@@ -190,6 +212,8 @@ export default function MyBookingsPage() {
           loading: false,
           error: e instanceof Error ? e.message : 'Failed to load media',
           total: null,
+          loaded: false,
+          imageCount: 0,
         },
       }));
     }
@@ -201,10 +225,13 @@ export default function MyBookingsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">My Bookings</h1>
-            <p className="text-sm text-gray-600">Canonical customer booking history powered by backend data.</p>
+            <h1 className="text-2xl font-bold text-gray-900">My Services</h1>
+            <p className="text-sm text-gray-600 mt-1 max-w-xl">
+              Your history with vendors on Reliance—scheduled visits, status, and media they share for transparency.
+              Vendors add recordings after work; you only see items that are approved for customers.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <ButtonLike onClick={fetchBookings} disabled={loading}>
@@ -221,6 +248,26 @@ export default function MyBookingsPage() {
           </div>
         </div>
 
+        <div className="rounded-lg border border-blue-100 bg-blue-50/90 px-4 py-3 text-sm text-gray-800">
+          <div className="flex gap-2">
+            <Info className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" aria-hidden />
+            <div className="space-y-2">
+              <p className="font-medium text-gray-900">Why a row appears here</p>
+              <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                <li>Each entry links your account to a catalog service and vendor (your engagement on Reliance).</li>
+                <li>
+                  Use <strong>Show shared media</strong> to load video or images your vendor has already published for
+                  you—this list only includes media that passed review and is marked visible to customers.
+                </li>
+                <li>
+                  When playback is available and your service isn&apos;t cancelled, you may get in-player prompts to leave
+                  quick feedback after watching.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white border rounded-lg p-3">
           <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
             <div className="w-full md:w-96 space-y-1">
@@ -232,7 +279,7 @@ export default function MyBookingsPage() {
                 className="border rounded px-3 py-2 text-sm w-full"
               />
               <p id="my-bookings-search-hint" className="text-xs text-gray-500">
-                Matches service name, vendor name, booking title, client name on the booking, or the booking ID.
+                Matches service name, vendor name, title, client name on the record, or your reference ID.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -262,14 +309,14 @@ export default function MyBookingsPage() {
           <PanelText text="Checking your session…" />
         ) : !resolveCustomerUserId(user?.id) ? (
           <div className="rounded border border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900 space-y-2">
-            <p className="font-medium">Sign in to see your bookings</p>
-            <p className="text-amber-800">We could not find a customer id in your session. Use the same account you book with.</p>
+            <p className="font-medium">Sign in to see your services</p>
+            <p className="text-amber-800">We could not find a customer id in your session. Use the same account you use for services on Reliance.</p>
             <Link href="/auth/login" className="inline-block text-blue-700 font-medium underline">
               Go to sign in
             </Link>
           </div>
         ) : loading ? (
-          <PanelText text="Loading bookings..." />
+          <PanelText text="Loading your services..." />
         ) : error ? (
           <div className="space-y-3">
             <PanelText text={error} danger />
@@ -283,7 +330,7 @@ export default function MyBookingsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <PanelText
-            text={`No ${activeTab} bookings found.`}
+            text={`No ${activeTab} services found.`}
             hint="Try another tab or book a service from Discover."
           />
         ) : (
@@ -304,10 +351,24 @@ export default function MyBookingsPage() {
               const vendorIdOk = Boolean((booking.vendor_id || '').trim());
               const mediaButtonDisabled = !vendorIdOk || Boolean(mediaState?.loading);
               const mediaButtonTitle = !vendorIdOk
-                ? 'A vendor is required on this booking before media can load.'
+                ? 'Vendor information is required on this record before shared media can load.'
                 : mediaState?.loading
-                  ? 'Loading media…'
+                  ? 'Loading shared media…'
                   : undefined;
+              const serviceDetailHref = booking.service.id ? `/service/${booking.service.id}` : null;
+              const reviewCaptureOk = shouldEnableReviewCaptureForStatus(statusKey);
+              const mediaLoaded = Boolean(mediaState?.loaded);
+              const mediaTotal = mediaState?.total;
+              const videoList = mediaState?.videos ?? [];
+              const imageCount = mediaState?.imageCount ?? 0;
+              const hasPlayableSharedVideo =
+                mediaLoaded && videoList.some((v) => Boolean(v.blobUrl && v.mediaSessionId));
+              const hasSharedMediaNoVideo =
+                mediaLoaded &&
+                typeof mediaTotal === 'number' &&
+                mediaTotal > 0 &&
+                videoList.length === 0;
+              const mediaErrorHint = mediaState?.error ? mediaHintForError(mediaState.error) : null;
 
               return (
                 <div
@@ -319,7 +380,12 @@ export default function MyBookingsPage() {
                     <div className="space-y-1">
                       <p className="font-semibold text-gray-900">{booking.service.name}</p>
                       <p className="text-sm text-gray-600">Vendor: {booking.vendor.name}</p>
-                      <p className="text-sm text-gray-600">Booking ID: {booking.id}</p>
+                      <p className="text-sm text-gray-600">
+                        Reference ID: <span className="font-mono text-xs">{booking.id}</span>
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Use this ID if you contact support; it matches your booking record in Reliance.
+                      </p>
                       {booking.title ? <p className="text-sm text-gray-600">Title: {booking.title}</p> : null}
                     </div>
                     <div className="text-sm text-right">
@@ -330,13 +396,61 @@ export default function MyBookingsPage() {
 
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-700">
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      {booking.booking_date || '-'}
+                      <Calendar className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
+                      <span>
+                        <span className="text-gray-500">Scheduled date: </span>
+                        {booking.booking_date || '—'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      {booking.booking_time || '-'}
+                      <Clock className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
+                      <span>
+                        <span className="text-gray-500">Time: </span>
+                        {booking.booking_time || '—'}
+                      </span>
                     </div>
+                  </div>
+
+                  <div className="mt-4 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm text-gray-800">
+                    <p className="font-medium text-gray-900 mb-1">What you can do</p>
+                    <ul className="list-disc pl-5 space-y-1 text-gray-700">
+                      {serviceDetailHref ? (
+                        <li>
+                          <Link
+                            href={serviceDetailHref}
+                            className="text-blue-700 font-medium underline inline-flex items-center gap-1"
+                          >
+                            View service details
+                            <ExternalLink className="w-3.5 h-3.5" aria-hidden />
+                          </Link>{' '}
+                          in the catalog.
+                        </li>
+                      ) : (
+                        <li>Service details link unavailable for this row (missing catalog id).</li>
+                      )}
+                      <li>
+                        <strong>Shared media:</strong>{' '}
+                        {hasPlayableSharedVideo
+                          ? 'Available below—play a clip to watch what your vendor shared.'
+                          : hasSharedMediaNoVideo
+                            ? `Your vendor shared ${mediaTotal} approved file(s) for you, but none are video this page can play${
+                                imageCount > 0 ? ` (${imageCount} image${imageCount === 1 ? '' : 's'})` : ''
+                              }.`
+                            : mediaLoaded && mediaTotal === 0
+                              ? 'None loaded yet for you to view. Your vendor may still be uploading, or items may still be in review before they appear for customers.'
+                              : mediaState?.error
+                                ? 'Could not load the list—see the message under the button.'
+                                : 'Tap “Show shared media” to load items your vendor has published for customers (approved in Reliance).'}
+                      </li>
+                      <li>
+                        <strong>Review:</strong>{' '}
+                        {reviewCaptureOk
+                          ? hasPlayableSharedVideo
+                            ? 'After playback starts, watch for on-video prompts to leave quick feedback.'
+                            : 'When shared video is available and you play it, you may be prompted for quick feedback.'
+                          : 'Not offered for cancelled services.'}
+                      </li>
+                    </ul>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -367,19 +481,41 @@ export default function MyBookingsPage() {
                       }}
                       className="px-3 py-2 rounded border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Load Authorized Media
+                      Show shared media
                     </button>
-                    {mediaState?.loading ? <span className="text-xs text-gray-500">Loading media...</span> : null}
-                    {typeof mediaState?.total === 'number' ? (
-                      <span className="text-xs text-green-700">Media assets: {mediaState.total}</span>
+                    {mediaState?.loading ? (
+                      <span className="text-xs text-gray-500">Loading shared media…</span>
                     ) : null}
-                    {mediaState?.error ? <span className="text-xs text-red-700">{mediaState.error}</span> : null}
+                    {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
+                      <span className="text-xs font-medium text-green-800">
+                        {mediaTotal} item{mediaTotal === 1 ? '' : 's'} from your vendor — approved for you to view
+                      </span>
+                    ) : null}
+                    {mediaState?.error ? (
+                      <div className="text-xs text-red-700 space-y-0.5 w-full basis-full">
+                        <span>{mediaState.error}</span>
+                        {mediaErrorHint ? <p className="text-gray-700">{mediaErrorHint}</p> : null}
+                      </div>
+                    ) : null}
                   </div>
-                  {Array.isArray(mediaState?.videos) && mediaState.videos.length > 0 ? (
+                  {hasSharedMediaNoVideo ? (
+                    <div className="mt-3 rounded-md border border-amber-100 bg-amber-50/90 px-3 py-2 text-xs text-gray-900">
+                      <p className="font-medium text-amber-950">Shared media (no video for this player)</p>
+                      <p className="mt-1 text-gray-800">
+                        Reliance only embeds video on this page. Your approved items may be images or other types—ask your
+                        vendor if you need a different format.
+                      </p>
+                    </div>
+                  ) : null}
+                  {videoList.length > 0 ? (
                     <div className="mt-3 rounded border bg-gray-50 p-3">
-                      <p className="mb-2 text-sm font-medium text-gray-800">Service Video Review Capture</p>
+                      <p className="mb-1 text-sm font-medium text-gray-900">Shared media from your vendor</p>
+                      <p className="mb-2 text-xs text-gray-600">
+                        These files are visible to you because your vendor shared them and they are approved for
+                        customers. Use the player for playback; review prompts may appear for eligible visits.
+                      </p>
                       <div className="mb-2 flex flex-wrap gap-2">
-                        {mediaState.videos.map((video) => (
+                        {videoList.map((video) => (
                           <button
                             type="button"
                             key={video.id}
@@ -396,14 +532,15 @@ export default function MyBookingsPage() {
                       </div>
                       {(() => {
                         const activeVideoId = activeVideoByBooking[booking.id];
-                        const video = mediaState.videos.find((v) => v.id === activeVideoId) || mediaState.videos[0];
+                        const video = videoList.find((v) => v.id === activeVideoId) || videoList[0];
                         if (!video || !video.blobUrl || !video.mediaSessionId) {
                           return <p className="text-xs text-gray-500">Video playback unavailable for this media asset.</p>;
                         }
                         if (!vendorIdOk) {
                           return (
                             <p className="text-xs text-gray-500">
-                              Video review capture needs a vendor on this booking. Load media is disabled until vendor data is present.
+                              Playback and review prompts need vendor information on this record. Shared media cannot load
+                              until that data is present.
                             </p>
                           );
                         }
@@ -419,6 +556,12 @@ export default function MyBookingsPage() {
                         );
                       })()}
                     </div>
+                  ) : null}
+                  {mediaLoaded && mediaTotal === 0 && !mediaState?.error ? (
+                    <p className="mt-3 text-xs text-gray-600">
+                      No approved customer-visible media matched this engagement yet. That can change when your vendor
+                      publishes new files.
+                    </p>
                   ) : null}
                 </div>
               );

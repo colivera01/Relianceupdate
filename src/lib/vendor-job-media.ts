@@ -6,6 +6,8 @@ export type VendorJobMediaLifecycleState =
   | 'completed'
   | 'failed';
 
+export type VendorJobMediaPurpose = 'progress' | 'completion';
+
 type RequestResult = {
   ok: boolean;
   status: number;
@@ -22,6 +24,7 @@ type UploadParams = {
   file: File;
   getHeaders: () => Record<string, string>;
   onLifecycleState: (state: VendorJobMediaLifecycleState) => void;
+  mediaPurpose: VendorJobMediaPurpose;
 };
 
 type UploadOutcome = {
@@ -35,6 +38,7 @@ type UploadOutcome = {
     uploadedAt: string;
     status: string;
     mediaSessionId: string;
+    mediaPurpose: VendorJobMediaPurpose;
   };
 };
 
@@ -74,6 +78,7 @@ export async function runVendorJobMediaUpload({
   file,
   getHeaders,
   onLifecycleState,
+  mediaPurpose,
 }: UploadParams): Promise<UploadOutcome> {
   let mediaSessionId: string | null = null;
 
@@ -91,7 +96,7 @@ export async function runVendorJobMediaUpload({
       vendorId: String(vendorId),
       deviceId: selectedJobDeviceId,
       deviceType: selectedJobDeviceType,
-      sessionType: 'VIDEO_CAPTURE',
+      sessionType: mediaPurpose === 'completion' ? 'COMPLETION_MEDIA' : 'PROGRESS_MEDIA',
       title,
       description,
     };
@@ -242,6 +247,7 @@ export async function runVendorJobMediaUpload({
         uploadedAt: new Date().toISOString().split('T')[0],
         status: 'uploaded',
         mediaSessionId,
+        mediaPurpose,
       },
     };
   } catch (error) {

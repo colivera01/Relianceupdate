@@ -47,10 +47,15 @@ export default function BookingPage() {
         
         // Fetch service details
         const serviceResponse = await fetch(`/api/services/${serviceId}`);
+        const serviceData = await serviceResponse.json().catch(() => ({}));
         if (!serviceResponse.ok) {
-          throw new Error('Failed to fetch service details');
+          if (serviceResponse.status === 404) {
+            setService(null);
+            setError(null);
+            return;
+          }
+          throw new Error(serviceData?.error || 'Failed to fetch service details');
         }
-        const serviceData = await serviceResponse.json();
         setService(serviceData.service);
 
         // Fetch availability
