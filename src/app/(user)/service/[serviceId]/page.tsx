@@ -218,6 +218,12 @@ export default function ServiceDetailPage() {
     );
   }
 
+  const primaryProofVideoUrl =
+    typeof service?.primaryProofVideoUrl === 'string' && service.primaryProofVideoUrl.trim()
+      ? String(service.primaryProofVideoUrl)
+      : null;
+  const hasPrimaryProofVideo = Boolean(service?.hasPrimaryProofVideo) && Boolean(primaryProofVideoUrl);
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -286,8 +292,19 @@ export default function ServiceDetailPage() {
               </div>
               
               {/* Media Gallery */}
-              {service.images && service.images.length > 0 && (
+              {((service.images && service.images.length > 0) || (service.videos && service.videos.length > 0)) && (
                 <div className="p-4">
+                  <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+                    {hasPrimaryProofVideo ? (
+                      <p className="text-emerald-900">
+                        <strong>Primary proof video available.</strong> This completed service clip is highlighted across customer views.
+                      </p>
+                    ) : (
+                      <p className="text-amber-900">
+                        <strong>No completed proof video yet.</strong> A primary proof video appears here once available.
+                      </p>
+                    )}
+                  </div>
                   {/* Media Filter */}
                   <div className="flex gap-2 mb-3">
                     <button
@@ -354,7 +371,7 @@ export default function ServiceDetailPage() {
                           </div>
                         </div>
                         <div className="absolute top-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 py-0.5 rounded">
-                          Video
+                          {primaryProofVideoUrl && video === primaryProofVideoUrl ? 'Primary proof' : 'Video'}
                         </div>
                       </div>
                     ))}
@@ -519,6 +536,17 @@ export default function ServiceDetailPage() {
 
                 {activeTab === 'photos' && (
                   <div>
+                    <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+                      {hasPrimaryProofVideo ? (
+                        <p className="text-emerald-900">
+                          Primary proof is marked directly on the completed service video.
+                        </p>
+                      ) : (
+                        <p className="text-amber-900">
+                          No completed proof video is available yet for this service.
+                        </p>
+                      )}
+                    </div>
                     {/* Media Filter for Photos Tab */}
                     <div className="flex gap-2 mb-6">
                       <button
@@ -585,7 +613,7 @@ export default function ServiceDetailPage() {
                             </div>
                           </div>
                           <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                            Video
+                            {primaryProofVideoUrl && video === primaryProofVideoUrl ? 'Primary proof' : 'Video'}
                           </div>
                         </div>
                       ))}

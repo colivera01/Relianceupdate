@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from '@/lib/media-visibility';
 import { getVendorReviewAggregatesForPublic } from '@/lib/public-review-aggregates';
+import {
+  isCompletedStageProofVideo,
+  shouldIncludeAssetForCustomerPublicProof,
+} from '@/lib/proof-media-policy';
 
 export async function GET(
   request: NextRequest,
@@ -51,19 +55,33 @@ export async function GET(
         select: {
           mimeType: true,
           blobUrl: true,
+          mediaSession: {
+            select: {
+              vendorJobVideoStage: true,
+              sessionType: true,
+            },
+          },
         },
       });
 
-      const mediaUrls = publicAssets
+      const proofSafeAssets = publicAssets.filter((asset: any) =>
+        shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
+      );
+
+      const mediaUrls = proofSafeAssets
         .map((asset: any) => String(asset?.blobUrl || '').trim())
         .filter(Boolean);
 
-      const images = publicAssets
+      const images = proofSafeAssets
         .filter((asset: any) => String(asset?.mimeType || '').startsWith('image/'))
         .map((asset: any) => String(asset.blobUrl));
-      const videos = publicAssets
-        .filter((asset: any) => String(asset?.mimeType || '').startsWith('video/'))
-        .map((asset: any) => String(asset.blobUrl));
+      const videoAssets = proofSafeAssets.filter((asset: any) =>
+        String(asset?.mimeType || '').startsWith('video/')
+      );
+      const primaryProofVideo = videoAssets.find((asset: any) =>
+        isCompletedStageProofVideo(asset?.mediaSession || null)
+      );
+      const videos = videoAssets.map((asset: any) => String(asset.blobUrl));
       const vendorReviewAgg = (await getVendorReviewAggregatesForPublic([dbService.vendor.id])).get(dbService.vendor.id);
 
       return NextResponse.json({
@@ -86,6 +104,8 @@ export async function GET(
           },
           images,
           videos,
+          primaryProofVideoUrl: primaryProofVideo ? String(primaryProofVideo.blobUrl || '') : null,
+          hasPrimaryProofVideo: Boolean(primaryProofVideo),
           mediaCount: mediaUrls.length,
           status: 'active',
         },

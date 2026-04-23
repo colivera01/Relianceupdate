@@ -9,7 +9,16 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RefreshCw, Video, ShieldAlert } from 'lucide-react';
 
-type QueueAsset = {
+type StageKey = 'INTRO' | 'IN_PROGRESS' | 'COMPLETED';
+
+const STAGE_ORDER: StageKey[] = ['INTRO', 'IN_PROGRESS', 'COMPLETED'];
+const STAGE_LABELS: Record<StageKey, string> = {
+  INTRO: 'Intro',
+  IN_PROGRESS: 'In Progress',
+  COMPLETED: 'Completed',
+};
+
+type QueueVideo = {
   assetId: string;
   title: string;
   vendorId: string;
@@ -17,7 +26,12 @@ type QueueAsset = {
   mediaSessionId: string | null;
   bookingId: string | null;
   jobTitle: string | null;
+  /** Booking row status (e.g. PENDING, CONFIRMED, COMPLETED). */
+  bookingStatus: string | null;
   clientName: string | null;
+  vendorJobVideoStageKey: string;
+  vendorJobVideoStageLabel: string;
+  isPrimaryProofStageVideo: boolean;
   serviceId: string | null;
   serviceName: string | null;
   uploadedByMembershipId: string | null;
@@ -32,6 +46,22 @@ type QueueAsset = {
   bytes: string;
   previewRef: string | null;
   downloadRef: string | null;
+};
+
+type QueuePackage = {
+  packageId: string;
+  bookingId: string;
+  jobTitle: string;
+  bookingStatus: string | null;
+  vendorId: string;
+  vendorName: string | null;
+  clientName: string | null;
+  serviceName: string | null;
+  createdAt: string;
+  uploadedByMembershipIds: string[];
+  moderationStatuses: string[];
+  packageReadiness: string;
+  videosByStage: Record<StageKey, QueueVideo | null>;
 };
 
 type ModerationAction =
@@ -95,7 +125,7 @@ function visibilityLevelFromAsset(status: string): VisibilityLevel {
 }
 
 /** Approve/re-approve uses approve_*; already-approved assets use set_visibility_* to change tier only. */
-function actionForApproveOrUpdateVisibility(asset: QueueAsset, level: VisibilityLevel): ModerationAction {
+function actionForApproveOrUpdateVisibility(asset: QueueVideo, level: VisibilityLevel): ModerationAction {
   if (asset.moderationStatus === 'approved') {
     return SET_VISIBILITY_BY_LEVEL[level];
   }
@@ -111,16 +141,98 @@ function bytesToReadable(bytesText: string): string {
   return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+function formatJobBookingStatus(status: string | null | undefined): string {
+  if (!status) return '—';
+  return String(status)
+    .trim()
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function normalizeQueueVideo(row: Record<string, unknown>): QueueVideo {
+  const stageKey = String(row.vendorJobVideoStageKey ?? 'LEGACY_OTHER');
+  const stageLabel = String(row.vendorJobVideoStageLabel ?? 'Legacy / unspecified');
+  const primary = Boolean(row.isPrimaryProofStageVideo);
+  return {
+    assetId: String(row.assetId ?? ''),
+    title: String(row.title ?? ''),
+    vendorId: String(row.vendorId ?? ''),
+    vendorName: row.vendorName != null ? String(row.vendorName) : null,
+    mediaSessionId: row.mediaSessionId != null ? String(row.mediaSessionId) : null,
+    bookingId: row.bookingId != null ? String(row.bookingId) : null,
+    jobTitle: row.jobTitle != null ? String(row.jobTitle) : null,
+    bookingStatus: row.bookingStatus != null ? String(row.bookingStatus) : null,
+    clientName: row.clientName != null ? String(row.clientName) : null,
+    vendorJobVideoStageKey: stageKey,
+    vendorJobVideoStageLabel: stageLabel,
+    isPrimaryProofStageVideo: primary,
+    serviceId: row.serviceId != null ? String(row.serviceId) : null,
+    serviceName: row.serviceName != null ? String(row.serviceName) : null,
+    uploadedByMembershipId: row.uploadedByMembershipId != null ? String(row.uploadedByMembershipId) : null,
+    employeeName: row.employeeName != null ? String(row.employeeName) : null,
+    moderationStatus: String(row.moderationStatus ?? ''),
+    visibilityStatus: String(row.visibilityStatus ?? ''),
+    archiveStatus: String(row.archiveStatus ?? ''),
+    moderationReason: row.moderationReason != null ? String(row.moderationReason) : null,
+    moderatedAt: row.moderatedAt != null ? String(row.moderatedAt) : null,
+    createdAt: String(row.createdAt ?? ''),
+    mimeType: String(row.mimeType ?? ''),
+    bytes: String(row.bytes ?? '0'),
+    previewRef: row.previewRef != null ? String(row.previewRef) : null,
+    downloadRef: row.downloadRef != null ? String(row.downloadRef) : null,
+  };
+}
+
+function normalizeQueuePackage(row: Record<string, unknown>): QueuePackage {
+  const rawVideosByStage =
+    row.videosByStage && typeof row.videosByStage === 'object'
+      ? (row.videosByStage as Record<string, Record<string, unknown> | null>)
+      : {};
+
+  const toStageVideo = (key: StageKey): QueueVideo | null => {
+    const raw = rawVideosByStage[key];
+    if (!raw || typeof raw !== 'object') return null;
+    return normalizeQueueVideo(raw);
+  };
+
+  return {
+    packageId: String(row.packageId ?? ''),
+    bookingId: String(row.bookingId ?? ''),
+    jobTitle: String(row.jobTitle ?? ''),
+    bookingStatus: row.bookingStatus != null ? String(row.bookingStatus) : null,
+    vendorId: String(row.vendorId ?? ''),
+    vendorName: row.vendorName != null ? String(row.vendorName) : null,
+    clientName: row.clientName != null ? String(row.clientName) : null,
+    serviceName: row.serviceName != null ? String(row.serviceName) : null,
+    createdAt: String(row.createdAt ?? ''),
+    uploadedByMembershipIds: Array.isArray(row.uploadedByMembershipIds)
+      ? row.uploadedByMembershipIds.map((id) => String(id)).filter(Boolean)
+      : [],
+    moderationStatuses: Array.isArray(row.moderationStatuses)
+      ? row.moderationStatuses.map((status) => String(status)).filter(Boolean)
+      : [],
+    packageReadiness: String(row.packageReadiness ?? ''),
+    videosByStage: {
+      INTRO: toStageVideo('INTRO'),
+      IN_PROGRESS: toStageVideo('IN_PROGRESS'),
+      COMPLETED: toStageVideo('COMPLETED'),
+    },
+  };
+}
+
 function AssetModerationControls({
   asset,
   actionBusy,
   applyModerationAction,
   openRejectModal,
 }: {
-  asset: QueueAsset;
+  asset: QueueVideo;
   actionBusy: boolean;
-  applyModerationAction: (asset: QueueAsset, action: ModerationAction, moderationReason?: string) => Promise<void>;
-  openRejectModal: (asset: QueueAsset) => void;
+  applyModerationAction: (asset: QueueVideo, action: ModerationAction, moderationReason?: string) => Promise<void>;
+  openRejectModal: (asset: QueueVideo) => void;
 }) {
   const [visibility, setVisibility] = useState<VisibilityLevel>(() => visibilityLevelFromAsset(asset.visibilityStatus));
 
@@ -171,15 +283,19 @@ function AssetModerationControls({
 }
 
 export default function AdminMediaModerationPage() {
-  const [assets, setAssets] = useState<QueueAsset[]>([]);
+  const [packages, setPackages] = useState<QueuePackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [selectedAsset, setSelectedAsset] = useState<QueueAsset | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<{
+    stage: StageKey;
+    video: QueueVideo;
+    pack: QueuePackage;
+  } | null>(null);
   const [assetActionLoadingId, setAssetActionLoadingId] = useState<string | null>(null);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-  const [rejectTarget, setRejectTarget] = useState<QueueAsset | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<QueueVideo | null>(null);
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
@@ -222,11 +338,19 @@ export default function AdminMediaModerationPage() {
         cache: 'no-store',
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || json?.message || `Status ${res.status}`);
-      setAssets(Array.isArray(json.assets) ? json.assets : []);
+      if (!res.ok) {
+        const msg =
+          (typeof json?.message === 'string' && json.message.trim()) ||
+          (typeof json?.error === 'string' && json.error.trim()) ||
+          (json?.code ? String(json.code) : '') ||
+          `Could not load queue (HTTP ${res.status})`;
+        throw new Error(msg);
+      }
+      const rawPackages = Array.isArray(json.packages) ? json.packages : [];
+      setPackages(rawPackages.map((row: Record<string, unknown>) => normalizeQueuePackage(row)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load moderation queue');
-      setAssets([]);
+      setPackages([]);
     } finally {
       setLoading(false);
     }
@@ -238,7 +362,7 @@ export default function AdminMediaModerationPage() {
   }, []);
 
   const applyModerationAction = async (
-    asset: QueueAsset,
+    asset: QueueVideo,
     action: ModerationAction,
     moderationReason?: string
   ) => {
@@ -254,39 +378,17 @@ export default function AdminMediaModerationPage() {
         }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || json?.message || `Status ${res.status}`);
-
-      const updated = json.asset as Partial<QueueAsset> | undefined;
-      if (updated) {
-        setAssets((prev) =>
-          prev.map((row) =>
-            row.assetId === asset.assetId
-              ? {
-                  ...row,
-                  moderationStatus: String(updated.moderationStatus || row.moderationStatus),
-                  visibilityStatus: String(updated.visibilityStatus || row.visibilityStatus),
-                  archiveStatus: String(updated.archiveStatus || row.archiveStatus),
-                  moderationReason:
-                    updated.moderationReason !== undefined ? (updated.moderationReason as string | null) : row.moderationReason,
-                  moderatedAt: (updated.moderatedAt as string | null) ?? row.moderatedAt,
-                }
-              : row
-          )
-        );
-        setSelectedAsset((prev) =>
-          prev && prev.assetId === asset.assetId
-            ? {
-                ...prev,
-                moderationStatus: String(updated.moderationStatus || prev.moderationStatus),
-                visibilityStatus: String(updated.visibilityStatus || prev.visibilityStatus),
-                archiveStatus: String(updated.archiveStatus || prev.archiveStatus),
-                moderationReason:
-                  updated.moderationReason !== undefined ? (updated.moderationReason as string | null) : prev.moderationReason,
-                moderatedAt: (updated.moderatedAt as string | null) ?? prev.moderatedAt,
-              }
-            : prev
-        );
+      if (!res.ok) {
+        const msg =
+          (typeof json?.message === 'string' && json.message.trim()) ||
+          (typeof json?.error === 'string' && json.error.trim()) ||
+          (json?.code ? String(json.code) : '') ||
+          `Action failed (HTTP ${res.status})`;
+        throw new Error(msg);
       }
+
+      setSelectedAsset((prev) => (prev && prev.video.assetId === asset.assetId ? null : prev));
+      await fetchQueue();
 
       setFeedback({
         type: 'success',
@@ -303,15 +405,18 @@ export default function AdminMediaModerationPage() {
   };
 
   const vendors = useMemo(
-    () => Array.from(new Set(assets.map((a) => `${a.vendorId}::${a.vendorName || a.vendorId}`))),
-    [assets]
+    () => Array.from(new Set(packages.map((p) => `${p.vendorId}::${p.vendorName || p.vendorId}`))),
+    [packages]
   );
   const uploaders = useMemo(
-    () => Array.from(new Set(assets.map((a) => a.uploadedByMembershipId || 'unassigned'))),
-    [assets]
+    () =>
+      Array.from(
+        new Set(packages.flatMap((pack) => (pack.uploadedByMembershipIds.length ? pack.uploadedByMembershipIds : ['unassigned'])))
+      ),
+    [packages]
   );
 
-  const openRejectModal = (asset: QueueAsset) => {
+  const openRejectModal = (asset: QueueVideo) => {
     setRejectTarget(asset);
     setRejectReason('');
     setRejectModalOpen(true);
@@ -325,7 +430,7 @@ export default function AdminMediaModerationPage() {
     setRejectReason('');
   };
 
-  const queueEmpty = !loading && !error && assets.length === 0;
+  const queueEmpty = !loading && !error && packages.length === 0;
 
   return (
     <div className="container mx-auto p-6 max-w-7xl space-y-4">
@@ -333,7 +438,7 @@ export default function AdminMediaModerationPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Media Moderation</h1>
           <p className="text-gray-600 mt-1">
-            Approve or reject each asset, and set a single visibility level. Reject hides the asset from customers and public listings.
+            Only complete 3-stage job packages appear here. Review Intro, In Progress, and Completed videos together.
           </p>
         </div>
         <Button variant="outline" onClick={fetchQueue} disabled={loading}>
@@ -360,7 +465,7 @@ export default function AdminMediaModerationPage() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <Input
-            placeholder="Search by title, job, or client"
+            placeholder="Search by job, client, vendor, booking status, or stage title"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -421,58 +526,148 @@ export default function AdminMediaModerationPage() {
         </Card>
       ) : queueEmpty ? (
         <Card>
-          <CardContent className="py-12 text-center text-gray-500">No media items matched the current filters.</CardContent>
+          <CardContent className="py-12 text-center text-gray-500">
+            No complete 3-stage job packages matched the current filters.
+          </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {assets.map((asset) => {
-            const actionBusy = Boolean(assetActionLoadingId?.startsWith(`${asset.assetId}:`));
+          {packages.map((pack) => {
+            const moderationLabel =
+              pack.moderationStatuses.length === 1 ? pack.moderationStatuses[0] : 'mixed';
+            const hasAllRequiredStages = STAGE_ORDER.every((stage) => Boolean(pack.videosByStage[stage]));
+            const allRequiredStagesApproved = STAGE_ORDER.every((stage) => {
+              const stageVideo = pack.videosByStage[stage];
+              return stageVideo && String(stageVideo.moderationStatus || '').trim().toLowerCase() === 'approved';
+            });
+            const showReadyForAdminReview = hasAllRequiredStages && !allRequiredStagesApproved;
+            const showPackageApproved = hasAllRequiredStages && allRequiredStagesApproved;
+            const packageStageSummary = STAGE_ORDER.map((stage) => {
+              const stageVideo = pack.videosByStage[stage];
+              const moderation = String(stageVideo?.moderationStatus || '').trim().toLowerCase();
+              const isApproved = moderation === 'approved';
+              return {
+                stage,
+                label: STAGE_LABELS[stage],
+                statusText: stageVideo ? (isApproved ? 'Approved' : 'Needs admin action') : 'Missing',
+                statusClass: stageVideo
+                  ? isApproved
+                    ? 'text-emerald-700'
+                    : 'text-amber-700'
+                  : 'text-red-700',
+              };
+            });
+            const overallPackageStatus = allRequiredStagesApproved ? 'Approved' : 'Admin Review Required';
             return (
-              <Card key={asset.assetId}>
+              <Card key={pack.packageId} className="border-2 border-emerald-300 bg-gradient-to-br from-emerald-50/70 to-white">
                 <CardContent className="pt-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-                    <div className="lg:col-span-2">
-                      <div className="h-24 rounded border bg-gray-50 flex items-center justify-center overflow-hidden">
-                        {asset.previewRef && asset.mimeType.startsWith('image/') ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={asset.previewRef} alt={asset.title} className="h-full w-full object-cover" />
-                        ) : (
-                          <Video className="w-6 h-6 text-gray-400" />
-                        )}
-                      </div>
-                    </div>
-                    <div className="lg:col-span-6 space-y-1 text-sm">
-                      <div className="font-semibold text-base">{asset.title}</div>
-                      <div>Vendor: {asset.vendorName || asset.vendorId}</div>
-                      <div>Uploader: {asset.employeeName || asset.uploadedByMembershipId || 'Unknown'}</div>
-                      <div>Job: {asset.jobTitle || '-'}</div>
-                      <div>Client: {asset.clientName || '-'}</div>
-                      <div>Service: {asset.serviceName || '-'}</div>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        Uploaded: {new Date(asset.createdAt).toLocaleString()} • {asset.mimeType} • {bytesToReadable(asset.bytes)}
+                        <div className="font-semibold text-base">{pack.jobTitle || 'Untitled Job'}</div>
+                        <div className="text-sm text-gray-700">Vendor: {pack.vendorName || pack.vendorId}</div>
+                        <div className="text-sm text-gray-700">Client: {pack.clientName || '-'}</div>
+                        <div className="text-sm text-gray-700">Job status: {formatJobBookingStatus(pack.bookingStatus)}</div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {showReadyForAdminReview ? (
+                          <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">
+                            Ready for Admin Review
+                          </Badge>
+                        ) : null}
+                        {showPackageApproved ? (
+                          <Badge className="bg-green-700 text-white hover:bg-green-700">Package Approved</Badge>
+                        ) : null}
+                        <Badge variant="outline">Package moderation: {moderationLabel}</Badge>
                       </div>
                     </div>
-                    <div className="lg:col-span-2 space-y-2">
-                      <Badge className="block w-fit">Moderation: {asset.moderationStatus}</Badge>
-                      <Badge variant="outline" className="block w-fit">
-                        Visibility:{' '}
-                        {VISIBILITY_OPTIONS.find((o) => o.value === visibilityLevelFromAsset(asset.visibilityStatus))?.label ||
-                          asset.visibilityStatus}
-                      </Badge>
-                      <Badge variant="outline" className="block w-fit">
-                        Archive: {asset.archiveStatus}
-                      </Badge>
+                    <div className="rounded-md border border-emerald-200 bg-white/80 p-3 text-sm">
+                      <div className="font-medium text-gray-900">Package Status</div>
+                      <div className="mt-2 space-y-1 text-sm">
+                        {packageStageSummary.map((row) => (
+                          <div key={`${pack.packageId}:${row.stage}`} className="flex items-center justify-between gap-3">
+                            <span className="text-gray-800">{row.label}</span>
+                            <span className={row.statusClass}>{row.statusText}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 border-t pt-2 flex items-center justify-between">
+                        <span className="font-medium text-gray-900">Overall</span>
+                        <span className={allRequiredStagesApproved ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>
+                          {overallPackageStatus}
+                        </span>
+                      </div>
                     </div>
-                    <div className="lg:col-span-2 flex flex-col gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setSelectedAsset(asset)}>
-                        Details
-                      </Button>
-                      <AssetModerationControls
-                        asset={asset}
-                        actionBusy={actionBusy}
-                        applyModerationAction={applyModerationAction}
-                        openRejectModal={openRejectModal}
-                      />
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                      {STAGE_ORDER.map((stage) => {
+                        const stageVideo = pack.videosByStage[stage];
+                        if (!stageVideo) {
+                          return (
+                            <div key={`${pack.packageId}:${stage}`} className="rounded border border-dashed border-gray-300 p-3 text-sm text-gray-500">
+                              {STAGE_LABELS[stage]} video missing.
+                            </div>
+                          );
+                        }
+                        const actionBusy = Boolean(assetActionLoadingId?.startsWith(`${stageVideo.assetId}:`));
+                        return (
+                          <div
+                            key={stageVideo.assetId}
+                            className={`rounded border p-3 space-y-2 ${
+                              stage === 'COMPLETED' ? 'border-emerald-400 bg-emerald-50/70' : 'bg-white'
+                            }`}
+                          >
+                            <div className="h-24 rounded border bg-gray-50 flex items-center justify-center overflow-hidden">
+                              {stageVideo.previewRef && stageVideo.mimeType.startsWith('image/') ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={stageVideo.previewRef} alt={stageVideo.title} className="h-full w-full object-cover" />
+                              ) : (
+                                <Video className="w-6 h-6 text-gray-400" />
+                              )}
+                            </div>
+                            <div className="font-medium text-sm flex flex-wrap items-center gap-2">
+                              {STAGE_LABELS[stage]}
+                              {stage === 'COMPLETED' ? (
+                                <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Primary proof</Badge>
+                              ) : null}
+                            </div>
+                            <div className="text-sm text-gray-900">{stageVideo.title}</div>
+                            <div className="text-xs text-gray-600">
+                              Uploaded: {new Date(stageVideo.createdAt).toLocaleString()}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              Uploader: {stageVideo.employeeName || stageVideo.uploadedByMembershipId || '-'}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="outline">Moderation: {stageVideo.moderationStatus}</Badge>
+                              <Badge variant="outline">
+                                Visibility:{' '}
+                                {VISIBILITY_OPTIONS.find((o) => o.value === visibilityLevelFromAsset(stageVideo.visibilityStatus))
+                                  ?.label || stageVideo.visibilityStatus}
+                              </Badge>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setSelectedAsset({ stage, video: stageVideo, pack })}
+                              >
+                                Details
+                              </Button>
+                              <AssetModerationControls
+                                asset={stageVideo}
+                                actionBusy={actionBusy}
+                                applyModerationAction={applyModerationAction}
+                                openRejectModal={openRejectModal}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Package updated: {new Date(pack.createdAt).toLocaleString()}
+                      {pack.serviceName ? ` • Service: ${pack.serviceName}` : ''}
+                      {pack.uploadedByMembershipIds.length ? ` • Uploaders: ${pack.uploadedByMembershipIds.join(', ')}` : ''}
                     </div>
                   </div>
                 </CardContent>
@@ -485,55 +680,63 @@ export default function AdminMediaModerationPage() {
       <Dialog open={Boolean(selectedAsset)} onOpenChange={(open) => !open && setSelectedAsset(null)}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>{selectedAsset?.title || 'Media Asset'}</DialogTitle>
-            <DialogDescription>Moderation details and linked context.</DialogDescription>
+            <DialogTitle>
+              {selectedAsset ? `${STAGE_LABELS[selectedAsset.stage]} video — ${selectedAsset.pack.jobTitle || 'Job package'}` : 'Media Asset'}
+            </DialogTitle>
+            <DialogDescription>Stage-level moderation details within a complete job package.</DialogDescription>
           </DialogHeader>
           {selectedAsset && (
             <div className="space-y-3 text-sm">
-              {selectedAsset.previewRef && selectedAsset.mimeType.startsWith('video/') && (
-                <video className="w-full rounded border bg-black" controls src={selectedAsset.previewRef}>
+              {selectedAsset.video.previewRef && selectedAsset.video.mimeType.startsWith('video/') && (
+                <video className="w-full rounded border bg-black" controls src={selectedAsset.video.previewRef}>
                   Your browser does not support video playback.
                 </video>
               )}
-              {selectedAsset.previewRef && selectedAsset.mimeType.startsWith('image/') && (
+              {selectedAsset.video.previewRef && selectedAsset.video.mimeType.startsWith('image/') && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={selectedAsset.previewRef} alt={selectedAsset.title} className="w-full rounded border object-cover max-h-96" />
+                <img src={selectedAsset.video.previewRef} alt={selectedAsset.video.title} className="w-full rounded border object-cover max-h-96" />
               )}
-              {selectedAsset.downloadRef && (
-                <a className="text-blue-600 underline" href={selectedAsset.downloadRef} target="_blank" rel="noreferrer">
+              {selectedAsset.video.downloadRef && (
+                <a className="text-blue-600 underline" href={selectedAsset.video.downloadRef} target="_blank" rel="noreferrer">
                   Open download-safe link
                 </a>
               )}
+              {selectedAsset.stage === 'COMPLETED' ? (
+                <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                  <strong>Completed-stage video</strong> — this is the primary proof clip for the job package.
+                </div>
+              ) : null}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div>Asset ID: {selectedAsset.assetId}</div>
-                <div>Session ID: {selectedAsset.mediaSessionId || '-'}</div>
-                <div>Vendor: {selectedAsset.vendorName || selectedAsset.vendorId}</div>
-                <div>Uploader: {selectedAsset.employeeName || selectedAsset.uploadedByMembershipId || '-'}</div>
-                <div>Job: {selectedAsset.jobTitle || '-'}</div>
-                <div>Client: {selectedAsset.clientName || '-'}</div>
-                <div>Service: {selectedAsset.serviceName || '-'}</div>
-                <div>Created: {new Date(selectedAsset.createdAt).toLocaleString()}</div>
-                <div>Moderation: {selectedAsset.moderationStatus}</div>
-                <div>Visibility: {selectedAsset.visibilityStatus}</div>
-                <div>Archive: {selectedAsset.archiveStatus}</div>
-                <div>Size: {bytesToReadable(selectedAsset.bytes)}</div>
+                <div>Asset ID: {selectedAsset.video.assetId}</div>
+                <div>Session ID: {selectedAsset.video.mediaSessionId || '-'}</div>
+                <div>Vendor: {selectedAsset.pack.vendorName || selectedAsset.pack.vendorId}</div>
+                <div>Uploader: {selectedAsset.video.employeeName || selectedAsset.video.uploadedByMembershipId || '-'}</div>
+                <div>Job: {selectedAsset.pack.jobTitle || '-'}</div>
+                <div>Job status: {formatJobBookingStatus(selectedAsset.pack.bookingStatus)}</div>
+                <div>Video stage: {STAGE_LABELS[selectedAsset.stage]}</div>
+                <div>Client: {selectedAsset.pack.clientName || '-'}</div>
+                <div>Service: {selectedAsset.pack.serviceName || '-'}</div>
+                <div>Created: {new Date(selectedAsset.video.createdAt).toLocaleString()}</div>
+                <div>Moderation: {selectedAsset.video.moderationStatus}</div>
+                <div>Visibility: {selectedAsset.video.visibilityStatus}</div>
+                <div>Archive: {selectedAsset.video.archiveStatus}</div>
+                <div>Size: {bytesToReadable(selectedAsset.video.bytes)}</div>
               </div>
               <div className="rounded border p-3 space-y-2">
                 <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Approve / visibility / reject / flag</div>
                 <p className="text-[11px] text-gray-500">
-                  Choose one visibility, then <strong>Approve</strong> (or <strong>Update visibility</strong> if already approved).{' '}
-                  <strong>Public</strong> includes everyone: discovery, customers with bookings, and vendor tools.
+                  Moderation stays per stage, but this stage is reviewed within the single grouped job package card.
                 </p>
                 <AssetModerationControls
-                  asset={selectedAsset}
-                  actionBusy={Boolean(assetActionLoadingId?.startsWith(`${selectedAsset.assetId}:`))}
+                  asset={selectedAsset.video}
+                  actionBusy={Boolean(assetActionLoadingId?.startsWith(`${selectedAsset.video.assetId}:`))}
                   applyModerationAction={applyModerationAction}
                   openRejectModal={openRejectModal}
                 />
               </div>
-              {selectedAsset.moderationReason && (
+              {selectedAsset.video.moderationReason && (
                 <div className="p-2 rounded bg-amber-50 border border-amber-200">
-                  Moderation reason: {selectedAsset.moderationReason}
+                  Moderation reason: {selectedAsset.video.moderationReason}
                 </div>
               )}
             </div>
@@ -550,7 +753,7 @@ export default function AdminMediaModerationPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reject Media</DialogTitle>
-            <DialogDescription>Provide moderation reason to reject this asset.</DialogDescription>
+            <DialogDescription>Provide moderation reason to reject this stage video.</DialogDescription>
           </DialogHeader>
           <textarea
             value={rejectReason}

@@ -32,6 +32,7 @@ type MediaState = {
     title: string;
     blobUrl: string | null;
     mediaSessionId: string | null;
+    isPrimaryProofVideo?: boolean;
   }>;
 };
 
@@ -188,11 +189,18 @@ export default function MyBookingsPage() {
       const total = Array.isArray(json?.assets) ? json.assets.length : 0;
       const imageCount = Array.isArray(json?.images) ? json.images.length : 0;
       const videos = Array.isArray(json?.videos)
-        ? json.videos.map((v: { id?: unknown; title?: unknown; blobUrl?: unknown; mediaSessionId?: unknown }) => ({
+        ? json.videos.map((v: {
+            id?: unknown;
+            title?: unknown;
+            blobUrl?: unknown;
+            mediaSessionId?: unknown;
+            isPrimaryProofVideo?: unknown;
+          }) => ({
             id: String(v.id),
             title: String(v.title || 'Service Video'),
             blobUrl: v.blobUrl ? String(v.blobUrl) : null,
             mediaSessionId: v.mediaSessionId ? String(v.mediaSessionId) : null,
+            isPrimaryProofVideo: Boolean(v.isPrimaryProofVideo),
           }))
         : [];
       setMediaByBooking((prev) => ({
@@ -200,9 +208,10 @@ export default function MyBookingsPage() {
         [bookingId]: { loading: false, error: null, total, loaded: true, imageCount, videos },
       }));
       if (videos.length > 0) {
+        const primaryProofVideo = videos.find((video) => Boolean(video.isPrimaryProofVideo));
         setActiveVideoByBooking((prev) => ({
           ...prev,
-          [bookingId]: prev[bookingId] || videos[0].id,
+          [bookingId]: prev[bookingId] || primaryProofVideo?.id || videos[0].id,
         }));
       }
     } catch (e) {
@@ -361,6 +370,7 @@ export default function MyBookingsPage() {
               const mediaTotal = mediaState?.total;
               const videoList = mediaState?.videos ?? [];
               const imageCount = mediaState?.imageCount ?? 0;
+              const primaryProofVideo = videoList.find((video) => Boolean(video.isPrimaryProofVideo)) || null;
               const hasPlayableSharedVideo =
                 mediaLoaded && videoList.some((v) => Boolean(v.blobUrl && v.mediaSessionId));
               const hasSharedMediaNoVideo =
@@ -431,7 +441,9 @@ export default function MyBookingsPage() {
                       <li>
                         <strong>Shared media:</strong>{' '}
                         {hasPlayableSharedVideo
-                          ? 'Available below—play a clip to watch what your vendor shared.'
+                          ? primaryProofVideo
+                            ? 'Primary proof video is available below for this completed service.'
+                            : 'Shared media is available below. A primary proof video has not been published yet.'
                           : hasSharedMediaNoVideo
                             ? `Your vendor shared ${mediaTotal} approved file(s) for you, but none are video this page can play${
                                 imageCount > 0 ? ` (${imageCount} image${imageCount === 1 ? '' : 's'})` : ''
@@ -511,9 +523,18 @@ export default function MyBookingsPage() {
                     <div className="mt-3 rounded border bg-gray-50 p-3">
                       <p className="mb-1 text-sm font-medium text-gray-900">Shared media from your vendor</p>
                       <p className="mb-2 text-xs text-gray-600">
-                        These files are visible to you because your vendor shared them and they are approved for
-                        customers. Use the player for playback; review prompts may appear for eligible visits.
+                        These files are approved and customer-visible. Completed proof video is marked as Primary proof
+                        when available.
                       </p>
+                      {primaryProofVideo ? (
+                        <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-900">
+                          <strong>Primary proof available:</strong> select the Primary proof clip to review completed work.
+                        </div>
+                      ) : (
+                        <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
+                          <strong>No completed proof video yet.</strong> A primary proof clip will appear here once published.
+                        </div>
+                      )}
                       <div className="mb-2 flex flex-wrap gap-2">
                         {videoList.map((video) => (
                           <button
@@ -527,6 +548,7 @@ export default function MyBookingsPage() {
                             }`}
                           >
                             {video.title}
+                            {video.isPrimaryProofVideo ? ' • Primary proof' : ''}
                           </button>
                         ))}
                       </div>

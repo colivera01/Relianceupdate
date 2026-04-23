@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
 import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregates";
+import {
+  isCompletedStageProofVideo,
+  shouldIncludeAssetForCustomerPublicProof,
+} from "@/lib/proof-media-policy";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 12;
@@ -112,14 +116,29 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             mediaSession: {
               select: {
                 serviceId: true,
+                vendorJobVideoStage: true,
+                sessionType: true,
               },
             },
           },
         })
       : [];
 
+    const proofSafePublicAssets = publicAssets.filter((asset: any) =>
+      shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
+    );
+
     const previewByServiceId = new Map<string, string>();
-    for (const asset of publicAssets) {
+    const primaryProofPreviewByServiceId = new Map<string, string>();
+    for (const asset of proofSafePublicAssets) {
+      const serviceId = String(asset?.mediaSession?.serviceId || "");
+      const blobUrl = String(asset?.blobUrl || "").trim();
+      if (!serviceId || !blobUrl || primaryProofPreviewByServiceId.has(serviceId)) continue;
+      if (!String(asset?.mimeType || "").startsWith("video/")) continue;
+      if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
+      primaryProofPreviewByServiceId.set(serviceId, blobUrl);
+    }
+    for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
       const blobUrl = String(asset?.blobUrl || "").trim();
       if (!serviceId || !blobUrl || previewByServiceId.has(serviceId)) continue;
@@ -139,7 +158,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       vendorBusinessType: service.vendor.businessType || null,
       location:
         [service.vendor.city, service.vendor.state].filter(Boolean).join(", ") || null,
-      previewMediaUrl: previewByServiceId.get(service.id) || null,
+      previewMediaUrl:
+        primaryProofPreviewByServiceId.get(service.id) || previewByServiceId.get(service.id) || null,
       price: Number(service.price),
       rating: vendorReviewAggregates.get(service.vendorId)?.rating ?? null,
       reviewCount: vendorReviewAggregates.get(service.vendorId)?.reviewCount ?? null,

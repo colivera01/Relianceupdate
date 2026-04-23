@@ -7,6 +7,7 @@ import {
   resolveOperationalPhase,
   setOperationalPhaseOnMetadataJson,
 } from "@/lib/vendor-job-operational-phase";
+import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -173,6 +174,27 @@ async function getLinkedMediaSummary(vendorId: string, bookingId: string) {
   };
 }
 
+async function getVendorJobPackageState(vendorId: string, bookingId: string) {
+  const sessions = await (prisma as any).mediaSession.findMany({
+    where: {
+      vendorId,
+      bookingId,
+    },
+    select: {
+      id: true,
+      sessionType: true,
+      vendorJobVideoStage: true,
+      mediaAssets: {
+        where: { deletedAt: null },
+        select: { id: true, moderationStatus: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+  return evaluateVendorJobPackageState(sessions);
+}
+
 export async function PATCH(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const { vendorId, jobId } = await context.params;
@@ -202,6 +224,41 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     }
 
     if (action === "ARCHIVE_JOB") {
+      if (normalizeBookingStatus(booking.status) === "ARCHIVED") {
+        return NextResponse.json({
+          success: true,
+          action,
+          job: { id: booking.id, status: "ARCHIVED" },
+          message: "Job is already archived.",
+        });
+      }
+      const statusUpper = normalizeBookingStatus(booking.status);
+      if (statusUpper !== "COMPLETED") {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "ARCHIVE_REQUIRES_COMPLETED_JOB",
+            "Archive is allowed only for completed jobs with completed admin approval.",
+            { status: statusUpper || "UNKNOWN" }
+          ),
+          { status: 409 }
+        );
+      }
+      const packageState = await getVendorJobPackageState(vendorId, booking.id);
+      if (packageState.hasStagedPackage && !packageState.hasAllRequiredStagesApproved) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "ARCHIVE_REQUIRES_ADMIN_APPROVED_PACKAGE",
+            "Archive is allowed only after all required staged videos are admin-approved.",
+            {
+              hasAllRequiredStages: packageState.hasAllRequiredStages,
+              hasAllRequiredStagesApproved: packageState.hasAllRequiredStagesApproved,
+            }
+          ),
+          { status: 409 }
+        );
+      }
       const updated = await prisma.booking.update({
         where: { id: booking.id },
         data: { status: "ARCHIVED" },
@@ -332,32 +389,41 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       })();
 
       const { linkedAssetCount } = await getLinkedMediaSummary(vendorId, booking.id);
+      const packageState = await getVendorJobPackageState(vendorId, booking.id);
       const currentPhase = resolveOperationalPhase({
         bookingStatus: booking.status,
         customerMetadata: booking.customerMetadata,
         linkedMediaCount: linkedAssetCount,
         assignedEmployees: assignedFromMeta,
+        hasCompleteStagedPackage: packageState.hasAllRequiredStages,
+        hasAdminApprovedStagedPackage: packageState.hasAllRequiredStagesApproved,
       });
 
       if (requestedUpper === "COMPLETED") {
-        if (linkedAssetCount < 1) {
+        if (!packageState.hasAllRequiredStages) {
           return NextResponse.json(
             apiResponse(
               false,
-              "COMPLETION_REQUIRES_MEDIA",
-              "Mark complete only after at least one media asset is linked to this job.",
-              { linkedAssetCount }
+              "COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE",
+              "Mark complete only after Intro, In Progress, and Completed videos are uploaded.",
+              {
+                linkedAssetCount,
+                hasAllRequiredStages: packageState.hasAllRequiredStages,
+              }
             ),
             { status: 409 }
           );
         }
-        if (currentPhase !== "AWAITING_VENDOR_REVIEW") {
+        if (!packageState.hasAllRequiredStagesApproved) {
           return NextResponse.json(
             apiResponse(
               false,
-              "COMPLETION_REQUIRES_VENDOR_REVIEW_PHASE",
-              "Mark complete only after service video is uploaded and the job is awaiting your review (upload moves the job to that phase).",
-              { operationalPhase: currentPhase }
+              "COMPLETION_REQUIRES_ADMIN_APPROVAL",
+              "Mark complete only after all required staged videos are approved by admin review.",
+              {
+                operationalPhase: currentPhase,
+                hasAllRequiredStagesApproved: packageState.hasAllRequiredStagesApproved,
+              }
             ),
             { status: 409 }
           );
@@ -478,7 +544,8 @@ export async function DELETE(request: Request, context: RouteParams): Promise<Ne
       );
     }
 
-    const allowedVendorDeleteStatuses = new Set(["PENDING", "IN_PROGRESS"]);
+    // UI "in progress" maps to Prisma CONFIRMED (legacy check used IN_PROGRESS which never matched).
+    const allowedVendorDeleteStatuses = new Set(["PENDING", "CONFIRMED"]);
     if (!allowedVendorDeleteStatuses.has(normalizedStatus)) {
       return NextResponse.json(
         apiResponse(
@@ -601,7 +668,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
     const { linkedSessionCount, linkedAssetCount } = await getLinkedMediaSummary(vendorId, booking.id);
 
     const canVendorDelete =
-      normalizedStatus === "PENDING" || normalizedStatus === "IN_PROGRESS";
+      normalizedStatus === "PENDING" || normalizedStatus === "CONFIRMED";
 
     return NextResponse.json({
       jobId: booking.id,

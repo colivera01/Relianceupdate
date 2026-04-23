@@ -6,6 +6,31 @@ import { getUserIdFromRequest } from "@/lib/auth";
 /** Dev / interim login tokens accepted by customer profile routes. */
 const DEV_BEARER_TOKENS = new Set(["temp-jwt-token", "temp-token"]);
 
+function isTransientDbConnectivityError(error: any): boolean {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return (
+    code === 'P1001' ||
+    message.includes("Can't reach database server") ||
+    message.includes('PrismaClientInitializationError') ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('ETIMEDOUT') ||
+    message.toLowerCase().includes('prisma connect probe timeout')
+  );
+}
+
+async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isTransientDbConnectivityError(error)) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return operation();
+  }
+}
+
 function parseBearer(request: NextRequest): string | null {
   const authHeader = request.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
@@ -38,10 +63,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const dbUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true, name: true, phone: true, createdAt: true },
-    });
+    const dbUser = await withTransientDbRetry(() =>
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, name: true, phone: true, createdAt: true },
+      })
+    );
 
     const devRow =
       registeredUsers.find((u) => String(u.id) === String(userId)) ||
@@ -92,8 +119,27 @@ export async function GET(request: NextRequest) {
       profile: profileData,
     });
   } catch (error) {
-    console.error("Error fetching customer profile:", error);
-    return NextResponse.json({ error: "Failed to fetch customer profile" }, { status: 500 });
+    const err = error as any;
+    console.error("[PROFILE_API_ERROR]", err);
+    if (isTransientDbConnectivityError(err)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "DB_UNAVAILABLE",
+          message: "The database is temporarily unavailable. Please try again.",
+        },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json(
+      {
+        success: false,
+        code: "INTERNAL_ERROR",
+        message: err?.message || "Unknown error",
+        stack: process.env.NODE_ENV !== "production" ? err?.stack : undefined,
+      },
+      { status: 500 }
+    );
   }
 }
 

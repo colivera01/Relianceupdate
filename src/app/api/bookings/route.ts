@@ -5,6 +5,31 @@ import { mapBookingToContract } from '@/lib/booking-shape';
 import { checkVendorSlotAvailability } from '@/lib/availability-slots';
 import { findUserIdByEmailCaseInsensitive } from '@/lib/resolve-booking-owner-user-id';
 
+function isTransientDbConnectivityError(error: any): boolean {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return (
+    code === 'P1001' ||
+    message.includes("Can't reach database server") ||
+    message.includes('PrismaClientInitializationError') ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('ETIMEDOUT') ||
+    message.toLowerCase().includes('prisma connect probe timeout')
+  );
+}
+
+async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isTransientDbConnectivityError(error)) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return operation();
+  }
+}
+
 /** Structured payload stored as JSON string in `Booking.customerMetadata` (snake_case keys). */
 function buildCustomerMetadataForCreate(body: {
   user_notes?: unknown;
@@ -59,45 +84,47 @@ export async function GET(request: NextRequest) {
       ...(status ? { status: String(status).toUpperCase() } : {}),
     };
 
-    const [total, records] = await Promise.all([
-      prisma.booking.count({ where }),
-      prisma.booking.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: safeLimit,
-        select: {
-          id: true,
-          serviceId: true,
-          vendorId: true,
-          userId: true,
-          title: true,
-          clientName: true,
-          amount: true,
-          status: true,
-          scheduledFor: true,
-          date: true,
-          createdAt: true,
-          updatedAt: true,
-          customerMetadata: true,
-          service: {
-            select: {
-              id: true,
-              name: true,
-              price: true,
+    const [total, records] = await withTransientDbRetry(() =>
+      Promise.all([
+        prisma.booking.count({ where }),
+        prisma.booking.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: safeLimit,
+          select: {
+            id: true,
+            serviceId: true,
+            vendorId: true,
+            userId: true,
+            title: true,
+            clientName: true,
+            amount: true,
+            status: true,
+            scheduledFor: true,
+            date: true,
+            createdAt: true,
+            updatedAt: true,
+            customerMetadata: true,
+            service: {
+              select: {
+                id: true,
+                name: true,
+                price: true,
+              },
+            },
+            vendor: {
+              select: {
+                id: true,
+                name: true,
+                businessName: true,
+                phone: true,
+              },
             },
           },
-          vendor: {
-            select: {
-              id: true,
-              name: true,
-              businessName: true,
-              phone: true,
-            },
-          },
-        },
-      }),
-    ]);
+        }),
+      ])
+    );
 
     const bookings = records.map((booking) => mapBookingToContract(booking as any));
 
@@ -111,9 +138,25 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching bookings:', error);
+    const err = error as any;
+    console.error("[BOOKINGS_API_ERROR]", err);
+    if (isTransientDbConnectivityError(err)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "DB_UNAVAILABLE",
+          message: "The database is temporarily unavailable. Please try again.",
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
-      { error: 'Failed to fetch bookings' },
+      {
+        success: false,
+        code: "INTERNAL_ERROR",
+        message: err?.message || "Unknown error",
+        stack: process.env.NODE_ENV !== "production" ? err?.stack : undefined,
+      },
       { status: 500 }
     );
   }
@@ -203,6 +246,7 @@ export async function POST(request: NextRequest) {
     }
 
     let bookingUserId: string | null = null;
+    let linkedToExistingCustomerAccount = false;
 
     if (isVendorStaffForThisVendor) {
       if (!clientEmailCombined) {
@@ -216,17 +260,26 @@ export async function POST(request: NextRequest) {
         );
       }
       const customerId = await findUserIdByEmailCaseInsensitive(prisma, clientEmailCombined);
-      if (!customerId) {
-        return NextResponse.json(
-          {
-            error:
-              'No Reliance customer account uses that email. The customer must sign up (or you must use the email on their profile) before this job can appear in their My Services.',
-            code: 'CUSTOMER_EMAIL_NOT_FOUND',
+      if (customerId) {
+        bookingUserId = customerId;
+        linkedToExistingCustomerAccount = true;
+      } else {
+        const placeholderNameRaw =
+          (typeof client_name === 'string' && client_name.trim()) ||
+          (typeof title === 'string' && title.trim()) ||
+          'Customer';
+        const placeholderEmail = `unclaimed+${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}@reliance.local`;
+        const placeholderUser = await prisma.user.create({
+          data: {
+            name: `${placeholderNameRaw} (Unclaimed Booking)`,
+            email: placeholderEmail,
           },
-          { status: 422 }
-        );
+          select: { id: true },
+        });
+        bookingUserId = placeholderUser.id;
       }
-      bookingUserId = customerId;
     } else {
       const fromBody =
         (user_id != null && String(user_id).trim() ? String(user_id).trim() : null) ||
@@ -267,12 +320,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const customerMetadataPayload = buildCustomerMetadataForCreate({
+    let customerMetadataPayload = buildCustomerMetadataForCreate({
       user_notes,
       client_email,
       client_phone,
       custom_fields,
     });
+    if (isVendorStaffForThisVendor) {
+      const nextMeta = customerMetadataPayload || {};
+      const claimStatus = nextMeta.claim_status
+        ? String(nextMeta.claim_status).trim().toUpperCase()
+        : '';
+      if (!claimStatus) {
+        nextMeta.claim_status = linkedToExistingCustomerAccount ? 'CLAIMED' : 'UNCLAIMED';
+      }
+      if (!nextMeta.claim_contact_email && clientEmailCombined) {
+        nextMeta.claim_contact_email = clientEmailCombined;
+      }
+      if (!nextMeta.claim_created_at) {
+        nextMeta.claim_created_at = new Date().toISOString();
+      }
+      customerMetadataPayload = nextMeta;
+    }
     const customerMetadata =
       customerMetadataPayload !== undefined ? JSON.stringify(customerMetadataPayload) : undefined;
 

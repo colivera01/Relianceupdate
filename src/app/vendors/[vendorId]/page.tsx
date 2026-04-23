@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, Building2, Image as ImageIcon, ArrowLeft } from 'lucide-react';
+import { MapPin, Building2, Image as ImageIcon, ArrowLeft, Video } from 'lucide-react';
 
 interface PublicService {
   serviceId: string;
@@ -23,6 +23,7 @@ interface PublicMediaItem {
   mimeType: string;
   url: string;
   createdAt: string;
+  isPrimaryProofVideo?: boolean;
 }
 
 interface PublicVendorPayload {
@@ -114,6 +115,16 @@ export default function PublicVendorProfilePage() {
   const vendor = payload?.vendor || null;
   const services = payload?.publicServices || [];
   const media = payload?.publicMedia || [];
+  const primaryProofVideo = useMemo(
+    () =>
+      media.find(
+        (item) =>
+          Boolean(item?.isPrimaryProofVideo) &&
+          String(item?.mimeType || '').toLowerCase().startsWith('video/') &&
+          Boolean(String(item?.url || '').trim())
+      ) || null,
+    [media]
+  );
 
   const mediaByService = useMemo(() => {
     const map = new Map<string, PublicMediaItem[]>();
@@ -230,6 +241,35 @@ export default function PublicVendorProfilePage() {
 
             <Card>
               <CardHeader>
+                <CardTitle className="text-xl">Proof of Completed Work</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {primaryProofVideo ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">Primary proof</Badge>
+                      <span className="text-sm text-gray-700">
+                        This completed service video is the main proof clip shown to customers.
+                      </span>
+                    </div>
+                    <video
+                      src={primaryProofVideo.url}
+                      className="w-full max-h-[360px] rounded border bg-black"
+                      controls
+                      preload="metadata"
+                    />
+                    <p className="text-sm text-gray-700">{primaryProofVideo.title || 'Completed service proof'}</p>
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    No completed proof video is available yet for this vendor.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle className="text-xl">Public Media Gallery</CardTitle>
               </CardHeader>
               <CardContent>
@@ -246,6 +286,12 @@ export default function PublicVendorProfilePage() {
                         )}
                         <div className="p-2 text-xs text-gray-700">
                           <div className="font-medium line-clamp-1">{item.title}</div>
+                          {item.isPrimaryProofVideo ? (
+                            <div className="mt-1 inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
+                              <Video className="h-3 w-3" />
+                              Primary proof
+                            </div>
+                          ) : null}
                           {item.serviceId ? (
                             <div className="text-gray-500 mt-1 flex items-center">
                               <Building2 className="w-3 h-3 mr-1" />

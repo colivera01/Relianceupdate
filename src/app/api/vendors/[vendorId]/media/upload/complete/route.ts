@@ -6,6 +6,7 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 import { getBlobProperties } from "@/lib/azure-blob-storage";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
+import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -172,7 +173,7 @@ export async function POST(
     // Check and create alerts (may have crossed threshold after upload)
     await checkAndCreateStorageAlerts(vendorId, updatedUsage);
 
-    // Vendor workflow: first-class operational phase — video on an in-progress (CONFIRMED) job → AWAITING_VENDOR_REVIEW
+    // Vendor workflow: all 3 required staged videos move job to AWAITING_ADMIN_REVIEW.
     if (validMediaSessionId && String(mimeType || "").toLowerCase().startsWith("video/")) {
       try {
         const sessionRow = await (prisma as any).mediaSession.findFirst({
@@ -189,9 +190,23 @@ export async function POST(
             .trim()
             .toUpperCase();
           if (bookingRow && st === "CONFIRMED") {
+            const sessions = await (prisma as any).mediaSession.findMany({
+              where: { vendorId, bookingId },
+              select: {
+                id: true,
+                vendorJobVideoStage: true,
+                sessionType: true,
+                mediaAssets: {
+                  select: { id: true, moderationStatus: true, createdAt: true },
+                  orderBy: { createdAt: "desc" },
+                  take: 1,
+                },
+              },
+            });
+            const packageState = evaluateVendorJobPackageState(sessions);
             const nextMeta = setOperationalPhaseOnMetadataJson(
               bookingRow.customerMetadata,
-              "AWAITING_VENDOR_REVIEW"
+              packageState.hasAllRequiredStages ? "AWAITING_ADMIN_REVIEW" : "IN_PROGRESS"
             );
             await prisma.booking.update({
               where: { id: bookingRow.id },

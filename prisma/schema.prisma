@@ -368,6 +368,8 @@ model MediaSession {
   deviceId    String?
   deviceType  String?    // "PHONE" | "HEADSET"
   sessionType String     @default("SERVICE_RECORD")
+  /** Vendor job service video stage: INTRO | IN_PROGRESS | COMPLETED (null = legacy / non-staged) */
+  vendorJobVideoStage String?
   status      String     @default("CREATED")
   title       String?
   description String?

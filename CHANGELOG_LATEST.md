@@ -2,6 +2,70 @@
 
 Scope: current active session changes in working tree (from current repo state).
 
+## 2026-04-22 — Reliance handoff refresh (vendor lifecycle + auth + media execution)
+
+**Handoff docs:** `PROJECT_STATE.md` prepended with a matching **2026-04-22** refresh section.
+
+### Product/lifecycle framing
+- Added/updated handoff and execution docs for lifecycle framing and "My Services" naming alignment:
+  - `PRODUCT_FLOW_REALIGNMENT.md`
+  - `OPERATIONAL_PHASE_IMPLEMENTATION.md`
+  - `VENDOR_JOB_LIFECYCLE_DESIGN.md`
+  - `MY_SERVICES_UI_RENAME.md`
+  - `MY_SERVICES_PAGE_FRAMING.md`
+  - `ROLE_SURFACES_SYSTEM_AUDIT.md`
+
+### Vendor lifecycle/context backend
+- Added lifecycle/context helpers:
+  - `src/lib/vendor-context.ts`
+  - `src/lib/vendor-status.ts`
+  - `src/lib/vendor-job-operational-phase.ts`
+- Added context API:
+  - `src/app/api/vendor/context/route.ts`
+- Updated vendor API/page consumers to use aligned lifecycle assumptions across dashboard/jobs/services/profile flows.
+
+### Auth/session and customer profile hardening
+- Updated login/session contract path and fallback behavior:
+  - `src/app/api/auth/login/route.ts`
+  - `src/app/auth/login/page.tsx`
+  - `src/contexts/AuthContext.tsx`
+  - `src/lib/client-session.ts`
+  - `src/lib/auth.ts`
+- Updated customer profile/session wiring:
+  - `src/app/api/customer/profile/route.ts`
+  - `src/app/(user)/user-dashboard/page.tsx`
+  - `src/sdk/auth.ts`
+
+### Admin + media execution updates
+- Admin approvals and moderation routes/pages refreshed:
+  - `src/app/api/admin/vendors/approve/route.ts`
+  - `src/app/api/admin/vendors/reject/route.ts`
+  - `src/app/api/admin/vendors/bulk-approve/route.ts`
+  - `src/app/api/admin/vendors/bulk-reject/route.ts`
+  - `src/app/api/admin/vendors/pending/route.ts`
+  - `src/app/api/admin/media/[assetId]/moderate/route.ts`
+  - `src/app/admin/vendors/approval-queue/page.tsx`
+  - `src/app/admin/media-moderation/page.tsx`
+- Vendor execution/media routes and clients updated:
+  - `src/app/api/vendors/[vendorId]/jobs/[jobId]/actions/route.ts`
+  - `src/app/api/vendors/[vendorId]/dashboard/route.ts`
+  - `src/app/api/vendors/[vendorId]/media/route.ts`
+  - `src/app/api/vendors/[vendorId]/media/[assetId]/route.ts`
+  - `src/app/api/vendors/[vendorId]/media/upload/complete/route.ts`
+  - `src/lib/vendor-job-media.ts`
+  - `src/lib/media-visibility.ts`
+
+### Test coverage additions/updates
+- Added or expanded integration suites:
+  - `src/app/api/admin/media/admin-media-moderation.integration.test.ts`
+  - `src/app/api/vendors/[vendorId]/dashboard/dashboard.integration.test.ts`
+  - `src/app/api/vendors/[vendorId]/jobs/vendor-job-actions.integration.test.ts`
+  - `src/app/api/vendors/[vendorId]/media/vendor-media-archive.integration.test.ts`
+  - `src/app/api/vendors/[vendorId]/memberships/memberships.integration.test.ts`
+  - `src/app/api/bookings/booking-crud.integration.test.ts`
+- Updated notes:
+  - `MEDIA_EXECUTION_FLOW_INTEGRATION_TESTS_NOTES.md`
+
 ## 2026-04-19 — Handoff refresh: vendor jobs, My Services linkage, auth/login, customer profile
 
 **Handoff docs:** `PROJECT_STATE.md` prepended with **2026-04-19** section; this changelog entry summarizes the same batch.

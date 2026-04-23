@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ArrowLeft, Plus, Search, Filter, Download, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, MessageSquare, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
@@ -13,8 +14,13 @@ import { useVendorProfile } from '@/hooks/useVendorProfile';
 import {
   runVendorJobMediaUpload,
   type VendorJobMediaLifecycleState,
-  type VendorJobMediaPurpose,
 } from '@/lib/vendor-job-media';
+import {
+  VENDOR_JOB_VIDEO_STAGE_LABELS,
+  normalizeVendorJobVideoStage,
+  resolveVendorJobVideoStageFromSession,
+  type VendorJobVideoStage,
+} from '@/lib/vendor-job-video-stages';
 import {
   ARCHIVE_ARCHIVED,
   MODERATION_APPROVED,
@@ -139,8 +145,32 @@ export default function VendorJobs() {
     loading: vendorProfileLoading,
     approvalPending,
     error: vendorProfileError,
+    errorCode: vendorProfileErrorCode,
+    hasResolvedVendorContext,
+    resolvedVendorId,
+    refetch: refetchVendorProfile,
   } = useVendorProfile();
-  const vendorId = vendorProfile?.id || '';
+  const vendorId = String(vendorProfile?.id || resolvedVendorId || '');
+  const vendorContextDbFailure =
+    vendorProfileErrorCode === "DB_CONNECTION_TIMEOUT" ||
+    (vendorProfileErrorCode === "VENDOR_CONTEXT_ERROR" &&
+      String(vendorProfileError || "").toLowerCase().includes("database connection"));
+  const vendorContextErrorMessage =
+    (vendorContextDbFailure
+      ? "Vendor context is temporarily unavailable because the database connection failed. Please retry."
+      : String(vendorProfileError || "").trim()) ||
+    "Unable to resolve active vendor context. Please sign in again.";
+  const vendorContextUnavailable =
+    !vendorProfileLoading && !approvalPending && !vendorId && !hasResolvedVendorContext;
+
+  useEffect(() => {
+    if (!vendorContextUnavailable) return;
+    console.error("[vendor/jobs] context unavailable", {
+      userId: authUserId,
+      code: vendorProfileErrorCode || null,
+      message: vendorContextErrorMessage,
+    });
+  }, [authUserId, vendorContextErrorMessage, vendorContextUnavailable, vendorProfileErrorCode]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsLoadError, setJobsLoadError] = useState('');
@@ -176,11 +206,14 @@ export default function VendorJobs() {
     title: string;
     description: string;
     file: File | null;
-  }>({ title: "", description: "", file: null });
+    videoStage: '' | VendorJobVideoStage;
+    replaceStage: boolean;
+  }>({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
   const [videoFieldErrors, setVideoFieldErrors] = useState({
     title: '',
     description: '',
     file: '',
+    videoStage: '',
   });
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [videoUploadError, setVideoUploadError] = useState('');
@@ -209,16 +242,23 @@ export default function VendorJobs() {
   });
   
   // Legal compliance state
+  const CONSENT_STATE = {
+    NOT_REQUESTED: 'not_requested',
+    REQUESTED: 'requested',
+    ACCEPTED: 'accepted',
+    DECLINED: 'declined',
+  } as const;
   const [location, setLocation] = useState('');
   const [showConsent, setShowConsent] = useState(false);
   const [consentStatus, setConsentStatus] = useState('');
-  const [customerConsentStatus, setCustomerConsentStatus] = useState('');
+  const [customerConsentStatus, setCustomerConsentStatus] = useState<string>(CONSENT_STATE.NOT_REQUESTED);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState('');
   const [geoInfo, setGeoInfo] = useState('');
   const [locationVerified, setLocationVerified] = useState(false);
   const [customerConsentRequested, setCustomerConsentRequested] = useState(false);
   const [customerConsentReceived, setCustomerConsentReceived] = useState(false);
+  const [activeConsentToken, setActiveConsentToken] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showComplianceModal, setShowComplianceModal] = useState(false);
   
@@ -231,23 +271,73 @@ export default function VendorJobs() {
   const resetComplianceState = () => {
     setShowConsent(false);
     setConsentStatus('');
-    setCustomerConsentStatus('');
+    setCustomerConsentStatus(CONSENT_STATE.NOT_REQUESTED);
     setCustomerConsentRequested(false);
     setCustomerConsentReceived(false);
+    setActiveConsentToken('');
     setLocationVerified(false);
     setGeoLoading(false);
     setGeoError('');
     setGeoInfo('');
   };
 
+  const applyConsentStatusFromBackend = (statusValue: string | null | undefined) => {
+    const upper = String(statusValue || '').trim().toUpperCase();
+    const normalized =
+      upper === 'ACCEPTED'
+        ? CONSENT_STATE.ACCEPTED
+        : upper === 'REQUESTED'
+        ? CONSENT_STATE.REQUESTED
+        : upper === 'DECLINED'
+        ? CONSENT_STATE.DECLINED
+        : CONSENT_STATE.NOT_REQUESTED;
+    setCustomerConsentStatus(normalized);
+    if (normalized === CONSENT_STATE.REQUESTED || normalized === CONSENT_STATE.ACCEPTED) {
+      setCustomerConsentRequested(true);
+    } else {
+      setCustomerConsentRequested(false);
+    }
+    setCustomerConsentReceived(normalized === CONSENT_STATE.ACCEPTED);
+  };
+
+  const fetchConsentStatus = async (token: string) => {
+    const trimmed = String(token || '').trim();
+    if (!trimmed) return;
+    const res = await fetch(`/api/consent/${encodeURIComponent(trimmed)}`, {
+      method: 'GET',
+      headers: getRequestHeaders(),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || payload?.success === false) {
+      const message =
+        (typeof payload?.error === 'string' && payload.error) ||
+        (typeof payload?.message === 'string' && payload.message) ||
+        `Failed to fetch consent status (${res.status})`;
+      throw new Error(message);
+    }
+    applyConsentStatusFromBackend(payload?.consent?.status);
+  };
+
   const getCanContinueCompliance = () => {
     if (location === 'business') return locationVerified;
-    if (location === 'residence') return customerConsentRequested && customerConsentReceived;
+    if (location === 'residence') return customerConsentReceived;
     if (location === 'customer-business') {
-      return customerConsentRequested && customerConsentReceived && locationVerified;
+      return customerConsentReceived && locationVerified;
     }
     return false;
   };
+
+  useEffect(() => {
+    if (!showComplianceModal) return;
+    resetComplianceState();
+    setLocation('');
+  }, [showComplianceModal]);
+
+  useEffect(() => {
+    if (!showComplianceModal) return;
+    resetComplianceState();
+    setLocation('');
+  }, [showComplianceModal, selectedJob?.id]);
 
   // Enhancement 1: Job Status Management
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -323,6 +413,24 @@ export default function VendorJobs() {
   // Calendar date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState('');
+  const resolveMembershipIdsForJob = (job: any): string[] => {
+    const rawIds = Array.isArray(job?.assignedMembershipIds)
+      ? job.assignedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+      : [];
+    if (rawIds.length > 0) return rawIds;
+    const names = Array.isArray(job?.assignedEmployees) ? job.assignedEmployees : [];
+    if (!names.length || !teamMembers.length) return [];
+    return names
+      .map((n: string) => {
+        const needle = String(n).trim().toLowerCase();
+        const t = teamMembers.find((m) => m.name.trim().toLowerCase() === needle);
+        return t?.membershipId;
+      })
+      .filter(Boolean) as string[];
+  };
+  const isJobAssignedForVideoUpload = (job: any): boolean =>
+    resolveMembershipIdsForJob(job).length > 0;
+  const videoAssignmentRequiredCopy = 'Assign this job before uploading service videos.';
   const trimmedJobTitle = newJob.title.trim();
   const trimmedClientName = newJob.client.trim();
   const phoneDigits = getPhoneDigits(newJob.phone);
@@ -347,11 +455,15 @@ export default function VendorJobs() {
   const hasVideoTitle = Boolean(trimmedVideoTitle);
   const hasVideoDescription = Boolean(trimmedVideoDescription);
   const hasVideoFile = Boolean(newVideo.file);
+  const hasVideoStage = Boolean(normalizeVendorJobVideoStage(newVideo.videoStage));
+  const hasSelectedJobAssigned = Boolean(selectedJob && isJobAssignedForVideoUpload(selectedJob));
   const canUploadVideo = Boolean(
     hasSelectedJob &&
+    hasSelectedJobAssigned &&
     hasVideoTitle &&
     hasVideoDescription &&
     hasVideoFile &&
+    hasVideoStage &&
     vendorId &&
     !isUploadingVideo
   );
@@ -587,20 +699,63 @@ export default function VendorJobs() {
     return 'pending';
   };
 
-  const deriveMediaPurposeFromJobStatus = (status: string | null | undefined): VendorJobMediaPurpose => {
+  const deriveMediaPurposeFromJobStatus = (status: string | null | undefined): 'progress' | 'completion' => {
     const normalized = String(status || '').trim().toLowerCase();
     return normalized === 'completed' ? 'completion' : 'progress';
   };
 
   const deriveMediaPurposeFromSessionType = (
     sessionType: string | null | undefined
-  ): VendorJobMediaPurpose => {
+  ): 'progress' | 'completion' => {
     const normalized = String(sessionType || '').trim().toLowerCase();
     return normalized.includes('completion') ? 'completion' : 'progress';
   };
 
-  const formatMediaPurposeLabel = (purpose: VendorJobMediaPurpose | string | null | undefined) =>
+  const formatMediaPurposeLabel = (purpose: string | null | undefined) =>
     String(purpose || 'progress').trim().toLowerCase() === 'completion' ? 'Completion' : 'Progress';
+
+  const formatVideoStageLabel = (stage: string | null | undefined) => {
+    const n = normalizeVendorJobVideoStage(stage);
+    return n ? VENDOR_JOB_VIDEO_STAGE_LABELS[n] : 'Other';
+  };
+
+  const jobHasVideoForStage = (job: any, stage: VendorJobVideoStage) => {
+    const videos = Array.isArray(job?.videos) ? job.videos : [];
+    return videos.some((video: any) => {
+      const explicit = normalizeVendorJobVideoStage(video?.vendorJobVideoStage);
+      if (explicit === stage) return true;
+      const inferred = resolveVendorJobVideoStageFromSession({
+        vendorJobVideoStage: video?.vendorJobVideoStage,
+        sessionType: video?.sessionType,
+      });
+      return inferred === stage;
+    });
+  };
+
+  const groupVideosForStagePanels = (videos: any[] | undefined) => {
+    const list = Array.isArray(videos) ? videos : [];
+    const intro: any[] = [];
+    const inProgress: any[] = [];
+    const completed: any[] = [];
+    const legacy: any[] = [];
+    for (const v of list) {
+      const explicit = normalizeVendorJobVideoStage(v?.vendorJobVideoStage);
+      if (explicit === 'INTRO') intro.push(v);
+      else if (explicit === 'IN_PROGRESS') inProgress.push(v);
+      else if (explicit === 'COMPLETED') completed.push(v);
+      else {
+        const inferred = resolveVendorJobVideoStageFromSession({
+          vendorJobVideoStage: v?.vendorJobVideoStage,
+          sessionType: v?.sessionType,
+        });
+        if (inferred === 'INTRO') intro.push(v);
+        else if (inferred === 'IN_PROGRESS') inProgress.push(v);
+        else if (inferred === 'COMPLETED') completed.push(v);
+        else legacy.push(v);
+      }
+    }
+    return { intro, inProgress, completed, legacy };
+  };
 
   const adaptRecentJobToUiJob = (job: any) => {
     const status = mapDashboardStatusToJobStatus(job?.status);
@@ -651,22 +806,6 @@ export default function VendorJobs() {
     };
   };
 
-  const resolveMembershipIdsForJob = (job: any): string[] => {
-    const rawIds = Array.isArray(job?.assignedMembershipIds)
-      ? job.assignedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
-      : [];
-    if (rawIds.length > 0) return rawIds;
-    const names = Array.isArray(job?.assignedEmployees) ? job.assignedEmployees : [];
-    if (!names.length || !teamMembers.length) return [];
-    return names
-      .map((n: string) => {
-        const needle = String(n).trim().toLowerCase();
-        const t = teamMembers.find((m) => m.name.trim().toLowerCase() === needle);
-        return t?.membershipId;
-      })
-      .filter(Boolean) as string[];
-  };
-  
   // Memory tracking state
   const [currentMemoryUsage, setCurrentMemoryUsage] = useState(0);
   const [memoryLimit, setMemoryLimit] = useState(1024); // MB
@@ -711,7 +850,10 @@ export default function VendorJobs() {
           if (!sessionsRes.ok) return job;
 
           const sessionsJson = await sessionsRes.json().catch(() => ({}));
-          const sessions = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
+          const sessionsRaw = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
+          const sessions = sessionsRaw.filter(
+            (s: any) => String(s?.status || '').toUpperCase() !== 'ARCHIVED'
+          );
           if (sessions.length === 0) return job;
 
           const detailResults = await Promise.all(
@@ -726,7 +868,9 @@ export default function VendorJobs() {
               );
               if (!detailRes.ok) return null;
               const detailJson = await detailRes.json().catch(() => ({}));
-              return detailJson?.session || null;
+              const sess = detailJson?.session || null;
+              if (sess && String(sess?.status || '').toUpperCase() === 'ARCHIVED') return null;
+              return sess;
             })
           );
 
@@ -737,6 +881,7 @@ export default function VendorJobs() {
               return mediaAssets.map((asset: any) => {
                 const derivedStatus = normalizeModerationStatus(asset?.moderationStatus);
                 const mediaPurpose = deriveMediaPurposeFromSessionType(session?.sessionType);
+                const vendorJobVideoStage = normalizeVendorJobVideoStage(session?.vendorJobVideoStage);
                 return ({
                 id: asset.id,
                 title: session.title || 'Service Video',
@@ -753,6 +898,11 @@ export default function VendorJobs() {
                 mediaSessionId: session.id,
                 mimeType: asset.mimeType || '',
                 mediaPurpose,
+                sessionType: session.sessionType ? String(session.sessionType) : '',
+                vendorJobVideoStage: vendorJobVideoStage || '',
+                isPrimaryProofVideo:
+                  vendorJobVideoStage === 'COMPLETED' ||
+                  String(session?.sessionType || '').toUpperCase().includes('COMPLETION'),
                 persisted: true,
               });
               });
@@ -899,8 +1049,15 @@ export default function VendorJobs() {
     
     return matchesStatus && matchesSearch;
   });
+  const jobsEligibleForVideoUpload = filteredJobs.filter((job) => isJobAssignedForVideoUpload(job));
+  const hasAnyEligibleVideoJob = jobsEligibleForVideoUpload.length > 0;
   const selectedJobForVideo = filteredJobs.find((job) => String(job.id) === selectedJobForVideoId) || null;
-  const selectedJobMediaPurpose = deriveMediaPurposeFromJobStatus(selectedJob?.status);
+
+  useEffect(() => {
+    if (!jobActionFeedback) return undefined;
+    const t = window.setTimeout(() => setJobActionFeedback(null), 7000);
+    return () => window.clearTimeout(t);
+  }, [jobActionFeedback]);
 
   const handleCreateJob = async () => {
     if (isCreatingJob) {
@@ -1042,18 +1199,37 @@ export default function VendorJobs() {
     const file = newVideo.file;
     const selectedJobSnapshot: any = selectedJob;
     const selectedJobId = selectedJobSnapshot?.id ? String(selectedJobSnapshot.id) : '';
-    const mediaPurpose = deriveMediaPurposeFromJobStatus(selectedJobSnapshot?.status);
+    const videoStage = normalizeVendorJobVideoStage(newVideo.videoStage);
     const uploadKey = `${selectedJobId}:${title}:${file?.name || ''}:${file?.size || 0}`;
 
     const nextErrors = {
       title: title ? '' : 'Video title is required',
       description: description ? '' : 'Description is required',
       file: file ? '' : 'Video file is required',
+      videoStage: videoStage ? '' : 'Video stage is required',
     };
     setVideoFieldErrors(nextErrors);
 
-    if (!selectedJob || nextErrors.title || nextErrors.description || nextErrors.file) {
+    if (!selectedJob || nextErrors.title || nextErrors.description || nextErrors.file || nextErrors.videoStage) {
       setVideoUploadError('Please fix the required fields before uploading.');
+      return;
+    }
+    if (!isJobAssignedForVideoUpload(selectedJobSnapshot)) {
+      setVideoUploadError(videoAssignmentRequiredCopy);
+      return;
+    }
+    if (
+      videoStage &&
+      jobHasVideoForStage(selectedJobSnapshot, videoStage) &&
+      !newVideo.replaceStage
+    ) {
+      setVideoFieldErrors((prev) => ({
+        ...prev,
+        videoStage: `This job already has a ${formatVideoStageLabel(videoStage)} video. Choose another stage or enable “Replace existing video for this stage”.`,
+      }));
+      setVideoUploadError(
+        'A video already exists for the selected stage. Pick a different stage or confirm replacement.'
+      );
       return;
     }
     if (activeUploadKeyRef.current === uploadKey) {
@@ -1062,6 +1238,14 @@ export default function VendorJobs() {
     }
     if (!vendorId) {
       // Guard only; UI disables upload until vendor profile is ready.
+      return;
+    }
+    if (location === 'residence' && !customerConsentReceived) {
+      setVideoUploadError('Customer consent must be accepted before creating service video at residence.');
+      return;
+    }
+    if (location === 'customer-business' && !customerConsentReceived) {
+      setVideoUploadError('Customer consent must be accepted before creating service video at customer business.');
       return;
     }
     if (!file) {
@@ -1080,7 +1264,11 @@ export default function VendorJobs() {
         title,
         description,
         file,
-        mediaPurpose,
+        videoStage,
+        replaceExisting: Boolean(newVideo.replaceStage),
+        locationContext: location || undefined,
+        consentAccepted: customerConsentReceived,
+        consentToken: activeConsentToken || undefined,
         getHeaders: getRequestHeaders,
         onLifecycleState: setUploadLifecycleState,
       });
@@ -1098,8 +1286,8 @@ export default function VendorJobs() {
       });
       await hydratePersistedVideos(nextJobsSnapshot);
 
-      setNewVideo({ title: '', description: '', file: null });
-      setVideoFieldErrors({ title: '', description: '', file: '' });
+      setNewVideo({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
+      setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
       setShowModal(false);
       setSelectedJob(null);
     } catch (error) {
@@ -1522,7 +1710,10 @@ export default function VendorJobs() {
         );
         if (!sessionsRes.ok) return;
         const sessionsJson = await sessionsRes.json().catch(() => ({}));
-        const sessions = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
+        const sessionsRaw = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
+        const sessions = sessionsRaw.filter(
+          (s: any) => String(s?.status || '').toUpperCase() !== 'ARCHIVED'
+        );
         if (sessions.length === 0) return;
 
         const detailResults = await Promise.all(
@@ -1535,7 +1726,9 @@ export default function VendorJobs() {
             });
             if (!detailRes.ok) return null;
             const detailJson = await detailRes.json().catch(() => ({}));
-            return detailJson?.session || null;
+            const sess = detailJson?.session || null;
+            if (sess && String(sess?.status || '').toUpperCase() === 'ARCHIVED') return null;
+            return sess;
           })
         );
 
@@ -1546,6 +1739,7 @@ export default function VendorJobs() {
             return mediaAssets.map((asset: any) => {
               const derivedStatus = normalizeModerationStatus(asset?.moderationStatus);
               const mediaPurpose = deriveMediaPurposeFromSessionType(session?.sessionType);
+              const vendorJobVideoStage = normalizeVendorJobVideoStage(session?.vendorJobVideoStage);
               return {
                 id: asset.id,
                 title: session.title || 'Service Video',
@@ -1562,6 +1756,11 @@ export default function VendorJobs() {
                 mediaSessionId: session.id,
                 mimeType: asset.mimeType || '',
                 mediaPurpose,
+                sessionType: session.sessionType ? String(session.sessionType) : '',
+                vendorJobVideoStage: vendorJobVideoStage || '',
+                isPrimaryProofVideo:
+                  vendorJobVideoStage === 'COMPLETED' ||
+                  String(session?.sessionType || '').toUpperCase().includes('COMPLETION'),
                 persisted: true,
               };
             });
@@ -1763,49 +1962,91 @@ export default function VendorJobs() {
     );
   };
 
-  const handleRequestCustomerConsent = () => {
+  const handleRequestCustomerConsent = async () => {
+    if (!vendorId || !selectedJob) {
+      setGeoError('Select a valid job before requesting customer consent.');
+      return;
+    }
+    const bookingId = selectedJob?.bookingId ? String(selectedJob.bookingId) : String(selectedJob?.id || '');
+    if (!bookingId) {
+      setGeoError('This job is missing booking linkage. Reload jobs and try again.');
+      return;
+    }
+    setGeoError('');
     setCustomerConsentRequested(true);
     setCustomerConsentReceived(false);
-    setCustomerConsentStatus('pending');
-    
-    // Enhanced consent request with fraud prevention
-    const consentRequestData = {
-      jobId: selectedJob?.id,
-      vendorId: String(vendorId || ''),
-      customerEmail: selectedJob?.email,
-      customerPhone: selectedJob?.phone,
-      requestType: location === 'residence' ? 'residential_recording' : 'business_recording',
-      timestamp: Date.now(),
-      userAgent: navigator.userAgent,
-      ipAddress: 'logged-server-side',
-      deviceId: 'logged-server-side',
-      consentToken: `consent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    };
-    
-    // Mock backend consent request with enhanced security
-    setTimeout(() => {
-      setCustomerConsentStatus('granted');
-      setCustomerConsentReceived(true);
-      
-      // Log successful consent
-      const consentData = {
-        ...consentRequestData,
-        consentGranted: true,
-        consentTimestamp: Date.now(),
-        consentMethod: 'email_link', // or 'sms', 'in_person'
-        legalTextVersion: 'v1.2.3', // Version of legal text shown
-        customerIpAddress: 'logged-server-side',
-        customerDeviceInfo: 'logged-server-side'
-      };
-      
-      console.log('Customer consent granted:', consentData);
-    }, 2000);
+    setCustomerConsentStatus(CONSENT_STATE.REQUESTED);
+    try {
+      const sessionRes = await fetch(`/api/vendors/${vendorId}/media/sessions`, {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+          bookingId,
+          serviceId: selectedJob?.serviceId ? String(selectedJob.serviceId) : undefined,
+          sessionType: 'CONSENT_REQUEST',
+          title: 'Customer consent request',
+          description: `Consent request before ${location || 'service'} recording`,
+        }),
+      });
+      const sessionPayload = await sessionRes.json().catch(() => ({}));
+      if (!sessionRes.ok) {
+        throw new Error(
+          String(sessionPayload?.message || sessionPayload?.error || 'Failed to create consent request session')
+        );
+      }
+      const mediaSessionId = String(sessionPayload?.session?.id || '');
+      if (!mediaSessionId) {
+        throw new Error('Consent request session created without id.');
+      }
+
+      const consentRes = await fetch('/api/consent/request', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+          bookingId,
+          vendorId: String(vendorId),
+          mediaSessionId,
+          consentType: 'video_access',
+        }),
+      });
+      const consentPayload = await consentRes.json().catch(() => ({}));
+      if (!consentRes.ok || consentPayload?.success === false) {
+        throw new Error(
+          String(consentPayload?.error || consentPayload?.message || 'Failed to request customer consent')
+        );
+      }
+      const token = String(consentPayload?.consent?.token || '').trim();
+      setActiveConsentToken(token);
+      applyConsentStatusFromBackend(consentPayload?.consent?.status || 'REQUESTED');
+      if (token) {
+        try {
+          await fetchConsentStatus(token);
+        } catch (statusError: any) {
+          setGeoInfo(
+            statusError?.message
+              ? `Consent request sent. Unable to refresh status right now: ${statusError.message}`
+              : 'Consent request sent. Unable to refresh status right now.'
+          );
+        }
+      }
+    } catch (error: any) {
+      setCustomerConsentStatus(CONSENT_STATE.NOT_REQUESTED);
+      setCustomerConsentRequested(false);
+      setCustomerConsentReceived(false);
+      setActiveConsentToken('');
+      setGeoError(error?.message || 'Failed to request customer consent');
+    }
   };
 
   const handleContinue = () => {
     // Enhanced validation before proceeding
     if (!selectedJob) {
       console.error('No job selected for video creation');
+      return;
+    }
+    if (!isJobAssignedForVideoUpload(selectedJob)) {
+      setGeoError(videoAssignmentRequiredCopy);
+      setJobActionFeedback({ type: 'error', message: videoAssignmentRequiredCopy });
       return;
     }
     
@@ -1818,9 +2059,9 @@ export default function VendorJobs() {
       if (location === 'business') {
         setGeoError('Please verify your location before continuing.');
       } else if (location === 'residence') {
-        setGeoError('Customer consent must be requested and received before continuing.');
+        setGeoError('Customer consent must be accepted before continuing.');
       } else if (location === 'customer-business') {
-        setGeoError('Customer consent and location verification are both required before continuing.');
+        setGeoError('Customer consent acceptance and location verification are both required before continuing.');
       }
       return;
     }
@@ -1885,6 +2126,9 @@ export default function VendorJobs() {
       setGeoError('Please select a job before continuing to video upload.');
       return;
     }
+    setNewVideo({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
+    setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
+    setVideoUploadError('');
     setShowModal(true);
     
     // Log successful compliance completion
@@ -1910,7 +2154,9 @@ export default function VendorJobs() {
 
   const getOperationalPhaseBadgeClass = (phase: string | null | undefined) => {
     const p = String(phase || '').trim().toUpperCase();
-    if (p === 'AWAITING_VENDOR_REVIEW') return 'bg-amber-100 text-amber-900 border-amber-200';
+    if (p === 'AWAITING_ADMIN_REVIEW' || p === 'AWAITING_VENDOR_REVIEW') {
+      return 'bg-amber-100 text-amber-900 border-amber-200';
+    }
     if (p === 'ASSIGNED') return 'bg-sky-100 text-sky-900 border-sky-200';
     if (p === 'IN_PROGRESS') return 'bg-blue-100 text-blue-800 border-blue-200';
     if (p === 'PENDING') return 'bg-yellow-100 text-yellow-800 border-yellow-200';
@@ -1919,11 +2165,11 @@ export default function VendorJobs() {
   };
 
   const canVendorMarkJobCompleted = (job: any) =>
-    String(job?.operationalPhase || '').toUpperCase() === 'AWAITING_VENDOR_REVIEW' &&
-    Number(job?.linkedMediaCount || 0) > 0;
+    String(job?.operationalPhase || '').toUpperCase() === 'COMPLETED';
 
   const getJobListBadgeColor = (job: any) => {
-    if (String(job?.operationalPhase || '').toUpperCase() === 'AWAITING_VENDOR_REVIEW') {
+    const phase = String(job?.operationalPhase || '').toUpperCase();
+    if (phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW') {
       return 'bg-amber-100 text-amber-900';
     }
     return getStatusColor(job.status);
@@ -1931,8 +2177,8 @@ export default function VendorJobs() {
 
   const formatJobStatusLabel = (status: string | null | undefined, operationalPhase?: string | null) => {
     const phase = String(operationalPhase || '').trim().toUpperCase();
-    if (phase === 'AWAITING_VENDOR_REVIEW') {
-      return 'Job: Awaiting vendor review';
+    if (phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW') {
+      return 'Job: Awaiting Admin Review';
     }
     if (phase === 'ASSIGNED') {
       return 'Job: Assigned';
@@ -2007,12 +2253,26 @@ export default function VendorJobs() {
   }, 0);
 
   const handleOpenSelectJobModal = () => {
+    if (!hasAnyEligibleVideoJob) {
+      setJobActionFeedback({
+        type: 'error',
+        message: videoAssignmentRequiredCopy,
+      });
+      return;
+    }
     setSelectedJobForVideoId('');
     setShowSelectJobModal(true);
   };
 
   const handleContinueWithSelectedJob = () => {
     if (!selectedJobForVideo) {
+      return;
+    }
+    if (!isJobAssignedForVideoUpload(selectedJobForVideo)) {
+      setJobActionFeedback({
+        type: 'error',
+        message: videoAssignmentRequiredCopy,
+      });
       return;
     }
     setSelectedJob(selectedJobForVideo);
@@ -2353,7 +2613,7 @@ export default function VendorJobs() {
       : pendingJobAction === "MOVE_CONTENT_TO_ARCHIVE"
       ? "Move Content to Archive"
       : pendingJobAction === "DELETE_PERMANENTLY"
-      ? "Delete Permanently"
+      ? "Delete Job"
       : "Confirm Action";
 
   const pendingJobActionDescription = (() => {
@@ -2373,7 +2633,7 @@ export default function VendorJobs() {
       if ((deleteImpactPreview?.linkedSessionCount || 0) > 0) {
         return "This job has linked media. Deleting this job will also archive related media/session records so nothing is orphaned.";
       }
-      return "Are you sure you want to permanently delete this job?";
+      return "Permanently delete this job? Pending and in-progress jobs only. Completed jobs must be archived.";
     }
     return "Please confirm this job action.";
   })();
@@ -2393,15 +2653,49 @@ export default function VendorJobs() {
     );
   }
 
-  if (!vendorProfileLoading && !approvalPending && !vendorId) {
+  if (vendorProfileLoading && !vendorId) {
+    return (
+      <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900 mb-2">Loading vendor context...</h2>
+            <p className="text-sm text-slate-700">
+              We are resolving your active vendor session before loading jobs.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (vendorContextUnavailable) {
     return (
       <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="min-h-[60vh] flex items-center justify-center">
         <div className="max-w-md w-full bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <h2 className="text-xl font-semibold text-red-900 mb-2">Vendor session context unavailable</h2>
+          <h2 className="text-xl font-semibold text-red-900 mb-2">Unable to load vendor context</h2>
           <p className="text-sm text-red-800">
-            {vendorProfileError || 'Please sign in again to restore your active vendor context.'}
+            {vendorContextErrorMessage}
           </p>
+          <p className="text-xs text-red-700 mt-3">
+            Verify your vendor membership is ACTIVE, then refresh this page.
+          </p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => refetchVendorProfile()}
+              className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+            >
+              Retry vendor context
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-lg border border-red-300 text-red-800 text-sm font-medium hover:bg-red-100"
+            >
+              Refresh page
+            </button>
+          </div>
         </div>
         </div>
       </div>
@@ -2410,6 +2704,23 @@ export default function VendorJobs() {
 
   return (
     <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+      {Boolean(vendorId && vendorContextDbFailure) && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-amber-900">
+              Vendor profile details could not be loaded due to a database connection issue. Core vendor context
+              is preserved, so jobs can still load with limited profile metadata.
+            </p>
+            <button
+              type="button"
+              onClick={() => refetchVendorProfile()}
+              className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+            >
+              Retry context
+            </button>
+          </div>
+        </div>
+      )}
       {/* Enhanced Welcome Banner */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl p-6 mb-6 shadow-lg">
         <div className="flex items-center gap-4">
@@ -2538,11 +2849,16 @@ export default function VendorJobs() {
                 onClick={() => {
                   handleOpenSelectJobModal();
                 }} 
+                disabled={!hasAnyEligibleVideoJob}
+                title={!hasAnyEligibleVideoJob ? videoAssignmentRequiredCopy : 'Create staged service video'}
                 className="action-button bg-green-600 hover:bg-green-700"
               >
                 <Video className="w-5 h-5 mr-2" />
                 Create Service Video
               </Button>
+              {!hasAnyEligibleVideoJob ? (
+                <p className="text-xs text-amber-700 mt-1">{videoAssignmentRequiredCopy}</p>
+              ) : null}
               <Button 
                 onClick={toggleAutoApprove}
                 className={`action-button ${autoApproveSettings.enabled ? 'bg-red-600 hover:bg-red-700' : 'bg-purple-600 hover:bg-purple-700'}`}
@@ -2557,13 +2873,27 @@ export default function VendorJobs() {
                 <Video className="w-5 h-5 mr-2" />
                 Content Archive
               </Button>
-              <Button 
-                onClick={() => setShowArchivedJobs(!showArchivedJobs)}
-                className={`${showArchivedJobs ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-600 hover:bg-gray-700'}`}
-              >
-                <HardDrive className="w-5 h-5 mr-2" />
-                {showArchivedJobs ? 'Hide Archived' : `Archived Jobs (${archivedJobs.length})`}
-              </Button>
+              <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowArchivedJobs(false)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-1 ${
+                    !showArchivedJobs ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Active jobs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowArchivedJobs(true)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-1 ${
+                    showArchivedJobs ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <HardDrive className="w-4 h-4" />
+                  Archived ({archivedJobs.length})
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -2976,7 +3306,11 @@ export default function VendorJobs() {
               <div className="bg-white border rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-3">Assignment Information</h4>
                 {selectedJobForDetails.assignedEmployees && selectedJobForDetails.assignedEmployees.length > 0 ? (
-                  <div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-emerald-100 text-emerald-800">Assigned</Badge>
+                      <span className="text-sm text-emerald-900">Service video package unlocked</span>
+                    </div>
                     <p className="text-sm text-gray-600 mb-2">Assigned Employees</p>
                     <div className="flex flex-wrap gap-2">
                       {selectedJobForDetails.assignedEmployees.map((employee, index) => (
@@ -2987,38 +3321,64 @@ export default function VendorJobs() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-gray-500">No employees assigned to this job</p>
+                  <div className="space-y-1">
+                    <p className="text-gray-600">No employee assigned</p>
+                    <p className="text-sm text-amber-700 font-medium">Video package locked until assignment</p>
+                  </div>
                 )}
               </div>
 
-              {/* Videos */}
+              {/* Videos — grouped by structured stage */}
               <div className="bg-white border rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Service Videos</h4>
+                <h4 className="font-medium text-gray-900 mb-1">Service Videos</h4>
+                <p className="text-xs text-gray-500 mb-3">
+                  Three slots per job: <span className="font-medium text-gray-700">Intro</span> before work,{' '}
+                  <span className="font-medium text-gray-700">In Progress</span> on site, and{' '}
+                  <span className="font-medium text-gray-700">Completed</span> as the primary proof clip when you
+                  finish the job.
+                </p>
                 {playbackError && (
                   <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
                     {playbackError}
                   </div>
                 )}
-                {selectedJobForDetails.videos && selectedJobForDetails.videos.length > 0 ? (
-                  <div className="space-y-3">
-                    {selectedJobForDetails.videos.map((video, index) => (
-                      <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center justify-between">
+                {(() => {
+                  const { intro, inProgress, completed, legacy } = groupVideosForStagePanels(
+                    selectedJobForDetails.videos
+                  );
+                  const renderVideoCard = (video: any, key: string) => {
+                    const proof =
+                      Boolean(video.isPrimaryProofVideo) ||
+                      normalizeVendorJobVideoStage(video?.vendorJobVideoStage) === 'COMPLETED';
+                    return (
+                      <div
+                        key={key}
+                        className={`p-3 rounded-lg mb-2 last:mb-0 ${
+                          proof
+                            ? 'bg-white ring-2 ring-emerald-400/70 border border-emerald-200'
+                            : 'bg-gray-50 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                           <div>
-                            <p className="font-medium">{video.title}</p>
+                            <div className="font-medium flex items-center gap-2 flex-wrap">
+                              {video.title}
+                              {proof ? (
+                                <Badge className="bg-emerald-700 text-white hover:bg-emerald-700 text-xs">
+                                  Primary proof video
+                                </Badge>
+                              ) : null}
+                            </div>
                             <p className="text-sm text-gray-600">{video.description}</p>
                             <p className="text-xs text-gray-500">Uploaded: {video.uploadedAt}</p>
                           </div>
-                          <div className="flex items-center gap-2">
-                          <Badge className={getStatusColor(video.status)}>
-                            {`Media Moderation: ${String(video.status || 'pending').replace(/_/g, ' ')}`}
-                            </Badge>
-                            <Badge className="bg-indigo-100 text-indigo-800">
-                              {`Media Type: ${formatMediaPurposeLabel(video.mediaPurpose)}`}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge className={getStatusColor(video.status)}>
+                              {`Moderation: ${String(video.status || 'pending').replace(/_/g, ' ')}`}
                             </Badge>
                             {video.visibilityStatus ? (
                               <Badge className="bg-slate-100 text-slate-700">
-                              {`Media Visibility: ${String(video.visibilityStatus).replace(/_/g, ' ')}`}
+                                {`Visibility: ${String(video.visibilityStatus).replace(/_/g, ' ')}`}
                               </Badge>
                             ) : null}
                             <Button
@@ -3031,18 +3391,110 @@ export default function VendorJobs() {
                             </Button>
                           </div>
                         </div>
-                        {(video.moderationReason || video.moderatedAt) ? (
+                        {video.moderationReason || video.moderatedAt ? (
                           <div className="mt-2 text-xs text-gray-600">
                             {video.moderationReason ? <p>Reason: {video.moderationReason}</p> : null}
                             {video.moderatedAt ? <p>Moderated: {new Date(video.moderatedAt).toLocaleString()}</p> : null}
                           </div>
                         ) : null}
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No videos uploaded for this job</p>
-                )}
+                    );
+                  };
+                  const stagePanel = (
+                    title: string,
+                    items: any[],
+                    opts?: { variant?: 'default' | 'primaryProof'; emptyHint?: string }
+                  ) => {
+                    const isProof = opts?.variant === 'primaryProof';
+                    return (
+                      <div
+                        className={`rounded-lg p-3 mb-3 last:mb-0 border ${
+                          isProof ? 'border-emerald-300 bg-emerald-50/50' : 'border-gray-200 bg-white'
+                        }`}
+                      >
+                        <h5 className="text-sm font-semibold text-gray-900 mb-2 flex flex-wrap items-center gap-2">
+                          {title}
+                          {isProof ? (
+                            <span className="text-xs font-normal text-emerald-800">(primary proof)</span>
+                          ) : null}
+                        </h5>
+                        {items.length === 0 ? (
+                          <p className="text-sm text-gray-600">
+                            {opts?.emptyHint ?? 'No video for this stage yet.'}
+                          </p>
+                        ) : (
+                          items.map((v, i) => renderVideoCard(v, `${title}-${i}-${v.id}`))
+                        )}
+                      </div>
+                    );
+                  };
+                  const stageStatus = [
+                    { key: 'INTRO', label: 'Intro', uploaded: intro.length > 0 },
+                    { key: 'IN_PROGRESS', label: 'In Progress', uploaded: inProgress.length > 0 },
+                    { key: 'COMPLETED', label: 'Completed', uploaded: completed.length > 0 },
+                  ] as const;
+                  const packageReady = stageStatus.every((stage) => stage.uploaded);
+
+                  return (
+                    <div className="space-y-3">
+                      <div
+                        className={`rounded-lg border p-3 ${
+                          packageReady
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                            : 'border-amber-300 bg-amber-50 text-amber-900'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            className={
+                              packageReady
+                                ? 'bg-emerald-700 text-white hover:bg-emerald-700'
+                                : 'bg-amber-600 text-white hover:bg-amber-600'
+                            }
+                          >
+                            {packageReady ? 'Ready for Admin Review' : 'Video Package Incomplete'}
+                          </Badge>
+                          <span className="text-xs">
+                            Admin moderation queue shows this job only after all three required stages are uploaded.
+                          </span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {stageStatus.map((stage) => (
+                            <div key={stage.key} className="flex items-center justify-between rounded border bg-white/70 px-2 py-1 text-sm">
+                              <span className="font-medium">{stage.label}</span>
+                              <Badge
+                                variant="outline"
+                                className={stage.uploaded ? 'border-emerald-300 text-emerald-700' : 'border-amber-300 text-amber-700'}
+                              >
+                                {stage.uploaded ? 'Uploaded' : 'Missing'}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        {stagePanel('Intro', intro, {
+                          emptyHint:
+                            'No intro video yet. Optional: a short “before we start” clip so customers see who is arriving and what to expect.',
+                        })}
+                        {stagePanel('In Progress', inProgress, {
+                          emptyHint:
+                            'No in-progress video yet. Use this slot for mid-job updates from the field while work is underway.',
+                        })}
+                        {stagePanel('Completed', completed, {
+                          variant: 'primaryProof',
+                          emptyHint:
+                            'No completed-stage video yet. When the job is finished, upload here — moderators treat this as your main proof clip when it is present.',
+                        })}
+                        {legacy.length > 0
+                          ? stagePanel('Earlier uploads (legacy format)', legacy, {
+                              emptyHint: 'Videos from before structured stages were introduced.',
+                            })
+                          : null}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Notes */}
@@ -3517,53 +3969,62 @@ export default function VendorJobs() {
                 No jobs available. Create a job first, then create a service video.
               </div>
             ) : (
-              filteredJobs.map((job) => (
-                <label
-                  key={job.id}
-                  className={`block p-3 border rounded-lg cursor-pointer transition-colors ${
-                    selectedJobForVideoId === String(job.id)
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:bg-gray-50"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="radio"
-                      name="selected-job-for-video"
-                      className="mt-1"
-                      checked={selectedJobForVideoId === String(job.id)}
-                      onChange={() => setSelectedJobForVideoId(String(job.id))}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">{job.title}</div>
-                      <div className="text-sm text-gray-600">Client: {job.client}</div>
-                      <div className="text-sm text-gray-600">Service: {job.serviceName || job.serviceType || 'General Service'}</div>
-                      <div className="text-sm text-gray-600">Status: {job.status}</div>
-                      <div className="text-sm text-gray-600">
-                        Upload Type: {formatMediaPurposeLabel(deriveMediaPurposeFromJobStatus(job.status))}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Media: {Number(job.linkedMediaCount || 0)} asset(s)
-                      </div>
-                      {getJobMediaModerationSummary(job) && (
+              filteredJobs.map((job) => {
+                const uploadEligible = isJobAssignedForVideoUpload(job);
+                return (
+                  <label
+                    key={job.id}
+                    className={`block p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedJobForVideoId === String(job.id)
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 hover:bg-gray-50"
+                    } ${uploadEligible ? "" : "opacity-70"}`}
+                    title={!uploadEligible ? videoAssignmentRequiredCopy : undefined}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        name="selected-job-for-video"
+                        className="mt-1"
+                        checked={selectedJobForVideoId === String(job.id)}
+                        onChange={() => setSelectedJobForVideoId(String(job.id))}
+                        disabled={!uploadEligible}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{job.title}</div>
+                        <div className="text-sm text-gray-600">Client: {job.client}</div>
+                        <div className="text-sm text-gray-600">Service: {job.serviceName || job.serviceType || 'General Service'}</div>
+                        <div className="text-sm text-gray-600">Status: {job.status}</div>
                         <div className="text-sm text-gray-600">
-                          {getJobMediaModerationSummary(job)?.label}
+                          Media: {Number(job.linkedMediaCount || 0)} asset(s) — you will pick Intro / In Progress /
+                          Completed on the next step.
                         </div>
-                      )}
-                      <div className="text-sm text-gray-600">
-                        Assigned: {job.assignedEmployees?.length ? job.assignedEmployees[0] : "Unassigned"}
+                        {getJobMediaModerationSummary(job) && (
+                          <div className="text-sm text-gray-600">
+                            {getJobMediaModerationSummary(job)?.label}
+                          </div>
+                        )}
+                        <div className="text-sm text-gray-600">
+                          Assigned: {job.assignedEmployees?.length ? job.assignedEmployees[0] : "Unassigned"}
+                        </div>
+                        {!uploadEligible ? (
+                          <div className="mt-1 text-xs text-amber-700 font-medium">{videoAssignmentRequiredCopy}</div>
+                        ) : null}
                       </div>
                     </div>
-                  </div>
-                </label>
-              ))
+                  </label>
+                );
+              })
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSelectJobModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handleContinueWithSelectedJob} disabled={!selectedJobForVideo}>
+            <Button
+              onClick={handleContinueWithSelectedJob}
+              disabled={!selectedJobForVideo || !isJobAssignedForVideoUpload(selectedJobForVideo)}
+            >
               Continue
             </Button>
           </DialogFooter>
@@ -3574,7 +4035,10 @@ export default function VendorJobs() {
       <Dialog
         open={showModal}
         onOpenChange={(open) => {
-          if (open && !selectedJob) {
+          if (open && (!selectedJob || !isJobAssignedForVideoUpload(selectedJob))) {
+            if (selectedJob && !isJobAssignedForVideoUpload(selectedJob)) {
+              setVideoUploadError(videoAssignmentRequiredCopy);
+            }
             return;
           }
           setShowModal(open);
@@ -3588,16 +4052,65 @@ export default function VendorJobs() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
-              <p>
-                {selectedJobMediaPurpose === 'completion'
-                  ? 'This video will be treated as completion media.'
-                  : 'This video will be treated as a progress update until the job is completed.'}
-              </p>
-              <p className="mt-1">
-                All uploads remain private and pending admin moderation before any visibility release.
-              </p>
+            <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900 space-y-2">
+              <p className="font-medium text-indigo-950">How staged job videos work</p>
+              <ul className="list-disc pl-5 space-y-1.5 leading-snug">
+                <li>
+                  <strong>Intro</strong>, <strong>In Progress</strong>, and <strong>Completed</strong> are three
+                  separate slots. You can have at most <strong>one active video per slot</strong> for the same job.
+                </li>
+                <li>
+                  The <strong>Completed</strong> slot is your <strong>primary proof video</strong>. When it exists,
+                  reviewers and moderators treat it as the main evidence that the job was finished as agreed.
+                </li>
+                <li>
+                  Uploads stay <strong>private</strong> until moderation sets visibility. If you upload again for the
+                  same slot, check <strong>Replace existing…</strong> so the previous file for that slot is archived
+                  first.
+                </li>
+              </ul>
             </div>
+            {selectedJob && !isJobAssignedForVideoUpload(selectedJob) ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                {videoAssignmentRequiredCopy}
+              </div>
+            ) : null}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Video stage <span aria-hidden="true">*</span>
+              </label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={newVideo.videoStage}
+                onChange={(e) => {
+                  const value = e.target.value as '' | VendorJobVideoStage;
+                  setNewVideo((prev) => ({ ...prev, videoStage: value }));
+                  if (value) setVideoFieldErrors((prev) => ({ ...prev, videoStage: '' }));
+                }}
+              >
+                <option value="">Select stage…</option>
+                <option value="INTRO">Intro</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+              {videoFieldErrors.videoStage && (
+                <p className="mt-1 text-sm text-red-600">{videoFieldErrors.videoStage}</p>
+              )}
+            </div>
+            {selectedJob && newVideo.videoStage && jobHasVideoForStage(selectedJob, newVideo.videoStage) ? (
+              <label className="flex items-start gap-2 text-sm text-gray-800">
+                <Checkbox
+                  checked={newVideo.replaceStage}
+                  onCheckedChange={(checked) =>
+                    setNewVideo((prev) => ({ ...prev, replaceStage: Boolean(checked) }))
+                  }
+                />
+                <span>
+                  Replace existing <strong>{formatVideoStageLabel(newVideo.videoStage)}</strong> video (archives the
+                  current upload for this stage, then uploads the new file).
+                </span>
+              </label>
+            ) : null}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Video Title <span aria-hidden="true">*</span>
@@ -3866,9 +4379,8 @@ export default function VendorJobs() {
               </select>
               {editingJob && !canVendorMarkJobCompleted(editingJob) ? (
                 <p className="text-xs text-gray-600">
-                  To mark <strong>Completed</strong>: upload service video on an in-progress job (moves to{' '}
-                  <strong>Awaiting vendor review</strong>), then finish here or use <strong>Review &amp; complete</strong>{' '}
-                  on the job card.
+                  Jobs move to <strong>Completed</strong> only after admin approval is finished for all required
+                  service-video stages.
                 </p>
               ) : null}
             </div>
@@ -3926,6 +4438,8 @@ export default function VendorJobs() {
           if (open && !selectedJob) {
             return;
           }
+          resetComplianceState();
+          setLocation('');
           setShowComplianceModal(open);
         }}
       >
@@ -3991,6 +4505,21 @@ export default function VendorJobs() {
             {location && (
               <div className="border rounded-lg p-4">
                 <h3 className="font-semibold text-lg mb-3">Step 2: Complete Requirements</h3>
+                <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                  <div className="font-medium text-gray-900">Compliance status</div>
+                  <div className="mt-1 text-gray-700">
+                    Consent:{' '}
+                    {customerConsentStatus === CONSENT_STATE.ACCEPTED
+                      ? 'Accepted'
+                      : customerConsentStatus === CONSENT_STATE.REQUESTED
+                      ? 'Requested (awaiting customer response)'
+                      : 'Not requested'}
+                  </div>
+                  <div className="text-gray-700">
+                    Location:{' '}
+                    {locationVerified ? 'Verified' : 'Not verified'}
+                  </div>
+                </div>
                 
                 {/* Business Address Flow */}
                 {location === 'business' && (
@@ -4065,17 +4594,32 @@ export default function VendorJobs() {
 
                     <Button 
                       onClick={handleRequestCustomerConsent} 
-                      disabled={customerConsentStatus === 'pending' || customerConsentStatus === 'granted'}
+                      disabled={
+                        customerConsentStatus === CONSENT_STATE.REQUESTED ||
+                        customerConsentStatus === CONSENT_STATE.ACCEPTED
+                      }
                       className="w-full"
                     >
                       Request Customer Consent
                     </Button>
                     
-                    {customerConsentStatus === 'pending' && (
-                      <div className="mt-2 text-sm text-blue-600">Waiting for customer consent…</div>
+                    {customerConsentStatus === CONSENT_STATE.REQUESTED && (
+                      <div className="mt-2 text-sm text-blue-600 space-y-2">
+                        <div>Waiting for customer consent…</div>
+                        {activeConsentToken ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => fetchConsentStatus(activeConsentToken)}
+                            className="w-full"
+                          >
+                            Refresh consent status
+                          </Button>
+                        ) : null}
+                      </div>
                     )}
-                    {customerConsentStatus === 'granted' && (
-                      <div className="mt-2 text-sm text-green-600">Consent received. You may proceed.</div>
+                    {customerConsentStatus === CONSENT_STATE.ACCEPTED && (
+                      <div className="mt-2 text-sm text-green-600">Consent accepted. You may proceed.</div>
                     )}
                   </div>
                 )}
@@ -4109,7 +4653,10 @@ export default function VendorJobs() {
 
                     <Button 
                       onClick={handleRequestCustomerConsent} 
-                      disabled={customerConsentStatus === 'pending' || customerConsentStatus === 'granted'}
+                      disabled={
+                        customerConsentStatus === CONSENT_STATE.REQUESTED ||
+                        customerConsentStatus === CONSENT_STATE.ACCEPTED
+                      }
                       className="w-full"
                     >
                       Request Customer Consent
@@ -4124,11 +4671,23 @@ export default function VendorJobs() {
                       {geoLoading ? 'Verifying Location...' : 'Verify My Location'}
                     </Button>
                     
-                    {customerConsentStatus === 'pending' && (
-                      <div className="mt-2 text-sm text-blue-600">Waiting for customer consent…</div>
+                    {customerConsentStatus === CONSENT_STATE.REQUESTED && (
+                      <div className="mt-2 text-sm text-blue-600 space-y-2">
+                        <div>Waiting for customer consent…</div>
+                        {activeConsentToken ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => fetchConsentStatus(activeConsentToken)}
+                            className="w-full"
+                          >
+                            Refresh consent status
+                          </Button>
+                        ) : null}
+                      </div>
                     )}
-                    {customerConsentStatus === 'granted' && (
-                      <div className="mt-2 text-sm text-green-600">Consent received. You may proceed.</div>
+                    {customerConsentStatus === CONSENT_STATE.ACCEPTED && (
+                      <div className="mt-2 text-sm text-green-600">Consent accepted. You may proceed.</div>
                     )}
                     {locationVerified && (
                       <div className="mt-2 text-sm text-green-600">Location verified for customer business scenario.</div>
@@ -4184,9 +4743,9 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-green-900">Customer Consent Received</h4>
+                          <h4 className="font-medium text-green-900">Customer Consent Accepted</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Customer consent has been received. You may proceed to create the service video.
+                            Customer consent has been accepted. You may proceed to create the service video.
                           </p>
                         </div>
                       </div>
@@ -4208,9 +4767,9 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-green-900">Customer Consent Received</h4>
+                          <h4 className="font-medium text-green-900">Customer Consent Accepted</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Customer consent has been received. You may proceed to create the service video.
+                            Customer consent has been accepted. You may proceed to create the service video.
                           </p>
                         </div>
                       </div>
@@ -4226,7 +4785,7 @@ export default function VendorJobs() {
                 )}
 
                 {/* Show waiting states */}
-                {(location === 'residence' || location === 'customer-business') && customerConsentStatus === 'pending' && (
+                {(location === 'residence' || location === 'customer-business') && customerConsentStatus === CONSENT_STATE.REQUESTED && (
                   <div className="mb-4 p-3 bg-yellow-50 rounded-lg">
                     <div className="flex items-start gap-2">
                       <Clock className="w-5 h-5 text-yellow-600 mt-0.5" />
@@ -4241,7 +4800,7 @@ export default function VendorJobs() {
                 )}
 
                 {/* Show declined states */}
-                {(location === 'residence' || location === 'customer-business') && customerConsentStatus === 'declined' && (
+                {(location === 'residence' || location === 'customer-business') && customerConsentStatus === CONSENT_STATE.DECLINED && (
                   <div className="mb-4 p-3 bg-red-50 rounded-lg">
                     <div className="flex items-start gap-2">
                       <X className="w-5 h-5 text-red-600 mt-0.5" />
@@ -4378,22 +4937,11 @@ export default function VendorJobs() {
                           size="sm" 
                           variant="outline" 
                           onClick={() => {
-                            if (jobMutationLoadingId) return;
-                            setJobMutationLoadingId(`unarchive:${String(job.id)}`);
-                            unarchiveJob(job).catch((error) => {
-                              setJobActionFeedback({
-                                type: 'error',
-                                message: error instanceof Error ? error.message : 'Failed to restore archived job',
-                              });
-                            }).finally(() => {
-                              setJobMutationLoadingId(null);
-                            });
+                            openJobDetails(job);
                           }}
-                          disabled={Boolean(jobMutationLoadingId)}
                           className="text-blue-600 border-blue-200 hover:bg-blue-50"
                         >
-                          <ArrowLeft className="w-4 h-4 mr-1" />
-                          {jobMutationLoadingId === `unarchive:${String(job.id)}` ? 'Restoring...' : 'Restore'}
+                          View
                         </Button>
                       </div>
                     </div>
@@ -4422,7 +4970,13 @@ export default function VendorJobs() {
             {jobActionFeedback.message}
           </div>
         )}
-        {selectedJobIds.length > 0 && (
+        {showArchivedJobs ? (
+          <p className="text-sm text-gray-600 py-2">
+            You are viewing archived jobs above. Switch to <strong>Active jobs</strong> to upload videos, delete
+            in-progress work, or use bulk actions.
+          </p>
+        ) : null}
+        {!showArchivedJobs && selectedJobIds.length > 0 && (
           <div className="flex items-center justify-between bg-blue-50 p-4 rounded-lg">
             <div className="flex items-center gap-4">
               <span className="text-sm font-medium text-blue-900">
@@ -4448,19 +5002,19 @@ export default function VendorJobs() {
           </div>
         )}
         
-        {jobsLoading ? (
+        {!showArchivedJobs && jobsLoading ? (
           <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
             Loading jobs...
           </div>
-        ) : jobsLoadError && filteredJobs.length === 0 ? (
+        ) : !showArchivedJobs && jobsLoadError && filteredJobs.length === 0 ? (
           <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             {jobsLoadError}
           </div>
-        ) : filteredJobs.length === 0 ? (
+        ) : !showArchivedJobs && filteredJobs.length === 0 ? (
           <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
             No jobs found for this vendor yet.
           </div>
-        ) : (
+        ) : !showArchivedJobs ? (
           <>
             {jobsLoadError && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
@@ -4507,9 +5061,12 @@ export default function VendorJobs() {
                   <Badge className={getJobListBadgeColor(job)}>
                     {formatJobStatusLabel(job.status, job.operationalPhase)}
                   </Badge>
-                  {String(job.operationalPhase || '').toUpperCase() === 'AWAITING_VENDOR_REVIEW' ? (
+                  {(() => {
+                    const phase = String(job.operationalPhase || '').toUpperCase();
+                    return phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW';
+                  })() ? (
                     <Badge variant="outline" className={getOperationalPhaseBadgeClass(job.operationalPhase)}>
-                      Awaiting your review
+                      Awaiting Admin Review
                     </Badge>
                   ) : null}
                   {getJobMediaModerationSummary(job) && (
@@ -4536,96 +5093,131 @@ export default function VendorJobs() {
                         onClick={(e) => e.stopPropagation()}
                         role="menu"
                       >
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                          onClick={() => {
-                            openJobDetails(job);
-                            setActiveJobActionMenuId(null);
-                          }}
-                        >
-                          View
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                          onClick={() => {
-                            openEditModal(job);
-                            setActiveJobActionMenuId(null);
-                          }}
-                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                          onClick={() => {
-                            openStatusModal(job);
-                            setActiveJobActionMenuId(null);
-                          }}
-                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                        >
-                          Update Status
-                        </button>
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={
-                            canVendorMarkJobCompleted(job)
-                              ? 'Mark the job completed after reviewing uploaded media.'
-                              : 'Complete is available only when the job is awaiting your review and has media.'
+                        {(() => {
+                          const status = String(job?.status || '').trim().toLowerCase();
+                          const isPendingOrInProgress =
+                            status === 'pending' || status === 'in-progress' || status === 'in progress';
+                          const isCompleted = status === 'completed';
+                          const isArchived = status === 'archived';
+
+                          if (isCompleted) {
+                            return (
+                              <>
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  onClick={() => {
+                                    openJobDetails(job);
+                                    setActiveJobActionMenuId(null);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  onClick={() => {
+                                    setActiveJobActionMenuId(null);
+                                    openJobActionConfirm(job, "ARCHIVE_JOB");
+                                  }}
+                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                  title="Hide job in Archived; keeps history and media."
+                                >
+                                  Archive Job
+                                </button>
+                              </>
+                            );
                           }
-                          disabled={
-                            Boolean(jobMutationLoadingId) ||
-                            jobActionLoading ||
-                            !canVendorMarkJobCompleted(job)
+
+                          if (isArchived) {
+                            return (
+                              <button
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                onClick={() => {
+                                  openJobDetails(job);
+                                  setActiveJobActionMenuId(null);
+                                }}
+                              >
+                                View
+                              </button>
+                            );
                           }
-                          onClick={() => {
-                            setActiveJobActionMenuId(null);
-                            handleStatusUpdate(job, 'completed').catch(() => undefined);
-                          }}
-                        >
-                          Review &amp; complete
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                          onClick={() => {
-                            openAssignmentModal(job);
-                            setActiveJobActionMenuId(null);
-                          }}
-                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                        >
-                          Assign
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                          onClick={() => {
-                            setSelectedJob(job);
-                            setShowComplianceModal(true);
-                            setActiveJobActionMenuId(null);
-                          }}
-                        >
-                          Create Service Video
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                          onClick={() => openJobActionConfirm(job, "ARCHIVE_JOB")}
-                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                        >
-                          Archive Job
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                          onClick={() => openJobActionConfirm(job, "MOVE_CONTENT_TO_ARCHIVE")}
-                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                        >
-                          Move Content to Archive
-                        </button>
-                        <button
-                          className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
-                          onClick={() => openJobActionConfirm(job, "DELETE_PERMANENTLY")}
-                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                        >
-                          Delete Permanently
-                        </button>
+
+                          if (isPendingOrInProgress) {
+                            return (
+                              <>
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  onClick={() => {
+                                    openJobDetails(job);
+                                    setActiveJobActionMenuId(null);
+                                  }}
+                                >
+                                  View
+                                </button>
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  onClick={() => {
+                                    openEditModal(job);
+                                    setActiveJobActionMenuId(null);
+                                  }}
+                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  onClick={() => {
+                                    openAssignmentModal(job);
+                                    setActiveJobActionMenuId(null);
+                                  }}
+                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                >
+                                  Assign
+                                </button>
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  onClick={() => {
+                                    if (!isJobAssignedForVideoUpload(job)) {
+                                      setJobActionFeedback({ type: 'error', message: videoAssignmentRequiredCopy });
+                                      setActiveJobActionMenuId(null);
+                                      return;
+                                    }
+                                    setSelectedJob(job);
+                                    setShowComplianceModal(true);
+                                    setActiveJobActionMenuId(null);
+                                  }}
+                                  disabled={!isJobAssignedForVideoUpload(job)}
+                                  title={!isJobAssignedForVideoUpload(job) ? videoAssignmentRequiredCopy : undefined}
+                                >
+                                  Create Service Video
+                                </button>
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  onClick={() => {
+                                    setActiveJobActionMenuId(null);
+                                    openJobActionConfirm(job, "DELETE_PERMANENTLY");
+                                  }}
+                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                  title="Permanently delete this pending or in-progress job."
+                                >
+                                  Delete Job
+                                </button>
+                              </>
+                            );
+                          }
+
+                          // Legacy fallback: view-only for unexpected status values.
+                          return (
+                            <button
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                              onClick={() => {
+                                openJobDetails(job);
+                                setActiveJobActionMenuId(null);
+                              }}
+                            >
+                              View
+                            </button>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -4635,7 +5227,7 @@ export default function VendorJobs() {
           </Card>
             ))}
           </>
-        )}
+        ) : null}
       </div>
 
       <Dialog open={showJobActionConfirmModal} onOpenChange={setShowJobActionConfirmModal}>

@@ -1,5 +1,13 @@
 # Project State (Execution + Management Stabilization Pass)
 
+## Handoff refresh (2026-04-22)
+- **Vendor lifecycle + context normalization:** Added shared vendor-context foundations (`src/lib/vendor-context.ts`, `src/lib/vendor-status.ts`, `src/lib/vendor-job-operational-phase.ts`) and a dedicated route (`GET /api/vendor/context`) so vendor surfaces resolve a consistent lifecycle/status model instead of page-local derivations.
+- **My Services framing alignment:** Product-facing naming and flow framing were refreshed toward "My Services" ownership and vendor lifecycle continuity (see `MY_SERVICES_UI_RENAME.md`, `MY_SERVICES_PAGE_FRAMING.md`, `PRODUCT_FLOW_REALIGNMENT.md`, `OPERATIONAL_PHASE_IMPLEMENTATION.md`).
+- **Auth/session hardening:** Login/session handoff and profile resolution were tightened across `AuthContext`, login route/page, customer profile route, and client session/header helpers (`src/contexts/AuthContext.tsx`, `src/app/api/auth/login/route.ts`, `src/app/api/customer/profile/route.ts`, `src/lib/client-session.ts`, `src/lib/auth.ts`).
+- **Admin governance flow updates:** Vendor approval/rejection endpoints and media moderation transitions were updated and connected to current lifecycle assumptions (`src/app/api/admin/vendors/*`, `src/app/api/admin/media/[assetId]/moderate/route.ts`, admin approval/moderation pages).
+- **Vendor execution/media flow updates:** Vendor dashboard/jobs/media routes and hooks were refreshed to match the new operational-phase model and media archive behavior (`src/app/api/vendors/[vendorId]/dashboard/route.ts`, `src/app/api/vendors/[vendorId]/jobs/[jobId]/actions/route.ts`, `src/app/api/vendors/[vendorId]/media/route.ts`, `src/lib/vendor-job-media.ts`).
+- **Integration coverage expanded:** Added route-level integration suites for admin media moderation, vendor dashboard, vendor job actions, vendor media archive, vendor memberships, and booking CRUD regressions.
+
 ## Handoff refresh (2026-04-19)
 - **Vendor team vs Manage Jobs:** One roster — `GET /api/vendors/{vendorId}/memberships?status=ACTIVE` via shared `src/lib/vendor-team-members.ts`. `/vendor/employees` lists real ACTIVE members (mock CRUD removed). Job assignment stores **`vendor_job_assigned_membership_ids`** plus server-resolved names in booking metadata; dashboard returns **`assignedMembershipIds`**.
 - **My Services / vendor-created bookings:** `POST /api/bookings` detects **ACTIVE vendor membership** for `vendor_id`; requires **`client_email`**, resolves customer **`User.id`** by email, sets **`Booking.userId`** so **`GET /api/bookings`** and **`GET /api/bookings/[id]/media`** work for that customer.

@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  prismaDevProbeStarted: boolean | undefined;
 };
 
 // Construct connection string programmatically to avoid parsing issues
@@ -32,6 +33,80 @@ function getDatabaseUrl(): string {
   throw new Error('DATABASE_URL environment variable is not set');
 }
 
+type DbFailureCategory =
+  | 'network_unreachable'
+  | 'auth_or_credentials'
+  | 'pool_timeout_or_pressure'
+  | 'query_timeout'
+  | 'unknown';
+
+function classifyPrismaError(error: any): DbFailureCategory {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+
+  if (
+    code === 'P1001' ||
+    message.includes('prisma connect probe timeout') ||
+    message.includes("can't reach database server") ||
+    message.includes('econnrefused') ||
+    message.includes('etimedout')
+  ) {
+    return 'network_unreachable';
+  }
+  if (code === 'P1000' || message.includes('authentication failed') || message.includes('login failed')) {
+    return 'auth_or_credentials';
+  }
+  if (
+    code === 'P2024' ||
+    message.includes('timed out fetching a new connection from the connection pool') ||
+    message.includes('connection pool')
+  ) {
+    return 'pool_timeout_or_pressure';
+  }
+  if (message.includes('query timeout')) {
+    return 'query_timeout';
+  }
+  return 'unknown';
+}
+
+async function runPrismaDevConnectivityProbe(client: PrismaClient) {
+  if (process.env.NODE_ENV === 'production') return;
+  if (globalForPrisma.prismaDevProbeStarted) return;
+  globalForPrisma.prismaDevProbeStarted = true;
+
+  const startedAt = Date.now();
+  console.info('[db.ts] Prisma dev probe start');
+
+  try {
+    await Promise.race([
+      client.$connect(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Prisma connect probe timeout after 8000ms')), 8000)
+      ),
+    ]);
+
+    await Promise.race([
+      client.$queryRaw`SELECT 1 AS ok`,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Prisma first-query probe timeout after 8000ms')), 8000)
+      ),
+    ]);
+
+    console.info('[db.ts] Prisma dev probe success', {
+      elapsedMs: Date.now() - startedAt,
+    });
+  } catch (error: any) {
+    const category = classifyPrismaError(error);
+    console.error('[db.ts] Prisma dev probe failed', {
+      category,
+      code: error?.code || null,
+      name: error?.name || null,
+      message: error?.message || String(error),
+      elapsedMs: Date.now() - startedAt,
+    });
+  }
+}
+
 let prisma: PrismaClient;
 let prismaInitError: Error | null = null;
 
@@ -51,6 +126,9 @@ try {
   if (process.env.NODE_ENV !== 'production') {
     globalForPrisma.prisma = prisma;
   }
+
+  // Non-blocking startup diagnostics for local connectivity triage.
+  void runPrismaDevConnectivityProbe(prisma);
 } catch (error: any) {
   const message = error?.message || 'Unknown Prisma initialization error';
   const isConnectivityError =

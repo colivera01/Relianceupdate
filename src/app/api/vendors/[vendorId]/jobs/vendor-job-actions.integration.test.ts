@@ -138,8 +138,19 @@ describe("vendor job actions integration", () => {
     expect(j.code).toBe("JOB_NOT_FOUND");
   });
 
-  it("PATCH ARCHIVE_JOB transitions booking status", async () => {
+  it("PATCH ARCHIVE_JOB blocks non-completed jobs", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", vendorId: "v1", status: "PENDING" });
+    const { req, ctx } = patchReq("v1", "job1", "ARCHIVE_JOB");
+    const res = await PATCH(req, ctx as any);
+    expect(res.status).toBe(409);
+    const j = await toJson(res);
+    expect(j.code).toBe("ARCHIVE_REQUIRES_COMPLETED_JOB");
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("PATCH ARCHIVE_JOB transitions booking status for completed jobs", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", vendorId: "v1", status: "COMPLETED" });
+    hoisted.mediaSessionFindMany.mockResolvedValue([]);
     hoisted.bookingUpdate.mockResolvedValue({ id: "job1", status: "ARCHIVED" });
     const { req, ctx } = patchReq("v1", "job1", "ARCHIVE_JOB");
     const res = await PATCH(req, ctx as any);
@@ -198,6 +209,17 @@ describe("vendor job actions integration", () => {
     expect(j.linkedAssetCount).toBe(3);
   });
 
+  it("GET marks CONFIRMED jobs as vendor-deletable", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "CONFIRMED" });
+    hoisted.mediaSessionFindMany.mockResolvedValue([]);
+    hoisted.mediaAssetCount.mockResolvedValue(0);
+    const { req, ctx } = getReq("v1", "job1");
+    const res = await GET(req, ctx as any);
+    expect(res.status).toBe(200);
+    const j = await toJson(res);
+    expect(j.canVendorDelete).toBe(true);
+  });
+
   it("DELETE blocks completed jobs for vendors", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "COMPLETED" });
     const { req, ctx } = deleteReq("v1", "job1");
@@ -214,7 +236,7 @@ describe("vendor job actions integration", () => {
       vendorId: "v1",
       status: "CONFIRMED",
       customerMetadata: JSON.stringify({
-        reliance_ops: { operational_phase: "AWAITING_VENDOR_REVIEW" },
+        reliance_ops: { operational_phase: "IN_PROGRESS" },
       }),
     });
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
@@ -226,20 +248,41 @@ describe("vendor job actions integration", () => {
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(409);
     const j = await toJson(res);
-    expect(j.code).toBe("COMPLETION_REQUIRES_MEDIA");
+    expect(j.code).toBe("COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE");
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("PATCH UPDATE_STATUS blocks COMPLETED when not awaiting vendor review", async () => {
+  it("PATCH UPDATE_STATUS blocks COMPLETED when package is not admin-approved", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",
       vendorId: "v1",
       status: "CONFIRMED",
       customerMetadata: JSON.stringify({
-        reliance_ops: { operational_phase: "IN_PROGRESS" },
+        reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" },
       }),
     });
-    hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }]);
+    hoisted.mediaSessionFindMany
+      .mockResolvedValueOnce([{ id: "s1" }, { id: "s2" }, { id: "s3" }])
+      .mockResolvedValueOnce([
+        {
+          id: "s1",
+          sessionType: "JOB_SERVICE_VIDEO",
+          vendorJobVideoStage: "INTRO",
+          mediaAssets: [{ id: "a1", moderationStatus: "approved", createdAt: new Date() }],
+        },
+        {
+          id: "s2",
+          sessionType: "JOB_SERVICE_VIDEO",
+          vendorJobVideoStage: "IN_PROGRESS",
+          mediaAssets: [{ id: "a2", moderationStatus: "pending_review", createdAt: new Date() }],
+        },
+        {
+          id: "s3",
+          sessionType: "JOB_SERVICE_VIDEO",
+          vendorJobVideoStage: "COMPLETED",
+          mediaAssets: [{ id: "a3", moderationStatus: "approved", createdAt: new Date() }],
+        },
+      ]);
     hoisted.mediaAssetCount.mockResolvedValue(2);
     const { req, ctx } = patchReqBody("v1", "job1", {
       action: "UPDATE_STATUS",
@@ -248,20 +291,41 @@ describe("vendor job actions integration", () => {
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(409);
     const j = await toJson(res);
-    expect(j.code).toBe("COMPLETION_REQUIRES_VENDOR_REVIEW_PHASE");
+    expect(j.code).toBe("COMPLETION_REQUIRES_ADMIN_APPROVAL");
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("PATCH UPDATE_STATUS allows COMPLETED when awaiting review and media exists", async () => {
+  it("PATCH UPDATE_STATUS allows COMPLETED when staged package is admin-approved", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",
       vendorId: "v1",
       status: "CONFIRMED",
       customerMetadata: JSON.stringify({
-        reliance_ops: { operational_phase: "AWAITING_VENDOR_REVIEW" },
+        reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" },
       }),
     });
-    hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }]);
+    hoisted.mediaSessionFindMany
+      .mockResolvedValueOnce([{ id: "s1" }, { id: "s2" }, { id: "s3" }])
+      .mockResolvedValueOnce([
+        {
+          id: "s1",
+          sessionType: "JOB_SERVICE_VIDEO",
+          vendorJobVideoStage: "INTRO",
+          mediaAssets: [{ id: "a1", moderationStatus: "approved", createdAt: new Date() }],
+        },
+        {
+          id: "s2",
+          sessionType: "JOB_SERVICE_VIDEO",
+          vendorJobVideoStage: "IN_PROGRESS",
+          mediaAssets: [{ id: "a2", moderationStatus: "approved", createdAt: new Date() }],
+        },
+        {
+          id: "s3",
+          sessionType: "JOB_SERVICE_VIDEO",
+          vendorJobVideoStage: "COMPLETED",
+          mediaAssets: [{ id: "a3", moderationStatus: "approved", createdAt: new Date() }],
+        },
+      ]);
     hoisted.mediaAssetCount.mockResolvedValue(1);
     hoisted.bookingUpdate.mockResolvedValue({
       id: "job1",
@@ -276,6 +340,17 @@ describe("vendor job actions integration", () => {
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(200);
     expect(hoisted.bookingUpdate).toHaveBeenCalled();
+  });
+
+  it("DELETE allows CONFIRMED (in-progress) jobs for vendors", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "CONFIRMED" });
+    hoisted.mediaSessionFindMany.mockResolvedValue([]);
+    hoisted.mediaAssetCount.mockResolvedValue(0);
+    const { req, ctx } = deleteReq("v1", "job1");
+    const res = await DELETE(req, ctx as any);
+    expect(res.status).toBe(200);
+    expect(hoisted.transaction).toHaveBeenCalledTimes(1);
+    expect(hoisted.txBookingDelete).toHaveBeenCalledWith({ where: { id: "job1" } });
   });
 
   it("DELETE archives linked content and hard-deletes pending job", async () => {

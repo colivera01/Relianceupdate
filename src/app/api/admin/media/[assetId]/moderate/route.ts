@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
+import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 import {
   MODERATION_APPROVED,
   MODERATION_FLAGGED,
+  MODERATION_PENDING_REVIEW,
   MODERATION_REJECTED,
   VISIBILITY_CUSTOMER_ONLY,
   VISIBILITY_PRIVATE,
@@ -40,6 +43,13 @@ const ACTIONS = new Set<ModerationAction>([
   "flag",
 ]);
 
+const VISIBILITY_ONLY_ACTIONS = new Set<ModerationAction>([
+  "set_visibility_public",
+  "set_visibility_customer_only",
+  "set_visibility_vendor_archive_only",
+  "set_visibility_private",
+]);
+
 /**
  * PATCH /api/admin/media/[assetId]/moderate
  * Admin-only moderation action endpoint.
@@ -69,12 +79,27 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 
     const existing = await (prisma as any).mediaAsset.findUnique({
       where: { id: assetId },
-      select: { id: true },
+      select: {
+        id: true,
+        moderationStatus: true,
+      },
     });
     if (!existing) {
       return NextResponse.json(
         { success: false, error: "Media asset not found", message: "Media asset not found" },
         { status: 404 }
+      );
+    }
+
+    const existingModerationStatus = String(existing.moderationStatus || MODERATION_PENDING_REVIEW).trim().toLowerCase();
+    if (VISIBILITY_ONLY_ACTIONS.has(action) && existingModerationStatus !== MODERATION_APPROVED) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Cannot change visibility for unapproved media",
+          message: "Visibility can only be changed when moderationStatus is 'approved'",
+        },
+        { status: 422 }
       );
     }
 
@@ -140,6 +165,72 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         bytes: true,
       },
     });
+
+    // Keep booking lifecycle aligned with staged-package moderation state.
+    try {
+      if (updated.mediaSessionId) {
+        const session = await (prisma as any).mediaSession.findFirst({
+          where: { id: updated.mediaSessionId },
+          select: { bookingId: true, vendorId: true },
+        });
+        const bookingId = session?.bookingId ? String(session.bookingId) : "";
+        const vendorId = session?.vendorId ? String(session.vendorId) : "";
+        if (bookingId && vendorId) {
+          const [booking, sessions] = await Promise.all([
+            prisma.booking.findUnique({
+              where: { id: bookingId },
+              select: { id: true, status: true, customerMetadata: true },
+            }),
+            (prisma as any).mediaSession.findMany({
+              where: { bookingId, vendorId },
+              select: {
+                id: true,
+                sessionType: true,
+                vendorJobVideoStage: true,
+                mediaAssets: {
+                  where: { deletedAt: null },
+                  select: { id: true, moderationStatus: true, createdAt: true },
+                  orderBy: { createdAt: "desc" },
+                  take: 1,
+                },
+              },
+            }),
+          ]);
+          if (booking) {
+            const packageState = evaluateVendorJobPackageState(sessions);
+            const bookingStatus = String(booking.status || "").trim().toUpperCase();
+            if (packageState.hasAllRequiredStagesApproved && bookingStatus !== "COMPLETED" && bookingStatus !== "ARCHIVED") {
+              await prisma.booking.update({
+                where: { id: booking.id },
+                data: {
+                  status: "COMPLETED",
+                  customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "COMPLETED"),
+                },
+              });
+            } else if (
+              bookingStatus === "CONFIRMED" &&
+              packageState.hasAllRequiredStages &&
+              !packageState.hasAllRequiredStagesApproved
+            ) {
+              await prisma.booking.update({
+                where: { id: booking.id },
+                data: {
+                  customerMetadata: setOperationalPhaseOnMetadataJson(
+                    booking.customerMetadata,
+                    "AWAITING_ADMIN_REVIEW"
+                  ),
+                },
+              });
+            }
+          }
+        }
+      }
+    } catch (lifecycleSyncError: any) {
+      console.warn(
+        "[admin/media/:assetId/moderate] booking lifecycle sync skipped:",
+        lifecycleSyncError?.message || lifecycleSyncError
+      );
+    }
 
     return NextResponse.json({
       success: true,

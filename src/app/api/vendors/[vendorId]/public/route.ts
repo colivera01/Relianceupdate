@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
 import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregates";
+import {
+  isCompletedStageProofVideo,
+  shouldIncludeAssetForCustomerPublicProof,
+} from "@/lib/proof-media-policy";
 
 interface RouteContext {
   params: Promise<{ vendorId: string }>;
@@ -65,13 +69,28 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
           select: {
             serviceId: true,
             title: true,
+            vendorJobVideoStage: true,
+            sessionType: true,
           },
         },
       },
     });
 
+    const proofSafePublicAssets = publicAssets.filter((asset: any) =>
+      shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
+    );
+
     const previewByServiceId = new Map<string, string>();
-    for (const asset of publicAssets) {
+    const primaryProofPreviewByServiceId = new Map<string, string>();
+    for (const asset of proofSafePublicAssets) {
+      const serviceId = String(asset?.mediaSession?.serviceId || "");
+      const url = String(asset?.blobUrl || "").trim();
+      if (!serviceId || !url || primaryProofPreviewByServiceId.has(serviceId)) continue;
+      if (!String(asset?.mimeType || "").startsWith("video/")) continue;
+      if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
+      primaryProofPreviewByServiceId.set(serviceId, url);
+    }
+    for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
       const url = String(asset?.blobUrl || "").trim();
       if (!serviceId || !url || previewByServiceId.has(serviceId)) continue;
@@ -83,10 +102,11 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
         serviceName: service.name,
         serviceDescription: service.description || "",
         price: Number(service.price),
-        previewMediaUrl: previewByServiceId.get(service.id) || null,
+        previewMediaUrl:
+          primaryProofPreviewByServiceId.get(service.id) || previewByServiceId.get(service.id) || null,
       }));
 
-    const publicMedia = publicAssets
+    const publicMedia = proofSafePublicAssets
       .map((asset: any) => ({
         mediaId: asset.id,
         serviceId: asset?.mediaSession?.serviceId ? String(asset.mediaSession.serviceId) : null,
@@ -94,6 +114,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
         mimeType: asset.mimeType,
         url: asset.blobUrl,
         createdAt: asset.createdAt,
+        isPrimaryProofVideo: isCompletedStageProofVideo(asset?.mediaSession || null),
       }))
       .filter((item: any) => item.url);
 

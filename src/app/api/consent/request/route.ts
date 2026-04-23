@@ -6,6 +6,18 @@ import { getUserIdFromRequest } from '@/lib/auth';
 import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
 import { logNotificationEnvWarnings } from '@/lib/env/notification-config';
 
+function parseCustomerMetadata(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function POST(request: NextRequest) {
   logNotificationEnvWarnings();
   try {
@@ -32,11 +44,30 @@ export async function POST(request: NextRequest) {
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { user: { select: { email: true, phone: true, name: true } } },
+      select: {
+        id: true,
+        vendorId: true,
+        clientName: true,
+        customerMetadata: true,
+        user: { select: { email: true, phone: true, name: true } },
+      },
     });
     if (!booking || String(booking.vendorId) !== vendorId) {
       return NextResponse.json({ success: false, error: 'Invalid booking/vendor pair' }, { status: 404 });
     }
+    const bookingMeta = parseCustomerMetadata(booking.customerMetadata || null);
+    const customerEmail =
+      (booking.user?.email && String(booking.user.email).trim()) ||
+      (bookingMeta.client_email ? String(bookingMeta.client_email).trim() : '') ||
+      undefined;
+    const customerPhone =
+      (booking.user?.phone && String(booking.user.phone).trim()) ||
+      (bookingMeta.client_phone ? String(bookingMeta.client_phone).trim() : '') ||
+      undefined;
+    const customerName =
+      (booking.user?.name && String(booking.user.name).trim()) ||
+      (booking.clientName ? String(booking.clientName).trim() : '') ||
+      undefined;
 
     const token = generateConsentToken();
     const record = await (prisma as any).consentRecord.create({
@@ -73,9 +104,9 @@ export async function POST(request: NextRequest) {
         actorUserId: String(actorUserId),
         token,
         consentPath,
-        customerEmail: booking.user?.email,
-        customerPhone: booking.user?.phone,
-        customerName: booking.user?.name,
+        customerEmail,
+        customerPhone,
+        customerName,
         consentTypeLabel: consentType.replace(/_/g, ' '),
       });
       await (prisma as any).consentEvent.create({

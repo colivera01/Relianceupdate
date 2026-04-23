@@ -1,3 +1,6 @@
+import type { VendorJobVideoStage } from '@/lib/vendor-job-video-stages';
+import { getVendorMediaApiUserMessage } from '@/lib/media-upload-user-messages';
+
 export type VendorJobMediaLifecycleState =
   | 'idle'
   | 'creating_session'
@@ -5,8 +8,6 @@ export type VendorJobMediaLifecycleState =
   | 'completing'
   | 'completed'
   | 'failed';
-
-export type VendorJobMediaPurpose = 'progress' | 'completion';
 
 type RequestResult = {
   ok: boolean;
@@ -24,7 +25,13 @@ type UploadParams = {
   file: File;
   getHeaders: () => Record<string, string>;
   onLifecycleState: (state: VendorJobMediaLifecycleState) => void;
-  mediaPurpose: VendorJobMediaPurpose;
+  /** Required for vendor job service videos (Intro / In Progress / Completed). */
+  videoStage: VendorJobVideoStage;
+  /** When true, an existing session+assets for the same stage are archived before creating the new session. */
+  replaceExisting?: boolean;
+  locationContext?: string;
+  consentAccepted?: boolean;
+  consentToken?: string;
 };
 
 type UploadOutcome = {
@@ -38,7 +45,7 @@ type UploadOutcome = {
     uploadedAt: string;
     status: string;
     mediaSessionId: string;
-    mediaPurpose: VendorJobMediaPurpose;
+    vendorJobVideoStage: VendorJobVideoStage;
   };
 };
 
@@ -64,11 +71,11 @@ const requestJson = async (url: string, init: RequestInit): Promise<RequestResul
   };
 };
 
-const responseErrorMessage = (res: RequestResult, fallback: string) =>
-  (res.parsed && (res.parsed.error || res.parsed.message || res.parsed.details)) ||
-  res.rawText ||
+const responseErrorMessage = (res: RequestResult) =>
+  getVendorMediaApiUserMessage(res.parsed, res.status) ||
+  res.rawText?.trim() ||
   res.statusText ||
-  fallback;
+  'Request failed';
 
 export async function runVendorJobMediaUpload({
   vendorId,
@@ -78,7 +85,11 @@ export async function runVendorJobMediaUpload({
   file,
   getHeaders,
   onLifecycleState,
-  mediaPurpose,
+  videoStage,
+  replaceExisting,
+  locationContext,
+  consentAccepted,
+  consentToken,
 }: UploadParams): Promise<UploadOutcome> {
   let mediaSessionId: string | null = null;
 
@@ -96,10 +107,33 @@ export async function runVendorJobMediaUpload({
       vendorId: String(vendorId),
       deviceId: selectedJobDeviceId,
       deviceType: selectedJobDeviceType,
-      sessionType: mediaPurpose === 'completion' ? 'COMPLETION_MEDIA' : 'PROGRESS_MEDIA',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: videoStage,
+      replaceExisting: Boolean(replaceExisting),
+      locationContext: locationContext || undefined,
+      consentAccepted: Boolean(consentAccepted),
+      consentToken: consentToken || undefined,
       title,
       description,
     };
+
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      const hdrs = getHeaders();
+      console.info('[runVendorJobMediaUpload] trace:session_create_request', {
+        vendorId: String(vendorId),
+        jobId: selectedJob?.id ?? null,
+        bookingId: sessionPayload.bookingId ?? null,
+        serviceId: sessionPayload.serviceId ?? null,
+        vendorJobVideoStage: sessionPayload.vendorJobVideoStage,
+        sessionType: sessionPayload.sessionType,
+        replaceExisting: sessionPayload.replaceExisting,
+        title,
+        descriptionLength: description.length,
+        fileName: file?.name ?? null,
+        fileSize: file?.size ?? null,
+        headerKeys: Object.keys(hdrs || {}),
+      });
+    }
 
     const sessionRes = await requestJson(`/api/vendors/${vendorId}/media/sessions`, {
       method: 'POST',
@@ -107,12 +141,15 @@ export async function runVendorJobMediaUpload({
       body: JSON.stringify(sessionPayload),
     });
     if (!sessionRes.ok) {
-      throw new Error(
-        `Upload failed at: media session create - ${sessionRes.status} - ${responseErrorMessage(
-          sessionRes,
-          'Could not create media session'
-        )}`
-      );
+      const apiMsg = responseErrorMessage(sessionRes);
+      if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        console.error('[runVendorJobMediaUpload] session create failed', {
+          status: sessionRes.status,
+          code: sessionRes.parsed?.code,
+          parsed: sessionRes.parsed,
+        });
+      }
+      throw new Error(apiMsg);
     }
 
     mediaSessionId = sessionRes.parsed?.session?.id || null;
@@ -130,12 +167,7 @@ export async function runVendorJobMediaUpload({
       }
     );
     if (!patchUploadingRes.ok) {
-      throw new Error(
-        `Upload failed at: session PATCH to UPLOADING - ${patchUploadingRes.status} - ${responseErrorMessage(
-          patchUploadingRes,
-          'Could not mark session uploading'
-        )}`
-      );
+      throw new Error(responseErrorMessage(patchUploadingRes));
     }
 
     const initRes = await requestJson(`/api/vendors/${vendorId}/media/upload/init`, {
@@ -149,12 +181,7 @@ export async function runVendorJobMediaUpload({
       }),
     });
     if (!initRes.ok) {
-      throw new Error(
-        `Upload failed at: upload init - ${initRes.status} - ${responseErrorMessage(
-          initRes,
-          'Upload init failed'
-        )}`
-      );
+      throw new Error(responseErrorMessage(initRes));
     }
 
     const initJson = initRes.parsed || {};
@@ -183,12 +210,7 @@ export async function runVendorJobMediaUpload({
         body: file,
       });
       if (!blobRes.ok) {
-        throw new Error(
-          `Upload failed at: blob PUT upload - ${blobRes.status} - ${responseErrorMessage(
-            blobRes,
-            'Blob upload failed'
-          )}`
-        );
+        throw new Error(responseErrorMessage(blobRes));
       }
     }
 
@@ -206,12 +228,7 @@ export async function runVendorJobMediaUpload({
       }),
     });
     if (!completeRes.ok) {
-      throw new Error(
-        `Upload failed at: upload complete - ${completeRes.status} - ${responseErrorMessage(
-          completeRes,
-          'Upload complete failed'
-        )}`
-      );
+      throw new Error(responseErrorMessage(completeRes));
     }
 
     const patchCompletedRes = await requestJson(
@@ -226,12 +243,7 @@ export async function runVendorJobMediaUpload({
       }
     );
     if (!patchCompletedRes.ok) {
-      throw new Error(
-        `Upload failed at: final session PATCH to COMPLETED - ${patchCompletedRes.status} - ${responseErrorMessage(
-          patchCompletedRes,
-          'Could not mark session completed'
-        )}`
-      );
+      throw new Error(responseErrorMessage(patchCompletedRes));
     }
 
     onLifecycleState('completed');
@@ -247,7 +259,7 @@ export async function runVendorJobMediaUpload({
         uploadedAt: new Date().toISOString().split('T')[0],
         status: 'uploaded',
         mediaSessionId,
-        mediaPurpose,
+        vendorJobVideoStage: videoStage,
       },
     };
   } catch (error) {

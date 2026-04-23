@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
+import {
+  isCompletedStageProofVideo,
+  shouldIncludeAssetForCustomerPublicProof,
+} from "@/lib/proof-media-policy";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -73,12 +77,18 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
             description: true,
             bookingId: true,
             serviceId: true,
+            vendorJobVideoStage: true,
+            sessionType: true,
           },
         },
       },
     });
 
-    const normalized = assets.map((asset: any) => ({
+    const proofSafeAssets = assets.filter((asset: any) =>
+      shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
+    );
+
+    const normalized = proofSafeAssets.map((asset: any) => ({
       id: asset.id,
       vendorId: asset.vendorId,
       mediaSessionId: asset.mediaSessionId,
@@ -96,6 +106,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
       description: asset.mediaSession?.description || "",
       bookingId: asset.mediaSession?.bookingId || null,
       serviceId: asset.mediaSession?.serviceId || null,
+      isPrimaryProofVideo: isCompletedStageProofVideo(asset?.mediaSession || null),
     }));
 
     return NextResponse.json({

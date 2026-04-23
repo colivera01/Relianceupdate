@@ -1,8 +1,59 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
-import { resolveVendorAccessFromRequest } from "@/lib/vendor-context";
+import { isVendorContextDbTimeoutError, resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { VendorProfileResponse, VendorProfileUpdateRequest } from "@/types/vendor";
+
+const VENDOR_PROFILE_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  name: true,
+  businessName: true,
+  businessType: true,
+  category: true,
+  foundedYear: true,
+  email: true,
+  phone: true,
+  city: true,
+  state: true,
+  address: true,
+  zipCode: true,
+  bio: true,
+  website: true,
+  licenseNumber: true,
+  insuranceStatus: true,
+  insuranceProvider: true,
+  insuranceExpiry: true,
+  bondingStatus: true,
+  emergencyContact: true,
+  responseTimeSettings: true,
+  profilePhoto: true,
+  serviceTypes: true,
+  specializations: true,
+  serviceAreas: true,
+  paymentsEnabled: true,
+  reminders_review: true,
+  reminders_invoice: true,
+  reminders_maintenance: true,
+  reminders_followUp: true,
+  notifications_job: true,
+  notifications_review: true,
+  notifications_payout: true,
+  notifications_support: true,
+  notifications_marketing: true,
+  notifications_updates: true,
+  twoFactorEnabled: true,
+  loginNotifications: true,
+  sessionTimeout: true,
+  passwordExpiry: true,
+  failedLoginLockout: true,
+  _count: {
+    select: {
+      employees: true,
+    },
+  },
+} as const;
 
 export async function GET(request: Request) {
   try {
@@ -18,13 +69,14 @@ export async function GET(request: Request) {
         resolvedUserId,
       });
     }
-    const vendorContext = await resolveVendorAccessFromRequest(request);
-    if (!vendorContext) {
+    const resolvedUserId = await getUserIdFromRequest(request);
+    if (!resolvedUserId) {
       return NextResponse.json(
         { code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE", error: "Vendor session context unavailable. Please sign in again." },
         { status: 401 }
       );
     }
+    const vendorContext = await resolveVendorAccessForUser(resolvedUserId);
     if (vendorContext.state === "PENDING") {
       return NextResponse.json(
         { code: "VENDOR_PENDING_APPROVAL", error: "Vendor account pending approval" },
@@ -45,11 +97,7 @@ export async function GET(request: Request) {
     // Fetch vendor from Prisma
     const vendor = await prisma.vendor.findUnique({
       where: { id: vendorId },
-      include: {
-        employees: {
-          select: { id: true }, // Just count, don't fetch all data
-        },
-      },
+      select: VENDOR_PROFILE_SELECT,
     });
 
     if (!vendor) {
@@ -60,7 +108,7 @@ export async function GET(request: Request) {
     }
 
     // Calculate derived fields
-    const totalEmployees = vendor.employees.length;
+    const totalEmployees = Number((vendor as any)?._count?.employees || 0);
     const yearsInBusiness = vendor.foundedYear
       ? new Date().getFullYear() - vendor.foundedYear
       : null;
@@ -132,9 +180,16 @@ export async function GET(request: Request) {
     return NextResponse.json(response);
   } catch (err) {
     console.error("Vendor profile GET error:", err);
+    const dbFailure = isVendorContextDbTimeoutError(err);
     return NextResponse.json(
-      { error: "Internal server error", details: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
+      {
+        code: dbFailure ? "DB_CONNECTION_TIMEOUT" : "VENDOR_CONTEXT_ERROR",
+        error: dbFailure
+          ? "Vendor context is temporarily unavailable because the database connection failed. Please retry."
+          : "Internal server error",
+        details: err instanceof Error ? err.message : String(err),
+      },
+      { status: dbFailure ? 503 : 500 }
     );
   }
 }
@@ -153,13 +208,14 @@ export async function PUT(request: Request) {
         resolvedUserId,
       });
     }
-    const vendorContext = await resolveVendorAccessFromRequest(request);
-    if (!vendorContext) {
+    const resolvedUserId = await getUserIdFromRequest(request);
+    if (!resolvedUserId) {
       return NextResponse.json(
         { code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE", error: "Vendor session context unavailable. Please sign in again." },
         { status: 401 }
       );
     }
+    const vendorContext = await resolveVendorAccessForUser(resolvedUserId);
     if (vendorContext.state === "PENDING") {
       return NextResponse.json(
         { code: "VENDOR_PENDING_APPROVAL", error: "Vendor account pending approval" },
@@ -237,15 +293,11 @@ export async function PUT(request: Request) {
     const updatedVendor = await prisma.vendor.update({
       where: { id: vendorId },
       data: updateData,
-      include: {
-        employees: {
-          select: { id: true },
-        },
-      },
+      select: VENDOR_PROFILE_SELECT,
     });
 
     // Map back to VendorProfile format
-    const totalEmployees = updatedVendor.employees.length;
+    const totalEmployees = Number((updatedVendor as any)?._count?.employees || 0);
     const yearsInBusiness = updatedVendor.foundedYear
       ? new Date().getFullYear() - updatedVendor.foundedYear
       : null;
@@ -314,9 +366,16 @@ export async function PUT(request: Request) {
     return NextResponse.json(response);
   } catch (err) {
     console.error("Vendor profile PUT error:", err);
+    const dbFailure = isVendorContextDbTimeoutError(err);
     return NextResponse.json(
-      { error: "Internal server error", details: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
+      {
+        code: dbFailure ? "DB_CONNECTION_TIMEOUT" : "VENDOR_CONTEXT_ERROR",
+        error: dbFailure
+          ? "Vendor context is temporarily unavailable because the database connection failed. Please retry."
+          : "Internal server error",
+        details: err instanceof Error ? err.message : String(err),
+      },
+      { status: dbFailure ? 503 : 500 }
     );
   }
 }

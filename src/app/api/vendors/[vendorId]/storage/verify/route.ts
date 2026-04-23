@@ -5,6 +5,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { calculateStorageUsage } from "@/lib/storage-helpers";
+import {
+  ARCHIVE_ACTIVE,
+  MODERATION_PENDING_REVIEW,
+  VISIBILITY_PRIVATE,
+} from "@/lib/media-visibility";
 import crypto from "crypto";
 
 interface RouteParams {
@@ -67,6 +72,9 @@ export async function POST(
         mimeType: "text/plain",
         blobKey: testBlobKey,
         blobUrl: null,
+        moderationStatus: MODERATION_PENDING_REVIEW,
+        visibilityStatus: VISIBILITY_PRIVATE,
+        archiveStatus: ARCHIVE_ACTIVE,
         deletedAt: null,
       },
     });

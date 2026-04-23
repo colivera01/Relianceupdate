@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest, getVendorMembership, requireVendorMembership } from "@/lib/membership-auth";
 import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
+import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -426,12 +427,20 @@ export async function GET(
             select: {
               id: true,
               bookingId: true,
+              vendorJobVideoStage: true,
+              sessionType: true,
               _count: { select: { mediaAssets: true } },
+              mediaAssets: {
+                select: { id: true, moderationStatus: true, createdAt: true },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+              },
             },
           })
         )
       : [];
     const mediaSummaryByBookingId = new Map<string, { linkedSessionCount: number; linkedMediaCount: number }>();
+    const sessionsForPhaseByBookingId = new Map<string, any[]>();
     for (const session of sessionsByBooking as any[]) {
       const key = String(session.bookingId || "");
       if (!key) continue;
@@ -440,6 +449,9 @@ export async function GET(
         linkedSessionCount: current.linkedSessionCount + 1,
         linkedMediaCount: current.linkedMediaCount + Number(session?._count?.mediaAssets || 0),
       });
+      const existingSessions = sessionsForPhaseByBookingId.get(key) || [];
+      existingSessions.push(session);
+      sessionsForPhaseByBookingId.set(key, existingSessions);
     }
 
     const recentJobs = recentBookings
@@ -458,11 +470,16 @@ export async function GET(
         linkedSessionCount: 0,
         linkedMediaCount: 0,
       };
+      const packageState = evaluateVendorJobPackageState(
+        sessionsForPhaseByBookingId.get(String(booking.id)) || []
+      );
       const operationalPhase = resolveOperationalPhase({
         bookingStatus: booking.status,
         customerMetadata: booking.customerMetadata,
         linkedMediaCount: mediaSummary.linkedMediaCount,
         assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
+        hasCompleteStagedPackage: packageState.hasAllRequiredStages,
+        hasAdminApprovedStagedPackage: packageState.hasAllRequiredStagesApproved,
       });
 
       // Handle Decimal amount

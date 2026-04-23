@@ -11,7 +11,7 @@ export default function TestProfileTogglePage() {
   useEffect(() => {
     // Simulate user data
     setUserData({
-      id: 'test-user-1',
+      id: 'D43B6BB3-1A72-45EC-A362-A6E1E0580EA0',
       firstName: 'Cesar',
       lastName: 'Olivera',
       email: 'colivera080124@gmail.com',

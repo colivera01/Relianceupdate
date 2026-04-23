@@ -3,7 +3,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
-import { ARCHIVE_ACTIVE, ARCHIVE_ARCHIVED, normalizeArchiveStatus } from "@/lib/media-visibility";
+import {
+  ARCHIVE_ACTIVE,
+  ARCHIVE_ARCHIVED,
+  getApprovedActiveBaseWhere,
+  getVisibilityStatusesForAudience,
+  normalizeArchiveStatus,
+} from "@/lib/media-visibility";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -31,10 +37,17 @@ export async function GET(
 
     const where: any = {
       vendorId,
-    };
+      ...getApprovedActiveBaseWhere(),
+      visibilityStatus: {
+        in: getVisibilityStatusesForAudience("vendor_internal"),
+      },
+    }
 
-    if (!includeDeleted) {
-      where.deletedAt = null;
+    // Deprecated behavior: includeDeleted no longer bypasses moderation visibility guardrails.
+    if (includeDeleted && process.env.NODE_ENV === "development") {
+      console.warn(
+        "[vendors/:vendorId/media] includeDeleted ignored; route always enforces approved+active media."
+      );
     }
 
     const assets = await (prisma as any).mediaAsset.findMany({

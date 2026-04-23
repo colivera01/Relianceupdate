@@ -17,6 +17,7 @@ const hoisted = vi.hoisted(() => {
   const serviceCreate = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
   const userFindFirst = vi.fn();
+  const userCreate = vi.fn();
   const queryRaw = vi.fn();
 
   const prisma = {
@@ -30,7 +31,7 @@ const hoisted = vi.hoisted(() => {
     vendor: { findUnique: vendorFindUnique },
     service: { findFirst: serviceFindFirst, findUnique: serviceFindUnique, create: serviceCreate },
     vendorMembership: { findFirst: vendorMembershipFindFirst },
-    user: { findFirst: userFindFirst },
+    user: { findFirst: userFindFirst, create: userCreate },
     $queryRaw: queryRaw,
   };
 
@@ -47,6 +48,7 @@ const hoisted = vi.hoisted(() => {
     serviceCreate,
     vendorMembershipFindFirst,
     userFindFirst,
+    userCreate,
     queryRaw,
   };
 });
@@ -187,9 +189,11 @@ describe('POST /api/bookings', () => {
     hoisted.bookingFindUnique.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.userFindFirst.mockReset();
+    hoisted.userCreate.mockReset();
     hoisted.queryRaw.mockReset();
     hoisted.vendorMembershipFindFirst.mockResolvedValue(null);
     hoisted.userFindFirst.mockResolvedValue(null);
+    hoisted.userCreate.mockResolvedValue({ id: 'placeholder-user-1' });
     hoisted.queryRaw.mockResolvedValue([]);
   });
 
@@ -377,6 +381,53 @@ describe('POST /api/bookings', () => {
       }),
     });
     expect(hoisted.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('creates an unclaimed booking placeholder when client_email has no existing account', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue(null);
+    hoisted.queryRaw.mockResolvedValue([]);
+    hoisted.userCreate.mockResolvedValue({ id: 'placeholder-customer-1' });
+    hoisted.bookingCreate.mockResolvedValue({ id: 'vendor-created-book' });
+    hoisted.bookingFindUnique.mockResolvedValue(
+      baseHydratedBooking({
+        id: 'vendor-created-book',
+        userId: 'placeholder-customer-1',
+        customerMetadata: JSON.stringify({
+          client_email: 'new-customer@example.com',
+          claim_status: 'UNCLAIMED',
+          claim_contact_email: 'new-customer@example.com',
+        }),
+      })
+    );
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          booking_date: '2024-09-02',
+          booking_time: '10:00:00',
+          title: 'Walk-in',
+          client_name: 'New Customer',
+          client_email: 'new-customer@example.com',
+        },
+        'POST'
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(hoisted.userCreate).toHaveBeenCalled();
+    expect(hoisted.bookingCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'placeholder-customer-1',
+        customerMetadata: expect.stringContaining('"claim_status":"UNCLAIMED"'),
+      }),
+    });
   });
 
   it('returns 400 CLIENT_EMAIL_REQUIRED when vendor staff omits client_email', async () => {

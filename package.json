@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev",
     "dev:clean": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true});\" && next dev",
     "dev:mock": "cross-env NEXT_PUBLIC_API_MODE=mock next dev",

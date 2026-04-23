@@ -67,7 +67,7 @@ describe("PATCH /api/admin/media/[assetId]/moderate", () => {
   });
 
   it("sets approved + vendor_archive_only on approve_vendor_archive_only", async () => {
-    hoisted.mediaAssetFindUnique.mockResolvedValue({ id: "asset-1" });
+    hoisted.mediaAssetFindUnique.mockResolvedValue({ id: "asset-1", moderationStatus: "pending_review" });
     hoisted.mediaAssetUpdate.mockResolvedValue({
       id: "asset-1",
       vendorId: "v1",
@@ -102,7 +102,7 @@ describe("PATCH /api/admin/media/[assetId]/moderate", () => {
   });
 
   it("applies set_visibility_private without changing moderation status", async () => {
-    hoisted.mediaAssetFindUnique.mockResolvedValue({ id: "asset-2" });
+    hoisted.mediaAssetFindUnique.mockResolvedValue({ id: "asset-2", moderationStatus: MODERATION_APPROVED });
     hoisted.mediaAssetUpdate.mockResolvedValue({
       id: "asset-2",
       vendorId: "v2",
@@ -131,7 +131,7 @@ describe("PATCH /api/admin/media/[assetId]/moderate", () => {
   });
 
   it("sets rejected + private with required reason", async () => {
-    hoisted.mediaAssetFindUnique.mockResolvedValue({ id: "asset-3" });
+    hoisted.mediaAssetFindUnique.mockResolvedValue({ id: "asset-3", moderationStatus: MODERATION_APPROVED });
     hoisted.mediaAssetUpdate.mockResolvedValue({
       id: "asset-3",
       vendorId: "v2",
@@ -164,6 +164,18 @@ describe("PATCH /api/admin/media/[assetId]/moderate", () => {
       })
     );
   });
+
+  it("rejects visibility-only action when media is not approved", async () => {
+    hoisted.mediaAssetFindUnique.mockResolvedValue({ id: "asset-4", moderationStatus: "pending_review" });
+    const req = new Request("http://localhost/api/admin/media/asset-4/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set_visibility_public" }),
+    });
+    const res = await moderatePATCH(req, { params: Promise.resolve({ assetId: "asset-4" }) });
+    expect(res.status).toBe(422);
+    expect(hoisted.mediaAssetUpdate).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /api/admin/media/moderation-queue", () => {
@@ -180,43 +192,46 @@ describe("GET /api/admin/media/moderation-queue", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns 200 with empty assets state", async () => {
+  it("returns 200 with empty package state", async () => {
     hoisted.mediaAssetFindMany.mockResolvedValue([]);
     const req = new Request("http://localhost/api/admin/media/moderation-queue", { method: "GET" });
     const res = await moderationQueueGET(req);
     expect(res.status).toBe(200);
     const j = await readJson(res);
     expect(j.success).toBe(true);
-    expect(j.assets).toEqual([]);
+    expect(j.packages).toEqual([]);
   });
 
-  it("filters response by search over title/job/client", async () => {
+  it("returns one grouped package only when INTRO, IN_PROGRESS, and COMPLETED all exist", async () => {
     hoisted.mediaAssetFindMany.mockResolvedValue([
       {
-        id: "a1",
+        id: "a-intro",
         vendorId: "v1",
-        mediaSessionId: "ms1",
+        mediaSessionId: "ms-intro",
         uploadedByMembershipId: "m1",
-        moderationStatus: "approved",
-        visibilityStatus: "public",
+        moderationStatus: "pending_review",
+        visibilityStatus: "private",
         archiveStatus: "active",
         moderationReason: null,
         moderatedAt: null,
         createdAt: new Date("2026-04-15T09:00:00.000Z"),
         mimeType: "video/mp4",
         bytes: BigInt(20),
-        blobUrl: "https://cdn/a1",
+        blobUrl: "https://cdn/a-intro",
         vendor: { id: "v1", name: "Vendor A", businessName: null },
         mediaSession: {
-          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson" },
+          title: "Intro walk-through",
+          vendorJobVideoStage: "INTRO",
+          sessionType: "JOB_SERVICE_VIDEO",
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "CONFIRMED" },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e1", name: "Tech A" },
         },
       },
       {
-        id: "a2",
-        vendorId: "v2",
-        mediaSessionId: "ms2",
+        id: "a-progress",
+        vendorId: "v1",
+        mediaSessionId: "ms-progress",
         uploadedByMembershipId: "m2",
         moderationStatus: "pending_review",
         visibilityStatus: "private",
@@ -224,27 +239,165 @@ describe("GET /api/admin/media/moderation-queue", () => {
         moderationReason: null,
         moderatedAt: null,
         createdAt: new Date("2026-04-15T09:10:00.000Z"),
-        mimeType: "image/png",
+        mimeType: "video/mp4",
         bytes: BigInt(10),
-        blobUrl: "https://cdn/a2",
+        blobUrl: "https://cdn/a-progress",
+        vendor: { id: "v1", name: "Vendor A", businessName: null },
+        mediaSession: {
+          title: "In-progress update",
+          vendorJobVideoStage: "IN_PROGRESS",
+          sessionType: "JOB_SERVICE_VIDEO",
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "CONFIRMED" },
+          service: { id: "s1", name: "HVAC" },
+          employee: { id: "e2", name: "Tech B" },
+        },
+      },
+      {
+        id: "a-complete",
+        vendorId: "v1",
+        mediaSessionId: "ms-complete",
+        uploadedByMembershipId: "m3",
+        moderationStatus: "approved",
+        visibilityStatus: "public",
+        archiveStatus: "active",
+        moderationReason: null,
+        moderatedAt: null,
+        createdAt: new Date("2026-04-15T09:20:00.000Z"),
+        mimeType: "video/mp4",
+        bytes: BigInt(30),
+        blobUrl: "https://cdn/a-complete",
+        vendor: { id: "v1", name: "Vendor A", businessName: "A Heating" },
+        mediaSession: {
+          title: "Completion proof",
+          vendorJobVideoStage: "COMPLETED",
+          sessionType: "JOB_SERVICE_VIDEO",
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "CONFIRMED" },
+          service: { id: "s1", name: "HVAC" },
+          employee: { id: "e3", name: "Tech C" },
+        },
+      },
+      // Partial booking should be excluded entirely.
+      {
+        id: "a-partial",
+        vendorId: "v2",
+        mediaSessionId: "ms-partial",
+        uploadedByMembershipId: "m4",
+        moderationStatus: "pending_review",
+        visibilityStatus: "private",
+        archiveStatus: "active",
+        moderationReason: null,
+        moderatedAt: null,
+        createdAt: new Date("2026-04-15T09:30:00.000Z"),
+        mimeType: "video/mp4",
+        bytes: BigInt(10),
+        blobUrl: "https://cdn/a-partial",
         vendor: { id: "v2", name: "Vendor B", businessName: null },
         mediaSession: {
-          booking: { id: "b2", title: "Plumbing", clientName: "Taylor" },
+          title: "Only intro uploaded",
+          vendorJobVideoStage: "INTRO",
+          sessionType: "JOB_SERVICE_VIDEO",
+          booking: { id: "b2", title: "Plumbing", clientName: "Taylor", status: "PENDING" },
           service: { id: "s2", name: "Plumbing" },
           employee: { id: "e2", name: "Tech B" },
         },
       },
     ]);
-    const req = new Request("http://localhost/api/admin/media/moderation-queue?search=alex", {
-      method: "GET",
-    });
+    const req = new Request("http://localhost/api/admin/media/moderation-queue?search=alex", { method: "GET" });
     const res = await moderationQueueGET(req);
     expect(res.status).toBe(200);
     const j = await readJson(res);
-    const assets = j.assets as Array<Record<string, unknown>>;
-    expect(assets).toHaveLength(1);
-    expect(assets[0].assetId).toBe("a1");
-    expect(assets[0].archiveStatus).toBe("active");
-    expect(assets[0].downloadRef).toBe("/api/vendors/v1/media/a1/download");
+    const packages = j.packages as Array<Record<string, unknown>>;
+    expect(packages).toHaveLength(1);
+    expect(packages[0].bookingId).toBe("b1");
+    expect(packages[0].vendorName).toBe("A Heating");
+    expect(packages[0].bookingStatus).toBe("CONFIRMED");
+    expect(packages[0].packageReadiness).toBe("READY_FOR_ADMIN_REVIEW");
+    expect((packages[0].videosByStage as Record<string, Record<string, unknown>>).INTRO.assetId).toBe("a-intro");
+    expect((packages[0].videosByStage as Record<string, Record<string, unknown>>).IN_PROGRESS.assetId).toBe("a-progress");
+    expect((packages[0].videosByStage as Record<string, Record<string, unknown>>).COMPLETED.assetId).toBe("a-complete");
+  });
+
+  it("filters grouped packages by moderationStatus across stage videos", async () => {
+    hoisted.mediaAssetFindMany.mockResolvedValue([
+      {
+        id: "a-intro",
+        vendorId: "v1",
+        mediaSessionId: "ms-intro",
+        uploadedByMembershipId: "m1",
+        moderationStatus: "pending_review",
+        visibilityStatus: "private",
+        archiveStatus: "active",
+        moderationReason: null,
+        moderatedAt: null,
+        createdAt: new Date("2026-04-15T09:00:00.000Z"),
+        mimeType: "video/mp4",
+        bytes: BigInt(20),
+        blobUrl: "https://cdn/a-intro",
+        vendor: { id: "v1", name: "Vendor A", businessName: "A Heating" },
+        mediaSession: {
+          title: "Intro",
+          vendorJobVideoStage: "INTRO",
+          sessionType: "JOB_SERVICE_VIDEO",
+          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "CONFIRMED" },
+          service: { id: "s1", name: "HVAC" },
+          employee: { id: "e1", name: "Tech A" },
+        },
+      },
+      {
+        id: "a-progress",
+        vendorId: "v1",
+        mediaSessionId: "ms-progress",
+        uploadedByMembershipId: "m1",
+        moderationStatus: "approved",
+        visibilityStatus: "public",
+        archiveStatus: "active",
+        moderationReason: null,
+        moderatedAt: null,
+        createdAt: new Date("2026-04-15T09:05:00.000Z"),
+        mimeType: "video/mp4",
+        bytes: BigInt(20),
+        blobUrl: "https://cdn/a-progress",
+        vendor: { id: "v1", name: "Vendor A", businessName: "A Heating" },
+        mediaSession: {
+          title: "Progress",
+          vendorJobVideoStage: "IN_PROGRESS",
+          sessionType: "JOB_SERVICE_VIDEO",
+          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "CONFIRMED" },
+          service: { id: "s1", name: "HVAC" },
+          employee: { id: "e1", name: "Tech A" },
+        },
+      },
+      {
+        id: "a-proof",
+        vendorId: "v1",
+        mediaSessionId: "ms-completed",
+        uploadedByMembershipId: "m1",
+        moderationStatus: "approved",
+        visibilityStatus: "public",
+        archiveStatus: "active",
+        moderationReason: null,
+        moderatedAt: null,
+        createdAt: new Date("2026-04-15T09:10:00.000Z"),
+        mimeType: "video/mp4",
+        bytes: BigInt(20),
+        blobUrl: "https://cdn/a-proof",
+        vendor: { id: "v1", name: "Vendor A", businessName: "A Heating" },
+        mediaSession: {
+          title: "Completed",
+          vendorJobVideoStage: "COMPLETED",
+          sessionType: "JOB_SERVICE_VIDEO",
+          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "CONFIRMED" },
+          service: { id: "s1", name: "HVAC" },
+          employee: { id: "e1", name: "Tech A" },
+        },
+      },
+    ]);
+    const req = new Request("http://localhost/api/admin/media/moderation-queue?moderationStatus=approved", { method: "GET" });
+    const res = await moderationQueueGET(req);
+    expect(res.status).toBe(200);
+    const j = await readJson(res);
+    const packages = j.packages as Array<Record<string, unknown>>;
+    expect(packages).toHaveLength(1);
+    expect((packages[0].moderationStatuses as string[]).sort()).toEqual(["approved", "pending_review"]);
   });
 });

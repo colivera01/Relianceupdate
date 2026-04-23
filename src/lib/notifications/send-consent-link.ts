@@ -80,11 +80,20 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
       errorMessage: r.errorMessage,
     });
   } else {
+    const skipReason = !email ? 'no_customer_email' : 'email_disabled';
     channels.push({
       channel: 'email',
       attempted: false,
       success: false,
-      errorMessage: !email ? 'no_customer_email' : 'email_disabled',
+      errorMessage: skipReason,
+    });
+    await logNotificationAttempt(input.actorUserId, input.consentRecordId, {
+      kind: 'consent_link',
+      channel: 'email',
+      recipient: email || 'not_provided',
+      success: false,
+      fallbackLink: absoluteFallbackLink,
+      errorMessage: skipReason,
     });
   }
 
@@ -111,11 +120,20 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
       errorCode: r.errorCode,
     });
   } else {
+    const skipReason = !phone ? 'no_customer_phone' : 'sms_disabled';
     channels.push({
       channel: 'sms',
       attempted: false,
       success: false,
-      errorMessage: !phone ? 'no_customer_phone' : 'sms_disabled',
+      errorMessage: skipReason,
+    });
+    await logNotificationAttempt(input.actorUserId, input.consentRecordId, {
+      kind: 'consent_link',
+      channel: 'sms',
+      recipient: phone || 'not_provided',
+      success: false,
+      fallbackLink: absoluteFallbackLink,
+      errorMessage: skipReason,
     });
   }
 

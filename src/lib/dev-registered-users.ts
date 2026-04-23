@@ -17,7 +17,9 @@ export const registeredUsers: any[] = [
     isActive: true,
   },
   {
-    id: "test-user-1",
+    // Must match Prisma `users.id` for this email so vendor APIs work after login
+    // (including dev sessions created while the DB was briefly unreachable).
+    id: "D43B6BB3-1A72-45EC-A362-A6E1E0580EA0",
     firstName: "Cesar",
     lastName: "Olivera",
     email: "colivera080124@gmail.com",

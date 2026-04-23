@@ -8,6 +8,7 @@ export const OPERATIONAL_PHASE_VALUES = [
   "PENDING",
   "ASSIGNED",
   "IN_PROGRESS",
+  "AWAITING_ADMIN_REVIEW",
   "AWAITING_VENDOR_REVIEW",
   "COMPLETED",
 ] as const;
@@ -67,6 +68,8 @@ export function resolveOperationalPhase(params: {
   customerMetadata: string | null | undefined;
   linkedMediaCount: number;
   assignedEmployees: string[];
+  hasCompleteStagedPackage?: boolean;
+  hasAdminApprovedStagedPackage?: boolean;
 }): OperationalPhase {
   const bookingUpper = String(params.bookingStatus || "")
     .trim()
@@ -95,8 +98,11 @@ export function resolveOperationalPhase(params: {
         return storedRaw;
       }
     }
-    if (params.linkedMediaCount > 0) {
-      return "AWAITING_VENDOR_REVIEW";
+    if (params.hasAdminApprovedStagedPackage) {
+      return "COMPLETED";
+    }
+    if (params.hasCompleteStagedPackage) {
+      return "AWAITING_ADMIN_REVIEW";
     }
     return "IN_PROGRESS";
   }
