@@ -2,6 +2,37 @@
 
 Scope: current active session changes in working tree (from current repo state).
 
+## 2026-04-23 — Consent flow cleanup + live verification complete
+
+### Temporary debug cleanup
+- Removed step-by-step troubleshooting logs from:
+  - `src/app/api/consent/request/route.ts`
+- Removed temporary auth-debug log from:
+  - `src/app/api/dev/notifications-test/route.ts`
+
+### Consent request/accept + delivery verification
+- Live `POST /api/consent/request` now completes and returns consent records in `requested` state.
+- Live `/consent/[token]` + `POST /api/consent/accept` verified; consent status transitions to `accepted`.
+- Provider delivery verified through real responses:
+  - Resend email send path (`success: true`)
+  - Twilio SMS send path (`success: true` on valid recipient configuration; error codes surfaced otherwise)
+- Post-acceptance staged media-session creation gate verified as allowed with accepted consent token.
+
+### Admin audit compatibility behavior
+- `src/lib/admin-audit.ts` now uses compatibility logic for mixed `dbo.admin_audit_logs` shapes:
+  - First attempts Prisma create using `actionType` schema.
+  - On schema mismatch, falls back to SQL insert that writes `action`, `actionType`, or both when present.
+- In consent request flow, admin audit logging is best-effort (non-blocking) so consent delivery is not interrupted by audit schema drift.
+
+### Environment/config notes (consent delivery)
+- Dev notification test route requires:
+  - env: `NOTIFICATIONS_TEST_SECRET`
+  - header: `x-notifications-test-secret`
+- Delivery configuration:
+  - Resend: `EMAIL_ENABLED`, `RESEND_API_KEY`, `EMAIL_FROM`, optional `EMAIL_REPLY_TO`
+  - Twilio: `SMS_ENABLED`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
+  - Links: `APP_BASE_URL`
+
 ## 2026-04-22 — Reliance handoff refresh (vendor lifecycle + auth + media execution)
 
 **Handoff docs:** `PROJECT_STATE.md` prepended with a matching **2026-04-22** refresh section.

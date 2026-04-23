@@ -2,6 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { evaluateConsentRespondable } from '@/lib/consent-record-state';
 
+function isTransientDbConnectivityError(error: any): boolean {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return (
+    code === 'P1001' ||
+    code === 'P2024' ||
+    message.includes("Can't reach database server") ||
+    message.includes('PrismaClientInitializationError') ||
+    message.includes('Timed out fetching a new connection from the connection pool') ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('ETIMEDOUT') ||
+    message.toLowerCase().includes('prisma connect probe timeout')
+  );
+}
+
+async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isTransientDbConnectivityError(error)) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return operation();
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -11,7 +38,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'token is required' }, { status: 400 });
     }
 
-    const existing = await (prisma as any).consentRecord.findUnique({ where: { token } });
+    const existing = await withTransientDbRetry(() =>
+      (prisma as any).consentRecord.findUnique({ where: { token } })
+    );
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Consent record not found', code: 'CONSENT_NOT_FOUND' }, { status: 404 });
     }
@@ -34,28 +63,42 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') || null;
     const ipStored = ipAddress ? String(ipAddress).split(',')[0].trim().slice(0, 255) : null;
 
-    const updated = await (prisma as any).consentRecord.update({
-      where: { token },
-      data: {
-        status: 'declined',
-        declinedAt: new Date(),
-      },
-    });
-    await (prisma as any).consentEvent.create({
-      data: {
-        consentRecordId: updated.id,
-        eventType: 'declined',
-        metadata: JSON.stringify({
-          reason: reason || null,
-          ipAddress: ipStored,
-          userAgent: userAgent ? String(userAgent).slice(0, 1024) : null,
-        }),
-      },
-    });
+    const updated = await withTransientDbRetry(() =>
+      (prisma as any).consentRecord.update({
+        where: { token },
+        data: {
+          status: 'declined',
+          declinedAt: new Date(),
+        },
+      })
+    );
+    await withTransientDbRetry(() =>
+      (prisma as any).consentEvent.create({
+        data: {
+          consentRecordId: updated.id,
+          eventType: 'declined',
+          metadata: JSON.stringify({
+            reason: reason || null,
+            ipAddress: ipStored,
+            userAgent: userAgent ? String(userAgent).slice(0, 1024) : null,
+          }),
+        },
+      })
+    );
 
     return NextResponse.json({ success: true, consent: updated });
   } catch (error) {
     console.error('[consent/decline] POST error:', error);
+    if (isTransientDbConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'DB_UNAVAILABLE',
+          message: 'The database is temporarily unavailable. Please try again.',
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ success: false, error: 'Failed to decline consent' }, { status: 500 });
   }
 }

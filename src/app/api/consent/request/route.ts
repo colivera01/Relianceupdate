@@ -6,6 +6,31 @@ import { getUserIdFromRequest } from '@/lib/auth';
 import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
 import { logNotificationEnvWarnings } from '@/lib/env/notification-config';
 
+function isTransientDbConnectivityError(error: any): boolean {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return (
+    code === 'P1001' ||
+    message.includes("Can't reach database server") ||
+    message.includes('PrismaClientInitializationError') ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('ETIMEDOUT') ||
+    message.toLowerCase().includes('prisma connect probe timeout')
+  );
+}
+
+async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isTransientDbConnectivityError(error)) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return operation();
+  }
+}
+
 function parseCustomerMetadata(value: string | null | undefined): Record<string, unknown> {
   if (!value) return {};
   try {
@@ -42,16 +67,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid consentType' }, { status: 400 });
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      select: {
-        id: true,
-        vendorId: true,
-        clientName: true,
-        customerMetadata: true,
-        user: { select: { email: true, phone: true, name: true } },
-      },
-    });
+    const booking = await withTransientDbRetry(() =>
+      prisma.booking.findUnique({
+        where: { id: bookingId },
+        select: {
+          id: true,
+          vendorId: true,
+          clientName: true,
+          customerMetadata: true,
+          user: { select: { email: true, phone: true, name: true } },
+        },
+      })
+    );
     if (!booking || String(booking.vendorId) !== vendorId) {
       return NextResponse.json({ success: false, error: 'Invalid booking/vendor pair' }, { status: 404 });
     }
@@ -70,30 +97,40 @@ export async function POST(request: NextRequest) {
       undefined;
 
     const token = generateConsentToken();
-    const record = await (prisma as any).consentRecord.create({
-      data: {
-        token,
-        bookingId,
-        vendorId,
-        mediaSessionId,
-        consentType,
-        status: 'requested',
-        requestedAt: new Date(),
-        expiresAt,
-      },
-    });
+    const record = await withTransientDbRetry(() =>
+      (prisma as any).consentRecord.create({
+        data: {
+          token,
+          bookingId,
+          vendorId,
+          mediaSessionId,
+          consentType,
+          status: 'requested',
+          requestedAt: new Date(),
+          expiresAt,
+        },
+      })
+    );
 
-    await (prisma as any).consentEvent.create({
-      data: { consentRecordId: record.id, eventType: 'sent', metadata: null },
-    });
+    await withTransientDbRetry(() =>
+      (prisma as any).consentEvent.create({
+        data: { consentRecordId: record.id, eventType: 'sent', metadata: null },
+      })
+    );
 
-    await createAdminAuditLog({
-      actionType: 'consent_requested',
-      entityType: 'consent',
-      entityId: record.id,
-      actorUserId: String(actorUserId),
-      metadata: { bookingId, vendorId, mediaSessionId, consentType },
-    });
+    try {
+      await withTransientDbRetry(() =>
+        createAdminAuditLog({
+          actionType: 'consent_requested',
+          entityType: 'consent',
+          entityId: record.id,
+          actorUserId: String(actorUserId),
+          metadata: { bookingId, vendorId, mediaSessionId, consentType },
+        })
+      );
+    } catch (e) {
+      console.error('[consent/request] admin audit logging failed (non-blocking)', e);
+    }
 
     const consentPath = `/consent/${encodeURIComponent(token)}`;
     let notification: Awaited<ReturnType<typeof sendConsentLinkNotification>> | null = null;
@@ -109,27 +146,31 @@ export async function POST(request: NextRequest) {
         customerName,
         consentTypeLabel: consentType.replace(/_/g, ' '),
       });
-      await (prisma as any).consentEvent.create({
-        data: {
-          consentRecordId: record.id,
-          eventType: 'notification_dispatch',
-          metadata: JSON.stringify({
-            anySuccess: notification.anySuccess,
-            channels: notification.channels,
-            absoluteFallbackLink: notification.absoluteFallbackLink,
-          }),
-        },
-      });
+      await withTransientDbRetry(() =>
+        (prisma as any).consentEvent.create({
+          data: {
+            consentRecordId: record.id,
+            eventType: 'notification_dispatch',
+            metadata: JSON.stringify({
+              anySuccess: notification.anySuccess,
+              channels: notification.channels,
+              absoluteFallbackLink: notification.absoluteFallbackLink,
+            }),
+          },
+        })
+      );
     } catch (e) {
       notificationError = e instanceof Error ? e.message : String(e);
-      console.error('[consent/request] notification error:', e);
-      await (prisma as any).consentEvent.create({
-        data: {
-          consentRecordId: record.id,
-          eventType: 'notification_dispatch_failed',
-          metadata: JSON.stringify({ error: notificationError }),
-        },
-      });
+      console.error('[consent/request] notification dispatch failed:', e);
+      await withTransientDbRetry(() =>
+        (prisma as any).consentEvent.create({
+          data: {
+            consentRecordId: record.id,
+            eventType: 'notification_dispatch_failed',
+            metadata: JSON.stringify({ error: notificationError }),
+          },
+        })
+      );
     }
 
     return NextResponse.json({
@@ -146,6 +187,16 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[consent/request] POST error:', error);
+    if (isTransientDbConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'DB_UNAVAILABLE',
+          message: 'The database is temporarily unavailable. Please try again.',
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ success: false, error: 'Failed to create consent request' }, { status: 500 });
   }
 }

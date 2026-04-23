@@ -45,15 +45,35 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
   const absoluteFallbackLink = buildAbsoluteUrl(env.appBaseUrl, input.consentPath);
   const channels: ChannelDelivery[] = [];
 
-  const subject = `Action needed: consent for your Reliance booking`;
+  const subject = `Action required: Review your Reliance consent request`;
   const label = input.consentTypeLabel || 'requested consent';
+  const greetingName = input.customerName ? ` ${escapeHtml(input.customerName)}` : '';
   const html = `
-    <p>Hello${input.customerName ? ` ${escapeHtml(input.customerName)}` : ''},</p>
-    <p>Please review and respond to ${escapeHtml(label)}.</p>
-    <p><a href="${escapeHtml(absoluteFallbackLink)}">Open consent page</a></p>
-    <p>If the button does not work, copy this link:<br/><code>${escapeHtml(absoluteFallbackLink)}</code></p>
+    <p>Hello${greetingName},</p>
+    <p>You are receiving this message because your service provider requested consent through <strong>Reliance</strong>, our secure platform for service video access and compliance.</p>
+    <p><strong>Why this request was sent:</strong> your provider needs your permission to continue the service video workflow (${escapeHtml(label)}).</p>
+    <p>This consent applies to all service-related recordings (before, during, and after your service) and only needs to be completed once.</p>
+    <p>This request is part of your active service and is required before your provider can proceed with video documentation.</p>
+    <p><strong>What happens after you accept:</strong> your consent status is updated immediately so the provider can proceed, and your response is logged for compliance.</p>
+    <p><a href="${escapeHtml(absoluteFallbackLink)}">Review and respond to consent request</a></p>
+    <p>If the link above does not work, copy and paste this URL into your browser:<br/><code>${escapeHtml(absoluteFallbackLink)}</code></p>
+    <p>If you did not expect this request, you can ignore this message.</p>
+    <p>— Reliance Secure Service Video Platform</p>
   `.trim();
-  const text = `Please complete ${label}: ${absoluteFallbackLink}`;
+  const text = [
+    `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
+    '',
+    'You are receiving this message because your service provider requested consent through Reliance, our secure platform for service video access and compliance.',
+    `Why this request was sent: your provider needs your permission to continue the service video workflow (${label}).`,
+    'This consent applies to all service-related recordings (before, during, and after your service) and only needs to be completed once.',
+    'This request is part of your active service and is required before your provider can proceed with video documentation.',
+    'What happens after you accept: your consent status updates immediately so the provider can proceed, and your response is logged for compliance.',
+    '',
+    `Review and respond: ${absoluteFallbackLink}`,
+    '',
+    'If you did not expect this request, you can ignore this message.',
+    '— Reliance Secure Service Video Platform',
+  ].join('\n');
 
   const email = (input.customerEmail || '').trim();
   if (env.emailEnabled && email) {

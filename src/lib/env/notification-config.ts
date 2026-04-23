@@ -15,6 +15,16 @@ export type NotificationEnvSnapshot = {
   smsEnabled: boolean;
 };
 
+function normalizeEmailFrom(raw: string | undefined): string {
+  let value = String(raw || '').trim();
+  if (!value) return '';
+  // Guard against accidental env value like "EMAIL_FROM=Reliance <noreply@...>"
+  value = value.replace(/^(EMAIL_FROM=)+/i, '').trim();
+  // Strip wrapping quotes sometimes introduced in env files.
+  value = value.replace(/^['"]+|['"]+$/g, '').trim();
+  return value;
+}
+
 function parseEnvBoolean(raw: string | undefined, defaultValue: boolean): boolean {
   if (raw === undefined || raw === '') return defaultValue;
   const v = raw.trim().toLowerCase();
@@ -26,7 +36,7 @@ function parseEnvBoolean(raw: string | undefined, defaultValue: boolean): boolea
 export function readNotificationEnv(): NotificationEnvSnapshot {
   return {
     resendApiKey: (process.env.RESEND_API_KEY || '').trim(),
-    emailFrom: (process.env.EMAIL_FROM || '').trim(),
+    emailFrom: normalizeEmailFrom(process.env.EMAIL_FROM),
     emailReplyTo: (process.env.EMAIL_REPLY_TO || '').trim(),
     twilioAccountSid: (process.env.TWILIO_ACCOUNT_SID || '').trim(),
     twilioAuthToken: (process.env.TWILIO_AUTH_TOKEN || '').trim(),
@@ -51,6 +61,12 @@ export function logNotificationEnvWarnings(): void {
   if (e.emailEnabled) {
     if (!e.resendApiKey) lines.push('EMAIL_ENABLED is true but RESEND_API_KEY is missing (email sends will fail).');
     if (!e.emailFrom) lines.push('EMAIL_ENABLED is true but EMAIL_FROM is missing.');
+    if (e.emailFrom && !e.emailFrom.includes('@')) {
+      lines.push('EMAIL_FROM does not look valid (expected "Name <email@domain>").');
+    }
+    if (e.emailFrom && /^email_from=/i.test(e.emailFrom)) {
+      lines.push('EMAIL_FROM appears malformed; remove duplicated "EMAIL_FROM=" prefix from the value.');
+    }
   }
   if (e.smsEnabled) {
     if (!e.twilioAccountSid) lines.push('SMS_ENABLED is true but TWILIO_ACCOUNT_SID is missing.');
@@ -59,6 +75,12 @@ export function logNotificationEnvWarnings(): void {
   }
   if (!e.appBaseUrl) {
     lines.push('APP_BASE_URL is missing (absolute consent/review links in emails/SMS may be incomplete).');
+  }
+  if (e.appBaseUrl && !/^https?:\/\//i.test(e.appBaseUrl)) {
+    lines.push('APP_BASE_URL should include protocol, e.g. https://your-domain.com');
+  }
+  if (e.appBaseUrl && /localhost|127\.0\.0\.1/i.test(e.appBaseUrl) && process.env.NODE_ENV === 'production') {
+    lines.push('APP_BASE_URL points to localhost in production; external recipients will not be able to open links.');
   }
   if (e.emailReplyTo && !e.emailReplyTo.includes('@')) {
     lines.push('EMAIL_REPLY_TO does not look like a valid address.');

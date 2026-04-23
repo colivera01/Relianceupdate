@@ -10,12 +10,15 @@ import { logNotificationEnvWarnings } from '@/lib/env/notification-config';
  */
 export async function POST(request: NextRequest) {
   logNotificationEnvWarnings();
+  const expectedHeaderName = 'x-notifications-test-secret';
 
   if (process.env.NODE_ENV === 'production') {
     return NextResponse.json({ success: false, error: 'Not available in production' }, { status: 404 });
   }
 
   const expected = (process.env.NOTIFICATIONS_TEST_SECRET || '').trim();
+  const providedRaw = request.headers.get(expectedHeaderName);
+  const provided = String(providedRaw || '').trim();
   if (!expected) {
     return NextResponse.json(
       {
@@ -26,7 +29,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const provided = (request.headers.get('x-notifications-test-secret') || '').trim();
   if (provided !== expected) {
     return NextResponse.json({ success: false, error: 'Invalid or missing x-notifications-test-secret' }, { status: 401 });
   }

@@ -209,6 +209,8 @@ export default function VendorJobs() {
     videoStage: '' | VendorJobVideoStage;
     replaceStage: boolean;
   }>({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
+  const [preferredNextVideoStage, setPreferredNextVideoStage] = useState<'' | VendorJobVideoStage>('');
+  const [preferredReplaceStage, setPreferredReplaceStage] = useState(false);
   const [videoFieldErrors, setVideoFieldErrors] = useState({
     title: '',
     description: '',
@@ -247,6 +249,7 @@ export default function VendorJobs() {
     REQUESTED: 'requested',
     ACCEPTED: 'accepted',
     DECLINED: 'declined',
+    EXPIRED_OR_UNAVAILABLE: 'expired_or_unavailable',
   } as const;
   const [location, setLocation] = useState('');
   const [showConsent, setShowConsent] = useState(false);
@@ -259,8 +262,53 @@ export default function VendorJobs() {
   const [customerConsentRequested, setCustomerConsentRequested] = useState(false);
   const [customerConsentReceived, setCustomerConsentReceived] = useState(false);
   const [activeConsentToken, setActiveConsentToken] = useState('');
+  const [recordingComplianceByJobId, setRecordingComplianceByJobId] = useState<
+    Record<
+      string,
+      {
+        location: 'business' | 'residence' | 'customer-business';
+        consentAccepted: boolean;
+        consentToken: string;
+        locationVerified: boolean;
+        savedAt: string;
+      }
+    >
+  >({});
+  const [consentStatusByBookingId, setConsentStatusByBookingId] = useState<Record<string, string>>({});
   const [showModal, setShowModal] = useState(false);
   const [showComplianceModal, setShowComplianceModal] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.sessionStorage.getItem('recordingComplianceByJobId');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      setRecordingComplianceByJobId(parsed as Record<string, any>);
+      console.info('[recording-compliance] restored snapshot store from sessionStorage', {
+        keys: Object.keys(parsed),
+      });
+    } catch (error) {
+      console.warn('[recording-compliance] failed to restore snapshot store', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(
+        'recordingComplianceByJobId',
+        JSON.stringify(recordingComplianceByJobId)
+      );
+      console.info('[recording-compliance] snapshot store updated', {
+        keys: Object.keys(recordingComplianceByJobId),
+        total: Object.keys(recordingComplianceByJobId).length,
+      });
+    } catch (error) {
+      console.warn('[recording-compliance] failed to persist snapshot store', error);
+    }
+  }, [recordingComplianceByJobId]);
   
   // Fraud prevention state
   const [attemptCount, setAttemptCount] = useState(0);
@@ -290,14 +338,42 @@ export default function VendorJobs() {
         ? CONSENT_STATE.REQUESTED
         : upper === 'DECLINED'
         ? CONSENT_STATE.DECLINED
+      : upper === 'EXPIRED'
+      ? CONSENT_STATE.EXPIRED_OR_UNAVAILABLE
         : CONSENT_STATE.NOT_REQUESTED;
     setCustomerConsentStatus(normalized);
+    setConsentStatus(normalized);
     if (normalized === CONSENT_STATE.REQUESTED || normalized === CONSENT_STATE.ACCEPTED) {
       setCustomerConsentRequested(true);
     } else {
       setCustomerConsentRequested(false);
     }
     setCustomerConsentReceived(normalized === CONSENT_STATE.ACCEPTED);
+    const bookingKey = selectedJob
+      ? String(selectedJob.bookingId || selectedJob.id || '').trim()
+      : '';
+    if (bookingKey) {
+      setConsentStatusByBookingId((prev) => ({ ...prev, [bookingKey]: normalized }));
+    }
+    const selectedLocation = String(location || '').trim().toLowerCase();
+    if (
+      selectedJob &&
+      (selectedLocation === 'business' ||
+        selectedLocation === 'residence' ||
+        selectedLocation === 'customer-business')
+    ) {
+      const existingSnapshot = getSavedRecordingComplianceForJob(selectedJob);
+      mergeRecordingComplianceForJob(selectedJob, {
+        location: selectedLocation as 'business' | 'residence' | 'customer-business',
+        consentAccepted: normalized === CONSENT_STATE.ACCEPTED,
+        consentToken: String(activeConsentToken || existingSnapshot?.consentToken || '').trim(),
+        locationVerified:
+          existingSnapshot?.locationVerified !== undefined
+            ? Boolean(existingSnapshot.locationVerified)
+            : Boolean(locationVerified),
+        savedAt: new Date().toISOString(),
+      });
+    }
   };
 
   const fetchConsentStatus = async (token: string) => {
@@ -309,10 +385,21 @@ export default function VendorJobs() {
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok || payload?.success === false) {
+      const payloadCode = String(payload?.code || '').trim().toUpperCase();
+      if (
+        res.status === 404 ||
+        res.status === 410 ||
+        payloadCode === 'CONSENT_EXPIRED' ||
+        payloadCode === 'CONSENT_NOT_FOUND'
+      ) {
+        applyConsentStatusFromBackend('EXPIRED');
+        return;
+      }
       const message =
         (typeof payload?.error === 'string' && payload.error) ||
         (typeof payload?.message === 'string' && payload.message) ||
         `Failed to fetch consent status (${res.status})`;
+      applyConsentStatusFromBackend('EXPIRED');
       throw new Error(message);
     }
     applyConsentStatusFromBackend(payload?.consent?.status);
@@ -326,6 +413,61 @@ export default function VendorJobs() {
     }
     return false;
   };
+  const resolveMembershipIdsForJob = (job: any): string[] => {
+    const rawIds = Array.isArray(job?.assignedMembershipIds)
+      ? job.assignedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+      : [];
+    if (rawIds.length > 0) return rawIds;
+    const names = Array.isArray(job?.assignedEmployees) ? job.assignedEmployees : [];
+    if (!names.length || !teamMembers.length) return [];
+    return names
+      .map((n: string) => {
+        const needle = String(n).trim().toLowerCase();
+        const t = teamMembers.find((m) => m.name.trim().toLowerCase() === needle);
+        return t?.membershipId;
+      })
+      .filter(Boolean) as string[];
+  };
+  const isJobAssignedForVideoUpload = (job: any): boolean =>
+    resolveMembershipIdsForJob(job).length > 0;
+  const videoAssignmentRequiredCopy = 'Assign this job before uploading service videos.';
+  const assignmentSatisfiedForCompliance = Boolean(selectedJob && isJobAssignedForVideoUpload(selectedJob));
+  const consentRequiredForCompliance =
+    location === 'residence' || location === 'customer-business';
+  const consentSatisfiedForCompliance = !consentRequiredForCompliance || customerConsentReceived;
+  const locationRequiredForCompliance =
+    location === 'business' || location === 'customer-business';
+  const locationSatisfiedForCompliance = !locationRequiredForCompliance || locationVerified;
+  const allComplianceChecksPassed =
+    assignmentSatisfiedForCompliance &&
+    consentSatisfiedForCompliance &&
+    locationSatisfiedForCompliance;
+  const compliancePrerequisiteMessage = (() => {
+    if (
+      consentRequiredForCompliance &&
+      consentSatisfiedForCompliance &&
+      !assignmentSatisfiedForCompliance
+    ) {
+      return 'Consent accepted. Assign this job before recording can proceed.';
+    }
+    if (
+      consentRequiredForCompliance &&
+      assignmentSatisfiedForCompliance &&
+      !consentSatisfiedForCompliance
+    ) {
+      return 'Job assigned. Customer consent is still required before recording.';
+    }
+    if (assignmentSatisfiedForCompliance && consentSatisfiedForCompliance && !locationSatisfiedForCompliance) {
+      return 'Job assigned. Location verification is still required before recording.';
+    }
+    if (allComplianceChecksPassed) {
+      return 'All compliance checks passed. You may proceed.';
+    }
+    if (!assignmentSatisfiedForCompliance) {
+      return 'Assignment required before recording can proceed.';
+    }
+    return 'Complete the remaining compliance checks before recording can proceed.';
+  })();
 
   useEffect(() => {
     if (!showComplianceModal) return;
@@ -338,6 +480,32 @@ export default function VendorJobs() {
     resetComplianceState();
     setLocation('');
   }, [showComplianceModal, selectedJob?.id]);
+
+  useEffect(() => {
+    const consentPollingEligible =
+      showComplianceModal &&
+      (location === 'residence' || location === 'customer-business') &&
+      customerConsentStatus === CONSENT_STATE.REQUESTED &&
+      Boolean(activeConsentToken);
+
+    if (!consentPollingEligible) {
+      return;
+    }
+
+    const pollIntervalMs = 4000;
+    const intervalId = window.setInterval(() => {
+      void fetchConsentStatus(activeConsentToken).catch((error) => {
+        console.warn('[Vendor Compliance] Consent polling refresh failed', error);
+      });
+    }, pollIntervalMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    showComplianceModal,
+    location,
+    customerConsentStatus,
+    activeConsentToken,
+  ]);
 
   // Enhancement 1: Job Status Management
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -413,24 +581,6 @@ export default function VendorJobs() {
   // Calendar date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState('');
-  const resolveMembershipIdsForJob = (job: any): string[] => {
-    const rawIds = Array.isArray(job?.assignedMembershipIds)
-      ? job.assignedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
-      : [];
-    if (rawIds.length > 0) return rawIds;
-    const names = Array.isArray(job?.assignedEmployees) ? job.assignedEmployees : [];
-    if (!names.length || !teamMembers.length) return [];
-    return names
-      .map((n: string) => {
-        const needle = String(n).trim().toLowerCase();
-        const t = teamMembers.find((m) => m.name.trim().toLowerCase() === needle);
-        return t?.membershipId;
-      })
-      .filter(Boolean) as string[];
-  };
-  const isJobAssignedForVideoUpload = (job: any): boolean =>
-    resolveMembershipIdsForJob(job).length > 0;
-  const videoAssignmentRequiredCopy = 'Assign this job before uploading service videos.';
   const trimmedJobTitle = newJob.title.trim();
   const trimmedClientName = newJob.client.trim();
   const phoneDigits = getPhoneDigits(newJob.phone);
@@ -729,6 +879,369 @@ export default function VendorJobs() {
         sessionType: video?.sessionType,
       });
       return inferred === stage;
+    });
+  };
+
+  const getNextMissingVideoStageForJob = (job: any): VendorJobVideoStage | null => {
+    const stageOrder: VendorJobVideoStage[] = ['INTRO', 'IN_PROGRESS', 'COMPLETED'];
+    for (const stage of stageOrder) {
+      if (!jobHasVideoForStage(job, stage)) {
+        return stage;
+      }
+    }
+    return null;
+  };
+
+  const getRecordingComplianceKeys = (job: any): string[] => {
+    const keys = [
+      String(job?.bookingId || '').trim(),
+      String(job?.id || '').trim(),
+    ].filter(Boolean);
+    return Array.from(new Set(keys));
+  };
+
+  const mergeRecordingComplianceForJob = (
+    job: any,
+    partial: Partial<{
+      location: 'business' | 'residence' | 'customer-business';
+      consentAccepted: boolean;
+      consentToken: string;
+      locationVerified: boolean;
+      savedAt: string;
+    }>
+  ) => {
+    const keys = getRecordingComplianceKeys(job);
+    if (!keys.length) return;
+    setRecordingComplianceByJobId((prev) => {
+      const existing =
+        keys
+          .map((key) => prev[key])
+          .filter(Boolean)
+          .sort((a: any, b: any) => {
+            const aTime = Date.parse(String(a?.savedAt || '')) || 0;
+            const bTime = Date.parse(String(b?.savedAt || '')) || 0;
+            return bTime - aTime;
+          })[0] || null;
+      const merged = {
+        location: (partial.location || existing?.location || 'business') as
+          | 'business'
+          | 'residence'
+          | 'customer-business',
+        consentAccepted:
+          partial.consentAccepted !== undefined
+            ? Boolean(partial.consentAccepted)
+            : Boolean(existing?.consentAccepted),
+        consentToken:
+          partial.consentToken !== undefined
+            ? String(partial.consentToken || '').trim()
+            : String(existing?.consentToken || '').trim(),
+        locationVerified:
+          partial.locationVerified !== undefined
+            ? Boolean(partial.locationVerified)
+            : Boolean(existing?.locationVerified),
+        savedAt: partial.savedAt || new Date().toISOString(),
+      };
+      const next = { ...prev };
+      keys.forEach((key) => {
+        next[key] = merged;
+      });
+      return next;
+    });
+  };
+
+  const persistRecordingComplianceForJob = (
+    job: any,
+    snapshot: {
+      location: 'business' | 'residence' | 'customer-business';
+      consentAccepted: boolean;
+      consentToken: string;
+      locationVerified: boolean;
+      savedAt: string;
+    }
+  ) => {
+    const keys = getRecordingComplianceKeys(job);
+    if (!keys.length) return;
+    console.info('[recording-compliance] saving snapshot', {
+      keys,
+      location: snapshot.location,
+      consentAccepted: snapshot.consentAccepted,
+      hasConsentToken: Boolean(snapshot.consentToken),
+      locationVerified: snapshot.locationVerified,
+      savedAt: snapshot.savedAt,
+    });
+    setRecordingComplianceByJobId((prev) => {
+      const next = { ...prev };
+      keys.forEach((key) => {
+        next[key] = snapshot;
+      });
+      return next;
+    });
+  };
+
+  const getSavedRecordingComplianceForJob = (job: any) => {
+    const keys = getRecordingComplianceKeys(job);
+    if (!keys.length) return null;
+    const matches = keys
+      .map((key) => ({ key, value: recordingComplianceByJobId[key] }))
+      .filter((entry) => Boolean(entry.value));
+    if (matches.length > 0) {
+      const freshest = matches
+        .slice()
+        .sort((a: any, b: any) => {
+          const aTime = Date.parse(String(a?.value?.savedAt || '')) || 0;
+          const bTime = Date.parse(String(b?.value?.savedAt || '')) || 0;
+          return bTime - aTime;
+        })[0];
+      const hit = freshest.value;
+      console.info('[recording-compliance] loaded snapshot', {
+        requestedKeys: keys,
+        matchedKeys: matches.map((match) => match.key),
+        selectedKey: freshest.key,
+        location: hit.location,
+        consentAccepted: hit.consentAccepted,
+        hasConsentToken: Boolean(hit.consentToken),
+        locationVerified: hit.locationVerified,
+        savedAt: hit.savedAt,
+      });
+      return hit;
+    }
+    console.info('[recording-compliance] no saved snapshot', { requestedKeys: keys });
+    return null;
+  };
+
+  useEffect(() => {
+    const jobsWithSnapshot = jobs
+      .map((job) => {
+        const keys = getRecordingComplianceKeys(job);
+        const snapshot = getSavedRecordingComplianceForJob(job);
+        return {
+          jobId: String(job?.id || ''),
+          keys,
+          hasSnapshot: Boolean(snapshot),
+          consentAccepted: Boolean(snapshot?.consentAccepted),
+          hasConsentToken: Boolean(String(snapshot?.consentToken || '').trim()),
+          location: snapshot?.location || null,
+          savedAt: snapshot?.savedAt || null,
+        };
+      })
+      .filter((entry) => entry.hasSnapshot);
+    console.info('[recording-compliance] jobs rerender snapshot check', {
+      totalJobs: jobs.length,
+      jobsWithSnapshotCount: jobsWithSnapshot.length,
+      jobsWithSnapshot,
+    });
+  }, [jobs, recordingComplianceByJobId]);
+
+  const isComplianceSatisfiedForRecording = (
+    job: any,
+    snapshot:
+      | {
+          location: 'business' | 'residence' | 'customer-business';
+          consentAccepted: boolean;
+          consentToken: string;
+          locationVerified: boolean;
+        }
+      | null
+  ): boolean => {
+    if (!isJobAssignedForVideoUpload(job)) {
+      console.info('[recording-compliance] unsatisfied: assignment missing');
+      return false;
+    }
+    if (!snapshot) {
+      console.info('[recording-compliance] unsatisfied: snapshot missing');
+      return false;
+    }
+    const locationChoice = String(snapshot.location || '').trim().toLowerCase();
+    if (
+      locationChoice !== 'business' &&
+      locationChoice !== 'residence' &&
+      locationChoice !== 'customer-business'
+    ) {
+      console.info('[recording-compliance] unsatisfied: invalid location', { locationChoice });
+      return false;
+    }
+    const consentSatisfied =
+      locationChoice === 'residence' || locationChoice === 'customer-business'
+        ? Boolean(snapshot.consentAccepted && String(snapshot.consentToken || '').trim())
+        : true;
+    const locationSatisfied =
+      locationChoice === 'business' || locationChoice === 'customer-business'
+        ? Boolean(snapshot.locationVerified)
+        : true;
+    if (!consentSatisfied) {
+      console.info('[recording-compliance] unsatisfied: consent requirement not met', {
+        locationChoice,
+        consentAccepted: snapshot.consentAccepted,
+        hasConsentToken: Boolean(String(snapshot.consentToken || '').trim()),
+      });
+    }
+    if (!locationSatisfied) {
+      console.info('[recording-compliance] unsatisfied: location verification not met', {
+        locationChoice,
+        locationVerified: snapshot.locationVerified,
+      });
+    }
+    return consentSatisfied && locationSatisfied;
+  };
+
+  const refreshRecordingComplianceSnapshot = async (
+    job: any,
+    snapshot:
+      | {
+          location: 'business' | 'residence' | 'customer-business';
+          consentAccepted: boolean;
+          consentToken: string;
+          locationVerified: boolean;
+          savedAt?: string;
+        }
+      | null
+  ) => {
+    if (!snapshot) return null;
+    const locationChoice = String(snapshot.location || '').trim().toLowerCase();
+    const requiresConsent =
+      locationChoice === 'residence' || locationChoice === 'customer-business';
+    if (!requiresConsent) return snapshot;
+    if (snapshot.consentAccepted) return snapshot;
+    const token = String(snapshot.consentToken || '').trim();
+    if (!token) return snapshot;
+    try {
+      const res = await fetch(`/api/consent/${encodeURIComponent(token)}`, {
+        method: 'GET',
+        headers: getRequestHeaders(),
+        cache: 'no-store',
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload?.success === false) {
+        console.info('[recording-compliance] token refresh failed', {
+          status: res.status,
+          code: payload?.code || null,
+        });
+        return snapshot;
+      }
+      const latestStatus = String(payload?.consent?.status || '').trim().toLowerCase();
+      const accepted = latestStatus === 'accepted';
+      const refreshed = {
+        ...snapshot,
+        consentAccepted: accepted,
+        consentToken: token,
+        savedAt: new Date().toISOString(),
+      };
+      mergeRecordingComplianceForJob(job, refreshed);
+      console.info('[recording-compliance] token refresh applied', {
+        latestStatus,
+        consentAccepted: accepted,
+        hasConsentToken: Boolean(token),
+      });
+      return refreshed;
+    } catch (error) {
+      console.info('[recording-compliance] token refresh exception', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return snapshot;
+    }
+  };
+
+  const openUploadModalDirect = (
+    job: any,
+    snapshot: {
+      location: 'business' | 'residence' | 'customer-business';
+      consentAccepted: boolean;
+      consentToken: string;
+      locationVerified: boolean;
+    },
+    stage: '' | VendorJobVideoStage,
+    replaceExisting: boolean
+  ) => {
+    setSelectedJob(job);
+    setLocation(snapshot.location);
+    setLocationVerified(Boolean(snapshot.locationVerified));
+    setCustomerConsentReceived(Boolean(snapshot.consentAccepted));
+    setCustomerConsentRequested(Boolean(snapshot.consentAccepted));
+    setCustomerConsentStatus(
+      snapshot.consentAccepted ? CONSENT_STATE.ACCEPTED : CONSENT_STATE.NOT_REQUESTED
+    );
+    setActiveConsentToken(String(snapshot.consentToken || '').trim());
+    setPreferredNextVideoStage('');
+    setPreferredReplaceStage(false);
+    setShowComplianceModal(false);
+    setNewVideo({
+      title: '',
+      description: '',
+      file: null,
+      videoStage: stage,
+      replaceStage: Boolean(replaceExisting),
+    });
+    setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
+    setVideoUploadError('');
+    setShowModal(true);
+  };
+
+  const startRecordingFlow = async (
+    job: any,
+    options?: {
+      stage?: '' | VendorJobVideoStage;
+      replaceExisting?: boolean;
+      source?: string;
+    }
+  ) => {
+    if (!isJobAssignedForVideoUpload(job)) {
+      setJobActionFeedback({ type: 'error', message: videoAssignmentRequiredCopy });
+      return;
+    }
+    const stage = options?.stage || '';
+    const replaceExisting = Boolean(options?.replaceExisting);
+    const source = String(options?.source || 'unknown');
+    const saved = getSavedRecordingComplianceForJob(job);
+    console.info('[recording-compliance] startRecordingFlow snapshot', {
+      source,
+      jobKeys: getRecordingComplianceKeys(job),
+      stage,
+      replaceExisting,
+      snapshot: saved,
+    });
+    const refreshed = await refreshRecordingComplianceSnapshot(job, saved);
+    console.info('[recording-compliance] startRecordingFlow effective snapshot', {
+      source,
+      jobKeys: getRecordingComplianceKeys(job),
+      snapshot: refreshed,
+    });
+    if (isComplianceSatisfiedForRecording(job, refreshed)) {
+      console.info('[recording-compliance] opening upload directly', {
+        stage,
+        replaceExisting,
+      });
+      openUploadModalDirect(job, refreshed!, stage, replaceExisting);
+      return;
+    }
+    console.info('[recording-compliance] opening compliance modal', {
+      stage,
+      replaceExisting,
+    });
+    setSelectedJob(job);
+    setPreferredNextVideoStage(stage);
+    setPreferredReplaceStage(replaceExisting);
+    setShowComplianceModal(true);
+  };
+
+  const openComplianceForNextStage = (job: any) => {
+    const nextStage = getNextMissingVideoStageForJob(job);
+    if (!nextStage) return;
+    void startRecordingFlow(job, {
+      stage: nextStage,
+      replaceExisting: false,
+      source: 'continue-recording',
+    });
+  };
+
+  const openComplianceForSpecificStage = (
+    job: any,
+    stage: VendorJobVideoStage,
+    replaceExisting: boolean
+  ) => {
+    void startRecordingFlow(job, {
+      stage,
+      replaceExisting,
+      source: replaceExisting ? `replace-${stage}` : `upload-${stage}`,
     });
   };
 
@@ -1258,6 +1771,16 @@ export default function VendorJobs() {
     setUploadLifecycleState('idle');
 
     try {
+      const snapshotBeforeUpload = selectedJobSnapshot
+        ? getSavedRecordingComplianceForJob(selectedJobSnapshot)
+        : null;
+      console.info('[recording-compliance] before upload', {
+        jobKeys: selectedJobSnapshot ? getRecordingComplianceKeys(selectedJobSnapshot) : [],
+        selectedJobId,
+        selectedStage: videoStage,
+        snapshot: snapshotBeforeUpload,
+      });
+
       const uploadResult = await runVendorJobMediaUpload({
         vendorId: String(vendorId),
         selectedJob: selectedJobSnapshot,
@@ -1285,6 +1808,16 @@ export default function VendorJobs() {
         return next;
       });
       await hydratePersistedVideos(nextJobsSnapshot);
+
+      const snapshotAfterUpload = selectedJobSnapshot
+        ? getSavedRecordingComplianceForJob(selectedJobSnapshot)
+        : null;
+      console.info('[recording-compliance] after upload success', {
+        jobKeys: selectedJobSnapshot ? getRecordingComplianceKeys(selectedJobSnapshot) : [],
+        selectedJobId,
+        uploadedStage: videoStage,
+        snapshot: snapshotAfterUpload,
+      });
 
       setNewVideo({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
       setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
@@ -1786,6 +2319,23 @@ export default function VendorJobs() {
     })();
   };
 
+  const handleJobCardClick = (event: any, job: any) => {
+    const target = event?.target as HTMLElement | null;
+    if (!target) {
+      openJobDetails(job);
+      return;
+    }
+
+    const clickedInteractiveElement = target.closest(
+      'input, button, a, select, textarea, label, [role="menu"], [role="menuitem"], [data-no-card-open]'
+    );
+    if (clickedInteractiveElement) {
+      return;
+    }
+
+    openJobDetails(job);
+  };
+
   // Memory tracking functions
   const calculateVideoMemoryUsage = (video) => {
     // Mock calculation - in real app, this would be actual file size
@@ -2017,7 +2567,29 @@ export default function VendorJobs() {
       }
       const token = String(consentPayload?.consent?.token || '').trim();
       setActiveConsentToken(token);
+      const selectedLocation = String(location || '').trim().toLowerCase();
+      if (
+        selectedJob &&
+        token &&
+        (selectedLocation === 'business' ||
+          selectedLocation === 'residence' ||
+          selectedLocation === 'customer-business')
+      ) {
+        mergeRecordingComplianceForJob(selectedJob, {
+          location: selectedLocation as 'business' | 'residence' | 'customer-business',
+          consentAccepted: false,
+          consentToken: token,
+          locationVerified,
+          savedAt: new Date().toISOString(),
+        });
+      }
       applyConsentStatusFromBackend(consentPayload?.consent?.status || 'REQUESTED');
+      const bookingKey = selectedJob?.bookingId
+        ? String(selectedJob.bookingId)
+        : String(selectedJob?.id || '');
+      if (bookingKey) {
+        setConsentStatusByBookingId((prev) => ({ ...prev, [bookingKey]: CONSENT_STATE.REQUESTED }));
+      }
       if (token) {
         try {
           await fetchConsentStatus(token);
@@ -2126,9 +2698,32 @@ export default function VendorJobs() {
       setGeoError('Please select a job before continuing to video upload.');
       return;
     }
-    setNewVideo({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
+    const complianceLocation = String(location || '').trim().toLowerCase();
+    if (
+      complianceLocation === 'business' ||
+      complianceLocation === 'residence' ||
+      complianceLocation === 'customer-business'
+    ) {
+      const existingSnapshot = getSavedRecordingComplianceForJob(selectedJob);
+      persistRecordingComplianceForJob(selectedJob, {
+        location: complianceLocation as 'business' | 'residence' | 'customer-business',
+        consentAccepted: Boolean(customerConsentReceived),
+        consentToken: String(activeConsentToken || existingSnapshot?.consentToken || '').trim(),
+        locationVerified: Boolean(locationVerified),
+        savedAt: new Date().toISOString(),
+      });
+    }
+    setNewVideo({
+      title: '',
+      description: '',
+      file: null,
+      videoStage: preferredNextVideoStage || '',
+      replaceStage: preferredReplaceStage,
+    });
     setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
     setVideoUploadError('');
+    setPreferredNextVideoStage('');
+    setPreferredReplaceStage(false);
     setShowModal(true);
     
     // Log successful compliance completion
@@ -2275,9 +2870,12 @@ export default function VendorJobs() {
       });
       return;
     }
-    setSelectedJob(selectedJobForVideo);
     setShowSelectJobModal(false);
-    setShowComplianceModal(true);
+    void startRecordingFlow(selectedJobForVideo, {
+      stage: '',
+      replaceExisting: false,
+      source: 'header-create-service-video',
+    });
   };
 
   const fetchArchiveMediaItems = async () => {
@@ -3305,6 +3903,31 @@ export default function VendorJobs() {
               {/* Assignment Information */}
               <div className="bg-white border rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-3">Assignment Information</h4>
+                {(() => {
+                  const consentState = String(
+                    consentStatusByBookingId[
+                      String(selectedJobForDetails?.bookingId || selectedJobForDetails?.id || '')
+                    ] || ''
+                  ).toLowerCase();
+                  if (
+                    consentState !== CONSENT_STATE.ACCEPTED &&
+                    consentState !== CONSENT_STATE.DECLINED
+                  ) {
+                    return null;
+                  }
+                  return (
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      {consentState === CONSENT_STATE.ACCEPTED ? (
+                        <Badge className="bg-green-100 text-green-800">Consent approved</Badge>
+                      ) : (
+                        <Badge className="bg-red-100 text-red-800">Consent declined</Badge>
+                      )}
+                      {consentState === CONSENT_STATE.ACCEPTED && selectedJobForDetails?.assignedEmployees?.length > 0 ? (
+                        <Badge className="bg-emerald-100 text-emerald-800">Ready to record</Badge>
+                      ) : null}
+                    </div>
+                  );
+                })()}
                 {selectedJobForDetails.assignedEmployees && selectedJobForDetails.assignedEmployees.length > 0 ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -3326,6 +3949,30 @@ export default function VendorJobs() {
                     <p className="text-sm text-amber-700 font-medium">Video package locked until assignment</p>
                   </div>
                 )}
+                {(() => {
+                  const nextStage = getNextMissingVideoStageForJob(selectedJobForDetails);
+                  if (!nextStage) return null;
+                  const canRecordNextStage = isJobAssignedForVideoUpload(selectedJobForDetails);
+                  return (
+                    <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3">
+                      <div className="text-sm text-blue-800">
+                        Next stage: {formatVideoStageLabel(nextStage)}
+                      </div>
+                      {canRecordNextStage ? (
+                        <Button
+                          size="sm"
+                          className="mt-2 bg-blue-600 hover:bg-blue-700"
+                          onClick={() => {
+                            setShowJobDetails(false);
+                            openComplianceForNextStage(selectedJobForDetails);
+                          }}
+                        >
+                          Continue Recording
+                        </Button>
+                      ) : null}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Videos — grouped by structured stage */}
@@ -3336,6 +3983,9 @@ export default function VendorJobs() {
                   <span className="font-medium text-gray-700">In Progress</span> on site, and{' '}
                   <span className="font-medium text-gray-700">Completed</span> as the primary proof clip when you
                   finish the job.
+                </p>
+                <p className="text-xs text-gray-500 mb-3">
+                  Follow the steps in order: Intro → In Progress → Completed
                 </p>
                 {playbackError && (
                   <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
@@ -3400,24 +4050,78 @@ export default function VendorJobs() {
                       </div>
                     );
                   };
+                  const stageStatus = [
+                    { key: 'INTRO', label: 'Intro', uploaded: intro.length > 0 },
+                    { key: 'IN_PROGRESS', label: 'In Progress', uploaded: inProgress.length > 0 },
+                    { key: 'COMPLETED', label: 'Completed', uploaded: completed.length > 0 },
+                  ] as const;
+                  const packageReady = stageStatus.every((stage) => stage.uploaded);
+                  const nextStageKey = stageStatus.find((stage) => !stage.uploaded)?.key ?? null;
+                  const stageStatusMap = new Map(stageStatus.map((stage) => [stage.key, stage.uploaded]));
+
                   const stagePanel = (
                     title: string,
                     items: any[],
-                    opts?: { variant?: 'default' | 'primaryProof'; emptyHint?: string }
+                    opts?: {
+                      variant?: 'default' | 'primaryProof';
+                      emptyHint?: string;
+                      stageKey?: VendorJobVideoStage;
+                    }
                   ) => {
                     const isProof = opts?.variant === 'primaryProof';
+                    const stageKey = opts?.stageKey;
+                    const hasStageVideo = items.length > 0;
+                    const stageActionLabel = stageKey
+                      ? `${hasStageVideo ? 'Replace' : 'Upload'} ${formatVideoStageLabel(stageKey)}`
+                      : null;
+                    const stageActionDisabled = Boolean(
+                      stageKey && !isJobAssignedForVideoUpload(selectedJobForDetails)
+                    );
+                    const stageUploaded = Boolean(stageKey && stageStatusMap.get(stageKey));
+                    const isCurrentStage = Boolean(stageKey && nextStageKey === stageKey);
                     return (
                       <div
                         className={`rounded-lg p-3 mb-3 last:mb-0 border ${
-                          isProof ? 'border-emerald-300 bg-emerald-50/50' : 'border-gray-200 bg-white'
+                          stageUploaded
+                            ? 'border-emerald-300 bg-emerald-50/60'
+                            : isCurrentStage
+                            ? 'border-blue-300 bg-blue-50'
+                            : isProof
+                            ? 'border-emerald-300 bg-emerald-50/50'
+                            : 'border-gray-200 bg-white'
                         }`}
                       >
-                        <h5 className="text-sm font-semibold text-gray-900 mb-2 flex flex-wrap items-center gap-2">
-                          {title}
-                          {isProof ? (
-                            <span className="text-xs font-normal text-emerald-800">(primary proof)</span>
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <h5 className="text-sm font-semibold text-gray-900 flex flex-wrap items-center gap-2">
+                            {title}
+                            {isProof ? (
+                              <span className="text-xs font-normal text-emerald-800">(primary proof)</span>
+                            ) : null}
+                            {stageUploaded ? (
+                              <span className="text-xs font-normal text-emerald-700">✔ Completed</span>
+                            ) : isCurrentStage ? (
+                              <span className="text-xs font-normal text-blue-700">Next</span>
+                            ) : null}
+                          </h5>
+                          {stageKey && stageActionLabel ? (
+                            <Button
+                              size="sm"
+                              className="h-8 bg-blue-600 hover:bg-blue-700"
+                              onClick={() => {
+                                setShowJobDetails(false);
+                                openComplianceForSpecificStage(
+                                  selectedJobForDetails,
+                                  stageKey,
+                                  hasStageVideo
+                                );
+                              }}
+                              disabled={stageActionDisabled}
+                              title={stageActionDisabled ? videoAssignmentRequiredCopy : undefined}
+                            >
+                              {stageActionLabel}
+                            </Button>
                           ) : null}
-                        </h5>
+                        </div>
                         {items.length === 0 ? (
                           <p className="text-sm text-gray-600">
                             {opts?.emptyHint ?? 'No video for this stage yet.'}
@@ -3428,12 +4132,6 @@ export default function VendorJobs() {
                       </div>
                     );
                   };
-                  const stageStatus = [
-                    { key: 'INTRO', label: 'Intro', uploaded: intro.length > 0 },
-                    { key: 'IN_PROGRESS', label: 'In Progress', uploaded: inProgress.length > 0 },
-                    { key: 'COMPLETED', label: 'Completed', uploaded: completed.length > 0 },
-                  ] as const;
-                  const packageReady = stageStatus.every((stage) => stage.uploaded);
 
                   return (
                     <div className="space-y-3">
@@ -3472,16 +4170,41 @@ export default function VendorJobs() {
                           ))}
                         </div>
                       </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {stageStatus.map((stage, index) => (
+                            <div key={stage.key} className="flex items-center gap-2">
+                              <span
+                                className={`rounded-full border px-2 py-1 text-xs ${
+                                  stage.uploaded
+                                    ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
+                                    : stage.key === nextStageKey
+                                    ? 'border-blue-300 bg-blue-100 text-blue-800 font-semibold'
+                                    : 'border-gray-200 bg-gray-100 text-gray-500'
+                                }`}
+                              >
+                                {stage.uploaded ? `✔ ${stage.label}` : stage.label}
+                              </span>
+                              {index < stageStatus.length - 1 ? (
+                                <span className="text-gray-400">→</span>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                       <div className="space-y-1">
                         {stagePanel('Intro', intro, {
+                          stageKey: 'INTRO',
                           emptyHint:
                             'No intro video yet. Optional: a short “before we start” clip so customers see who is arriving and what to expect.',
                         })}
                         {stagePanel('In Progress', inProgress, {
+                          stageKey: 'IN_PROGRESS',
                           emptyHint:
                             'No in-progress video yet. Use this slot for mid-job updates from the field while work is underway.',
                         })}
                         {stagePanel('Completed', completed, {
+                          stageKey: 'COMPLETED',
                           variant: 'primaryProof',
                           emptyHint:
                             'No completed-stage video yet. When the job is finished, upload here — moderators treat this as your main proof clip when it is present.',
@@ -4508,18 +5231,66 @@ export default function VendorJobs() {
                 <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                   <div className="font-medium text-gray-900">Compliance status</div>
                   <div className="mt-1 text-gray-700">
+                    Assignment:{' '}
+                    {assignmentSatisfiedForCompliance ? 'Assigned' : 'Assignment required'}
+                  </div>
+                  <div className="mt-1 text-gray-700">
                     Consent:{' '}
-                    {customerConsentStatus === CONSENT_STATE.ACCEPTED
+                    {!consentRequiredForCompliance
+                      ? 'Not required for selected location'
+                      : customerConsentStatus === CONSENT_STATE.ACCEPTED
                       ? 'Accepted'
                       : customerConsentStatus === CONSENT_STATE.REQUESTED
                       ? 'Requested (awaiting customer response)'
-                      : 'Not requested'}
+                      : customerConsentStatus === CONSENT_STATE.DECLINED
+                      ? 'Declined'
+                      : customerConsentStatus === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE
+                      ? 'Expired or unavailable'
+                      : 'Consent required'}
                   </div>
                   <div className="text-gray-700">
-                    Location:{' '}
-                    {locationVerified ? 'Verified' : 'Not verified'}
+                    Location verification:{' '}
+                    {!locationRequiredForCompliance
+                      ? 'Not required for selected location'
+                      : locationVerified
+                      ? 'Verified'
+                      : 'Location verification required'}
                   </div>
                 </div>
+                {consentRequiredForCompliance && (
+                  <div className="mb-4 rounded-md border border-gray-200 bg-white px-3 py-3 text-sm">
+                    <div className="font-medium text-gray-900">Customer consent status</div>
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <div
+                        className={`rounded border px-2 py-1 text-center ${
+                          customerConsentStatus === CONSENT_STATE.REQUESTED
+                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 bg-gray-50 text-gray-500'
+                        }`}
+                      >
+                        Pending
+                      </div>
+                      <div
+                        className={`rounded border px-2 py-1 text-center ${
+                          customerConsentStatus === CONSENT_STATE.ACCEPTED
+                            ? 'border-green-200 bg-green-50 text-green-700'
+                            : 'border-gray-200 bg-gray-50 text-gray-500'
+                        }`}
+                      >
+                        Accepted
+                      </div>
+                      <div
+                        className={`rounded border px-2 py-1 text-center ${
+                          customerConsentStatus === CONSENT_STATE.DECLINED
+                            ? 'border-red-200 bg-red-50 text-red-700'
+                            : 'border-gray-200 bg-gray-50 text-gray-500'
+                        }`}
+                      >
+                        Declined
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Business Address Flow */}
                 {location === 'business' && (
@@ -4605,7 +5376,7 @@ export default function VendorJobs() {
                     
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
-                        <div>Waiting for customer consent…</div>
+                        <div>Customer consent request sent. Waiting for customer response.</div>
                         {activeConsentToken ? (
                           <Button
                             size="sm"
@@ -4619,7 +5390,35 @@ export default function VendorJobs() {
                       </div>
                     )}
                     {customerConsentStatus === CONSENT_STATE.ACCEPTED && (
-                      <div className="mt-2 text-sm text-green-600">Consent accepted. You may proceed.</div>
+                      <div className="mt-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                        <div className="text-base font-semibold text-green-800">✔ Ready to Record</div>
+                        <div className="mt-1">Customer consent has been approved. You may begin recording now.</div>
+                        <div className="mt-1 text-green-700/90">
+                          Consent covers all required service recordings. You may proceed with intro, in-progress, and completion videos without additional approval.
+                        </div>
+                      </div>
+                    )}
+                    {customerConsentStatus === CONSENT_STATE.DECLINED && (
+                      <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        Customer declined consent. Recording cannot proceed.
+                      </div>
+                    )}
+                    {customerConsentStatus === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE && (
+                      <div className="mt-2 space-y-2">
+                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                          Consent expired or unavailable. Please resend the request.
+                        </div>
+                        {activeConsentToken ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => fetchConsentStatus(activeConsentToken)}
+                            className="w-full"
+                          >
+                            Refresh consent status
+                          </Button>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 )}
@@ -4673,7 +5472,7 @@ export default function VendorJobs() {
                     
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
-                        <div>Waiting for customer consent…</div>
+                        <div>Customer consent request sent. Waiting for customer response.</div>
                         {activeConsentToken ? (
                           <Button
                             size="sm"
@@ -4687,7 +5486,35 @@ export default function VendorJobs() {
                       </div>
                     )}
                     {customerConsentStatus === CONSENT_STATE.ACCEPTED && (
-                      <div className="mt-2 text-sm text-green-600">Consent accepted. You may proceed.</div>
+                      <div className="mt-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                        <div className="text-base font-semibold text-green-800">✔ Ready to Record</div>
+                        <div className="mt-1">Customer consent has been approved. You may begin recording now.</div>
+                        <div className="mt-1 text-green-700/90">
+                          Consent covers all required service recordings. You may proceed with intro, in-progress, and completion videos without additional approval.
+                        </div>
+                      </div>
+                    )}
+                    {customerConsentStatus === CONSENT_STATE.DECLINED && (
+                      <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        Customer declined consent. Recording cannot proceed.
+                      </div>
+                    )}
+                    {customerConsentStatus === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE && (
+                      <div className="mt-2 space-y-2">
+                        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                          Consent expired or unavailable. Please resend the request.
+                        </div>
+                        {activeConsentToken ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => fetchConsentStatus(activeConsentToken)}
+                            className="w-full"
+                          >
+                            Refresh consent status
+                          </Button>
+                        ) : null}
+                      </div>
                     )}
                     {locationVerified && (
                       <div className="mt-2 text-sm text-green-600">Location verified for customer business scenario.</div>
@@ -4711,9 +5538,18 @@ export default function VendorJobs() {
             {location && (
               <div className="border rounded-lg p-4">
                 <h3 className="font-semibold text-lg mb-3">Step 3: Proceed to Video Creation</h3>
+                <div
+                  className={`mb-4 rounded-lg p-3 text-sm ${
+                    allComplianceChecksPassed
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-amber-50 text-amber-700'
+                  }`}
+                >
+                  {compliancePrerequisiteMessage}
+                </div>
                 
                 {/* Business Address - Show after location verification */}
-                {location === 'business' && locationVerified && (
+                {location === 'business' && locationVerified && assignmentSatisfiedForCompliance && (
                   <div>
                     <div className="mb-4 p-3 bg-green-50 rounded-lg">
                       <div className="flex items-start gap-2">
@@ -4728,7 +5564,7 @@ export default function VendorJobs() {
                     </div>
                     <Button
                       onClick={handleContinue}
-                      disabled={!getCanContinueCompliance()}
+                      disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
                       Continue to Video Creation
@@ -4737,7 +5573,7 @@ export default function VendorJobs() {
                 )}
 
                 {/* Customer Residence - Show after consent */}
-                {location === 'residence' && customerConsentRequested && customerConsentReceived && (
+                {location === 'residence' && customerConsentRequested && customerConsentReceived && assignmentSatisfiedForCompliance && (
                   <div>
                     <div className="mb-4 p-3 bg-green-50 rounded-lg">
                       <div className="flex items-start gap-2">
@@ -4752,7 +5588,7 @@ export default function VendorJobs() {
                     </div>
                     <Button
                       onClick={handleContinue}
-                      disabled={!getCanContinueCompliance()}
+                      disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
                       Continue to Video Creation
@@ -4761,7 +5597,7 @@ export default function VendorJobs() {
                 )}
 
                 {/* Customer Business - Show after consent */}
-                {location === 'customer-business' && customerConsentRequested && customerConsentReceived && locationVerified && (
+                {location === 'customer-business' && customerConsentRequested && customerConsentReceived && locationVerified && assignmentSatisfiedForCompliance && (
                   <div>
                     <div className="mb-4 p-3 bg-green-50 rounded-lg">
                       <div className="flex items-start gap-2">
@@ -4776,7 +5612,7 @@ export default function VendorJobs() {
                     </div>
                     <Button
                       onClick={handleContinue}
-                      disabled={!getCanContinueCompliance()}
+                      disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
                       Continue to Video Creation
@@ -5024,12 +5860,12 @@ export default function VendorJobs() {
             {filteredJobs.map(job => (
           <Card
             key={job.id}
-            className={`cursor-pointer select-none transition-all hover:shadow-md ${
+            className={`cursor-pointer select-none transition-all hover:shadow-md hover:border-blue-200 ${
               selectedJobIds.includes(job.id)
                 ? 'ring-2 ring-blue-500 ring-offset-2 bg-blue-50 border-blue-300 shadow-md'
                 : ''
             }`}
-            onClick={() => toggleJobSelection(job.id)}
+            onClick={(event) => handleJobCardClick(event, job)}
           >
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -5055,12 +5891,56 @@ export default function VendorJobs() {
                         Assigned: {job.assignedEmployees.join(', ')}
                       </p>
                     )}
+                    {(() => {
+                      const nextStage = getNextMissingVideoStageForJob(job);
+                      if (!nextStage) return null;
+                      const canRecordNextStage = isJobAssignedForVideoUpload(job);
+                      return (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-gray-600">
+                            Next stage: {formatVideoStageLabel(nextStage)}
+                          </span>
+                          {canRecordNextStage ? (
+                            <Button
+                              size="sm"
+                              className="h-8 bg-blue-600 hover:bg-blue-700"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openComplianceForNextStage(job);
+                              }}
+                            >
+                              Continue Recording
+                            </Button>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
                   <Badge className={getJobListBadgeColor(job)}>
                     {formatJobStatusLabel(job.status, job.operationalPhase)}
                   </Badge>
+                  {(() => {
+                    const consentState = String(
+                      consentStatusByBookingId[String(job.bookingId || job.id || '')] || ''
+                    ).toLowerCase();
+                    if (consentState === CONSENT_STATE.ACCEPTED) {
+                      return <Badge className="bg-green-100 text-green-800">Consent approved</Badge>;
+                    }
+                    if (consentState === CONSENT_STATE.DECLINED) {
+                      return <Badge className="bg-red-100 text-red-800">Consent declined</Badge>;
+                    }
+                    return null;
+                  })()}
+                  {(() => {
+                    const consentState = String(
+                      consentStatusByBookingId[String(job.bookingId || job.id || '')] || ''
+                    ).toLowerCase();
+                    if (consentState !== CONSENT_STATE.ACCEPTED) return null;
+                    if (!isJobAssignedForVideoUpload(job)) return null;
+                    return <Badge className="bg-emerald-100 text-emerald-800">Ready to record</Badge>;
+                  })()}
                   {(() => {
                     const phase = String(job.operationalPhase || '').toUpperCase();
                     return phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW';
@@ -5181,8 +6061,11 @@ export default function VendorJobs() {
                                       setActiveJobActionMenuId(null);
                                       return;
                                     }
-                                    setSelectedJob(job);
-                                    setShowComplianceModal(true);
+                                    void startRecordingFlow(job, {
+                                      stage: '',
+                                      replaceExisting: false,
+                                      source: 'actions-create-service-video',
+                                    });
                                     setActiveJobActionMenuId(null);
                                   }}
                                   disabled={!isJobAssignedForVideoUpload(job)}

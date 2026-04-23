@@ -1,5 +1,12 @@
 # Project State (Execution + Management Stabilization Pass)
 
+## Handoff refresh (2026-04-23)
+- **Consent flow live verification completed:** `POST /api/consent/request` now succeeds end-to-end with real DB writes, returns `status: requested`, and sends provider notifications; `/consent/[token]` + `POST /api/consent/accept` transition records to `accepted`.
+- **Media-session compliance gate verified:** staged media session creation for consent-required locations remains blocked until consent is accepted, then proceeds successfully once an accepted token is provided.
+- **Admin audit compatibility hardening:** `src/lib/admin-audit.ts` now supports mixed `admin_audit_logs` schemas by trying Prisma `actionType` write first, then falling back to raw SQL that writes whichever action columns exist (`action`, `actionType`, or both). For consent request, audit logging is now explicitly best-effort and non-blocking.
+- **Notification env and test route notes:** `POST /api/dev/notifications-test` is non-production only and requires `NOTIFICATIONS_TEST_SECRET` via header `x-notifications-test-secret`. Delivery wiring verified with live provider responses through Resend and Twilio paths.
+- **Current provider config expectation:** Resend uses `EMAIL_ENABLED`, `RESEND_API_KEY`, `EMAIL_FROM`, optional `EMAIL_REPLY_TO`; Twilio uses `SMS_ENABLED`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`; links rely on `APP_BASE_URL`.
+
 ## Handoff refresh (2026-04-22)
 - **Vendor lifecycle + context normalization:** Added shared vendor-context foundations (`src/lib/vendor-context.ts`, `src/lib/vendor-status.ts`, `src/lib/vendor-job-operational-phase.ts`) and a dedicated route (`GET /api/vendor/context`) so vendor surfaces resolve a consistent lifecycle/status model instead of page-local derivations.
 - **My Services framing alignment:** Product-facing naming and flow framing were refreshed toward "My Services" ownership and vendor lifecycle continuity (see `MY_SERVICES_UI_RENAME.md`, `MY_SERVICES_PAGE_FRAMING.md`, `PRODUCT_FLOW_REALIGNMENT.md`, `OPERATIONAL_PHASE_IMPLEMENTATION.md`).
