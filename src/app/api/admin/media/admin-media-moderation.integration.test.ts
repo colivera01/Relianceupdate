@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PATCH as moderatePATCH } from "./[assetId]/moderate/route";
+import { PATCH as packageModeratePATCH } from "./packages/[bookingId]/moderate/route";
 import { GET as moderationQueueGET } from "./moderation-queue/route";
 import { requireAdmin } from "@/lib/admin-auth";
 import {
@@ -399,5 +400,52 @@ describe("GET /api/admin/media/moderation-queue", () => {
     const packages = j.packages as Array<Record<string, unknown>>;
     expect(packages).toHaveLength(1);
     expect((packages[0].moderationStatuses as string[]).sort()).toEqual(["approved", "pending_review"]);
+    expect((packages[0].visibilityStatuses as string[]).sort()).toEqual(["private", "public"]);
+  });
+});
+
+describe("PATCH /api/admin/media/packages/[bookingId]/moderate", () => {
+  beforeEach(() => {
+    vi.mocked(requireAdmin).mockReset();
+    vi.mocked(requireAdmin).mockResolvedValue({ userId: "admin-1" } as any);
+    hoisted.mediaAssetFindMany.mockReset();
+    hoisted.mediaAssetUpdate.mockReset();
+  });
+
+  it("requires moderationReason for package rejection", async () => {
+    const req = new Request("http://localhost/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reject" }),
+    });
+    const res = await packageModeratePATCH(req, { params: Promise.resolve({ bookingId: "b1" }) });
+    expect(res.status).toBe(422);
+  });
+
+  it("approves package by applying action to INTRO/IN_PROGRESS/COMPLETED", async () => {
+    hoisted.mediaAssetFindMany.mockResolvedValue([
+      { id: "a-intro", moderationStatus: "pending_review", mediaSession: { vendorJobVideoStage: "INTRO" } },
+      { id: "a-progress", moderationStatus: "pending_review", mediaSession: { vendorJobVideoStage: "IN_PROGRESS" } },
+      { id: "a-completed", moderationStatus: "pending_review", mediaSession: { vendorJobVideoStage: "COMPLETED" } },
+    ]);
+    hoisted.mediaAssetUpdate.mockResolvedValue({
+      id: "asset",
+      moderationStatus: "approved",
+      visibilityStatus: "customer_only",
+      moderationReason: null,
+      moderatedAt: new Date("2026-04-15T10:00:00.000Z"),
+      moderatedByUserId: "admin-1",
+    });
+    const req = new Request("http://localhost/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "approve", visibility: "customer_only" }),
+    });
+    const res = await packageModeratePATCH(req, { params: Promise.resolve({ bookingId: "b1" }) });
+    expect(res.status).toBe(200);
+    expect(hoisted.mediaAssetUpdate).toHaveBeenCalledTimes(3);
+    const firstCall = hoisted.mediaAssetUpdate.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(firstCall.data.moderationStatus).toBe(MODERATION_APPROVED);
+    expect(firstCall.data.visibilityStatus).toBe("customer_only");
   });
 });

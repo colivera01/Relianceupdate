@@ -51,6 +51,23 @@ function toVendorAccessContext(
   };
 }
 
+function normalizeMembershipStatus(status: unknown, approvedAt: unknown): "ACTIVE" | "PENDING" | "DENIED" | "REVOKED" | "UNKNOWN" {
+  const normalized = String(status || "").trim().toUpperCase();
+  if (normalized === "ACTIVE" || normalized === "PENDING" || normalized === "DENIED" || normalized === "REVOKED") {
+    // Data-drift fallback: approvedAt set but status left as pending.
+    if (normalized === "PENDING" && approvedAt) return "ACTIVE";
+    return normalized;
+  }
+  if (approvedAt) return "ACTIVE";
+  return "UNKNOWN";
+}
+
+function normalizeMembershipRole(role: unknown): "MANAGER" | "EMPLOYEE" | "UNKNOWN" {
+  const normalized = String(role || "").trim().toUpperCase();
+  if (normalized === "MANAGER" || normalized === "EMPLOYEE") return normalized;
+  return "UNKNOWN";
+}
+
 export function isVendorContextDbTimeoutError(error: unknown): boolean {
   const message = String((error as any)?.message || "").toLowerCase();
   const name = String((error as any)?.name || "").toLowerCase();
@@ -69,39 +86,56 @@ export async function resolveVendorAccessForUser(
   options?: ResolveVendorAccessOptions
 ): Promise<VendorAccessContext> {
   const preferredVendorId = options?.preferredVendorId?.trim();
+  const memberships = await (prisma as any).vendorMembership.findMany({
+    where: {
+      userId,
+      ...(preferredVendorId ? { vendorId: String(preferredVendorId) } : {}),
+    },
+    select: {
+      id: true,
+      vendorId: true,
+      status: true,
+      role: true,
+      requestedAt: true,
+      approvedAt: true,
+      vendor: { select: MEMBERSHIP_VENDOR_SELECT },
+    },
+  });
 
-  const fetchMembership = (vendorId?: string | null) =>
-    (prisma as any).vendorMembership.findFirst({
-      where: {
-        userId,
-        status: { in: ["ACTIVE", "PENDING"] },
-        ...(vendorId ? { vendorId: String(vendorId) } : {}),
-      },
-      select: {
-        id: true,
-        vendorId: true,
-        status: true,
-        role: true,
-        requestedAt: true,
-        approvedAt: true,
-        vendor: {
-          select: MEMBERSHIP_VENDOR_SELECT,
-        },
-      },
-      // Prioritize ACTIVE over PENDING, then most recent approval/request.
-      orderBy: [{ status: "asc" }, { approvedAt: "desc" }, { requestedAt: "desc" }],
-    });
+  const fallbackMemberships =
+    memberships.length === 0 && preferredVendorId
+      ? await (prisma as any).vendorMembership.findMany({
+          where: { userId },
+          select: {
+            id: true,
+            vendorId: true,
+            status: true,
+            role: true,
+            requestedAt: true,
+            approvedAt: true,
+            vendor: { select: MEMBERSHIP_VENDOR_SELECT },
+          },
+        })
+      : memberships;
 
-  let membership = await fetchMembership(preferredVendorId || null);
-  // Stale JWT/cookie `vendorId` pointing at a vendor the user does not belong to
-  // would otherwise yield NO_ACTIVE_VENDOR_MEMBERSHIP despite a valid membership elsewhere.
-  if (!membership && preferredVendorId) {
-    membership = await fetchMembership(null);
-  }
+  if (!fallbackMemberships.length) return toVendorAccessContext(userId, null, "NONE");
 
-  if (!membership) return toVendorAccessContext(userId, null, "NONE");
+  const ranked = [...fallbackMemberships].sort((a: any, b: any) => {
+    const statusA = normalizeMembershipStatus(a.status, a.approvedAt);
+    const statusB = normalizeMembershipStatus(b.status, b.approvedAt);
+    const roleA = normalizeMembershipRole(a.role);
+    const roleB = normalizeMembershipRole(b.role);
+    const statusScore = (status: string) => (status === "ACTIVE" ? 0 : status === "PENDING" ? 1 : 2);
+    const roleScore = (role: string) => (role === "MANAGER" ? 0 : role === "EMPLOYEE" ? 1 : 2);
+    const statusDelta = statusScore(statusA) - statusScore(statusB);
+    if (statusDelta !== 0) return statusDelta;
+    const roleDelta = roleScore(roleA) - roleScore(roleB);
+    if (roleDelta !== 0) return roleDelta;
+    return new Date(b.approvedAt || b.requestedAt || 0).getTime() - new Date(a.approvedAt || a.requestedAt || 0).getTime();
+  });
 
-  const status = String(membership.status || "").toUpperCase();
+  const membership = ranked[0];
+  const status = normalizeMembershipStatus(membership.status, membership.approvedAt);
   if (status === "ACTIVE") return toVendorAccessContext(userId, membership, "ACTIVE");
   if (status === "PENDING") return toVendorAccessContext(userId, membership, "PENDING");
   return toVendorAccessContext(userId, null, "NONE");

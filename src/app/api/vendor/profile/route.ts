@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { isVendorContextDbTimeoutError, resolveVendorAccessForUser } from "@/lib/vendor-context";
+import { getVendorRatingStats } from "@/lib/review-attribution-aggregates";
 import { VendorProfileResponse, VendorProfileUpdateRequest } from "@/types/vendor";
 
 const VENDOR_PROFILE_SELECT = {
@@ -79,7 +80,15 @@ export async function GET(request: Request) {
     const vendorContext = await resolveVendorAccessForUser(resolvedUserId);
     if (vendorContext.state === "PENDING") {
       return NextResponse.json(
-        { code: "VENDOR_PENDING_APPROVAL", error: "Vendor account pending approval" },
+        {
+          code: "MEMBERSHIP_PENDING_APPROVAL",
+          error: "Your vendor membership is pending approval",
+          details: {
+            membershipStatus: vendorContext.membershipStatus,
+            vendorId: vendorContext.vendorId,
+            membershipId: vendorContext.membershipId,
+          },
+        },
         { status: 403 }
       );
     }
@@ -112,6 +121,7 @@ export async function GET(request: Request) {
     const yearsInBusiness = vendor.foundedYear
       ? new Date().getFullYear() - vendor.foundedYear
       : null;
+    const vendorRatingStats = await getVendorRatingStats(vendorId);
 
     // Map Prisma data to VendorProfile
     const profile = {
@@ -146,6 +156,8 @@ export async function GET(request: Request) {
       // Calculated fields
       totalEmployees,
       yearsInBusiness,
+      ratingAverage: vendorRatingStats.averageRating,
+      ratingCount: vendorRatingStats.reviewCount,
       // Payments (use optional chaining in case Prisma client hasn't been regenerated)
       paymentsEnabled: (vendor as any).paymentsEnabled ?? false,
       // Reminders
@@ -218,7 +230,15 @@ export async function PUT(request: Request) {
     const vendorContext = await resolveVendorAccessForUser(resolvedUserId);
     if (vendorContext.state === "PENDING") {
       return NextResponse.json(
-        { code: "VENDOR_PENDING_APPROVAL", error: "Vendor account pending approval" },
+        {
+          code: "MEMBERSHIP_PENDING_APPROVAL",
+          error: "Your vendor membership is pending approval",
+          details: {
+            membershipStatus: vendorContext.membershipStatus,
+            vendorId: vendorContext.vendorId,
+            membershipId: vendorContext.membershipId,
+          },
+        },
         { status: 403 }
       );
     }

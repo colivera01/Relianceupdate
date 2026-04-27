@@ -1,0 +1,128 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/server/db";
+import { getUserIdFromRequest } from "@/lib/auth";
+import { parseAssignmentMetadata } from "@/lib/job-assignment";
+
+type StageKey = "INTRO" | "IN_PROGRESS" | "COMPLETED";
+
+function emptyStageProgress() {
+  return {
+    INTRO: false,
+    IN_PROGRESS: false,
+    COMPLETED: false,
+  };
+}
+
+export async function GET(request: Request): Promise<NextResponse> {
+  try {
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const memberships = await prisma.vendorMembership.findMany({
+      where: { userId, status: "ACTIVE", role: "EMPLOYEE" },
+      select: { id: true, vendorId: true, vendor: { select: { name: true, businessName: true } } },
+    });
+    if (memberships.length === 0) {
+      return NextResponse.json({ jobs: [], membership: null });
+    }
+
+    const byVendor = new Map<string, string[]>();
+    for (const m of memberships) {
+      byVendor.set(m.vendorId, [...(byVendor.get(m.vendorId) || []), m.id]);
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where: {
+        vendorId: { in: Array.from(byVendor.keys()) },
+        status: { in: ["PENDING", "CONFIRMED", "IN_PROGRESS", "AWAITING_REVIEW", "COMPLETED"] },
+      },
+      include: {
+        service: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true, email: true, phone: true } },
+        vendor: { select: { id: true, name: true, businessName: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    const assignedBookings = bookings.filter((booking) => {
+      const assigned = parseAssignmentMetadata(booking.customerMetadata);
+      const allowedMembershipIds = byVendor.get(booking.vendorId) || [];
+      return assigned.assignedMembershipIds.some((id) => allowedMembershipIds.includes(id));
+    });
+    const bookingIds = assignedBookings.map((b) => b.id);
+
+    const sessions = bookingIds.length
+      ? await (prisma as any).mediaSession.findMany({
+          where: { bookingId: { in: bookingIds } },
+          select: {
+            id: true,
+            bookingId: true,
+            vendorJobVideoStage: true,
+            mediaAssets: {
+              where: { deletedAt: null },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        })
+      : [];
+
+    const stageByBooking = new Map<string, Record<StageKey, boolean>>();
+    for (const booking of assignedBookings) {
+      stageByBooking.set(booking.id, emptyStageProgress());
+    }
+    for (const row of sessions) {
+      const bookingId = String(row.bookingId || "");
+      const stage = String(row.vendorJobVideoStage || "").trim().toUpperCase() as StageKey;
+      if (!bookingId || !stageByBooking.has(bookingId)) continue;
+      if (!["INTRO", "IN_PROGRESS", "COMPLETED"].includes(stage)) continue;
+      if (!Array.isArray(row.mediaAssets) || row.mediaAssets.length === 0) continue;
+      stageByBooking.set(bookingId, {
+        ...stageByBooking.get(bookingId)!,
+        [stage]: true,
+      });
+    }
+
+    const jobs = assignedBookings.map((booking) => {
+      const stageProgress = stageByBooking.get(booking.id) || emptyStageProgress();
+      const normalizedStatus = String(booking.status || "").trim().toUpperCase();
+      const canMarkComplete =
+        stageProgress.INTRO &&
+        stageProgress.IN_PROGRESS &&
+        stageProgress.COMPLETED &&
+        (normalizedStatus === "PENDING" || normalizedStatus === "CONFIRMED");
+      return {
+        id: booking.id,
+        vendorId: booking.vendorId,
+        vendorName: booking.vendor?.businessName || booking.vendor?.name || "Vendor",
+        title: booking.title || booking.service?.name || "Assigned Job",
+        status: booking.status,
+        service: booking.service || null,
+        customer: {
+          id: booking.user?.id || null,
+          name: booking.user?.name || null,
+          email: booking.user?.email || null,
+          phone: booking.user?.phone || null,
+        },
+        bookingDate: booking.scheduledFor || booking.date || null,
+        rejectionReason: (booking as any).rejectionReason || null,
+        rejectedAt: (booking as any).rejectedAt || null,
+        stageProgress,
+        canMarkComplete,
+      };
+    });
+
+    return NextResponse.json({
+      jobs,
+      membership: memberships[0],
+      placeholderData: false,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: "Failed to fetch assigned employee jobs", details: error?.message },
+      { status: 500 }
+    );
+  }
+}

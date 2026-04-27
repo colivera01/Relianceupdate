@@ -3,21 +3,28 @@ import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { assertReviewWindowActive, isValidSubmittedVia } from '@/lib/review-capture';
 import { createAdminAuditLog } from '@/lib/admin-audit';
+import { parseAssignmentMetadata } from '@/lib/job-assignment';
 
 export async function POST(request: NextRequest) {
+  let step = 'parse_request';
+  let debug: Record<string, unknown> = {};
   try {
+    step = 'resolve_user';
     const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
     }
 
+    step = 'parse_body';
     const body = await request.json();
     const reviewWindowId = String(body?.reviewWindowId || '').trim();
     const bookingId = String(body?.bookingId || '').trim();
     const vendorId = String(body?.vendorId || '').trim();
+    const mediaSessionId = body?.mediaSessionId != null ? String(body.mediaSessionId || '').trim() : '';
     const rating = Number(body?.rating);
     const comment = String(body?.comment || '').trim();
     const submittedVia = String(body?.submittedVia || '').trim();
+    debug = { reviewWindowId, bookingId, vendorId, mediaSessionId, userId, rating, submittedVia };
 
     if (!reviewWindowId || !bookingId || !vendorId || !Number.isFinite(rating)) {
       return NextResponse.json(
@@ -32,6 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid submittedVia' }, { status: 400 });
     }
 
+    step = 'assert_review_window_active';
     const state = await assertReviewWindowActive(reviewWindowId);
     if (!state.ok) {
       return NextResponse.json({ success: false, error: state.error }, { status: state.status });
@@ -70,9 +78,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    step = 'booking_lookup';
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { id: true, userId: true, vendorId: true },
+      select: { id: true, userId: true, vendorId: true, customerMetadata: true },
     });
     if (!booking || String(booking.vendorId) !== vendorId) {
       return NextResponse.json({ success: false, error: 'Invalid booking/vendor pair' }, { status: 404 });
@@ -81,14 +90,48 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Only the booking customer can submit review' }, { status: 403 });
     }
 
+    step = 'existing_review_lookup';
     const existingReview = await (prisma as any).review.findFirst({
       where: { bookingId },
       select: { id: true },
     });
     if (existingReview) {
-      return NextResponse.json({ success: false, error: 'A review already exists for this booking' }, { status: 409 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'A review already exists for this booking',
+          code: 'REVIEW_ALREADY_EXISTS',
+        },
+        { status: 409 }
+      );
     }
 
+    step = 'resolve_assignment_attribution';
+    const assignmentMetadata = parseAssignmentMetadata(booking.customerMetadata);
+    const assignedMembershipIds = assignmentMetadata.assignedMembershipIds;
+    const assignedEmployees = assignmentMetadata.assignedEmployees;
+    const assignedMembershipId =
+      assignedMembershipIds.length > 0 ? String(assignedMembershipIds[0] || '').trim() : '';
+    let assignedEmployeeName =
+      assignedEmployees.length > 0 ? String(assignedEmployees[0] || '').trim() : '';
+    let assignedUserId: string | null = null;
+    if (assignedMembershipId) {
+      const membership = await (prisma as any).vendorMembership.findFirst({
+        where: { id: assignedMembershipId, vendorId },
+        select: {
+          userId: true,
+          user: { select: { name: true, email: true } },
+        },
+      });
+      assignedUserId = membership?.userId ? String(membership.userId) : null;
+      if (!assignedEmployeeName) {
+        const fallbackName = String(membership?.user?.name || '').trim();
+        const fallbackEmail = String(membership?.user?.email || '').trim();
+        assignedEmployeeName = fallbackName || fallbackEmail;
+      }
+    }
+
+    step = 'create_review_transaction';
     const created = await prisma.$transaction(async (tx) => {
       const review = await (tx as any).review.create({
         data: {
@@ -101,6 +144,10 @@ export async function POST(request: NextRequest) {
           clientName: null,
           source: 'customer',
           submittedVia,
+          assignedMembershipId: assignedMembershipId || null,
+          assignedEmployeeName: assignedEmployeeName || null,
+          assignedUserId: assignedUserId || null,
+          attributionVersion: 1,
           moderationStatus: 'approved',
           visibilityStatus: 'private',
           date: new Date(),
@@ -122,6 +169,7 @@ export async function POST(request: NextRequest) {
       return review;
     });
 
+    step = 'admin_audit_log';
     await createAdminAuditLog({
       actionType: 'review_capture_submitted',
       entityType: 'review',
@@ -140,8 +188,44 @@ export async function POST(request: NextRequest) {
         mediaSessionId: windowMediaSessionId,
       },
     });
-  } catch (error) {
-    console.error('[reviews/create] POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to create review' }, { status: 500 });
+  } catch (error: any) {
+    if (error?.code === 'P2002') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'A review already exists for this booking',
+          code: 'REVIEW_ALREADY_EXISTS',
+        },
+        { status: 409 }
+      );
+    }
+    const errorMessage = error?.message || String(error);
+    const errorCode = error?.code || null;
+    const errorMeta = error?.meta || null;
+    console.error('[reviews/create] POST error:', {
+      step,
+      ...debug,
+      error: errorMessage,
+      code: errorCode,
+      meta: errorMeta,
+    });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to create review',
+        code: errorCode,
+        step,
+        message: errorMessage,
+        meta: errorMeta,
+        details: {
+          ...debug,
+          step,
+          error: errorMessage,
+          code: errorCode,
+          meta: errorMeta,
+        },
+      },
+      { status: 500 }
+    );
   }
 }

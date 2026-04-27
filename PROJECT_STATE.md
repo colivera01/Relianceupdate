@@ -1,5 +1,60 @@
 # Project State (Execution + Management Stabilization Pass)
 
+## Handoff refresh (2026-04-27 — pairing API consolidation)
+- **Canonical pairing API enforced:** pairing contract is now standardized on `POST /api/device/pairing/request`, `POST /api/device/pairing/confirm`, and `POST /api/device/heartbeat`.
+- **Duplicate route family removed:** legacy `/api/pairing/request` and `/api/pairing/confirm` handlers were deleted to eliminate contract drift.
+- **UI path confirmed canonical:** `/device/pair` continues to call `/api/device/pairing/confirm` (no UI caller dependence on `/api/pairing/*`).
+
+## Handoff refresh (2026-04-27 — deviceUid schema migration + legacy compatibility)
+- **Device identity migration implemented:** pairing/heartbeat now use `devices.deviceUid` as canonical lookup key instead of MVP-only `employeeId` storage.
+- **Safe DB migration added:** `prisma/migrations/20260427143000_add_deviceuid_column_backfill_legacy_employeeid/migration.sql` adds `deviceUid` if missing, backfills from `employeeId` when null, and creates a filtered unique index on non-null `deviceUid`.
+- **Legacy fallback preserved:** during transition, APIs read by `deviceUid` first and fallback to `employeeId` for old rows so existing paired devices continue to work.
+- **Legacy field retained:** `employeeId` remains for compatibility and historical rows; new/updated pairing writes now also persist canonical `deviceUid`.
+
+## Handoff refresh (2026-04-27 — vendor media/storage pages added)
+- **Broken dashboard destinations fixed:** `/vendor/media` and `/vendor/storage` pages now exist and render successfully.
+- **Vendor media page added:** `src/app/vendor/media/page.tsx` now provides Active/Archived/All filtering and uses `GET /api/vendors/[vendorId]/media` when available, with fallback empty-state copy ("Media management is being finalized.").
+- **Vendor storage page added:** `src/app/vendor/storage/page.tsx` now uses `GET /api/vendors/[vendorId]/storage/usage` and shows used, limit, percent, and progress bar with fallback copy ("Storage tracking is not fully connected yet.").
+- **Dashboard labels clarified:** Proof and Storage cards remain routed to the new pages and now explicitly indicate card-level metrics are pending backend connection.
+- **Route smoke verified:** `/vendor/media`, `/vendor/storage`, and `/vendor/dashboard` each return HTTP 200 locally.
+
+## Handoff refresh (2026-04-27 — dashboard actions, pairing MVP, registration templates, review loop, proof notifications, attribution)
+- **Vendor dashboard clickable cards shipped:** `/vendor/dashboard` cards now route into actionable views for job filters and reviews; Proof and Storage cards now resolve to real pages (`/vendor/media`, `/vendor/storage`) with card metrics still pending full backend wiring.
+- **Device pairing MVP shipped:** vendor can generate a 6-digit pairing code from dashboard (`POST /api/device/pairing/request`), and devices can pair via `/device/pair` + `POST /api/device/pairing/confirm`; heartbeat route added (`POST /api/device/heartbeat`) for liveness.
+- **Registration templates + custom services shipped:** vendor registration now supports category templates, inline rename, custom services, duplicate-name validation, and backend precedence of `selectedServices` to prevent template name duplication.
+- **Manager review loop enforced:** employee stage flow pushes jobs to `AWAITING_REVIEW`; manager approve/reject endpoints gate final completion and require rejection reason when returning jobs for correction.
+- **Customer proof notification wired to moderation:** admin package approve with customer-facing visibility triggers proof-ready email send attempt and records notification metadata to reduce duplicate sends.
+- **Review attribution wired end-to-end:** review creation persists assigned membership/user attribution fields; vendor dashboard consumes attribution aggregates for employee performance and top-performer display.
+
+## Handoff refresh (2026-04-27 — review attribution schema drift guard)
+- **Review attribution DB drift hotfix applied:** SQL patch path `scripts/db/review-attribution-hotfix.sql` was applied to add missing `dbo.reviews` attribution columns/indexes in baseline databases where Prisma migrate deploy is blocked.
+- **Schema drift detection route added:** `GET /api/health/schema` (`src/app/api/health/schema/route.ts`) now checks review attribution columns and the filtered unique booking review index and returns actionable guidance (`Run review-attribution hotfix or migration`) when drift is detected.
+
+## Handoff refresh (2026-04-27 — manager review required before completion)
+- **Completion gate is now enforced:** jobs follow `PENDING -> IN_PROGRESS -> AWAITING_REVIEW -> COMPLETED`. Employees can no longer complete jobs directly after uploading stage media.
+- **Manager-only approval endpoint added:** `POST /api/vendors/[vendorId]/jobs/[jobId]/approve` (`src/app/api/vendors/[vendorId]/jobs/[jobId]/approve/route.ts`).
+  - Requires `ACTIVE MANAGER`.
+  - Requires job status `AWAITING_REVIEW`.
+  - Requires all 3 staged videos (`INTRO`, `IN_PROGRESS`, `COMPLETED`) present.
+  - On success, sets job `COMPLETED`, stamps completion date, and re-queues staged assets to moderation (`pending_review`) so the package enters moderation pipeline.
+- **Direct status completion blocked:** `PATCH /api/vendors/[vendorId]/jobs/[jobId]/actions` now rejects `UPDATE_STATUS -> COMPLETED` with `MANAGER_APPROVAL_REQUIRED`, forcing manager approval flow.
+- **Manager-only rejection endpoint added:** `POST /api/vendors/[vendorId]/jobs/[jobId]/reject` (`src/app/api/vendors/[vendorId]/jobs/[jobId]/reject/route.ts`).
+  - Requires `ACTIVE MANAGER`.
+  - Requires `rejectionReason` (returns `400` if missing).
+  - Requires job status `AWAITING_REVIEW` (returns `409` otherwise).
+  - On success, moves job `AWAITING_REVIEW -> IN_PROGRESS` and stores booking fields: `rejectionReason`, `rejectedAt`, `rejectedBy`.
+- **Vendor jobs UI alignment:** `/vendor/jobs` awaiting-review actions now call approve/reject endpoints; both are manager-only and rejection uses a required-reason modal.
+- **Employee flow alignment:** employee jobs API now includes `AWAITING_REVIEW` in surfaced statuses and only exposes "mark complete" behavior while still in pre-review statuses (`PENDING`/`CONFIRMED`) with all required staged uploads.
+- **Employee rejection visibility + reset behavior:** employee jobs UI now shows **Rejected by manager** with the rejection reason, and rejection fields are cleared when employee re-submits/fixes the job back into review.
+- **Verification completed:** reject route integration test passes (`4/4`).
+
+## Handoff refresh (2026-04-23 — latest build snapshot pushed)
+- **Latest build committed and pushed:** branch `cursor-latest-build` includes commit `3cccbbc` ("Latest Reliance build - consent resilience and recording flow UX hardening.") and is now synced to `origin/cursor-latest-build`.
+- **Consent + vendor flow updates are in this snapshot:** consent request/accept/decline resilience, consent page UX refinements, vendor jobs flow improvements, notification/env hardening, and updated policy pages (`/privacy`, `/terms`).
+- **Current known blocker after retest:** vendor recording still re-enters compliance in some paths due to runtime `recording-compliance` logs showing `no saved snapshot` and `unsatisfied: snapshot missing`; direct upload skip is still not consistently triggered.
+- **Debugging instrumentation currently present:** `src/app/vendor/jobs/page.tsx` has temporary recording-compliance logs, source-path tagging, and snapshot persistence logic for deeper runtime tracing.
+- **Next recommended execution step:** convert compliance trace logs to JSON-stringified payload logs (key, `savedAt`, source, snapshot body), then rerun the exact Intro -> In Progress -> Completed path plus header/actions entry points to isolate why snapshot hydration remains empty at runtime.
+
 ## Handoff refresh (2026-04-23)
 - **Consent flow live verification completed:** `POST /api/consent/request` now succeeds end-to-end with real DB writes, returns `status: requested`, and sends provider notifications; `/consent/[token]` + `POST /api/consent/accept` transition records to `accepted`.
 - **Media-session compliance gate verified:** staged media session creation for consent-required locations remains blocked until consent is accepted, then proceeds successfully once an accepted token is provided.

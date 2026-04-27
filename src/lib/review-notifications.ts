@@ -19,7 +19,11 @@ export async function scheduleReviewReminder(context: ReminderContext, delayMinu
   try {
     const booking = await prisma.booking.findUnique({
       where: { id: context.bookingId },
-      include: { user: { select: { email: true, phone: true, name: true } } },
+      include: {
+        user: { select: { email: true, phone: true, name: true } },
+        vendor: { select: { name: true, businessName: true } },
+        service: { select: { name: true } },
+      },
     });
     if (!booking) {
       loadError = 'booking_not_found';
@@ -31,6 +35,10 @@ export async function scheduleReviewReminder(context: ReminderContext, delayMinu
         customerEmail: booking.user?.email,
         customerPhone: booking.user?.phone,
         customerName: booking.user?.name,
+        vendorName: booking.vendor?.businessName || booking.vendor?.name || null,
+        serviceName: booking.service?.name || null,
+        bookingTitle: booking.title || null,
+        scheduledDate: booking.scheduledFor || booking.date || null,
       });
     }
   } catch (e) {

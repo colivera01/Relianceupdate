@@ -2,6 +2,7 @@ import { readNotificationEnv } from '@/lib/env/notification-config';
 import { sendEmail } from '@/lib/email/resend';
 import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
+import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
 
 export type ConsentLinkDeliveryInput = {
   consentRecordId: string;
@@ -12,7 +13,12 @@ export type ConsentLinkDeliveryInput = {
   customerEmail?: string | null;
   customerPhone?: string | null;
   customerName?: string | null;
+  vendorName?: string | null;
+  serviceName?: string | null;
+  serviceDate?: Date | string | null;
+  serviceTimeZone?: string | null;
   consentTypeLabel?: string;
+  absoluteBaseUrl?: string | null;
 };
 
 export type ChannelDelivery = {
@@ -42,37 +48,48 @@ function buildAbsoluteUrl(base: string, path: string): string {
  */
 export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInput): Promise<ConsentLinkDeliveryResult> {
   const env = readNotificationEnv();
-  const absoluteFallbackLink = buildAbsoluteUrl(env.appBaseUrl, input.consentPath);
+  const absoluteFallbackLink = buildAbsoluteUrl(
+    String(input.absoluteBaseUrl || '').trim() || env.appBaseUrl,
+    input.consentPath
+  );
   const channels: ChannelDelivery[] = [];
 
-  const subject = `Action required: Review your Reliance consent request`;
+  const vendorName = String(input.vendorName || '').trim() || 'Your vendor';
+  const serviceName = String(input.serviceName || '').trim() || 'your service';
+  const serviceDate = formatCustomerFacingServiceDate({
+    value: input.serviceDate,
+    timeZone: input.serviceTimeZone,
+    fallback: '',
+  });
+  const subject = `${vendorName} needs your approval for your service`;
   const label = input.consentTypeLabel || 'requested consent';
   const greetingName = input.customerName ? ` ${escapeHtml(input.customerName)}` : '';
+  const serviceDateLine = serviceDate ? `<p><strong>Service date:</strong> ${escapeHtml(serviceDate)}</p>` : '';
   const html = `
     <p>Hello${greetingName},</p>
-    <p>You are receiving this message because your service provider requested consent through <strong>Reliance</strong>, our secure platform for service video access and compliance.</p>
-    <p><strong>Why this request was sent:</strong> your provider needs your permission to continue the service video workflow (${escapeHtml(label)}).</p>
-    <p>This consent applies to all service-related recordings (before, during, and after your service) and only needs to be completed once.</p>
-    <p>This request is part of your active service and is required before your provider can proceed with video documentation.</p>
-    <p><strong>What happens after you accept:</strong> your consent status is updated immediately so the provider can proceed, and your response is logged for compliance.</p>
+    <p><strong>${escapeHtml(vendorName)}</strong> is requesting your approval to continue documenting your service.</p>
+    <p><strong>Service:</strong> ${escapeHtml(serviceName)}</p>
+    ${serviceDateLine}
+    <p>They use Reliance to securely document the work so you can review it afterward.</p>
+    <p>Approval type: ${escapeHtml(label)}.</p>
     <p><a href="${escapeHtml(absoluteFallbackLink)}">Review and respond to consent request</a></p>
     <p>If the link above does not work, copy and paste this URL into your browser:<br/><code>${escapeHtml(absoluteFallbackLink)}</code></p>
     <p>If you did not expect this request, you can ignore this message.</p>
-    <p>— Reliance Secure Service Video Platform</p>
+    <p>— ${escapeHtml(vendorName)} via Reliance</p>
   `.trim();
   const text = [
     `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
     '',
-    'You are receiving this message because your service provider requested consent through Reliance, our secure platform for service video access and compliance.',
-    `Why this request was sent: your provider needs your permission to continue the service video workflow (${label}).`,
-    'This consent applies to all service-related recordings (before, during, and after your service) and only needs to be completed once.',
-    'This request is part of your active service and is required before your provider can proceed with video documentation.',
-    'What happens after you accept: your consent status updates immediately so the provider can proceed, and your response is logged for compliance.',
+    `${vendorName} is requesting your approval to continue documenting your service.`,
+    `Service: ${serviceName}`,
+    ...(serviceDate ? [`Service date: ${serviceDate}`] : []),
+    'They use Reliance to securely document the work so you can review it afterward.',
+    `Approval type: ${label}.`,
     '',
     `Review and respond: ${absoluteFallbackLink}`,
     '',
     'If you did not expect this request, you can ignore this message.',
-    '— Reliance Secure Service Video Platform',
+    `— ${vendorName} via Reliance`,
   ].join('\n');
 
   const email = (input.customerEmail || '').trim();

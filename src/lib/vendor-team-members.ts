@@ -35,6 +35,8 @@ export async function fetchVendorTeamMembers(
     const membershipId = String(m?.id || "").trim();
     if (!membershipId) continue;
     const name =
+      String(m?.displayName || "").trim() ||
+      String(m?.inviteeName || "").trim() ||
       String(m?.user?.name || "").trim() ||
       (m?.user?.email != null ? String(m.user.email).trim() : "");
     if (!name) continue;
@@ -43,8 +45,8 @@ export async function fetchVendorTeamMembers(
       userId: String(m?.userId || ""),
       name,
       email: m?.user?.email != null ? String(m.user.email) : null,
-      role: String(m?.role || ""),
-      status: String(m?.status || ""),
+      role: String(m?.role || "").trim().toUpperCase(),
+      status: String(m?.status || "").trim().toUpperCase(),
     });
   }
   return Array.from(byId.values());

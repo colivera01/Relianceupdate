@@ -72,8 +72,8 @@ export default function UserDashboardPage() {
   // Show loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
+      <div className="rounded-2xl border border-white/50 bg-white/70 p-6 shadow-sm">
+        <div className="text-center py-6">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading your dashboard...</p>
         </div>
@@ -84,8 +84,8 @@ export default function UserDashboardPage() {
   // Show error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
+        <div className="text-center py-2">
           <div className="text-red-500 text-4xl mb-4">⚠️</div>
           <p className="text-gray-600">{error}</p>
           <button 
@@ -165,10 +165,10 @@ export default function UserDashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
+    <div className="space-y-6">
       {/* Simple Profile Toggle */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40 p-4">
-        <div className="max-w-7xl mx-auto flex justify-end">
+      <div className="rounded-2xl border border-white/60 bg-white/80 p-4 shadow-sm">
+        <div className="flex justify-end">
           <ProfileToggle
             currentProfile="customer"
             availableProfiles={userData?.userType === 'both' ? ['customer', 'vendor'] : ['customer']}
@@ -177,7 +177,7 @@ export default function UserDashboardPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="space-y-8">
         {renderUserInfo()}
         
         {/* Add Vendor Profile Section - Only show if user doesn't have vendor profile */}

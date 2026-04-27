@@ -64,11 +64,25 @@ export interface VendorDashboardResponse {
     totalEarnings: number;
     totalClients: number;
     rating: number;
+    ratingCount?: number;
   };
+  employeePerformance?: Array<{
+    membershipId: string;
+    displayName: string;
+    averageRating: number;
+    reviewCount: number;
+  }>;
   recentJobs: VendorJob[];
   recentReviews: VendorReview[];
   insights: VendorInsight[];
   notifications: VendorNotification[];
+  pendingModerationProofs?: number;
+  approvedProofs?: number;
+  archivedProofs?: number;
+  totalProofAssets?: number;
+  storageUsedBytes?: string;
+  storageLimitBytes?: string;
+  storagePercentUsed?: number;
 }
 
 // Profile-specific types (separate from dashboard)
@@ -104,6 +118,8 @@ export interface VendorProfile {
   // Calculated fields
   totalEmployees: number; // From employees relation
   yearsInBusiness: number | null; // Calculated from foundedYear
+  ratingAverage?: number;
+  ratingCount?: number;
   // Payments
   paymentsEnabled: boolean;
   // Reminders

@@ -11,21 +11,25 @@ export type SendSmsResult = {
   providerMessageId?: string;
   errorMessage?: string;
   errorCode?: string;
+  trialRestriction?: boolean;
 };
 
 /**
  * Twilio trial accounts cannot message unverified numbers — map common REST codes.
  */
-function mapTwilioError(err: unknown): { message: string; code?: string } {
+function mapTwilioError(err: unknown): { message: string; code?: string; trialRestriction?: boolean } {
   if (err && typeof err === 'object' && 'code' in err) {
     const code = String((err as { code?: number | string }).code ?? '');
-    const message =
-      (err as { message?: string }).message ||
-      (code === '21211' ? 'Invalid phone number' : '') ||
-      (code === '21608' || code === '21614'
-        ? 'Unverified recipient (Twilio trial / compliance)'
-        : 'twilio_error');
-    return { message, code };
+    const providerMessage = String((err as { message?: string }).message || '').trim();
+    const trialRestriction = code === '21608' || code === '21614' || code === '21610';
+    const fallbackMessage =
+      code === '21211'
+        ? 'Invalid phone number'
+        : trialRestriction
+          ? 'Twilio trial restriction: recipient number is not verified for this account.'
+          : 'twilio_error';
+    const message = providerMessage || fallbackMessage;
+    return { message, code, trialRestriction };
   }
   if (err instanceof Error) return { message: err.message };
   return { message: String(err) };
@@ -57,9 +61,9 @@ export async function sendSms(input: SendSmsInput): Promise<SendSmsResult> {
     });
     return { ok: true, providerMessageId: msg.sid };
   } catch (err) {
-    const { message, code } = mapTwilioError(err);
+    const { message, code, trialRestriction } = mapTwilioError(err);
     console.error(`${logPrefix} failure`, { message, code, to: redactPhone(input.to) });
-    return { ok: false, errorMessage: message, errorCode: code };
+    return { ok: false, errorMessage: message, errorCode: code, trialRestriction };
   }
 }
 

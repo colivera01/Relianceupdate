@@ -13,6 +13,7 @@ const hoisted = vi.hoisted(() => {
   const reviewWindowUpdate = vi.fn();
   const bookingFindUnique = vi.fn();
   const reviewFindFirst = vi.fn();
+  const vendorMembershipFindFirst = vi.fn();
   const reviewCreate = vi.fn();
   const reviewPromptEventCreate = vi.fn();
   const reviewCount = vi.fn();
@@ -24,6 +25,7 @@ const hoisted = vi.hoisted(() => {
       update: reviewWindowUpdate,
     },
     booking: { findUnique: bookingFindUnique },
+    vendorMembership: { findFirst: vendorMembershipFindFirst },
     review: { findFirst: reviewFindFirst, count: reviewCount },
     reviewPromptEvent: { create: reviewPromptEventCreate },
     $transaction,
@@ -35,6 +37,7 @@ const hoisted = vi.hoisted(() => {
     reviewWindowUpdate,
     bookingFindUnique,
     reviewFindFirst,
+    vendorMembershipFindFirst,
     reviewCreate,
     reviewPromptEventCreate,
     reviewCount,
@@ -82,6 +85,7 @@ describe('POST /api/reviews/create', () => {
     hoisted.reviewWindowFindUnique.mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.reviewFindFirst.mockReset();
+    hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.$transaction.mockReset();
     hoisted.reviewCreate.mockReset();
     hoisted.reviewWindowUpdate.mockReset();
@@ -253,6 +257,158 @@ describe('POST /api/reviews/create', () => {
         actorUserId: 'customer-a',
       })
     );
+  });
+
+  it('creates review with primary assigned employee attribution from booking metadata', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
+    hoisted.reviewWindowFindUnique.mockResolvedValue({
+      id: 'rw1',
+      bookingId: 'b1',
+      vendorId: 'v1',
+      mediaSessionId: 'ms1',
+      status: 'active',
+      expiresAt: futureExpires(),
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: 'b1',
+      userId: 'customer-a',
+      vendorId: 'v1',
+      customerMetadata: JSON.stringify({
+        vendor_job_assigned_membership_ids: ['membership-1'],
+        vendor_job_assigned_employees: ['Tech One'],
+      }),
+    });
+    hoisted.reviewFindFirst.mockResolvedValue(null);
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({
+      userId: 'employee-user-1',
+      user: { name: 'Tech One', email: 'tech1@example.com' },
+    });
+
+    hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        review: { create: hoisted.reviewCreate },
+        reviewWindow: { update: hoisted.reviewWindowUpdate },
+        reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
+      };
+      hoisted.reviewCreate.mockResolvedValue({ id: 'rev-attr' });
+      hoisted.reviewWindowUpdate.mockResolvedValue({ id: 'rw1', status: 'submitted' });
+      hoisted.reviewPromptEventCreate.mockResolvedValue({});
+      return fn(tx);
+    });
+
+    const res = await createReviewPOST(
+      jsonRequest('http://localhost/api/reviews/create', {
+        reviewWindowId: 'rw1',
+        bookingId: 'b1',
+        vendorId: 'v1',
+        rating: 5,
+        submittedVia: 'video_overlay',
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(hoisted.reviewCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assignedMembershipId: 'membership-1',
+          assignedEmployeeName: 'Tech One',
+          assignedUserId: 'employee-user-1',
+          attributionVersion: 1,
+        }),
+      })
+    );
+  });
+
+  it('creates vendor-level review with null employee attribution when booking has no assignment', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
+    hoisted.reviewWindowFindUnique.mockResolvedValue({
+      id: 'rw1',
+      bookingId: 'b1',
+      vendorId: 'v1',
+      mediaSessionId: 'ms1',
+      status: 'active',
+      expiresAt: futureExpires(),
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: 'b1',
+      userId: 'customer-a',
+      vendorId: 'v1',
+      customerMetadata: JSON.stringify({}),
+    });
+    hoisted.reviewFindFirst.mockResolvedValue(null);
+
+    hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        review: { create: hoisted.reviewCreate },
+        reviewWindow: { update: hoisted.reviewWindowUpdate },
+        reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
+      };
+      hoisted.reviewCreate.mockResolvedValue({ id: 'rev-no-assignee' });
+      hoisted.reviewWindowUpdate.mockResolvedValue({ id: 'rw1', status: 'submitted' });
+      hoisted.reviewPromptEventCreate.mockResolvedValue({});
+      return fn(tx);
+    });
+
+    const res = await createReviewPOST(
+      jsonRequest('http://localhost/api/reviews/create', {
+        reviewWindowId: 'rw1',
+        bookingId: 'b1',
+        vendorId: 'v1',
+        rating: 4,
+        submittedVia: 'manual',
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(hoisted.reviewCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assignedMembershipId: null,
+          assignedEmployeeName: null,
+          assignedUserId: null,
+          attributionVersion: 1,
+        }),
+      })
+    );
+  });
+
+  it('returns 409 REVIEW_ALREADY_EXISTS when DB unique constraint rejects duplicate booking review', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
+    hoisted.reviewWindowFindUnique.mockResolvedValue({
+      id: 'rw1',
+      bookingId: 'b1',
+      vendorId: 'v1',
+      mediaSessionId: 'ms1',
+      status: 'active',
+      expiresAt: futureExpires(),
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: 'b1',
+      userId: 'customer-a',
+      vendorId: 'v1',
+      customerMetadata: null,
+    });
+    hoisted.reviewFindFirst.mockResolvedValue(null);
+    hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        review: { create: hoisted.reviewCreate },
+        reviewWindow: { update: hoisted.reviewWindowUpdate },
+        reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
+      };
+      hoisted.reviewCreate.mockRejectedValue({ code: 'P2002', message: 'Unique constraint failed' });
+      return fn(tx);
+    });
+
+    const res = await createReviewPOST(
+      jsonRequest('http://localhost/api/reviews/create', {
+        reviewWindowId: 'rw1',
+        bookingId: 'b1',
+        vendorId: 'v1',
+        rating: 5,
+        submittedVia: 'manual',
+      })
+    );
+    expect(res.status).toBe(409);
+    const j = await readJson(res);
+    expect(j.code).toBe('REVIEW_ALREADY_EXISTS');
   });
 });
 

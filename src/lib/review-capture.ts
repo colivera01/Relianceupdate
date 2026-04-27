@@ -38,24 +38,40 @@ export async function getOrCreateActiveReviewWindow(input: {
       bookingId: input.bookingId,
       vendorId: input.vendorId,
       mediaSessionId: input.mediaSessionId,
-      status: 'active',
+      status: { in: ['active', 'ACTIVE'] },
     },
     orderBy: { createdAt: 'desc' },
   });
   if (existing) return { window: existing, created: false };
 
   const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-  const createdRow = await (prisma as any).reviewWindow.create({
-    data: {
-      bookingId: input.bookingId,
-      vendorId: input.vendorId,
-      mediaSessionId: input.mediaSessionId,
-      status: 'active',
-      openedAt: new Date(),
-      expiresAt,
-    },
-  });
-  return { window: createdRow, created: true };
+  try {
+    const createdRow = await (prisma as any).reviewWindow.create({
+      data: {
+        bookingId: input.bookingId,
+        vendorId: input.vendorId,
+        mediaSessionId: input.mediaSessionId,
+        status: 'active',
+        openedAt: new Date(),
+        expiresAt,
+      },
+    });
+    return { window: createdRow, created: true };
+  } catch (error: any) {
+    // Handle race/constraint cases where another row now exists for this tuple.
+    if (String(error?.code || '').toUpperCase() === 'P2002') {
+      const fallback = await (prisma as any).reviewWindow.findFirst({
+        where: {
+          bookingId: input.bookingId,
+          vendorId: input.vendorId,
+          mediaSessionId: input.mediaSessionId,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (fallback) return { window: fallback, created: false };
+    }
+    throw error;
+  }
 }
 
 export async function closeExpiredReviewWindows(now = new Date()) {

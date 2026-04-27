@@ -2,6 +2,7 @@ import { readNotificationEnv } from '@/lib/env/notification-config';
 import { sendEmail } from '@/lib/email/resend';
 import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
+import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
 
 export type ReviewReminderInput = {
   reviewWindowId: string;
@@ -10,6 +11,11 @@ export type ReviewReminderInput = {
   customerEmail?: string | null;
   customerPhone?: string | null;
   customerName?: string | null;
+  vendorName?: string | null;
+  serviceName?: string | null;
+  bookingTitle?: string | null;
+  scheduledDate?: Date | string | null;
+  serviceTimeZone?: string | null;
 };
 
 export type ChannelDelivery = {
@@ -30,8 +36,12 @@ export type ReviewReminderResult = {
   synchronousBestEffort: true;
 };
 
-function reviewsPath(bookingId: string): string {
-  return `/reviews?bookingId=${encodeURIComponent(bookingId)}`;
+function reviewsPath(bookingId: string, rating?: number): string {
+  const query = new URLSearchParams({ bookingId: String(bookingId) });
+  if (Number.isInteger(rating) && Number(rating) >= 1 && Number(rating) <= 5) {
+    query.set('rating', String(rating));
+  }
+  return `/reviews?${query.toString()}`;
 }
 
 function buildAbsoluteUrl(base: string, path: string): string {
@@ -47,16 +57,73 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
   const env = readNotificationEnv();
   const path = reviewsPath(input.bookingId);
   const absoluteFallbackLink = buildAbsoluteUrl(env.appBaseUrl, path);
+  const inlineRatingLinks = [1, 2, 3, 4, 5].map((rating) => ({
+    rating,
+    url: buildAbsoluteUrl(env.appBaseUrl, reviewsPath(input.bookingId, rating)),
+  }));
   const channels: ChannelDelivery[] = [];
+  const vendorName = String(input.vendorName || '').trim();
+  const hasVendorName = Boolean(vendorName);
+  const serviceLabel =
+    String(input.serviceName || '').trim() ||
+    String(input.bookingTitle || '').trim() ||
+    'Recent service';
+  const scheduledDateLabel = formatCustomerFacingServiceDate({
+    value: input.scheduledDate,
+    timeZone: input.serviceTimeZone,
+    fallback: 'Recent booking',
+  });
 
-  const subject = 'Reminder: share feedback on your Reliance visit';
+  const subject = hasVendorName
+    ? `How did ${vendorName} do? Your feedback helps others`
+    : 'How was your recent service? Your feedback helps others';
   const html = `
     <p>Hello${input.customerName ? ` ${escapeHtml(String(input.customerName))}` : ''},</p>
-    <p>Your review window is open. When you have a moment, please leave feedback.</p>
-    <p><a href="${escapeHtml(absoluteFallbackLink)}">Open reviews</a></p>
-    <p>Link: <code>${escapeHtml(absoluteFallbackLink)}</code></p>
+    <p>How was your recent service${hasVendorName ? ` with ${escapeHtml(vendorName)}` : ''}?</p>
+    <p>Your feedback helps improve service quality and gives others confidence when choosing a provider.</p>
+    <p><strong>Service Details:</strong></p>
+    <ul>
+      <li>Service: ${escapeHtml(serviceLabel)}</li>
+      <li>Date: ${escapeHtml(scheduledDateLabel)}</li>
+    </ul>
+    <p>Your review window is open for a limited time.</p>
+    <p>You can review your service proof and leave feedback in one place.</p>
+    <p>
+      <a href="${escapeHtml(absoluteFallbackLink)}" style="display:inline-block;padding:10px 14px;border-radius:6px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;">
+        Leave your feedback now
+      </a>
+    </p>
+    <p>Quickly rate your experience:</p>
+    <p style="margin:0 0 6px 0;">
+      ${inlineRatingLinks
+        .map(
+          (item) =>
+            `<a href="${escapeHtml(item.url)}" aria-label="Rate ${item.rating} out of 5" style="text-decoration:none;display:inline-block;margin:0 10px 6px 0;">${'⭐'.repeat(item.rating)}</a>`
+        )
+        .join('')}
+    </p>
+    <p>If the button does not work, copy and paste this link: <code>${escapeHtml(absoluteFallbackLink)}</code></p>
   `.trim();
-  const text = `Reliance review reminder: ${absoluteFallbackLink}`;
+  const text = [
+    `Hello${input.customerName ? ` ${String(input.customerName).trim()}` : ''},`,
+    '',
+    `How was your recent service${hasVendorName ? ` with ${vendorName}` : ''}?`,
+    'Your feedback helps improve service quality and gives others confidence when choosing a provider.',
+    '',
+    'Service Details:',
+    `- Service: ${serviceLabel}`,
+    `- Date: ${scheduledDateLabel}`,
+    '',
+    'Your review window is open for a limited time.',
+    'You can review your service proof and leave feedback in one place.',
+    '',
+    `Leave your feedback now: ${absoluteFallbackLink}`,
+    '',
+    'Quickly rate your experience:',
+    ...inlineRatingLinks.map((item) => `${item.rating} star${item.rating > 1 ? 's' : ''}: ${'⭐'.repeat(item.rating)} ${item.url}`),
+    '',
+    `If the button does not work, copy and paste this link: ${absoluteFallbackLink}`,
+  ].join('\n');
 
   const email = (input.customerEmail || '').trim();
   if (env.emailEnabled && email) {

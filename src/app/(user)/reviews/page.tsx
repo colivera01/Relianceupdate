@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Star, MapPin, Clock, Edit, Trash2, Filter, Search, Grid, List, SortAsc, SortDesc, ThumbsUp, MessageSquare, Calendar, Bell } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -256,6 +256,7 @@ const categories = [
 
 export default function ReviewsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [reviews, setReviews] = useState<Review[]>(mockReviews);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<'recent' | 'rating' | 'helpful' | 'price'>('recent');
@@ -266,6 +267,36 @@ export default function ReviewsPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'pending'>('all');
   const [ratingFilter, setRatingFilter] = useState<number>(0);
   const [reviewType] = useState<"all" | "written" | "video">("all");
+  const [prefilledRating, setPrefilledRating] = useState<number | null>(null);
+  const [prefilledBookingId, setPrefilledBookingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const bookingIdParam = String(searchParams?.get('bookingId') || '').trim();
+    const ratingParamRaw = String(searchParams?.get('rating') || '').trim();
+    const parsedRating = Number.parseInt(ratingParamRaw, 10);
+    const isValidRating = Number.isInteger(parsedRating) && parsedRating >= 1 && parsedRating <= 5;
+
+    if (!isValidRating) {
+      setPrefilledRating(null);
+      setPrefilledBookingId(bookingIdParam || null);
+      return;
+    }
+
+    setRatingFilter(parsedRating);
+    setPrefilledRating(parsedRating);
+    setPrefilledBookingId(bookingIdParam || null);
+
+    // Track high-intent rating clicks from reminder links for future conversion analytics.
+    void fetch('/api/reviews/rating-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bookingId: bookingIdParam || null,
+        rating: parsedRating,
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch(() => undefined);
+  }, [searchParams]);
 
   // Filter and sort reviews
   const filteredAndSortedReviews = reviews
@@ -690,6 +721,12 @@ export default function ReviewsPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Filters and Controls */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+          {prefilledRating ? (
+            <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              Prefilled from reminder: {prefilledRating} star{prefilledRating > 1 ? 's' : ''}
+              {prefilledBookingId ? ` for booking ${prefilledBookingId}` : ''}.
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center gap-4">
             {/* Search */}
             <div className="flex-1 min-w-64">

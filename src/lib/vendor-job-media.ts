@@ -49,6 +49,46 @@ type UploadOutcome = {
   };
 };
 
+export type VendorJobMediaUploadDiagnostics = {
+  stage: VendorJobMediaLifecycleState | 'session_create' | 'upload_init' | 'blob_put' | 'upload_complete' | 'session_complete';
+  vendorId: string;
+  bookingId: string | null;
+  jobId: string | null;
+  mediaSessionId: string | null;
+  videoStage: VendorJobVideoStage;
+  sessionCreateResponse?: RequestResult;
+  uploadInitResponse?: RequestResult;
+  blobUploadResponse?: RequestResult;
+  uploadCompleteResponse?: RequestResult;
+  failedRequest?: {
+    step: string;
+    method: string;
+    urlType: string;
+    payloadSummary?: Record<string, unknown>;
+    errorName?: string;
+    errorMessage?: string;
+    hint?: string;
+  };
+  sasInfo?: {
+    host: string;
+    path: string;
+    hasSig: boolean;
+    permissions: string;
+    resource: string;
+    expiresAt: string;
+    isLikelyFresh: boolean;
+  };
+};
+
+export class VendorJobMediaUploadError extends Error {
+  diagnostics: VendorJobMediaUploadDiagnostics;
+  constructor(message: string, diagnostics: VendorJobMediaUploadDiagnostics) {
+    super(message);
+    this.name = 'VendorJobMediaUploadError';
+    this.diagnostics = diagnostics;
+  }
+}
+
 const parseResponsePayload = (rawText: string) => {
   if (!rawText || !rawText.trim()) return null;
   try {
@@ -77,6 +117,74 @@ const responseErrorMessage = (res: RequestResult) =>
   res.statusText ||
   'Request failed';
 
+const summarizeUrlType = (url: string): string => {
+  try {
+    if (url.startsWith('/')) return `relative:${url.split('?')[0]}`;
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host.includes('blob.core.windows.net')) {
+      return `azure_blob:${parsed.origin}${parsed.pathname}`;
+    }
+    return `absolute:${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return `raw:${String(url || '').split('?')[0]}`;
+  }
+};
+
+const parseSasInfo = (uploadUrl: string) => {
+  try {
+    const parsed = new URL(uploadUrl);
+    const params = parsed.searchParams;
+    const permissions = String(params.get('sp') || '');
+    const resource = String(params.get('sr') || '');
+    const expiresAt = String(params.get('se') || '');
+    const hasSig = Boolean(params.get('sig'));
+    const isLikelyFresh =
+      !!expiresAt && !Number.isNaN(Date.parse(expiresAt)) && Date.parse(expiresAt) > Date.now();
+    return {
+      host: parsed.hostname,
+      path: parsed.pathname,
+      hasSig,
+      permissions,
+      resource,
+      expiresAt,
+      isLikelyFresh,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const isReusableSessionStatus = (status: unknown): boolean => {
+  const upper = String(status || '').trim().toUpperCase();
+  return upper !== 'FAILED' && upper !== 'CANCELLED' && upper !== 'ARCHIVED';
+};
+
+const findExistingStageSession = async ({
+  vendorId,
+  bookingId,
+  stage,
+  getHeaders,
+}: {
+  vendorId: string;
+  bookingId: string;
+  stage: VendorJobVideoStage;
+  getHeaders: () => Record<string, string>;
+}): Promise<string | null> => {
+  if (!bookingId) return null;
+  const sessionsRes = await requestJson(
+    `/api/vendors/${vendorId}/media/sessions?bookingId=${encodeURIComponent(bookingId)}`,
+    { method: 'GET', headers: getHeaders() }
+  );
+  if (!sessionsRes.ok) return null;
+  const sessions = Array.isArray(sessionsRes.parsed?.sessions) ? sessionsRes.parsed.sessions : [];
+  const existing = sessions.find((s: any) => {
+    const sStage = String(s?.vendorJobVideoStage || '').trim().toUpperCase();
+    return sStage === String(stage).toUpperCase() && isReusableSessionStatus(s?.status);
+  });
+  return existing?.id ? String(existing.id) : null;
+};
+
 export async function runVendorJobMediaUpload({
   vendorId,
   selectedJob,
@@ -92,12 +200,63 @@ export async function runVendorJobMediaUpload({
   consentToken,
 }: UploadParams): Promise<UploadOutcome> {
   let mediaSessionId: string | null = null;
+  const selectedJobBookingId = selectedJob?.bookingId
+    ? String(selectedJob.bookingId)
+    : String(selectedJob?.id || '');
+  const diagnostics: VendorJobMediaUploadDiagnostics = {
+    stage: 'idle',
+    vendorId: String(vendorId),
+    bookingId: selectedJobBookingId || null,
+    jobId: selectedJob?.id ? String(selectedJob.id) : null,
+    mediaSessionId: null,
+    videoStage,
+  };
+  const requestWithDiagnostics = async (
+    step: VendorJobMediaUploadDiagnostics['stage'],
+    url: string,
+    init: RequestInit,
+    payloadSummary?: Record<string, unknown>
+  ): Promise<RequestResult> => {
+    diagnostics.stage = step;
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      console.info('[runVendorJobMediaUpload] trace:request', {
+        step,
+        method: String(init.method || 'GET').toUpperCase(),
+        urlType: summarizeUrlType(url),
+        payloadSummary: payloadSummary || null,
+      });
+    }
+    try {
+      return await requestJson(url, init);
+    } catch (error: any) {
+      diagnostics.failedRequest = {
+        step: String(step),
+        method: String(init.method || 'GET').toUpperCase(),
+        urlType: summarizeUrlType(url),
+        payloadSummary,
+        errorName: String(error?.name || ''),
+        errorMessage: String(error?.message || error),
+        hint:
+          String(step) === 'blob_put'
+            ? 'Azure upload failed. Check Blob Storage CORS or SAS URL.'
+            : 'Network/CORS/SAS URL issue before HTTP response',
+      };
+      if (String(step) === 'blob_put') {
+        throw new VendorJobMediaUploadError(
+          'Azure upload failed. Check Blob Storage CORS or SAS URL.',
+          diagnostics
+        );
+      }
+      throw new VendorJobMediaUploadError(
+        `Network request failed during ${step}: ${String(error?.message || error)}`,
+        diagnostics
+      );
+    }
+  };
 
   try {
     onLifecycleState('creating_session');
-    const selectedJobBookingId = selectedJob?.bookingId
-      ? String(selectedJob.bookingId)
-      : String(selectedJob?.id || '');
+    diagnostics.stage = 'session_create';
     const selectedJobServiceId = selectedJob?.serviceId ? String(selectedJob.serviceId) : undefined;
     const selectedJobDeviceId = selectedJob?.deviceId ? String(selectedJob.deviceId) : undefined;
     const selectedJobDeviceType = selectedJob?.deviceType ? String(selectedJob.deviceType) : undefined;
@@ -135,42 +294,99 @@ export async function runVendorJobMediaUpload({
       });
     }
 
-    const sessionRes = await requestJson(`/api/vendors/${vendorId}/media/sessions`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(sessionPayload),
-    });
-    if (!sessionRes.ok) {
-      const apiMsg = responseErrorMessage(sessionRes);
-      if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-        console.error('[runVendorJobMediaUpload] session create failed', {
-          status: sessionRes.status,
-          code: sessionRes.parsed?.code,
-          parsed: sessionRes.parsed,
-        });
+    if (!replaceExisting && selectedJobBookingId) {
+      const existingSessionId = await findExistingStageSession({
+        vendorId: String(vendorId),
+        bookingId: selectedJobBookingId,
+        stage: videoStage,
+        getHeaders,
+      });
+      if (existingSessionId) {
+        mediaSessionId = existingSessionId;
+        diagnostics.mediaSessionId = existingSessionId;
       }
-      throw new Error(apiMsg);
     }
 
-    mediaSessionId = sessionRes.parsed?.session?.id || null;
     if (!mediaSessionId) {
-      throw new Error('Media session created without ID');
+      const sessionRes = await requestWithDiagnostics(
+        'session_create',
+        `/api/vendors/${vendorId}/media/sessions`,
+        {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(sessionPayload),
+        },
+        {
+          bookingId: selectedJobBookingId || null,
+          vendorId: String(vendorId),
+          stage: videoStage,
+          replaceExisting: Boolean(replaceExisting),
+        }
+      );
+      diagnostics.sessionCreateResponse = sessionRes;
+      if (!sessionRes.ok) {
+        const conflictSessionId =
+          sessionRes.status === 409
+            ? String(sessionRes.parsed?.existingSessionId || '').trim()
+            : '';
+        if (!replaceExisting && conflictSessionId) {
+          mediaSessionId = conflictSessionId;
+          diagnostics.mediaSessionId = conflictSessionId;
+        } else if (!replaceExisting && selectedJobBookingId) {
+          const fallbackExistingSessionId = await findExistingStageSession({
+            vendorId: String(vendorId),
+            bookingId: selectedJobBookingId,
+            stage: videoStage,
+            getHeaders,
+          });
+          if (fallbackExistingSessionId) {
+            mediaSessionId = fallbackExistingSessionId;
+            diagnostics.mediaSessionId = fallbackExistingSessionId;
+          } else {
+            const apiMsg = responseErrorMessage(sessionRes);
+            throw new VendorJobMediaUploadError(apiMsg, diagnostics);
+          }
+        } else {
+          const apiMsg = responseErrorMessage(sessionRes);
+          if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+            console.error('[runVendorJobMediaUpload] session create failed', {
+              status: sessionRes.status,
+              code: sessionRes.parsed?.code,
+              parsed: sessionRes.parsed,
+            });
+          }
+          throw new VendorJobMediaUploadError(apiMsg, diagnostics);
+        }
+      } else {
+        mediaSessionId = sessionRes.parsed?.session?.id || null;
+      }
+    }
+
+    diagnostics.mediaSessionId = mediaSessionId;
+    if (!mediaSessionId) {
+      throw new VendorJobMediaUploadError('Media session created without ID', diagnostics);
     }
 
     onLifecycleState('uploading');
-    const patchUploadingRes = await requestJson(
+    const patchUploadingRes = await requestWithDiagnostics(
+      'uploading',
       `/api/vendors/${vendorId}/media/sessions/${mediaSessionId}`,
       {
         method: 'PATCH',
         headers: getHeaders(),
         body: JSON.stringify({ status: 'UPLOADING' }),
-      }
+      },
+      { mediaSessionId, status: 'UPLOADING' }
     );
     if (!patchUploadingRes.ok) {
-      throw new Error(responseErrorMessage(patchUploadingRes));
+      throw new VendorJobMediaUploadError(responseErrorMessage(patchUploadingRes), diagnostics);
     }
 
-    const initRes = await requestJson(`/api/vendors/${vendorId}/media/upload/init`, {
+    diagnostics.stage = 'upload_init';
+    const initRes = await requestWithDiagnostics(
+      'upload_init',
+      `/api/vendors/${vendorId}/media/upload/init`,
+      {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
@@ -179,15 +395,24 @@ export async function runVendorJobMediaUpload({
         fileSize: file.size,
         mimeType: file.type,
       }),
-    });
+      },
+      {
+        fileName: file.name,
+        expectedBytes: file.size,
+        mimeType: file.type,
+      }
+    );
+    diagnostics.uploadInitResponse = initRes;
     if (!initRes.ok) {
-      throw new Error(responseErrorMessage(initRes));
+      throw new VendorJobMediaUploadError(responseErrorMessage(initRes), diagnostics);
     }
 
     const initJson = initRes.parsed || {};
     const uploadUrl = initJson.sasUrl || initJson.uploadUrl;
+    const sasInfo = uploadUrl ? parseSasInfo(String(uploadUrl)) : null;
+    diagnostics.sasInfo = sasInfo || undefined;
     if (!initJson.assetId || !initJson.blobKey) {
-      throw new Error('Upload init response is missing required fields');
+      throw new VendorJobMediaUploadError('Upload init response is missing required fields', diagnostics);
     }
 
     let isRealAzureBlobHost = false;
@@ -201,21 +426,47 @@ export async function runVendorJobMediaUpload({
     }
     const shouldSkipBlobPut = !uploadUrl || !isRealAzureBlobHost;
     if (!shouldSkipBlobPut) {
-      const blobRes = await requestJson(String(uploadUrl), {
+      if (!sasInfo || !sasInfo.hasSig || !sasInfo.permissions.includes('w') || sasInfo.resource !== 'b') {
+        throw new VendorJobMediaUploadError(
+          'Azure upload URL is invalid or missing required SAS permissions.',
+          diagnostics
+        );
+      }
+      diagnostics.stage = 'blob_put';
+      const blobRes = await requestWithDiagnostics(
+        'blob_put',
+        String(uploadUrl),
+        {
         method: 'PUT',
         headers: {
           'Content-Type': file.type,
           'x-ms-blob-type': 'BlockBlob',
         },
         body: file,
-      });
+        },
+        {
+          mimeType: file.type,
+          bytes: file.size,
+          hasSasQuery: String(uploadUrl).includes('?'),
+          sasHost: sasInfo.host,
+          sasPath: sasInfo.path,
+          sasPermissions: sasInfo.permissions,
+          sasResource: sasInfo.resource,
+          sasExpiresAt: sasInfo.expiresAt,
+        }
+      );
+      diagnostics.blobUploadResponse = blobRes;
       if (!blobRes.ok) {
-        throw new Error(responseErrorMessage(blobRes));
+        throw new VendorJobMediaUploadError(responseErrorMessage(blobRes), diagnostics);
       }
     }
 
     onLifecycleState('completing');
-    const completeRes = await requestJson(`/api/vendors/${vendorId}/media/upload/complete`, {
+    diagnostics.stage = 'upload_complete';
+    const completeRes = await requestWithDiagnostics(
+      'upload_complete',
+      `/api/vendors/${vendorId}/media/upload/complete`,
+      {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
@@ -226,12 +477,21 @@ export async function runVendorJobMediaUpload({
         mimeType: file.type,
         mediaSessionId,
       }),
-    });
+      },
+      {
+        assetId: initJson.assetId,
+        blobKey: initJson.blobKey,
+        mediaSessionId,
+      }
+    );
+    diagnostics.uploadCompleteResponse = completeRes;
     if (!completeRes.ok) {
-      throw new Error(responseErrorMessage(completeRes));
+      throw new VendorJobMediaUploadError(responseErrorMessage(completeRes), diagnostics);
     }
 
-    const patchCompletedRes = await requestJson(
+    diagnostics.stage = 'session_complete';
+    const patchCompletedRes = await requestWithDiagnostics(
+      'session_complete',
       `/api/vendors/${vendorId}/media/sessions/${mediaSessionId}`,
       {
         method: 'PATCH',
@@ -240,10 +500,11 @@ export async function runVendorJobMediaUpload({
           status: 'COMPLETED',
           endedAt: new Date().toISOString(),
         }),
-      }
+      },
+      { mediaSessionId, status: 'COMPLETED' }
     );
     if (!patchCompletedRes.ok) {
-      throw new Error(responseErrorMessage(patchCompletedRes));
+      throw new VendorJobMediaUploadError(responseErrorMessage(patchCompletedRes), diagnostics);
     }
 
     onLifecycleState('completed');
@@ -274,6 +535,10 @@ export async function runVendorJobMediaUpload({
         }),
       }).catch(() => {});
     }
-    throw error;
+    if (error instanceof VendorJobMediaUploadError) throw error;
+    throw new VendorJobMediaUploadError(
+      error instanceof Error ? error.message : String(error),
+      diagnostics
+    );
   }
 }

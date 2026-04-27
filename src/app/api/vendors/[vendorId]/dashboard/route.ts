@@ -5,6 +5,8 @@ import { prisma } from "@/server/db";
 import { getUserIdFromRequest, getVendorMembership, requireVendorMembership } from "@/lib/membership-auth";
 import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
+import { getEmployeeRatingsForVendor, getVendorRatingStats } from "@/lib/review-attribution-aggregates";
+import { calculateStorageUsage } from "@/lib/storage-helpers";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -15,6 +17,7 @@ const cache = new Map<string, { data: any; expiresAt: number }>();
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds
 const USE_DASHBOARD_CACHE = process.env.NODE_ENV !== "development";
 const DASHBOARD_DEBUG_LOG = process.env.NODE_ENV !== "production";
+const APPROVED_STATUS = "APPROVED";
 
 function errorResponse(
   code: string,
@@ -59,6 +62,32 @@ function extractAssignedMembershipIdsFromMetadata(value: string | null | undefin
   return raw.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
+function resolveJobSourceFromMetadata(value: string | null | undefined): "customer_booking" | "vendor_created_job" {
+  const metadata = parseCustomerMetadata(value);
+  const claimStatus = String(metadata.claim_status || "").trim().toUpperCase();
+  const linkedFlag = metadata.customer_account_linked;
+  const hasLinkedFlag = typeof linkedFlag === "boolean";
+  if (claimStatus || hasLinkedFlag) {
+    return "vendor_created_job";
+  }
+  return "customer_booking";
+}
+
+function formatAssignedEmployeesForHistory(
+  assignedEmployees: string[],
+  assignedMembershipIds: string[],
+  formerMembershipIds: Set<string>
+): string[] {
+  if (!assignedEmployees.length) return [];
+  return assignedEmployees.map((name, index) => {
+    const membershipId = String(assignedMembershipIds[index] || "").trim();
+    if (membershipId && formerMembershipIds.has(membershipId)) {
+      return `${name} (Former team member)`;
+    }
+    return name;
+  });
+}
+
 function isTransientDbConnectivityError(error: any): boolean {
   const message = String(error?.message || '');
   return (
@@ -67,6 +96,10 @@ function isTransientDbConnectivityError(error: any): boolean {
     message.includes('ECONNREFUSED') ||
     message.includes('ETIMEDOUT')
   );
+}
+
+function normalizeKey(value: unknown): string {
+  return String(value || "").trim().toUpperCase();
 }
 
 async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
@@ -194,7 +227,6 @@ export async function GET(
       archivedBookings,
       recentReviews,
       confirmedOrCompletedBookings, // For client count (CONFIRMED + COMPLETED only)
-      allReviews,
       completedBookings,
       bookingsLastMonth,
       bookingsThisMonth,
@@ -202,6 +234,9 @@ export async function GET(
       reviewsThisMonth,
       earningsLastMonth,
       earningsThisMonth,
+      proofModerationGroups,
+      totalProofAssets,
+      archivedProofs,
     ] = await withTransientDbRetry(() =>
       Promise.all([
       // Vendor profile
@@ -293,12 +328,6 @@ export async function GET(
         distinct: ["userId"],
       }),
 
-      // All reviews for rating calculation
-      prisma.review.findMany({
-        where: { vendorId },
-        select: { rating: true },
-      }),
-
       // Completed bookings for earnings
       prisma.booking.findMany({
         where: {
@@ -372,6 +401,26 @@ export async function GET(
         },
         _sum: { amount: true },
       }),
+      (prisma as any).mediaAsset.groupBy({
+        by: ["moderationStatus"],
+        where: {
+          vendorId,
+          deletedAt: null,
+        },
+        _count: { id: true },
+      }),
+      (prisma as any).mediaAsset.count({
+        where: {
+          vendorId,
+          deletedAt: null,
+        },
+      }),
+      (prisma as any).mediaAsset.count({
+        where: {
+          vendorId,
+          OR: [{ deletedAt: { not: null } }, { archiveStatus: { in: ["ARCHIVED", "archived"] } }],
+        },
+      }),
       ])
     );
 
@@ -408,12 +457,17 @@ export async function GET(
     
     // Total Clients: Unique clients from CONFIRMED + COMPLETED bookings only (exclude CANCELED)
     const totalClients = confirmedOrCompletedBookings.length;
-    
-    const ratings = allReviews.map((r: any) => r.rating).filter((r: number) => r > 0);
-    const rating =
-      ratings.length > 0
-        ? ratings.reduce((sum: number, r: number) => sum + r, 0) / ratings.length
-        : 0;
+    let vendorRatingStats = { averageRating: 0, reviewCount: 0, ratingSum: 0 };
+    try {
+      vendorRatingStats = await getVendorRatingStats(vendorId);
+    } catch (ratingError: any) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[vendors/dashboard] rating aggregation fallback", {
+          vendorId,
+          error: ratingError?.message || String(ratingError),
+        });
+      }
+    }
 
     // Map bookings to VendorJob format with explicit status mapping
     const bookingIds = recentBookings.map((booking: any) => String(booking.id));
@@ -458,11 +512,17 @@ export async function GET(
       .filter((booking: any) => booking.status !== "ARCHIVED")
       .map((booking: any) => {
       // Explicit mapping for all Booking.status values: PENDING, CONFIRMED, COMPLETED, CANCELED
-      const statusMap: Record<string, "completed" | "in progress" | "scheduled" | "canceled"> = {
+      const statusMap: Record<
+        string,
+        "completed" | "in progress" | "scheduled" | "canceled" | "awaiting_review" | "archived"
+      > = {
         COMPLETED: "completed",
+        IN_PROGRESS: "in progress",
         CONFIRMED: "in progress",
         PENDING: "scheduled",
         CANCELED: "canceled",
+        AWAITING_REVIEW: "awaiting_review",
+        ARCHIVED: "archived",
       };
       const mappedStatus = statusMap[booking.status] || "scheduled";
 
@@ -490,6 +550,8 @@ export async function GET(
         ? amount
         : parseFloat(String(amount)) || 0;
 
+      const assignedEmployeesRaw = extractAssignedEmployeesFromMetadata(booking.customerMetadata);
+      const assignedMembershipIds = extractAssignedMembershipIdsFromMetadata(booking.customerMetadata);
       return {
         id: booking.id,
         serviceId: booking.serviceId,
@@ -500,8 +562,9 @@ export async function GET(
         amount: amountValue,
         status: mappedStatus,
         operationalPhase,
-        assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
-        assignedMembershipIds: extractAssignedMembershipIdsFromMetadata(booking.customerMetadata),
+        assignedEmployees: assignedEmployeesRaw,
+        assignedMembershipIds,
+        source: resolveJobSourceFromMetadata(booking.customerMetadata),
         createdAt: booking.createdAt?.toISOString() || null,
         updatedAt: booking.updatedAt?.toISOString() || booking.createdAt?.toISOString() || null,
         linkedMediaCount: mediaSummary.linkedMediaCount,
@@ -524,6 +587,8 @@ export async function GET(
         linkedMediaCount: archMedia.linkedMediaCount,
         assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
       });
+      const assignedEmployeesRaw = extractAssignedEmployeesFromMetadata(booking.customerMetadata);
+      const assignedMembershipIds = extractAssignedMembershipIdsFromMetadata(booking.customerMetadata);
       return {
       id: booking.id,
       serviceId: booking.serviceId,
@@ -534,8 +599,8 @@ export async function GET(
       amount: booking.amount ? Number(booking.amount) : 0,
       status: "archived",
       operationalPhase: operationalPhaseArchived,
-      assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
-      assignedMembershipIds: extractAssignedMembershipIdsFromMetadata(booking.customerMetadata),
+      assignedEmployees: assignedEmployeesRaw,
+      assignedMembershipIds,
       createdAt: booking.createdAt?.toISOString() || null,
       updatedAt: booking.updatedAt?.toISOString() || booking.createdAt?.toISOString() || null,
       date:
@@ -546,6 +611,43 @@ export async function GET(
     };
     });
 
+    const historyJobs = [...recentJobs, ...archivedJobs];
+    const historyMembershipIds = Array.from(
+      new Set(
+        historyJobs
+          .flatMap((job: any) =>
+            Array.isArray(job?.assignedMembershipIds)
+              ? job.assignedMembershipIds.map((id: unknown) => String(id || "").trim()).filter(Boolean)
+              : []
+          )
+          .filter(Boolean)
+      )
+    );
+    const formerMembershipIds = new Set<string>();
+    if (historyMembershipIds.length > 0) {
+      const membershipRows = await prisma.vendorMembership.findMany({
+        where: {
+          vendorId,
+          id: { in: historyMembershipIds },
+        },
+        select: { id: true, status: true },
+      });
+      for (const row of membershipRows) {
+        if (String(row.status || "").trim().toUpperCase() !== "ACTIVE") {
+          formerMembershipIds.add(String(row.id));
+        }
+      }
+    }
+    for (const job of historyJobs) {
+      const status = String(job?.status || "").trim().toLowerCase();
+      if (status !== "completed" && status !== "archived") continue;
+      job.assignedEmployees = formatAssignedEmployeesForHistory(
+        Array.isArray(job.assignedEmployees) ? job.assignedEmployees : [],
+        Array.isArray(job.assignedMembershipIds) ? job.assignedMembershipIds : [],
+        formerMembershipIds
+      );
+    }
+
     // Map reviews to VendorReview format
     const recentReviewsMapped = recentReviews.map((review: any) => ({
       id: review.id,
@@ -555,6 +657,55 @@ export async function GET(
       date: review.date?.toISOString() || review.createdAt.toISOString(),
       jobType: review.jobType || "Service",
     }));
+
+    let employeeRatingRows: Array<{
+      membershipId: string;
+      averageRating: number;
+      reviewCount: number;
+      ratingSum: number;
+    }> = [];
+    try {
+      employeeRatingRows = await getEmployeeRatingsForVendor(vendorId);
+    } catch (employeeRatingError: any) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[vendors/dashboard] employee rating aggregation fallback", {
+          vendorId,
+          error: employeeRatingError?.message || String(employeeRatingError),
+        });
+      }
+      employeeRatingRows = [];
+    }
+    const employeeMembershipIds = employeeRatingRows.map((row) => row.membershipId);
+    const membershipRows = employeeMembershipIds.length
+      ? await prisma.vendorMembership.findMany({
+          where: {
+            vendorId,
+            id: { in: employeeMembershipIds },
+          },
+          select: {
+            id: true,
+            status: true,
+            user: { select: { name: true, email: true } },
+          },
+        })
+      : [];
+    const membershipById = new Map(membershipRows.map((row) => [String(row.id), row]));
+    const employeePerformance = employeeRatingRows.map((row) => {
+      const membership = membershipById.get(String(row.membershipId));
+      const baseName =
+        String(membership?.user?.name || "").trim() ||
+        String(membership?.user?.email || "").trim() ||
+        "Former team member";
+      const isFormer = membership
+        ? String(membership.status || "").trim().toUpperCase() !== "ACTIVE"
+        : true;
+      return {
+        membershipId: row.membershipId,
+        displayName: isFormer ? `${baseName} (Former team member)` : baseName,
+        averageRating: row.averageRating,
+        reviewCount: row.reviewCount,
+      };
+    });
 
     // Calculate insights with Decimal handling
     const bookingsChange = bookingsLastMonth > 0
@@ -658,6 +809,35 @@ export async function GET(
           : ("low" as const),
     }));
 
+    let pendingModerationProofs = 0;
+    let approvedProofs = 0;
+    for (const row of proofModerationGroups as any[]) {
+      const key = normalizeKey(row?.moderationStatus);
+      const count = Number(row?._count?.id || 0);
+      if (!key || key === "PENDING_REVIEW") {
+        pendingModerationProofs += count;
+      } else if (key === APPROVED_STATUS) {
+        approvedProofs += count;
+      }
+    }
+
+    let storageUsedBytes = "0";
+    let storageLimitBytes = "0";
+    let storagePercentUsed = 0;
+    try {
+      const usage = await withTransientDbRetry(() => calculateStorageUsage(vendorId));
+      storageUsedBytes = String(usage.usedBytes);
+      storageLimitBytes = String(usage.limitBytes);
+      storagePercentUsed = Number(usage.percentUsed || 0);
+    } catch (storageError: any) {
+      if (DASHBOARD_DEBUG_LOG) {
+        console.warn("[vendors/dashboard] storage summary fallback", {
+          vendorId,
+          error: storageError?.message || String(storageError),
+        });
+      }
+    }
+
     // Build response
     const response = {
       profile: {
@@ -681,13 +861,22 @@ export async function GET(
         totalBookings,
         totalEarnings: parseFloat(totalEarnings.toFixed(2)), // Format as number with 2 decimals
         totalClients,
-        rating: Math.round(rating * 10) / 10,
+        rating: vendorRatingStats.averageRating,
+        ratingCount: vendorRatingStats.reviewCount,
       },
       recentJobs,
       archivedJobs,
       recentReviews: recentReviewsMapped,
+      employeePerformance,
       insights,
       notifications,
+      pendingModerationProofs,
+      approvedProofs,
+      archivedProofs: Number(archivedProofs || 0),
+      totalProofAssets: Number(totalProofAssets || 0),
+      storageUsedBytes,
+      storageLimitBytes,
+      storagePercentUsed,
     };
 
     // Cache the response

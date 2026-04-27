@@ -60,6 +60,7 @@ type QueuePackage = {
   createdAt: string;
   uploadedByMembershipIds: string[];
   moderationStatuses: string[];
+  visibilityStatuses: string[];
   packageReadiness: string;
   videosByStage: Record<StageKey, QueueVideo | null>;
 };
@@ -75,6 +76,8 @@ type ModerationAction =
   | 'set_visibility_private'
   | 'reject'
   | 'flag';
+
+type PackageModerationAction = 'approve' | 'reject' | 'flag';
 
 /** Visibility tier when approving or updating an already-approved asset (maps to API enums). */
 type VisibilityLevel = 'public' | 'customer_only' | 'vendor_archive_only' | 'private';
@@ -214,6 +217,9 @@ function normalizeQueuePackage(row: Record<string, unknown>): QueuePackage {
     moderationStatuses: Array.isArray(row.moderationStatuses)
       ? row.moderationStatuses.map((status) => String(status)).filter(Boolean)
       : [],
+    visibilityStatuses: Array.isArray(row.visibilityStatuses)
+      ? row.visibilityStatuses.map((status) => String(status)).filter(Boolean)
+      : [],
     packageReadiness: String(row.packageReadiness ?? ''),
     videosByStage: {
       INTRO: toStageVideo('INTRO'),
@@ -221,6 +227,27 @@ function normalizeQueuePackage(row: Record<string, unknown>): QueuePackage {
       COMPLETED: toStageVideo('COMPLETED'),
     },
   };
+}
+
+function displayPackageState(states: string[]): string {
+  const unique = Array.from(new Set(states.map((state) => String(state || '').trim().toLowerCase()).filter(Boolean)));
+  if (unique.length === 0) return 'Unknown';
+  if (unique.length > 1) return 'Mixed';
+  return unique[0];
+}
+
+function prettyStatus(value: string): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function visibilityLabel(level: VisibilityLevel): string {
+  return VISIBILITY_OPTIONS.find((opt) => opt.value === level)?.label || prettyStatus(level);
 }
 
 function AssetModerationControls({
@@ -293,9 +320,13 @@ export default function AdminMediaModerationPage() {
     pack: QueuePackage;
   } | null>(null);
   const [assetActionLoadingId, setAssetActionLoadingId] = useState<string | null>(null);
+  const [packageActionLoadingId, setPackageActionLoadingId] = useState<string | null>(null);
+  const [packageVisibilityById, setPackageVisibilityById] = useState<Record<string, VisibilityLevel>>({});
+  const [advancedOpenById, setAdvancedOpenById] = useState<Record<string, boolean>>({});
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectTarget, setRejectTarget] = useState<QueueVideo | null>(null);
+  const [rejectPackageTarget, setRejectPackageTarget] = useState<QueuePackage | null>(null);
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
@@ -347,7 +378,18 @@ export default function AdminMediaModerationPage() {
         throw new Error(msg);
       }
       const rawPackages = Array.isArray(json.packages) ? json.packages : [];
-      setPackages(rawPackages.map((row: Record<string, unknown>) => normalizeQueuePackage(row)));
+      const normalizedPackages = rawPackages.map((row: Record<string, unknown>) => normalizeQueuePackage(row));
+      setPackages(normalizedPackages);
+      setPackageVisibilityById((prev) => {
+        const next = { ...prev };
+        for (const pack of normalizedPackages) {
+          if (next[pack.packageId]) continue;
+          const packageVisibility = displayPackageState(pack.visibilityStatuses);
+          const fallback = packageVisibility === 'Mixed' ? 'private' : visibilityLevelFromAsset(packageVisibility);
+          next[pack.packageId] = fallback;
+        }
+        return next;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load moderation queue');
       setPackages([]);
@@ -404,6 +446,74 @@ export default function AdminMediaModerationPage() {
     }
   };
 
+  const applyPackageAction = async (
+    pack: QueuePackage,
+    action: PackageModerationAction,
+    moderationReason?: string
+  ) => {
+    setPackageActionLoadingId(`${pack.packageId}:${action}`);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/admin/media/packages/${pack.bookingId}/moderate`, {
+        method: 'PATCH',
+        headers: adminHeaders(),
+        body: JSON.stringify({
+          action,
+          visibility: packageVisibilityById[pack.packageId],
+          moderationReason: moderationReason || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg =
+          (typeof json?.message === 'string' && json.message.trim()) ||
+          (typeof json?.error === 'string' && json.error.trim()) ||
+          (json?.code ? String(json.code) : '') ||
+          `Package action failed (HTTP ${res.status})`;
+        throw new Error(msg);
+      }
+      const selectedVisibility = packageVisibilityById[pack.packageId] || 'private';
+      if (action === 'approve') {
+        setPackages((prev) =>
+          prev.map((candidate) => {
+            if (candidate.packageId !== pack.packageId) return candidate;
+            const nextVideosByStage = { ...candidate.videosByStage };
+            for (const stage of STAGE_ORDER) {
+              const stageVideo = nextVideosByStage[stage];
+              if (!stageVideo) continue;
+              nextVideosByStage[stage] = {
+                ...stageVideo,
+                moderationStatus: 'approved',
+                visibilityStatus: selectedVisibility,
+              };
+            }
+            return {
+              ...candidate,
+              moderationStatuses: ['approved'],
+              visibilityStatuses: [selectedVisibility],
+              videosByStage: nextVideosByStage,
+            };
+          })
+        );
+      }
+      await fetchQueue();
+      setFeedback({
+        type: 'success',
+        message:
+          action === 'approve'
+            ? `Package approved. All stages are now ${visibilityLabel(selectedVisibility)}.`
+            : json?.message || 'Package action applied successfully',
+      });
+    } catch (e) {
+      setFeedback({
+        type: 'error',
+        message: e instanceof Error ? e.message : 'Failed to apply package action',
+      });
+    } finally {
+      setPackageActionLoadingId(null);
+    }
+  };
+
   const vendors = useMemo(
     () => Array.from(new Set(packages.map((p) => `${p.vendorId}::${p.vendorName || p.vendorId}`))),
     [packages]
@@ -418,15 +528,30 @@ export default function AdminMediaModerationPage() {
 
   const openRejectModal = (asset: QueueVideo) => {
     setRejectTarget(asset);
+    setRejectPackageTarget(null);
+    setRejectReason('');
+    setRejectModalOpen(true);
+  };
+
+  const openPackageRejectModal = (pack: QueuePackage) => {
+    setRejectPackageTarget(pack);
+    setRejectTarget(null);
     setRejectReason('');
     setRejectModalOpen(true);
   };
 
   const submitReject = async () => {
-    if (!rejectTarget || !rejectReason.trim()) return;
-    await applyModerationAction(rejectTarget, 'reject', rejectReason.trim());
+    if (!rejectReason.trim()) return;
+    if (rejectPackageTarget) {
+      await applyPackageAction(rejectPackageTarget, 'reject', rejectReason.trim());
+    } else if (rejectTarget) {
+      await applyModerationAction(rejectTarget, 'reject', rejectReason.trim());
+    } else {
+      return;
+    }
     setRejectModalOpen(false);
     setRejectTarget(null);
+    setRejectPackageTarget(null);
     setRejectReason('');
   };
 
@@ -533,8 +658,8 @@ export default function AdminMediaModerationPage() {
       ) : (
         <div className="space-y-3">
           {packages.map((pack) => {
-            const moderationLabel =
-              pack.moderationStatuses.length === 1 ? pack.moderationStatuses[0] : 'mixed';
+            const moderationLabel = displayPackageState(pack.moderationStatuses);
+            const visibilityLabel = displayPackageState(pack.visibilityStatuses);
             const hasAllRequiredStages = STAGE_ORDER.every((stage) => Boolean(pack.videosByStage[stage]));
             const allRequiredStagesApproved = STAGE_ORDER.every((stage) => {
               const stageVideo = pack.videosByStage[stage];
@@ -558,6 +683,9 @@ export default function AdminMediaModerationPage() {
               };
             });
             const overallPackageStatus = allRequiredStagesApproved ? 'Approved' : 'Admin Review Required';
+            const packageActionBusy = Boolean(packageActionLoadingId?.startsWith(`${pack.packageId}:`));
+            const selectedPackageVisibility = packageVisibilityById[pack.packageId] || 'private';
+            const hasMixedState = moderationLabel === 'Mixed' || visibilityLabel === 'Mixed';
             return (
               <Card key={pack.packageId} className="border-2 border-emerald-300 bg-gradient-to-br from-emerald-50/70 to-white">
                 <CardContent className="pt-6">
@@ -578,9 +706,15 @@ export default function AdminMediaModerationPage() {
                         {showPackageApproved ? (
                           <Badge className="bg-green-700 text-white hover:bg-green-700">Package Approved</Badge>
                         ) : null}
-                        <Badge variant="outline">Package moderation: {moderationLabel}</Badge>
+                        <Badge variant="outline">Package moderation: {prettyStatus(moderationLabel)}</Badge>
+                        <Badge variant="outline">Package visibility: {prettyStatus(visibilityLabel)}</Badge>
                       </div>
                     </div>
+                    {hasMixedState ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        Some stages have different moderation or visibility states.
+                      </div>
+                    ) : null}
                     <div className="rounded-md border border-emerald-200 bg-white/80 p-3 text-sm">
                       <div className="font-medium text-gray-900">Package Status</div>
                       <div className="mt-2 space-y-1 text-sm">
@@ -598,7 +732,71 @@ export default function AdminMediaModerationPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                    <div className="rounded-md border bg-white p-3 space-y-3">
+                      <div className="text-sm font-medium text-gray-900">Package review actions</div>
+                      <p className="text-xs text-gray-600">
+                        Normal workflow: choose package visibility, then approve, reject, or flag the full Intro + In Progress + Completed package.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                        <div className="space-y-1 md:col-span-2">
+                          <Label htmlFor={`package-visibility-${pack.packageId}`} className="text-xs text-gray-600">
+                            Package visibility
+                          </Label>
+                          <select
+                            id={`package-visibility-${pack.packageId}`}
+                            value={selectedPackageVisibility}
+                            onChange={(e) =>
+                              setPackageVisibilityById((prev) => ({
+                                ...prev,
+                                [pack.packageId]: e.target.value as VisibilityLevel,
+                              }))
+                            }
+                            disabled={packageActionBusy}
+                            className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+                          >
+                            {VISIBILITY_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <Button size="sm" disabled={packageActionBusy} onClick={() => applyPackageAction(pack, 'approve')}>
+                          Approve Package
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" disabled={packageActionBusy} onClick={() => openPackageRejectModal(pack)}>
+                          Reject Package
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={packageActionBusy} onClick={() => applyPackageAction(pack, 'flag')}>
+                          <ShieldAlert className="w-4 h-4 mr-1" />
+                          Flag Package
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="rounded-md border bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium text-gray-900">Advanced stage controls</div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            setAdvancedOpenById((prev) => ({
+                              ...prev,
+                              [pack.packageId]: !prev[pack.packageId],
+                            }))
+                          }
+                        >
+                          {advancedOpenById[pack.packageId] ? 'Hide' : 'Show'}
+                        </Button>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-600">
+                        Use only when you need stage-specific overrides after a package-level decision.
+                      </p>
+                    </div>
+                    {advancedOpenById[pack.packageId] ? (
+                      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
                       {STAGE_ORDER.map((stage) => {
                         const stageVideo = pack.videosByStage[stage];
                         if (!stageVideo) {
@@ -663,7 +861,8 @@ export default function AdminMediaModerationPage() {
                           </div>
                         );
                       })}
-                    </div>
+                      </div>
+                    ) : null}
                     <div className="text-xs text-gray-600">
                       Package updated: {new Date(pack.createdAt).toLocaleString()}
                       {pack.serviceName ? ` • Service: ${pack.serviceName}` : ''}
@@ -749,23 +948,37 @@ export default function AdminMediaModerationPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={rejectModalOpen} onOpenChange={setRejectModalOpen}>
+      <Dialog
+        open={rejectModalOpen}
+        onOpenChange={(open) => {
+          setRejectModalOpen(open);
+          if (!open) {
+            setRejectTarget(null);
+            setRejectPackageTarget(null);
+            setRejectReason('');
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Media</DialogTitle>
-            <DialogDescription>Provide moderation reason to reject this stage video.</DialogDescription>
+            <DialogTitle>{rejectPackageTarget ? 'Reject Package' : 'Reject Stage'}</DialogTitle>
+            <DialogDescription>
+              {rejectPackageTarget
+                ? 'Provide one rejection reason for this full package. It will be applied to all stages.'
+                : 'Provide a stage-specific moderation reason for rejection.'}
+            </DialogDescription>
           </DialogHeader>
           <textarea
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Enter rejection reason..."
+            placeholder={rejectPackageTarget ? 'Enter package rejection reason...' : 'Enter stage rejection reason...'}
             className="w-full min-h-[120px] rounded border border-input px-3 py-2 text-sm"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={submitReject} disabled={!rejectReason.trim() || Boolean(assetActionLoadingId)}>
+            <Button onClick={submitReject} disabled={!rejectReason.trim() || Boolean(assetActionLoadingId) || Boolean(packageActionLoadingId)}>
               Submit Rejection
             </Button>
           </DialogFooter>

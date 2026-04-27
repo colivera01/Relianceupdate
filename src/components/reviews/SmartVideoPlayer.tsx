@@ -39,8 +39,11 @@ export function SmartVideoPlayer({
   const [showQuickReview, setShowQuickReview] = useState(false);
   const [showPrivateFeedback, setShowPrivateFeedback] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
+  const [accessErrorDetails, setAccessErrorDetails] = useState<string | null>(null);
+  const [reviewAlreadySubmitted, setReviewAlreadySubmitted] = useState(false);
 
   const trimmedUserId = useMemo(() => String(userId ?? '').trim(), [userId]);
   /** Review APIs + UI; false ⇒ watch-only (terminal cancel, or missing user id). Consent checks on server unchanged when true. */
@@ -60,6 +63,10 @@ export function SmartVideoPlayer({
     [reviewApisEnabled, reviewWindowId]
   );
 
+  useEffect(() => {
+    setReviewAlreadySubmitted(false);
+  }, [bookingId, mediaSessionId]);
+
   const logPromptEvent = useCallback(
     async (eventType: string, metadata?: Record<string, unknown>) => {
       const id = reviewWindowId;
@@ -77,6 +84,7 @@ export function SmartVideoPlayer({
     if (!reviewApisEnabled) {
       setReviewWindowId(null);
       setAccessError(null);
+      setAccessErrorDetails(null);
       setPrompt('none');
       setShowExit(false);
       setShowQuickReview(false);
@@ -87,6 +95,7 @@ export function SmartVideoPlayer({
     let cancelled = false;
     (async () => {
       setAccessError(null);
+      setAccessErrorDetails(null);
       try {
         const res = await fetch('/api/reviews/window/start', {
           method: 'POST',
@@ -99,11 +108,23 @@ export function SmartVideoPlayer({
         if (res.ok && json?.reviewWindow?.id) {
           setReviewWindowId(String(json.reviewWindow.id));
         } else {
-          setAccessError(json?.error || 'Video access is not available');
+          const backendError = String(json?.error || json?.message || 'Video access is not available');
+          const backendStep = String(json?.step || json?.details?.step || 'unknown_step');
+          const backendCode = String(json?.code || json?.details?.code || 'none');
+          const backendMeta = json?.meta ?? json?.details?.meta ?? null;
+          const backendDetailError = String(json?.details?.error || backendError);
+          setAccessError(backendError);
+          setAccessErrorDetails(
+            `review window start failed (${res.status}) | step=${backendStep} code=${backendCode} | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} x-user-id=${trimmedUserId || 'missing'} | backend="${backendDetailError}" meta=${JSON.stringify(backendMeta)}`
+          );
         }
       } catch (e: unknown) {
         if (cancelled || (e instanceof DOMException && e.name === 'AbortError')) return;
-        setAccessError('Failed to start review session');
+        const message = e instanceof Error ? e.message : 'Failed to start review session';
+        setAccessError(message);
+        setAccessErrorDetails(
+          `review window start request error | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} x-user-id=${trimmedUserId || 'missing'} | error="${message}"`
+        );
       }
     })();
     return () => {
@@ -147,7 +168,8 @@ export function SmartVideoPlayer({
 
   const handleSentiment = async (sentiment: 'positive' | 'neutral' | 'negative') => {
     setPrompt('none');
-    if (!reviewWindowId || !trimmedUserId) return;
+    setSubmitSuccess(null);
+    if (!reviewWindowId || !trimmedUserId || reviewAlreadySubmitted) return;
     await fetch('/api/reviews/sentiment', {
       method: 'POST',
       headers: { ...reviewJsonHeaders },
@@ -163,9 +185,10 @@ export function SmartVideoPlayer({
   };
 
   const handleQuickSubmit = async (payload: { rating: number; comment: string }) => {
-    if (!reviewWindowId || !trimmedUserId) return;
+    if (!reviewWindowId || !trimmedUserId || reviewSubmitting) return;
     setReviewSubmitting(true);
     setSubmitError(null);
+    setSubmitSuccess(null);
     try {
       const res = await fetch('/api/reviews/create', {
         method: 'POST',
@@ -179,15 +202,56 @@ export function SmartVideoPlayer({
           submittedVia: 'video_overlay',
         }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || 'Failed to submit review');
+      const body = await res.json().catch(() => ({}));
+      const submissionSucceeded = res.ok || body?.success === true;
+      if (!submissionSucceeded) {
+        const backendCode = String(body?.code || 'none');
+        const backendError = String(body?.error || '');
+        const backendMessage = String(body?.message || '');
+        const isReviewAlreadySubmitted =
+          res.status === 409 &&
+          (backendCode === 'REVIEW_ALREADY_EXISTS' ||
+            backendError.toLowerCase().includes('review already exists') ||
+            backendMessage.toLowerCase().includes('review already exists'));
+        if (isReviewAlreadySubmitted) {
+          setReviewAlreadySubmitted(true);
+          setShowQuickReview(false);
+          setPrompt('none');
+          setShowPrivateFeedback(false);
+          setSubmitError(null);
+          setSubmitSuccess('You already submitted a review for this service.');
+          return;
+        }
+
+        const fallbackError = String(body?.error || 'Failed to submit review');
+        const backendStep = String(body?.step || body?.details?.step || 'unknown_step');
+        const backendMeta = body?.meta ?? body?.details?.meta ?? null;
+        const backendDetails = body?.details ?? null;
+        throw new Error(
+          `Failed to create review (${res.status}) | error="${fallbackError}" code=${backendCode} message="${backendMessage}" step=${backendStep} meta=${JSON.stringify(
+            backendMeta
+          )} details=${JSON.stringify(backendDetails)}`
+        );
+      }
+      await logPromptEvent('quick_review_submitted', { rating: payload.rating });
       setShowQuickReview(false);
+      setPrompt('none');
+      setShowPrivateFeedback(false);
+      setReviewAlreadySubmitted(true);
+      setSubmitError(null);
+      setSubmitSuccess('Thank you for your feedback.');
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Failed to submit review');
     } finally {
       setReviewSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!submitSuccess) return;
+    const timer = setTimeout(() => setSubmitSuccess(null), 3500);
+    return () => clearTimeout(timer);
+  }, [submitSuccess]);
 
   const handleCloseWithoutReview = async () => {
     if (reviewWindowId && trimmedUserId) {
@@ -201,16 +265,24 @@ export function SmartVideoPlayer({
   };
 
   return (
-    <div className={`relative ${className || ''}`} data-testid="e2e-smart-video-player">
-      <video
-        ref={videoRef}
-        src={src}
-        poster={poster}
-        controls={reviewApisEnabled ? !accessError : true}
-        className="w-full rounded-lg border bg-black"
-      />
+    <div className={`relative w-full max-w-full overflow-hidden ${className || ''}`} data-testid="e2e-smart-video-player">
+      <div className="flex w-full items-center justify-center overflow-hidden rounded-lg border bg-black">
+        <video
+          ref={videoRef}
+          src={src}
+          poster={poster}
+          controls={reviewApisEnabled ? !accessError : true}
+          className="block h-auto w-full max-h-[70vh] object-contain bg-black"
+        />
+      </div>
       {reviewApisEnabled && submitError ? <p className="mt-2 text-xs text-red-600">{submitError}</p> : null}
+      {reviewApisEnabled && submitSuccess ? <p className="mt-2 text-xs text-emerald-700">{submitSuccess}</p> : null}
       {reviewApisEnabled && accessError ? <p className="mt-2 text-xs text-red-600">{accessError}</p> : null}
+      {reviewApisEnabled && accessErrorDetails ? (
+        <p className="mt-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700">
+          {accessErrorDetails}
+        </p>
+      ) : null}
 
       {reviewApisEnabled && !accessError && reviewWindowId ? (
         <div className="mt-2 flex flex-wrap gap-2">
@@ -224,9 +296,9 @@ export function SmartVideoPlayer({
         </div>
       ) : null}
 
-      {reviewApisEnabled && prompt !== 'none' ? (
+      {reviewApisEnabled && !reviewAlreadySubmitted && prompt !== 'none' ? (
         <ReviewOverlay
-          title={prompt === 'soft' ? 'How was the service so far?' : 'Still with us? Share quick feedback'}
+          title={prompt === 'soft' ? 'How was your completed service?' : 'Please confirm your experience after reviewing the completed proof.'}
           onDismiss={async () => {
             setPrompt('none');
             await logPromptEvent('dismissed', { phase: prompt });
@@ -240,7 +312,12 @@ export function SmartVideoPlayer({
       {reviewApisEnabled ? (
         <>
           <ExitIntentPrompt open={showExit} onStay={() => setShowExit(false)} onLeave={() => void handleCloseWithoutReview()} />
-          <QuickReviewPanel open={showQuickReview} onClose={() => setShowQuickReview(false)} onSubmit={handleQuickSubmit} submitting={reviewSubmitting} />
+          <QuickReviewPanel
+            open={showQuickReview && !reviewAlreadySubmitted}
+            onClose={() => setShowQuickReview(false)}
+            onSubmit={handleQuickSubmit}
+            submitting={reviewSubmitting}
+          />
           <PrivateFeedbackPanel
             open={showPrivateFeedback}
             onClose={() => setShowPrivateFeedback(false)}

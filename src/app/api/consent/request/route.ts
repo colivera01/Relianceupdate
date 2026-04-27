@@ -43,6 +43,32 @@ function parseCustomerMetadata(value: string | null | undefined): Record<string,
   }
 }
 
+function formatServiceDateLabel(value: Date | string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return undefined;
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function isLocalhostOrigin(origin: string | null | undefined): boolean {
+  if (!origin) return false;
+  return /^http:\/\/localhost(?::\d+)?$/i.test(String(origin).trim());
+}
+
+function resolveConsentBaseUrl(request: NextRequest, requestedOrigin?: string | null): string {
+  const appBaseUrl = String(process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
+  const isProd = process.env.NODE_ENV === 'production';
+  if (isProd) {
+    return appBaseUrl;
+  }
+  const bodyOrigin = String(requestedOrigin || '').trim().replace(/\/+$/, '');
+  if (isLocalhostOrigin(bodyOrigin)) return bodyOrigin;
+  if (appBaseUrl) return appBaseUrl;
+  const headerOrigin = String(request.headers.get('origin') || '').trim().replace(/\/+$/, '');
+  if (headerOrigin) return headerOrigin;
+  return 'http://localhost:3000';
+}
+
 export async function POST(request: NextRequest) {
   logNotificationEnvWarnings();
   try {
@@ -52,6 +78,7 @@ export async function POST(request: NextRequest) {
     const vendorId = String(body?.vendorId || '').trim();
     const mediaSessionId = String(body?.mediaSessionId || '').trim();
     const consentType = String(body?.consentType || '').trim();
+    const origin = String(body?.origin || '').trim();
     const expiresAtInput = body?.expiresAt ? new Date(String(body.expiresAt)) : null;
     const defaultExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     const expiresAt =
@@ -73,8 +100,12 @@ export async function POST(request: NextRequest) {
         select: {
           id: true,
           vendorId: true,
+          title: true,
+          scheduledFor: true,
           clientName: true,
           customerMetadata: true,
+          vendor: { select: { businessName: true, name: true } },
+          service: { select: { name: true } },
           user: { select: { email: true, phone: true, name: true } },
         },
       })
@@ -95,6 +126,15 @@ export async function POST(request: NextRequest) {
       (booking.user?.name && String(booking.user.name).trim()) ||
       (booking.clientName ? String(booking.clientName).trim() : '') ||
       undefined;
+    const vendorName =
+      (booking.vendor?.businessName && String(booking.vendor.businessName).trim()) ||
+      (booking.vendor?.name && String(booking.vendor.name).trim()) ||
+      undefined;
+    const serviceName =
+      (booking.title && String(booking.title).trim()) ||
+      (booking.service?.name && String(booking.service.name).trim()) ||
+      undefined;
+    const serviceDate = formatServiceDateLabel(booking.scheduledFor);
 
     const token = generateConsentToken();
     const record = await withTransientDbRetry(() =>
@@ -133,6 +173,7 @@ export async function POST(request: NextRequest) {
     }
 
     const consentPath = `/consent/${encodeURIComponent(token)}`;
+    const consentBaseUrl = resolveConsentBaseUrl(request, origin);
     let notification: Awaited<ReturnType<typeof sendConsentLinkNotification>> | null = null;
     let notificationError: string | null = null;
     try {
@@ -141,9 +182,13 @@ export async function POST(request: NextRequest) {
         actorUserId: String(actorUserId),
         token,
         consentPath,
+        absoluteBaseUrl: consentBaseUrl,
         customerEmail,
         customerPhone,
         customerName,
+        vendorName,
+        serviceName,
+        serviceDate,
         consentTypeLabel: consentType.replace(/_/g, ' '),
       });
       await withTransientDbRetry(() =>

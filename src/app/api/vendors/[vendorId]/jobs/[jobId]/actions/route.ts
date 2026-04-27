@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { requireVendorMembership } from "@/lib/membership-auth";
+import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
 import {
   getRelianceOps,
   operationalPhaseForBookingStatusUpdate,
@@ -19,7 +19,8 @@ type JobAction =
   | "UNARCHIVE_JOB"
   | "UPDATE_JOB"
   | "ASSIGN_JOB"
-  | "UPDATE_STATUS";
+  | "UPDATE_STATUS"
+  | "APPROVE_JOB_COMPLETION";
 
 function apiResponse(
   success: boolean,
@@ -75,7 +76,7 @@ async function resolveJobAssignmentForVendor(
       where: {
         vendorId,
         id: { in: normalizedIds },
-        status: "ACTIVE",
+        status: { in: ["ACTIVE", "active"] },
       },
       include: {
         user: { select: { name: true, email: true } },
@@ -104,7 +105,7 @@ async function resolveJobAssignmentForVendor(
   }
 
   const activeMembers = await prisma.vendorMembership.findMany({
-    where: { vendorId, status: "ACTIVE" },
+    where: { vendorId, status: { in: ["ACTIVE", "active"] } },
     include: { user: { select: { name: true, email: true } } },
   });
 
@@ -400,34 +401,15 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       });
 
       if (requestedUpper === "COMPLETED") {
-        if (!packageState.hasAllRequiredStages) {
-          return NextResponse.json(
-            apiResponse(
-              false,
-              "COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE",
-              "Mark complete only after Intro, In Progress, and Completed videos are uploaded.",
-              {
-                linkedAssetCount,
-                hasAllRequiredStages: packageState.hasAllRequiredStages,
-              }
-            ),
-            { status: 409 }
-          );
-        }
-        if (!packageState.hasAllRequiredStagesApproved) {
-          return NextResponse.json(
-            apiResponse(
-              false,
-              "COMPLETION_REQUIRES_ADMIN_APPROVAL",
-              "Mark complete only after all required staged videos are approved by admin review.",
-              {
-                operationalPhase: currentPhase,
-                hasAllRequiredStagesApproved: packageState.hasAllRequiredStagesApproved,
-              }
-            ),
-            { status: 409 }
-          );
-        }
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "MANAGER_APPROVAL_REQUIRED",
+            "Direct status update to completed is blocked. Use manager approval for jobs in AWAITING_REVIEW.",
+            { operationalPhase: currentPhase, hasAllRequiredStages: packageState.hasAllRequiredStages }
+          ),
+          { status: 409 }
+        );
       }
 
       const nextOpsPhase = operationalPhaseForBookingStatusUpdate(requestedUpper, assignedFromMeta);
@@ -451,6 +433,44 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         action,
         job: updated,
         message: "Job status updated successfully",
+      });
+    }
+
+    if (action === "APPROVE_JOB_COMPLETION") {
+      await requireVendorManager(request, vendorId);
+      const currentStatus = normalizeBookingStatus(booking.status);
+      if (currentStatus !== "AWAITING_REVIEW") {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "INVALID_APPROVAL_STATUS",
+            "Only jobs awaiting review can be approved for completion.",
+            { status: currentStatus || "UNKNOWN" }
+          ),
+          { status: 409 }
+        );
+      }
+      const packageState = await getVendorJobPackageState(vendorId, booking.id);
+      if (!packageState.hasAllRequiredStages) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE",
+            "Approve completion only after Intro, In Progress, and Completed videos are uploaded."
+          ),
+          { status: 409 }
+        );
+      }
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: { status: "COMPLETED", date: new Date() },
+        select: { id: true, status: true, date: true, updatedAt: true },
+      });
+      return NextResponse.json({
+        success: true,
+        action,
+        job: updated,
+        message: "Job completion approved.",
       });
     }
 

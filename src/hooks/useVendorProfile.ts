@@ -279,11 +279,11 @@ export function useVendorProfile() {
             clearVendorContextCache(userId);
             return;
           }
-          if (status === 403 && payload?.code === "VENDOR_PENDING_APPROVAL") {
+          if (status === 403 && (payload?.code === "VENDOR_PENDING_APPROVAL" || payload?.code === "MEMBERSHIP_PENDING_APPROVAL")) {
             setApprovalPending(true);
             setData(null);
-            setError("Vendor account pending approval");
-            setErrorCode("VENDOR_PENDING_APPROVAL");
+            setError(String(payload?.error || "Vendor membership pending approval"));
+            setErrorCode(String(payload?.code || "MEMBERSHIP_PENDING_APPROVAL"));
             setHasResolvedVendorContext(false);
             setLastResolvedVendorId(null);
             return;
@@ -408,10 +408,10 @@ export function useVendorProfile() {
           setErrorCode(code || "VENDOR_SESSION_CONTEXT_UNAVAILABLE");
           throw new Error("Vendor session context unavailable. Please sign in again.");
         }
-        if (res.status === 403 && payload?.code === "VENDOR_PENDING_APPROVAL") {
+        if (res.status === 403 && (payload?.code === "VENDOR_PENDING_APPROVAL" || payload?.code === "MEMBERSHIP_PENDING_APPROVAL")) {
           setApprovalPending(true);
-          setErrorCode("VENDOR_PENDING_APPROVAL");
-          throw new Error("Vendor account pending approval");
+          setErrorCode(String(payload?.code || "MEMBERSHIP_PENDING_APPROVAL"));
+          throw new Error(String(payload?.error || "Vendor membership pending approval"));
         }
         setErrorCode(code);
         throw new Error(message);

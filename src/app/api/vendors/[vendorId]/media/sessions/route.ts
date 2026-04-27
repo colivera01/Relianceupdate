@@ -194,15 +194,24 @@ export async function POST(
       if (conflicting?.id) {
         const allowReplace = Boolean(replaceExisting);
         if (!allowReplace) {
-          return NextResponse.json(
-            {
-              success: false,
-              code: "JOB_VIDEO_STAGE_OCCUPIED",
-              message: `This job already has a video for the ${normalizedStage.replace(/_/g, " ")} stage. Choose another stage, or enable replacement to archive the existing upload first.`,
+          if (process.env.NODE_ENV !== "production") {
+            console.info("[media/sessions][POST] conflict:reusing_existing", {
+              reason: "same_booking_same_stage_active_session_exists",
+              vendorId,
+              bookingId: validBookingId,
+              stage: normalizedStage,
               existingSessionId: String(conflicting.id),
-            },
-            { status: 409 }
-          );
+            });
+          }
+          const existingSession = await (prisma as any).mediaSession.findUnique({
+            where: { id: String(conflicting.id) },
+          });
+          return NextResponse.json({
+            session: existingSession,
+            reused: true,
+            reason: "JOB_VIDEO_STAGE_OCCUPIED_REUSED",
+            existingSessionId: String(conflicting.id),
+          });
         }
       }
     }

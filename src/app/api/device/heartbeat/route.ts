@@ -3,6 +3,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 
+function sqlEscape(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 /**
  * POST /api/device/heartbeat
  * Employee phone sends heartbeat to update lastSeenAt
@@ -19,19 +23,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    // Find device
-    const device = await (prisma as any).device.findUnique({
-      where: { deviceUid: phoneDeviceUid },
-      include: {
-        vendor: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    });
+    // Find device (prefer canonical deviceUid; fallback to legacy employeeId rows).
+    const uidEsc = sqlEscape(String(phoneDeviceUid));
+    const deviceRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT TOP 1 id, vendorId, deviceUid, employeeId, deviceType, model, os, appVersion FROM devices WHERE deviceUid='${uidEsc}' OR employeeId='${uidEsc}' ORDER BY createdAt DESC`
+    );
+    const device = deviceRows?.[0] || null;
 
-    if (!device || device.deviceType !== "PHONE" || !device.isActive) {
+    if (!device || String(device.deviceType || "").toUpperCase() !== "PHONE") {
       return NextResponse.json(
         { error: "Device not found or inactive" },
         { status: 404 }
@@ -39,22 +38,20 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Update lastSeenAt
-    await (prisma as any).device.update({
-      where: { id: device.id },
-      data: {
-        lastSeenAt: new Date(),
-        model: deviceMeta.model || device.model,
-        os: deviceMeta.os || device.os,
-        appVersion: deviceMeta.appVersion || device.appVersion,
-      },
-    });
+    const idEsc = sqlEscape(String(device.id));
+    const modelEsc = sqlEscape(String(deviceMeta.model || device.model || ""));
+    const osEsc = sqlEscape(String(deviceMeta.os || device.os || ""));
+    const appVersionEsc = sqlEscape(String(deviceMeta.appVersion || device.appVersion || ""));
+    await prisma.$executeRawUnsafe(
+      `UPDATE devices SET lastSeenAt=GETUTCDATE(), model='${modelEsc}', os='${osEsc}', appVersion='${appVersionEsc}' WHERE id='${idEsc}'`
+    );
 
     // Find active membership for this vendor and user
     // We need to find which user owns this device
     // For simplicity, we'll find by pendingPhoneDeviceUid or by device ownership
     const membership = await (prisma as any).vendorMembership.findFirst({
       where: {
-        vendorId: device.vendorId,
+        vendorId: String(device.vendorId || ""),
         status: "ACTIVE",
         // Find membership where this device was registered
         OR: [
@@ -78,7 +75,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({
       status: membership.status,
-      vendorId: device.vendorId,
+      vendorId: String(device.vendorId || ""),
       membershipId: membership.id,
       role: membership.role,
     });

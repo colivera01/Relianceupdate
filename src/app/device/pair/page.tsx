@@ -74,6 +74,19 @@ function detectDeviceType(): "PHONE" | "HEADSET" {
   return "PHONE";
 }
 
+function resolveOrCreateDeviceUid(): string {
+  if (typeof window === 'undefined') return '';
+  const key = 'reliance_device_uid';
+  const existing = localStorage.getItem(key);
+  if (existing && existing.trim()) return existing.trim();
+  const generated =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `device-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  localStorage.setItem(key, generated);
+  return generated;
+}
+
 export default function DevicePairPage() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -81,11 +94,13 @@ export default function DevicePairPage() {
   const [error, setError] = useState<string | null>(null);
   const [deviceName, setDeviceName] = useState("");
   const [deviceType, setDeviceType] = useState<"PHONE" | "HEADSET">("PHONE");
+  const [deviceUid, setDeviceUid] = useState("");
 
   // Detect device info on mount
   useEffect(() => {
     setDeviceName(detectDeviceName());
     setDeviceType(detectDeviceType());
+    setDeviceUid(resolveOrCreateDeviceUid());
   }, []);
 
   async function handlePair() {
@@ -94,8 +109,8 @@ export default function DevicePairPage() {
     setSuccess(false);
     
     // Validate code
-    if (!code || code.length < 4) {
-      setError("Please enter a valid pairing code");
+    if (!/^\d{6}$/.test(code.trim())) {
+      setError("Please enter a valid 6-digit pairing code");
       return;
     }
 
@@ -109,6 +124,7 @@ export default function DevicePairPage() {
           code: code.toUpperCase().trim(),
           deviceName,
           deviceType,
+          deviceUid,
         }),
       });
 
@@ -180,12 +196,12 @@ export default function DevicePairPage() {
                 id="pairing-code"
                 value={code}
                 onChange={(e) => {
-                  const value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                  const value = e.target.value.replace(/\D/g, '');
                   setCode(value);
                   setError(null); // Clear error when user types
                 }}
                 onKeyPress={handleKeyPress}
-                placeholder="Enter 6-character code"
+                placeholder="Enter 6-digit code"
                 maxLength={6}
                 className="text-center text-2xl font-mono tracking-widest h-14 border-2 focus:border-blue-500"
                 disabled={loading || success}
@@ -197,7 +213,7 @@ export default function DevicePairPage() {
               )}
             </div>
             <div className="text-xs text-gray-500 text-center">
-              {code.length}/6 characters
+              {code.length}/6 digits
             </div>
           </div>
 
@@ -228,7 +244,7 @@ export default function DevicePairPage() {
           {/* Pair Button */}
           <Button
             onClick={handlePair}
-            disabled={loading || success || code.length < 4}
+            disabled={loading || success || !/^\d{6}$/.test(code)}
             className="w-full h-12 text-base font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (

@@ -2,6 +2,112 @@
 
 Scope: current active session changes in working tree (from current repo state).
 
+## 2026-04-27 — Reliance handoff refresh (manager review required before completion)
+
+### Workflow/status changes
+- Added explicit vendor execution review gate:
+  - `PENDING -> IN_PROGRESS -> AWAITING_REVIEW -> COMPLETED`
+- Employee completion now transitions to `AWAITING_REVIEW` when all 3 stage videos exist; no direct employee path to `COMPLETED`.
+
+### Manager approval endpoint (new)
+- Added route:
+  - `POST /api/vendors/[vendorId]/jobs/[jobId]/approve`
+  - File: `src/app/api/vendors/[vendorId]/jobs/[jobId]/approve/route.ts`
+- Enforced backend safety:
+  - Requires `ACTIVE MANAGER` via `requireVendorManager`.
+  - Job must currently be `AWAITING_REVIEW`.
+  - Required stages must exist: `INTRO`, `IN_PROGRESS`, `COMPLETED`.
+- On success:
+  - Sets booking status to `COMPLETED`.
+  - Stamps completion date.
+  - Re-queues staged package media into moderation (`pending_review`) so it appears in moderation pipeline.
+
+### Manager rejection endpoint (new)
+- Added route:
+  - `POST /api/vendors/[vendorId]/jobs/[jobId]/reject`
+  - File: `src/app/api/vendors/[vendorId]/jobs/[jobId]/reject/route.ts`
+- Enforced backend rules:
+  - Requires `ACTIVE MANAGER` via `requireVendorManager`.
+  - Requires non-empty `rejectionReason` (returns `400` when missing).
+  - Job must currently be `AWAITING_REVIEW` (returns `409` otherwise).
+- On rejection:
+  - Transitions status: `AWAITING_REVIEW -> IN_PROGRESS`.
+  - Persists booking rejection fields:
+    - `rejectionReason`
+    - `rejectedAt`
+    - `rejectedBy`
+- Employee flow updates:
+  - Employee jobs UI now shows **Rejected by manager** + rejection reason.
+  - Rejection fields are cleared when employee re-submits/fixes and sends job back to review.
+- Test verification:
+  - `src/app/api/vendors/[vendorId]/jobs/[jobId]/reject/route.integration.test.ts`
+  - Result: `4 passed`, `0 failed`
+
+### Existing actions route hardening
+- Updated `src/app/api/vendors/[vendorId]/jobs/[jobId]/actions/route.ts`:
+  - `UPDATE_STATUS` direct transition to `COMPLETED` now blocked with `MANAGER_APPROVAL_REQUIRED`.
+  - `APPROVE_JOB_COMPLETION` guard now enforces manager auth.
+
+### Vendor jobs UI updates (`/vendor/jobs`)
+- File: `src/app/vendor/jobs/page.tsx`
+- Awaiting-review jobs now use the new approve endpoint.
+- Action menu for awaiting-review jobs:
+  - `View Review Package`
+  - `Approve Job Completion` (active managers only)
+  - `Reject Job Completion` (manager-only modal with required reason)
+  - Non-managers see manager-required guidance.
+
+### Employee flow adjustments
+- `src/app/api/employee/jobs/route.ts`:
+  - Includes `AWAITING_REVIEW` in employee-visible statuses.
+  - `canMarkComplete` now only true in pre-review statuses (`PENDING`/`CONFIRMED`) with all 3 stages present.
+- `src/app/employee/jobs/page.tsx`:
+  - Completion confirmation message updated to manager-approval language when job moves to `AWAITING_REVIEW`.
+
+### Test coverage and verification
+- Added:
+  - `src/app/api/vendors/[vendorId]/jobs/[jobId]/approve/route.integration.test.ts`
+- Updated:
+  - `src/app/api/vendors/[vendorId]/jobs/vendor-job-actions.integration.test.ts`
+- Verified run:
+  - `npm run test -- src/app/api/vendors/[vendorId]/jobs/vendor-job-actions.integration.test.ts src/app/api/vendors/[vendorId]/jobs/[jobId]/approve/route.integration.test.ts`
+  - Result: `18 passed`, `0 failed`
+
+## 2026-04-23 — Latest build snapshot pushed + compliance retest notes
+
+### Git snapshot and branch state
+- Committed latest working set on `cursor-latest-build`:
+  - `3cccbbc` — "Latest Reliance build - consent resilience and recording flow UX hardening."
+- Pushed to remote:
+  - `origin/cursor-latest-build` now includes `adcb1ea..3cccbbc`
+- Branch sync status verified after push (remote up to date).
+
+### Included in the snapshot
+- Consent route hardening and resilience updates:
+  - `src/app/api/consent/request/route.ts`
+  - `src/app/api/consent/accept/route.ts`
+  - `src/app/api/consent/decline/route.ts`
+  - `src/app/api/consent/[token]/route.ts`
+- Vendor recording/compliance UX + state reuse work:
+  - `src/app/vendor/jobs/page.tsx`
+- Consent page and trust/compliance UX improvements:
+  - `src/app/consent/[token]/page.tsx`
+- Notification/env/admin-audit updates:
+  - `src/lib/notifications/send-consent-link.ts`
+  - `src/lib/env/notification-config.ts`
+  - `src/lib/admin-audit.ts`
+  - `src/app/api/dev/notifications-test/route.ts`
+- Legal policy pages added:
+  - `src/app/privacy/page.tsx`
+  - `src/app/terms/page.tsx`
+
+### Retest finding (post freshest-snapshot + sessionStorage changes)
+- Runtime browser retest still showed compliance fallback in exercised paths with logs:
+  - `[recording-compliance] no saved snapshot`
+  - `[recording-compliance] unsatisfied: snapshot missing`
+  - `[recording-compliance] opening compliance modal`
+- This indicates snapshot hydration/availability is still failing at runtime for some entry points, despite freshest-key selection and session persistence logic being present in code.
+
 ## 2026-04-23 — Consent flow cleanup + live verification complete
 
 ### Temporary debug cleanup

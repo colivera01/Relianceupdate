@@ -26,6 +26,7 @@ import {
   Info,
   X
 } from 'lucide-react';
+import { getServiceTemplatesForCategory as getConfiguredTemplates } from '@/config/service-templates';
 
 // reCAPTCHA Configuration - Update this single location if site key changes
 const RECAPTCHA_SITE_KEY = '6LdAapYrAAAAAACfyJlrW40cSZBS7mm_W8r3Mjkiw';
@@ -829,6 +830,8 @@ const specializationsByCategory: { [key: string]: string[] } = {
 
 // Helper functions
 const getServiceTypesForCategory = (category: string) => {
+  const configured = getConfiguredTemplates(category).map((t) => t.name);
+  if (configured.length > 0) return configured;
   return serviceTypesByCategory[category] || [];
 };
 
@@ -874,6 +877,13 @@ const generateRecaptchaToken = () => {
 };
 
 function RegisterPageInner() {
+  type CustomServiceDraft = {
+    id: string;
+    name: string;
+    defaultDuration: string;
+    price: string;
+    description: string;
+  };
   const searchParams = useSearchParams();
   const router = useRouter();
   const type = searchParams?.get('type') as 'vendor' | 'user';
@@ -888,6 +898,9 @@ function RegisterPageInner() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [recaptchaToken, setRecaptchaToken] = useState('');
   const [otherBusinessType, setOtherBusinessType] = useState('');
+  const [serviceTypeCustomNames, setServiceTypeCustomNames] = useState<Record<string, string>>({});
+  const [customServices, setCustomServices] = useState<CustomServiceDraft[]>([]);
+  const [customServicesError, setCustomServicesError] = useState('');
 
   // City autocomplete states
   const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
@@ -1165,12 +1178,46 @@ function RegisterPageInner() {
       }
 
       // Prepare registration data with proper type conversions
+      const selectedTemplateServices = Array.isArray(formData.serviceTypes)
+        ? formData.serviceTypes
+            .map((serviceType) => {
+              const name = String(serviceTypeCustomNames[serviceType] || serviceType).trim();
+              return name ? { name, source: 'template' } : null;
+            })
+            .filter(Boolean)
+        : [];
+      const selectedCustomServices = customServices
+        .map((service) => ({
+          name: service.name.trim(),
+          defaultDuration: service.defaultDuration.trim() ? Number(service.defaultDuration) : undefined,
+          price: service.price.trim() ? Number(service.price) : undefined,
+          description: service.description.trim() || undefined,
+          source: 'vendor_custom',
+        }))
+        .filter((service) => service.name);
+      const normalizedNames = [
+        ...selectedTemplateServices.map((service: any) => String(service?.name || '').toLowerCase()),
+        ...selectedCustomServices.map((service) => String(service.name || '').toLowerCase()),
+      ].filter(Boolean);
+      if (new Set(normalizedNames).size !== normalizedNames.length) {
+        setCustomServicesError('Duplicate service names are not allowed across template and custom services.');
+        setIsSubmitting(false);
+        return;
+      }
+      setCustomServicesError('');
+
       const registrationData = {
         ...formData,
         // Convert arrays to comma-separated strings
-        serviceTypes: Array.isArray(formData.serviceTypes) ? formData.serviceTypes.join(', ') : formData.serviceTypes,
+        serviceTypes: Array.isArray(formData.serviceTypes)
+          ? formData.serviceTypes
+              .map((serviceType) => String(serviceTypeCustomNames[serviceType] || serviceType).trim())
+              .filter(Boolean)
+              .join(', ')
+          : formData.serviceTypes,
         specializations: Array.isArray(formData.specializations) ? formData.specializations.join(', ') : formData.specializations,
         serviceAreas: Array.isArray(formData.serviceAreas) ? formData.serviceAreas.join(', ') : formData.serviceAreas,
+        selectedServices: [...selectedTemplateServices, ...selectedCustomServices],
         // Convert booleans to strings
         insuranceStatus: String(formData.insuranceStatus),
         bondingStatus: String(formData.bondingStatus),
@@ -2150,7 +2197,16 @@ function RegisterPageInner() {
                       </div>
                       <div>
                         <Label htmlFor="category">Primary Service Category *</Label>
-                        <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
+                        <Select
+                          value={formData.category}
+                          onValueChange={(value) => {
+                            handleInputChange('category', value);
+                            handleInputChange('serviceTypes', []);
+                            setServiceTypeCustomNames({});
+                            setCustomServices([]);
+                            setCustomServicesError('');
+                          }}
+                        >
                           <SelectTrigger className={errors.category ? 'border-red-500' : ''}>
                             <SelectValue placeholder="Select your primary service category" />
                           </SelectTrigger>
@@ -2199,7 +2255,7 @@ function RegisterPageInner() {
                                 className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                               />
                               <label htmlFor={serviceType} className="text-sm text-gray-700 cursor-pointer">
-                                {serviceType}
+                                {serviceTypeCustomNames[serviceType] || serviceType}
                               </label>
                             </div>
                           ))}
@@ -2209,6 +2265,127 @@ function RegisterPageInner() {
                           <p className="text-gray-500 text-sm">Please select a service category above to see available service types</p>
                         </div>
                       )}
+                      {Array.isArray(formData.serviceTypes) && formData.serviceTypes.length > 0 ? (
+                        <div className="mt-3 space-y-2 rounded-lg border border-gray-200 p-3">
+                          <p className="text-xs text-gray-600">
+                            Optional: rename selected templates before saving.
+                          </p>
+                          {formData.serviceTypes.map((serviceType) => (
+                            <div key={`rename-${serviceType}`} className="grid gap-1">
+                              <Label className="text-xs text-gray-500">{serviceType}</Label>
+                              <Input
+                                value={serviceTypeCustomNames[serviceType] || serviceType}
+                                onChange={(e) =>
+                                  setServiceTypeCustomNames((prev) => ({
+                                    ...prev,
+                                    [serviceType]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="mt-3 rounded-lg border border-gray-200 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <Label className="text-sm font-medium">Custom Services</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                              setCustomServices((prev) => [
+                                ...prev,
+                                {
+                                  id: `custom-${Date.now()}-${prev.length}`,
+                                  name: '',
+                                  defaultDuration: '',
+                                  price: '',
+                                  description: '',
+                                },
+                              ])
+                            }
+                          >
+                            + Add custom service
+                          </Button>
+                        </div>
+                        {customServices.length === 0 ? (
+                          <p className="text-xs text-gray-500">Add services not covered by templates.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {customServices.map((service) => (
+                              <div key={service.id} className="rounded border p-2">
+                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                  <Input
+                                    placeholder="Service name *"
+                                    value={service.name}
+                                    onChange={(e) =>
+                                      setCustomServices((prev) =>
+                                        prev.map((item) =>
+                                          item.id === service.id ? { ...item, name: e.target.value } : item
+                                        )
+                                      )
+                                    }
+                                  />
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    placeholder="Duration (minutes)"
+                                    value={service.defaultDuration}
+                                    onChange={(e) =>
+                                      setCustomServices((prev) =>
+                                        prev.map((item) =>
+                                          item.id === service.id
+                                            ? { ...item, defaultDuration: e.target.value }
+                                            : item
+                                        )
+                                      )
+                                    }
+                                  />
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="Price"
+                                    value={service.price}
+                                    onChange={(e) =>
+                                      setCustomServices((prev) =>
+                                        prev.map((item) =>
+                                          item.id === service.id ? { ...item, price: e.target.value } : item
+                                        )
+                                      )
+                                    }
+                                  />
+                                  <Input
+                                    placeholder="Description"
+                                    value={service.description}
+                                    onChange={(e) =>
+                                      setCustomServices((prev) =>
+                                        prev.map((item) =>
+                                          item.id === service.id
+                                            ? { ...item, description: e.target.value }
+                                            : item
+                                        )
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  className="mt-2 text-xs text-red-600"
+                                  onClick={() =>
+                                    setCustomServices((prev) => prev.filter((item) => item.id !== service.id))
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {customServicesError ? (
+                          <p className="mt-2 text-xs text-red-600">{customServicesError}</p>
+                        ) : null}
+                      </div>
                       <p className="text-sm text-gray-500 mt-2">Selected: {Array.isArray(formData.serviceTypes) ? formData.serviceTypes.length : 0} service types</p>
                     </div>
 

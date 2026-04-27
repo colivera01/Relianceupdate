@@ -328,6 +328,10 @@ export async function POST(request: NextRequest) {
     });
     if (isVendorStaffForThisVendor) {
       const nextMeta = customerMetadataPayload || {};
+      nextMeta.customer_account_linked = linkedToExistingCustomerAccount;
+      if (linkedToExistingCustomerAccount && bookingUserId) {
+        nextMeta.linked_customer_user_id = bookingUserId;
+      }
       const claimStatus = nextMeta.claim_status
         ? String(nextMeta.claim_status).trim().toUpperCase()
         : '';

@@ -192,6 +192,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           createdAt: pack.createdAt,
           uploadedByMembershipIds: Array.from(pack.uploadedByMembershipIds),
           moderationStatuses,
+          visibilityStatuses: Array.from(new Set(videos.map((video: any) => String(video.visibilityStatus || "private")))),
           packageReadiness: "READY_FOR_ADMIN_REVIEW",
           videosByStage: {
             INTRO: intro,

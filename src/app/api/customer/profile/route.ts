@@ -45,6 +45,7 @@ function splitDisplayName(name: string | null | undefined) {
 }
 
 export async function GET(request: NextRequest) {
+  let resolvedUserId: string | null = null;
   try {
     const token = parseBearer(request);
     if (!token) {
@@ -55,8 +56,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
+    resolvedUserId = await getUserIdFromRequest(request);
+    if (!resolvedUserId) {
       return NextResponse.json(
         { error: "Unauthorized: missing user context (cookie or x-user-id)" },
         { status: 401 }
@@ -65,13 +66,13 @@ export async function GET(request: NextRequest) {
 
     const dbUser = await withTransientDbRetry(() =>
       prisma.user.findUnique({
-        where: { id: userId },
+        where: { id: resolvedUserId },
         select: { id: true, email: true, name: true, phone: true, createdAt: true },
       })
     );
 
     const devRow =
-      registeredUsers.find((u) => String(u.id) === String(userId)) ||
+      registeredUsers.find((u) => String(u.id) === String(resolvedUserId)) ||
       (dbUser?.email
         ? registeredUsers.find(
             (u) =>
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Customer profile not found" }, { status: 404 });
     }
 
-    const canonicalId = dbUser?.id ?? devRow?.id ?? userId;
+    const canonicalId = dbUser?.id ?? devRow?.id ?? resolvedUserId;
     const email = dbUser?.email ?? devRow?.email ?? "";
     const { firstName, lastName } = devRow
       ? { firstName: String(devRow.firstName || ""), lastName: String(devRow.lastName || "") }
@@ -122,6 +123,36 @@ export async function GET(request: NextRequest) {
     const err = error as any;
     console.error("[PROFILE_API_ERROR]", err);
     if (isTransientDbConnectivityError(err)) {
+      const fallbackRow =
+        resolvedUserId != null
+          ? registeredUsers.find((u) => String(u.id) === String(resolvedUserId))
+          : undefined;
+      if (fallbackRow) {
+        return NextResponse.json({
+          success: true,
+          profile: {
+            id: fallbackRow.id,
+            firstName: fallbackRow.firstName || "",
+            lastName: fallbackRow.lastName || "",
+            email: fallbackRow.email || "",
+            phone: fallbackRow.phone || "",
+            address: fallbackRow.address || "",
+            city: fallbackRow.city || "",
+            state: fallbackRow.state || "",
+            zipCode: fallbackRow.zipCode || "",
+            bio: fallbackRow.bio || "",
+            userType: fallbackRow.userType || "customer",
+            createdAt: fallbackRow.createdAt || new Date().toISOString(),
+            isActive: fallbackRow.isActive ?? true,
+            preferences: fallbackRow.preferences || { notifications: true, emailMarketing: false },
+            favorites: fallbackRow.favorites || [],
+            bookingHistory: fallbackRow.bookingHistory || [],
+            reviews: fallbackRow.reviews || [],
+          },
+          degraded: true,
+          warning: "DB unavailable; served customer profile from dev registry fallback.",
+        });
+      }
       return NextResponse.json(
         {
           success: false,

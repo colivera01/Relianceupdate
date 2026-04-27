@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings, CheckCircle, XCircle, Info, User, Shield, CreditCard, Bell, QrCode, Smartphone as DeviceIcon, Database as StorageIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Settings, CheckCircle, XCircle, Info, User, Shield, CreditCard, Bell, QrCode, Smartphone as DeviceIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorDevices } from '@/hooks/useVendorDevices';
@@ -23,11 +23,12 @@ import { VendorProfileUpdateRequest } from '@/types/vendor';
 
 // DEVELOPER NOTES (Backend API Requirements)
 //
-// 1. Device Pairing:
-//    - POST /api/pairing/request { employeeId, vendorId } → { code, expiresAt, qrCodeUrl }
-//    - POST /api/pairing/confirm { code, deviceId } → { success, employeeId, vendorId, deviceId }
+// 1. Device Pairing (canonical APIs):
+//    - POST /api/device/pairing/request → { code, expiresAt }
+//    - POST /api/device/pairing/confirm { code, deviceUid, deviceType, deviceName } → { success, device }
+//    - POST /api/device/heartbeat { phoneDeviceUid, deviceMeta } → { status, vendorId, membershipId, role }
 //    - GET /api/devices?vendorId=... → list of paired devices
-//    - Devices table: id, employeeId, vendorId, deviceType, lastPaired
+//    - Devices table canonical identity: deviceUid (employeeId kept as legacy fallback)
 //
 // 2. Media Upload:
 //    - POST /api/media/upload { file, jobId, employeeId, deviceId, vendorId, timestamp }
@@ -666,6 +667,13 @@ export default function VendorProfilePage() {
                     Years in Business: <span className="font-medium">{profile.yearsInBusiness}</span> (calculated from founded year)
                   </div>
                 )}
+                <div className="text-sm text-gray-600">
+                  Rating:{" "}
+                  <span className="font-medium">
+                    {typeof profile.ratingAverage === "number" ? profile.ratingAverage.toFixed(1) : "0.0"}
+                  </span>{" "}
+                  ({Number(profile.ratingCount || 0)} review{Number(profile.ratingCount || 0) === 1 ? "" : "s"})
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
@@ -1117,125 +1125,6 @@ export default function VendorProfilePage() {
 
         {/* Enhanced Right Panel */}
         <aside className="w-full xl:w-80 space-y-6">
-          {/* Enhanced Storage Usage Card */}
-          <Card className="bg-gradient-to-br from-white to-blue-50 border-blue-200 shadow-lg">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <StorageIcon className="w-5 h-5 text-blue-600" />
-                </div>
-                <CardTitle className="text-lg text-gray-800">Storage Usage</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {storageLoading ? (
-                <div className="text-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                  <p className="text-xs text-gray-500">Loading storage...</p>
-                </div>
-              ) : storage ? (
-                <div className="space-y-3">
-                  {/* Used / Limit Display */}
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Used</span>
-                    <span className="font-medium">{storage.totalGB} GB</span>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div
-                      className={`h-2.5 rounded-full transition-all ${
-                        storage.percentUsed >= 100
-                          ? 'bg-gradient-to-r from-red-500 to-red-600'
-                          : storage.percentUsed >= 80
-                          ? 'bg-gradient-to-r from-orange-500 to-orange-600'
-                          : 'bg-gradient-to-r from-blue-500 to-blue-600'
-                      }`}
-                      style={{ width: `${Math.min(storage.percentUsed, 100)}%` }}
-                    ></div>
-                  </div>
-                  
-                  {/* Limit Display */}
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Total</span>
-                    <span className="font-medium">{storage.limitGB} GB</span>
-                  </div>
-                  
-                  {/* Remaining */}
-                  {storage.percentUsed < 100 && (
-                    <div className="text-xs text-gray-500 text-center">
-                      {(parseFloat(storage.limitGB) - parseFloat(storage.totalGB)).toFixed(2)} GB remaining
-                    </div>
-                  )}
-                  
-                  {/* Warning Banner at ≥80% */}
-                  {storage.percentUsed >= 80 && storage.percentUsed < 100 && (
-                    <div className="p-2 bg-orange-50 border border-orange-200 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-orange-600" />
-                        <p className="text-xs font-medium text-orange-800">
-                          Storage is {storage.percentUsed.toFixed(1)}% full. Consider deleting old files.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Red "Uploads Paused" Banner at 100% */}
-                  {storage.percentUsed >= 100 && (
-                    <div className="p-3 bg-red-50 border-2 border-red-300 rounded-lg">
-                      <div className="flex items-center gap-2 mb-2">
-                        <XCircle className="w-5 h-5 text-red-600" />
-                        <p className="text-sm font-bold text-red-800">Uploads Paused</p>
-                      </div>
-                      <p className="text-xs text-red-700 mb-3">
-                        Storage limit reached. Delete existing media to free up space.
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 bg-white hover:bg-red-50 border-red-300 text-red-700"
-                          onClick={() => {
-                            // Navigate to media management page or open media list
-                            window.location.href = '/vendor/media';
-                          }}
-                        >
-                          Manage Storage
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 bg-white hover:bg-red-50 border-red-300 text-red-700"
-                          onClick={() => {
-                            // Open support form or upgrade request
-                            window.location.href = '/vendor/support';
-                          }}
-                        >
-                          Request Upgrade
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <p className="text-xs text-gray-500 mt-2">Used for photos, contracts, and other uploaded files.</p>
-                </div>
-              ) : (
-                <div className="text-center py-4">
-                  <p className="text-xs text-gray-500">Unable to load storage information</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={fetchStorage}
-                  >
-                    <RefreshCw className="w-3 h-3 mr-1" />
-                    Retry
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Enhanced Security Card */}
           <Card className="bg-gradient-to-br from-white to-red-50 border-red-200 shadow-lg">
             <CardHeader className="pb-3">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 type Props = {
   open: boolean;
@@ -11,7 +11,16 @@ type Props = {
 
 export function QuickReviewPanel({ open, submitting = false, onClose, onSubmit }: Props) {
   const [rating, setRating] = useState(5);
+  const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
+
+  useEffect(() => {
+    if (!open) {
+      setRating(5);
+      setHoverRating(0);
+      setComment('');
+    }
+  }, [open]);
 
   if (!open) return null;
   return (
@@ -24,16 +33,21 @@ export function QuickReviewPanel({ open, submitting = false, onClose, onSubmit }
         <p className="mt-1 text-sm text-gray-600">Your review is only posted after you tap submit.</p>
         <div className="mt-3">
           <label className="text-sm font-medium text-gray-700">Rating</label>
-          <div className="mt-1 flex gap-2">
+          <p className="mt-1 text-xs text-gray-500">Tap a star to rate your completed service.</p>
+          <div className="mt-2 flex items-center gap-1" onMouseLeave={() => setHoverRating(0)}>
             {[1, 2, 3, 4, 5].map((value) => (
               <button
                 key={value}
+                type="button"
                 onClick={() => setRating(value)}
-                className={`h-8 w-8 rounded-full text-sm ${rating >= value ? 'bg-yellow-400' : 'bg-gray-200'}`}
+                onMouseEnter={() => setHoverRating(value)}
+                className="text-2xl leading-none text-yellow-500 transition-transform hover:scale-110"
+                aria-label={`Rate ${value} star${value > 1 ? 's' : ''}`}
               >
-                {value}
+                {(hoverRating || rating) >= value ? '★' : '☆'}
               </button>
             ))}
+            <span className="ml-2 text-sm text-gray-600">{rating}/5</span>
           </div>
         </div>
         <div className="mt-3">

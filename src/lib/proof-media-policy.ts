@@ -11,8 +11,8 @@ type MediaSessionStageShape = {
 /**
  * Customer/public proof policy:
  * - Non-staged media can remain visible (existing behavior).
- * - Staged job video media is only surfaced when it is COMPLETED.
- * - INTRO / IN_PROGRESS do not become customer/public proof defaults.
+ * - Staged job video media is surfaced for all timeline stages when already
+ *   approved and customer-visible by moderation/visibility filters.
  */
 export function shouldIncludeAssetForCustomerPublicProof(session: MediaSessionStageShape | null | undefined): boolean {
   const normalizedStage = normalizeVendorJobVideoStage(session?.vendorJobVideoStage);
@@ -24,7 +24,7 @@ export function shouldIncludeAssetForCustomerPublicProof(session: MediaSessionSt
   const isStagedJobVideo = Boolean(normalizedStage) || sessionType === "JOB_SERVICE_VIDEO";
 
   if (!isStagedJobVideo) return true;
-  return inferredStage === "COMPLETED";
+  return inferredStage === "INTRO" || inferredStage === "IN_PROGRESS" || inferredStage === "COMPLETED";
 }
 
 export function isCompletedStageProofVideo(session: MediaSessionStageShape | null | undefined): boolean {

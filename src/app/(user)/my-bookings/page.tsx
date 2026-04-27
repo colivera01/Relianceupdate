@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Calendar, Clock, ExternalLink, Info, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, Info, RefreshCw } from 'lucide-react';
 import { SmartVideoPlayer } from '@/components/reviews/SmartVideoPlayer';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   bookingMatchesSearch,
@@ -33,7 +34,15 @@ type MediaState = {
     blobUrl: string | null;
     mediaSessionId: string | null;
     isPrimaryProofVideo?: boolean;
+    createdAt?: string | null;
   }>;
+};
+
+type ProofSignal = {
+  loading: boolean;
+  hasSharedProof: boolean;
+  lastSharedAt: string | null;
+  recentlyUpdated: boolean;
 };
 
 function mediaHintForError(message: string): string | null {
@@ -58,6 +67,7 @@ export default function MyBookingsPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [mediaByBooking, setMediaByBooking] = useState<Record<string, MediaState>>({});
   const [activeVideoByBooking, setActiveVideoByBooking] = useState<Record<string, string>>({});
+  const [proofSignalByBooking, setProofSignalByBooking] = useState<Record<string, ProofSignal>>({});
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -195,17 +205,36 @@ export default function MyBookingsPage() {
             blobUrl?: unknown;
             mediaSessionId?: unknown;
             isPrimaryProofVideo?: unknown;
+            createdAt?: unknown;
           }) => ({
             id: String(v.id),
             title: String(v.title || 'Service Video'),
             blobUrl: v.blobUrl ? String(v.blobUrl) : null,
             mediaSessionId: v.mediaSessionId ? String(v.mediaSessionId) : null,
             isPrimaryProofVideo: Boolean(v.isPrimaryProofVideo),
+            createdAt: v.createdAt ? String(v.createdAt) : null,
           }))
         : [];
+      const rawAssets = Array.isArray(json?.assets) ? json.assets : [];
+      const lastSharedAtCandidate = rawAssets
+        .map((asset: any) => String(asset?.createdAt || asset?.moderatedAt || ''))
+        .find((value: string) => value && !Number.isNaN(new Date(value).getTime())) || null;
+      const recentThresholdMs = 1000 * 60 * 60 * 24 * 2;
+      const recentlyUpdated = Boolean(
+        lastSharedAtCandidate && Date.now() - new Date(lastSharedAtCandidate).getTime() <= recentThresholdMs
+      );
       setMediaByBooking((prev) => ({
         ...prev,
         [bookingId]: { loading: false, error: null, total, loaded: true, imageCount, videos },
+      }));
+      setProofSignalByBooking((prev) => ({
+        ...prev,
+        [bookingId]: {
+          loading: false,
+          hasSharedProof: total > 0,
+          lastSharedAt: lastSharedAtCandidate,
+          recentlyUpdated,
+        },
       }));
       if (videos.length > 0) {
         const primaryProofVideo = videos.find((video) => Boolean(video.isPrimaryProofVideo));
@@ -225,11 +254,50 @@ export default function MyBookingsPage() {
           imageCount: 0,
         },
       }));
+      setProofSignalByBooking((prev) => ({
+        ...prev,
+        [bookingId]: {
+          loading: false,
+          hasSharedProof: false,
+          lastSharedAt: null,
+          recentlyUpdated: false,
+        },
+      }));
     }
   };
 
+  useEffect(() => {
+    const userId = resolveCustomerUserId(user?.id);
+    if (!userId || filtered.length === 0) return;
+    const candidates = filtered.slice(0, 8);
+    for (const booking of candidates) {
+      const bookingId = String(booking.id);
+      if (proofSignalByBooking[bookingId]?.loading || proofSignalByBooking[bookingId]) continue;
+      setProofSignalByBooking((prev) => ({
+        ...prev,
+        [bookingId]: {
+          loading: true,
+          hasSharedProof: false,
+          lastSharedAt: null,
+          recentlyUpdated: false,
+        },
+      }));
+      void loadBookingMedia(bookingId);
+    }
+  }, [filtered, user?.id, proofSignalByBooking]);
+
   const listNow = new Date();
   const customerUserIdForReview = resolveCustomerUserId(user?.id);
+  const latestProofBooking = useMemo(() => {
+    const candidates = Object.entries(proofSignalByBooking)
+      .filter(([, signal]) => signal?.hasSharedProof)
+      .map(([bookingId, signal]) => ({
+        bookingId,
+        ts: signal.lastSharedAt ? new Date(signal.lastSharedAt).getTime() : 0,
+      }))
+      .sort((a, b) => b.ts - a.ts);
+    return candidates[0]?.bookingId || null;
+  }, [proofSignalByBooking]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -314,6 +382,20 @@ export default function MyBookingsPage() {
           </div>
         ) : null}
 
+        {latestProofBooking ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-emerald-900">New proof available for your recent service.</p>
+              <Link
+                href={`/my-bookings/${latestProofBooking}`}
+                className="rounded border border-emerald-300 bg-white px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100"
+              >
+                View proof
+              </Link>
+            </div>
+          </div>
+        ) : null}
+
         {authLoading ? (
           <PanelText text="Checking your session…" />
         ) : !resolveCustomerUserId(user?.id) ? (
@@ -346,6 +428,7 @@ export default function MyBookingsPage() {
           <div className="space-y-3">
             {filtered.map((booking) => {
               const mediaState = mediaByBooking[booking.id];
+              const proofSignal = proofSignalByBooking[booking.id];
               const statusKey = normalizeBookingStatusKey(booking.status);
               const { instant: scheduleInstant } = resolveBookingScheduleInstant(
                 booking.booking_date,
@@ -365,6 +448,7 @@ export default function MyBookingsPage() {
                   ? 'Loading shared media…'
                   : undefined;
               const serviceDetailHref = booking.service.id ? `/service/${booking.service.id}` : null;
+              const bookingProofHref = `/my-bookings/${booking.id}`;
               const reviewCaptureOk = shouldEnableReviewCaptureForStatus(statusKey);
               const mediaLoaded = Boolean(mediaState?.loaded);
               const mediaTotal = mediaState?.total;
@@ -397,6 +481,21 @@ export default function MyBookingsPage() {
                         Use this ID if you contact support; it matches your booking record in Reliance.
                       </p>
                       {booking.title ? <p className="text-sm text-gray-600">Title: {booking.title}</p> : null}
+                      {proofSignal?.hasSharedProof ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <Badge className="bg-emerald-100 text-emerald-800">Shared media available</Badge>
+                          {proofSignal.recentlyUpdated ? (
+                            <Badge variant="outline" className="border-blue-300 text-blue-700">
+                              Recently updated
+                            </Badge>
+                          ) : null}
+                          {proofSignal.lastSharedAt ? (
+                            <span className="text-xs text-gray-600">
+                              Shared {new Date(proofSignal.lastSharedAt).toLocaleDateString()}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="text-sm text-right">
                       <p className="font-semibold text-gray-900">${Number(booking.total_price || 0).toFixed(2)}</p>
@@ -426,14 +525,15 @@ export default function MyBookingsPage() {
                     <ul className="list-disc pl-5 space-y-1 text-gray-700">
                       {serviceDetailHref ? (
                         <li>
-                          <Link
-                            href={serviceDetailHref}
-                            className="text-blue-700 font-medium underline inline-flex items-center gap-1"
-                          >
-                            View service details
-                            <ExternalLink className="w-3.5 h-3.5" aria-hidden />
-                          </Link>{' '}
-                          in the catalog.
+                          {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
+                            <Link href={bookingProofHref} className="text-blue-700 font-medium underline">
+                              View full proof for this booking
+                            </Link>
+                          ) : (
+                            <Link href={serviceDetailHref} className="text-blue-700 font-medium underline">
+                              View service details in the catalog
+                            </Link>
+                          )}
                         </li>
                       ) : (
                         <li>Service details link unavailable for this row (missing catalog id).</li>
@@ -493,8 +593,16 @@ export default function MyBookingsPage() {
                       }}
                       className="px-3 py-2 rounded border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Show shared media
+                      View service proof
                     </button>
+                    {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
+                      <Link
+                        href={bookingProofHref}
+                        className="px-3 py-2 rounded border border-blue-300 text-blue-700 text-sm hover:bg-blue-50"
+                      >
+                        View full proof
+                      </Link>
+                    ) : null}
                     {mediaState?.loading ? (
                       <span className="text-xs text-gray-500">Loading shared media…</span>
                     ) : null}

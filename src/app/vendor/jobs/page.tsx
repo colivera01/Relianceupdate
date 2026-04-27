@@ -197,6 +197,12 @@ export default function VendorJobs() {
   const [employeesLoadError, setEmployeesLoadError] = useState('');
   const [servicesLoading, setServicesLoading] = useState(false);
   const [servicesLoadError, setServicesLoadError] = useState('');
+  const isActiveManager = teamMembers.some(
+    (member) =>
+      String(member?.userId || '').trim() === String(authUserId || '').trim() &&
+      String(member?.status || '').trim().toUpperCase() === 'ACTIVE' &&
+      String(member?.role || '').trim().toUpperCase() === 'MANAGER'
+  );
   const jobTitleInputRef = useRef<HTMLInputElement | null>(null);
   const clientNameInputRef = useRef<HTMLInputElement | null>(null);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
@@ -262,6 +268,8 @@ export default function VendorJobs() {
   const [customerConsentRequested, setCustomerConsentRequested] = useState(false);
   const [customerConsentReceived, setCustomerConsentReceived] = useState(false);
   const [activeConsentToken, setActiveConsentToken] = useState('');
+  const [consentRefreshLoading, setConsentRefreshLoading] = useState(false);
+  const [consentRefreshError, setConsentRefreshError] = useState('');
   const [recordingComplianceByJobId, setRecordingComplianceByJobId] = useState<
     Record<
       string,
@@ -405,6 +413,46 @@ export default function VendorJobs() {
     applyConsentStatusFromBackend(payload?.consent?.status);
   };
 
+  const refreshConsentStatusForSelectedJob = async () => {
+    const bookingId = String(selectedJob?.bookingId || selectedJob?.id || '').trim();
+    if (!bookingId) return;
+    setConsentRefreshLoading(true);
+    setConsentRefreshError('');
+    try {
+      const res = await fetch(`/api/consent/status?bookingId=${encodeURIComponent(bookingId)}`, {
+        method: 'GET',
+        headers: getRequestHeaders(),
+        cache: 'no-store',
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload?.success === false) {
+        throw new Error(
+          String(payload?.error || payload?.message || `Failed to fetch consent status (${res.status})`)
+        );
+      }
+      const normalized = String(payload?.status || '').trim().toLowerCase();
+      if (normalized === 'accepted') {
+        applyConsentStatusFromBackend('ACCEPTED');
+      } else if (normalized === 'declined') {
+        applyConsentStatusFromBackend('DECLINED');
+      } else if (normalized === 'expired') {
+        applyConsentStatusFromBackend('EXPIRED');
+      } else if (normalized === 'pending') {
+        applyConsentStatusFromBackend('REQUESTED');
+      } else {
+        applyConsentStatusFromBackend('NOT_REQUESTED');
+      }
+      const latestToken = String(payload?.latestConsentToken || '').trim();
+      if (latestToken) {
+        setActiveConsentToken(latestToken);
+      }
+    } catch (error) {
+      setConsentRefreshError(error instanceof Error ? error.message : 'Failed to refresh consent status');
+    } finally {
+      setConsentRefreshLoading(false);
+    }
+  };
+
   const getCanContinueCompliance = () => {
     if (location === 'business') return locationVerified;
     if (location === 'residence') return customerConsentReceived;
@@ -494,7 +542,7 @@ export default function VendorJobs() {
 
     const pollIntervalMs = 4000;
     const intervalId = window.setInterval(() => {
-      void fetchConsentStatus(activeConsentToken).catch((error) => {
+      void refreshConsentStatusForSelectedJob().catch((error) => {
         console.warn('[Vendor Compliance] Consent polling refresh failed', error);
       });
     }, pollIntervalMs);
@@ -505,6 +553,8 @@ export default function VendorJobs() {
     location,
     customerConsentStatus,
     activeConsentToken,
+    selectedJob?.bookingId,
+    selectedJob?.id,
   ]);
 
   // Enhancement 1: Job Status Management
@@ -554,6 +604,10 @@ export default function VendorJobs() {
   const [jobActionTarget, setJobActionTarget] = useState<any>(null);
   const [jobActionFeedback, setJobActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [jobActionLoading, setJobActionLoading] = useState(false);
+  const [showRejectJobModal, setShowRejectJobModal] = useState(false);
+  const [rejectJobTarget, setRejectJobTarget] = useState<any>(null);
+  const [rejectReasonInput, setRejectReasonInput] = useState('');
+  const [rejectJobSubmitting, setRejectJobSubmitting] = useState(false);
   const [deleteImpactPreview, setDeleteImpactPreview] = useState<{
     loading: boolean;
     canVendorDelete: boolean;
@@ -675,16 +729,24 @@ export default function VendorJobs() {
       try {
         const members = await fetchVendorTeamMembers(String(vendorId), () => getRequestHeaders());
         setTeamMembers(members);
-      } catch {
+      } catch (error) {
         setTeamMembers([]);
-        setEmployeesLoadError('Could not load employees.');
+        setEmployeesLoadError(
+          error instanceof Error && error.message
+            ? `Could not load employees: ${error.message}`
+            : 'Could not load employees.'
+        );
       } finally {
         setEmployeesLoading(false);
       }
     };
-    loadTeamMembers().catch(() => {
+    loadTeamMembers().catch((error) => {
       setTeamMembers([]);
-      setEmployeesLoadError('Could not load employees.');
+      setEmployeesLoadError(
+        error instanceof Error && error.message
+          ? `Could not load employees: ${error.message}`
+          : 'Could not load employees.'
+      );
       setEmployeesLoading(false);
     });
   }, [vendorId, authUserId]);
@@ -843,6 +905,7 @@ export default function VendorJobs() {
     const normalized = String(status || '').trim().toLowerCase();
     if (normalized === 'in progress' || normalized === 'in-progress') return 'in-progress';
     if (normalized === 'completed') return 'completed';
+    if (normalized === 'awaiting_review' || normalized === 'awaiting review') return 'awaiting_review';
     if (normalized === 'canceled' || normalized === 'cancelled') return 'cancelled';
     if (normalized === 'archived') return 'archived';
     if (normalized === 'scheduled' || normalized === 'pending') return 'pending';
@@ -1307,6 +1370,7 @@ export default function VendorJobs() {
       assignedMembershipIds: Array.isArray(job?.assignedMembershipIds)
         ? job.assignedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
         : [],
+      source: String(job?.source || 'vendor_created_job'),
       videos: [],
       notes: [],
       audit: [],
@@ -1825,10 +1889,32 @@ export default function VendorJobs() {
       setSelectedJob(null);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[Create Service Video] Upload failed', { error: errorMessage });
-      console.error('[Create Service Video] Upload failed raw error', error);
+      const diagnostics = (error as any)?.diagnostics || {};
+      const initResponse = diagnostics?.uploadInitResponse || null;
+      const blobResponse = diagnostics?.blobUploadResponse || null;
+      const completeResponse = diagnostics?.uploadCompleteResponse || null;
+      console.error('[Create Service Video] Upload failed', {
+        stage: diagnostics?.stage || uploadLifecycleState || 'unknown',
+        bookingId: diagnostics?.bookingId || selectedJobSnapshot?.bookingId || selectedJobSnapshot?.id || null,
+        jobId: diagnostics?.jobId || selectedJobSnapshot?.id || null,
+        vendorId: diagnostics?.vendorId || String(vendorId || ''),
+        mediaSessionId: diagnostics?.mediaSessionId || null,
+        uploadInitResponse: initResponse
+          ? { status: initResponse.status, body: initResponse.parsed ?? initResponse.rawText ?? null }
+          : null,
+        blobUploadResponse: blobResponse
+          ? { status: blobResponse.status, body: blobResponse.parsed ?? blobResponse.rawText ?? null }
+          : null,
+        uploadCompleteResponse: completeResponse
+          ? { status: completeResponse.status, body: completeResponse.parsed ?? completeResponse.rawText ?? null }
+          : null,
+        message: (error as any)?.message,
+        name: (error as any)?.name,
+        stack: (error as any)?.stack,
+        details: error,
+      });
       const message = errorMessage || 'Upload failed';
-      setVideoUploadError(message);
+      setVideoUploadError(`Upload failed: ${message}`);
     } finally {
       setIsUploadingVideo(false);
       setUploadLifecycleState('idle');
@@ -2557,6 +2643,7 @@ export default function VendorJobs() {
           vendorId: String(vendorId),
           mediaSessionId,
           consentType: 'video_access',
+          origin: window.location.origin,
         }),
       });
       const consentPayload = await consentRes.json().catch(() => ({}));
@@ -2740,6 +2827,7 @@ export default function VendorJobs() {
       case 'rejected': return 'bg-red-100 text-red-800';
       case 'flagged': return 'bg-purple-100 text-purple-800';
       case 'in-progress': return 'bg-blue-100 text-blue-800';
+      case 'awaiting_review': return 'bg-amber-100 text-amber-900';
       case 'completed': return 'bg-green-100 text-green-800';
       case 'cancelled': return 'bg-red-100 text-red-800';
       case 'archived': return 'bg-orange-100 text-orange-800';
@@ -2997,10 +3085,24 @@ export default function VendorJobs() {
     }
   };
 
-  // Get available employees (those without assigned jobs)
+  const jobBlocksEmployeeAvailability = (job: any): boolean => {
+    const raw = String(job?.status || '').trim().toLowerCase();
+    const normalized = raw.replace(/[_\s]+/g, '-');
+    return (
+      normalized === 'pending' ||
+      normalized === 'scheduled' ||
+      normalized === 'in-progress' ||
+      normalized === 'confirmed'
+    );
+  };
+
+  // Get available employees (active memberships without active/pending assignments)
   const getAvailableEmployees = () => {
     const assignedMembershipIdSet = new Set<string>();
     jobs.forEach((job) => {
+      if (!jobBlocksEmployeeAvailability(job)) {
+        return;
+      }
       const ids = Array.isArray(job.assignedMembershipIds) ? job.assignedMembershipIds : [];
       ids.forEach((id: string) => assignedMembershipIdSet.add(String(id)));
       if (ids.length === 0 && Array.isArray(job.assignedEmployees) && teamMembers.length > 0) {
@@ -3031,7 +3133,8 @@ export default function VendorJobs() {
       | "UNARCHIVE_JOB"
       | "UPDATE_JOB"
       | "ASSIGN_JOB"
-      | "UPDATE_STATUS",
+      | "UPDATE_STATUS"
+      | "APPROVE_JOB_COMPLETION",
     extra: Record<string, unknown> = {}
   ) => {
     if (!vendorId) {
@@ -3065,6 +3168,160 @@ export default function VendorJobs() {
   const unarchiveJob = async (archivedJob: any) => {
     await runPersistedJobAction(archivedJob, "UNARCHIVE_JOB");
     await reloadJobsFromBackend();
+  };
+
+  const approveJobCompletion = async (job: any) => {
+    if (!vendorId) {
+      throw new Error("Vendor context is not ready");
+    }
+    const res = await fetch(`/api/vendors/${vendorId}/jobs/${encodeURIComponent(String(job.id))}/approve`, {
+      method: "POST",
+      headers: getRequestHeaders(),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload?.error || payload?.message || `Approval failed (${res.status})`);
+    }
+    await reloadJobsFromBackend();
+    return payload;
+  };
+
+  const submitForManagerReview = async (job: any) => {
+    if (!job?.id) {
+      throw new Error("Job id is required");
+    }
+    const res = await fetch(`/api/employee/jobs/${encodeURIComponent(String(job.id))}/complete`, {
+      method: "POST",
+      headers: getRequestHeaders(),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload?.error || payload?.message || `Submit failed (${res.status})`);
+    }
+    await reloadJobsFromBackend();
+    return payload;
+  };
+
+  const isJobReadyToSubmitForManagerReview = (job: any) => {
+    const status = String(job?.status || "").trim().toLowerCase();
+    const phase = String(job?.operationalPhase || "").trim().toUpperCase();
+    if (
+      status === "awaiting_review" ||
+      status === "awaiting review" ||
+      status === "completed" ||
+      status === "complete"
+    ) {
+      return false;
+    }
+    const nextStage = getNextMissingVideoStageForJob(job);
+    const activeStatusEligible =
+      status === "in-progress" ||
+      status === "in progress" ||
+      status === "pending" ||
+      status === "confirmed" ||
+      status === "assigned";
+    const activePhaseEligible =
+      phase === "ASSIGNED" ||
+      phase === "IN_PROGRESS" ||
+      phase === "CONFIRMED" ||
+      phase === "PENDING";
+    return !nextStage && (activeStatusEligible || activePhaseEligible);
+  };
+
+  const isJobSubmittedForManagerReview = (job: any) => {
+    const status = String(job?.status || "").trim().toLowerCase();
+    return status === "awaiting_review" || status === "awaiting review";
+  };
+
+  const handleSubmitForManagerReview = async (job: any) => {
+    if (!job || jobMutationLoadingId) return;
+    setJobMutationLoadingId(`submit-review:${String(job.id || "")}`);
+    setJobActionFeedback(null);
+    try {
+      await submitForManagerReview(job);
+      const targetId = String(job?.id || "");
+      if (targetId) {
+        setJobs((prev) =>
+          prev.map((row) =>
+            String(row?.id || "") === targetId
+              ? { ...row, status: "awaiting_review", operationalPhase: "AWAITING_VENDOR_REVIEW" }
+              : row
+          )
+        );
+        setSelectedJobForDetails((prev: any) =>
+          prev && String(prev?.id || "") === targetId
+            ? { ...prev, status: "awaiting_review", operationalPhase: "AWAITING_VENDOR_REVIEW" }
+            : prev
+        );
+      }
+      setJobActionFeedback({
+        type: "success",
+        message: "Submitted for manager review.",
+      });
+    } catch (error) {
+      setJobActionFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to submit for manager review",
+      });
+    } finally {
+      setJobMutationLoadingId(null);
+    }
+  };
+
+  const rejectJobCompletion = async (job: any, rejectionReason: string) => {
+    if (!vendorId) {
+      throw new Error("Vendor context is not ready");
+    }
+    const trimmedReason = String(rejectionReason || '').trim();
+    if (!trimmedReason) {
+      throw new Error("Rejection reason is required.");
+    }
+    const res = await fetch(`/api/vendors/${vendorId}/jobs/${encodeURIComponent(String(job.id))}/reject`, {
+      method: "POST",
+      headers: getRequestHeaders(),
+      body: JSON.stringify({ rejectionReason: trimmedReason }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload?.error || payload?.message || `Rejection failed (${res.status})`);
+    }
+    await reloadJobsFromBackend();
+    return payload;
+  };
+
+  const openRejectJobModal = (job: any) => {
+    setRejectJobTarget(job);
+    setRejectReasonInput('');
+    setShowRejectJobModal(true);
+    setActiveJobActionMenuId(null);
+  };
+
+  const submitRejectJob = async () => {
+    if (!rejectJobTarget || rejectJobSubmitting) return;
+    const trimmedReason = String(rejectReasonInput || '').trim();
+    if (!trimmedReason) {
+      setJobActionFeedback({ type: "error", message: "Please enter a rejection reason." });
+      return;
+    }
+    setRejectJobSubmitting(true);
+    setJobActionFeedback(null);
+    try {
+      const payload = await rejectJobCompletion(rejectJobTarget, trimmedReason);
+      setJobActionFeedback({
+        type: "success",
+        message: payload?.message || "Job returned to in-progress for corrections.",
+      });
+      setShowRejectJobModal(false);
+      setRejectJobTarget(null);
+      setRejectReasonInput('');
+    } catch (error) {
+      setJobActionFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to reject job completion",
+      });
+    } finally {
+      setRejectJobSubmitting(false);
+    }
   };
 
   const deleteJobPermanently = async (job: any) => {
@@ -3349,7 +3606,7 @@ export default function VendorJobs() {
               {isEmployeeView ? 'My Assigned Jobs' : 'Manage Jobs'}
             </h2>
             <p className="text-gray-600 text-sm mt-1">
-              {isEmployeeView ? 'View and manage your assigned service jobs' : 'Create, track, and manage all your service jobs'}
+              {isEmployeeView ? 'Jobs assigned to you' : 'Create, track, and manage all your service jobs'}
             </p>
           </div>
         </div>
@@ -3357,27 +3614,34 @@ export default function VendorJobs() {
         {/* View Toggle */}
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-700">View Mode:</span>
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setIsEmployeeView(false)}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                !isEmployeeView 
-                  ? 'bg-white text-blue-600 shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              Manager
-            </button>
-            <button
-              onClick={() => setIsEmployeeView(true)}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                isEmployeeView 
-                  ? 'bg-white text-green-600 shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              Employee
-            </button>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setIsEmployeeView(false)}
+                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                  !isEmployeeView 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Manager
+              </button>
+              <button
+                onClick={() => setIsEmployeeView(true)}
+                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                  isEmployeeView 
+                    ? 'bg-white text-green-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Employee
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">
+              {isEmployeeView
+                ? 'Employee View: See only jobs assigned to you.'
+                : 'Manager View: See all jobs and manage assignments.'}
+            </p>
           </div>
         </div>
       </div>
@@ -4150,12 +4414,32 @@ export default function VendorJobs() {
                                 : 'bg-amber-600 text-white hover:bg-amber-600'
                             }
                           >
-                            {packageReady ? 'Ready for Admin Review' : 'Video Package Incomplete'}
+                            {packageReady ? 'Ready to Submit for Manager Review' : 'Video Package Incomplete'}
                           </Badge>
                           <span className="text-xs">
-                            Admin moderation queue shows this job only after all three required stages are uploaded.
+                            Submit this job for manager review after all three required stages are uploaded.
                           </span>
                         </div>
+                        {isEmployeeView ? (
+                          <div className="mt-3">
+                            {isJobReadyToSubmitForManagerReview(selectedJobForDetails) ? (
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700"
+                                disabled={Boolean(jobMutationLoadingId)}
+                                onClick={() =>
+                                  handleSubmitForManagerReview(selectedJobForDetails).catch(() => undefined)
+                                }
+                              >
+                                {jobMutationLoadingId === `submit-review:${String(selectedJobForDetails?.id || '')}`
+                                  ? 'Submitting...'
+                                  : 'Submit for Manager Review'}
+                              </Button>
+                            ) : isJobSubmittedForManagerReview(selectedJobForDetails) ? (
+                              <p className="text-sm font-medium text-emerald-800">Submitted for manager review.</p>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
                           {stageStatus.map((stage) => (
                             <div key={stage.key} className="flex items-center justify-between rounded border bg-white/70 px-2 py-1 text-sm">
@@ -5134,6 +5418,57 @@ export default function VendorJobs() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={showRejectJobModal}
+        onOpenChange={(open) => {
+          setShowRejectJobModal(open);
+          if (!open) {
+            setRejectJobTarget(null);
+            setRejectReasonInput('');
+            setRejectJobSubmitting(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Reject Job Completion</DialogTitle>
+            <DialogDescription>
+              Return this job to in-progress and provide correction instructions for the employee.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-gray-600">
+              Job: <span className="font-medium text-gray-900">{String(rejectJobTarget?.title || "Selected job")}</span>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Rejection reason</label>
+              <textarea
+                value={rejectReasonInput}
+                onChange={(e) => setRejectReasonInput(e.target.value)}
+                className="w-full min-h-[120px] rounded border border-gray-300 px-3 py-2 text-sm"
+                placeholder="Explain what must be fixed before resubmitting."
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500">This note is shown to the assigned employee.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRejectJobModal(false)} disabled={rejectJobSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => {
+                submitRejectJob().catch(() => undefined);
+              }}
+              disabled={rejectJobSubmitting || !String(rejectReasonInput || '').trim()}
+            >
+              {rejectJobSubmitting ? "Submitting..." : "Reject Job Completion"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Auto-Approve Warning Modal */}
       <Dialog open={showAutoApproveWarning} onOpenChange={setShowAutoApproveWarning}>
         <DialogContent className="max-w-md">
@@ -5377,15 +5712,19 @@ export default function VendorJobs() {
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
                         <div>Customer consent request sent. Waiting for customer response.</div>
-                        {activeConsentToken ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => fetchConsentStatus(activeConsentToken)}
-                            className="w-full"
-                          >
-                            Refresh consent status
-                          </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void refreshConsentStatusForSelectedJob()}
+                          disabled={consentRefreshLoading}
+                          className="w-full"
+                        >
+                          {consentRefreshLoading ? 'Checking consent…' : 'Refresh consent status'}
+                        </Button>
+                        {consentRefreshError ? (
+                          <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
+                            {consentRefreshError}
+                          </div>
                         ) : null}
                       </div>
                     )}
@@ -5408,15 +5747,19 @@ export default function VendorJobs() {
                         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                           Consent expired or unavailable. Please resend the request.
                         </div>
-                        {activeConsentToken ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => fetchConsentStatus(activeConsentToken)}
-                            className="w-full"
-                          >
-                            Refresh consent status
-                          </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void refreshConsentStatusForSelectedJob()}
+                          disabled={consentRefreshLoading}
+                          className="w-full"
+                        >
+                          {consentRefreshLoading ? 'Checking consent…' : 'Refresh consent status'}
+                        </Button>
+                        {consentRefreshError ? (
+                          <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
+                            {consentRefreshError}
+                          </div>
                         ) : null}
                       </div>
                     )}
@@ -5473,15 +5816,19 @@ export default function VendorJobs() {
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
                         <div>Customer consent request sent. Waiting for customer response.</div>
-                        {activeConsentToken ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => fetchConsentStatus(activeConsentToken)}
-                            className="w-full"
-                          >
-                            Refresh consent status
-                          </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void refreshConsentStatusForSelectedJob()}
+                          disabled={consentRefreshLoading}
+                          className="w-full"
+                        >
+                          {consentRefreshLoading ? 'Checking consent…' : 'Refresh consent status'}
+                        </Button>
+                        {consentRefreshError ? (
+                          <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
+                            {consentRefreshError}
+                          </div>
                         ) : null}
                       </div>
                     )}
@@ -5504,15 +5851,19 @@ export default function VendorJobs() {
                         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                           Consent expired or unavailable. Please resend the request.
                         </div>
-                        {activeConsentToken ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => fetchConsentStatus(activeConsentToken)}
-                            className="w-full"
-                          >
-                            Refresh consent status
-                          </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void refreshConsentStatusForSelectedJob()}
+                          disabled={consentRefreshLoading}
+                          className="w-full"
+                        >
+                          {consentRefreshLoading ? 'Checking consent…' : 'Refresh consent status'}
+                        </Button>
+                        {consentRefreshError ? (
+                          <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
+                            {consentRefreshError}
+                          </div>
                         ) : null}
                       </div>
                     )}
@@ -5675,6 +6026,7 @@ export default function VendorJobs() {
       </Dialog>
 
       {/* Available Employees Section */}
+      {!isEmployeeView && (
       <div className="mb-6">
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
@@ -5718,6 +6070,7 @@ export default function VendorJobs() {
           )}
         </div>
       </div>
+      )}
 
       {/* Archived Jobs Section */}
       {showArchivedJobs && (
@@ -5812,7 +6165,7 @@ export default function VendorJobs() {
             in-progress work, or use bulk actions.
           </p>
         ) : null}
-        {!showArchivedJobs && selectedJobIds.length > 0 && (
+        {!showArchivedJobs && !isEmployeeView && selectedJobIds.length > 0 && (
           <div className="flex items-center justify-between bg-blue-50 p-4 rounded-lg">
             <div className="flex items-center gap-4">
               <span className="text-sm font-medium text-blue-900">
@@ -5848,7 +6201,7 @@ export default function VendorJobs() {
           </div>
         ) : !showArchivedJobs && filteredJobs.length === 0 ? (
           <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-            No jobs found for this vendor yet.
+            {isEmployeeView ? 'No jobs assigned to you yet.' : 'No jobs found for this vendor yet.'}
           </div>
         ) : !showArchivedJobs ? (
           <>
@@ -5870,16 +6223,21 @@ export default function VendorJobs() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedJobIds.includes(job.id)}
-                    onChange={() => toggleJobSelection(job.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-4 h-4 text-blue-600 rounded"
-                  />
+                  {!isEmployeeView ? (
+                    <input
+                      type="checkbox"
+                      checked={selectedJobIds.includes(job.id)}
+                      onChange={() => toggleJobSelection(job.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                  ) : null}
                   <div>
                     <CardTitle className="text-xl">{job.title}</CardTitle>
                     <p className="text-gray-600">Client: {job.client}</p>
+                    <p className="text-xs text-gray-500">
+                      Source: {String(job.source || '').toLowerCase() === 'customer_booking' ? 'Customer Booking' : 'Vendor-Created Job'}
+                    </p>
                     <p className="text-gray-600">Service Type: {job.serviceName || job.serviceType || 'General Service'}</p>
                     <p className="text-gray-600">Created: {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : '-'}</p>
                     <p className="text-gray-600">Updated: {job.updatedAt ? new Date(job.updatedAt).toLocaleDateString() : '-'}</p>
@@ -5915,6 +6273,97 @@ export default function VendorJobs() {
                         </div>
                       );
                     })()}
+                    {isEmployeeView && isJobReadyToSubmitForManagerReview(job) ? (
+                      <div className="mt-2">
+                        <Button
+                          size="sm"
+                          className="h-8 bg-emerald-600 hover:bg-emerald-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSubmitForManagerReview(job).catch(() => undefined);
+                          }}
+                          disabled={Boolean(jobMutationLoadingId)}
+                        >
+                          {jobMutationLoadingId === `submit-review:${String(job?.id || '')}`
+                            ? 'Submitting...'
+                            : 'Submit for Manager Review'}
+                        </Button>
+                      </div>
+                    ) : null}
+                    {isEmployeeView && isJobSubmittedForManagerReview(job) ? (
+                      <p className="mt-2 text-sm font-medium text-emerald-700">Submitted for manager review.</p>
+                    ) : null}
+                    {!isEmployeeView &&
+                    (() => {
+                      const status = String(job?.status || '').trim().toLowerCase();
+                      return status === 'awaiting_review' || status === 'awaiting review';
+                    })() ? (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-sm font-semibold text-amber-900">Manager Review Required</p>
+                        <p className="mt-1 text-xs text-amber-800">
+                          All required service video stages are uploaded. Review the package before approving completion.
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-amber-300 text-amber-900 hover:bg-amber-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openJobDetails(job);
+                            }}
+                          >
+                            View Review Package
+                          </Button>
+                          {isActiveManager ? (
+                            <>
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  (async () => {
+                                    try {
+                                      await approveJobCompletion(job);
+                                      setJobActionFeedback({
+                                        type: 'success',
+                                        message:
+                                          'Job approved and marked completed. Media sent to moderation review.',
+                                      });
+                                    } catch (error) {
+                                      setJobActionFeedback({
+                                        type: 'error',
+                                        message:
+                                          error instanceof Error
+                                            ? error.message
+                                            : 'Failed to approve job completion',
+                                      });
+                                    }
+                                  })().catch(() => undefined);
+                                }}
+                                disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                              >
+                                Approve Completion
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-amber-300 text-amber-900 hover:bg-amber-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openRejectJobModal(job);
+                                }}
+                                disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          ) : (
+                            <p className="text-xs text-gray-700">Manager approval required.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -5978,6 +6427,7 @@ export default function VendorJobs() {
                           const isPendingOrInProgress =
                             status === 'pending' || status === 'in-progress' || status === 'in progress';
                           const isCompleted = status === 'completed';
+                          const isAwaitingReview = status === 'awaiting_review' || status === 'awaiting review';
                           const isArchived = status === 'archived';
 
                           if (isCompleted) {
@@ -6018,6 +6468,64 @@ export default function VendorJobs() {
                               >
                                 View
                               </button>
+                            );
+                          }
+
+                          if (isAwaitingReview) {
+                            return (
+                              <>
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  onClick={() => {
+                                    openJobDetails(job);
+                                    setActiveJobActionMenuId(null);
+                                  }}
+                                >
+                                  View Review Package
+                                </button>
+                                {isActiveManager ? (
+                                  <>
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                      onClick={async () => {
+                                        setActiveJobActionMenuId(null);
+                                        try {
+                                          await approveJobCompletion(job);
+                                          setJobActionFeedback({
+                                            type: "success",
+                                            message:
+                                              "Job approved and marked completed. Media sent to moderation review.",
+                                          });
+                                        } catch (error) {
+                                          setJobActionFeedback({
+                                            type: "error",
+                                            message:
+                                              error instanceof Error
+                                                ? error.message
+                                                : "Failed to approve job completion",
+                                          });
+                                        }
+                                      }}
+                                      disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                    >
+                                      Approve Job Completion
+                                    </button>
+                                    <button
+                                      className="w-full text-left px-3 py-2 text-sm text-amber-700 hover:bg-amber-50"
+                                      onClick={() => {
+                                        openRejectJobModal(job);
+                                      }}
+                                      disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
+                                    >
+                                      Reject Job Completion
+                                    </button>
+                                  </>
+                                ) : (
+                                  <div className="px-3 py-2 text-xs text-gray-600">
+                                    Manager approval required.
+                                  </div>
+                                )}
+                              </>
                             );
                           }
 

@@ -100,9 +100,16 @@ export function bookingMatchesTab(
 ): boolean {
   const terminal = isTerminalCancelledStatus(statusKey);
   const completed = isCompletedStatus(statusKey);
+  const activeInProgressFlow =
+    statusKey === 'pending' ||
+    statusKey === 'confirmed' ||
+    statusKey === 'in_progress' ||
+    statusKey === 'in progress' ||
+    statusKey === 'awaiting_review' ||
+    statusKey === 'awaiting review';
   const t = scheduleInstant.getTime();
   const datePast = !Number.isNaN(t) && t < now.getTime();
-  const isPast = datePast || completed;
+  const isPast = !activeInProgressFlow && (datePast || completed);
 
   if (activeTab === 'cancelled') return terminal;
   if (activeTab === 'past') return !terminal && isPast;

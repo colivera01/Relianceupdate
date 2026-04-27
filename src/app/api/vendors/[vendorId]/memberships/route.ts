@@ -2,10 +2,17 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { requireVendorManager } from "@/lib/membership-auth";
+import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
+}
+
+function statusFilter(status: string) {
+  const s = String(status || "").trim();
+  const upper = s.toUpperCase();
+  if (!upper) return undefined;
+  return { in: [upper, s.toLowerCase(), s] };
 }
 
 /**
@@ -18,14 +25,20 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const { vendorId } = await params;
-    await requireVendorManager(request, vendorId);
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
+    const statusUpper = String(status || "").trim().toUpperCase();
+    // Active roster reads are safe for any active member and unblock employee pages.
+    if (statusUpper === "ACTIVE") {
+      await requireVendorMembership(request, vendorId);
+    } else {
+      await requireVendorManager(request, vendorId);
+    }
 
     const where: any = { vendorId };
     if (status) {
-      where.status = status;
+      where.status = statusFilter(status);
     }
 
     const memberships = await (prisma as any).vendorMembership.findMany({

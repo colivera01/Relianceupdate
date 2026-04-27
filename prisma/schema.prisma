@@ -171,6 +171,9 @@ model Booking {
   status       String @default("PENDING")  // "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELED"
   scheduledFor DateTime?
   date         DateTime?    // Job completion or scheduled date
+  rejectionReason String?
+  rejectedAt   DateTime?
+  rejectedBy   String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   demo         Boolean       @default(false)
@@ -196,6 +199,10 @@ model Review {
   vendorId    String
   bookingId   String?
   mediaSessionId String?
+  assignedMembershipId String?
+  assignedEmployeeName String?
+  assignedUserId String?
+  attributionVersion Int @default(1)
   clientName  String?  // Client name (or use user relation)
   jobType     String?  // Type of job/service reviewed
   rating      Int
@@ -221,12 +228,19 @@ model Review {
   reviewWindow ReviewWindow?
 
   @@map("reviews")
+  @@index([bookingId])
+  @@index([vendorId, assignedMembershipId])
+  @@index([vendorId, moderationStatus])
+  @@index([assignedMembershipId, moderationStatus])
 }
 
 model Device {
   id            String     @id @default(cuid())
   vendorId      String
-  deviceUid     String     @unique
+  // Canonical device identity; nullable during legacy row transition.
+  deviceUid     String?    @unique
+  // Legacy fallback field used by older pairing MVP rows.
+  employeeId    String?
   deviceType    String     // "PHONE" | "HEADSET"
   pairedAt      DateTime  @default(now())
   lastSeenAt    DateTime?

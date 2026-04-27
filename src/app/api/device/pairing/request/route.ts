@@ -8,6 +8,10 @@ import { NextResponse } from "next/server";
 
 import crypto from "crypto";
 
+function generateSixDigitCode(): string {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
 
 
 export async function POST(req: Request) {
@@ -20,9 +24,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const code = crypto.randomBytes(3).toString("hex").toUpperCase();
+    let code = generateSixDigitCode();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
     console.log("[pairing/request] Generated code:", code);
+
+    // Regenerate if collision occurs.
+    // (Unique index on code protects final insert anyway.)
+    for (let i = 0; i < 3; i += 1) {
+      const existing = await (prisma as any).devicePairingCode.findUnique({
+        where: { code },
+        select: { id: true },
+      });
+      if (!existing) break;
+      code = generateSixDigitCode();
+    }
 
     // Try to create the pairing code
     // Using 'as any' to bypass TypeScript if Prisma client hasn't been regenerated

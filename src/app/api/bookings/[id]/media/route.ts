@@ -88,33 +88,49 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
       shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
     );
 
-    const normalized = proofSafeAssets.map((asset: any) => ({
-      id: asset.id,
-      vendorId: asset.vendorId,
-      mediaSessionId: asset.mediaSessionId,
-      bytes: typeof asset.bytes === "bigint" ? asset.bytes.toString() : String(asset.bytes || "0"),
-      mimeType: asset.mimeType,
-      blobKey: asset.blobKey,
-      blobUrl: asset.blobUrl,
-      moderationStatus: asset.moderationStatus,
-      visibilityStatus: asset.visibilityStatus,
-      archiveStatus: asset.archiveStatus,
-      moderationReason: asset.moderationReason,
-      moderatedAt: asset.moderatedAt,
-      createdAt: asset.createdAt,
-      title: asset.mediaSession?.title || "Service Media",
-      description: asset.mediaSession?.description || "",
-      bookingId: asset.mediaSession?.bookingId || null,
-      serviceId: asset.mediaSession?.serviceId || null,
-      isPrimaryProofVideo: isCompletedStageProofVideo(asset?.mediaSession || null),
-    }));
+    const normalized = proofSafeAssets.map((asset: any) => {
+      const mimeType = String(asset.mimeType || "");
+      const isVideo = mimeType.startsWith("video/");
+      const rawStage = String(asset?.mediaSession?.vendorJobVideoStage || "").trim().toUpperCase();
+      const proofStage =
+        rawStage === "INTRO"
+          ? "before"
+          : rawStage === "IN_PROGRESS"
+            ? "during"
+            : rawStage === "COMPLETED"
+              ? "after"
+              : null;
+      return {
+        id: asset.id,
+        type: isVideo ? "video" : "image",
+        moderationStatus: asset.moderationStatus,
+        visibilityStatus: asset.visibilityStatus,
+        mediaSessionId: asset.mediaSessionId || null,
+        downloadUrl: `/api/bookings/${bookingId}/media/${asset.id}/download`,
+        vendorId: asset.vendorId,
+        bytes: typeof asset.bytes === "bigint" ? asset.bytes.toString() : String(asset.bytes || "0"),
+        mimeType,
+        blobKey: asset.blobKey,
+        blobUrl: asset.blobUrl,
+        archiveStatus: asset.archiveStatus,
+        moderationReason: asset.moderationReason,
+        moderatedAt: asset.moderatedAt,
+        createdAt: asset.createdAt,
+        title: asset.mediaSession?.title || "Service Media",
+        description: asset.mediaSession?.description || "",
+        bookingId: asset.mediaSession?.bookingId || null,
+        serviceId: asset.mediaSession?.serviceId || null,
+        proofStage,
+        isPrimaryProofVideo: isCompletedStageProofVideo(asset?.mediaSession || null),
+      };
+    });
 
     return NextResponse.json({
       success: true,
       bookingId,
       assets: normalized,
-      images: normalized.filter((a: any) => String(a.mimeType || "").startsWith("image/")),
-      videos: normalized.filter((a: any) => String(a.mimeType || "").startsWith("video/")),
+      images: normalized.filter((a: any) => a.type === "image"),
+      videos: normalized.filter((a: any) => a.type === "video"),
     });
   } catch (error: any) {
     console.error("[bookings/:id/media] GET error:", error);

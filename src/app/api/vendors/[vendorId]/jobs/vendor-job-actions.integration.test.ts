@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, PATCH } from "./[jobId]/actions/route";
-import { requireVendorMembership } from "@/lib/membership-auth";
+import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
@@ -59,6 +59,7 @@ vi.mock("@/server/db", () => ({
 
 vi.mock("@/lib/membership-auth", () => ({
   requireVendorMembership: vi.fn(),
+  requireVendorManager: vi.fn(),
 }));
 
 function patchReq(vendorId: string, jobId: string, action: string) {
@@ -109,6 +110,8 @@ describe("vendor job actions integration", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
     vi.mocked(requireVendorMembership).mockResolvedValue({} as any);
+    vi.mocked(requireVendorManager).mockReset();
+    vi.mocked(requireVendorManager).mockResolvedValue({} as any);
     hoisted.bookingFindFirst.mockReset();
     hoisted.bookingUpdate.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
@@ -248,7 +251,7 @@ describe("vendor job actions integration", () => {
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(409);
     const j = await toJson(res);
-    expect(j.code).toBe("COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE");
+    expect(j.code).toBe("MANAGER_APPROVAL_REQUIRED");
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
@@ -291,11 +294,11 @@ describe("vendor job actions integration", () => {
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(409);
     const j = await toJson(res);
-    expect(j.code).toBe("COMPLETION_REQUIRES_ADMIN_APPROVAL");
+    expect(j.code).toBe("MANAGER_APPROVAL_REQUIRED");
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("PATCH UPDATE_STATUS allows COMPLETED when staged package is admin-approved", async () => {
+  it("PATCH UPDATE_STATUS blocks direct COMPLETED and requires manager approval endpoint", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",
       vendorId: "v1",
@@ -327,19 +330,15 @@ describe("vendor job actions integration", () => {
         },
       ]);
     hoisted.mediaAssetCount.mockResolvedValue(1);
-    hoisted.bookingUpdate.mockResolvedValue({
-      id: "job1",
-      status: "COMPLETED",
-      customerMetadata: expect.any(String),
-      updatedAt: new Date(),
-    });
     const { req, ctx } = patchReqBody("v1", "job1", {
       action: "UPDATE_STATUS",
       status: "completed",
     });
     const res = await PATCH(req, ctx as any);
-    expect(res.status).toBe(200);
-    expect(hoisted.bookingUpdate).toHaveBeenCalled();
+    expect(res.status).toBe(409);
+    const j = await toJson(res);
+    expect(j.code).toBe("MANAGER_APPROVAL_REQUIRED");
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
   it("DELETE allows CONFIRMED (in-progress) jobs for vendors", async () => {

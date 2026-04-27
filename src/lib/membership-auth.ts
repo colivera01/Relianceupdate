@@ -47,7 +47,10 @@ export async function isVendorManager(
   userId: string
 ): Promise<boolean> {
   const membership = await getVendorMembership(vendorId, userId);
-  return membership?.role === "MANAGER" && membership?.status === "ACTIVE";
+  return (
+    String(membership?.role || "").trim().toUpperCase() === "MANAGER" &&
+    String(membership?.status || "").trim().toUpperCase() === "ACTIVE"
+  );
 }
 
 /**
@@ -58,7 +61,10 @@ export async function isVendorEmployee(
   userId: string
 ): Promise<boolean> {
   const membership = await getVendorMembership(vendorId, userId);
-  return membership?.role === "EMPLOYEE" && membership?.status === "ACTIVE";
+  return (
+    String(membership?.role || "").trim().toUpperCase() === "EMPLOYEE" &&
+    String(membership?.status || "").trim().toUpperCase() === "ACTIVE"
+  );
 }
 
 /**
@@ -80,7 +86,9 @@ export async function requireVendorManager(
   }
 
   const membership = await getVendorMembership(targetVendorId, userId);
-  if (!membership || membership.role !== "MANAGER" || membership.status !== "ACTIVE") {
+  const normalizedRole = String(membership?.role || "").trim().toUpperCase();
+  const normalizedStatus = String(membership?.status || "").trim().toUpperCase();
+  if (!membership || normalizedRole !== "MANAGER" || normalizedStatus !== "ACTIVE") {
     throw new Error("Forbidden: Manager access required");
   }
 
@@ -113,7 +121,8 @@ export async function requireVendorMembership(
   }
 
   const membership = await getVendorMembership(vendorId, userId);
-  if (!membership || membership.status !== "ACTIVE") {
+  const normalizedStatus = String(membership?.status || "").trim().toUpperCase();
+  if (!membership || normalizedStatus !== "ACTIVE") {
     throw new Error("Forbidden: Active membership required");
   }
 
