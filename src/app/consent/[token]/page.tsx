@@ -1,20 +1,25 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 type ConsentData = {
   vendorName: string;
   serviceName: string;
   bookingName: string;
+  scheduledDate: string;
+  customerName: string;
   createdAt: string;
   status: string;
 };
 
 export default function ConsentPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const token = String(params?.token || '');
+  const returnTo = String(searchParams?.get('returnTo') || '').trim();
+  const mediaSessionId = String(searchParams?.get('mediaSessionId') || '').trim();
 
   const [data, setData] = useState<ConsentData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,8 +46,10 @@ export default function ConsentPage() {
               consent?.vendor?.businessName ||
               consent?.vendor?.name ||
               'Service Provider',
-            serviceName: consent?.booking?.service?.name || 'Service',
+            serviceName: consent?.booking?.service?.name || consent?.booking?.title || 'Service',
             bookingName: consent?.booking?.title || consent?.booking?.id || 'Booking',
+            scheduledDate: consent?.booking?.scheduledFor || '',
+            customerName: consent?.booking?.clientName || '',
             createdAt: consent?.requestedAt || consent?.createdAt || '',
             status: consent?.status || '',
           });
@@ -82,6 +89,16 @@ export default function ConsentPage() {
               }
             : previous
         );
+        if (returnTo) {
+          const redirectUrl = new URL(returnTo, window.location.origin);
+          redirectUrl.searchParams.set('consentAccepted', '1');
+          redirectUrl.searchParams.set('consentToken', token);
+          if (mediaSessionId) {
+            redirectUrl.searchParams.set('mediaSessionId', mediaSessionId);
+          }
+          window.location.href = `${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`;
+          return;
+        }
       } else {
         setError('Failed to accept consent.');
       }
@@ -134,87 +151,53 @@ export default function ConsentPage() {
     <div style={{ maxWidth: 700, margin: '40px auto', fontFamily: 'sans-serif' }}>
       {/* HEADER */}
       <div style={{ marginBottom: 20 }}>
-        <h1>Review & Approve Your Service Video Access</h1>
+        <h1>{data?.vendorName || 'Your vendor'} is requesting your approval</h1>
         <p style={{ color: '#555' }}>
-          Powered by <strong>Reliance</strong> — Secure Service Video Platform
+          This request is related to your service with <strong>{data?.vendorName || 'your vendor'}</strong>.
         </p>
       </div>
 
       {/* CONTEXT */}
-      <div style={{ background: '#f6f8fa', padding: 16, borderRadius: 8 }}>
+      <div style={{ background: '#eef6ff', padding: 16, borderRadius: 8 }}>
         <p>
-          <strong>{data?.vendorName}</strong> completed a service for you and is requesting permission
-          to share your service video.
+          <strong>{data?.vendorName || 'Your vendor'}</strong> uses Reliance to securely record and share proof of completed work so you can review it afterward.
         </p>
       </div>
 
       {/* DETAILS */}
       <div style={{ marginTop: 20, padding: 16, border: '1px solid #ddd', borderRadius: 8 }}>
-        <p><strong>Service:</strong> {data?.serviceName}</p>
-        <p><strong>Booking:</strong> {data?.bookingName}</p>
+        <p><strong>Vendor:</strong> {data?.vendorName || '—'}</p>
+        <p><strong>Service:</strong> {data?.serviceName || data?.bookingName || '—'}</p>
+        <p>
+          <strong>Scheduled date:</strong>{' '}
+          {data?.scheduledDate ? new Date(data.scheduledDate).toLocaleDateString() : '—'}
+        </p>
+        {data?.customerName ? <p><strong>Customer:</strong> {data.customerName}</p> : null}
         <p><strong>Requested:</strong> {new Date(data?.createdAt || '').toLocaleString()}</p>
       </div>
 
       {/* ACCESS INFO */}
-      <div style={{ marginTop: 20, padding: 16, background: '#eef6ff', borderRadius: 8 }}>
-        <p><strong>🔐 Accessing Your Video</strong></p>
+      <div style={{ marginTop: 20, padding: 16, background: '#f0fdf4', borderRadius: 8 }}>
+        <p><strong>Access after approval</strong></p>
         <ul>
-          <li>If you already have a Reliance account → log in after accepting</li>
-          <li>If not → you will be prompted to create one</li>
-          <li>Your video is securely stored and only visible to you</li>
+          <li>If you already have a Reliance account, sign in after approving</li>
+          <li>If not, you can create one when you are ready</li>
+          <li>Your service proof stays securely stored in Reliance</li>
         </ul>
       </div>
 
-      {/* WHAT WILL BE RECORDED */}
-      <div style={{ marginTop: 20, padding: 16, background: '#eef6ff', borderRadius: 8 }}>
-        <p><strong>🎥 Service Recording Details</strong></p>
+      {/* WHY THIS IS NEEDED */}
+      <div style={{ marginTop: 20, padding: 16, background: '#f6f8fa', borderRadius: 8 }}>
+        <p><strong>Why this is needed</strong></p>
         <p style={{ fontSize: 14, color: '#555', marginTop: 6 }}>
-          The following recordings may be captured as part of your service experience.
-        </p>
-        <p>
-          Your service provider may record the following as part of your service:
+          {data?.vendorName || 'Your vendor'} may capture recording steps as part of documenting your service.
         </p>
         <p>• Intro Video – before work begins (condition overview)</p>
         <p>• In-Progress Video – during the service (work being performed)</p>
         <p>• Completion Video – after the service (final results and proof)</p>
-        <p style={{ marginTop: 12 }}>
-          By accepting, you grant permission for your service provider to capture these recordings as part of completing and documenting your service.
-        </p>
-        <p style={{ marginTop: 12 }}>
-          These recordings are used for service verification, quality assurance, customer review access, and dispute protection.
-        </p>
-        <p style={{ marginTop: 12 }}>
-          This single consent covers all service-related recordings associated with this booking, including before, during, and after the service.
-        </p>
-      </div>
-
-      {/* CONSENT & VERIFICATION */}
-      <div style={{ marginTop: 20, padding: 16, background: '#f0fdf4', borderRadius: 8 }}>
-        <p><strong>🛡️ Consent & Verification</strong></p>
-        <p style={{ fontSize: 14, color: '#6b7280', marginTop: 6 }}>
-          Your acceptance will be securely recorded for compliance and protection.
-        </p>
-        <p style={{ fontSize: 14, color: '#374151', marginTop: 8 }}>
-          Consent will be recorded with:
-        </p>
-        <p style={{ fontSize: 14, color: '#374151' }}>• Date & Time</p>
-        <p style={{ fontSize: 14, color: '#374151' }}>• Device and browser information</p>
-        <p style={{ fontSize: 14, color: '#374151' }}>• IP / security verification details</p>
-        <p style={{ fontSize: 14, color: '#374151' }}>• Booking reference</p>
         <p style={{ marginTop: 12, fontSize: 14, color: '#374151' }}>
-          This information is used for compliance, fraud prevention, dispute protection, and verification of consent.
+          Your response is securely logged with verification details for compliance, fraud prevention, and dispute protection.
         </p>
-      </div>
-
-      {/* CONSENT TERMS */}
-      <div style={{ marginTop: 20 }}>
-        <p><strong>You agree to:</strong></p>
-        <ul>
-          <li>Receive access to service-related video content</li>
-          <li>Participate in the service review process</li>
-          <li>Allow secure storage and playback via Reliance</li>
-          <li>Acknowledge activity is logged for compliance</li>
-        </ul>
       </div>
 
       {/* LEGAL LINKS */}
@@ -238,7 +221,7 @@ export default function ConsentPage() {
               marginRight: 10
             }}
           >
-            {accepting ? 'Processing...' : 'Accept & Continue'}
+            {accepting ? 'Processing...' : 'Approve access'}
           </button>
 
           <button
@@ -246,7 +229,7 @@ export default function ConsentPage() {
             disabled={accepting || declining}
             style={{ padding: '10px 20px' }}
           >
-            {declining ? 'Processing...' : 'Decline Access'}
+            {declining ? 'Processing...' : 'Decline'}
           </button>
         </div>
       ) : accepted ? (
