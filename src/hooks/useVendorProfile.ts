@@ -23,6 +23,27 @@ type VendorContextResponse = {
   context?: Record<string, unknown>;
 };
 
+function normalizeUserId(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  if (value && typeof value === "object") {
+    const nestedId = (value as Record<string, unknown>).id;
+    if (typeof nestedId === "string") {
+      const trimmed = nestedId.trim();
+      return trimmed || null;
+    }
+    if (typeof nestedId === "number") {
+      return String(nestedId);
+    }
+  }
+  return null;
+}
+
 async function fetchVendorProfileOnce(
   userId: string,
   headers: Record<string, string>
@@ -190,7 +211,7 @@ function buildFallbackVendorProfile(vendorId: string, businessName?: string | nu
 
 export function useVendorProfile() {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
-  const userId = user?.id || null;
+  const userId = normalizeUserId(user?.id);
   const [data, setData] = useState<VendorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

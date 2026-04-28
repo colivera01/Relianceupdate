@@ -1,6 +1,6 @@
 'use client';
 import type { LucideIcon } from 'lucide-react';
-import { Users, HardDrive, Star, Briefcase, DollarSign, HelpCircle, LogOut, AlertTriangle, Home } from 'lucide-react';
+import { Users, HardDrive, Star, Briefcase, HelpCircle, LogOut, AlertTriangle, Home } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import Link from 'next/link';
 import ProfileHeader from '../../components/ProfileHeader';
@@ -20,7 +20,6 @@ const sidebarLinks: SidebarLink[] = [
   { label: 'View Reviews', icon: Star, href: '/vendor/reviews' },
   { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },
   { label: 'Employees', icon: Users, href: '/vendor/employees' },
-  { label: 'Billing & Earnings', icon: DollarSign, href: '/vendor/billing' },
   { label: 'Support & Help', icon: HelpCircle, href: '/vendor/support' },
   { label: 'Logout', icon: LogOut, href: '/logout' },
 ];
@@ -149,7 +148,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
         />
         
         {/* Main Content */}
-        <div className="flex-1 px-4 md:px-8 py-8">
+        <div className="flex-1 overflow-x-hidden px-4 md:px-8 py-8">
           {children}
         </div>
       </main>

@@ -20,8 +20,15 @@ export function getClientSessionHeaders(preferredUserId?: string | null): Record
     return headers;
   }
 
-  if (preferredUserId) {
-    headers["x-user-id"] = String(preferredUserId);
+  const normalizedPreferredUserId =
+    typeof preferredUserId === "string"
+      ? preferredUserId.trim()
+      : typeof preferredUserId === "number"
+      ? String(preferredUserId)
+      : "";
+
+  if (normalizedPreferredUserId) {
+    headers["x-user-id"] = normalizedPreferredUserId;
   } else {
     const id = readStoredUserIdFromBrowser();
     if (id) {
@@ -35,10 +42,11 @@ export function getClientSessionHeaders(preferredUserId?: string | null): Record
   }
 
   if (AUTH_DEBUG) {
-    console.info("[getClientSessionHeaders]", {
-      "x-user-id": headers["x-user-id"] ?? null,
-      authorizationPreview: token ? `Bearer ${String(token).slice(0, 12)}…` : null,
-    });
+    console.info(
+      `[getClientSessionHeaders] x-user-id=${headers["x-user-id"] ?? "null"} auth=${
+        token ? `Bearer ${String(token).slice(0, 12)}...` : "null"
+      }`
+    );
   }
 
   return headers;

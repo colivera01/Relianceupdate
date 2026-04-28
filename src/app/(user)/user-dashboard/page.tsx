@@ -144,10 +144,10 @@ export default function UserDashboardPage() {
 
   // Mock data for Gen Z appeal
   const trendingServices = [
-    { id: 1, name: 'TikTok Style Haircut', vendor: 'Style Studio NYC', rating: 4.8, distance: '0.8 mi', price: '$45', image: 'https://images.unsplash.com/photo-1562322140-8baeececf3df?w=300&h=200&fit=crop', trending: true },
-    { id: 2, name: 'Instagram-Worthy Nails', vendor: 'Nail Art Collective', rating: 4.9, distance: '1.2 mi', price: '$35', image: 'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=300&h=200&fit=crop', trending: true },
-    { id: 3, name: 'Viral TikTok Makeup', vendor: 'Beauty Bar', rating: 4.7, distance: '0.5 mi', price: '$55', image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=300&h=200&fit=crop', trending: true },
-    { id: 4, name: 'Social Media Photography', vendor: 'Photo Studio Pro', rating: 4.6, distance: '1.5 mi', price: '$120', image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=300&h=200&fit=crop', trending: false },
+    { id: 1, name: 'TikTok Style Haircut', vendor: 'Style Studio NYC', rating: 4.8, distance: '0.8 mi', image: 'https://images.unsplash.com/photo-1562322140-8baeececf3df?w=300&h=200&fit=crop', trending: true },
+    { id: 2, name: 'Instagram-Worthy Nails', vendor: 'Nail Art Collective', rating: 4.9, distance: '1.2 mi', image: 'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=300&h=200&fit=crop', trending: true },
+    { id: 3, name: 'Viral TikTok Makeup', vendor: 'Beauty Bar', rating: 4.7, distance: '0.5 mi', image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=300&h=200&fit=crop', trending: true },
+    { id: 4, name: 'Social Media Photography', vendor: 'Photo Studio Pro', rating: 4.6, distance: '1.5 mi', image: 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=300&h=200&fit=crop', trending: false },
   ];
 
   const nearbyVendors = [
@@ -161,7 +161,7 @@ export default function UserDashboardPage() {
     { label: 'Bookings This Month', value: '8', icon: Calendar, color: 'blue' },
     { label: 'Favorites', value: '23', icon: Heart, color: 'pink' },
     { label: 'Reviews Given', value: '12', icon: Star, color: 'yellow' },
-    { label: 'Money Saved', value: '$156', icon: TrendingUp, color: 'green' },
+    { label: 'Vendors Followed', value: '14', icon: TrendingUp, color: 'green' },
   ];
 
   return (
@@ -278,12 +278,9 @@ export default function UserDashboardPage() {
                 <div className="p-4">
                   <h3 className="font-semibold text-gray-900 mb-1">{service.name}</h3>
                   <p className="text-sm text-gray-600 mb-2">{service.vendor}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg font-bold text-purple-600">{service.price}</span>
-                    <button className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-full text-sm font-medium hover:from-purple-600 hover:to-pink-600 transition-all duration-200">
-                      Book Now
-                    </button>
-                  </div>
+                  <button className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-full text-sm font-medium hover:from-purple-600 hover:to-pink-600 transition-all duration-200">
+                    Book Now
+                  </button>
                 </div>
               </div>
             ))}

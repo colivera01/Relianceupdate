@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ArrowLeft, Plus, Search, Filter, Download, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, MessageSquare, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from "next/navigation";
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import {
   runVendorJobMediaUpload,
@@ -137,9 +138,19 @@ const formatPhoneNumber = (value: string) => {
 };
 
 export default function VendorJobs() {
+  const router = useRouter();
   const dashboardDebug = process.env.NODE_ENV !== 'production';
   const { user } = useAuth();
-  const authUserId = user?.id || null;
+  const authUserId =
+    typeof user?.id === 'string'
+      ? user.id.trim()
+      : typeof user?.id === 'number'
+      ? String(user.id)
+      : user?.id && typeof user.id === 'object' && typeof (user.id as any).id === 'string'
+      ? String((user.id as any).id).trim()
+      : user?.id && typeof user.id === 'object' && typeof (user.id as any).id === 'number'
+      ? String((user.id as any).id)
+      : null;
   const {
     data: vendorProfile,
     loading: vendorProfileLoading,
@@ -627,10 +638,6 @@ export default function VendorJobs() {
   const [playbackTitle, setPlaybackTitle] = useState('');
   const [playbackError, setPlaybackError] = useState('');
   const [resolvingPlaybackId, setResolvingPlaybackId] = useState<string | null>(null);
-  
-  // Job details modal state
-  const [showJobDetails, setShowJobDetails] = useState(false);
-  const [selectedJobForDetails, setSelectedJobForDetails] = useState<any>(null);
   
   // Calendar date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -1400,15 +1407,6 @@ export default function VendorJobs() {
       });
     }
   }, [showVideoArchive, vendorId, jobs]);
-
-  // Keep selected job detail modal in sync when jobs state updates.
-  useEffect(() => {
-    if (!selectedJobForDetails) return;
-    const refreshed = jobs.find((job) => String(job.id) === String(selectedJobForDetails.id));
-    if (refreshed) {
-      setSelectedJobForDetails(refreshed);
-    }
-  }, [jobs, selectedJobForDetails]);
 
   const hydratePersistedVideos = async (sourceJobs: any[]) => {
     if (!vendorId || !Array.isArray(sourceJobs) || sourceJobs.length === 0) return;
@@ -2316,93 +2314,8 @@ export default function VendorJobs() {
   };
 
   const openJobDetails = (job) => {
-    setSelectedJobForDetails(job);
-    setShowJobDetails(true);
-    if (!vendorId || !job) return;
-
-    (async () => {
-      try {
-        const bookingId = String(job.bookingId || job.id);
-        const sessionsRes = await fetch(
-          `/api/vendors/${vendorId}/media/sessions?bookingId=${encodeURIComponent(bookingId)}`,
-          { method: 'GET', headers: getRequestHeaders(), cache: 'no-store' }
-        );
-        if (!sessionsRes.ok) return;
-        const sessionsJson = await sessionsRes.json().catch(() => ({}));
-        const sessionsRaw = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
-        const sessions = sessionsRaw.filter(
-          (s: any) => String(s?.status || '').toUpperCase() !== 'ARCHIVED'
-        );
-        if (sessions.length === 0) return;
-
-        const detailResults = await Promise.all(
-          sessions.map(async (session: any) => {
-            if (!session?.id) return null;
-            const detailRes = await fetch(`/api/vendors/${vendorId}/media/sessions/${session.id}`, {
-              method: 'GET',
-              headers: getRequestHeaders(),
-              cache: 'no-store',
-            });
-            if (!detailRes.ok) return null;
-            const detailJson = await detailRes.json().catch(() => ({}));
-            const sess = detailJson?.session || null;
-            if (sess && String(sess?.status || '').toUpperCase() === 'ARCHIVED') return null;
-            return sess;
-          })
-        );
-
-        const persistedVideos = detailResults
-          .filter(Boolean)
-          .flatMap((session: any) => {
-            const mediaAssets = Array.isArray(session.mediaAssets) ? session.mediaAssets : [];
-            return mediaAssets.map((asset: any) => {
-              const derivedStatus = normalizeModerationStatus(asset?.moderationStatus);
-              const mediaPurpose = deriveMediaPurposeFromSessionType(session?.sessionType);
-              const vendorJobVideoStage = normalizeVendorJobVideoStage(session?.vendorJobVideoStage);
-              return {
-                id: asset.id,
-                title: session.title || 'Service Video',
-                description: session.description || '',
-                url: asset.blobUrl || null,
-                uploadedAt: asset.createdAt
-                  ? new Date(asset.createdAt).toISOString().split('T')[0]
-                  : new Date().toISOString().split('T')[0],
-                status: derivedStatus,
-                visibilityStatus: asset?.visibilityStatus ? String(asset.visibilityStatus) : '',
-                moderationStatus: asset?.moderationStatus ? String(asset.moderationStatus) : '',
-                moderationReason: asset?.moderationReason ? String(asset.moderationReason) : '',
-                moderatedAt: asset?.moderatedAt || null,
-                mediaSessionId: session.id,
-                mimeType: asset.mimeType || '',
-                mediaPurpose,
-                sessionType: session.sessionType ? String(session.sessionType) : '',
-                vendorJobVideoStage: vendorJobVideoStage || '',
-                isPrimaryProofVideo:
-                  vendorJobVideoStage === 'COMPLETED' ||
-                  String(session?.sessionType || '').toUpperCase().includes('COMPLETION'),
-                persisted: true,
-              };
-            });
-          });
-
-        if (persistedVideos.length === 0) return;
-        const existingVideos = Array.isArray(job.videos) ? job.videos : [];
-        const byId = new Map<string, any>();
-        [...existingVideos, ...persistedVideos].forEach((video: any) => {
-          const key = String(video.id);
-          byId.set(key, { ...byId.get(key), ...video });
-        });
-
-        const updatedJob = {
-          ...job,
-          videos: Array.from(byId.values()),
-        };
-        setJobs((prev) => prev.map((j) => (String(j.id) === String(job.id) ? updatedJob : j)));
-        setSelectedJobForDetails(updatedJob);
-      } catch (error) {
-        console.error('Failed to refresh job details media', error);
-      }
-    })();
+    if (!job?.id) return;
+    router.push(`/vendor/jobs/${encodeURIComponent(String(job.id))}`);
   };
 
   const handleJobCardClick = (event: any, job: any) => {
@@ -3248,11 +3161,6 @@ export default function VendorJobs() {
               : row
           )
         );
-        setSelectedJobForDetails((prev: any) =>
-          prev && String(prev?.id || "") === targetId
-            ? { ...prev, status: "awaiting_review", operationalPhase: "AWAITING_VENDOR_REVIEW" }
-            : prev
-        );
       }
       setJobActionFeedback({
         type: "success",
@@ -3558,7 +3466,7 @@ export default function VendorJobs() {
   }
 
   return (
-    <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+    <div className="overflow-x-hidden px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
       {Boolean(vendorId && vendorContextDbFailure) && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
           <div className="flex items-start justify-between gap-3">
@@ -3827,8 +3735,8 @@ export default function VendorJobs() {
                   </button>
                   
                   {showDatePicker && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 p-4" style={{ minWidth: '450px', width: 'max-content' }}>
-                      <div className="flex items-center justify-between mb-3" style={{ minWidth: '350px', width: '100%' }}>
+                    <div className="absolute top-full left-0 mt-1 z-50 w-[min(90vw,28rem)] rounded-lg border border-gray-300 bg-white p-4 shadow-lg">
+                      <div className="mb-3 flex items-center justify-between">
                         <button
                           onClick={() => {
                             const currentDate = new Date(selectedCalendarDate || Date.now());
@@ -4099,462 +4007,6 @@ export default function VendorJobs() {
               Close Archive
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Job Details Modal */}
-      <Dialog open={showJobDetails} onOpenChange={setShowJobDetails}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Info className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <DialogTitle className="text-xl">Job Details</DialogTitle>
-                  <p className="text-sm text-gray-600">Comprehensive job information</p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowJobDetails(false)}
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          </DialogHeader>
-
-          {selectedJobForDetails && (
-            <div className="flex-1 overflow-y-auto space-y-6">
-              {/* Job Header */}
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{selectedJobForDetails.title}</h3>
-                    <p className="text-sm text-gray-600 mt-1">Job ID: {selectedJobForDetails.id}</p>
-                  </div>
-                  <Badge className={getJobListBadgeColor(selectedJobForDetails)}>
-                    {formatJobStatusLabel(selectedJobForDetails.status, selectedJobForDetails.operationalPhase)}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Client Information */}
-              <div className="bg-white border rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Client Information</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Client Name</p>
-                    <p className="font-medium">{selectedJobForDetails.client}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Phone</p>
-                    <p className="font-medium">{selectedJobForDetails.phone}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Email</p>
-                    <p className="font-medium">{selectedJobForDetails.email || 'Not provided'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Created Date</p>
-                    <p className="font-medium">{selectedJobForDetails.createdAt}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Assignment Information */}
-              <div className="bg-white border rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Assignment Information</h4>
-                {(() => {
-                  const consentState = String(
-                    consentStatusByBookingId[
-                      String(selectedJobForDetails?.bookingId || selectedJobForDetails?.id || '')
-                    ] || ''
-                  ).toLowerCase();
-                  if (
-                    consentState !== CONSENT_STATE.ACCEPTED &&
-                    consentState !== CONSENT_STATE.DECLINED
-                  ) {
-                    return null;
-                  }
-                  return (
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      {consentState === CONSENT_STATE.ACCEPTED ? (
-                        <Badge className="bg-green-100 text-green-800">Consent approved</Badge>
-                      ) : (
-                        <Badge className="bg-red-100 text-red-800">Consent declined</Badge>
-                      )}
-                      {consentState === CONSENT_STATE.ACCEPTED && selectedJobForDetails?.assignedEmployees?.length > 0 ? (
-                        <Badge className="bg-emerald-100 text-emerald-800">Ready to record</Badge>
-                      ) : null}
-                    </div>
-                  );
-                })()}
-                {selectedJobForDetails.assignedEmployees && selectedJobForDetails.assignedEmployees.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-emerald-100 text-emerald-800">Assigned</Badge>
-                      <span className="text-sm text-emerald-900">Service video package unlocked</span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">Assigned Employees</p>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedJobForDetails.assignedEmployees.map((employee, index) => (
-                        <Badge key={index} className="bg-green-100 text-green-800">
-                          {employee}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <p className="text-gray-600">No employee assigned</p>
-                    <p className="text-sm text-amber-700 font-medium">Video package locked until assignment</p>
-                  </div>
-                )}
-                {(() => {
-                  const nextStage = getNextMissingVideoStageForJob(selectedJobForDetails);
-                  if (!nextStage) return null;
-                  const canRecordNextStage = isJobAssignedForVideoUpload(selectedJobForDetails);
-                  return (
-                    <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-3">
-                      <div className="text-sm text-blue-800">
-                        Next stage: {formatVideoStageLabel(nextStage)}
-                      </div>
-                      {canRecordNextStage ? (
-                        <Button
-                          size="sm"
-                          className="mt-2 bg-blue-600 hover:bg-blue-700"
-                          onClick={() => {
-                            setShowJobDetails(false);
-                            openComplianceForNextStage(selectedJobForDetails);
-                          }}
-                        >
-                          Continue Recording
-                        </Button>
-                      ) : null}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Videos — grouped by structured stage */}
-              <div className="bg-white border rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-1">Service Videos</h4>
-                <p className="text-xs text-gray-500 mb-3">
-                  Three slots per job: <span className="font-medium text-gray-700">Intro</span> before work,{' '}
-                  <span className="font-medium text-gray-700">In Progress</span> on site, and{' '}
-                  <span className="font-medium text-gray-700">Completed</span> as the primary proof clip when you
-                  finish the job.
-                </p>
-                <p className="text-xs text-gray-500 mb-3">
-                  Follow the steps in order: Intro → In Progress → Completed
-                </p>
-                {playbackError && (
-                  <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                    {playbackError}
-                  </div>
-                )}
-                {(() => {
-                  const { intro, inProgress, completed, legacy } = groupVideosForStagePanels(
-                    selectedJobForDetails.videos
-                  );
-                  const renderVideoCard = (video: any, key: string) => {
-                    const proof =
-                      Boolean(video.isPrimaryProofVideo) ||
-                      normalizeVendorJobVideoStage(video?.vendorJobVideoStage) === 'COMPLETED';
-                    return (
-                      <div
-                        key={key}
-                        className={`p-3 rounded-lg mb-2 last:mb-0 ${
-                          proof
-                            ? 'bg-white ring-2 ring-emerald-400/70 border border-emerald-200'
-                            : 'bg-gray-50 border border-transparent'
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                          <div>
-                            <div className="font-medium flex items-center gap-2 flex-wrap">
-                              {video.title}
-                              {proof ? (
-                                <Badge className="bg-emerald-700 text-white hover:bg-emerald-700 text-xs">
-                                  Primary proof video
-                                </Badge>
-                              ) : null}
-                            </div>
-                            <p className="text-sm text-gray-600">{video.description}</p>
-                            <p className="text-xs text-gray-500">Uploaded: {video.uploadedAt}</p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge className={getStatusColor(video.status)}>
-                              {`Moderation: ${String(video.status || 'pending').replace(/_/g, ' ')}`}
-                            </Badge>
-                            {video.visibilityStatus ? (
-                              <Badge className="bg-slate-100 text-slate-700">
-                                {`Visibility: ${String(video.visibilityStatus).replace(/_/g, ' ')}`}
-                              </Badge>
-                            ) : null}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleWatchVideo(video)}
-                              disabled={resolvingPlaybackId === String(video.id)}
-                            >
-                              {resolvingPlaybackId === String(video.id) ? 'Opening...' : 'Watch'}
-                            </Button>
-                          </div>
-                        </div>
-                        {video.moderationReason || video.moderatedAt ? (
-                          <div className="mt-2 text-xs text-gray-600">
-                            {video.moderationReason ? <p>Reason: {video.moderationReason}</p> : null}
-                            {video.moderatedAt ? <p>Moderated: {new Date(video.moderatedAt).toLocaleString()}</p> : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  };
-                  const stageStatus = [
-                    { key: 'INTRO', label: 'Intro', uploaded: intro.length > 0 },
-                    { key: 'IN_PROGRESS', label: 'In Progress', uploaded: inProgress.length > 0 },
-                    { key: 'COMPLETED', label: 'Completed', uploaded: completed.length > 0 },
-                  ] as const;
-                  const packageReady = stageStatus.every((stage) => stage.uploaded);
-                  const nextStageKey = stageStatus.find((stage) => !stage.uploaded)?.key ?? null;
-                  const stageStatusMap = new Map(stageStatus.map((stage) => [stage.key, stage.uploaded]));
-
-                  const stagePanel = (
-                    title: string,
-                    items: any[],
-                    opts?: {
-                      variant?: 'default' | 'primaryProof';
-                      emptyHint?: string;
-                      stageKey?: VendorJobVideoStage;
-                    }
-                  ) => {
-                    const isProof = opts?.variant === 'primaryProof';
-                    const stageKey = opts?.stageKey;
-                    const hasStageVideo = items.length > 0;
-                    const stageActionLabel = stageKey
-                      ? `${hasStageVideo ? 'Replace' : 'Upload'} ${formatVideoStageLabel(stageKey)}`
-                      : null;
-                    const stageActionDisabled = Boolean(
-                      stageKey && !isJobAssignedForVideoUpload(selectedJobForDetails)
-                    );
-                    const stageUploaded = Boolean(stageKey && stageStatusMap.get(stageKey));
-                    const isCurrentStage = Boolean(stageKey && nextStageKey === stageKey);
-                    return (
-                      <div
-                        className={`rounded-lg p-3 mb-3 last:mb-0 border ${
-                          stageUploaded
-                            ? 'border-emerald-300 bg-emerald-50/60'
-                            : isCurrentStage
-                            ? 'border-blue-300 bg-blue-50'
-                            : isProof
-                            ? 'border-emerald-300 bg-emerald-50/50'
-                            : 'border-gray-200 bg-white'
-                        }`}
-                      >
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <h5 className="text-sm font-semibold text-gray-900 flex flex-wrap items-center gap-2">
-                            {title}
-                            {isProof ? (
-                              <span className="text-xs font-normal text-emerald-800">(primary proof)</span>
-                            ) : null}
-                            {stageUploaded ? (
-                              <span className="text-xs font-normal text-emerald-700">✔ Completed</span>
-                            ) : isCurrentStage ? (
-                              <span className="text-xs font-normal text-blue-700">Next</span>
-                            ) : null}
-                          </h5>
-                          {stageKey && stageActionLabel ? (
-                            <Button
-                              size="sm"
-                              className="h-8 bg-blue-600 hover:bg-blue-700"
-                              onClick={() => {
-                                setShowJobDetails(false);
-                                openComplianceForSpecificStage(
-                                  selectedJobForDetails,
-                                  stageKey,
-                                  hasStageVideo
-                                );
-                              }}
-                              disabled={stageActionDisabled}
-                              title={stageActionDisabled ? videoAssignmentRequiredCopy : undefined}
-                            >
-                              {stageActionLabel}
-                            </Button>
-                          ) : null}
-                        </div>
-                        {items.length === 0 ? (
-                          <p className="text-sm text-gray-600">
-                            {opts?.emptyHint ?? 'No video for this stage yet.'}
-                          </p>
-                        ) : (
-                          items.map((v, i) => renderVideoCard(v, `${title}-${i}-${v.id}`))
-                        )}
-                      </div>
-                    );
-                  };
-
-                  return (
-                    <div className="space-y-3">
-                      <div
-                        className={`rounded-lg border p-3 ${
-                          packageReady
-                            ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
-                            : 'border-amber-300 bg-amber-50 text-amber-900'
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            className={
-                              packageReady
-                                ? 'bg-emerald-700 text-white hover:bg-emerald-700'
-                                : 'bg-amber-600 text-white hover:bg-amber-600'
-                            }
-                          >
-                            {packageReady ? 'Ready to Submit for Manager Review' : 'Video Package Incomplete'}
-                          </Badge>
-                          <span className="text-xs">
-                            Submit this job for manager review after all three required stages are uploaded.
-                          </span>
-                        </div>
-                        {isEmployeeView ? (
-                          <div className="mt-3">
-                            {isJobReadyToSubmitForManagerReview(selectedJobForDetails) ? (
-                              <Button
-                                size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700"
-                                disabled={Boolean(jobMutationLoadingId)}
-                                onClick={() =>
-                                  handleSubmitForManagerReview(selectedJobForDetails).catch(() => undefined)
-                                }
-                              >
-                                {jobMutationLoadingId === `submit-review:${String(selectedJobForDetails?.id || '')}`
-                                  ? 'Submitting...'
-                                  : 'Submit for Manager Review'}
-                              </Button>
-                            ) : isJobSubmittedForManagerReview(selectedJobForDetails) ? (
-                              <p className="text-sm font-medium text-emerald-800">Submitted for manager review.</p>
-                            ) : null}
-                          </div>
-                        ) : null}
-                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          {stageStatus.map((stage) => (
-                            <div key={stage.key} className="flex items-center justify-between rounded border bg-white/70 px-2 py-1 text-sm">
-                              <span className="font-medium">{stage.label}</span>
-                              <Badge
-                                variant="outline"
-                                className={stage.uploaded ? 'border-emerald-300 text-emerald-700' : 'border-amber-300 text-amber-700'}
-                              >
-                                {stage.uploaded ? 'Uploaded' : 'Missing'}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {stageStatus.map((stage, index) => (
-                            <div key={stage.key} className="flex items-center gap-2">
-                              <span
-                                className={`rounded-full border px-2 py-1 text-xs ${
-                                  stage.uploaded
-                                    ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
-                                    : stage.key === nextStageKey
-                                    ? 'border-blue-300 bg-blue-100 text-blue-800 font-semibold'
-                                    : 'border-gray-200 bg-gray-100 text-gray-500'
-                                }`}
-                              >
-                                {stage.uploaded ? `✔ ${stage.label}` : stage.label}
-                              </span>
-                              {index < stageStatus.length - 1 ? (
-                                <span className="text-gray-400">→</span>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        {stagePanel('Intro', intro, {
-                          stageKey: 'INTRO',
-                          emptyHint:
-                            'No intro video yet. Optional: a short “before we start” clip so customers see who is arriving and what to expect.',
-                        })}
-                        {stagePanel('In Progress', inProgress, {
-                          stageKey: 'IN_PROGRESS',
-                          emptyHint:
-                            'No in-progress video yet. Use this slot for mid-job updates from the field while work is underway.',
-                        })}
-                        {stagePanel('Completed', completed, {
-                          stageKey: 'COMPLETED',
-                          variant: 'primaryProof',
-                          emptyHint:
-                            'No completed-stage video yet. When the job is finished, upload here — moderators treat this as your main proof clip when it is present.',
-                        })}
-                        {legacy.length > 0
-                          ? stagePanel('Earlier uploads (legacy format)', legacy, {
-                              emptyHint: 'Videos from before structured stages were introduced.',
-                            })
-                          : null}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Notes */}
-              <div className="bg-white border rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Notes & Comments</h4>
-                {selectedJobForDetails.notes && selectedJobForDetails.notes.length > 0 ? (
-                  <div className="space-y-3">
-                    {selectedJobForDetails.notes.map((note, index) => (
-                      <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm">{note.text}</p>
-                        <p className="text-xs text-gray-500 mt-1">Added: {note.date}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No notes added to this job</p>
-                )}
-              </div>
-
-              {/* Audit Trail */}
-              <div className="bg-white border rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Audit Trail</h4>
-                {selectedJobForDetails.audit && selectedJobForDetails.audit.length > 0 ? (
-                  <div className="space-y-2">
-                    {selectedJobForDetails.audit.map((entry, index) => (
-                      <div key={index} className="flex items-start gap-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                        <p className="text-sm text-gray-700">{entry}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No audit trail available</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowJobDetails(false)}>
-              Close
-            </Button>
-            <Button 
-              onClick={() => {
-                setShowJobDetails(false);
-                openAssignmentModal(selectedJobForDetails);
-              }}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              <Users className="w-4 h-4 mr-2" />
-              {selectedJobForDetails?.assignedEmployees?.length > 0 ? 'Reassign' : 'Assign'}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -6367,6 +5819,18 @@ export default function VendorJobs() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-no-card-open
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openJobDetails(job);
+                    }}
+                    disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
+                  >
+                    View
+                  </Button>
                   <Badge className={getJobListBadgeColor(job)}>
                     {formatJobStatusLabel(job.status, job.operationalPhase)}
                   </Badge>
@@ -6414,7 +5878,7 @@ export default function VendorJobs() {
                       disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
                     >
                       Actions
-                      <ChevronDown className="w-4 h-4 ml-1" />
+                      <ChevronDown className="ml-1 h-4 w-4 pointer-events-none" />
                     </Button>
                     {activeJobActionMenuId === String(job.id) && (
                       <div

@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings, CheckCircle, XCircle, Info, User, Shield, CreditCard, Bell, QrCode, Smartphone as DeviceIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Settings, CheckCircle, XCircle, Info, User, Shield, Bell, QrCode, Smartphone as DeviceIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorDevices } from '@/hooks/useVendorDevices';
@@ -69,12 +69,10 @@ export default function VendorProfilePage() {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [showPairModal, setShowPairModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [pairingSuccess, setPairingSuccess] = useState(false);
   const [initialDeviceCount, setInitialDeviceCount] = useState(0);
   
-  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
   const [addressQuery, setAddressQuery] = useState('');
   const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
   const [reminders, setReminders] = useState({ review: true, invoice: false, maintenance: true, followUp: true });
@@ -146,9 +144,6 @@ export default function VendorProfilePage() {
         specializations: profile.specializations ?? [],
         serviceAreas: profile.serviceAreas ?? [],
       });
-      
-      // Initialize paymentsEnabled from profile
-      setPaymentsEnabled(profile.paymentsEnabled ?? false);
       
       // Initialize reminders from profile
       
@@ -334,16 +329,6 @@ export default function VendorProfilePage() {
       setTimeout(() => setShowNotifToast(false), 2000);
     } catch (err) {
       console.error('Error saving notifications:', err);
-    }
-  };
-  
-  const handleTogglePayments = async () => {
-    try {
-      const newValue = !paymentsEnabled;
-      await updateProfile({ paymentsEnabled: newValue });
-      setPaymentsEnabled(newValue);
-    } catch (err) {
-      console.error('Error toggling payments:', err);
     }
   };
   
@@ -1061,66 +1046,6 @@ export default function VendorProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Enhanced Reliance Payments Card */}
-          <Card className="bg-gradient-to-br from-white to-emerald-50 border-emerald-200 shadow-lg">
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-100 rounded-lg">
-                  <CreditCard className="w-6 h-6 text-emerald-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl text-gray-800">Reliance Payments</CardTitle>
-                  <p className="text-sm text-gray-600">Manage your payment processing settings</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="p-4 bg-white rounded-lg border border-emerald-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-gray-800">Payment Processing</span>
-                    <Badge className={paymentsEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
-                      {paymentsEnabled ? 'Enabled' : 'Disabled'}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Use Reliance to charge customers and receive payouts to your bank account.
-                  </p>
-                  <div className="flex gap-3">
-                    <Button 
-                      onClick={handleTogglePayments}
-                      className={paymentsEnabled ? 
-                        'bg-red-600 hover:bg-red-700 text-white' : 
-                        'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      }
-                    >
-                      {paymentsEnabled ? 'Disable Payments' : 'Enable Payments'}
-                    </Button>
-                    <Button variant="outline" onClick={() => setShowPaymentModal(true)}>
-                      <Settings className="w-4 h-4 mr-2" />
-                      Settings
-                    </Button>
-                  </div>
-                </div>
-                {paymentsEnabled && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center p-3 bg-white rounded-lg border border-emerald-200">
-                      <div className="text-lg font-bold text-emerald-600">2.9%</div>
-                      <div className="text-xs text-emerald-600">Processing Fee</div>
-                    </div>
-                    <div className="text-center p-3 bg-white rounded-lg border border-emerald-200">
-                      <div className="text-lg font-bold text-emerald-600">24h</div>
-                      <div className="text-xs text-emerald-600">Payout Time</div>
-                    </div>
-                    <div className="text-center p-3 bg-white rounded-lg border border-emerald-200">
-                      <div className="text-lg font-bold text-emerald-600">$0</div>
-                      <div className="text-xs text-emerald-600">Setup Fee</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
         </section>
 
         {/* Enhanced Right Panel */}
@@ -1314,41 +1239,6 @@ export default function VendorProfilePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Payment Settings Modal */}
-      <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
-        <DialogContent className="max-w-lg bg-white">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-emerald-600" />
-              Payment Settings
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mt-4 space-y-4">
-            <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-              <h4 className="font-medium text-emerald-800 mb-2">Current Plan</h4>
-              <p className="text-sm text-emerald-700">Standard Payment Processing</p>
-              <p className="text-xs text-emerald-600 mt-1">2.9% + $0.30 per transaction</p>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Processing Fee</span>
-                <span className="font-medium">2.9%</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>Fixed Fee</span>
-                <span className="font-medium">$0.30</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>Payout Time</span>
-                <span className="font-medium">24 hours</span>
-              </div>
-            </div>
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
-              Update Payment Settings
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 } 

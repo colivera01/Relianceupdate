@@ -498,7 +498,6 @@ export default function MyBookingsPage() {
                       ) : null}
                     </div>
                     <div className="text-sm text-right">
-                      <p className="font-semibold text-gray-900">${Number(booking.total_price || 0).toFixed(2)}</p>
                       <p className="text-gray-600">Status: {formatMyBookingsStatusDisplay(booking.status)}</p>
                     </div>
                   </div>
