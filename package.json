@@ -20,7 +20,8 @@
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test e2e/booking-smoke.spec.ts",
     "test:e2e:smoke:favorites": "playwright test e2e/favorites-smoke.spec.ts",
-    "test:e2e:smoke:review": "playwright test e2e/review-smoke.spec.ts"
+    "test:e2e:smoke:review": "playwright test e2e/review-smoke.spec.ts",
+    "test:e2e:smoke:routes": "playwright test e2e/route-smoke.spec.ts"
   },
   "dependencies": {
     "@azure/storage-blob": "^12.31.0",

@@ -62,6 +62,7 @@ function formatServiceDate(dateValue: string | null | undefined): string {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'UTC',
   });
 }
 

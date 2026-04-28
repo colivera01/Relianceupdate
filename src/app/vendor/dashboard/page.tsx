@@ -22,6 +22,7 @@ export default function VendorDashboard() {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
+      timeZone: 'UTC',
     });
   };
 
@@ -416,7 +417,9 @@ export default function VendorDashboard() {
                   Open <span className="font-semibold">/device/pair</span> on your mobile device and enter this code.
                 </p>
                 {pairingExpiresAt ? (
-                  <p className="text-xs text-blue-700">Expires: {new Date(pairingExpiresAt).toLocaleString()}</p>
+                  <p className="text-xs text-blue-700">
+                    Expires: {new Date(pairingExpiresAt).toLocaleString('en-US', { timeZone: 'UTC' })}
+                  </p>
                 ) : null}
               </div>
             ) : null}

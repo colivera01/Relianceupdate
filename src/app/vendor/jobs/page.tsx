@@ -39,6 +39,30 @@ import {
   type VendorTeamMember,
 } from '@/lib/vendor-team-members';
 
+function parseDate(value: string | number | Date | null | undefined): Date | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatDateOnlyUtc(value: string | number | Date | null | undefined): string {
+  const parsed = parseDate(value);
+  if (!parsed) return '-';
+  return parsed.toLocaleDateString('en-US', { timeZone: 'UTC' });
+}
+
+function formatDateTimeUtc(value: string | number | Date | null | undefined): string {
+  const parsed = parseDate(value);
+  if (!parsed) return '-';
+  return parsed.toLocaleString('en-US', { timeZone: 'UTC' });
+}
+
+function formatTimeUtc(value: string | number | Date | null | undefined): string {
+  const parsed = parseDate(value);
+  if (!parsed) return '-';
+  return parsed.toLocaleTimeString('en-US', { timeZone: 'UTC' });
+}
+
 // BACKEND DEVELOPER NOTES:
 // - Fetch jobs for this vendor from GET /api/vendor/jobs
 // - When creating a job, POST to /api/vendor/jobs with job title, client name, phone, email, etc.
@@ -642,6 +666,11 @@ export default function VendorJobs() {
   // Calendar date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState('');
+
+  useEffect(() => {
+    if (selectedCalendarDate) return;
+    setSelectedCalendarDate(new Date().toISOString().split('T')[0]);
+  }, [selectedCalendarDate]);
   const trimmedJobTitle = newJob.title.trim();
   const trimmedClientName = newJob.client.trim();
   const phoneDigits = getPhoneDigits(newJob.phone);
@@ -3729,7 +3758,7 @@ export default function VendorJobs() {
                     className="w-full p-2 pr-10 border border-gray-300 rounded-lg appearance-none bg-white text-left flex items-center justify-between"
                   >
                     <span className={archiveDateFilter ? 'text-gray-900' : 'text-gray-500'}>
-                      {archiveDateFilter ? new Date(archiveDateFilter).toLocaleDateString() : 'Select Date'}
+                      {archiveDateFilter ? formatDateOnlyUtc(archiveDateFilter) : 'Select Date'}
                     </span>
                     <Calendar className="w-4 h-4 text-gray-400" />
                   </button>
@@ -3739,7 +3768,7 @@ export default function VendorJobs() {
                       <div className="mb-3 flex items-center justify-between">
                         <button
                           onClick={() => {
-                            const currentDate = new Date(selectedCalendarDate || Date.now());
+                            const currentDate = new Date(selectedCalendarDate || '2000-01-01');
                             const prevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
                             setSelectedCalendarDate(prevMonth.toISOString().split('T')[0]);
                           }}
@@ -3749,11 +3778,11 @@ export default function VendorJobs() {
                           <ChevronLeft className="w-5 h-5 text-gray-600" />
                         </button>
                         <span className="font-medium text-center flex-1 px-4">
-                          {new Date(selectedCalendarDate || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                          {new Date(selectedCalendarDate || '2000-01-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
                         </span>
                         <button
                           onClick={() => {
-                            const currentDate = new Date(selectedCalendarDate || Date.now());
+                            const currentDate = new Date(selectedCalendarDate || '2000-01-01');
                             const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
                             setSelectedCalendarDate(nextMonth.toISOString().split('T')[0]);
                           }}
@@ -3774,8 +3803,8 @@ export default function VendorJobs() {
                       
                       <div className="grid grid-cols-7 gap-3 video-archive-calendar">
                         {generateCalendarDays(
-                          new Date(selectedCalendarDate || Date.now()).getFullYear(),
-                          new Date(selectedCalendarDate || Date.now()).getMonth()
+                          new Date(selectedCalendarDate || '2000-01-01').getFullYear(),
+                          new Date(selectedCalendarDate || '2000-01-01').getMonth()
                         ).map((day, index) => (
                           <button
                             key={index}
@@ -3933,7 +3962,7 @@ export default function VendorJobs() {
                             <p>Uploaded: {video.uploadDate || "Unknown"}</p>
                             <p>Service: {video.serviceType || "General Service"}</p>
                             {video.moderationReason ? <p>Reason: {video.moderationReason}</p> : null}
-                            {video.moderatedAt ? <p>Moderated: {new Date(video.moderatedAt).toLocaleString()}</p> : null}
+                            {video.moderatedAt ? <p>Moderated: {formatDateTimeUtc(video.moderatedAt)}</p> : null}
                           </div>
                         </div>
                       </div>
@@ -4127,11 +4156,11 @@ export default function VendorJobs() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Upload Date:</span>
-                      <span className="text-sm font-medium">{new Date(selectedVideoForDetails.reviewedAt).toLocaleDateString()}</span>
+                      <span className="text-sm font-medium">{formatDateOnlyUtc(selectedVideoForDetails.reviewedAt)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Upload Time:</span>
-                      <span className="text-sm font-medium">{new Date(selectedVideoForDetails.reviewedAt).toLocaleTimeString()}</span>
+                      <span className="text-sm font-medium">{formatTimeUtc(selectedVideoForDetails.reviewedAt)}</span>
                     </div>
                   </div>
                 </div>
@@ -4179,11 +4208,11 @@ export default function VendorJobs() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Review Date</p>
-                      <p className="font-medium">{new Date(selectedVideoForDetails.reviewedAt).toLocaleDateString()}</p>
+                      <p className="font-medium">{formatDateOnlyUtc(selectedVideoForDetails.reviewedAt)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Review Time</p>
-                      <p className="font-medium">{new Date(selectedVideoForDetails.reviewedAt).toLocaleTimeString()}</p>
+                      <p className="font-medium">{formatTimeUtc(selectedVideoForDetails.reviewedAt)}</p>
                     </div>
                   </div>
                   <div className="mt-4">
@@ -4204,17 +4233,31 @@ export default function VendorJobs() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-3 text-sm">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-gray-600">{new Date(selectedVideoForDetails.reviewedAt).toLocaleDateString()} {new Date(selectedVideoForDetails.reviewedAt).toLocaleTimeString()}</span>
+                    <span className="text-gray-600">{formatDateOnlyUtc(selectedVideoForDetails.reviewedAt)} {formatTimeUtc(selectedVideoForDetails.reviewedAt)}</span>
                     <span className="font-medium">Video {selectedVideoForDetails.status} by {selectedVideoForDetails.reviewedBy}</span>
                   </div>
                   <div className="flex items-center gap-3 text-sm">
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="text-gray-600">{new Date(Date.now() - 86400000).toLocaleDateString()} 14:30:22</span>
+                    <span className="text-gray-600">
+                      {formatDateOnlyUtc(
+                        selectedVideoForDetails?.reviewedAt
+                          ? new Date(new Date(selectedVideoForDetails.reviewedAt).getTime() - 86400000)
+                          : null
+                      )}{' '}
+                      14:30:22
+                    </span>
                     <span className="font-medium">Video uploaded by John Smith</span>
                   </div>
                   <div className="flex items-center gap-3 text-sm">
                     <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                    <span className="text-gray-600">{new Date(Date.now() - 172800000).toLocaleDateString()} 09:15:45</span>
+                    <span className="text-gray-600">
+                      {formatDateOnlyUtc(
+                        selectedVideoForDetails?.reviewedAt
+                          ? new Date(new Date(selectedVideoForDetails.reviewedAt).getTime() - 172800000)
+                          : null
+                      )}{' '}
+                      09:15:45
+                    </span>
                     <span className="font-medium">Job assigned to John Smith</span>
                   </div>
                 </div>
@@ -5562,9 +5605,7 @@ export default function VendorJobs() {
                           <p>Service: {job.serviceName || job.serviceType || 'General Service'}</p>
                           <p>
                             Archived:{' '}
-                            {job.updatedAt || job.archivedAt
-                              ? new Date(String(job.updatedAt || job.archivedAt)).toLocaleDateString()
-                              : '-'}
+                            {formatDateOnlyUtc(String(job.updatedAt || job.archivedAt || ''))}
                           </p>
                           <p>Media: {Number(job.linkedMediaCount || 0)} asset(s)</p>
                           {job.archiveReason ? <p className="text-orange-600">Reason: {job.archiveReason}</p> : null}
@@ -5691,8 +5732,8 @@ export default function VendorJobs() {
                       Source: {String(job.source || '').toLowerCase() === 'customer_booking' ? 'Customer Booking' : 'Vendor-Created Job'}
                     </p>
                     <p className="text-gray-600">Service Type: {job.serviceName || job.serviceType || 'General Service'}</p>
-                    <p className="text-gray-600">Created: {job.createdAt ? new Date(job.createdAt).toLocaleDateString() : '-'}</p>
-                    <p className="text-gray-600">Updated: {job.updatedAt ? new Date(job.updatedAt).toLocaleDateString() : '-'}</p>
+                    <p className="text-gray-600">Created: {formatDateOnlyUtc(job.createdAt)}</p>
+                    <p className="text-gray-600">Updated: {formatDateOnlyUtc(job.updatedAt)}</p>
                     <p className="text-gray-600">
                       Media: {Number(job.linkedMediaCount || 0)} asset(s) across {Number(job.linkedSessionCount || 0)} session(s)
                     </p>

@@ -50,6 +50,13 @@ function normalizeStatus(value: string | null | undefined) {
   return String(value || "").trim().toUpperCase();
 }
 
+function formatDateTimeUtc(value: string | null | undefined) {
+  if (!value) return "Unknown";
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return "Unknown";
+  return parsed.toLocaleString("en-US", { timeZone: "UTC" });
+}
+
 export default function VendorJobDetailPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = String(params?.jobId || "").trim();
@@ -359,12 +366,12 @@ export default function VendorJobDetailPage() {
 
   const activityEvents = useMemo(() => {
     const events: string[] = [];
-    if (job?.createdAt) events.push(`Created: ${new Date(job.createdAt).toLocaleString()}`);
+    if (job?.createdAt) events.push(`Created: ${formatDateTimeUtc(job.createdAt)}`);
     if (job?.assignedEmployees?.length) events.push(`Assigned: ${job.assignedEmployees.join(", ")}`);
     for (const stage of STAGE_ORDER) {
       const s = stageMap.get(stage.key);
       const ts = s?.mediaAssets?.[0]?.createdAt || s?.createdAt;
-      if (ts) events.push(`${stage.label} uploaded: ${new Date(ts).toLocaleString()}`);
+      if (ts) events.push(`${stage.label} uploaded: ${formatDateTimeUtc(ts)}`);
     }
     if (normalizedStatus === "AWAITING_REVIEW") events.push("Submitted for manager review");
     if (job?.rejectionReason) events.push("Rejected by manager");
@@ -397,7 +404,7 @@ export default function VendorJobDetailPage() {
                     <Badge variant="outline">
                       Source: {String(job.source || "").toLowerCase() === "customer_booking" ? "Customer Booking" : "Vendor-Created Job"}
                     </Badge>
-                    {job.date ? <Badge variant="outline">Date: {new Date(job.date).toLocaleString()}</Badge> : null}
+                    {job.date ? <Badge variant="outline">Date: {formatDateTimeUtc(job.date)}</Badge> : null}
                     {job.assignedEmployees?.length ? (
                       <Badge variant="outline">Assigned: {job.assignedEmployees.join(", ")}</Badge>
                     ) : (
@@ -469,9 +476,7 @@ export default function VendorJobDetailPage() {
                             <p className="text-xs text-gray-600">
                               Uploaded:{" "}
                               {latestAsset?.createdAt || stageSession?.createdAt
-                                ? new Date(
-                                    String(latestAsset?.createdAt || stageSession?.createdAt)
-                                  ).toLocaleString()
+                                ? formatDateTimeUtc(String(latestAsset?.createdAt || stageSession?.createdAt))
                                 : "Unknown"}
                             </p>
                             <Button size="sm" variant="outline" onClick={() => void watchStage(stage.key)}>
@@ -532,8 +537,8 @@ export default function VendorJobDetailPage() {
                   <p><span className="text-gray-600">Client:</span> {job.client || "Unknown"}</p>
                   <p><span className="text-gray-600">Service:</span> {job.serviceName || job.serviceType || "General Service"}</p>
                   <p><span className="text-gray-600">Job ID:</span> {job.id}</p>
-                  <p><span className="text-gray-600">Created:</span> {job.createdAt ? new Date(job.createdAt).toLocaleString() : "Unknown"}</p>
-                  <p><span className="text-gray-600">Updated:</span> {job.updatedAt ? new Date(job.updatedAt).toLocaleString() : "Unknown"}</p>
+                  <p><span className="text-gray-600">Created:</span> {formatDateTimeUtc(job.createdAt || null)}</p>
+                  <p><span className="text-gray-600">Updated:</span> {formatDateTimeUtc(job.updatedAt || null)}</p>
                   <p><span className="text-gray-600">Notes:</span> {job.notes?.[0]?.text || "No notes available"}</p>
                 </CardContent>
               </Card>

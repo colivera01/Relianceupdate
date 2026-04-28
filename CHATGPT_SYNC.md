@@ -1,0 +1,46 @@
+# Reliance System Snapshot (Current)
+
+## 1) Current Core Flows (actual)
+- **Vendor dashboard -> jobs -> job detail:** `/vendor/dashboard` loads from `GET /api/vendors/[vendorId]/dashboard`; jobs route into `/vendor/jobs`; job detail `/vendor/jobs/[jobId]` hydrates via vendor context, dashboard job feed, and media sessions.
+- **Employee stage upload flow:** employee uploads INTRO/IN_PROGRESS/COMPLETED stage media from job detail using `/api/vendors/[vendorId]/media/sessions`, `/media/upload/init`, `/media/upload/complete`, then marks stage via `POST /api/employee/jobs/[jobId]/stage`.
+- **Manager approve/reject flow:** employee submit moves job to `AWAITING_REVIEW` via `POST /api/employee/jobs/[jobId]/complete`; manager approves via `POST /api/vendors/[vendorId]/jobs/[jobId]/approve` or rejects with reason via `POST /api/vendors/[vendorId]/jobs/[jobId]/reject`.
+- **Admin moderation:** media moderation queue is package-based (3-stage complete sets) at `/admin/media-moderation` using `GET /api/admin/media/moderation-queue`, per-asset moderation `PATCH /api/admin/media/[assetId]/moderate`, and package moderation `PATCH /api/admin/media/packages/[bookingId]/moderate`; review moderation at `/admin/reviews` via `GET /api/admin/reviews/moderation-queue` and `PATCH /api/admin/reviews/[reviewId]/moderate`.
+- **Customer proof viewer:** `/my-bookings/[bookingId]` loads booking + authorized media (`GET /api/bookings/[id]`, `GET /api/bookings/[id]/media`), defaults to completed-stage video, timeline stage switching, consent gate via `POST /api/consent/request`.
+- **Review submission:** proof page starts review window (`POST /api/reviews/window/start`) and submits inline rating via `POST /api/reviews/create` with `submittedVia: video_overlay`.
+
+## 2) Active Routes (only)
+- **Vendor:** `/vendor/dashboard`, `/vendor/jobs`, `/vendor/jobs/[jobId]`, `/vendor/media`, `/vendor/storage`, `/vendor/employees`, `/vendor/profile`.
+- **User:** `/discover`, `/service/[serviceId]`, `/booking/[serviceId]`, `/booking/[serviceId]/confirmation`, `/my-bookings`, `/my-bookings/[bookingId]`, `/reviews`.
+- **Admin:** `/admin/media-moderation`, `/admin/reviews`, `/admin/vendors`, `/admin/vendors/approval-queue`, `/admin/audit-logs`, `/admin/review-audit`, `/admin/publish-management`.
+- **Exists but not core-used:** test/dev or transitional pages like `/test-mode`, `/test-msw`, `/test-profile-toggle`, `/admin-tools`, `/browse`, plus management pages marked mock-heavy (`/vendor/services`, `/vendor/reviews`, `/vendor/analytics`, `/vendor/billing`, `/admin/dashboard`, `/admin/users`, `/admin/reports`, `/admin/settings`, `/admin/activity`).
+
+## 3) Key API Endpoints In Use
+- **Bookings:** `GET /api/bookings`, `POST /api/bookings`, `GET|PUT|DELETE /api/bookings/[id]`, `POST /api/bookings/[id]/cancel`, `GET /api/bookings/[id]/media`, `GET /api/bookings/[id]/media/[assetId]/download`.
+- **Jobs/vendor execution:** `GET /api/vendors/[vendorId]/dashboard`, `POST /api/vendors/[vendorId]/jobs/[jobId]/actions`, `POST /api/employee/jobs/[jobId]/stage`, `POST /api/employee/jobs/[jobId]/complete`, `POST /api/vendors/[vendorId]/jobs/[jobId]/approve`, `POST /api/vendors/[vendorId]/jobs/[jobId]/reject`.
+- **Media:** `GET|POST /api/vendors/[vendorId]/media/sessions`, `GET /api/vendors/[vendorId]/media/sessions/[sessionId]`, `POST /api/vendors/[vendorId]/media/upload/init`, `POST /api/vendors/[vendorId]/media/upload/complete`, `GET /api/vendors/[vendorId]/media`, `PATCH|DELETE /api/vendors/[vendorId]/media/[assetId]`.
+- **Reviews:** `POST /api/reviews/window/start`, `POST /api/reviews/create`, `POST /api/reviews/window/expire`, `POST /api/reviews/rating-intent`, `GET|POST /api/reviews` (currently mock/placeholder behavior).
+- **Device pairing:** `POST /api/device/pairing/request`, `POST /api/device/pairing/confirm`, `POST /api/device/heartbeat`.
+- **Moderation/admin:** `GET /api/admin/media/moderation-queue`, `PATCH /api/admin/media/[assetId]/moderate`, `PATCH /api/admin/media/packages/[bookingId]/moderate`, `GET /api/admin/reviews/moderation-queue`, `PATCH /api/admin/reviews/[reviewId]/moderate`.
+
+## 4) Data Reliability
+- **Fully real (DB-backed):** booking CRUD and scoped fetch, booking media authorization, vendor dashboard feed, vendor media sessions/uploads, manager review gate/approve/reject, admin media/review moderation queues, review create + window/start, pairing request/confirm/heartbeat.
+- **Partially real (mixed/fallback):** large vendor jobs page orchestration (real APIs plus fallbacks/transitional UI paths), vendor profile/context resolution with local cache fallback, some dashboard card metrics and storage/proof surfaces with fallback messaging when backend data is missing.
+- **Mocked/placeholder:** `/reviews` page UI data is mock; `GET /api/reviews` and `POST /api/reviews` are TODO/mock implementations; several management pages listed in Project State remain mock-heavy.
+
+## 5) Known Gaps / Risks
+- Vendor jobs page is very large and mixed-responsibility; regression risk is high without stronger test coverage.
+- Review surfaces are split: production capture uses `/api/reviews/create` + `/window/start`, but `/api/reviews` and `/reviews` page still run mock patterns.
+- Multiple fallback paths remain (vendor context/profile fallbacks, dashboard/storage fallback copy, dev auth fallback behavior).
+- DB/connectivity dependency remains a production risk surface (timeouts/firewall/network cause runtime failures on DB-bound routes).
+- Reminders are best-effort/immediate; no durable background scheduling queue for delayed review reminders.
+
+## 6) UI State
+- **Production-ready / hardened:** vendor dashboard core shell, vendor job detail flow (stage upload + manager review actions), customer proof viewer and inline review submit, admin media moderation queue, admin review moderation queue.
+- **Transitional:** vendor jobs list page (hybrid complexity), `/reviews` customer page (mock-heavy), vendor media/storage pages with backend gaps and fallback copy, several non-core management pages still mock-driven.
+
+## 7) Recent Changes (last major work)
+- **Dashboard redesign:** command-bar metrics, proof pipeline cards, storage snapshot, pairing action, and resilient states for pending approval/loading/errors.
+- **Job detail page:** explicit stage timeline (INTRO/IN_PROGRESS/COMPLETED), employee upload flow, manager approve/reject actions, activity timeline.
+- **Customer proof page:** video-first layout, completed-stage default, simple timeline switching, inline star review submit, controlled View Details section, pricing/payment language removed.
+- **Hydration fixes:** deterministic UTC date formatting and removal of non-deterministic render-time patterns on key vendor/user pages.
+- **Route smoke tests:** Playwright route smoke added for `/vendor/dashboard`, `/vendor/jobs`, `/vendor/jobs/[jobId]`, `/my-bookings/[bookingId]`, including console hydration-warning guard.

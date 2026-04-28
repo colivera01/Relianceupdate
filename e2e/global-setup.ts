@@ -186,6 +186,7 @@ export default async function globalSetup() {
       serviceId: service.id,
       serviceNameSearch: 'E2E Smoke',
       customerEmail: CUSTOMER_EMAIL,
+      vendorEmail: VENDOR_EMAIL,
       reviewBookingId: bookingId,
       reviewVendorId,
       reviewMediaSessionId,
