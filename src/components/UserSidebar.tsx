@@ -1,13 +1,26 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
-import { User, Home, Heart, Settings, LogOut, Users, Briefcase, LayoutDashboard, Star, Calendar, MessageSquare, Globe } from 'lucide-react';
-import { Button } from './ui/button';
+import { usePathname } from 'next/navigation';
+import {
+  User,
+  Home,
+  Heart,
+  LogOut,
+  LayoutDashboard,
+  Star,
+  Calendar,
+  MessageSquare,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+
+// TODO Future mobile: convert this sidebar into a bottom nav or slide-out
+// drawer for an app-like experience on small screens. For now the sidebar
+// is hidden on `< md` so primary content takes the full viewport, and a
+// future commit should introduce a responsive trigger + drawer.
 
 type SidebarUser = { name: string; email: string; avatar: string | null };
 
-// Default user data (fallback when not signed in)
 const defaultUser: SidebarUser = {
   name: 'Cesar Olivera',
   email: 'colivera080124@gmail.com',
@@ -24,13 +37,6 @@ const navLinks = [
   { label: 'Profile & Settings', icon: User, href: '/profile-settings' },
 ];
 
-const viewModes = [
-  { label: 'Home Page', icon: Globe, href: '/', active: false },
-  { label: 'User View', icon: User, href: '/user-dashboard', active: true },
-  { label: 'Vendor View', icon: Briefcase, href: '/vendor/dashboard', active: false },
-  { label: 'Admin View', icon: Users, href: '/admin/dashboard', active: false },
-];
-
 function displayNameFromStoredUser(parsed: Record<string, unknown>): string {
   if (typeof parsed.name === 'string' && parsed.name.trim()) return parsed.name.trim();
   const fn = typeof parsed.firstName === 'string' ? parsed.firstName : '';
@@ -43,7 +49,9 @@ function displayNameFromStoredUser(parsed: Record<string, unknown>): string {
 
 export default function UserSidebar() {
   const { user, isLoading } = useAuth();
+  const pathname = usePathname() || '';
   const [currentUser, setCurrentUser] = React.useState<SidebarUser>(defaultUser);
+  const isSignedIn = Boolean(user);
 
   React.useEffect(() => {
     if (user) {
@@ -76,78 +84,87 @@ export default function UserSidebar() {
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to log out?')) {
-      try {
-        // Try to use auth context if available
-        // await logout();
-        // Fallback to direct logout
-        window.location.href = '/logout';
-      } catch (error) {
-        console.error('Logout failed:', error);
-        // Fallback to direct logout
-        window.location.href = '/logout';
-      }
+      window.location.href = '/logout';
     }
   };
 
+  const initials = currentUser.name
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'U';
+
   return (
-    <aside className="w-72 flex flex-col min-h-screen">
-      {/* Logo area - white background */}
+    <aside className="hidden md:flex w-64 flex-col min-h-screen">
+      {/* Logo area */}
       <div className="bg-white flex items-center px-6 py-8 border-b border-gray-200 justify-center">
         <img src="/reliance-logo.png" alt="Reliance Logo" className="w-32 h-32 rounded" />
       </div>
-      
-      {/* Blue navigation area */}
+
+      {/* Navigation area */}
       <div className="flex-1 bg-blue-800 text-white flex flex-col py-8 px-4">
-        {/* User Profile Section */}
-        <div className="flex flex-col items-center mb-8">
+        {/* Identity block */}
+        <div className="flex flex-col items-center mb-8 px-2">
           <div className="relative mb-4">
             {currentUser.avatar ? (
               <img
                 src={currentUser.avatar}
                 alt={currentUser.name}
-                className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md"
+                className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md object-cover"
               />
             ) : (
               <div className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xl">
-                {currentUser.name.split(' ').map(n => n[0]).join('')}
+                {initials}
               </div>
             )}
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+              <div className="w-1.5 h-1.5 bg-white rounded-full" />
             </div>
           </div>
-          <div className="text-center">
-            <div className="font-semibold text-lg mb-1">{currentUser.name}</div>
-            <div className="text-blue-100 text-sm">{currentUser.email}</div>
-            <div className="mt-2">
-              <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
-                Premium Member
-              </span>
-            </div>
+          <div className="text-center min-w-0 w-full">
+            <div className="font-semibold text-lg mb-1 truncate">{currentUser.name}</div>
+            <div className="text-blue-100 text-sm break-all">{currentUser.email}</div>
+            {isSignedIn && (
+              <div className="mt-2">
+                <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
+                  Customer
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Navigation Links */}
+        {/* Nav links */}
         <nav className="flex-1 space-y-1">
           <div className="text-xs font-semibold text-blue-200 uppercase tracking-wider mb-4 px-3">
             Navigation
           </div>
-          {navLinks.map((link) => (
-            <Link
-              key={link.label}
-              href={link.href}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-white hover:bg-blue-700 transition-colors font-medium"
-            >
-              <link.icon size={18} />
-              {link.label}
-            </Link>
-          ))}
-          
-          {/* Log Out Button - moved here to match navigation style */}
+          {navLinks.map((link) => {
+            const isActive =
+              pathname === link.href ||
+              (link.href !== '/' && pathname.startsWith(`${link.href}/`));
+            return (
+              <Link
+                key={link.label}
+                href={link.href}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-colors ${
+                  isActive
+                    ? 'bg-white/15 text-white'
+                    : 'text-white hover:bg-blue-700'
+                }`}
+              >
+                <link.icon size={18} />
+                <span className="flex-1 truncate">{link.label}</span>
+              </Link>
+            );
+          })}
+
           <div className="mt-4 pt-4 border-t border-white/20">
-            <button 
+            <button
               onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-white hover:bg-blue-700 transition-colors font-medium w-full text-left"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-white hover:bg-blue-700 transition-colors text-base font-medium w-full text-left"
             >
               <LogOut size={18} />
               Log Out
@@ -155,41 +172,12 @@ export default function UserSidebar() {
           </div>
         </nav>
 
-        {/* Bottom Section */}
-        <div className="space-y-3">
-          {/* View Mode Switcher */}
-          <div className="space-y-2">
-            <div className="text-xs font-semibold text-blue-200 uppercase tracking-wider">
-              Switch View
-            </div>
-            <div className="flex flex-col gap-2">
-              {viewModes.map((mode) => (
-                <Link key={mode.label} href={mode.href}>
-                  <Button
-                    variant={mode.active ? "default" : "outline"}
-                    className={`w-full flex items-center gap-2 py-2 justify-start transition-colors font-medium ${
-                      mode.active 
-                        ? "bg-white text-blue-800 hover:bg-gray-100" 
-                        : "text-white border-white/20 hover:bg-blue-700"
-                    }`}
-                  >
-                    <mode.icon size={16} />
-                    {mode.label}
-                  </Button>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="pt-4 border-t border-white/20">
-            <div className="text-center">
-              <div className="text-xs text-blue-200 mb-1">Reliance</div>
-              <div className="text-xs text-blue-300">© 2024 All rights reserved</div>
-            </div>
-          </div>
+        {/* Footer */}
+        <div className="pt-4 mt-4 border-t border-white/20 text-center">
+          <div className="text-xs text-blue-200">Reliance</div>
+          <div className="text-xs text-blue-300">© 2024 All rights reserved</div>
         </div>
       </div>
     </aside>
   );
-} 
+}

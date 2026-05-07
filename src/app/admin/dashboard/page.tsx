@@ -1,145 +1,124 @@
 "use client";
-import { useState } from "react";
+import Link from "next/link";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as ChartTooltip, BarChart, Bar, Legend } from "recharts";
 
-const mockStats = {
-  totalUsers: 1250,
-  totalVendors: 89,
-  totalReviews: 5670,
-  growthRate: 12,
+// Admin overview surface.
+//
+// Live metrics endpoints are not yet wired (no /api/admin/stats route),
+// so this page intentionally avoids fabricated production numbers.
+// Once a counts endpoint exists, the placeholder cards below should be
+// replaced with real values.
+
+type AdminQuickLink = {
+  href: string;
+  label: string;
+  description: string;
+  icon: string;
 };
 
-const userGrowth = [
-  { month: "Jan", newUsers: 120, activeUsers: 800 },
-  { month: "Feb", newUsers: 145, activeUsers: 850 },
-  { month: "Mar", newUsers: 180, activeUsers: 920 },
-  { month: "Apr", newUsers: 220, activeUsers: 1050 },
-  { month: "May", newUsers: 280, activeUsers: 1180 },
-  { month: "Jun", newUsers: 320, activeUsers: 1320 },
-  { month: "Jul", newUsers: 380, activeUsers: 1480 },
-  { month: "Aug", newUsers: 420, activeUsers: 1650 },
-  { month: "Sep", newUsers: 480, activeUsers: 1820 },
-  { month: "Oct", newUsers: 520, activeUsers: 2000 },
-  { month: "Nov", newUsers: 580, activeUsers: 2180 },
-  { month: "Dec", newUsers: 650, activeUsers: 2350 },
+const quickLinks: AdminQuickLink[] = [
+  {
+    href: "/admin/users",
+    label: "User Management",
+    description: "Review, edit, and approve user accounts.",
+    icon: "👥",
+  },
+  {
+    href: "/admin/vendors",
+    label: "Vendor Management",
+    description: "Approve vendors and manage business profiles.",
+    icon: "🏢",
+  },
+  {
+    href: "/admin/publish-management",
+    label: "Publish Management",
+    description: "Control public visibility of vendors and services.",
+    icon: "📢",
+  },
+  {
+    href: "/admin/media-moderation",
+    label: "Media Moderation",
+    description: "Approve or block customer-visible proof media.",
+    icon: "🎬",
+  },
+  {
+    href: "/admin/reviews",
+    label: "Review Moderation",
+    description: "Audit and moderate customer reviews.",
+    icon: "⭐",
+  },
+  {
+    href: "/admin/audit-logs",
+    label: "Audit Logs",
+    description: "Inspect admin and moderation actions.",
+    icon: "📋",
+  },
 ];
-const revenueTrend = [
-  { month: "Jan", subscription: 8500, ad: 3200 },
-  { month: "Feb", subscription: 9200, ad: 3800 },
-  { month: "Mar", subscription: 10800, ad: 4500 },
-  { month: "Apr", subscription: 12500, ad: 5200 },
-  { month: "May", subscription: 14200, ad: 6100 },
-  { month: "Jun", subscription: 16800, ad: 7200 },
-  { month: "Jul", subscription: 19500, ad: 8400 },
-  { month: "Aug", subscription: 22500, ad: 9800 },
-  { month: "Sep", subscription: 25800, ad: 11500 },
-  { month: "Oct", subscription: 29200, ad: 13200 },
-  { month: "Nov", subscription: 32800, ad: 15100 },
-  { month: "Dec", subscription: 36500, ad: 17200 },
+
+const placeholderMetrics: Array<{ title: string; helper: string }> = [
+  { title: "Total Users", helper: "Live count not connected yet." },
+  { title: "Total Vendors", helper: "Live count not connected yet." },
+  { title: "Total Reviews", helper: "Live count not connected yet." },
+  { title: "Pending Moderation", helper: "Live count not connected yet." },
 ];
 
-export default function DashboardPage() {
-  const [stats, setStats] = useState(mockStats);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
-  const [loading, setLoading] = useState(false);
-
-  const handleRefresh = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setLastRefresh(new Date());
-      setLoading(false);
-    }, 1000);
-  };
-
+export default function AdminDashboardPage() {
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">
-            Last updated: {lastRefresh.toLocaleTimeString()}
-          </span>
-          <Button onClick={handleRefresh} disabled={loading}>
-            {loading ? "Refreshing..." : "Refresh"}
-          </Button>
+    <div className="space-y-8">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold text-[#204080]">Admin Overview</h1>
+        <p className="text-sm text-gray-600">
+          Operational console for moderation, publishing, and account
+          management. Live aggregate metrics will appear here once the
+          dedicated counts endpoint is wired.
+        </p>
+      </header>
+
+      <section
+        aria-label="Platform metrics"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+      >
+        {placeholderMetrics.map((metric) => (
+          <Card key={metric.title} className="bg-white">
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-gray-700">
+                {metric.title}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-gray-300 leading-none">—</div>
+              <div className="mt-2 text-xs text-gray-500">{metric.helper}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
+      <section aria-label="Quick links" className="space-y-4">
+        <h2 className="text-lg font-semibold text-[#204080]">Quick actions</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {quickLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="group block rounded-xl border border-gray-200 bg-white p-5 transition-colors hover:border-[#204080] hover:bg-[#f5f8fc]"
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-2xl leading-none" aria-hidden>
+                  {link.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="font-semibold text-[#204080]">
+                    {link.label}
+                  </div>
+                  <div className="mt-1 text-sm text-gray-600">
+                    {link.description}
+                  </div>
+                </div>
+              </div>
+            </Link>
+          ))}
         </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Users</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">{stats.totalUsers}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Vendors</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">{stats.totalVendors}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Reviews</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">{stats.totalReviews}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Growth</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">{stats.growthRate}%</CardContent>
-        </Card>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>User Growth (Monthly)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={userGrowth} margin={{ left: 10, right: 10, top: 10, bottom: 10 }}>
-                <XAxis dataKey="month" />
-                <YAxis allowDecimals={false} />
-                <Line type="monotone" dataKey="newUsers" stroke="#3B82F6" strokeWidth={3} name="New Users" />
-                <Line type="monotone" dataKey="activeUsers" stroke="#10B981" strokeWidth={3} name="Active Users" />
-                <ChartTooltip />
-                <Legend />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Revenue Trend (Monthly)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={revenueTrend} margin={{ left: 10, right: 10, top: 10, bottom: 10 }}>
-                <XAxis dataKey="month" />
-                <YAxis allowDecimals={false} />
-                <Bar dataKey="subscription" fill="#8B5CF6" name="Subscription Revenue" />
-                <Bar dataKey="ad" fill="#F59E0B" name="Ad Revenue" />
-                <ChartTooltip />
-                <Legend />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-      {/* Backend Developer Notes */}
-      <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <h3 className="font-semibold text-blue-800 mb-2">📋 Backend Developer Notes</h3>
-        <div className="text-sm text-blue-700 space-y-1">
-          <p><strong>Chart Data Endpoints Needed:</strong></p>
-          <ul className="list-disc list-inside ml-4 space-y-1">
-            <li><code>GET /api/dashboard/user-growth</code> - Monthly user growth data</li>
-            <li><code>GET /api/dashboard/revenue-trend</code> - Monthly revenue data</li>
-            <li>Expected format: <code>{`{ labels: string[], datasets: { label: string, data: number[] }[] }`}</code></li>
-          </ul>
-          <p className="mt-2"><strong>Current Mock Data:</strong> Shows realistic growth patterns for reference</p>
-        </div>
-      </div>
+      </section>
     </div>
   );
-} 
+}

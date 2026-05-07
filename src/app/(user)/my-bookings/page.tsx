@@ -301,10 +301,10 @@ export default function MyBookingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="pt-6 space-y-4">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">My Services</h1>
+            <h1 className="text-2xl font-semibold mb-6 text-gray-900">My Services</h1>
             <p className="text-sm text-gray-600 mt-1 max-w-xl">
               Your history with vendors on Reliance—scheduled visits, status, and media they share for transparency.
               Vendors add recordings after work; you only see items that are approved for customers.
@@ -325,7 +325,7 @@ export default function MyBookingsPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-blue-100 bg-blue-50/90 px-4 py-3 text-sm text-gray-800">
+        <div className="rounded-lg border border-blue-100 bg-blue-50/90 p-4 mb-10 text-sm text-gray-800">
           <div className="flex gap-2">
             <Info className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" aria-hidden />
             <div className="space-y-2">
@@ -345,7 +345,7 @@ export default function MyBookingsPage() {
           </div>
         </div>
 
-        <div className="bg-white border rounded-lg p-3">
+        <div className="bg-white border rounded-lg p-4 mb-10">
           <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
             <div className="w-full md:w-96 space-y-1">
               <input
@@ -377,13 +377,13 @@ export default function MyBookingsPage() {
         </div>
 
         {actionMessage ? (
-          <div className="text-sm rounded border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2">
+          <div className="text-sm rounded border border-blue-200 bg-blue-50 text-blue-800 p-4 mb-10">
             {actionMessage}
           </div>
         ) : null}
 
         {latestProofBooking ? (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 mb-10">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-emerald-900">New proof available for your recent service.</p>
               <Link
@@ -425,7 +425,7 @@ export default function MyBookingsPage() {
             hint="Try another tab or book a service from Discover."
           />
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 mb-10">
             {filtered.map((booking) => {
               const mediaState = mediaByBooking[booking.id];
               const proofSignal = proofSignalByBooking[booking.id];
@@ -467,7 +467,7 @@ export default function MyBookingsPage() {
               return (
                 <div
                   key={booking.id}
-                  className="bg-white border rounded-lg p-4"
+                  className="bg-white border rounded-lg p-4 mb-4"
                   data-testid={`my-bookings-row-${booking.id}`}
                 >
                   <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">

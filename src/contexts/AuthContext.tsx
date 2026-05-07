@@ -7,6 +7,7 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   userType: 'customer' | 'vendor' | 'admin' | 'both';
   avatar?: string;
   availableProfiles?: string[];

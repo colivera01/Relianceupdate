@@ -395,7 +395,7 @@ export default function VendorProfilePage() {
 
   return (
     <div className="bg-gradient-to-br from-slate-50 to-blue-50">
-      <div className="mx-auto w-full max-w-7xl px-4 md:px-8 py-8">
+      <div className="w-full">
       {loading && (
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">

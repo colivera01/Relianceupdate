@@ -785,62 +785,6 @@ export default function UserManagement() {
         </Dialog>
       )}
 
-      {/* Backend Developer Notes */}
-      <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <h3 className="font-semibold text-blue-800 mb-2">📋 Backend Developer Notes</h3>
-        <div className="text-sm text-blue-700 space-y-2">
-          <p><strong>Endpoints Needed:</strong></p>
-          <ul className="list-disc list-inside ml-4 space-y-1">
-            <li><code>GET /api/users</code> – List users (with filters, search, pagination)</li>
-            <li><code>PATCH /api/users/:id</code> – Update user details, status, approval, notes</li>
-            <li><code>POST /api/users/bulk-approve</code> – Bulk approve users/vendors</li>
-            <li><code>POST /api/users/bulk-reject</code> – Bulk reject users/vendors</li>
-            <li><code>POST /api/users/:id/quick-action</code> – Quick actions (suspend, verify, etc.)</li>
-            <li><code>GET /api/users/:id/activity</code> – Fetch user activity log</li>
-            <li><code>GET /api/users/:id/reviews</code> – Fetch user reviews</li>
-          </ul>
-          <p><strong>User Data Format:</strong></p>
-          <pre className="bg-gray-100 p-2 rounded text-xs mt-2 overflow-x-auto">{`
-{
-  id: number,
-  name: string,
-  email: string,
-  status: 'active' | 'inactive' | 'suspended' | 'pending_approval',
-  userType: 'customer' | 'service_provider' | 'admin',
-  approvalStatus: 'pending' | 'approved' | 'rejected',
-  verificationStatus: 'pending' | 'verified' | 'rejected',
-  contentStatus: string,
-  tier: string,
-  image: string,
-  billing: { status: string, lastPayment: string, renewalDate: string },
-  adminPrivileges?: { ... },
-  adminActivity?: { ... },
-  canReview: boolean,
-  notes: string,
-  activity: string[],
-  reviews: Review[],
-  registrationDate: string,
-  approvalDate?: string,
-  approvedBy?: string
-}
-`}</pre>
-          <p><strong>Integration Notes:</strong></p>
-          <ul className="list-disc list-inside ml-4 space-y-1">
-            <li>All user actions (approve, reject, suspend, edit, etc.) should call the appropriate endpoint and update the UI on success.</li>
-            <li>Bulk actions should accept an array of user IDs and an action type.</li>
-            <li>Quick actions should be POSTs with an action type (e.g., 'suspend', 'verify').</li>
-            <li>Activity log and reviews should be fetched on demand when the modal is opened.</li>
-            <li>Show loading and error states for all async actions.</li>
-            <li>Paginate user lists on the backend for large datasets.</li>
-          </ul>
-          <p className="mt-2"><strong>Validation & Security:</strong></p>
-          <ul className="list-disc list-inside ml-4 space-y-1">
-            <li>Only admins can approve/reject users and perform quick actions.</li>
-            <li>All endpoints should validate user permissions and input data.</li>
-            <li>Return clear error messages for failed actions.</li>
-          </ul>
-        </div>
-      </div>
     </div>
   );
 } 

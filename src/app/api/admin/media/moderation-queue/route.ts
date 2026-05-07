@@ -117,6 +117,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         bytes: typeof asset.bytes === "bigint" ? asset.bytes.toString() : String(asset.bytes || "0"),
         previewRef: asset.blobUrl || null,
         downloadRef: `/api/vendors/${asset.vendorId}/media/${asset.id}/download`,
+        adminDownloadRef: `/api/admin/media/${asset.id}/download`,
       };
     });
 

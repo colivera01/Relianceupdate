@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
@@ -106,9 +104,6 @@ export default function VendorStoragePage() {
           <h1 className="text-2xl font-semibold text-gray-900">Storage Usage</h1>
           <p className="text-sm text-gray-600">Track your vendor media storage consumption.</p>
         </div>
-        <Button asChild variant="outline">
-          <Link href="/vendor/dashboard">Back to Dashboard</Link>
-        </Button>
       </div>
 
       {approvalPending ? (

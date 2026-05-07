@@ -1,20 +1,12 @@
 "use client";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
 
 export default function SupportPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/vendor/dashboard" className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800">
-              <ArrowLeft className="w-4 h-4" />
-              Back to Dashboard
-            </Link>
-          </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Support</h1>
           <p className="text-gray-600">Get help with your account, services, and platform features</p>
         </div>

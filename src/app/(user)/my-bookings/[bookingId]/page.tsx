@@ -66,6 +66,17 @@ function formatServiceDate(dateValue: string | null | undefined): string {
   });
 }
 
+function bookingStatusBadgeClass(status: string | null | undefined): string {
+  const normalized = String(status || '').trim().toUpperCase().replace(/\s+/g, '_');
+  if (normalized === 'COMPLETED') return 'border-green-200 bg-green-50 text-green-700';
+  if (normalized === 'IN_PROGRESS') return 'border-blue-200 bg-blue-50 text-blue-700';
+  if (normalized === 'PENDING' || normalized === 'AWAITING_REVIEW') return 'border-yellow-200 bg-yellow-50 text-yellow-700';
+  if (normalized === 'REJECTED' || normalized === 'CANCELED' || normalized === 'CANCELLED') {
+    return 'border-red-200 bg-red-50 text-red-700';
+  }
+  return 'border-gray-200 bg-gray-50 text-gray-700';
+}
+
 export default function BookingMediaDetailPage() {
   const params = useParams<{ bookingId: string }>();
   const router = useRouter();
@@ -227,6 +238,11 @@ export default function BookingMediaDetailPage() {
     activeVideo?.proofStage === 'after' &&
     activeVideo?.mediaSessionId
   );
+  const normalizedBookingStatus = String(booking?.status || '').trim().toUpperCase();
+  const proofPendingApproval =
+    (normalizedBookingStatus === 'AWAITING_REVIEW' || normalizedBookingStatus === 'IN_PROGRESS') &&
+    playableVideos.length === 0 &&
+    approvedVideos.length === 0;
 
   useEffect(() => {
     if (!bookingId) return;
@@ -426,7 +442,15 @@ export default function BookingMediaDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-5xl mx-auto px-4 py-10">
-          <div className="rounded border bg-white px-4 py-8 text-sm text-gray-600 text-center">Loading booking proof…</div>
+          <div className="rounded-lg border bg-white p-6 space-y-4">
+            <div className="h-5 w-44 rounded bg-gray-200 animate-pulse" />
+            <div className="h-56 w-full rounded bg-gray-200 animate-pulse" />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="h-24 rounded bg-gray-100 animate-pulse" />
+              <div className="h-24 rounded bg-gray-100 animate-pulse" />
+              <div className="h-24 rounded bg-gray-100 animate-pulse" />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -438,7 +462,9 @@ export default function BookingMediaDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-5xl mx-auto px-4 py-10 space-y-3">
-          <div className="rounded border border-red-200 bg-red-50 px-4 py-6 text-sm text-red-700">{error}</div>
+          <div className="rounded border border-red-200 bg-red-50 px-4 py-6 text-sm text-red-700">
+            We couldn't load this booking proof.
+          </div>
           <div className="text-sm text-gray-700">
             {maybeUnauthorized ? (
               <Link href="/auth/login" className="text-blue-700 underline font-medium">
@@ -465,9 +491,36 @@ export default function BookingMediaDetailPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold text-gray-900">{booking?.service?.name || booking?.title || 'Service booking'}</h1>
-            <p className="text-sm text-gray-600">Customer proof</p>
+            <p className="text-sm text-gray-600">Booking Proof</p>
           </div>
           <div className="flex items-center gap-2">
+            <Link href={`/my-bookings/${bookingId}`} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">
+              Open Booking
+            </Link>
+            {activeVideo && activeVideo.downloadUrl ? (
+              <a
+                href="#proof-of-completed-work"
+                className="rounded-lg border border-blue-300 px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
+              >
+                View Proof
+              </a>
+            ) : null}
+            {canShowInlineReview ? (
+              <a
+                href="#leave-review"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Leave Review
+              </a>
+            ) : null}
+            {normalizedBookingStatus === 'PENDING' ? (
+              <Link
+                href="/my-bookings"
+                className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+              >
+                Cancel Booking
+              </Link>
+            ) : null}
             <button
               type="button"
               onClick={() => void loadPage()}
@@ -476,7 +529,7 @@ export default function BookingMediaDetailPage() {
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </button>
-            <Link href="/my-bookings" className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">
+            <Link href="/my-bookings" className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
               Back to My Services
             </Link>
           </div>
@@ -487,7 +540,7 @@ export default function BookingMediaDetailPage() {
             <div className="space-y-1">
               <p className="text-sm text-gray-600">{vendorName}</p>
               <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-                <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700">
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${bookingStatusBadgeClass(booking?.status)}`}>
                   {normalizeStatus(booking?.status)}
                 </span>
                 <span className="inline-flex items-center gap-1">
@@ -531,37 +584,52 @@ export default function BookingMediaDetailPage() {
               />
             ) : (
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-3">
-                <p>You must accept video access before viewing this service proof.</p>
-                <button
-                  type="button"
-                  onClick={() => void requestConsent()}
-                  disabled={consentStatus === 'checking' || consentStatus === 'requesting'}
-                  className="rounded bg-blue-600 px-3 py-2 text-white text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {consentStatus === 'requesting' ? 'Preparing consent...' : 'Review & Accept Access'}
-                </button>
+                <p>We need your permission to view this proof.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void requestConsent()}
+                    disabled={consentStatus === 'checking' || consentStatus === 'requesting'}
+                    className="rounded bg-blue-600 px-3 py-2 text-white text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {consentStatus === 'requesting' ? 'Preparing consent...' : 'Retry'}
+                  </button>
+                  <Link
+                    href="/my-bookings"
+                    className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Back to My Bookings
+                  </Link>
+                </div>
                 {consentStatus === 'checking' ? <p className="text-xs text-amber-800">Checking consent status…</p> : null}
                 {consentError ? <p className="text-xs text-red-700">{consentError}</p> : null}
               </div>
             )}
             <div className="space-y-0.5 pt-1">
               <p className="text-sm font-semibold text-gray-900">Final Result</p>
-              <p className="text-sm text-gray-600">This is the completed work submitted by the provider.</p>
+              <p className="text-sm text-gray-600">This is the completed work shared by your provider.</p>
             </div>
           </div>
         ) : approvedVideos.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 text-sm text-gray-700">
-            We&apos;re preparing your service proof video. It will appear here shortly.
+            Proof submitted, awaiting approval.
+          </div>
+        ) : proofPendingApproval ? (
+          <div className="rounded-lg border bg-white p-4 text-sm text-gray-700 space-y-1">
+            <p className="font-medium text-gray-900">Proof submitted, awaiting approval</p>
+            <p>The vendor has submitted proof and it is being reviewed before it can be shown here.</p>
           </div>
         ) : (
-          <div className="rounded-lg border bg-white p-4 text-sm text-gray-700">
-            No playable proof video is available yet. Approved media may still include images or non-video files.
+          <div className="rounded-lg border bg-white p-4 text-sm text-gray-700 space-y-1">
+            <p className="font-medium text-gray-900">Proof not available yet</p>
+            <p>The vendor has not submitted approved proof for this job yet.</p>
+            <p className="text-xs text-gray-500">You&apos;ll be notified when proof is ready.</p>
           </div>
         )}
 
         {playableVideos.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 space-y-2">
-            <p className="text-sm font-medium text-gray-900">Service Proof Timeline</p>
+            <p className="text-sm font-medium text-gray-900">Proof Timeline</p>
             {!hasStageInteraction ? (
               <p className="text-xs text-gray-500">Tap to view each stage of the service</p>
             ) : null}
@@ -629,7 +697,7 @@ export default function BookingMediaDetailPage() {
           </div>
         ) : null}
 
-        <div className="rounded-lg border bg-white p-4 space-y-3">
+        <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-3">
           <p className="text-sm font-medium text-gray-900">Leave a review</p>
           <div className="flex items-center gap-1">
             {Array.from({ length: 5 }).map((_, index) => {
@@ -690,7 +758,7 @@ export default function BookingMediaDetailPage() {
                 {booking?.booking_time ? ` at ${booking.booking_time}` : ''}
               </p>
               <p>
-                <span className="font-medium text-gray-900">Notes:</span> {booking?.notes || booking?.title || 'No additional notes.'}
+                <span className="font-medium text-gray-900">Notes:</span> {booking?.notes?.trim() ? booking.notes : 'No additional details provided.'}
               </p>
               {nonStageAdditionalMedia.length > 0 ? (
                 <p className="text-xs text-gray-500">

@@ -1,14 +1,14 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { User, Briefcase, ChevronDown, CheckCircle } from 'lucide-react';
+import { User, Briefcase, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import type { AppRole } from '@/hooks/useAvailableRoles';
 
 interface ProfileToggleProps {
-  currentProfile: 'customer' | 'vendor';
-  availableProfiles: ('customer' | 'vendor')[];
-  userId: string;
+  currentProfile: AppRole;
+  availableProfiles: AppRole[];
+  userId?: string;
   className?: string;
 }
 
@@ -18,24 +18,48 @@ export default function ProfileToggle({
   userId,
   className = '' 
 }: ProfileToggleProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeProfile, setActiveProfile] = useState(currentProfile);
   const router = useRouter();
+  const hasMultipleProfiles = availableProfiles.length > 1;
 
   // Update active profile when prop changes
   useEffect(() => {
     setActiveProfile(currentProfile);
   }, [currentProfile]);
 
-  const handleProfileSwitch = async (targetProfile: 'customer' | 'vendor') => {
+  const handleProfileSwitch = async (targetProfile: AppRole) => {
     if (targetProfile === activeProfile) {
-      setIsOpen(false);
       return;
     }
 
+    const navigateToRole = () => {
+      if (targetProfile === 'admin') {
+        router.push('/admin/dashboard');
+      } else if (targetProfile === 'vendor') {
+        router.push('/vendor/dashboard');
+      } else {
+        router.push('/user-dashboard');
+      }
+    };
+
     setIsLoading(true);
     try {
+      if (targetProfile === 'admin') {
+        navigateToRole();
+        return;
+      }
+
+      const canToggleCustomerVendor =
+        Boolean(userId) &&
+        availableProfiles.includes('customer') &&
+        availableProfiles.includes('vendor');
+
+      if (!canToggleCustomerVendor) {
+        navigateToRole();
+        return;
+      }
+
       const token =
         localStorage.getItem('authToken') ||
         localStorage.getItem('auth_token') ||
@@ -53,83 +77,65 @@ export default function ProfileToggle({
       });
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json().catch(() => ({}));
         setActiveProfile(targetProfile);
-        
-        // Navigate to the appropriate dashboard
-        if (targetProfile === 'vendor') {
-          router.push('/vendor/dashboard');
-        } else {
-          router.push('/user-dashboard');
-        }
-        
-        setIsOpen(false);
+        navigateToRole();
       } else {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({}));
         console.error('Profile switch failed:', error);
-        alert('Failed to switch profile. Please try again.');
+        navigateToRole();
       }
     } catch (error) {
       console.error('Profile switch error:', error);
-      alert('Failed to switch profile. Please try again.');
+      navigateToRole();
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getProfileIcon = (profile: 'customer' | 'vendor') => {
-    return profile === 'customer' ? <User className="w-4 h-4" /> : <Briefcase className="w-4 h-4" />;
+  const getProfileIcon = (profile: AppRole) => {
+    if (profile === 'customer') return <User className="w-4 h-4" />;
+    if (profile === 'vendor') return <Briefcase className="w-4 h-4" />;
+    return <Shield className="w-4 h-4" />;
   };
 
-  const getProfileLabel = (profile: 'customer' | 'vendor') => {
-    return profile === 'customer' ? 'Customer' : 'Vendor';
+  const getProfileLabel = (profile: AppRole) => {
+    if (profile === 'customer') return 'Customer';
+    if (profile === 'vendor') return 'Vendor';
+    return 'Admin';
   };
 
-  const getProfileColor = (profile: 'customer' | 'vendor') => {
-    return profile === 'customer' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800';
-  };
+  if (!hasMultipleProfiles) {
+    return null;
+  }
 
   return (
     <div className={`relative ${className}`}>
-      <Button
-        variant="outline"
-        onClick={() => setIsOpen(!isOpen)}
-        disabled={isLoading}
-        className="flex items-center gap-2 min-w-[140px] justify-between"
-      >
-        <div className="flex items-center gap-2">
-          {getProfileIcon(activeProfile)}
-          <span className="hidden sm:inline">{getProfileLabel(activeProfile)}</span>
-        </div>
-        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </Button>
-
-      {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-          <div className="p-2">
-            <div className="text-xs font-medium text-gray-500 px-2 py-1 mb-2">
-              Switch Profile
-            </div>
-            
-            {availableProfiles.map((profile) => (
-              <button
-                key={profile}
-                onClick={() => handleProfileSwitch(profile)}
-                disabled={isLoading}
-                className={`w-full flex items-center gap-3 px-3 py-2 text-left rounded-md hover:bg-gray-50 transition-colors ${
-                  profile === activeProfile ? 'bg-gray-100' : ''
-                }`}
-              >
-                {getProfileIcon(profile)}
-                <span className="flex-1">{getProfileLabel(profile)}</span>
-                {profile === activeProfile && (
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white p-1">
+        {availableProfiles.map((profile) => {
+          const isActive = activeProfile === profile;
+          return (
+            <Button
+              key={profile}
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                if (isLoading) return;
+                void handleProfileSwitch(profile);
+              }}
+              disabled={isLoading}
+              className={`h-9 rounded-md px-4 text-sm ${
+                isActive
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <span className="mr-2">{getProfileIcon(profile)}</span>
+              {getProfileLabel(profile)}
+            </Button>
+          );
+        })}
+      </div>
 
       {/* Loading overlay */}
       {isLoading && (

@@ -1,4 +1,29 @@
-# Media Execution Flow Audit (2026-04-27)
+# Media Execution Flow Audit (refreshed 2026-05-06)
+
+> **Status:** Full lifecycle is verified end-to-end against live Azure SQL by `e2e/reliance-trust-loop.spec.ts` ("full proof-to-review trust loop (live routes)"). Last green run: 2026-05-06.
+
+## Canonical lifecycle (one booking, one trust loop)
+
+```
+[customer]                [employee]                  [manager]               [admin]                [customer]              [customer]
+  Book Service  ─►  Upload INTRO + IN_PROGRESS + COMPLETED  ─►  Approve  ─►  Moderate package (visibility)  ─►  View Proof  ─►  Submit Review
+                                                                                                                          │
+                                                                                                                          ▼
+                                                                                                        [vendor dashboard]
+                                                                                                        Attribution + ratingCount
+```
+
+| # | Step | Frontend surface | API route | Booking status before | Booking status after |
+|---|---|---|---|---|---|
+| 1 | Customer creates booking | `/discover` → `/service/[id]` → `/booking/[id]` → `/booking/[id]/confirmation` | `POST /api/bookings` | n/a | `PENDING` |
+| 2 | Manager assigns employee | `/vendor/jobs` | `PATCH /api/vendors/[vendorId]/jobs/[jobId]/actions` (`ASSIGN_JOB`) | `PENDING` | `ASSIGNED` |
+| 3 | Employee uploads stages | `/employee/jobs` | `POST /api/employee/jobs/[jobId]/stage` (`INTRO`/`IN_PROGRESS`/`COMPLETED`) | `IN_PROGRESS` | `IN_PROGRESS` until last stage → `AWAITING_REVIEW` |
+| 4 | Manager approves completion | `/vendor/jobs` | `POST /api/vendors/[vendorId]/jobs/[jobId]/approve` | `AWAITING_REVIEW` | `COMPLETED` (assets re-queued `pending_review`) |
+| 5 | Admin moderates package | `/admin/media-moderation` | `PATCH /api/admin/media/packages/[bookingId]/moderate` (`approve` + `visibility`) | `COMPLETED` | `COMPLETED` (assets `approved` + visibility set) |
+| 6 | Customer views proof | `/my-bookings/[bookingId]` (with `?proofReady=1` deep link) | `GET /api/bookings/[id]` + `GET /api/bookings/[id]/media` | `COMPLETED` | unchanged |
+| 7 | Customer submits review | In-video overlay or `/reviews` | `POST /api/reviews/window/start` → `POST /api/reviews/create` | `COMPLETED` | unchanged; review row created with attribution |
+
+Manager rejection branch (3a) — `POST /api/vendors/[vendorId]/jobs/[jobId]/reject` requires `rejectionReason`, returns booking to `IN_PROGRESS`, persists `rejectionReason` / `rejectedAt` / `rejectedBy`. Employee then re-uploads, clearing rejection metadata, and the booking re-enters `AWAITING_REVIEW`.
 
 ## Employee Upload Stages
 - Employee starts assigned job: `POST /api/employee/jobs/[jobId]/start`.
@@ -52,12 +77,18 @@
   - `attributionVersion`
 - Vendor dashboard consumes attribution aggregates for employee performance/ranking.
 
-## Remaining Gaps
-- Vendor media management page route target (`/vendor/media`) is missing, despite dashboard and profile linking to it.
-- Jobs UI remains very large and partly legacy, making media-path regressions likely.
-- Stage-complete and complete endpoints overlap responsibilities; workflow contract can still drift.
-- Some compliance/consent orchestration is embedded in large UI logic rather than isolated workflow modules.
-- No dedicated end-to-end pipeline test covering full chain: employee upload -> manager approve -> admin moderate -> customer proof -> review attribution.
+## Remaining Gaps (refreshed 2026-05-06)
+- `/vendor/media` and `/vendor/storage` pages now exist (resolved 2026-04-27); card-level metrics on the vendor dashboard still partially pending backend wiring.
+- Jobs UI remains large and mixed-responsibility; media-path regression risk persists, but the manager review gate is now hard server-side so client misuse cannot bypass it.
+- Stage-complete and complete endpoints still overlap (`POST /api/employee/jobs/[jobId]/stage` with `COMPLETED` stage vs. `POST /api/employee/jobs/[jobId]/complete`); workflow contract is consistent in practice but worth consolidating later.
+- Consent orchestration lives in `SmartVideoPlayer` + per-route logic; isolated workflow modules are still desirable but no longer blocking the trust loop.
+- **Resolved:** the dedicated end-to-end pipeline test exists and passes (`e2e/reliance-trust-loop.spec.ts`) covering employee upload → manager approve → admin moderate → customer proof → review attribution.
+
+## Live verification (2026-05-06)
+- `npx playwright test e2e/reliance-trust-loop.spec.ts` → `1 passed (3.3m)` against Azure SQL (`relianceorgsqlserver.database.windows.net / reliance-db`).
+- Booking under test: `cmouv7gmr0001so1gdk3d5is5` (auto-created by the spec).
+- Customer-visible approved media count after admin approval: 3 (one per stage), all `visibility=customer_only`.
+- Vendor dashboard post-loop: `stats.ratingCount > 0`, `employeePerformance` includes assigned membership, `linkedMediaCount=3` and `linkedSessionCount=3` on the loop's job.
 
 ---
 

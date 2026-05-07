@@ -2,6 +2,75 @@
 
 Scope: current active session changes in working tree (from current repo state).
 
+## 2026-05-06 — Production-state pass: trust-loop E2E green + UX cleanup + Azure recovery
+
+### Customer dashboard real-data migration
+- `/reviews` (`src/app/(user)/reviews/page.tsx`) rewritten as a customer feedback hub backed by `GET /api/reviews/me`.
+- Returns three buckets: `pending` (completed bookings without a review), `submitted` (customer's own reviews), and `proofBased` (submitted reviews with proof linkage).
+- Removed pricing/payment language, category/grid filters, helpful-counters, edit/delete actions, and creation-type filters from the customer surface.
+- `/user-dashboard`, `/my-bookings`, `/favorites` continue to be live-data-driven; identity flows through `resolveCustomerUserId` + `getClientSessionHeaders`.
+
+### Customer proof UX improvements
+- `/my-bookings/[bookingId]` is the canonical proof page; renders booking detail + grouped proof timeline (`before`/`during`/`after`).
+- Primary proof video is the `COMPLETED` stage asset (`isPrimaryProofVideo=true`).
+- Consent-required path renders an inline consent prompt; video gate clears once consent is accepted.
+- Proof-ready notifications deep-link with `?proofReady=1` to surface the proof CTA on first view.
+
+### Vendor workflow simplification
+- `/vendor/jobs` (`src/app/vendor/jobs/page.tsx`) now follows the operational-phase model end-to-end:
+  - `PENDING -> ASSIGNED -> IN_PROGRESS -> AWAITING_REVIEW -> COMPLETED`.
+- Awaiting-review entries expose explicit `Approve Job Completion` and `Reject Job Completion` actions (manager-only).
+- Non-managers see a manager-required guidance message instead of dead controls.
+- Direct-status completion blocked server-side via `MANAGER_APPROVAL_REQUIRED` in `src/app/api/vendors/[vendorId]/jobs/[jobId]/actions/route.ts`.
+- `/vendor/dashboard` cards route into real destinations only (`/vendor/jobs`, `/vendor/media`, `/vendor/storage`).
+
+### Employee upload UX cleanup
+- `/employee/jobs` (`src/app/employee/jobs/page.tsx`) aligns to required stages (`INTRO`, `IN_PROGRESS`, `COMPLETED`).
+- `canMarkComplete` only true while pre-review with all 3 stages uploaded.
+- After all stages exist, booking auto-transitions to `AWAITING_REVIEW` and the UI says "manager approval required".
+- Manager rejection state shows **Rejected by manager** + reason; rejection metadata clears on re-submit.
+
+### Manager review safety improvements
+- Approve route: `POST /api/vendors/[vendorId]/jobs/[jobId]/approve`.
+- Reject route: `POST /api/vendors/[vendorId]/jobs/[jobId]/reject`.
+- Approve enforces: active manager, `AWAITING_REVIEW`, complete 3-stage package; sets `COMPLETED` + re-queues media to admin moderation.
+- Reject enforces: active manager, `AWAITING_REVIEW`, non-empty `rejectionReason`; persists `rejectionReason` / `rejectedAt` / `rejectedBy`.
+- Vendor actions route rejects `UPDATE_STATUS -> COMPLETED` with `MANAGER_APPROVAL_REQUIRED`.
+
+### Admin moderation secure media handling
+- Package-level decision route confirmed canonical: `PATCH /api/admin/media/packages/[bookingId]/moderate` (`approve`/`reject`/`flag`).
+- Approve requires `visibility` (`public` / `customer_only`); reject requires `moderationReason`.
+- Customer-eligible approve fires proof-ready notification (best-effort) and stamps booking metadata to suppress duplicate sends:
+  - `proof_ready_notification_sent_at`
+  - `proof_ready_notification_sent_success`
+  - `proof_ready_notification_visibility`
+  - `proof_ready_notification_url`
+- `GET /api/bookings/[id]/media` filters to `moderationStatus=approved` + `archiveStatus=active` + `visibilityStatus in [customer_only, public]`, with booking ownership enforced.
+
+### Azure SQL outage recovery
+- Previous failure mode: `ERROR 42119 — database reached monthly free amount allowance — paused for remainder of month`.
+- 2026-05-06 verification confirms recovery:
+  - Prisma `$connect()` succeeds against `relianceorgsqlserver.database.windows.net / reliance-db`.
+  - `Service.count = 27`, `Booking.count = 19`, `Vendor.count = 10`.
+  - Critical APIs all 200 OK: `GET /api/services`, `GET /api/bookings`, `GET /api/bookings/[id]`, `GET /api/bookings/[id]/media`, `GET /api/vendors/[vendorId]/dashboard`.
+  - No `42119` / "monthly free amount allowance" / "paused for remainder" markers in dev logs or codebase.
+- Incident + verification recorded in `E2E_STATUS.md`.
+
+### Full trust-loop E2E passing
+- Spec: `e2e/reliance-trust-loop.spec.ts` ("full proof-to-review trust loop (live routes)").
+- Run command: `npx playwright test e2e/reliance-trust-loop.spec.ts`.
+- Last green run on 2026-05-06: `1 passed (3.3m)`.
+- Validates: customer booking -> employee 3-stage upload -> manager approve -> admin moderate (`customer_only`) -> consent record creation -> customer proof view -> review window start -> review create -> vendor dashboard attribution (rating count + employee performance).
+- Live infra dependencies: Next dev server on `127.0.0.1:3000`, Azure SQL via `DATABASE_URL`, Azure Storage via `AZURE_STORAGE_*`.
+
+### Files updated/created in this pass (documentation)
+- `PROJECT_STATE.md` — new dated handoff section (2026-05-06).
+- `CHANGELOG_LATEST.md` — this entry.
+- `ROUTE_MAP.md` — refreshed booking / proof / moderation / review / role-switching flows.
+- `MEDIA_EXECUTION_FLOW_AUDIT.md` — refreshed lifecycle (booking -> upload -> review -> moderation -> proof -> review submission).
+- `ROLE_SURFACES_SYSTEM_AUDIT.md` — refreshed customer / vendor / employee / admin surfaces and role toggle behavior.
+- `E2E_STATUS.md` — created.
+
 ## 2026-04-27 — Reliance handoff refresh (manager review required before completion)
 
 ### Workflow/status changes

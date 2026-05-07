@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 
 export default function VendorsPage() {
   return (
-    <div className="container mx-auto p-6 max-w-5xl space-y-4">
+    <div className="w-full max-w-5xl p-4 space-y-4">
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Vendor Management</h1>
         <p className="text-gray-600 mt-1">

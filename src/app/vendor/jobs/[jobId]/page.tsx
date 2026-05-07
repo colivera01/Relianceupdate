@@ -57,6 +57,14 @@ function formatDateTimeUtc(value: string | null | undefined) {
   return parsed.toLocaleString("en-US", { timeZone: "UTC" });
 }
 
+function statusBadgeClass(status: string) {
+  if (status === "COMPLETED") return "bg-green-100 text-green-800";
+  if (status === "IN_PROGRESS") return "bg-blue-100 text-blue-800";
+  if (status === "AWAITING_REVIEW" || status === "PENDING") return "bg-yellow-100 text-yellow-800";
+  if (status === "REJECTED" || status === "CANCELED") return "bg-red-100 text-red-800";
+  return "bg-gray-100 text-gray-700";
+}
+
 export default function VendorJobDetailPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = String(params?.jobId || "").trim();
@@ -381,15 +389,32 @@ export default function VendorJobDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 space-y-6">
+      <div className="w-full space-y-6">
         <div className="flex items-center justify-between">
           <Link href="/vendor/jobs" className="text-sm text-blue-700 hover:underline">
             ← Back to Jobs
           </Link>
         </div>
 
-        {loading ? <Card><CardContent className="p-6 text-sm text-gray-600">Loading job detail...</CardContent></Card> : null}
-        {error ? <Card><CardContent className="p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{error}</CardContent></Card> : null}
+        {loading ? (
+          <Card>
+            <CardContent className="p-6 space-y-3">
+              <div className="h-5 w-40 rounded bg-gray-200 animate-pulse" />
+              <div className="h-4 w-full rounded bg-gray-200 animate-pulse" />
+              <div className="h-4 w-3/4 rounded bg-gray-200 animate-pulse" />
+            </CardContent>
+          </Card>
+        ) : null}
+        {error ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg space-y-2">
+              <p>We couldn't load this job.</p>
+              <Button size="sm" variant="outline" onClick={() => void load()}>
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
         {actionMessage ? <Card><CardContent className="p-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">{actionMessage}</CardContent></Card> : null}
 
         {job ? (
@@ -413,7 +438,7 @@ export default function VendorJobDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-start gap-2 lg:items-end">
-                  <Badge className="bg-blue-100 text-blue-800">{normalizedStatus || "UNKNOWN"}</Badge>
+                  <Badge className={statusBadgeClass(normalizedStatus || "UNKNOWN")}>{normalizedStatus || "UNKNOWN"}</Badge>
                   {canSubmitForManagerReview ? (
                     <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={submitForManagerReview} disabled={submitting}>
                       {submitting ? "Submitting..." : "Submit for Manager Review"}
@@ -484,7 +509,7 @@ export default function VendorJobDetailPage() {
                             </Button>
                           </div>
                         ) : (
-                          <p className="mt-3 text-sm text-gray-500">No proof uploaded yet.</p>
+                          <p className="mt-3 text-sm text-gray-500">No proof yet - start by uploading the intro video.</p>
                         )}
                         <div className="mt-3">
                           {isEmployee ? (

@@ -158,6 +158,7 @@ async function ensureActors(vendorId: string, serviceId: string): Promise<ActorC
 test.describe.configure({ mode: "serial" });
 
 test("full proof-to-review trust loop (live routes)", async ({ page, request }) => {
+  test.setTimeout(420_000);
   page.on("dialog", (dialog) => dialog.accept());
 
   const fixture = readFixture();
@@ -174,14 +175,29 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   await waitForSignInToLeaveLoginPage(page);
 
   await page.goto("/discover");
-  await expect(page.getByRole("heading", { name: "Discover Services" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Discover( Services)?/i }).first()).toBeVisible();
   await page.getByPlaceholder("Search for services or vendors...").fill(fixture.serviceNameSearch);
   await page.keyboard.press("Enter");
-  await page.getByRole("link", { name: "View Service" }).first().click();
+  const serviceLink = page.locator(`a[href="/service/${fixture.serviceId}"]`).first();
+  await expect(serviceLink).toBeVisible({ timeout: 30_000 });
+  const serviceLinkHref = await serviceLink.getAttribute("href");
+  const serviceLinkText = (await serviceLink.textContent())?.trim() || "";
+  console.log("[trust-loop][book-now] discover url before service click:", page.url());
+  console.log("[trust-loop][book-now] selected service link href:", serviceLinkHref);
+  console.log("[trust-loop][book-now] selected service link text:", serviceLinkText);
+  await serviceLink.click();
   await page.waitForURL(`**/service/${fixture.serviceId}`);
+  console.log("[trust-loop][book-now] url after service click:", page.url());
 
-  await page.getByRole("button", { name: "Book Now" }).click();
-  await page.waitForURL(`**/booking/${fixture.serviceId}`);
+  const bookNowButton = page.getByRole("button", { name: "Book Now" }).first();
+  await expect(bookNowButton).toBeVisible({ timeout: 30_000 });
+  await expect(bookNowButton).toBeEnabled({ timeout: 30_000 });
+  console.log("[trust-loop][book-now] url before Book Now click:", page.url());
+  await Promise.all([
+    page.waitForURL(`**/booking/${fixture.serviceId}`, { timeout: 60_000 }),
+    bookNowButton.click(),
+  ]);
+  console.log("[trust-loop][book-now] url after Book Now click:", page.url());
   await page.locator('[data-testid^="booking-slot-date-"]').first().click();
   await page.locator('[data-testid^="booking-slot-time-"]').first().click();
   await page.getByRole("button", { name: "Continue" }).click();
@@ -190,10 +206,30 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   await page.getByPlaceholder("Enter your phone number").fill("555-0111");
   await page.getByPlaceholder("Enter the address where you need the service").fill("100 Trust Loop Ave");
   await page.getByRole("button", { name: "Continue" }).click();
+  console.log("[trust-loop][booking] url before confirm click:", page.url());
+  const bookingPostPromise = page.waitForResponse((response) => {
+    return response.request().method() === "POST" && response.url().includes("/api/bookings");
+  });
   await page.getByRole("button", { name: "Confirm booking" }).click();
+  const bookingPostResponse = await bookingPostPromise;
+  const bookingPostStatus = bookingPostResponse.status();
+  const bookingPostBody = await bookingPostResponse.text().catch(() => "");
+  console.log("[trust-loop][booking] POST /api/bookings status:", bookingPostStatus);
+  console.log("[trust-loop][booking] POST /api/bookings body:", bookingPostBody);
 
-  await page.waitForURL(/\/confirmation\?bookingId=/, { timeout: 60_000 });
+  await page.waitForURL(new RegExp(`/booking/${fixture.serviceId}/confirmation\\?bookingId=`), { timeout: 60_000 });
+  console.log("[trust-loop][booking] url after confirm click:", page.url());
   const bookingIdMatch = page.url().match(/bookingId=([^&]+)/);
+  const confirmationHeadingVisible = await page
+    .getByRole("heading", { name: "Booking Confirmed!" })
+    .isVisible()
+    .catch(() => false);
+  const confirmationLoadErrorVisible = await page
+    .getByText("Unable to load booking confirmation")
+    .isVisible()
+    .catch(() => false);
+  console.log("[trust-loop][booking] confirmation heading visible:", confirmationHeadingVisible);
+  console.log("[trust-loop][booking] confirmation load error visible:", confirmationLoadErrorVisible);
   expect(bookingIdMatch?.[1], "booking id should exist in confirmation URL").toBeTruthy();
   const bookingId = decodeURIComponent(String(bookingIdMatch?.[1]));
   console.log("[trust-loop] bookingId:", bookingId);
@@ -340,10 +376,127 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   });
 
   // STEP 6 — Customer views proof
-  await page.goto(`/my-bookings/${bookingId}?proofReady=1`);
-  await expect(page.getByRole("heading", { name: "Proof of Completed Work" })).toBeVisible({
-    timeout: 30_000,
+  const bookingBeforeProofCheck = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { id: true, userId: true, status: true },
   });
+  const approvedCustomerVisibleMediaCount = await (prisma as any).mediaAsset.count({
+    where: {
+      moderationStatus: "approved",
+      archiveStatus: { in: ["active", "ACTIVE"] },
+      visibilityStatus: { in: ["customer_only", "public"] },
+      mediaSession: {
+        bookingId,
+      },
+    },
+  });
+  console.log("[trust-loop][proof] booking ownership/status:", {
+    bookingId: bookingBeforeProofCheck?.id,
+    bookingUserId: bookingBeforeProofCheck?.userId,
+    expectedCustomerUserId: String(booking?.userId),
+    status: bookingBeforeProofCheck?.status,
+  });
+  console.log("[trust-loop][proof] approved customer-visible media count:", approvedCustomerVisibleMediaCount);
+
+  const customerBookingApiRes = await request.fetch(`/api/bookings/${bookingId}`, {
+    headers: { "x-user-id": String(booking?.userId) },
+  });
+  const customerBookingApiBody = await customerBookingApiRes.text().catch(() => "");
+  console.log("[trust-loop][proof] direct GET /api/bookings/:id status:", customerBookingApiRes.status());
+  console.log("[trust-loop][proof] direct GET /api/bookings/:id body:", customerBookingApiBody);
+
+  const customerMediaApiRes = await request.fetch(`/api/bookings/${bookingId}/media`, {
+    headers: { "x-user-id": String(booking?.userId) },
+  });
+  const customerMediaApiBody = await customerMediaApiRes.text().catch(() => "");
+  console.log("[trust-loop][proof] direct GET /api/bookings/:id/media status:", customerMediaApiRes.status());
+  console.log("[trust-loop][proof] direct GET /api/bookings/:id/media body:", customerMediaApiBody);
+
+  const proofBookingResponsePromise = page.waitForResponse((response) => {
+    const url = response.url();
+    return (
+      response.request().method() === "GET" &&
+      url.includes(`/api/bookings/${bookingId}`) &&
+      !url.includes(`/api/bookings/${bookingId}/media`)
+    );
+  });
+  const proofMediaResponsePromise = page.waitForResponse((response) => {
+    return response.request().method() === "GET" && response.url().includes(`/api/bookings/${bookingId}/media`);
+  });
+  await page.goto(`/my-bookings/${bookingId}?proofReady=1`);
+  const [proofBookingResponse, proofMediaResponse] = await Promise.all([
+    proofBookingResponsePromise,
+    proofMediaResponsePromise,
+  ]);
+  console.log("[trust-loop][proof] browser GET /api/bookings/:id status:", proofBookingResponse.status());
+  console.log(
+    "[trust-loop][proof] browser GET /api/bookings/:id body:",
+    await proofBookingResponse.text().catch(() => "")
+  );
+  console.log("[trust-loop][proof] browser GET /api/bookings/:id/media status:", proofMediaResponse.status());
+  console.log(
+    "[trust-loop][proof] browser GET /api/bookings/:id/media body:",
+    await proofMediaResponse.text().catch(() => "")
+  );
+  console.log("[trust-loop][proof] url:", page.url());
+  const customerSessionSnapshot = await page.evaluate(() => {
+    const readStorage = (storage: Storage) => {
+      const out: Record<string, string> = {};
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i);
+        if (!key) continue;
+        out[key] = storage.getItem(key) || "";
+      }
+      return out;
+    };
+    return {
+      localStorage: readStorage(window.localStorage),
+      sessionStorage: readStorage(window.sessionStorage),
+    };
+  });
+  const contextCookies = await page.context().cookies();
+  console.log("[trust-loop][proof] customer storage snapshot:", customerSessionSnapshot);
+  console.log(
+    "[trust-loop][proof] customer cookies:",
+    contextCookies.map((cookie) => ({ name: cookie.name, value: cookie.value, domain: cookie.domain, path: cookie.path }))
+  );
+  const bodyText = (await page.locator("body").innerText().catch(() => "")).slice(0, 1000);
+  console.log("[trust-loop][proof] body text (first 1000 chars):", bodyText);
+  const loadBookingProofErrorVisible = await page.getByText("We couldn't load this booking proof.").first().isVisible().catch(() => false);
+  const loadingSkeletonVisible = (await page.locator(".animate-pulse").count().catch(() => 0)) > 0;
+  const signInPromptVisible = await page.getByText("Sign in to continue").first().isVisible().catch(() => false);
+  const accessDeniedVisible = await page.getByText("Unauthorized").first().isVisible().catch(() => false);
+  console.log("[trust-loop][proof] load booking proof error visible:", loadBookingProofErrorVisible);
+  console.log("[trust-loop][proof] loading skeleton visible:", loadingSkeletonVisible);
+  console.log("[trust-loop][proof] sign-in prompt visible:", signInPromptVisible);
+  console.log("[trust-loop][proof] access denied text visible:", accessDeniedVisible);
+  const headingTexts = (await page.locator("h1, h2").allTextContents()).map((text) => text.trim()).filter(Boolean);
+  console.log("[trust-loop][proof] visible headings:", headingTexts);
+  const bookingProofLabelVisible = await page.getByText("Booking Proof").first().isVisible().catch(() => false);
+  const proofTimelineVisible = await page.getByText("Proof Timeline").first().isVisible().catch(() => false);
+  const finalResultVisible = await page.getByText("Final Result").first().isVisible().catch(() => false);
+  const pendingProofVisible = await page
+    .getByText("Proof submitted, awaiting approval")
+    .first()
+    .isVisible()
+    .catch(() => false);
+  const noProofVisible = await page.getByText("Proof not available yet").first().isVisible().catch(() => false);
+  const proofVideoVisible = await page.locator("video").first().isVisible().catch(() => false);
+  console.log("[trust-loop][proof] bookingProofLabelVisible:", bookingProofLabelVisible);
+  console.log("[trust-loop][proof] proofTimelineVisible:", proofTimelineVisible);
+  console.log("[trust-loop][proof] finalResultVisible:", finalResultVisible);
+  console.log("[trust-loop][proof] pendingProofVisible:", pendingProofVisible);
+  console.log("[trust-loop][proof] noProofVisible:", noProofVisible);
+  console.log("[trust-loop][proof] proofVideoVisible:", proofVideoVisible);
+
+  await expect(page.getByText("Booking Proof").first()).toBeVisible({ timeout: 30_000 });
+  const consentPromptVisible = await page
+    .getByText("We need your permission to view this proof.")
+    .first()
+    .isVisible()
+    .catch(() => false);
+  console.log("[trust-loop][proof] consent prompt visible:", consentPromptVisible);
+  expect(proofVideoVisible || consentPromptVisible).toBeTruthy();
 
   const mediaRes = await request.fetch(`/api/bookings/${bookingId}/media`, {
     headers: { "x-user-id": String(booking?.userId) },
@@ -399,14 +552,32 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
 
   // STEP 8 — Verify dashboard attribution
   await page.goto("/vendor/dashboard");
-  const dashboardRes = await request.fetch(`/api/vendors/${actors.vendorId}/dashboard`, {
-    headers: {
-      "x-user-id": actors.managerUserId,
-      "x-vendor-id": actors.vendorId,
-    },
-  });
+  const dashboardHeaders = {
+    "x-user-id": actors.managerUserId,
+    "x-vendor-id": actors.vendorId,
+  };
+  const dashboardFetchStartedAt = Date.now();
+  console.log("[trust-loop][dashboard] vendorId:", actors.vendorId);
+  console.log("[trust-loop][dashboard] request headers:", dashboardHeaders);
+  let dashboardRes;
+  try {
+    dashboardRes = await request.fetch(`/api/vendors/${actors.vendorId}/dashboard`, {
+      headers: dashboardHeaders,
+      timeout: 120_000,
+    });
+  } catch (error) {
+    const elapsed = Date.now() - dashboardFetchStartedAt;
+    console.log("[trust-loop][dashboard] fetch threw after ms:", elapsed);
+    console.log("[trust-loop][dashboard] fetch error:", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+  const dashboardFetchElapsed = Date.now() - dashboardFetchStartedAt;
+  console.log("[trust-loop][dashboard] response status:", dashboardRes.status());
+  console.log("[trust-loop][dashboard] elapsed ms:", dashboardFetchElapsed);
+  const dashboardBodyText = await dashboardRes.text().catch(() => "");
+  console.log("[trust-loop][dashboard] response body:", dashboardBodyText);
   expect(dashboardRes.ok()).toBeTruthy();
-  const dashboardJson = (await dashboardRes.json()) as {
+  const dashboardJson = JSON.parse(dashboardBodyText || "{}") as {
     stats?: { ratingCount?: number };
     employeePerformance?: Array<{ membershipId?: string; displayName?: string; reviewCount?: number }>;
   };

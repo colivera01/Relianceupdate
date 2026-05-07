@@ -77,11 +77,11 @@ export default function UserDiscoverPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="pt-6">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Discover Services</h1>
-          <p className="text-gray-600 mt-1">Signed-in marketplace discovery with trust-safe public data.</p>
+          <h1 className="text-2xl font-semibold mb-6 text-gray-900">Discover</h1>
+          <p className="text-gray-600">Find trusted local services.</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
@@ -91,7 +91,7 @@ export default function UserDiscoverPage() {
         </div>
       </div>
 
-      <div className="relative">
+      <div className="relative mb-10">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
         <input
           type="text"
@@ -109,7 +109,7 @@ export default function UserDiscoverPage() {
       </div>
 
       {showFilters && (
-        <div className="bg-white rounded-lg shadow-sm p-6 border">
+        <div className="bg-white rounded-lg shadow-sm p-4 border mb-10">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
             <button
@@ -162,19 +162,19 @@ export default function UserDiscoverPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-4">
         <div className="text-sm text-gray-600">
           {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount} services`}
         </div>
       </div>
       {favoriteActionError ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 mb-10 text-sm text-amber-800">
           {favoriteActionError}
         </div>
       ) : null}
 
       {isLoading ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <Card key={i} className="animate-pulse">
               <div className="h-48 bg-gray-200 rounded-t-lg" />
@@ -187,12 +187,12 @@ export default function UserDiscoverPage() {
           ))}
         </div>
       ) : isError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 mb-10 text-red-700">
           Failed to load discover results.
           {error instanceof Error ? ` ${error.message}` : ''}
         </div>
       ) : results.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border">
+        <div className="text-center py-12 bg-white rounded-lg border mb-10">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No services found</h3>
           <p className="text-gray-600 mb-4">Try adjusting your search terms or filters.</p>
           <Button variant="outline" onClick={clearFilters}>
@@ -200,9 +200,9 @@ export default function UserDiscoverPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
           {results.map((item) => (
-            <Card key={item.serviceId} className="hover:shadow-lg transition-shadow">
+            <Card key={item.serviceId} className="hover:shadow-lg transition-shadow mb-4">
               <div className="relative">
                 {item.previewMediaUrl ? (
                   <img src={item.previewMediaUrl} alt={item.serviceName} className="w-full h-48 object-cover rounded-t-lg" />

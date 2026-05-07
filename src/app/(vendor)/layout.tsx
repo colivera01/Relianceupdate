@@ -48,12 +48,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
             className="w-16 h-16 rounded-full border-2 border-green-500 shadow-md mb-2"
           />
           <div className="font-semibold text-lg">{vendor.name}</div>
-          <div className="text-xs text-gray-500">{vendor.email}</div>
-          <div className="mt-2">
-            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-              Verified Vendor
-            </span>
-          </div>
+          <div className="text-xs text-gray-500 break-all">{vendor.email}</div>
         </div>
         <nav className="flex-1 px-4 space-y-1">
           {navLinks.map((link) => (

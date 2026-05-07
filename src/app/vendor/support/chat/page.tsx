@@ -102,11 +102,6 @@ export default function SupportChatPage() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
-              <Link href="/vendor/dashboard" className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800">
-                <ArrowLeft className="w-4 h-4" />
-                Back to Dashboard
-              </Link>
-              <span className="text-gray-400">|</span>
               <Link href="/vendor/support" className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800">
                 <ArrowLeft className="w-4 h-4" />
                 Back to Support

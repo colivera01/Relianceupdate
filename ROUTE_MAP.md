@@ -1,6 +1,85 @@
 # Route Map
 
-**Last refreshed:** 2026-04-12 (generated from `src/app/**/page.tsx` and `src/app/api/**/route.ts`).
+**Last refreshed:** 2026-05-06 (production-state refresh — flows below now reflect the live trust-loop topology).
+**Previous refresh:** 2026-04-12 (raw page/API enumeration — preserved further down for reference).
+
+## Production flows (refreshed 2026-05-06)
+
+These are the canonical routes exercised by the green `e2e/reliance-trust-loop.spec.ts` run. Frontend pages and API routes here are confirmed to operate against live Azure SQL.
+
+### Booking flow (customer)
+- Page: `/discover` (`src/app/(user)/discover/page.tsx`) → search + service tile.
+- Page: `/service/[serviceId]` (`src/app/(user)/service/[serviceId]/page.tsx`) → "Book Now" CTA.
+- Page: `/booking/[serviceId]` (`src/app/(user)/booking/[serviceId]/page.tsx`) → date/time picker + customer details form.
+- Page: `/booking/[serviceId]/confirmation` (`src/app/(user)/booking/[serviceId]/confirmation/page.tsx`) → confirmation receipt.
+- Page: `/my-bookings` (`src/app/(user)/my-bookings/page.tsx`) → customer booking list.
+- API:
+  - `GET /api/services/discover`, `GET /api/services/categories` (discovery)
+  - `GET /api/services/[id]` (service detail)
+  - `GET /api/availability/vendor/[vendorId]`, `POST /api/availability/check` (slot availability)
+  - `POST /api/bookings` (create) → returns `bookingId` used by the confirmation URL
+  - `GET /api/bookings?userId=...` (customer list, also accepts `x-user-id`)
+  - `GET /api/bookings/[id]` (single booking, ownership-enforced)
+  - `POST /api/bookings/[id]/cancel`
+
+### Proof flow (customer view + manager attestation)
+- Page (customer): `/my-bookings/[bookingId]` (`src/app/(user)/my-bookings/[bookingId]/page.tsx`) — canonical proof page; supports `?proofReady=1` deep link from notification.
+- Page (vendor): `/vendor/jobs/[jobId]` (`src/app/vendor/jobs/[jobId]/page.tsx`) — manager review surface for the staged 3-video package.
+- API:
+  - `GET /api/bookings/[id]` — booking detail (ownership enforced).
+  - `GET /api/bookings/[id]/media` — customer-visible assets only (`approved` + `customer_only|public` + `active`); returns `assets` / `images` / `videos` plus `downloadUrl` per item.
+  - `GET /api/bookings/[id]/media/[assetId]/download` — actual asset stream/redirect.
+  - `GET /api/vendors/[vendorId]/media/sessions/[sessionId]` — vendor staged session inspection.
+- Stage uploads are produced by the employee flow (see Moderation flow section).
+
+### Moderation flow (employee → manager → admin)
+- Employee:
+  - Page: `/employee/jobs` (`src/app/employee/jobs/page.tsx`).
+  - API:
+    - `POST /api/employee/jobs/[jobId]/start`
+    - `POST /api/employee/jobs/[jobId]/stage` with `{ stage: "INTRO" | "IN_PROGRESS" | "COMPLETED" }`
+    - `POST /api/employee/jobs/[jobId]/complete` (final transition to `AWAITING_REVIEW` once all stages exist)
+- Manager (vendor):
+  - Page: `/vendor/jobs` (`src/app/vendor/jobs/page.tsx`).
+  - API:
+    - `POST /api/vendors/[vendorId]/jobs/[jobId]/approve` — sets booking `COMPLETED`, re-queues media as `pending_review`.
+    - `POST /api/vendors/[vendorId]/jobs/[jobId]/reject` — requires `rejectionReason`; returns booking to `IN_PROGRESS`.
+    - `PATCH /api/vendors/[vendorId]/jobs/[jobId]/actions` — assignment + lifecycle transitions; refuses `UPDATE_STATUS -> COMPLETED` with `MANAGER_APPROVAL_REQUIRED`.
+- Admin:
+  - Page: `/admin/media-moderation` (`src/app/admin/media-moderation/page.tsx`).
+  - API:
+    - `GET /api/admin/media/moderation-queue` — package view (latest `INTRO`/`IN_PROGRESS`/`COMPLETED` per booking).
+    - `PATCH /api/admin/media/packages/[bookingId]/moderate` — `approve` (with `visibility`) / `reject` (with `moderationReason`) / `flag`.
+    - `PATCH /api/admin/media/[assetId]/moderate` — single-asset decision (legacy path; package route is canonical).
+
+### Review flow (customer → vendor reputation)
+- Page (customer): `/my-bookings/[bookingId]` proof viewer hosts `SmartVideoPlayer`, which surfaces the in-video review prompt once consent is accepted; standalone hub at `/reviews` (`src/app/(user)/reviews/page.tsx`).
+- API:
+  - `POST /api/consent/request` / `POST /api/consent/accept` / `POST /api/consent/decline` / `GET /api/consent/[token]` — consent capture.
+  - `POST /api/reviews/window/start` — opens the review window once consent + media linkage exist.
+  - `POST /api/reviews/prompt-event` / `POST /api/reviews/sentiment` — in-video signal capture.
+  - `POST /api/reviews/create` — final review write; persists attribution (`assignedMembershipId`, `assignedUserId`, `assignedEmployeeName`, `attributionVersion`).
+  - `POST /api/reviews/window/expire` — TTL-driven expiry (auth-gated to booking owner).
+  - `GET /api/reviews/me` — customer feedback hub (`pending` / `submitted` / `proofBased`).
+  - `GET /api/vendors/[vendorId]/dashboard` — surfaces aggregated `stats.ratingCount`, `recentReviews`, `employeePerformance`.
+
+### Role switching (one user, multiple surfaces)
+- Identity sources:
+  - Browser session: `localStorage.userData` + `localStorage.authToken` (also legacy `auth_token`); helper `getClientSessionHeaders` produces `Authorization: Bearer <token>` + `x-user-id: <userId>`.
+  - Server: `getUserIdFromRequest` accepts the bearer token, `x-user-id` header, or `userId` query; vendor surfaces additionally use `requireVendorMembership` / `requireVendorManager` against `VendorMembership`.
+- Customer surface: `/user-dashboard`, `/discover`, `/service/[id]`, `/booking/*`, `/my-bookings`, `/my-bookings/[bookingId]`, `/favorites`, `/reviews`, `/profile-settings`.
+- Vendor surface (gated by active membership): `/vendor`, `/vendor/dashboard`, `/vendor/profile`, `/vendor/jobs`, `/vendor/media`, `/vendor/storage`, `/vendor/employees`.
+- Employee surface (gated by `EMPLOYEE` membership): `/employee/jobs`, `/employee/mobile`.
+- Admin surface (gated by admin role headers in dev / future role attribute in prod): `/admin/media-moderation`, `/admin/review-audit`, `/admin/audit-logs`, `/admin/publish-management`, `/admin/vendors`, `/admin/notifications`.
+- Switching mechanic: `GET /api/vendor/context` resolves the current user's active vendor membership; `GET /api/vendors/[vendorId]/dashboard` returns `403 FORBIDDEN_ACTIVE_MEMBERSHIP_REQUIRED` when the supplied user has no membership in the requested vendor and includes `suggestedVendorId` so the UI can route the user back to a vendor they actually belong to. `POST /api/profile/toggle` flips the in-app role context for users who hold both customer and vendor identities.
+
+---
+
+
+
+## Raw enumeration (2026-04-12 snapshot)
+
+The lists below are the broad page + API enumeration captured on 2026-04-12. They are not exhaustive of every newer route added since (see "Production flows" above for the canonical 2026-05-06 view).
 
 ## Every frontend page/route
 

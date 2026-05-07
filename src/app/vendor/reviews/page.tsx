@@ -141,7 +141,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Star, ArrowUpRight, ArrowDownRight, AlertTriangle, Lightbulb, ThumbsUp, ThumbsDown, Info, BarChart2, LineChart, ArrowLeft, Settings, Upload, Download, Calendar, DollarSign, BarChart3, Search, X, Filter, Calendar as CalendarIcon, User, Mail, Phone, MapPin, Clock, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Send } from "lucide-react";
+import { Star, ArrowUpRight, ArrowDownRight, AlertTriangle, Lightbulb, ThumbsUp, ThumbsDown, Info, BarChart2, LineChart, Settings, Upload, Download, Calendar, DollarSign, BarChart3, Search, X, Filter, Calendar as CalendarIcon, User, Mail, Phone, MapPin, Clock, TrendingUp, TrendingDown, CheckCircle, AlertCircle, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 // import SimpleTooltip from '../../../../components/ui/tooltip';
 // TODO: Import authentication/role utilities as needed
@@ -895,15 +895,7 @@ export default function VendorReviewsPage() {
   };
 
   return (
-    <div className="p-8 space-y-8">
-      {/* Back to Dashboard Button */}
-      <div className="mb-4">
-        <a href="/vendor" className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 font-medium shadow-sm transition">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
-        </a>
-      </div>
-
+    <div className="p-4 space-y-8">
       {/* Tab Navigation */}
       <div className="mb-6">
         <div className="border-b border-gray-200">

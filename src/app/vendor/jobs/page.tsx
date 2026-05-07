@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { ArrowLeft, Plus, Search, Filter, Download, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, MessageSquare, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
+import { Plus, Search, Filter, Download, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, MessageSquare, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from "next/navigation";
 import { useVendorProfile } from '@/hooks/useVendorProfile';
@@ -76,60 +76,6 @@ function formatTimeUtc(value: string | number | Date | null | undefined): string
 // - NEW: Job status updates should POST to /api/vendor/jobs/:jobId/status
 // - NEW: Employee assignments should POST to /api/vendor/jobs/:jobId/assignments
 // - NEW: Job notes should POST to /api/vendor/jobs/:jobId/notes
-
-// Mock data
-const mockJobs = [
-  {
-    id: 1,
-    title: 'Water Heater Repair',
-    client: 'John Smith',
-    phone: '(555) 123-4567',
-    email: 'john@example.com',
-    status: 'in-progress',
-    assignedEmployees: ['Mike Johnson'],
-    createdAt: '2024-01-15',
-    estimatedCompletion: '2024-01-20',
-    notes: [
-      { id: 1, text: 'Customer requested morning appointment', author: 'Mike Johnson', date: '2024-01-15' },
-      { id: 2, text: 'Parts ordered - arriving tomorrow', author: 'Mike Johnson', date: '2024-01-15' }
-    ],
-    audit: ['Job created on 2024-01-15', 'Assigned to Mike Johnson on 2024-01-15'],
-    videos: [
-      { id: 3, title: 'Water Heater Diagnosis', url: '/videos/water-heater-diagnosis.mp4', uploadedAt: '2024-01-15', status: 'pending-approval', uploadedBy: 'Mike Johnson' }
-    ]
-  },
-  {
-    id: 2,
-    title: 'HVAC Maintenance',
-    client: 'Sarah Wilson',
-    phone: '(555) 987-6543',
-    email: 'sarah@example.com',
-    status: 'completed',
-    assignedEmployees: ['Lisa Chen'],
-    createdAt: '2024-01-10',
-    completedAt: '2024-01-12',
-    notes: [
-      { id: 1, text: 'Annual maintenance completed', author: 'Lisa Chen', date: '2024-01-12' },
-      { id: 2, text: 'Customer satisfied with service', author: 'Lisa Chen', date: '2024-01-12' }
-    ],
-    audit: ['Job created on 2024-01-10', 'Completed on 2024-01-12'],
-    videos: [
-      { id: 1, title: 'Initial Assessment', url: '/videos/hvac-assessment.mp4', uploadedAt: '2024-01-10', status: 'approved', reviewedAt: '2024-01-10T10:30:00Z', reviewedBy: 'Manager', archivedDate: '2024-01-10', approvalMethod: 'manual' },
-      { id: 2, title: 'Final Inspection', url: '/videos/hvac-final.mp4', uploadedAt: '2024-01-12', status: 'approved', reviewedAt: '2024-01-12T15:45:00Z', reviewedBy: 'Manager', archivedDate: '2024-01-12', approvalMethod: 'manual' }
-    ],
-    customerApprovalStatus: 'completed',
-    customerApprovalRequestedAt: '2024-01-10T10:30:00Z',
-    customerApprovalCompletedAt: '2024-01-10T11:15:00Z',
-    customerApprovalWorkflow: {
-      status: 'completed',
-      initiatedAt: '2024-01-10T10:30:00Z',
-      completedAt: '2024-01-10T11:15:00Z',
-      videoId: 1,
-      approvalMethod: 'manual',
-      managerNotes: 'Service completed successfully'
-    }
-  }
-];
 
 const BUSINESS_ADDRESS = { lat: 28.5383, lng: -81.3792 }; // Example: Orlando, FL
 const LOCATION_RADIUS_METERS = 100;
@@ -643,6 +589,9 @@ export default function VendorJobs() {
   const [rejectJobTarget, setRejectJobTarget] = useState<any>(null);
   const [rejectReasonInput, setRejectReasonInput] = useState('');
   const [rejectJobSubmitting, setRejectJobSubmitting] = useState(false);
+  const [showApproveConfirmModal, setShowApproveConfirmModal] = useState(false);
+  const [approveJobTarget, setApproveJobTarget] = useState<any>(null);
+  const [approveJobSubmitting, setApproveJobSubmitting] = useState(false);
   const [deleteImpactPreview, setDeleteImpactPreview] = useState<{
     loading: boolean;
     canVendorDelete: boolean;
@@ -979,6 +928,19 @@ export default function VendorJobs() {
       });
       return inferred === stage;
     });
+  };
+
+  const getStageVideoForJob = (job: any, stage: VendorJobVideoStage) => {
+    const videos = Array.isArray(job?.videos) ? job.videos : [];
+    return videos.find((video: any) => {
+      const explicit = normalizeVendorJobVideoStage(video?.vendorJobVideoStage);
+      if (explicit === stage) return true;
+      const inferred = resolveVendorJobVideoStageFromSession({
+        vendorJobVideoStage: video?.vendorJobVideoStage,
+        sessionType: video?.sessionType,
+      });
+      return inferred === stage;
+    }) || null;
   };
 
   const getNextMissingVideoStageForJob = (job: any): VendorJobVideoStage | null => {
@@ -3233,6 +3195,34 @@ export default function VendorJobs() {
     setActiveJobActionMenuId(null);
   };
 
+  const openApproveConfirmModal = (job: any) => {
+    setApproveJobTarget(job);
+    setShowApproveConfirmModal(true);
+    setActiveJobActionMenuId(null);
+  };
+
+  const submitApproveJob = async () => {
+    if (!approveJobTarget || approveJobSubmitting) return;
+    setApproveJobSubmitting(true);
+    setJobActionFeedback(null);
+    try {
+      await approveJobCompletion(approveJobTarget);
+      setJobActionFeedback({
+        type: 'success',
+        message: 'Job approved and marked completed. Media sent to moderation review.',
+      });
+      setShowApproveConfirmModal(false);
+      setApproveJobTarget(null);
+    } catch (error) {
+      setJobActionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Failed to approve job completion',
+      });
+    } finally {
+      setApproveJobSubmitting(false);
+    }
+  };
+
   const submitRejectJob = async () => {
     if (!rejectJobTarget || rejectJobSubmitting) return;
     const trimmedReason = String(rejectReasonInput || '').trim();
@@ -3432,7 +3422,7 @@ export default function VendorJobs() {
 
   if (approvalPending) {
     return (
-      <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+      <div className="p-4 bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="min-h-[60vh] flex items-center justify-center">
         <div className="max-w-md w-full bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
           <h2 className="text-xl font-semibold text-amber-900 mb-2">Vendor account pending approval</h2>
@@ -3447,7 +3437,7 @@ export default function VendorJobs() {
 
   if (vendorProfileLoading && !vendorId) {
     return (
-      <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+      <div className="p-4 bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm">
             <h2 className="text-xl font-semibold text-slate-900 mb-2">Loading vendor context...</h2>
@@ -3462,15 +3452,13 @@ export default function VendorJobs() {
 
   if (vendorContextUnavailable) {
     return (
-      <div className="px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+      <div className="p-4 bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="min-h-[60vh] flex items-center justify-center">
         <div className="max-w-md w-full bg-red-50 border border-red-200 rounded-xl p-6 text-center">
           <h2 className="text-xl font-semibold text-red-900 mb-2">Unable to load vendor context</h2>
-          <p className="text-sm text-red-800">
-            {vendorContextErrorMessage}
-          </p>
+          <p className="text-sm text-red-800">Your vendor workspace is temporarily unavailable.</p>
           <p className="text-xs text-red-700 mt-3">
-            Verify your vendor membership is ACTIVE, then refresh this page.
+            Verify your vendor membership is active, then try again.
           </p>
           <div className="mt-4 flex items-center justify-center gap-2">
             <button
@@ -3495,7 +3483,7 @@ export default function VendorJobs() {
   }
 
   return (
-    <div className="overflow-x-hidden px-4 md:px-8 py-8 bg-gradient-to-br from-gray-50 to-blue-50">
+    <div className="overflow-x-hidden p-4 bg-gradient-to-br from-gray-50 to-blue-50">
       {Boolean(vendorId && vendorContextDbFailure) && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
           <div className="flex items-start justify-between gap-3">
@@ -3522,7 +3510,8 @@ export default function VendorJobs() {
           <div>
             <h3 className="text-lg font-semibold mb-1">Welcome to Job Management</h3>
             <p className="text-blue-100 text-sm leading-relaxed">
-              Manage all your jobs efficiently. Click <strong>Create Job</strong> to add a new job, or use <strong>Create Service Video</strong> to upload progress. 
+              Manage all your jobs efficiently. Click <strong>Create Job</strong> to add a new job and use the
+              <strong> Next Step</strong> button on each card to move work forward.
               Hover over any <Info className="inline w-4 h-4 align-text-bottom" /> for detailed help.
             </p>
           </div>
@@ -3532,12 +3521,6 @@ export default function VendorJobs() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
-          <Link href="/vendor">
-            <Button variant="outline" size="lg" className="bg-white hover:bg-gray-50 shadow-md">
-              <ArrowLeft className="w-5 h-5 mr-2" />
-              Back to Dashboard
-            </Button>
-          </Link>
           <div>
             <h2 className="text-3xl font-bold text-gray-800">
               {isEmployeeView ? 'My Assigned Jobs' : 'Manage Jobs'}
@@ -3617,20 +3600,6 @@ export default function VendorJobs() {
             <>
               <Button 
                 onClick={() => {
-                  if (isBulkMode && selectedJobIds.length > 0) {
-                    setShowBulkAssignmentModal(true);
-                  } else {
-                    toggleBulkMode();
-                  }
-                }} 
-                disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
-                className={`action-button ${isBulkMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-gray-600 hover:bg-gray-700'}`}
-              >
-                <Users className="w-5 h-5 mr-2" />
-                {isBulkMode ? (selectedJobIds.length > 0 ? `Assign ${selectedJobIds.length}` : 'Exit Bulk Mode') : 'Bulk Assign'}
-              </Button>
-              <Button 
-                onClick={() => {
                   setJobModalMode('create');
                   setJobFormTargetId(null);
                   setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
@@ -3644,55 +3613,6 @@ export default function VendorJobs() {
                 <Plus className="w-5 h-5 mr-2" />
                 Create Job
               </Button>
-              <Button 
-                onClick={() => {
-                  handleOpenSelectJobModal();
-                }} 
-                disabled={!hasAnyEligibleVideoJob}
-                title={!hasAnyEligibleVideoJob ? videoAssignmentRequiredCopy : 'Create staged service video'}
-                className="action-button bg-green-600 hover:bg-green-700"
-              >
-                <Video className="w-5 h-5 mr-2" />
-                Create Service Video
-              </Button>
-              {!hasAnyEligibleVideoJob ? (
-                <p className="text-xs text-amber-700 mt-1">{videoAssignmentRequiredCopy}</p>
-              ) : null}
-              <Button 
-                onClick={toggleAutoApprove}
-                className={`action-button ${autoApproveSettings.enabled ? 'bg-red-600 hover:bg-red-700' : 'bg-purple-600 hover:bg-purple-700'}`}
-              >
-                <CheckCircle className="w-5 h-5 mr-2" />
-                {autoApproveSettings.enabled ? 'Disable Auto-Approve' : 'Auto-Approve'}
-              </Button>
-              <Button 
-                onClick={() => setShowVideoArchive(true)}
-                className="bg-indigo-600 hover:bg-indigo-700"
-              >
-                <Video className="w-5 h-5 mr-2" />
-                Content Archive
-              </Button>
-              <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setShowArchivedJobs(false)}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-1 ${
-                    !showArchivedJobs ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Active jobs
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowArchivedJobs(true)}
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-1 ${
-                    showArchivedJobs ? 'bg-white text-orange-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <HardDrive className="w-4 h-4" />
-                  Archived ({archivedJobs.length})
-                </button>
-              </div>
             </>
           )}
         </div>
@@ -4126,8 +4046,7 @@ export default function VendorJobs() {
                 <div className="aspect-video bg-gray-200 rounded-lg flex items-center justify-center">
                   <div className="text-center">
                     <Video className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600">Video preview would be displayed here</p>
-                    <p className="text-xs text-gray-500 mt-1">Duration: ~3:45 | Quality: HD</p>
+                    <p className="text-sm text-gray-600">Use the review package player to preview stage proof videos.</p>
                   </div>
                 </div>
               </div>
@@ -4140,19 +4059,11 @@ export default function VendorJobs() {
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">File Size:</span>
-                      <span className="text-sm font-medium">24.5 MB</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Duration:</span>
-                      <span className="text-sm font-medium">3 minutes 45 seconds</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Resolution:</span>
-                      <span className="text-sm font-medium">1920x1080 (HD)</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Format:</span>
-                      <span className="text-sm font-medium">MP4</span>
+                      <span className="text-sm font-medium">
+                        {selectedVideoForDetails?.bytes
+                          ? `${(Number(selectedVideoForDetails.bytes) / (1024 * 1024)).toFixed(2)} MB`
+                          : "Unknown"}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Upload Date:</span>
@@ -4161,6 +4072,10 @@ export default function VendorJobs() {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Upload Time:</span>
                       <span className="text-sm font-medium">{formatTimeUtc(selectedVideoForDetails.reviewedAt)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Mime Type:</span>
+                      <span className="text-sm font-medium">{selectedVideoForDetails?.mimeType || "Unknown"}</span>
                     </div>
                   </div>
                 </div>
@@ -4179,19 +4094,11 @@ export default function VendorJobs() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Job Status:</span>
-                      <span className="text-sm font-medium">In Progress</span>
+                      <span className="text-sm font-medium">{formatJobStatusLabel(selectedVideoForDetails?.status, null)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Job ID:</span>
-                      <span className="text-sm font-medium">JOB-{selectedVideoForDetails.id}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Location:</span>
-                      <span className="text-sm font-medium">123 Main St, City, State</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Priority:</span>
-                      <span className="text-sm font-medium">Medium</span>
+                      <span className="text-sm font-medium">{String(selectedVideoForDetails.id || "-")}</span>
                     </div>
                   </div>
                 </div>
@@ -4463,12 +4370,14 @@ export default function VendorJobs() {
           </DialogHeader>
           <div className="space-y-3 max-h-[50vh] overflow-y-auto">
             {jobsLoading ? (
-              <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-                Loading jobs...
+              <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
+                <div className="h-4 w-32 rounded bg-gray-200 animate-pulse" />
+                <div className="h-3 w-full rounded bg-gray-200 animate-pulse" />
+                <div className="h-3 w-3/4 rounded bg-gray-200 animate-pulse" />
               </div>
             ) : filteredJobs.length === 0 ? (
               <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-                No jobs available. Create a job first, then create a service video.
+                No jobs yet - create one to start uploading proof.
               </div>
             ) : (
               filteredJobs.map((job) => {
@@ -4926,9 +4835,9 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Reject Job Completion</DialogTitle>
+            <DialogTitle>Request Changes</DialogTitle>
             <DialogDescription>
-              Return this job to in-progress and provide correction instructions for the employee.
+              Explain what the employee needs to correct before resubmitting.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -4958,7 +4867,77 @@ export default function VendorJobs() {
               }}
               disabled={rejectJobSubmitting || !String(rejectReasonInput || '').trim()}
             >
-              {rejectJobSubmitting ? "Submitting..." : "Reject Job Completion"}
+              {rejectJobSubmitting ? "Submitting..." : "Request Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showApproveConfirmModal}
+        onOpenChange={(open) => {
+          setShowApproveConfirmModal(open);
+          if (!open) {
+            setApproveJobTarget(null);
+            setApproveJobSubmitting(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Approve job completion?</DialogTitle>
+            <DialogDescription>
+              This will mark the booking completed and send the proof package to admin moderation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-gray-700">
+            <p>
+              Job name: <span className="font-medium text-gray-900">{String(approveJobTarget?.title || "Selected job")}</span>
+            </p>
+            <p>
+              Assigned employee:{" "}
+              <span className="font-medium text-gray-900">
+                {Array.isArray(approveJobTarget?.assignedEmployees) && approveJobTarget.assignedEmployees.length > 0
+                  ? approveJobTarget.assignedEmployees.join(", ")
+                  : "Unassigned"}
+              </span>
+            </p>
+            <div className="rounded border bg-gray-50 p-3 space-y-1">
+              {([
+                { key: 'INTRO' as const, label: 'Before / Intro' },
+                { key: 'IN_PROGRESS' as const, label: 'During / In Progress' },
+                { key: 'COMPLETED' as const, label: 'After / Completed' },
+              ]).map((stage) => {
+                const present = Boolean(approveJobTarget && jobHasVideoForStage(approveJobTarget, stage.key));
+                return (
+                  <p key={`approve-summary-${stage.key}`} className="text-xs">
+                    {stage.label}:{" "}
+                    <span className={present ? "text-emerald-700 font-medium" : "text-red-700 font-medium"}>
+                      {present ? "Present" : "Missing"}
+                    </span>
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowApproveConfirmModal(false)} disabled={approveJobSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => {
+                submitApproveJob().catch(() => undefined);
+              }}
+              disabled={
+                approveJobSubmitting ||
+                !approveJobTarget ||
+                !jobHasVideoForStage(approveJobTarget, 'INTRO') ||
+                !jobHasVideoForStage(approveJobTarget, 'IN_PROGRESS') ||
+                !jobHasVideoForStage(approveJobTarget, 'COMPLETED')
+              }
+            >
+              {approveJobSubmitting ? "Submitting..." : "Approve and Send to Moderation"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -5658,32 +5637,6 @@ export default function VendorJobs() {
             in-progress work, or use bulk actions.
           </p>
         ) : null}
-        {!showArchivedJobs && !isEmployeeView && selectedJobIds.length > 0 && (
-          <div className="flex items-center justify-between bg-blue-50 p-4 rounded-lg">
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-medium text-blue-900">
-                {selectedJobIds.length} job{selectedJobIds.length > 1 ? 's' : ''} selected
-              </span>
-              <Button size="sm" variant="outline" onClick={selectAllJobs}>
-                Select All
-              </Button>
-              <Button size="sm" variant="outline" onClick={clearSelection}>
-                Clear Selection
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button 
-                size="sm" 
-                onClick={() => setShowBulkAssignmentModal(true)}
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                <Users className="w-4 h-4 mr-1" />
-                Assign to Employees
-              </Button>
-            </div>
-          </div>
-        )}
-        
         {!showArchivedJobs && jobsLoading ? (
           <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
             Loading jobs...
@@ -5706,25 +5659,12 @@ export default function VendorJobs() {
             {filteredJobs.map(job => (
           <Card
             key={job.id}
-            className={`cursor-pointer select-none transition-all hover:shadow-md hover:border-blue-200 ${
-              selectedJobIds.includes(job.id)
-                ? 'ring-2 ring-blue-500 ring-offset-2 bg-blue-50 border-blue-300 shadow-md'
-                : ''
-            }`}
+            className="cursor-pointer select-none transition-all hover:shadow-md hover:border-blue-200"
             onClick={(event) => handleJobCardClick(event, job)}
           >
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  {!isEmployeeView ? (
-                    <input
-                      type="checkbox"
-                      checked={selectedJobIds.includes(job.id)}
-                      onChange={() => toggleJobSelection(job.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-4 h-4 text-blue-600 rounded"
-                    />
-                  ) : null}
                   <div>
                     <CardTitle className="text-xl">{job.title}</CardTitle>
                     <p className="text-gray-600">Client: {job.client}</p>
@@ -5737,35 +5677,15 @@ export default function VendorJobs() {
                     <p className="text-gray-600">
                       Media: {Number(job.linkedMediaCount || 0)} asset(s) across {Number(job.linkedSessionCount || 0)} session(s)
                     </p>
-                    {job.assignedEmployees && job.assignedEmployees.length > 0 && (
-                      <p className="text-sm text-blue-600 mt-1">
-                        Assigned: {job.assignedEmployees.join(', ')}
-                      </p>
-                    )}
-                    {(() => {
-                      const nextStage = getNextMissingVideoStageForJob(job);
-                      if (!nextStage) return null;
-                      const canRecordNextStage = isJobAssignedForVideoUpload(job);
-                      return (
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="text-xs text-gray-600">
-                            Next stage: {formatVideoStageLabel(nextStage)}
-                          </span>
-                          {canRecordNextStage ? (
-                            <Button
-                              size="sm"
-                              className="h-8 bg-blue-600 hover:bg-blue-700"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openComplianceForNextStage(job);
-                              }}
-                            >
-                              Continue Recording
-                            </Button>
-                          ) : null}
-                        </div>
-                      );
-                    })()}
+                    <p className="text-sm text-blue-600 mt-1">
+                      Assigned: {job.assignedEmployees && job.assignedEmployees.length > 0 ? job.assignedEmployees.join(', ') : 'Unassigned'}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Next stage: {(() => {
+                        const nextStage = getNextMissingVideoStageForJob(job);
+                        return nextStage ? formatVideoStageLabel(nextStage) : 'All stages uploaded';
+                      })()}
+                    </p>
                     {isEmployeeView && isJobReadyToSubmitForManagerReview(job) ? (
                       <div className="mt-2">
                         <Button
@@ -5796,6 +5716,42 @@ export default function VendorJobs() {
                         <p className="mt-1 text-xs text-amber-800">
                           All required service video stages are uploaded. Review the package before approving completion.
                         </p>
+                        <div className="mt-3 space-y-2">
+                          {([
+                            { key: 'INTRO' as const, label: 'Before / Intro', actionLabel: 'Play Before Proof' },
+                            { key: 'IN_PROGRESS' as const, label: 'During / In Progress', actionLabel: 'Play During Proof' },
+                            { key: 'COMPLETED' as const, label: 'After / Completed', actionLabel: 'Play After Proof' },
+                          ]).map((stage) => {
+                            const stageVideo = getStageVideoForJob(job, stage.key);
+                            const stagePresent = Boolean(stageVideo);
+                            return (
+                              <div
+                                key={`${job.id}-${stage.key}`}
+                                className="flex items-center justify-between rounded border border-amber-200 bg-white px-3 py-2"
+                              >
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-medium text-amber-950">{stage.label}</p>
+                                  <p className={`text-xs ${stagePresent ? 'text-emerald-700' : 'text-red-700'}`}>
+                                    {stagePresent ? 'Present' : 'Missing'}
+                                  </p>
+                                </div>
+                                {stagePresent ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-amber-300 text-amber-900 hover:bg-amber-100"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleWatchVideo(stageVideo);
+                                    }}
+                                  >
+                                    {stage.actionLabel}
+                                  </Button>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <Button
                             size="sm"
@@ -5810,34 +5766,32 @@ export default function VendorJobs() {
                           </Button>
                           {isActiveManager ? (
                             <>
-                              <Button
-                                size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  (async () => {
-                                    try {
-                                      await approveJobCompletion(job);
-                                      setJobActionFeedback({
-                                        type: 'success',
-                                        message:
-                                          'Job approved and marked completed. Media sent to moderation review.',
-                                      });
-                                    } catch (error) {
-                                      setJobActionFeedback({
-                                        type: 'error',
-                                        message:
-                                          error instanceof Error
-                                            ? error.message
-                                            : 'Failed to approve job completion',
-                                      });
-                                    }
-                                  })().catch(() => undefined);
-                                }}
-                                disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                              >
-                                Approve Completion
-                              </Button>
+                              {(() => {
+                                const hasAllReviewStages =
+                                  jobHasVideoForStage(job, 'INTRO') &&
+                                  jobHasVideoForStage(job, 'IN_PROGRESS') &&
+                                  jobHasVideoForStage(job, 'COMPLETED');
+                                return (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      className="bg-emerald-600 hover:bg-emerald-700"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openApproveConfirmModal(job);
+                                      }}
+                                      disabled={!hasAllReviewStages || Boolean(jobMutationLoadingId) || jobActionLoading || approveJobSubmitting}
+                                    >
+                                      Approve Completion
+                                    </Button>
+                                    {!hasAllReviewStages ? (
+                                      <p className="text-xs text-amber-900">
+                                        All three proof stages are required before approval.
+                                      </p>
+                                    ) : null}
+                                  </>
+                                );
+                              })()}
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -5860,18 +5814,44 @@ export default function VendorJobs() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-no-card-open
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openJobDetails(job);
-                    }}
-                    disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
-                  >
-                    View
-                  </Button>
+                  {!isEmployeeView ? (
+                    <Button
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700"
+                      data-no-card-open
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const normalizedStatus = String(job?.status || '').trim().toLowerCase();
+                        if (normalizedStatus === 'pending') {
+                          openAssignmentModal(job);
+                          return;
+                        }
+                        if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') {
+                          openJobDetails(job);
+                          return;
+                        }
+                        if (normalizedStatus === 'completed' || normalizedStatus === 'complete') {
+                          openJobDetails(job);
+                          return;
+                        }
+                        const nextStage = getNextMissingVideoStageForJob(job);
+                        if (nextStage && isJobAssignedForVideoUpload(job)) {
+                          openComplianceForNextStage(job);
+                          return;
+                        }
+                        openJobDetails(job);
+                      }}
+                      disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
+                    >
+                      {(() => {
+                        const normalizedStatus = String(job?.status || '').trim().toLowerCase();
+                        if (normalizedStatus === 'pending') return 'Assign Employee';
+                        if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') return 'Review & Approve';
+                        if (normalizedStatus === 'completed' || normalizedStatus === 'complete') return 'View Job';
+                        return 'Continue Recording';
+                      })()}
+                    </Button>
+                  ) : null}
                   <Badge className={getJobListBadgeColor(job)}>
                     {formatJobStatusLabel(job.status, job.operationalPhase)}
                   </Badge>
@@ -5945,7 +5925,7 @@ export default function VendorJobs() {
                                     setActiveJobActionMenuId(null);
                                   }}
                                 >
-                                  View
+                                  View Details
                                 </button>
                                 <button
                                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
@@ -5971,7 +5951,7 @@ export default function VendorJobs() {
                                   setActiveJobActionMenuId(null);
                                 }}
                               >
-                                View
+                                View Details
                               </button>
                             );
                           }
@@ -5986,50 +5966,18 @@ export default function VendorJobs() {
                                     setActiveJobActionMenuId(null);
                                   }}
                                 >
-                                  View Review Package
+                                  View Details
                                 </button>
-                                {isActiveManager ? (
-                                  <>
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                                      onClick={async () => {
-                                        setActiveJobActionMenuId(null);
-                                        try {
-                                          await approveJobCompletion(job);
-                                          setJobActionFeedback({
-                                            type: "success",
-                                            message:
-                                              "Job approved and marked completed. Media sent to moderation review.",
-                                          });
-                                        } catch (error) {
-                                          setJobActionFeedback({
-                                            type: "error",
-                                            message:
-                                              error instanceof Error
-                                                ? error.message
-                                                : "Failed to approve job completion",
-                                          });
-                                        }
-                                      }}
-                                      disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                    >
-                                      Approve Job Completion
-                                    </button>
-                                    <button
-                                      className="w-full text-left px-3 py-2 text-sm text-amber-700 hover:bg-amber-50"
-                                      onClick={() => {
-                                        openRejectJobModal(job);
-                                      }}
-                                      disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
-                                    >
-                                      Reject Job Completion
-                                    </button>
-                                  </>
-                                ) : (
-                                  <div className="px-3 py-2 text-xs text-gray-600">
-                                    Manager approval required.
-                                  </div>
-                                )}
+                                <button
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  onClick={() => {
+                                    openEditModal(job);
+                                    setActiveJobActionMenuId(null);
+                                  }}
+                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                >
+                                  Edit
+                                </button>
                               </>
                             );
                           }
@@ -6044,7 +5992,7 @@ export default function VendorJobs() {
                                     setActiveJobActionMenuId(null);
                                   }}
                                 >
-                                  View
+                                  View Details
                                 </button>
                                 <button
                                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
@@ -6055,36 +6003,6 @@ export default function VendorJobs() {
                                   disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
                                 >
                                   Edit
-                                </button>
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                                  onClick={() => {
-                                    openAssignmentModal(job);
-                                    setActiveJobActionMenuId(null);
-                                  }}
-                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                >
-                                  Assign
-                                </button>
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                                  onClick={() => {
-                                    if (!isJobAssignedForVideoUpload(job)) {
-                                      setJobActionFeedback({ type: 'error', message: videoAssignmentRequiredCopy });
-                                      setActiveJobActionMenuId(null);
-                                      return;
-                                    }
-                                    void startRecordingFlow(job, {
-                                      stage: '',
-                                      replaceExisting: false,
-                                      source: 'actions-create-service-video',
-                                    });
-                                    setActiveJobActionMenuId(null);
-                                  }}
-                                  disabled={!isJobAssignedForVideoUpload(job)}
-                                  title={!isJobAssignedForVideoUpload(job) ? videoAssignmentRequiredCopy : undefined}
-                                >
-                                  Create Service Video
                                 </button>
                                 <button
                                   className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -6110,7 +6028,7 @@ export default function VendorJobs() {
                                 setActiveJobActionMenuId(null);
                               }}
                             >
-                              View
+                              View Details
                             </button>
                           );
                         })()}

@@ -55,7 +55,7 @@ export default function ReviewAuditPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-7xl p-6 space-y-4">
+    <div className="w-full max-w-7xl p-4 space-y-4">
       <h1 className="text-3xl font-bold text-gray-900">Review Audit</h1>
       <p className="text-sm text-gray-600">Customer review-window, consent, sentiment, and outcome history.</p>
 

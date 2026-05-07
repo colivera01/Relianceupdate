@@ -1,7 +1,56 @@
 # ROLE SURFACES SYSTEM AUDIT
 
-Date: 2026-04-17  
-Scope: `src/app/vendor/**`, `src/app/(user)/**`, `src/app/admin/**` plus directly linked supporting components/hooks/routes.
+Last refreshed: 2026-05-06 (production-state pass)  
+Original audit date: 2026-04-17  
+Scope: `src/app/vendor/**`, `src/app/(user)/**`, `src/app/admin/**`, `src/app/employee/**` plus directly linked supporting components/hooks/routes.
+
+---
+
+## Production-state snapshot (2026-05-06)
+
+### Customer surface
+- **Live, production behavior:**
+  - `/discover`, `/service/[serviceId]`, `/booking/[serviceId]`, `/booking/[serviceId]/confirmation`, `/my-bookings`, `/my-bookings/[bookingId]`, `/favorites`, `/user-dashboard`, `/profile-settings` are all backed by real Prisma routes.
+  - `/reviews` is now the customer feedback hub backed by `GET /api/reviews/me` returning `pending` / `submitted` / `proofBased` buckets; the legacy mock-driven review browser was removed in this pass.
+  - `/my-bookings/[bookingId]` is the canonical proof page (consent prompt → primary proof video → optional review submission).
+- **Identity:** `localStorage.userData` + `authToken` → `getClientSessionHeaders` adds `Authorization: Bearer …` and `x-user-id: …`; server verifies via `getUserIdFromRequest` and ownership filters.
+- **Confirmed in trust-loop E2E:** booking POST → confirmation page → proof page (with consent + media) → review create → review visible in `GET /api/reviews/me` and on vendor dashboard `recentReviews`.
+
+### Vendor surface
+- **Live, production behavior:**
+  - `/vendor` redirects to `/vendor/dashboard`.
+  - `/vendor/dashboard` reads `GET /api/vendors/[vendorId]/dashboard` (stats, recentJobs, recentReviews, employeePerformance, storage usage). Cards route to real destinations (`/vendor/jobs`, `/vendor/media`, `/vendor/storage`).
+  - `/vendor/jobs` enforces the operational-phase model and surfaces manager-only `Approve` / `Reject` actions for `AWAITING_REVIEW` jobs.
+  - `/vendor/media`, `/vendor/storage`, `/vendor/profile` are wired to live data.
+- **Auth gate:** `requireVendorMembership` (any active membership) for read; `requireVendorManager` (active `MANAGER` membership) for approve/reject.
+- **403 behavior:** `GET /api/vendors/[vendorId]/dashboard` returns `403 FORBIDDEN_ACTIVE_MEMBERSHIP_REQUIRED` with `suggestedVendorId` when the requesting user has no membership for that vendor.
+- **Mock surfaces remaining:** `/vendor/services`, `/vendor/reviews`, `/vendor/analytics`, `/vendor/billing`, `/vendor/availability` (mostly local-state).
+
+### Employee surface
+- **Live:** `/employee/jobs` reads `GET /api/employee/jobs` (returns assigned jobs including `AWAITING_REVIEW`).
+- **Stage-upload contract:** `POST /api/employee/jobs/[jobId]/start` and `POST /api/employee/jobs/[jobId]/stage` with payload `{ stage: "INTRO" | "IN_PROGRESS" | "COMPLETED" }`. After all 3 stages exist, the booking transitions to `AWAITING_REVIEW`.
+- **`canMarkComplete`:** only true while pre-review (`PENDING` / `CONFIRMED`) and all 3 required stage videos exist; otherwise the action is hidden.
+- **Rejection visibility:** "Rejected by manager" banner + reason; rejection metadata clears when the employee re-submits.
+- **Mobile companion:** `/employee/mobile`.
+
+### Admin surface
+- **Live:** `/admin/media-moderation`, `/admin/review-audit`, `/admin/audit-logs`, `/admin/publish-management`, `/admin/notifications`, `/admin/vendors` (and approval queue page).
+- **Canonical moderation route:** `PATCH /api/admin/media/packages/[bookingId]/moderate` (`approve`/`reject`/`flag`). Approve fires proof-ready notification (best-effort) and stamps booking metadata to suppress duplicate sends.
+- **Review moderation:** `GET /api/admin/reviews/moderation-queue`, `PATCH /api/admin/reviews/[reviewId]/moderate`.
+- **Mock surfaces remaining:** `/admin/dashboard`, `/admin/users`, `/admin/admin-users`, `/admin/reports`, `/admin/settings`, `/admin/profile`, `/admin/activity` (placeholder telemetry).
+
+### Role toggle behavior
+- **Source of truth:** `VendorMembership` table (linking `userId` ↔ `vendorId` with `role` and `status`).
+- **Vendor context resolution:** `GET /api/vendor/context` returns the active vendor for the current user; UI uses this to switch into vendor surfaces.
+- **Profile toggle:** `POST /api/profile/toggle` flips the in-app role context for users holding both customer and vendor identities.
+- **403 hand-off:** vendor dashboard returns `suggestedVendorId` when the requested vendor doesn't match an active membership; this lets the UI route the user to the vendor they actually belong to instead of dead-ending.
+- **Admin elevation:** in dev, admin-only routes accept `x-user-role: admin` + `x-admin: 1` headers (used by the trust-loop spec); production hardening of admin role detection is tracked as a separate item.
+- **Trust-loop E2E exercises all four surfaces in one pass** (customer create → manager assign → employee uploads → manager approve → admin moderate → customer view → customer review → vendor dashboard verification).
+
+---
+
+## Original audit (2026-04-17)
+
 
 ## State Legend
 

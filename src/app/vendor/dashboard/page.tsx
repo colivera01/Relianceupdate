@@ -44,8 +44,18 @@ export default function VendorDashboard() {
     return (
       <div className={pageShellClass}>
         <div className={pageContentClass}>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Card key={index} className="bg-white">
+                <CardContent className="p-6 space-y-3">
+                  <div className="h-3 w-24 rounded bg-gray-200 animate-pulse" />
+                  <div className="h-7 w-16 rounded bg-gray-200 animate-pulse" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
           <div className="w-full rounded-xl border border-gray-200 bg-white p-6">
-            <p className="text-sm text-gray-500">Loading dashboard...</p>
+            <p className="text-sm text-gray-600">Loading dashboard...</p>
           </div>
         </div>
       </div>
@@ -58,14 +68,15 @@ export default function VendorDashboard() {
       <div className={pageShellClass}>
         <div className={pageContentClass}>
           <div className="w-full rounded-xl border border-red-200 bg-red-50 p-6">
-            <p className="text-red-500 font-medium">Failed to fetch vendor dashboard</p>
-            <p className="text-xs text-gray-500">{error}</p>
-            <button
+            <p className="text-red-700 font-medium">We couldn't load your dashboard.</p>
+            <p className="text-xs text-red-700/80">Please try again.</p>
+            <Button
               onClick={refetch}
-              className="mt-2 rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white"
+              className="mt-3"
+              size="sm"
             >
               Retry
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -78,8 +89,8 @@ export default function VendorDashboard() {
       <div className={pageShellClass}>
         <div className={pageContentClass}>
           <div className="w-full rounded-xl border border-gray-200 bg-white p-6">
-            <p className="font-medium text-gray-700">No dashboard data</p>
-            <p className="text-xs text-gray-500">We couldn&apos;t load your vendor information.</p>
+            <p className="font-medium text-gray-700">No dashboard data yet.</p>
+            <p className="text-xs text-gray-500">Once jobs start coming in, your summary will appear here.</p>
           </div>
         </div>
       </div>
@@ -271,8 +282,8 @@ export default function VendorDashboard() {
         </div>
 
         {/* 4) Active Work Area */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-white lg:col-span-2">
+        <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 mb-8">
+          <Card className="bg-white lg:col-span-7">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-blue-600" />
@@ -282,16 +293,16 @@ export default function VendorDashboard() {
             <CardContent>
               {recentJobs.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  <p className="text-sm">You don't have any jobs yet.</p>
-                  <p className="text-xs mt-1">Jobs will appear here once clients book your services.</p>
+                  <p className="text-sm">No jobs today - you're all caught up.</p>
+                  <p className="text-xs mt-1">New jobs will appear here automatically.</p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {recentJobs.map((job) => (
-                    <div key={job.id} className="flex items-start justify-between gap-3 p-3 bg-gray-50 rounded-lg">
+                    <div key={job.id} className="flex justify-between items-center gap-3 p-4 bg-gray-50 rounded-lg">
                       <div className="min-w-0">
-                        <h4 className="font-medium text-gray-900">{job.title}</h4>
-                        <p className="text-sm text-gray-600">{job.client}</p>
+                        <h4 className="font-medium truncate text-gray-900">{job.title}</h4>
+                        <p className="text-sm text-gray-500">{job.client}</p>
                         <p className="text-xs text-gray-500">{formatDate(job.date)}</p>
                       </div>
                       <div className="text-right shrink-0">
@@ -311,7 +322,7 @@ export default function VendorDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white lg:col-span-1">
+          <Card className="bg-white lg:col-span-3">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-yellow-600" />
@@ -321,8 +332,8 @@ export default function VendorDashboard() {
             <CardContent>
               {recentReviews.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  <p className="text-sm">You don't have any reviews yet.</p>
-                  <p className="text-xs mt-1">Ask your clients to leave one after you complete a job.</p>
+                  <p className="text-sm">No reviews yet.</p>
+                  <p className="text-xs mt-1">Customer feedback will appear here.</p>
                 </div>
               ) : (
                 <div className="space-y-4">

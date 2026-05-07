@@ -1,17 +1,28 @@
 'use client';
 import type { LucideIcon } from 'lucide-react';
-import { Users, HardDrive, Star, Briefcase, HelpCircle, LogOut, AlertTriangle, Home } from 'lucide-react';
-import { Button } from '../../components/ui/button';
+import {
+  Users,
+  Star,
+  Briefcase,
+  HelpCircle,
+  LogOut,
+  Home,
+} from 'lucide-react';
 import Link from 'next/link';
-import ProfileHeader from '../../components/ProfileHeader';
+import { usePathname } from 'next/navigation';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
+import ProfileToggle from '@/components/ProfileToggle';
+import { useAvailableRoles } from '@/hooks/useAvailableRoles';
+
+// TODO Future mobile: convert this sidebar into a bottom nav or slide-out
+// drawer for an app-like experience on small screens. The sidebar is hidden
+// below `md` for now so the main column owns the viewport on mobile, and a
+// future commit should add a hamburger trigger + responsive drawer.
 
 type SidebarLink = {
   label: string;
   icon: LucideIcon;
   href: string;
-  alert?: boolean;
-  badge?: number | string;
 };
 
 const sidebarLinks: SidebarLink[] = [
@@ -21,137 +32,136 @@ const sidebarLinks: SidebarLink[] = [
   { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },
   { label: 'Employees', icon: Users, href: '/vendor/employees' },
   { label: 'Support & Help', icon: HelpCircle, href: '/vendor/support' },
-  { label: 'Logout', icon: LogOut, href: '/logout' },
 ];
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
   const { data: vendorProfile } = useVendorProfile();
-  const vendorDisplayName =
+  const { availableRoles, userId } = useAvailableRoles('vendor');
+  const pathname = usePathname() || '';
+
+  const vendorBusinessName =
     vendorProfile?.businessName ||
     vendorProfile?.name ||
-    [vendorProfile?.firstName, vendorProfile?.lastName].filter(Boolean).join(" ") ||
-    "Vendor Account";
-  const vendorCategory = vendorProfile?.category || vendorProfile?.businessType || "Vendor";
+    'Vendor Account';
+  const vendorUserName = [vendorProfile?.firstName, vendorProfile?.lastName]
+    .filter(Boolean)
+    .join(' ');
+  const vendorSecondary =
+    vendorUserName || vendorProfile?.email || '';
+  const vendorAvatar = vendorProfile?.profilePhoto || null;
+  const vendorInitials = vendorBusinessName
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'V';
 
   return (
     <div className="min-h-screen flex bg-gray-100">
-      {/* Sidebar */}
-      <aside className="w-64 flex flex-col min-h-screen">
-        {/* Logo area - white background */}
+      {/* Sidebar — hidden below md (see mobile TODO above). */}
+      <aside className="hidden md:flex w-64 flex-col min-h-screen">
+        {/* Logo area */}
         <div className="bg-white flex items-center px-6 py-8 border-b border-gray-200 justify-center">
           <img src="/reliance-logo.png" alt="Reliance Logo" className="w-32 h-32 rounded" />
         </div>
-        {/* Blue navigation area */}
+
+        {/* Navigation area */}
         <div className="flex-1 bg-blue-800 text-white flex flex-col py-8 px-4">
-          {/* Vendor Profile Section */}
-          <div className="flex flex-col items-center mb-8">
+          {/* Identity block — business-first */}
+          <div className="flex flex-col items-center mb-8 px-2">
             <div className="relative mb-4">
-              <img
-                src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&crop=center"
-                alt="Business Profile"
-                className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md object-cover"
-              />
+              {vendorAvatar ? (
+                <img
+                  src={vendorAvatar}
+                  alt={vendorBusinessName}
+                  className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md object-cover"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xl">
+                  {vendorInitials}
+                </div>
+              )}
               <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white flex items-center justify-center">
-                <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                <div className="w-1.5 h-1.5 bg-white rounded-full" />
               </div>
             </div>
-            <div className="text-center">
-              <div className="font-semibold text-lg mb-1">{vendorDisplayName}</div>
-              <div className="text-blue-100 text-sm">{vendorCategory}</div>
-              <div className="mt-2">
-                <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
-                  {vendorProfile ? 'Verified Vendor' : 'Vendor Context Loading'}
-                </span>
-              </div>
+            <div className="text-center min-w-0 w-full">
+              <div className="font-semibold text-lg mb-1 truncate">{vendorBusinessName}</div>
+              {vendorSecondary && (
+                <div className="text-blue-100 text-sm break-all">{vendorSecondary}</div>
+              )}
+              {vendorProfile && (
+                <div className="mt-2">
+                  <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
+                    Vendor
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Nav links */}
           <nav className="flex-1 space-y-1">
-            {sidebarLinks.map((link, idx) => (
-              <div key={link.label} className="relative">
-                {link.href ? (
-                  <Link href={link.href}>
-                    <Button 
-                      variant="ghost" 
-                      className={`w-full justify-start text-white hover:bg-blue-700 rounded-lg px-3 py-2 text-base font-medium ${
-                        link.alert ? 'bg-red-600 hover:bg-red-700 animate-pulse' : ''
-                      }`}
-                    >
-                      <link.icon className="w-5 h-5 mr-3" />
-                      {link.label}
-                      {link.badge && (
-                        <span className="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                          {link.badge}
-                        </span>
-                      )}
-                    </Button>
-                  </Link>
-                ) : (
-                  <Button 
-                    variant="ghost" 
-                    className={`w-full justify-start text-white hover:bg-blue-700 rounded-lg px-3 py-2 text-base font-medium ${
-                      link.alert ? 'bg-red-600 hover:bg-red-700 animate-pulse' : ''
-                    }`}
-                  >
-                    <link.icon className="w-5 h-5 mr-3" />
-                    {link.label}
-                    {link.badge && (
-                      <span className="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                        {link.badge}
-                      </span>
-                    )}
-                  </Button>
-                )}
-                {/* Insert toggles directly after Logout button */}
-                {link.label === 'Logout' && (
-                  <div className="flex flex-col gap-2 mt-4">
-                    <button
-                      className="flex items-center gap-2 border border-yellow-400 text-yellow-400 px-3 py-2 rounded hover:bg-yellow-50 hover:text-blue-800 transition-colors font-medium"
-                      onClick={() => window.location.href = '/admin/dashboard'}
-                    >
-                      <span className="w-4 h-4 inline-block">🏛️</span>
-                      Switch to Admin View
-                    </button>
-                    <button
-                      className="flex items-center gap-2 border border-green-400 text-green-400 px-3 py-2 rounded hover:bg-green-50 hover:text-blue-800 transition-colors font-medium"
-                      onClick={() => window.location.href = '/user-dashboard'}
-                    >
-                      <span className="w-4 h-4 inline-block">👤</span>
-                      Switch to User View
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+            <div className="text-xs font-semibold text-blue-200 uppercase tracking-wider mb-4 px-3">
+              Navigation
+            </div>
+            {sidebarLinks.map((link) => {
+              const isActive =
+                pathname === link.href || pathname.startsWith(`${link.href}/`);
+              return (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-colors ${
+                    isActive
+                      ? 'bg-white/15 text-white'
+                      : 'text-white hover:bg-blue-700'
+                  }`}
+                >
+                  <link.icon size={18} />
+                  <span className="flex-1 truncate">{link.label}</span>
+                </Link>
+              );
+            })}
+
+            <div className="mt-4 pt-4 border-t border-white/20">
+              <Link
+                href="/logout"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-white hover:bg-blue-700 transition-colors text-base font-medium"
+              >
+                <LogOut size={18} />
+                Log Out
+              </Link>
+            </div>
           </nav>
-          <div className="mt-auto text-xs text-blue-200 px-2 mb-4">Reliance © 2023</div>
+
+          {/* Footer */}
+          <div className="pt-4 mt-4 border-t border-white/20 text-center">
+            <div className="text-xs text-blue-200">Reliance</div>
+            <div className="text-xs text-blue-300">© 2024 All rights reserved</div>
+          </div>
         </div>
       </aside>
-      <main className="flex-1 flex flex-col">
-        {/* Profile Header with Toggle */}
-        <ProfileHeader 
-          userData={
-            vendorProfile
-              ? {
-                  id: vendorProfile.id,
-                  firstName: vendorProfile.firstName || '',
-                  lastName: vendorProfile.lastName || '',
-                  email: vendorProfile.email || '',
-                  businessName: vendorProfile.businessName || '',
-                  category: vendorProfile.category || '',
-                  profilePhoto: vendorProfile.profilePhoto || undefined,
-                }
-              : null
-          }
-          currentProfile="vendor"
-          className="sticky top-0 z-40"
-        />
-        
-        {/* Main Content */}
-        <div className="flex-1 overflow-x-hidden px-4 md:px-8 py-8">
-          {children}
+
+      {/* Main column — no top profile header anymore; identity lives in the
+          sidebar, and the role toggle sits above the page content. */}
+      <main className="flex-1 flex flex-col overflow-auto">
+        <div className="flex-1 overflow-x-hidden">
+          <div className="w-full max-w-6xl px-6 pt-10 pb-6">
+            {availableRoles.length > 1 ? (
+              <div className="mb-6 flex items-center justify-end">
+                <ProfileToggle
+                  currentProfile="vendor"
+                  availableProfiles={availableRoles}
+                  userId={userId}
+                />
+              </div>
+            ) : null}
+            {children}
+          </div>
         </div>
       </main>
     </div>
   );
-} 
+}

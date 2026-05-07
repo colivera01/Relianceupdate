@@ -46,6 +46,7 @@ type QueueVideo = {
   bytes: string;
   previewRef: string | null;
   downloadRef: string | null;
+  adminDownloadRef: string | null;
 };
 
 type QueuePackage = {
@@ -186,6 +187,7 @@ function normalizeQueueVideo(row: Record<string, unknown>): QueueVideo {
     bytes: String(row.bytes ?? '0'),
     previewRef: row.previewRef != null ? String(row.previewRef) : null,
     downloadRef: row.downloadRef != null ? String(row.downloadRef) : null,
+    adminDownloadRef: row.adminDownloadRef != null ? String(row.adminDownloadRef) : null,
   };
 }
 
@@ -237,9 +239,12 @@ function displayPackageState(states: string[]): string {
 }
 
 function prettyStatus(value: string): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'pending_review') return 'Pending Review';
+  if (normalized === 'approved') return 'Approved';
+  if (normalized === 'rejected') return 'Rejected';
+  if (normalized === 'flagged') return 'Flagged';
+  return normalized
     .split(/[_\s]+/)
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -327,6 +332,9 @@ export default function AdminMediaModerationPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [rejectTarget, setRejectTarget] = useState<QueueVideo | null>(null);
   const [rejectPackageTarget, setRejectPackageTarget] = useState<QueuePackage | null>(null);
+  const [assetPlaybackUrl, setAssetPlaybackUrl] = useState('');
+  const [assetPlaybackLoading, setAssetPlaybackLoading] = useState(false);
+  const [assetPlaybackError, setAssetPlaybackError] = useState('');
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
@@ -557,8 +565,51 @@ export default function AdminMediaModerationPage() {
 
   const queueEmpty = !loading && !error && packages.length === 0;
 
+  useEffect(() => {
+    const resolveAssetPlayback = async () => {
+      if (!selectedAsset) {
+        setAssetPlaybackUrl('');
+        setAssetPlaybackError('');
+        setAssetPlaybackLoading(false);
+        return;
+      }
+      const candidateRef = selectedAsset.video.adminDownloadRef || selectedAsset.video.downloadRef;
+      if (!candidateRef) {
+        setAssetPlaybackUrl(selectedAsset.video.previewRef || '');
+        setAssetPlaybackError('');
+        setAssetPlaybackLoading(false);
+        return;
+      }
+
+      setAssetPlaybackLoading(true);
+      setAssetPlaybackError('');
+      try {
+        const res = await fetch(candidateRef, {
+          method: 'GET',
+          headers: adminHeaders(),
+          cache: 'no-store',
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(String(json?.message || json?.error || `Could not fetch secure media URL (${res.status})`));
+        }
+        const secureUrl = String(json?.downloadUrl || json?.url || '').trim();
+        if (!secureUrl) {
+          throw new Error('Secure media URL was empty.');
+        }
+        setAssetPlaybackUrl(secureUrl);
+      } catch (e) {
+        setAssetPlaybackUrl(selectedAsset.video.previewRef || '');
+        setAssetPlaybackError(e instanceof Error ? e.message : 'Unable to resolve secure media URL');
+      } finally {
+        setAssetPlaybackLoading(false);
+      }
+    };
+    void resolveAssetPlayback();
+  }, [selectedAsset]);
+
   return (
-    <div className="container mx-auto p-6 max-w-7xl space-y-4">
+    <div className="w-full max-w-7xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Media Moderation</h1>
@@ -600,10 +651,10 @@ export default function AdminMediaModerationPage() {
             className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <option value="all">All moderation statuses</option>
-            <option value="pending_review">pending_review</option>
-            <option value="approved">approved</option>
-            <option value="rejected">rejected</option>
-            <option value="flagged">flagged</option>
+            <option value="pending_review">Pending Review</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="flagged">Flagged</option>
           </select>
           <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
           <select
@@ -836,7 +887,7 @@ export default function AdminMediaModerationPage() {
                               Uploader: {stageVideo.employeeName || stageVideo.uploadedByMembershipId || '-'}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <Badge variant="outline">Moderation: {stageVideo.moderationStatus}</Badge>
+                              <Badge variant="outline">Moderation: {prettyStatus(stageVideo.moderationStatus)}</Badge>
                               <Badge variant="outline">
                                 Visibility:{' '}
                                 {VISIBILITY_OPTIONS.find((o) => o.value === visibilityLevelFromAsset(stageVideo.visibilityStatus))
@@ -886,17 +937,28 @@ export default function AdminMediaModerationPage() {
           </DialogHeader>
           {selectedAsset && (
             <div className="space-y-3 text-sm">
-              {selectedAsset.video.previewRef && selectedAsset.video.mimeType.startsWith('video/') && (
-                <video className="w-full rounded border bg-black" controls src={selectedAsset.video.previewRef}>
+              {assetPlaybackLoading ? (
+                <div className="p-3 rounded border bg-gray-50 text-gray-600">Resolving secure media URL...</div>
+              ) : null}
+              {assetPlaybackError ? (
+                <div className="p-3 rounded border border-amber-200 bg-amber-50 text-amber-900">{assetPlaybackError}</div>
+              ) : null}
+              {assetPlaybackUrl && selectedAsset.video.mimeType.startsWith('video/') && (
+                <video className="w-full rounded border bg-black" controls src={assetPlaybackUrl}>
                   Your browser does not support video playback.
                 </video>
               )}
-              {selectedAsset.video.previewRef && selectedAsset.video.mimeType.startsWith('image/') && (
+              {assetPlaybackUrl && selectedAsset.video.mimeType.startsWith('image/') && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={selectedAsset.video.previewRef} alt={selectedAsset.video.title} className="w-full rounded border object-cover max-h-96" />
+                <img src={assetPlaybackUrl} alt={selectedAsset.video.title} className="w-full rounded border object-cover max-h-96" />
               )}
-              {selectedAsset.video.downloadRef && (
-                <a className="text-blue-600 underline" href={selectedAsset.video.downloadRef} target="_blank" rel="noreferrer">
+              {(selectedAsset.video.adminDownloadRef || selectedAsset.video.downloadRef) && (
+                <a
+                  className="text-blue-600 underline"
+                  href={selectedAsset.video.adminDownloadRef || selectedAsset.video.downloadRef || '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Open download-safe link
                 </a>
               )}
@@ -916,9 +978,9 @@ export default function AdminMediaModerationPage() {
                 <div>Client: {selectedAsset.pack.clientName || '-'}</div>
                 <div>Service: {selectedAsset.pack.serviceName || '-'}</div>
                 <div>Created: {new Date(selectedAsset.video.createdAt).toLocaleString()}</div>
-                <div>Moderation: {selectedAsset.video.moderationStatus}</div>
-                <div>Visibility: {selectedAsset.video.visibilityStatus}</div>
-                <div>Archive: {selectedAsset.video.archiveStatus}</div>
+                <div>Moderation: {prettyStatus(selectedAsset.video.moderationStatus)}</div>
+                <div>Visibility: {prettyStatus(selectedAsset.video.visibilityStatus)}</div>
+                <div>Archive: {prettyStatus(selectedAsset.video.archiveStatus)}</div>
                 <div>Size: {bytesToReadable(selectedAsset.video.bytes)}</div>
               </div>
               <div className="rounded border p-3 space-y-2">

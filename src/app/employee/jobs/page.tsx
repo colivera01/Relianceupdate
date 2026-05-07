@@ -18,10 +18,15 @@ type EmployeeJob = {
   canMarkComplete: boolean;
 };
 
+type StageFeedbackState = {
+  status: "uploading" | "success" | "error";
+  message: string;
+};
+
 const STAGES = [
-  { key: "INTRO", label: "Intro" },
-  { key: "IN_PROGRESS", label: "In Progress" },
-  { key: "COMPLETED", label: "Completed" },
+  { key: "INTRO", label: "Before / Intro" },
+  { key: "IN_PROGRESS", label: "During / In Progress" },
+  { key: "COMPLETED", label: "After / Completed" },
 ] as const;
 
 function toStageValue(stage: (typeof STAGES)[number]["key"]) {
@@ -37,6 +42,19 @@ function getOrCreateDeviceUid() {
   return generated;
 }
 
+function normalizeStatusLabel(value: string | null | undefined): string {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "PENDING") return "Pending";
+  if (normalized === "IN_PROGRESS") return "In Progress";
+  if (normalized === "AWAITING_REVIEW") return "Awaiting Review";
+  if (normalized === "COMPLETED") return "Completed";
+  if (normalized === "REJECTED" || normalized === "NEEDS_CHANGES") return "Needs Changes";
+  return normalized
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || "Unknown";
+}
+
 export default function EmployeeJobsPage() {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<EmployeeJob[]>([]);
@@ -44,6 +62,7 @@ export default function EmployeeJobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [stageFeedback, setStageFeedback] = useState<Record<string, StageFeedbackState>>({});
   const userId = useMemo(() => String(user?.id || "").trim(), [user?.id]);
 
   const loadJobs = async () => {
@@ -119,7 +138,7 @@ export default function EmployeeJobsPage() {
     const nextStatus = String(json?.job?.status || "").trim().toUpperCase();
     setActionMessage(
       nextStatus === "AWAITING_REVIEW"
-        ? "All 3 stages uploaded. Sent to manager for approval."
+        ? "Submitted for manager review."
         : "Job update submitted."
     );
     await loadJobs();
@@ -127,9 +146,14 @@ export default function EmployeeJobsPage() {
 
   const uploadStageVideo = async (job: EmployeeJob, stage: (typeof STAGES)[number]["key"], file: File) => {
     const uploadKey = `${job.id}:${stage}`;
+    const hadExistingStageVideo = Boolean(job.stageProgress?.[stage]);
     setUploadingKey(uploadKey);
     setError(null);
     setActionMessage(null);
+    setStageFeedback((prev) => ({
+      ...prev,
+      [uploadKey]: { status: "uploading", message: "Uploading..." },
+    }));
     try {
       const createSessionRes = await fetch(`/api/vendors/${job.vendorId}/media/sessions`, {
         method: "POST",
@@ -198,10 +222,21 @@ export default function EmployeeJobsPage() {
         throw new Error(stageJson?.error || "Failed to mark stage complete");
       }
 
-      setActionMessage(`${stage.replace("_", " ")} proof uploaded.`);
+      setActionMessage(hadExistingStageVideo ? "Stage video replaced successfully." : `${stage.replace("_", " ")} proof uploaded.`);
+      setStageFeedback((prev) => ({
+        ...prev,
+        [uploadKey]: {
+          status: "success",
+          message: hadExistingStageVideo ? "Stage video replaced successfully." : "Uploaded successfully",
+        },
+      }));
       await loadJobs();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to upload stage proof");
+      setStageFeedback((prev) => ({
+        ...prev,
+        [uploadKey]: { status: "error", message: "Upload failed, try again" },
+      }));
     } finally {
       setUploadingKey(null);
     }
@@ -233,7 +268,7 @@ export default function EmployeeJobsPage() {
                   Customer: {job.customer.name || "Unknown"} {job.customer.phone ? `• ${job.customer.phone}` : ""}
                 </p>
               </div>
-              <span className="rounded border bg-gray-100 px-2 py-1 text-xs text-gray-700">{job.status}</span>
+              <span className="rounded border bg-gray-100 px-2 py-1 text-xs text-gray-700">{normalizeStatusLabel(job.status)}</span>
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -243,6 +278,11 @@ export default function EmployeeJobsPage() {
                   <label key={stage.key} className="rounded border p-2 text-xs">
                     <p className="font-medium text-gray-800">{stage.label}</p>
                     <p className={done ? "text-emerald-700" : "text-gray-500"}>{done ? "Uploaded" : "Required"}</p>
+                    {done ? (
+                      <p className="mt-1 text-[11px] text-amber-700">
+                        Uploading again will replace the current video for this stage.
+                      </p>
+                    ) : null}
                     <input
                       type="file"
                       accept="video/*"
@@ -255,7 +295,19 @@ export default function EmployeeJobsPage() {
                         e.currentTarget.value = "";
                       }}
                     />
-                    {uploadingKey === `${job.id}:${stage.key}` ? <p className="mt-1 text-[11px] text-blue-700">Uploading…</p> : null}
+                    {stageFeedback[`${job.id}:${stage.key}`] ? (
+                      <p
+                        className={`mt-1 text-[11px] ${
+                          stageFeedback[`${job.id}:${stage.key}`].status === "error"
+                            ? "text-red-700"
+                            : stageFeedback[`${job.id}:${stage.key}`].status === "success"
+                            ? "text-emerald-700"
+                            : "text-blue-700"
+                        }`}
+                      >
+                        {stageFeedback[`${job.id}:${stage.key}`].message}
+                      </p>
+                    ) : null}
                   </label>
                 );
               })}
@@ -263,8 +315,11 @@ export default function EmployeeJobsPage() {
 
             {job.rejectionReason && String(job.status || "").toUpperCase() === "IN_PROGRESS" ? (
               <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                <p className="font-semibold">Rejected by manager</p>
+                <p className="font-semibold">Manager requested changes</p>
                 <p className="mt-1">{job.rejectionReason}</p>
+                <p className="mt-2 text-[11px] text-amber-900">
+                  Review the requested changes, re-upload the needed proof stage, then submit again.
+                </p>
                 {job.rejectedAt ? (
                   <p className="mt-1 text-[11px] text-amber-700">
                     Rejected on {new Date(job.rejectedAt).toLocaleString()}
@@ -287,7 +342,7 @@ export default function EmployeeJobsPage() {
                 onClick={() => void completeJob(job.id)}
                 className="rounded border border-emerald-300 px-3 py-1 text-xs text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Mark Job Complete
+                Submit for Manager Review
               </button>
               {!job.canMarkComplete ? <span className="text-xs text-gray-500">Complete all 3 stages first.</span> : null}
             </div>

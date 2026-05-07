@@ -33,11 +33,10 @@ export default function FavoritesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold text-gray-900">My Favorites</h1>
+      <div className="pt-6">
+        <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold mb-6 text-gray-900">Favorites</h1>
               <Badge variant="secondary" className="text-sm">
                 {filteredFavorites.length} favorites
               </Badge>
@@ -45,12 +44,11 @@ export default function FavoritesPage() {
             <Link href="/discover">
               <Button size="sm">Discover More Services</Button>
             </Link>
-          </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+      <div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-10">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <Input
@@ -63,7 +61,7 @@ export default function FavoritesPage() {
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
             {[1, 2, 3].map((i) => (
               <Card key={i} className="animate-pulse">
                 <div className="h-40 bg-gray-200 rounded-t-lg" />
@@ -75,12 +73,12 @@ export default function FavoritesPage() {
             ))}
           </div>
         ) : isError ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 mb-10 text-red-700">
             Failed to load favorites.
             {error instanceof Error ? ` ${error.message}` : ''}
           </div>
         ) : filteredFavorites.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="text-center py-12 mb-10">
             <Heart size={48} className="mx-auto text-gray-300 mb-4" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No favorites found</h3>
             <p className="text-gray-600 mb-6">
@@ -91,12 +89,12 @@ export default function FavoritesPage() {
             </Link>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 mb-10">
             {isFetching ? <p className="text-sm text-gray-500">Refreshing favorites...</p> : null}
             {filteredFavorites.map((item) => (
               <Card
                 key={item.favoriteId}
-                className="border border-gray-200 bg-white"
+                className="border border-gray-200 bg-white mb-4"
                 data-testid={`favorites-row-${item.serviceId}`}
               >
                 <CardContent className="p-4">

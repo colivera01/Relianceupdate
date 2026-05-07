@@ -1,5 +1,62 @@
 # Project State (Execution + Management Stabilization Pass)
 
+## Handoff refresh (2026-05-06 — UI cleanup pass)
+- **Vendor "Back to Dashboard" cleanup:** redundant `Back to Dashboard` buttons removed from vendor pages where the sidebar already exposes the same route (`/vendor/jobs`, `/vendor/reviews`, `/vendor/storage`, `/vendor/support`, `/vendor/support/chat`, `/vendor/support/contact`, `/vendor/support/faqs`, `/vendor/support/help-articles`). Deep flows keep their `Back to Support` link to avoid dead-ending. The post-logout page (`/logout`) keeps its own "Back to Dashboard" since the user has no sidebar there.
+- **Dead `Settings` dropdown removed from vendor `ProfileHeader`:** the gear icon at the top right of vendor pages opened a dropdown whose only entries (`Profile Settings`, `Log Out`) duplicated the sidebar. Header now shows identity + active role badge only; role switching remains via `<ProfileToggle />`.
+- **Admin sidebar dropdown cleaned:** legacy links to `/profile` and `/settings` (routes that don't exist) removed. `Sign out` now points to `/logout` (canonical) instead of `/login`.
+- **Role-toggle verification:** `useAvailableRoles` now resolves Customer/Vendor/Admin from live data, not just session `userType`:
+  - `customer` from `GET /api/customer/profile`
+  - `vendor` from `GET /api/vendor/context` (active membership)
+  - `admin` from strict email/phone identity match (`colivera080124@gmail.com` / `4079148888`)
+  - Verified live (2026-05-06): owner account resolves to `['customer', 'vendor', 'admin']` and the toggle renders all three. Single-role users still see no toggle. Admin routes remain backend-protected independently.
+- **Future admin capability:** TODO comment added in `src/hooks/useAvailableRoles.ts` — "Future: allow owner/admin to grant admin access to selected users through secure backend role assignment." No admin-user management system built in this pass.
+
+## Handoff refresh (2026-05-06 — full trust-loop E2E green + production-state pass)
+Major UX cleanup, role surface tightening, and Azure SQL outage recovery are all complete. The full proof-to-review trust loop now runs green end-to-end through real APIs against live Azure SQL.
+
+### Customer dashboard real-data migration
+- `/user-dashboard`, `/my-bookings`, `/reviews`, and `/favorites` are fully off mock data and read from live Prisma-backed routes.
+- `/reviews` was rebuilt as a customer feedback hub backed by `GET /api/reviews/me`, returning three normalized buckets: `pending`, `submitted`, and `proofBased`. All admin/analytics/moderation controls were removed from the customer surface.
+- Customer identity resolution is unified through `resolveCustomerUserId` + `getClientSessionHeaders` so every customer-facing fetch sends the same `x-user-id` (and bearer) the server expects.
+
+### Customer proof UX improvements
+- `/my-bookings/[bookingId]` is the canonical proof page. It loads booking via `GET /api/bookings/[id]` and proof assets via `GET /api/bookings/[id]/media`.
+- Proof timeline is grouped by stage (`before` / `during` / `after`) with the primary `COMPLETED` proof marked `isPrimaryProofVideo`.
+- Consent prompt + watch-only fallback render correctly when the customer has not yet accepted consent; proof video is gated until acceptance.
+- `?proofReady=1` deep-link from the moderation-approval notification opens the booking with the proof-ready CTA highlighted.
+
+### Vendor workflow simplification
+- `/vendor/jobs` is now driven by the operational-phase model (`PENDING -> ASSIGNED/IN_PROGRESS -> AWAITING_REVIEW -> COMPLETED`) instead of mixed local state.
+- Awaiting-review actions are surfaced as explicit "Approve Job Completion" and "Reject Job Completion" entries; non-managers see the manager-required guidance instead of dead buttons.
+- Direct-status completion is server-side blocked (`MANAGER_APPROVAL_REQUIRED`) so no vendor UI path can bypass the review gate.
+- `/vendor/dashboard` cards route into real destinations (`/vendor/jobs`, `/vendor/media`, `/vendor/storage`); no card lands on a placeholder page anymore.
+
+### Employee upload UX cleanup
+- `/employee/jobs` aligns to backend stage requirements: `INTRO`, `IN_PROGRESS`, `COMPLETED` are the three required uploads, surfaced inline.
+- `canMarkComplete` is only true while pre-review (`PENDING`/`CONFIRMED`) and all three stage videos exist; otherwise the action is removed.
+- After all three stages exist the booking auto-transitions to `AWAITING_REVIEW` and the employee UI explicitly states "manager approval required".
+- Manager-rejection state shows **Rejected by manager** with the manager-supplied reason, and rejection metadata is cleared when the employee re-submits.
+
+### Manager review safety improvements
+- Approve flow: `POST /api/vendors/[vendorId]/jobs/[jobId]/approve` requires active `MANAGER`, `AWAITING_REVIEW` status, and a complete 3-stage package; success sets `COMPLETED`, stamps completion date, and re-queues all stage assets to admin moderation as `pending_review`.
+- Reject flow: `POST /api/vendors/[vendorId]/jobs/[jobId]/reject` requires active `MANAGER` and a non-empty `rejectionReason`; success returns the job to `IN_PROGRESS` and persists `rejectionReason` / `rejectedAt` / `rejectedBy` on the booking.
+- The vendor actions route refuses any `UPDATE_STATUS -> COMPLETED` attempt with `MANAGER_APPROVAL_REQUIRED` so downgraded clients cannot bypass the gate.
+
+### Admin moderation secure media handling
+- `PATCH /api/admin/media/packages/[bookingId]/moderate` is the canonical package-level decision endpoint and supports `approve`, `reject`, and `flag`; approve requires `visibility` (`public` / `customer_only`), reject requires `moderationReason`.
+- On `approve` with customer-eligible visibility, the route fires the proof-ready notification (best-effort) and stamps booking metadata (`proof_ready_notification_sent_at`, `..._success`, `..._visibility`, `..._url`) so duplicate sends are suppressed on re-approve.
+- `GET /api/bookings/[id]/media` enforces booking ownership and only returns assets that are `moderationStatus=approved`, `archiveStatus in [active]`, and `visibilityStatus in [customer_only, public]`.
+
+### Azure SQL outage recovery
+- The `cmipl3vsy0000sohc456je5xm`-class outage that previously surfaced as `ERROR 42119 — database reached monthly free amount allowance — paused for remainder of month` has resolved. The Azure SQL instance is reachable, Prisma `$connect()` succeeds, and Service / Booking / Vendor counts return non-zero rows.
+- A diagnostics pass on 2026-05-06 confirmed clean responses across all critical APIs: `GET /api/services`, `GET /api/bookings`, `GET /api/bookings/[id]`, `GET /api/bookings/[id]/media`, and `GET /api/vendors/[vendorId]/dashboard`.
+- See `E2E_STATUS.md` for the recorded incident timeline and verification steps.
+
+### Full trust-loop E2E passing
+- `e2e/reliance-trust-loop.spec.ts` ("full proof-to-review trust loop (live routes)") passes end-to-end against the live dev server (`npm run dev`) and live Azure SQL: customer booking -> employee 3-stage upload -> manager approve -> admin moderate -> customer proof view -> review submission -> vendor dashboard attribution.
+- Last green run on 2026-05-06: 1 passed, 0 failed (`npx playwright test e2e/reliance-trust-loop.spec.ts`).
+- Verified attribution on the vendor dashboard: `stats.ratingCount > 0` and `employeePerformance` includes the assigned membership/employee.
+
 ## Handoff refresh (2026-04-27 — pairing API consolidation)
 - **Canonical pairing API enforced:** pairing contract is now standardized on `POST /api/device/pairing/request`, `POST /api/device/pairing/confirm`, and `POST /api/device/heartbeat`.
 - **Duplicate route family removed:** legacy `/api/pairing/request` and `/api/pairing/confirm` handlers were deleted to eliminate contract drift.
