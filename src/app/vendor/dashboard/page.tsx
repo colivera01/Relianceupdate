@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Calendar, Star, TrendingUp, Smartphone } from 'lucide-react';
+import { CheckCircle, Calendar, Star, TrendingUp, Smartphone, Activity } from 'lucide-react';
 import { useVendorDashboard } from '@/hooks/useVendorDashboard';
 
 export default function VendorDashboard() {
@@ -417,6 +417,18 @@ export default function VendorDashboard() {
                 {pairingLoading ? 'Generating...' : 'Pair Device'}
               </Button>
             </div>
+
+            <div className="mt-4">
+              <Button
+                onClick={() => router.push('/vendor/telemetry')}
+                className="w-full h-12 text-base"
+                variant="outline"
+              >
+                <Activity className="h-5 w-5 mr-2" />
+                Device Telemetry
+              </Button>
+            </div>
+
             {pairingError ? (
               <p className="mt-3 text-sm text-red-600">{pairingError}</p>
             ) : null}

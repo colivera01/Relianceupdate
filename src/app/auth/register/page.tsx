@@ -890,6 +890,7 @@ function RegisterPageInner() {
 
   // State management
   const [userType, setUserType] = useState<'user' | 'vendor'>(type || 'user');
+  const addressRequired = userType === 'vendor';
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -1092,12 +1093,15 @@ function RegisterPageInner() {
       newErrors.confirmPassword = 'Passwords do not match. Please make sure both passwords are identical.';
     }
 
-    // Address validation
-    if (!formData.address.trim()) newErrors.address = 'Street address is required';
-    if (!formData.city.trim()) newErrors.city = 'City is required';
-    if (!formData.state.trim()) newErrors.state = 'Please select your state';
-    if (!formData.zipCode.trim()) newErrors.zipCode = 'ZIP code is required';
-    else {
+    // Vendor addresses are required for local service discovery and verification.
+    // Customer addresses stay optional at signup and can be managed later in profile settings.
+    if (addressRequired) {
+      if (!formData.address.trim()) newErrors.address = 'Street address is required for vendor registration';
+      if (!formData.city.trim()) newErrors.city = 'City is required for vendor registration';
+      if (!formData.state.trim()) newErrors.state = 'Please select your state';
+      if (!formData.zipCode.trim()) newErrors.zipCode = 'ZIP code is required for vendor registration';
+    }
+    if (formData.zipCode.trim()) {
       const zipValidation = validateZipCodeForState(formData.zipCode, formData.state);
       if (!zipValidation.isValid) {
         newErrors.zipCode = zipValidation.message;
@@ -1818,16 +1822,23 @@ function RegisterPageInner() {
 
                     {/* Address Fields */}
                     <div>
-                      <Label htmlFor="address">Address *</Label>
+                      <Label htmlFor="address">
+                        Street Address {addressRequired ? '*' : <span className="text-gray-500">(optional)</span>}
+                      </Label>
                       <Input
                         id="address"
                         type="text"
                         value={formData.address}
                         onChange={(e) => handleInputChange('address', e.target.value)}
                         className={errors.address ? 'border-red-500' : ''}
-                        placeholder="123 Main St"
-                        required
+                        placeholder={addressRequired ? '123 Main St' : 'Optional at signup'}
+                        required={addressRequired}
                       />
+                      {!addressRequired && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Add this later in Profile Settings to support future local discovery.
+                        </p>
+                      )}
                       {errors.address && (
                         <p className="text-red-500 text-sm mt-1 flex items-center">
                           <AlertCircle className="w-4 h-4 mr-1" />
@@ -1838,7 +1849,9 @@ function RegisterPageInner() {
 
                     <div className="grid grid-cols-3 gap-4">
                       <div className="relative">
-                        <Label htmlFor="city">City *</Label>
+                        <Label htmlFor="city">
+                          City {addressRequired ? '*' : <span className="text-gray-500">(optional)</span>}
+                        </Label>
                         <Input
                           id="city"
                           type="text"
@@ -1860,7 +1873,7 @@ function RegisterPageInner() {
                             setTimeout(() => setShowCitySuggestions(false), 200);
                           }}
                           disabled={!formData.state}
-                          placeholder={formData.state ? "Type to search cities..." : "Select state first"}
+                          placeholder={formData.state ? "Type to search cities..." : addressRequired ? "Select state first" : "Optional"}
                           className={errors.city ? 'border-red-500' : ''}
                         />
                         
@@ -1888,7 +1901,7 @@ function RegisterPageInner() {
                             {errors.city}
                           </p>
                         )}
-                        {!formData.state && (
+                        {!formData.state && addressRequired && (
                           <p className="text-xs text-gray-500 mt-1">
                             Please select a state first
                           </p>
@@ -1900,7 +1913,9 @@ function RegisterPageInner() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor="state">State *</Label>
+                        <Label htmlFor="state">
+                          State {addressRequired ? '*' : <span className="text-gray-500">(optional)</span>}
+                        </Label>
                         <Select
                           value={formData.state}
                           onValueChange={(value) => handleStateChange(value)}
@@ -1924,14 +1939,16 @@ function RegisterPageInner() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor="zipCode">ZIP Code *</Label>
+                        <Label htmlFor="zipCode">
+                          ZIP Code {addressRequired ? '*' : <span className="text-gray-500">(optional)</span>}
+                        </Label>
                         <Input
                           id="zipCode"
                           type="text"
                           value={formData.zipCode}
                           onChange={(e) => handleInputChange('zipCode', e.target.value)}
                           className={errors.zipCode ? 'border-red-500' : ''}
-                          required
+                          required={addressRequired}
                         />
                         {errors.zipCode && (
                           <p className="text-red-500 text-sm mt-1 flex items-center">

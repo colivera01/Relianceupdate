@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
+import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -15,7 +16,7 @@ function normalizeBookingStatus(status: string | null | undefined): string {
 export async function POST(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const { vendorId, jobId } = await context.params;
-    await requireVendorManager(request, vendorId);
+    const manager = await requireVendorManager(request, vendorId);
 
     const booking = await prisma.booking.findFirst({
       where: { id: jobId, vendorId },
@@ -100,6 +101,19 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         : { count: 0 };
 
       return { updatedBooking, moderationUpdateCount: Number(moderationUpdate?.count || 0) };
+    });
+
+    await recordLifecycleAudit({
+      actionType: "job_approved",
+      entityType: "booking",
+      entityId: booking.id,
+      actorUserId: manager.userId,
+      previousValue: { status: currentStatus },
+      newValue: { status: "COMPLETED", date: completedAt.toISOString() },
+      metadata: {
+        vendorId,
+        moderationQueuedAssets: updated.moderationUpdateCount,
+      },
     });
 
     return NextResponse.json({

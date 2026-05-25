@@ -23,15 +23,25 @@ type StageFeedbackState = {
   message: string;
 };
 
+type PairedDeviceState = {
+  deviceId: string;
+  deviceUid: string;
+  deviceType: string;
+  vendorId: string;
+  membershipId: string;
+  pairedAt: string | null;
+  lastSeenAt: string | null;
+  model: string | null;
+  os: string | null;
+  appVersion: string | null;
+  status: string;
+};
+
 const STAGES = [
   { key: "INTRO", label: "Before / Intro" },
   { key: "IN_PROGRESS", label: "During / In Progress" },
   { key: "COMPLETED", label: "After / Completed" },
 ] as const;
-
-function toStageValue(stage: (typeof STAGES)[number]["key"]) {
-  return stage === "INTRO" ? "before" : stage === "IN_PROGRESS" ? "during" : "after";
-}
 
 function getOrCreateDeviceUid() {
   if (typeof window === "undefined") return "";
@@ -40,6 +50,16 @@ function getOrCreateDeviceUid() {
   const generated = `phone_${crypto.randomUUID()}`;
   localStorage.setItem("employee_device_uid", generated);
   return generated;
+}
+
+function shortDeviceLabel(device: PairedDeviceState | null): string {
+  if (!device) return "";
+  const model = (device.model || "").trim();
+  const os = (device.os || "").trim();
+  if (model && os) return `${model} · ${os}`;
+  if (model) return model;
+  if (os) return os;
+  return device.deviceType || "Phone";
 }
 
 function normalizeStatusLabel(value: string | null | undefined): string {
@@ -63,6 +83,8 @@ export default function EmployeeJobsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [stageFeedback, setStageFeedback] = useState<Record<string, StageFeedbackState>>({});
+  const [pairedDevice, setPairedDevice] = useState<PairedDeviceState | null>(null);
+  const [pairingError, setPairingError] = useState<string | null>(null);
   const userId = useMemo(() => String(user?.id || "").trim(), [user?.id]);
 
   const loadJobs = async () => {
@@ -90,21 +112,47 @@ export default function EmployeeJobsPage() {
     void loadJobs();
   }, [userId]);
 
+  // Auto-pair this device on first visit and keep the paired identity in
+  // local state so subsequent uploads can attribute media to it.
   useEffect(() => {
     if (!userId) return;
     const pair = async () => {
       const deviceUid = getOrCreateDeviceUid();
-      await fetch("/api/employee/device/pair", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
-        body: JSON.stringify({
-          deviceUid,
-          deviceType: "PHONE",
-          model: navigator.userAgent,
-          os: navigator.platform,
-          appVersion: "employee-web-v1",
-        }),
-      });
+      try {
+        const res = await fetch("/api/employee/device/pair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+          body: JSON.stringify({
+            deviceUid,
+            deviceType: "PHONE",
+            model: navigator.userAgent,
+            os: navigator.platform,
+            appVersion: "employee-web-v1",
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.pairing?.deviceId) {
+          setPairingError(json?.error || "Could not pair this device.");
+          setPairedDevice(null);
+          return;
+        }
+        setPairingError(null);
+        setPairedDevice({
+          deviceId: String(json.pairing.deviceId),
+          deviceUid: String(json.pairing.deviceUid || deviceUid),
+          deviceType: String(json.pairing.deviceType || "PHONE"),
+          vendorId: String(json.pairing.vendorId || ""),
+          membershipId: String(json.pairing.membershipId || ""),
+          pairedAt: json.pairing.pairedAt ? String(json.pairing.pairedAt) : null,
+          lastSeenAt: json.pairing.lastSeenAt ? String(json.pairing.lastSeenAt) : null,
+          model: json.pairing.model || null,
+          os: json.pairing.os || null,
+          appVersion: json.pairing.appVersion || null,
+          status: String(json.pairing.status || "active"),
+        });
+      } catch (e) {
+        setPairingError(e instanceof Error ? e.message : "Could not pair this device.");
+      }
     };
     void pair();
   }, [userId]);
@@ -155,6 +203,8 @@ export default function EmployeeJobsPage() {
       [uploadKey]: { status: "uploading", message: "Uploading..." },
     }));
     try {
+      const deviceIdForUpload = pairedDevice?.deviceId || null;
+
       const createSessionRes = await fetch(`/api/vendors/${job.vendorId}/media/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
@@ -164,6 +214,8 @@ export default function EmployeeJobsPage() {
           sessionType: "JOB_SERVICE_VIDEO",
           replaceExisting: true,
           locationContext: "business",
+          deviceId: deviceIdForUpload,
+          deviceType: pairedDevice?.deviceType || "PHONE",
         }),
       });
       const createSessionJson = await createSessionRes.json().catch(() => ({}));
@@ -205,6 +257,7 @@ export default function EmployeeJobsPage() {
           bytes: file.size,
           mimeType: file.type || "video/mp4",
           mediaSessionId,
+          deviceId: deviceIdForUpload,
         }),
       });
       const completeJson = await completeRes.json().catch(() => ({}));
@@ -248,14 +301,58 @@ export default function EmployeeJobsPage() {
         <div className="rounded-lg border bg-white p-4">
           <h1 className="text-xl font-bold text-gray-900">Assigned Jobs</h1>
           <p className="mt-1 text-sm text-gray-600">Mobile-friendly employee workflow for Intro, In Progress, and Completed proof videos.</p>
+
+          {/* Paired device status — confirms this phone is linked to your
+              employee membership and that uploads will be attributed to it. */}
+          <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs">
+            {pairedDevice ? (
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-emerald-700">Device paired</p>
+                  <p className="truncate text-gray-600">
+                    {shortDeviceLabel(pairedDevice)}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                  Active
+                </span>
+              </div>
+            ) : pairingError ? (
+              <div>
+                <p className="font-semibold text-amber-800">Device not paired</p>
+                <p className="text-amber-700">{pairingError}</p>
+                <p className="mt-1 text-amber-700">
+                  Reload to retry. Uploads will still work but will not be linked to this device.
+                </p>
+              </div>
+            ) : (
+              <p className="text-gray-600">Pairing this device…</p>
+            )}
+          </div>
         </div>
 
         {error ? <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
         {actionMessage ? <p className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{actionMessage}</p> : null}
 
         {loading ? <p className="text-sm text-gray-600">Loading assigned jobs…</p> : null}
+
+        {/* First-time onboarding card — shown when there are no jobs yet so a
+            new employee gets clear next-step guidance instead of a dead end. */}
         {!loading && jobs.length === 0 ? (
-          <div className="rounded-lg border bg-white p-4 text-sm text-gray-600">No assigned jobs found for your active employee membership.</div>
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <p className="text-sm font-semibold text-gray-900">Welcome to your work view</p>
+            <p className="mt-1 text-sm text-gray-600">
+              You don't have any jobs assigned yet. When your manager assigns one, it will appear here.
+            </p>
+            <ul className="mt-3 space-y-2 text-xs text-gray-700">
+              <li>1. Make sure you're signed in on the phone you'll use on-site.</li>
+              <li>
+                2. Confirm the device-paired indicator above shows{" "}
+                <span className="font-semibold text-emerald-700">Active</span>.
+              </li>
+              <li>3. When a job appears, tap <span className="font-semibold">Start Job</span>, capture Before / During / After, then submit for manager review.</li>
+            </ul>
+          </div>
         ) : null}
 
         {jobs.map((job) => (

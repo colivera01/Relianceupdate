@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
@@ -31,12 +32,27 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       return NextResponse.json({ error: "Forbidden: this job is not assigned to you" }, { status: 403 });
     }
 
-    const nextStatus = String(booking.status || "").toUpperCase() === "PENDING" ? "CONFIRMED" : booking.status;
+    const previousStatus = String(booking.status || "").toUpperCase();
+    const nextStatus = previousStatus === "PENDING" ? "CONFIRMED" : booking.status;
     const updated = await prisma.booking.update({
       where: { id: booking.id },
       data: { status: nextStatus || "CONFIRMED" },
       select: { id: true, status: true },
     });
+
+    await recordLifecycleAudit({
+      actionType: "job_started",
+      entityType: "booking",
+      entityId: booking.id,
+      actorUserId: userId,
+      previousValue: { status: previousStatus },
+      newValue: { status: updated.status },
+      metadata: {
+        vendorId: booking.vendorId,
+        membershipIds: vendorMembershipIds,
+      },
+    });
+
     return NextResponse.json({ success: true, job: updated });
   } catch (error: any) {
     return NextResponse.json({ error: "Failed to start employee job", details: error?.message }, { status: 500 });

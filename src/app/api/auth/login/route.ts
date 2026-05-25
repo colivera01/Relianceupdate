@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registeredUsers } from "@/lib/dev-registered-users";
+import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { prisma } from "@/server/db";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
@@ -8,6 +9,33 @@ function normalizeEmail(value: unknown): string {
   return String(value ?? "")
     .trim()
     .toLowerCase();
+}
+
+function getRegistryProfiles(user: any): Set<string> {
+  const profiles = new Set<string>();
+
+  if (
+    user.userType === "vendor" ||
+    user.userType === "both" ||
+    user.businessName ||
+    user.category ||
+    user.serviceTypes
+  ) {
+    profiles.add("vendor");
+  }
+
+  if (user.userType === "customer" || user.userType === "both" || !user.businessName) {
+    profiles.add("customer");
+  }
+
+  return profiles;
+}
+
+function toSessionUserType(profiles: Set<string>, fallbackUserType: string | undefined): string {
+  if (profiles.has("customer") && profiles.has("vendor")) return "both";
+  if (profiles.has("vendor")) return "vendor";
+  if (profiles.has("customer")) return "customer";
+  return fallbackUserType || "customer";
 }
 
 export async function POST(request: NextRequest) {
@@ -65,27 +93,6 @@ export async function POST(request: NextRequest) {
 
     let usedDevRegistryIdBecauseDbUnreachable = false;
 
-    let availableProfiles: string[] = [];
-
-    if (
-      user.userType === "vendor" ||
-      user.businessName ||
-      user.category ||
-      user.serviceTypes
-    ) {
-      availableProfiles.push("vendor");
-    }
-
-    if (user.userType === "customer" || !user.businessName) {
-      availableProfiles.push("customer");
-    }
-
-    if (availableProfiles.length > 1) {
-      user.userType = "both";
-    } else if (availableProfiles.length === 1) {
-      user.userType = availableProfiles[0];
-    }
-
     let resolvedUserId = user.id || "temp-id";
     try {
       const dbUser = await prisma.user.findFirst({
@@ -119,15 +126,41 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const profileSet = getRegistryProfiles(user);
+    try {
+      const vendorAccess = await resolveVendorAccessForUser(resolvedUserId);
+      if (vendorAccess.state === "ACTIVE" && vendorAccess.vendorId) {
+        profileSet.add("vendor");
+        profileSet.add("customer");
+      }
+    } catch (vendorErr: unknown) {
+      const msg = vendorErr instanceof Error ? vendorErr.message : String(vendorErr);
+      console.error("[auth/login] Prisma error while resolving vendor membership:", msg);
+      if (!IS_DEV) {
+        return NextResponse.json(
+          {
+            error: "Login failed. Please try again.",
+            code: "VENDOR_PROFILE_RESOLUTION_DB_ERROR",
+          },
+          { status: 503 }
+        );
+      }
+    }
+
+    const availableProfiles = (["customer", "vendor"] as const).filter((profile) =>
+      profileSet.has(profile)
+    );
+    const sessionUserType = toSessionUserType(profileSet, user.userType);
+
     const userResponse = {
       id: resolvedUserId,
       name: `${user.firstName} ${user.lastName}`,
       email: user.email,
-      userType: user.userType || "customer",
+      userType: sessionUserType,
       availableProfiles,
       avatar:
         user.avatar ||
-        `https://randomuser.me/api/portraits/${user.userType === "vendor" ? "men" : "women"}/44.jpg`,
+        `https://randomuser.me/api/portraits/${sessionUserType === "vendor" ? "men" : "women"}/44.jpg`,
     };
 
     const response = NextResponse.json({

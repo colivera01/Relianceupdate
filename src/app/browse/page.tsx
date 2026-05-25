@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Search, SlidersHorizontal, X, MapPin, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
+import { useAuth } from '@/contexts/AuthContext';
 
 const DISCOVERY_PAGE_SIZE = 12;
 
@@ -20,25 +21,197 @@ const CATEGORY_DECORATION: Record<string, { icon: string; description: string }>
   uncategorized: { icon: '🧩', description: 'Services without a category label' },
 };
 
-type BrowseSort = 'newest' | 'price_asc' | 'price_desc' | 'name';
+type BrowseSort = 'newest' | 'name' | 'distance';
+
+function normalizeSortBy(value: string | null): BrowseSort {
+  if (value === 'distance') return value;
+  if (value === 'name') return value;
+  return 'newest';
+}
+
+function parseOptionalNumber(value: string | null): number | null {
+  if (value == null || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatDistanceMiles(value: number): string {
+  return `${value.toFixed(1)} miles away`;
+}
+
+function hasCustomerProfileAccess(userType: string | undefined): boolean {
+  return userType === 'customer' || userType === 'both';
+}
 
 export default function PublicBrowsePage() {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState<BrowseSort>('newest');
+  const [originLat, setOriginLat] = useState<number | null>(null);
+  const [originLng, setOriginLng] = useState<number | null>(null);
+  const [browserLocationOrigin, setBrowserLocationOrigin] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [browserLocationLoading, setBrowserLocationLoading] = useState(false);
+  const [browserLocationMessage, setBrowserLocationMessage] = useState<string | null>(null);
+  const [savedLocationOrigin, setSavedLocationOrigin] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [savedLocationDisabled, setSavedLocationDisabled] = useState(false);
+  const [savedLocationChecked, setSavedLocationChecked] = useState(false);
+  const [radiusMiles, setRadiusMiles] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  const [hasHydratedFromUrl, setHasHydratedFromUrl] = useState(false);
+  const didHydrateFromUrl = useRef(false);
+
+  useEffect(() => {
+    if (didHydrateFromUrl.current || typeof window === 'undefined') return;
+    didHydrateFromUrl.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const category = String(params.get('category') || '').trim();
+    const q = String(params.get('q') || '').trim();
+    const nextLat = parseOptionalNumber(params.get('lat'));
+    const nextLng = parseOptionalNumber(params.get('lng'));
+    const nextRadiusMiles = parseOptionalNumber(params.get('radiusMiles'));
+    const nextSortBy = normalizeSortBy(params.get('sortBy'));
+
+    if (category) {
+      setSelectedCategory(category);
+      setPage(1);
+    }
+    if (q) {
+      setSearchInput(q);
+      setSearchQuery(q);
+      setPage(1);
+    }
+    if (nextSortBy !== 'newest' && (nextSortBy !== 'distance' || (nextLat != null && nextLng != null))) {
+      setSortBy(nextSortBy);
+      setPage(1);
+    }
+    if (nextLat != null && nextLng != null) {
+      setOriginLat(nextLat);
+      setOriginLng(nextLng);
+    }
+    if (nextRadiusMiles != null && nextRadiusMiles > 0) {
+      setRadiusMiles(nextRadiusMiles);
+    }
+    setHasHydratedFromUrl(true);
+  }, []);
+
+  const hasCoordinateOrigin = originLat != null && originLng != null;
+  const browserLocationActive = !hasCoordinateOrigin && browserLocationOrigin != null;
+  const savedLocationAssistActive =
+    !hasCoordinateOrigin && !browserLocationActive && !savedLocationDisabled && savedLocationOrigin != null;
+  const effectiveOriginLat = hasCoordinateOrigin
+    ? originLat
+    : browserLocationActive
+    ? browserLocationOrigin.latitude
+    : savedLocationAssistActive
+    ? savedLocationOrigin.latitude
+    : null;
+  const effectiveOriginLng = hasCoordinateOrigin
+    ? originLng
+    : browserLocationActive
+    ? browserLocationOrigin.longitude
+    : savedLocationAssistActive
+    ? savedLocationOrigin.longitude
+    : null;
+  const hasEffectiveCoordinateOrigin = effectiveOriginLat != null && effectiveOriginLng != null;
+  const canRequestBrowserLocation =
+    savedLocationChecked && !hasCoordinateOrigin && !browserLocationActive && !savedLocationAssistActive;
+
+  useEffect(() => {
+    if (authLoading || !hasHydratedFromUrl) return;
+    if (!isAuthenticated || !user || !hasCustomerProfileAccess(user.userType)) {
+      setSavedLocationChecked(true);
+      return;
+    }
+
+    let cancelled = false;
+    setSavedLocationChecked(false);
+    fetch('/api/customer/profile', {
+      headers: {
+        Authorization: 'Bearer temp-jwt-token',
+        'x-user-id': user.id,
+      },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled) return;
+        const profile = payload?.profile;
+        const latitude = Number(profile?.latitude);
+        const longitude = Number(profile?.longitude);
+        if (
+          profile?.locationPreferenceEnabled === true &&
+          Number.isFinite(latitude) &&
+          Number.isFinite(longitude)
+        ) {
+          setSavedLocationOrigin({ latitude, longitude });
+        } else {
+          setSavedLocationOrigin(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSavedLocationOrigin(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSavedLocationChecked(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, hasHydratedFromUrl, isAuthenticated, user]);
+
+  useEffect(() => {
+    if (!hasHydratedFromUrl || typeof window === 'undefined') return;
+
+    const params = new URLSearchParams();
+    const trimmedSearch = searchQuery.trim();
+    if (trimmedSearch) params.set('q', trimmedSearch);
+    if (selectedCategory !== 'all') params.set('category', selectedCategory);
+    if (sortBy !== 'newest') params.set('sortBy', sortBy);
+    if (hasCoordinateOrigin) {
+      params.set('lat', String(originLat));
+      params.set('lng', String(originLng));
+    }
+    if (hasCoordinateOrigin && radiusMiles != null && radiusMiles > 0) {
+      params.set('radiusMiles', String(radiusMiles));
+    }
+
+    const nextUrl = params.toString() ? `/browse?${params.toString()}` : '/browse';
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    if (currentUrl !== nextUrl) {
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }, [hasCoordinateOrigin, hasHydratedFromUrl, originLat, originLng, radiusMiles, searchQuery, selectedCategory, sortBy]);
 
   const discoveryFilters = useMemo(
     () => ({
       q: searchQuery.trim() || undefined,
       category: selectedCategory !== 'all' ? selectedCategory : undefined,
       sortBy,
+      ...(hasEffectiveCoordinateOrigin ? { lat: effectiveOriginLat, lng: effectiveOriginLng } : {}),
+      ...(hasEffectiveCoordinateOrigin && radiusMiles != null && radiusMiles > 0 ? { radiusMiles } : {}),
       page,
       limit: DISCOVERY_PAGE_SIZE,
     }),
-    [searchQuery, selectedCategory, sortBy, page]
+    [
+      effectiveOriginLat,
+      effectiveOriginLng,
+      hasEffectiveCoordinateOrigin,
+      radiusMiles,
+      searchQuery,
+      selectedCategory,
+      sortBy,
+      page,
+    ]
   );
 
   const { data, isLoading, isError, error, isFetching } = useDiscoverServices(discoveryFilters);
@@ -50,6 +223,9 @@ export default function PublicBrowsePage() {
 
   const categories = categoryData?.categories || [];
   const hasActiveFilters = Boolean(searchQuery.trim()) || selectedCategory !== 'all';
+  const hasSelectedCategoryOption =
+    selectedCategory === 'all' ||
+    categories.some((category) => category.label === selectedCategory);
 
   const results = data?.results || [];
   const pagination = data?.pagination;
@@ -66,7 +242,68 @@ export default function PublicBrowsePage() {
     setSearchQuery('');
     setSelectedCategory('all');
     setSortBy('newest');
+    setOriginLat(null);
+    setOriginLng(null);
+    setBrowserLocationOrigin(null);
+    setBrowserLocationMessage(null);
+    setSavedLocationDisabled(true);
+    setRadiusMiles(null);
     setPage(1);
+  };
+
+  const stopUsingSavedLocation = () => {
+    setSavedLocationDisabled(true);
+    setRadiusMiles(null);
+    if (sortBy === 'distance') setSortBy('newest');
+    setPage(1);
+  };
+
+  const stopUsingBrowserLocation = () => {
+    setBrowserLocationOrigin(null);
+    setBrowserLocationMessage(null);
+    setRadiusMiles(null);
+    if (sortBy === 'distance') setSortBy('newest');
+    setPage(1);
+  };
+
+  const handleUseCurrentLocation = () => {
+    setBrowserLocationMessage(null);
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setBrowserLocationMessage('Current location is not available in this browser. You can keep browsing normally.');
+      return;
+    }
+
+    setBrowserLocationLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          setBrowserLocationMessage('We could not read a usable location. You can keep browsing normally.');
+          setBrowserLocationLoading(false);
+          return;
+        }
+
+        setBrowserLocationOrigin({ latitude, longitude });
+        setBrowserLocationMessage(null);
+        setSavedLocationDisabled(true);
+        setPage(1);
+        setBrowserLocationLoading(false);
+      },
+      (error) => {
+        const denied = error.code === error.PERMISSION_DENIED;
+        setBrowserLocationMessage(
+          denied
+            ? 'Location access was denied. You can still browse normally.'
+            : 'We could not access your location. You can keep browsing or use a saved address instead.'
+        );
+        setBrowserLocationLoading(false);
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10_000,
+        maximumAge: 5 * 60 * 1000,
+      }
+    );
   };
 
   const handleCategoryClick = (categoryName: string) => {
@@ -92,7 +329,7 @@ export default function PublicBrowsePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-white">
       <header className="bg-white shadow-sm border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -116,15 +353,28 @@ export default function PublicBrowsePage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Browse Local Services</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Find trusted local professionals using public-safe, moderation-filtered marketplace results.
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center rounded-full border border-blue-200 bg-white/80 px-4 py-1 text-sm font-medium text-blue-700 shadow-sm mb-5">
+            Trusted local proof, all in one place
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-950 mb-4">Browse Local Services</h1>
+          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+            Browse trusted local professionals backed by real reviews and proof of completed work.
           </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            {['Real Reviews', 'Proof Available', 'Trusted Vendors'].map((label) => (
+              <span
+                key={label}
+                className="rounded-full border border-blue-100 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+        <div className="bg-white/95 rounded-2xl shadow-lg shadow-blue-100/60 border border-blue-100 p-6 mb-10">
           <div className="grid md:grid-cols-4 gap-4">
             <div className="md:col-span-2">
               <div className="relative">
@@ -145,6 +395,7 @@ export default function PublicBrowsePage() {
             </div>
             <div>
               <select
+                data-testid="browse-category-select"
                 value={selectedCategory}
                 onChange={(e) => {
                   setSelectedCategory(e.target.value);
@@ -153,6 +404,9 @@ export default function PublicBrowsePage() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Categories</option>
+                {!hasSelectedCategoryOption && selectedCategory !== 'all' ? (
+                  <option value={selectedCategory}>{selectedCategory}</option>
+                ) : null}
                 {categories.map((category) => (
                   <option key={category.key} value={category.label}>
                     {category.label} ({category.serviceCount})
@@ -169,6 +423,7 @@ export default function PublicBrowsePage() {
               </Button>
               <Button
                 onClick={() => setShowFilters((prev) => !prev)}
+                aria-label="Toggle browse filters"
                 className="bg-gray-700 hover:bg-gray-800 text-white"
               >
                 <SlidersHorizontal className="h-4 w-4" />
@@ -188,7 +443,7 @@ export default function PublicBrowsePage() {
                   Clear All
                 </button>
               </div>
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className={`grid gap-4 ${hasEffectiveCoordinateOrigin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
                   <select
@@ -201,23 +456,123 @@ export default function PublicBrowsePage() {
                   >
                     <option value="newest">Newest</option>
                     <option value="name">Name</option>
-                    <option value="price_asc">Price: Low to High</option>
-                    <option value="price_desc">Price: High to Low</option>
+                    {hasEffectiveCoordinateOrigin ? <option value="distance">Distance</option> : null}
                   </select>
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                  Distance filter is not available yet in backend discovery.
+                {hasEffectiveCoordinateOrigin ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Distance</label>
+                    <select
+                      data-testid="browse-radius-select"
+                      value={radiusMiles ?? 'any'}
+                      onChange={(e) => {
+                        const nextRadius = e.target.value === 'any' ? null : Number(e.target.value);
+                        setRadiusMiles(Number.isFinite(nextRadius) ? nextRadius : null);
+                        setPage(1);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="any">Any distance</option>
+                      <option value="5">Within 5 miles</option>
+                      <option value="10">Within 10 miles</option>
+                      <option value="25">Within 25 miles</option>
+                      <option value="50">Within 50 miles</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Filter providers by how far they are from your browse location.
+                    </p>
+                  </div>
+                ) : null}
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                  {hasEffectiveCoordinateOrigin
+                    ? 'Distance uses real saved or linked coordinates when providers have them.'
+                    : 'More filters coming soon.'}
                 </div>
               </div>
             </div>
           )}
         </div>
 
+        <div className="mb-10 rounded-2xl border border-blue-100 bg-white/90 p-5 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="flex gap-3">
+              <div className={`mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
+                savedLocationAssistActive || browserLocationActive ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+              }`}>
+                <MapPin className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">
+                  {browserLocationActive
+                    ? 'Showing providers near your current location'
+                    : savedLocationAssistActive
+                    ? 'Showing results near your saved address'
+                    : 'Location-aware browsing is available when ready'}
+                </h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  {browserLocationActive
+                    ? 'Reliance is using your current location for this browse session only.'
+                    : savedLocationAssistActive
+                    ? 'Reliance is using your saved service area preference to calculate real nearby distances for vendors with stored coordinates.'
+                    : savedLocationChecked
+                    ? 'You can browse everything today. Save an address and enable your saved-address preference to see real nearby distances when providers have coordinates.'
+                    : 'Checking whether saved-location assistance is available for this session.'}
+                </p>
+                {browserLocationMessage ? (
+                  <p className="mt-2 text-sm font-medium text-amber-700">{browserLocationMessage}</p>
+                ) : null}
+              </div>
+            </div>
+            {browserLocationActive ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={stopUsingBrowserLocation}
+                  className="text-sm font-semibold text-gray-700 hover:text-gray-900"
+                >
+                  Stop using current location
+                </button>
+              </div>
+            ) : savedLocationAssistActive ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={stopUsingSavedLocation}
+                  className="text-sm font-semibold text-gray-700 hover:text-gray-900"
+                >
+                  Stop for this session
+                </button>
+                <Link href="/profile-settings" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+                  Manage saved address
+                </Link>
+              </div>
+            ) : canRequestBrowserLocation ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  disabled={browserLocationLoading}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {browserLocationLoading ? 'Checking location...' : 'Use my location'}
+                </Button>
+                <Link href={isAuthenticated ? "/profile-settings" : "/auth/register?type=user"} className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+                  {isAuthenticated ? 'Manage saved address' : 'Save an address later'}
+                </Link>
+              </div>
+            ) : (
+              <Link href={isAuthenticated ? "/profile-settings" : "/auth/register?type=user"} className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+                {isAuthenticated ? 'Manage saved address' : 'Save an address later'}
+              </Link>
+            )}
+          </div>
+        </div>
+
         <div className="mb-12">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-gray-900">Popular Categories</h2>
-            <span className="text-xs text-gray-500">
-              Counts are backend-derived public inventory
+            <span className="text-xs font-medium text-blue-700">
+              Live category counts
             </span>
           </div>
           {categoriesLoading ? (
@@ -246,10 +601,10 @@ export default function PublicBrowsePage() {
                 return (
                   <Card
                     key={category.key}
-                    className={`text-center hover:shadow-lg transition-all cursor-pointer group border-2 ${
+                    className={`text-center hover:-translate-y-1 hover:shadow-xl transition-all cursor-pointer group border-2 bg-white ${
                       selectedCategory === category.label
-                        ? 'border-blue-500 bg-blue-50/60 shadow-md'
-                        : 'border-transparent'
+                        ? 'border-blue-500 bg-blue-50/80 shadow-md shadow-blue-100'
+                        : 'border-white hover:border-blue-200'
                     }`}
                     onClick={() => handleCategoryClick(category.label)}
                   >
@@ -273,7 +628,10 @@ export default function PublicBrowsePage() {
 
         <div className="mb-12">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Public Services</h2>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Trusted Services</h2>
+              <p className="text-sm text-gray-600">Compare vendors by reviews, proof, and service fit.</p>
+            </div>
             <div className="text-sm text-gray-600">
               {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount}`}
             </div>
@@ -320,7 +678,7 @@ export default function PublicBrowsePage() {
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {results.map((item) => (
-                <Card key={item.serviceId} className="hover:shadow-lg transition-shadow h-full flex flex-col">
+                <Card key={item.serviceId} className="hover:-translate-y-1 hover:shadow-xl transition-all h-full flex flex-col border-blue-50">
                   <div className="relative">
                     {item.previewMediaUrl ? (
                       <img
@@ -336,6 +694,13 @@ export default function PublicBrowsePage() {
                         </div>
                       </div>
                     )}
+                    <div className="absolute left-3 top-3">
+                      {item.publicListing.hasPublicMedia ? (
+                        <Badge className="bg-blue-600 text-white hover:bg-blue-600">Proof available</Badge>
+                      ) : (
+                        <Badge className="bg-white/90 text-gray-700 hover:bg-white">Verified listing</Badge>
+                      )}
+                    </div>
                   </div>
                   <CardContent className="p-4 flex-1 flex flex-col">
                     <div className="flex items-start justify-between gap-3 mb-2">
@@ -361,15 +726,39 @@ export default function PublicBrowsePage() {
                       </div>
                     ) : null}
 
-                    {typeof item.rating === 'number' && typeof item.reviewCount === 'number' ? (
-                      <p className="text-sm text-gray-700 mb-2">
-                        <span className="font-semibold">{item.rating.toFixed(1)}★</span>{' '}
-                        <span className="text-gray-500">({item.reviewCount} review{item.reviewCount === 1 ? '' : 's'})</span>
-                      </p>
+                    {typeof item.distanceMiles === 'number' ? (
+                      <div className="mb-2 inline-flex w-fit items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        {formatDistanceMiles(item.distanceMiles)}
+                      </div>
                     ) : null}
 
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-blue-50 px-3 py-2 text-blue-900">
+                        <div className="font-semibold">
+                          {typeof item.rating === 'number' ? `${item.rating.toFixed(1)} stars` : 'New listing'}
+                        </div>
+                        <div className="text-blue-700">
+                          {typeof item.reviewCount === 'number'
+                            ? `${item.reviewCount} review${item.reviewCount === 1 ? '' : 's'}`
+                            : 'Reviews pending'}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-800">
+                        <div className="font-semibold">
+                          {item.publicListing.hasPublicMedia ? 'Proof ready' : 'Vendor details'}
+                        </div>
+                        <div className="text-slate-600">
+                          {item.publicListing.hasPublicMedia ? 'Public media' : 'Profile available'}
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="flex items-center justify-between mt-3">
-                      <div className="text-base font-bold text-gray-900">${item.price.toFixed(2)}</div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        {typeof item.reviewCount === 'number'
+                          ? `${item.reviewCount} public review${item.reviewCount === 1 ? '' : 's'}`
+                          : 'Public service listing'}
+                      </div>
                       {item.publicListing.hasPublicMedia ? (
                         <Badge className="bg-blue-100 text-blue-800">Public media</Badge>
                       ) : (

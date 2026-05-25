@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addRegisteredUser } from "@/lib/dev-registered-users";
+import { prisma } from "@/server/db";
+import { geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
 
 // reCAPTCHA Secret Key - Update this with your actual secret key
 const RECAPTCHA_SECRET_KEY = '6LdAapYrAAAAAEuuGMIKNjSNv0PE1yeMtWO1rKKk';
@@ -121,6 +123,52 @@ export async function POST(request: NextRequest) {
 
     // Store customer data for login system
     addRegisteredUser(customerData);
+
+    try {
+      const addressInput = {
+        address: String(address || "").trim(),
+        city: String(city || "").trim(),
+        state: String(state || "").trim(),
+        zipCode: String(zipCode || "").trim(),
+      };
+      const geocodeResult = hasCompleteAddress(addressInput)
+        ? await geocodeAddress(addressInput)
+        : null;
+      const coordinateData =
+        geocodeResult?.status === "success"
+          ? {
+              latitude: geocodeResult.latitude,
+              longitude: geocodeResult.longitude,
+              geocodedAt: geocodeResult.geocodedAt,
+            }
+          : {};
+      const staleCoordinateClear = { latitude: null, longitude: null, geocodedAt: null };
+      await (prisma as any).user.upsert({
+        where: { email },
+        create: {
+          name: `${firstName} ${lastName}`.trim(),
+          email,
+          phone,
+          address: addressInput.address || null,
+          city: addressInput.city || null,
+          state: addressInput.state || null,
+          zipCode: addressInput.zipCode || null,
+          locationPreferenceEnabled: false,
+          ...coordinateData,
+        },
+        update: {
+          name: `${firstName} ${lastName}`.trim(),
+          phone,
+          address: addressInput.address || null,
+          city: addressInput.city || null,
+          state: addressInput.state || null,
+          zipCode: addressInput.zipCode || null,
+          ...(geocodeResult?.status === "success" ? coordinateData : staleCoordinateClear),
+        },
+      });
+    } catch (dbError) {
+      console.warn("Customer registration DB persistence skipped:", dbError);
+    }
 
     // TODO: Store customer data in your database
     // Example with a hypothetical database:

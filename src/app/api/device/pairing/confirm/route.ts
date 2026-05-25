@@ -4,10 +4,6 @@ import { prisma } from "@/server/db";
 
 import { NextResponse } from "next/server";
 
-function sqlEscape(value: string): string {
-  return value.replace(/'/g, "''");
-}
-
 
 
 export async function POST(req: Request) {
@@ -28,61 +24,105 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid deviceType" }, { status: 400 });
     }
 
+    const now = new Date();
     const pairing = await (prisma as any).devicePairingCode.findUnique({
       where: { code: normalizedCode },
+      select: { id: true, vendorId: true, used: true, expiresAt: true },
     });
 
-    if (!pairing || pairing.used || pairing.expiresAt < new Date()) {
+    if (!pairing || pairing.used || pairing.expiresAt < now) {
       return NextResponse.json({ error: "Invalid or expired code" }, { status: 400 });
     }
 
-    const now = new Date();
-    // Transition strategy:
-    // - Primary lookup/write key: deviceUid
-    // - Legacy fallback key: employeeId (for old MVP rows)
-    const vendorIdEsc = sqlEscape(String(pairing.vendorId));
-    const uidEsc = sqlEscape(normalizedUid);
-    const typeEsc = sqlEscape(normalizedType);
-    const nameEsc = sqlEscape(normalizedName);
-    const uaEsc = sqlEscape(req.headers.get("user-agent") || "");
+    const device = await prisma.$transaction(async (tx: any) => {
+      // Consume code atomically so concurrent confirms cannot both succeed.
+      const consumed = await tx.devicePairingCode.updateMany({
+        where: {
+          id: String(pairing.id),
+          used: false,
+          expiresAt: { gt: now },
+        },
+        data: { used: true },
+      });
+      if (Number(consumed?.count || 0) === 0) {
+        throw new Error("PAIRING_CODE_ALREADY_USED_OR_EXPIRED");
+      }
 
-    const existingRows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `SELECT TOP 1 id FROM devices WHERE deviceUid='${uidEsc}' OR employeeId='${uidEsc}' ORDER BY createdAt DESC`
-    );
-    const existingDeviceId = String(existingRows?.[0]?.id || "");
+      // Transition strategy:
+      // - Primary lookup/write key: deviceUid
+      // - Legacy fallback key: employeeId (for old MVP rows)
+      const existing = await tx.device.findFirst({
+        where: {
+          OR: [{ deviceUid: normalizedUid }, { employeeId: normalizedUid }],
+        },
+        select: {
+          id: true,
+          vendorId: true,
+          deviceUid: true,
+          employeeId: true,
+          deviceType: true,
+          model: true,
+          os: true,
+          appVersion: true,
+          lastSeenAt: true,
+        },
+        orderBy: { pairedAt: "desc" },
+      });
 
-    if (existingDeviceId) {
-      const idEsc = sqlEscape(existingDeviceId);
-      await prisma.$executeRawUnsafe(
-        `UPDATE devices SET vendorId='${vendorIdEsc}', deviceUid='${uidEsc}', employeeId=COALESCE(employeeId,'${uidEsc}'), deviceType='${typeEsc}', deviceName='${nameEsc}', userAgent='${uaEsc}', lastSeenAt=GETUTCDATE() WHERE id='${idEsc}'`
-      );
-    } else {
-      const newId = `dev_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-      const idEsc = sqlEscape(newId);
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO devices (id, vendorId, deviceUid, employeeId, deviceType, deviceName, createdAt, lastSeenAt, userAgent) VALUES ('${idEsc}','${vendorIdEsc}','${uidEsc}','${uidEsc}','${typeEsc}','${nameEsc}',GETUTCDATE(),GETUTCDATE(),'${uaEsc}')`
-      );
-    }
+      if (existing?.id) {
+        return tx.device.update({
+          where: { id: String(existing.id) },
+          data: {
+            vendorId: String(pairing.vendorId),
+            deviceUid: normalizedUid,
+            employeeId: existing.employeeId || normalizedUid,
+            deviceType: normalizedType,
+            lastSeenAt: now,
+          },
+          select: {
+            id: true,
+            vendorId: true,
+            deviceUid: true,
+            employeeId: true,
+            deviceType: true,
+            lastSeenAt: true,
+          },
+        });
+      }
 
-    const deviceRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT TOP 1 id, vendorId, deviceUid, employeeId, deviceType, deviceName, lastSeenAt FROM devices WHERE deviceUid='${uidEsc}' OR employeeId='${uidEsc}' ORDER BY createdAt DESC`
-    );
-    const device = deviceRows?.[0] || null;
-
-    await (prisma as any).devicePairingCode.update({
-      where: { id: pairing.id },
-      data: { used: true },
+      return tx.device.create({
+        data: {
+          vendorId: String(pairing.vendorId),
+          deviceUid: normalizedUid,
+          employeeId: normalizedUid,
+          deviceType: normalizedType,
+          pairedAt: now,
+          lastSeenAt: now,
+        },
+        select: {
+          id: true,
+          vendorId: true,
+          deviceUid: true,
+          employeeId: true,
+          deviceType: true,
+          lastSeenAt: true,
+        },
+      });
     });
 
     return NextResponse.json({
       success: true,
       device: {
         ...device,
+        deviceName: normalizedName,
         deviceUid: normalizedUid,
         lastActive: now.toISOString(),
       },
     });
   } catch (error: any) {
+    if (String(error?.message || "") === "PAIRING_CODE_ALREADY_USED_OR_EXPIRED") {
+      return NextResponse.json({ error: "Invalid or expired code" }, { status: 400 });
+    }
     console.error("[pairing/confirm] Error:", error);
     return NextResponse.json(
       { 

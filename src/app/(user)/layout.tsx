@@ -4,9 +4,11 @@ import UserSidebar from '@/components/UserSidebar';
 import ProfileToggle from '@/components/ProfileToggle';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
+import { usePathname } from 'next/navigation';
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const pathname = usePathname() || '';
   const userType = String(user?.userType || '').toLowerCase();
   const currentProfile = useMemo(() => {
     if (userType === 'vendor') return 'vendor' as const;
@@ -14,6 +16,11 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
     return 'customer' as const;
   }, [userType]);
   const { availableRoles, userId } = useAvailableRoles(currentProfile);
+  const isPublicServiceRoute = pathname.startsWith('/service/');
+
+  if (isPublicServiceRoute && !user) {
+    return <>{children}</>;
+  }
 
   // TODO Future mobile: when the sidebar is hidden below `md`, replace it
   // with a slide-out drawer or bottom-tab nav so the customer surface feels

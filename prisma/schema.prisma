@@ -2,7 +2,9 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  // Native library engine required for `sqlserver://` DATABASE_URL. Do not run `prisma generate --no-engine`.
+  engineType = "library"
 }
 
 datasource db {
@@ -32,6 +34,9 @@ model Vendor {
   state               String?
   address             String?
   zipCode             String?
+  latitude            Float?
+  longitude           Float?
+  geocodedAt          DateTime?
   bio                 String?
   website             String?
   licenseNumber       String?
@@ -144,6 +149,14 @@ model User {
   name        String?
   email       String?  @unique
   phone       String?  @unique
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  latitude    Float?
+  longitude   Float?
+  geocodedAt  DateTime?
+  locationPreferenceEnabled Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   demo        Boolean  @default(false)
@@ -253,9 +266,37 @@ model Device {
   vendor        Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   assignments   DeviceAssignment[]
   mediaSessions MediaSession[]
+  deviceEvents  DeviceEvent[]
 
   @@index([vendorId, deviceType])
   @@map("devices")
+}
+
+model DeviceEvent {
+  id             String   @id @default(cuid())
+  eventId        String   @unique
+  eventType      String
+  occurredAt     DateTime
+  receivedAt     DateTime @default(now())
+  deviceId       String
+  vendorId       String
+  membershipId   String?
+  bookingId      String?
+  mediaSessionId String?
+  assetId        String?
+  stage          String?
+  payloadJson    String?
+  contextJson    String?
+  firmwareVersion String?
+  phoneAppVersion String?
+
+  device         Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, occurredAt])
+  @@index([vendorId, occurredAt])
+  @@index([eventType, occurredAt])
+  @@index([membershipId, occurredAt])
+  @@map("device_events")
 }
 
 model DevicePairingCode {

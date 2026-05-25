@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { evaluateConsentRespondable } from '@/lib/consent-record-state';
 
+type ConsentRecordRow = {
+  id: string;
+  status: string;
+  expiresAt: Date | null;
+};
+
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
   const message = String(error?.message || '');

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
+import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -47,13 +48,27 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       );
     }
 
+    const rejectedAt = new Date();
     await (prisma as any).booking.update({
       where: { id: booking.id },
       data: {
         status: "IN_PROGRESS",
         rejectionReason,
-        rejectedAt: new Date(),
+        rejectedAt,
         rejectedBy: manager.userId,
+      },
+    });
+
+    await recordLifecycleAudit({
+      actionType: "job_rejected",
+      entityType: "booking",
+      entityId: booking.id,
+      actorUserId: manager.userId,
+      previousValue: { status: currentStatus },
+      newValue: { status: "IN_PROGRESS", rejectedAt: rejectedAt.toISOString() },
+      metadata: {
+        vendorId,
+        rejectionReason,
       },
     });
 

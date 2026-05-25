@@ -53,8 +53,8 @@
 
 ## Known Risks
 - Route drift: UI points to missing pages (`/vendor/media`, `/vendor/storage`) and legacy paths still exist in layout variants.
-- Device pairing schema drift: `deviceUid` is persisted in `devices.employeeId` via raw SQL workaround.
-- Duplicate API surface for pairing (`/api/device/pairing/*` and `/api/pairing/*`) risks contract confusion.
+- Device pairing now uses canonical `devices.deviceUid` with `employeeId` kept only as legacy fallback compatibility.
+- Device integration still needs the phone-side BLE bridge and employee-facing headset pairing UX; server-side event ingest exists.
 - Jobs page size/complexity raises regression risk and slows onboarding/debugging.
 - Dashboard stats and card labels are partially derived client-side from recent arrays, not full canonical server aggregates.
 - DB connectivity/transient Azure SQL failures still produce runtime instability on data-heavy routes.

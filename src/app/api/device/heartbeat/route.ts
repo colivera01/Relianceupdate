@@ -3,10 +3,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 
-function sqlEscape(value: string): string {
-  return value.replace(/'/g, "''");
-}
-
 /**
  * POST /api/device/heartbeat
  * Employee phone sends heartbeat to update lastSeenAt
@@ -24,11 +20,23 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Find device (prefer canonical deviceUid; fallback to legacy employeeId rows).
-    const uidEsc = sqlEscape(String(phoneDeviceUid));
-    const deviceRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT TOP 1 id, vendorId, deviceUid, employeeId, deviceType, model, os, appVersion FROM devices WHERE deviceUid='${uidEsc}' OR employeeId='${uidEsc}' ORDER BY createdAt DESC`
-    );
-    const device = deviceRows?.[0] || null;
+    const normalizedUid = String(phoneDeviceUid).trim();
+    const device = await (prisma as any).device.findFirst({
+      where: {
+        OR: [{ deviceUid: normalizedUid }, { employeeId: normalizedUid }],
+      },
+      select: {
+        id: true,
+        vendorId: true,
+        deviceUid: true,
+        employeeId: true,
+        deviceType: true,
+        model: true,
+        os: true,
+        appVersion: true,
+      },
+      orderBy: { pairedAt: "desc" },
+    });
 
     if (!device || String(device.deviceType || "").toUpperCase() !== "PHONE") {
       return NextResponse.json(
@@ -37,14 +45,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    // Update lastSeenAt
-    const idEsc = sqlEscape(String(device.id));
-    const modelEsc = sqlEscape(String(deviceMeta.model || device.model || ""));
-    const osEsc = sqlEscape(String(deviceMeta.os || device.os || ""));
-    const appVersionEsc = sqlEscape(String(deviceMeta.appVersion || device.appVersion || ""));
-    await prisma.$executeRawUnsafe(
-      `UPDATE devices SET lastSeenAt=GETUTCDATE(), model='${modelEsc}', os='${osEsc}', appVersion='${appVersionEsc}' WHERE id='${idEsc}'`
-    );
+    // Update lastSeenAt and latest device metadata
+    await (prisma as any).device.update({
+      where: { id: String(device.id) },
+      data: {
+        lastSeenAt: new Date(),
+        model: String(deviceMeta.model || device.model || ""),
+        os: String(deviceMeta.os || device.os || ""),
+        appVersion: String(deviceMeta.appVersion || device.appVersion || ""),
+      },
+    });
 
     // Find active membership for this vendor and user
     // We need to find which user owns this device
@@ -55,7 +65,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         status: "ACTIVE",
         // Find membership where this device was registered
         OR: [
-          { pendingPhoneDeviceUid: phoneDeviceUid },
+          { pendingPhoneDeviceUid: normalizedUid },
           // Could also check if we add a deviceId to membership
         ],
       },

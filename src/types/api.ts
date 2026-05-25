@@ -163,6 +163,7 @@ export interface DiscoverServiceResult {
   vendorCategory: string | null;
   vendorBusinessType: string | null;
   location: string | null;
+  distanceMiles?: number | null;
   previewMediaUrl: string | null;
   price: number;
   rating: number | null;
@@ -185,6 +186,17 @@ export interface DiscoverServicesResponse {
     q: string | null;
     category: string | null;
     sortBy: string;
+    radiusMiles?: number | null;
+  };
+  location?: {
+    inputAccepted: boolean;
+    inputSource: 'none' | 'coordinates' | 'address';
+    geocodingProvider?: 'disabled' | 'mapbox';
+    geocodedVendorCount?: number;
+    distanceResultCount?: number;
+    distanceFilteringApplied: boolean;
+    distanceSortingApplied: boolean;
+    supportedFutureInputs: string[];
   };
   notes?: {
     distance?: string;

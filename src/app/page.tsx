@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { 
   Search, 
   Star, 
@@ -22,8 +23,23 @@ import {
   Sparkles
 } from 'lucide-react';
 
+const HOME_MARKETPLACE_PREVIEW_LIMIT = 3;
+
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<'user' | 'vendor'>('user');
+  const {
+    data: marketplaceData,
+    isLoading: marketplaceLoading,
+    isError: marketplaceError,
+  } = useDiscoverServices({
+    sortBy: 'newest',
+    limit: HOME_MARKETPLACE_PREVIEW_LIMIT,
+  });
+  const {
+    data: categoryData,
+    isLoading: categoriesLoading,
+    isError: categoriesError,
+  } = useServiceCategories();
 
   const features = [
     {
@@ -63,6 +79,10 @@ export default function HomePage() {
     "Make informed decisions with transparency",
     "Connect with local service providers"
   ];
+
+  const marketplaceResults = marketplaceData?.results || [];
+  const categoryPreview = (categoryData?.categories || []).slice(0, 4);
+  const totalPublicServices = marketplaceData?.pagination?.total ?? categoryData?.meta?.countedServices ?? 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 text-slate-900">
@@ -174,6 +194,154 @@ export default function HomePage() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Live Marketplace Preview */}
+      <section className="py-20 bg-gradient-to-br from-slate-50 to-blue-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
+            <div>
+              <Badge className="mb-3 bg-blue-100 text-blue-800 hover:bg-blue-100">
+                Live marketplace
+              </Badge>
+              <h2 className="text-4xl font-bold text-slate-900 mb-3">
+                See what is active on Reliance
+              </h2>
+              <p className="text-lg text-slate-600 max-w-2xl">
+                These listings and category counts come from the same public-safe inventory that powers Browse.
+              </p>
+            </div>
+            <Link href="/browse">
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                View All Services
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+
+          <div className="grid lg:grid-cols-[1.6fr_1fr] gap-8">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-slate-900">Newest Public Services</h3>
+                <span className="text-sm text-slate-500">
+                  {marketplaceLoading ? 'Loading...' : `${totalPublicServices} public service${totalPublicServices === 1 ? '' : 's'}`}
+                </span>
+              </div>
+
+              {marketplaceLoading ? (
+                <div className="grid md:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((item) => (
+                    <Card key={item} className="animate-pulse border-blue-100">
+                      <CardContent className="p-5">
+                        <div className="h-4 bg-slate-200 rounded mb-3" />
+                        <div className="h-3 bg-slate-200 rounded mb-2" />
+                        <div className="h-3 bg-slate-200 rounded w-2/3 mb-5" />
+                        <div className="h-9 bg-slate-200 rounded" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : marketplaceError ? (
+                <Card className="border-amber-200 bg-amber-50">
+                  <CardContent className="p-5 text-sm text-amber-900">
+                    We could not load live marketplace services right now. You can still browse the public catalog.
+                  </CardContent>
+                </Card>
+              ) : marketplaceResults.length === 0 ? (
+                <Card className="border-slate-200 bg-white">
+                  <CardContent className="p-5 text-sm text-slate-600">
+                    No public services are available yet. Check back as vendors publish approved listings.
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid md:grid-cols-3 gap-4">
+                  {marketplaceResults.map((item) => (
+                    <Card key={item.serviceId} className="bg-white border-blue-100 shadow-sm hover:shadow-lg transition-shadow">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <CardTitle className="text-lg leading-snug text-slate-900">
+                            {item.serviceName}
+                          </CardTitle>
+                          {item.vendorCategory ? (
+                            <Badge variant="outline" className="text-xs">
+                              {item.vendorCategory}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <CardDescription className="line-clamp-2">
+                          {item.serviceDescription || 'Public service listing'}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <p className="text-sm text-slate-700 mb-2">
+                          Vendor:{' '}
+                          <Link href={`/vendors/${item.vendorId}`} className="font-medium text-blue-700 hover:text-blue-800">
+                            {item.vendorName}
+                          </Link>
+                        </p>
+                        <div className="flex items-center justify-between text-sm text-slate-600 mb-4">
+                          {typeof item.rating === 'number' && typeof item.reviewCount === 'number' ? (
+                            <span className="flex items-center gap-1 font-medium text-slate-900">
+                              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                              {item.rating.toFixed(1)} ({item.reviewCount} public review{item.reviewCount === 1 ? '' : 's'})
+                            </span>
+                          ) : (
+                            <span className="font-medium text-slate-900">New public listing</span>
+                          )}
+                          <span>{item.publicListing.hasPublicMedia ? 'Public proof available' : 'Vendor verified listing'}</span>
+                        </div>
+                        <Link href={`/service/${item.serviceId}`}>
+                          <Button variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50">
+                            View Service
+                          </Button>
+                        </Link>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Card className="bg-white border-blue-100 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-xl text-slate-900">Public Categories</CardTitle>
+                <CardDescription>Backend-derived category counts from public inventory.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {categoriesLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((item) => (
+                      <div key={item} className="h-10 bg-slate-100 rounded animate-pulse" />
+                    ))}
+                  </div>
+                ) : categoriesError ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Category counts are temporarily unavailable.
+                  </div>
+                ) : categoryPreview.length === 0 ? (
+                  <div className="text-sm text-slate-600">
+                    Categories will appear as public services are published.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {categoryPreview.map((category) => (
+                      <Link
+                        key={category.key}
+                        href={`/browse?category=${encodeURIComponent(category.label)}`}
+                        className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                      >
+                        <span className="font-medium text-slate-800">{category.label}</span>
+                        <span className="text-sm text-slate-500">
+                          {category.serviceCount} service{category.serviceCount === 1 ? '' : 's'}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
@@ -299,7 +467,7 @@ export default function HomePage() {
             <div>
               <h3 className="font-semibold mb-4 text-white">For Customers</h3>
               <ul className="space-y-2 text-slate-400">
-                <li><Link href="/discover" className="hover:text-white transition-colors">Browse Services</Link></li>
+                <li><Link href="/browse" className="hover:text-white transition-colors">Browse Services</Link></li>
                 <li><Link href="/auth/register?type=user" className="hover:text-white transition-colors">Sign Up</Link></li>
                 <li><Link href="/auth/login" className="hover:text-white transition-colors">Sign In</Link></li>
               </ul>
@@ -309,7 +477,7 @@ export default function HomePage() {
               <ul className="space-y-2 text-slate-400">
                 <li><Link href="/auth/register?type=vendor" className="hover:text-white transition-colors">Join as Vendor</Link></li>
                 <li><Link href="/auth/login" className="hover:text-white transition-colors">Sign In</Link></li>
-                <li><Link href="/vendor" className="hover:text-white transition-colors">Vendor Portal</Link></li>
+                <li><Link href="/auth/login" className="hover:text-white transition-colors">Vendor Portal</Link></li>
               </ul>
             </div>
             <div>

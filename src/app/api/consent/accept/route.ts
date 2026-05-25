@@ -3,6 +3,13 @@ import { prisma } from '@/server/db';
 import { hashConsentDocument } from '@/lib/consent-flow';
 import { evaluateConsentRespondable } from '@/lib/consent-record-state';
 
+type ConsentRecordRow = {
+  id: string;
+  status: string;
+  expiresAt: Date | null;
+  acceptedAt: Date | null;
+};
+
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
   const message = String(error?.message || '');

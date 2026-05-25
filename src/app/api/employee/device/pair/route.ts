@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
@@ -80,6 +81,27 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
     });
 
+    const isFirstPairing = !existing;
+    if (isFirstPairing) {
+      await recordLifecycleAudit({
+        actionType: "device_paired",
+        entityType: "device",
+        entityId: String(device.id),
+        actorUserId: userId,
+        newValue: {
+          deviceUid,
+          deviceType,
+          model: String(body?.model || ""),
+          os: String(body?.os || ""),
+          appVersion: String(body?.appVersion || ""),
+        },
+        metadata: {
+          vendorId: membership.vendorId,
+          membershipId: membership.id,
+        },
+      });
+    }
+
     return NextResponse.json({
       success: true,
       pairing: {
@@ -91,6 +113,10 @@ export async function POST(request: Request): Promise<NextResponse> {
         pairedAt: device.pairedAt,
         lastSeenAt: device.lastSeenAt,
         status: device.isActive ? "active" : "inactive",
+        model: device.model || null,
+        os: device.os || null,
+        appVersion: device.appVersion || null,
+        firstPairing: isFirstPairing,
       },
     });
   } catch (error: any) {

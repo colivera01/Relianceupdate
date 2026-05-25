@@ -6,6 +6,30 @@ type RouteContext = {
   params: Promise<{ token: string }>;
 };
 
+type ConsentTokenBooking = {
+  id: string;
+  title: string | null;
+  clientName: string | null;
+  scheduledFor: Date | null;
+  service: { id: string; name: string; price: number | null } | null;
+};
+
+type ConsentTokenRecord = {
+  id: string;
+  token: string;
+  status: string;
+  consentType: string;
+  requestedAt: Date;
+  acceptedAt: Date | null;
+  declinedAt: Date | null;
+  expiresAt: Date | null;
+  termsVersion: string | null;
+  privacyVersion: string | null;
+  mediaSessionId: string;
+  booking: ConsentTokenBooking;
+  vendor: { id: string; name: string; businessName: string | null };
+};
+
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
   const message = String(error?.message || '');

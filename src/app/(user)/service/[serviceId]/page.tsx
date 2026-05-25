@@ -14,7 +14,6 @@ import {
   Share2, 
   ChevronLeft,
   CheckCircle,
-  Users,
   Award,
   Shield,
   Clock as TimeIcon
@@ -25,9 +24,8 @@ export default function ServiceDetailPage() {
   const router = useRouter();
   const { user } = useAuth();
   const serviceId = String(params?.serviceId ?? "");
-  
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedTime, setSelectedTime] = useState<string>('');
+  const isSignedIn = Boolean(user?.id);
+
   const [isFavorite, setIsFavorite] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'reviews' | 'photos'>('overview');
   const [mediaFilter, setMediaFilter] = useState<'all' | 'images' | 'videos'>('all');
@@ -58,8 +56,10 @@ export default function ServiceDetailPage() {
         }
         setService(serviceData.service);
 
-        // Fetch reviews
-        const reviewsResponse = await fetch(`/api/reviews?serviceId=${serviceId}`);
+        // Fetch public-safe service reviews only.
+        const reviewsResponse = await fetch(`/api/services/${serviceId}/reviews/public`, {
+          cache: 'no-store',
+        });
         if (reviewsResponse.ok) {
           const reviewsData = await reviewsResponse.json();
           setReviews(reviewsData.reviews || []);
@@ -74,19 +74,24 @@ export default function ServiceDetailPage() {
           }
         }
 
-        // Check if service is in favorites
+        // Favorites are account-scoped; signed-out visitors get a clear CTA instead.
         const userId = resolveCustomerUserId(user?.id);
-        const favoritesQuery = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-        const favoritesResponse = await fetch(`/api/users/favorites${favoritesQuery}`, {
-          headers: {
-            ...(userId ? { 'x-user-id': userId } : {}),
-          },
-        });
-        if (favoritesResponse.ok) {
-          const favoritesData = await favoritesResponse.json();
-          const existingFavorite = favoritesData.favorites?.find((fav: any) => fav.serviceId === serviceId);
-          setIsFavorite(Boolean(existingFavorite));
-          setFavoriteId(existingFavorite?.favoriteId || null);
+        if (userId) {
+          const favoritesQuery = `?userId=${encodeURIComponent(userId)}`;
+          const favoritesResponse = await fetch(`/api/users/favorites${favoritesQuery}`, {
+            headers: {
+              'x-user-id': userId,
+            },
+          });
+          if (favoritesResponse.ok) {
+            const favoritesData = await favoritesResponse.json();
+            const existingFavorite = favoritesData.favorites?.find((fav: any) => fav.serviceId === serviceId);
+            setIsFavorite(Boolean(existingFavorite));
+            setFavoriteId(existingFavorite?.favoriteId || null);
+          }
+        } else {
+          setIsFavorite(false);
+          setFavoriteId(null);
         }
 
       } catch (err) {
@@ -102,6 +107,10 @@ export default function ServiceDetailPage() {
   }, [serviceId, user?.id]);
 
   const handleBookNow = () => {
+    if (!isSignedIn) {
+      router.push(`/auth/login?next=${encodeURIComponent(`/booking/${serviceId}`)}`);
+      return;
+    }
     router.push(`/booking/${serviceId}`);
   };
 
@@ -113,6 +122,10 @@ export default function ServiceDetailPage() {
 
   const handleToggleFavorite = async () => {
     if (!service) return;
+    if (!isSignedIn) {
+      router.push(`/auth/login?next=${encodeURIComponent(`/service/${serviceId}`)}`);
+      return;
+    }
 
     try {
       setFavoriteLoading(true);
@@ -223,6 +236,11 @@ export default function ServiceDetailPage() {
       ? String(service.primaryProofVideoUrl)
       : null;
   const hasPrimaryProofVideo = Boolean(service?.hasPrimaryProofVideo) && Boolean(primaryProofVideoUrl);
+  const vendorRating =
+    typeof service?.vendor?.rating === 'number' ? service.vendor.rating : null;
+  const vendorReviewCount =
+    typeof service?.vendor?.reviewCount === 'number' ? service.vendor.reviewCount : 0;
+  const vendorRatingLabel = vendorRating == null ? 'New' : vendorRating.toFixed(1);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -242,7 +260,14 @@ export default function ServiceDetailPage() {
               <button
                 type="button"
                 data-testid="service-page-favorite-toggle"
-                aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-label={
+                  !isSignedIn
+                    ? 'Sign in to save service'
+                    : isFavorite
+                    ? 'Remove from favorites'
+                    : 'Add to favorites'
+                }
+                title={!isSignedIn ? 'Sign in to save this service' : undefined}
                 onClick={handleToggleFavorite}
                 disabled={favoriteLoading}
                 className={`p-2 rounded-full transition-colors ${
@@ -274,7 +299,7 @@ export default function ServiceDetailPage() {
                   alt={service.name}
                   className="w-full h-96 object-cover"
                 />
-                {service.original_price && service.price < service.original_price && (
+                {isSignedIn && service.original_price && service.price < service.original_price && (
                   <div className="absolute top-4 left-4">
                     <div className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
                       {Math.round(((service.original_price - service.price) / service.original_price) * 100)}% OFF
@@ -388,8 +413,10 @@ export default function ServiceDetailPage() {
                   <div className="flex items-center gap-4 text-gray-600">
                     <div className="flex items-center gap-1">
                       <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                      <span className="font-medium">{service.vendor?.rating || 0}</span>
-                      <span>({service.vendor?.review_count || 0} reviews)</span>
+                      <span className="font-medium">{vendorRatingLabel}</span>
+                      <span>
+                        ({vendorReviewCount} public review{vendorReviewCount === 1 ? '' : 's'})
+                      </span>
                     </div>
                     <div className="flex items-center gap-1">
                       <MapPin className="w-4 h-4" />
@@ -402,15 +429,24 @@ export default function ServiceDetailPage() {
                   </div>
                 </div>
                 
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-purple-600">${service.price}</div>
-                  {service.original_price && service.price < service.original_price && (
-                    <>
-                      <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
-                      <div className="text-sm text-green-600 font-medium">Save ${service.original_price - service.price}</div>
-                    </>
-                  )}
-                </div>
+                {isSignedIn ? (
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-purple-600">${service.price}</div>
+                    {service.original_price && service.price < service.original_price && (
+                      <>
+                        <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
+                        <div className="text-sm text-green-600 font-medium">Save ${service.original_price - service.price}</div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-right">
+                    <div className="text-sm font-semibold text-blue-900">Review-first listing</div>
+                    <div className="text-xs text-blue-700">
+                      {vendorReviewCount} public review{vendorReviewCount === 1 ? '' : 's'} available
+                    </div>
+                  </div>
+                )}
               </div>
 
               <p className="text-gray-700 text-lg leading-relaxed mb-6">
@@ -489,20 +525,23 @@ export default function ServiceDetailPage() {
                     {reviews.length > 0 ? (
                       <div className="space-y-6">
                         {reviews.map((review) => (
-                          <div key={review.id} className="border-b border-gray-200 pb-6 last:border-b-0">
+                          <div key={review.reviewId} className="border-b border-gray-200 pb-6 last:border-b-0">
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
                                   <span className="text-white font-semibold text-sm">
-                                    {review.user?.name?.split(' ').map((n: string) => n[0]).join('') || 'U'}
+                                    {String(review.reviewerDisplayName || 'Verified Customer')
+                                      .split(' ')
+                                      .map((n: string) => n[0])
+                                      .join('') || 'VC'}
                                   </span>
                                 </div>
                                 <div>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-gray-900">{review.user?.name || 'Anonymous'}</span>
-                                    {review.verified && (
-                                      <span className="text-blue-500 text-xs">✓ Verified</span>
-                                    )}
+                                    <span className="font-semibold text-gray-900">
+                                      {review.reviewerDisplayName || 'Verified Customer'}
+                                    </span>
+                                    <span className="text-blue-500 text-xs">✓ Public approved</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     {[...Array(5)].map((_, i) => (
@@ -511,24 +550,22 @@ export default function ServiceDetailPage() {
                                         className={`w-4 h-4 ${i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} 
                                       />
                                     ))}
-                                    <span className="text-sm text-gray-500 ml-2">{review.created_at ? new Date(review.created_at).toLocaleDateString() : 'Recently'}</span>
+                                    <span className="text-sm text-gray-500 ml-2">
+                                      {review.createdAt ? new Date(review.createdAt).toLocaleDateString() : 'Recently'}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
                             </div>
                             <p className="text-gray-700 leading-relaxed">{review.comment}</p>
-                            <div className="flex items-center gap-4 mt-3">
-                              <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-blue-500 transition-colors">
-                                <span>👍</span>
-                                <span>{review.helpful_count || 0} helpful</span>
-                              </button>
-                            </div>
                           </div>
                         ))}
                       </div>
                     ) : (
                       <div className="text-center py-8">
-                        <p className="text-gray-500">No reviews yet. Be the first to review this service!</p>
+                        <p className="text-gray-500">
+                          No approved public reviews are available for this service yet.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -629,11 +666,22 @@ export default function ServiceDetailPage() {
             {/* Booking Card */}
             <div className="bg-white rounded-2xl p-6 shadow-sm sticky top-24 mb-6">
               <div className="text-center mb-6">
-                <div className="text-3xl font-bold text-purple-600 mb-1">${service.price}</div>
-                {service.original_price && service.price < service.original_price && (
+                {isSignedIn ? (
                   <>
-                    <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
-                    <div className="text-sm text-green-600 font-medium">Save ${service.original_price - service.price}</div>
+                    <div className="text-3xl font-bold text-purple-600 mb-1">${service.price}</div>
+                    {service.original_price && service.price < service.original_price && (
+                      <>
+                        <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
+                        <div className="text-sm text-green-600 font-medium">Save ${service.original_price - service.price}</div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xl font-bold text-gray-900 mb-2">Ready to learn more?</div>
+                    <p className="text-sm text-gray-600">
+                      Review completed work, public feedback, and vendor details before signing in to book.
+                    </p>
                   </>
                 )}
               </div>
@@ -653,8 +701,14 @@ export default function ServiceDetailPage() {
                 onClick={handleBookNow}
                 className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200 mb-4"
               >
-                Book Now
+                {isSignedIn ? 'Book Now' : 'Sign in to Book'}
               </button>
+
+              {!isSignedIn ? (
+                <p className="text-xs text-gray-500 text-center mb-4">
+                  Create or sign in to a free customer account before booking or saving this service.
+                </p>
+              ) : null}
 
               <button 
                 onClick={handleContactVendor}
@@ -677,7 +731,9 @@ export default function ServiceDetailPage() {
                     <h3 className="font-semibold text-gray-900">{service.vendor.name}</h3>
                     <div className="flex items-center gap-1">
                       <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      <span className="text-sm text-gray-600">{service.vendor.rating || 0} ({service.vendor.review_count || 0})</span>
+                      <span className="text-sm text-gray-600">
+                        {vendorRatingLabel} ({vendorReviewCount})
+                      </span>
                     </div>
                   </div>
                 </div>

@@ -226,8 +226,10 @@ export default function PublicVendorProfilePage() {
                         )}
                         <div className="font-semibold text-gray-900">{service.serviceName}</div>
                         <p className="text-sm text-gray-600 mt-1 line-clamp-2">{service.serviceDescription || 'No description available.'}</p>
-                        <div className="mt-3 flex items-center justify-between">
-                          <div className="text-sm font-semibold text-gray-900">${service.price.toFixed(2)}</div>
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-gray-900">
+                            {service.previewMediaUrl ? 'Public proof preview' : 'Public service listing'}
+                          </div>
                           <Link href={`/service/${service.serviceId}`}>
                             <Button size="sm">View Service</Button>
                           </Link>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 import { trySetVendorApprovalStatus } from "@/lib/vendor-status";
 import { getServiceTemplatesForCategory, type ServiceTemplate } from "@/config/service-templates";
 
@@ -24,12 +25,23 @@ export async function POST(request: NextRequest) {
     const rawBusinessType = String(body?.businessType || "").trim();
     const customBusinessType = String(body?.customBusinessType || "").trim();
     const primaryCategory = String(body?.category || "").trim();
+    const address = String(body?.address || "").trim();
+    const city = String(body?.city || "").trim();
+    const state = String(body?.state || "").trim();
+    const zipCode = String(body?.zipCode || "").trim();
     const businessType =
       rawBusinessType.toLowerCase() === "other" ? customBusinessType : rawBusinessType;
 
     if (!businessName || !businessType) {
       return NextResponse.json(
         { error: "Business name and business type are required." },
+        { status: 400 }
+      );
+    }
+
+    if (!address || !city || !state || !zipCode) {
+      return NextResponse.json(
+        { error: "Vendor street address, city, state, and ZIP code are required." },
         { status: 400 }
       );
     }
@@ -66,8 +78,19 @@ export async function POST(request: NextRequest) {
 
     let vendorId: string;
     let membershipId: string;
+    const nextAddress = { address, city, state, zipCode };
+    const geocodeResult = await geocodeAddress(nextAddress);
+    const coordinateData =
+      geocodeResult.status === "success"
+        ? {
+            latitude: geocodeResult.latitude,
+            longitude: geocodeResult.longitude,
+            geocodedAt: geocodeResult.geocodedAt,
+          }
+        : { latitude: null, longitude: null, geocodedAt: null };
 
     if (existingManagerMembership) {
+      const shouldRefreshCoordinates = addressChanged(existingManagerMembership.vendor, nextAddress);
       const updated = await (prisma as any).$transaction(async (tx: any) => {
         await tx.vendor.update({
           where: { id: existingManagerMembership.vendorId },
@@ -76,6 +99,11 @@ export async function POST(request: NextRequest) {
             businessName,
             businessType,
             category: businessType,
+            address,
+            city,
+            state,
+            zipCode,
+            ...(shouldRefreshCoordinates ? coordinateData : {}),
           },
         });
 
@@ -111,6 +139,11 @@ export async function POST(request: NextRequest) {
             firstName: user.name || null,
             email: user.email || null,
             phone: user.phone || null,
+            address,
+            city,
+            state,
+            zipCode,
+            ...coordinateData,
           },
         });
 

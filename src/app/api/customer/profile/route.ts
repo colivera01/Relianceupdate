@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { registeredUsers } from "@/lib/dev-registered-users";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 
 /** Dev / interim login tokens accepted by customer profile routes. */
 const DEV_BEARER_TOKENS = new Set(["temp-jwt-token", "temp-token"]);
@@ -66,8 +67,22 @@ export async function GET(request: NextRequest) {
 
     const dbUser = await withTransientDbRetry(() =>
       prisma.user.findUnique({
-        where: { id: resolvedUserId },
-        select: { id: true, email: true, name: true, phone: true, createdAt: true },
+        where: { id: resolvedUserId as string },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          address: true,
+          city: true,
+          state: true,
+          zipCode: true,
+          latitude: true,
+          longitude: true,
+          geocodedAt: true,
+          locationPreferenceEnabled: true,
+          createdAt: true,
+        },
       })
     );
 
@@ -95,11 +110,15 @@ export async function GET(request: NextRequest) {
       firstName,
       lastName,
       email,
-      phone: devRow?.phone ?? dbUser?.phone ?? "",
-      address: devRow?.address ?? "",
-      city: devRow?.city ?? "",
-      state: devRow?.state ?? "",
-      zipCode: devRow?.zipCode ?? "",
+      phone: dbUser?.phone ?? devRow?.phone ?? "",
+      address: dbUser?.address ?? devRow?.address ?? "",
+      city: dbUser?.city ?? devRow?.city ?? "",
+      state: dbUser?.state ?? devRow?.state ?? "",
+      zipCode: dbUser?.zipCode ?? devRow?.zipCode ?? "",
+      latitude: dbUser?.latitude ?? null,
+      longitude: dbUser?.longitude ?? null,
+      geocodedAt: dbUser?.geocodedAt?.toISOString() ?? null,
+      locationPreferenceEnabled: dbUser?.locationPreferenceEnabled ?? false,
       bio: devRow?.bio ?? "",
       userType: devRow?.userType || "customer",
       createdAt: devRow?.createdAt ?? dbUser?.createdAt?.toISOString() ?? new Date().toISOString(),
@@ -192,7 +211,14 @@ export async function PUT(request: NextRequest) {
 
     const dbUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true },
+      select: {
+        id: true,
+        email: true,
+        address: true,
+        city: true,
+        state: true,
+        zipCode: true,
+      },
     });
 
     const customerIndex = registeredUsers.findIndex(
@@ -205,24 +231,110 @@ export async function PUT(request: NextRequest) {
         )
     );
 
-    if (customerIndex === -1) {
+    if (!dbUser && customerIndex === -1) {
       return NextResponse.json(
-        { error: "Customer profile not found in dev registry; cannot update in-memory row." },
+        { error: "Customer profile not found." },
         { status: 404 }
       );
     }
 
     const body = await request.json();
-
-    registeredUsers[customerIndex] = {
-      ...registeredUsers[customerIndex],
-      ...body,
+    const firstName = String(body?.firstName || "").trim();
+    const lastName = String(body?.lastName || "").trim();
+    const nextName = [firstName, lastName].filter(Boolean).join(" ") || undefined;
+    const profileUpdate = {
+      ...(nextName ? { name: nextName } : {}),
+      ...(body?.email !== undefined ? { email: String(body.email || "").trim() || null } : {}),
+      ...(body?.phone !== undefined ? { phone: String(body.phone || "").trim() || null } : {}),
+      ...(body?.address !== undefined ? { address: String(body.address || "").trim() || null } : {}),
+      ...(body?.city !== undefined ? { city: String(body.city || "").trim() || null } : {}),
+      ...(body?.state !== undefined ? { state: String(body.state || "").trim() || null } : {}),
+      ...(body?.zipCode !== undefined ? { zipCode: String(body.zipCode || "").trim() || null } : {}),
+      ...(body?.locationPreferenceEnabled !== undefined
+        ? { locationPreferenceEnabled: Boolean(body.locationPreferenceEnabled) }
+        : {}),
     };
+    const nextAddress = {
+      address: body?.address !== undefined ? String(body.address || "").trim() : dbUser?.address,
+      city: body?.city !== undefined ? String(body.city || "").trim() : dbUser?.city,
+      state: body?.state !== undefined ? String(body.state || "").trim() : dbUser?.state,
+      zipCode: body?.zipCode !== undefined ? String(body.zipCode || "").trim() : dbUser?.zipCode,
+    };
+    const shouldRefreshCoordinates =
+      Boolean(dbUser) &&
+      ["address", "city", "state", "zipCode"].some((key) => body?.[key] !== undefined) &&
+      addressChanged(dbUser, nextAddress);
+    const geocodeResult = shouldRefreshCoordinates ? await geocodeAddress(nextAddress) : null;
+    const coordinateUpdate =
+      geocodeResult?.status === "success"
+        ? {
+            latitude: geocodeResult.latitude,
+            longitude: geocodeResult.longitude,
+            geocodedAt: geocodeResult.geocodedAt,
+          }
+        : shouldRefreshCoordinates
+        ? {
+            latitude: null,
+            longitude: null,
+            geocodedAt: null,
+          }
+        : {};
+
+    const updatedDbUser = dbUser
+      ? await (prisma as any).user.update({
+          where: { id: userId },
+          data: { ...profileUpdate, ...coordinateUpdate },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            address: true,
+            city: true,
+            state: true,
+            zipCode: true,
+            latitude: true,
+            longitude: true,
+            geocodedAt: true,
+            locationPreferenceEnabled: true,
+            createdAt: true,
+          },
+        })
+      : null;
+
+    if (customerIndex !== -1) {
+      registeredUsers[customerIndex] = {
+        ...registeredUsers[customerIndex],
+        ...body,
+      };
+    }
+
+    const splitName = splitDisplayName(updatedDbUser?.name);
+    const fallbackProfile = customerIndex !== -1 ? registeredUsers[customerIndex] : {};
+    const profile = updatedDbUser
+      ? {
+          id: updatedDbUser.id,
+          firstName: firstName || splitName.firstName,
+          lastName: lastName || splitName.lastName,
+          email: updatedDbUser.email || "",
+          phone: updatedDbUser.phone || "",
+          address: updatedDbUser.address || "",
+          city: updatedDbUser.city || "",
+          state: updatedDbUser.state || "",
+          zipCode: updatedDbUser.zipCode || "",
+          latitude: updatedDbUser.latitude ?? null,
+          longitude: updatedDbUser.longitude ?? null,
+          geocodedAt: updatedDbUser.geocodedAt?.toISOString() ?? null,
+          locationPreferenceEnabled: updatedDbUser.locationPreferenceEnabled ?? false,
+          bio: (fallbackProfile as any)?.bio || body?.bio || "",
+          createdAt: updatedDbUser.createdAt?.toISOString?.() ?? new Date().toISOString(),
+        }
+      : registeredUsers[customerIndex];
 
     return NextResponse.json({
       success: true,
       message: "Profile updated successfully",
-      profile: registeredUsers[customerIndex],
+      profile,
     });
   } catch (error) {
     console.error("Error updating customer profile:", error);

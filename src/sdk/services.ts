@@ -81,7 +81,11 @@ export const servicesSDK = {
   async discoverServices(params?: {
     q?: string;
     category?: string;
-    sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'name';
+    sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'name' | 'distance';
+    lat?: number;
+    lng?: number;
+    radiusMiles?: number;
+    zipCode?: string;
     page?: number;
     limit?: number;
   }): Promise<DiscoverServicesResponse> {

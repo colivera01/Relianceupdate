@@ -690,8 +690,71 @@ export async function GET(
         })
       : [];
     const membershipById = new Map(membershipRows.map((row) => [String(row.id), row]));
-    const employeePerformance = employeeRatingRows.map((row) => {
-      const membership = membershipById.get(String(row.membershipId));
+
+    // Aggregate per-membership job completion counts + last completed job
+    // timestamp from the same booking history we already loaded above. This
+    // lets the dashboard show jobsCompleted / lastJobAt for every employee
+    // even when they don't have any reviews yet.
+    const jobStatsByMembershipId = new Map<
+      string,
+      { jobsCompleted: number; lastJobAt: string | null }
+    >();
+    const completedHistoryJobs = historyJobs.filter((job: any) => {
+      const status = String(job?.status || "").trim().toLowerCase();
+      return status === "completed" || status === "archived";
+    });
+    for (const job of completedHistoryJobs) {
+      const ids = Array.isArray(job?.assignedMembershipIds)
+        ? job.assignedMembershipIds.map((id: unknown) => String(id || "").trim()).filter(Boolean)
+        : [];
+      const candidate =
+        (typeof job?.updatedAt === "string" && job.updatedAt) ||
+        (typeof job?.date === "string" && job.date) ||
+        (typeof job?.createdAt === "string" && job.createdAt) ||
+        null;
+      for (const id of ids) {
+        const existing = jobStatsByMembershipId.get(id) || {
+          jobsCompleted: 0,
+          lastJobAt: null,
+        };
+        existing.jobsCompleted += 1;
+        if (candidate) {
+          if (!existing.lastJobAt || candidate > existing.lastJobAt) {
+            existing.lastJobAt = candidate;
+          }
+        }
+        jobStatsByMembershipId.set(id, existing);
+      }
+    }
+
+    // Make sure every membership that has completed jobs is hydrated with
+    // its display name, even when it never received a review.
+    const reviewMembershipIds = new Set(employeeMembershipIds.map((id) => String(id)));
+    const jobOnlyMembershipIds = Array.from(jobStatsByMembershipId.keys()).filter(
+      (id) => !reviewMembershipIds.has(id)
+    );
+    if (jobOnlyMembershipIds.length > 0) {
+      const extra = await prisma.vendorMembership.findMany({
+        where: {
+          vendorId,
+          id: { in: jobOnlyMembershipIds },
+        },
+        select: {
+          id: true,
+          status: true,
+          user: { select: { name: true, email: true } },
+        },
+      });
+      for (const row of extra) {
+        membershipById.set(String(row.id), row);
+      }
+    }
+
+    const buildEmployeeEntry = (membershipId: string, ratingRow?: {
+      averageRating: number;
+      reviewCount: number;
+    }) => {
+      const membership = membershipById.get(String(membershipId));
       const baseName =
         String(membership?.user?.name || "").trim() ||
         String(membership?.user?.email || "").trim() ||
@@ -699,13 +762,30 @@ export async function GET(
       const isFormer = membership
         ? String(membership.status || "").trim().toUpperCase() !== "ACTIVE"
         : true;
-      return {
-        membershipId: row.membershipId,
-        displayName: isFormer ? `${baseName} (Former team member)` : baseName,
-        averageRating: row.averageRating,
-        reviewCount: row.reviewCount,
+      const jobStats = jobStatsByMembershipId.get(String(membershipId)) || {
+        jobsCompleted: 0,
+        lastJobAt: null,
       };
-    });
+      return {
+        membershipId,
+        displayName: isFormer ? `${baseName} (Former team member)` : baseName,
+        averageRating: ratingRow?.averageRating ?? 0,
+        reviewCount: ratingRow?.reviewCount ?? 0,
+        jobsCompleted: jobStats.jobsCompleted,
+        lastJobAt: jobStats.lastJobAt,
+        active: !isFormer,
+      };
+    };
+
+    const employeePerformance = [
+      ...employeeRatingRows.map((row) =>
+        buildEmployeeEntry(String(row.membershipId), {
+          averageRating: row.averageRating,
+          reviewCount: row.reviewCount,
+        })
+      ),
+      ...jobOnlyMembershipIds.map((id) => buildEmployeeEntry(id)),
+    ];
 
     // Calculate insights with Decimal handling
     const bookingsChange = bookingsLastMonth > 0

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 interface RouteParams {
   params: Promise<{ token: string }>;
@@ -317,6 +318,23 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     await (prisma as any).vendorInvite.update({
       where: { id: invite.id },
       data: { usesCount: invite.usesCount + 1, isActive: false },
+    });
+
+    await recordLifecycleAudit({
+      actionType: "membership_accepted",
+      entityType: "membership",
+      entityId: String(membership.id),
+      actorUserId: String(user.id),
+      newValue: {
+        vendorId: String(membership.vendorId),
+        role: String(membership.role),
+        status: String(membership.status),
+      },
+      metadata: {
+        inviteId: String((invite as any).id),
+        inviteCode: String((invite as any).code),
+        devTestModeAliasUserCreated: createdDevAlias,
+      },
     });
 
     return NextResponse.json({

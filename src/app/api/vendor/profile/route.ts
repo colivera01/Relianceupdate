@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 import { isVendorContextDbTimeoutError, resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { getVendorRatingStats } from "@/lib/review-attribution-aggregates";
 import { VendorProfileResponse, VendorProfileUpdateRequest } from "@/types/vendor";
@@ -20,6 +21,9 @@ const VENDOR_PROFILE_SELECT = {
   state: true,
   address: true,
   zipCode: true,
+  latitude: true,
+  longitude: true,
+  geocodedAt: true,
   bio: true,
   website: true,
   licenseNumber: true,
@@ -139,6 +143,9 @@ export async function GET(request: Request) {
       state: vendor.state ?? null,
       address: vendor.address ?? null,
       zipCode: vendor.zipCode ?? null,
+      latitude: (vendor as any).latitude ?? null,
+      longitude: (vendor as any).longitude ?? null,
+      geocodedAt: (vendor as any).geocodedAt?.toISOString() ?? null,
       bio: vendor.bio ?? null,
       website: vendor.website ?? null,
       licenseNumber: vendor.licenseNumber ?? null,
@@ -309,6 +316,38 @@ export async function PUT(request: Request) {
     if (body.passwordExpiry !== undefined) updateData.passwordExpiry = body.passwordExpiry ?? null;
     if (body.failedLoginLockout !== undefined) updateData.failedLoginLockout = body.failedLoginLockout ?? null;
 
+    const currentVendor = await prisma.vendor.findUnique({
+      where: { id: vendorId },
+      select: {
+        address: true,
+        city: true,
+        state: true,
+        zipCode: true,
+      },
+    });
+    const nextAddress = {
+      address: body.address !== undefined ? body.address : currentVendor?.address,
+      city: body.city !== undefined ? body.city : currentVendor?.city,
+      state: body.state !== undefined ? body.state : currentVendor?.state,
+      zipCode: body.zipCode !== undefined ? body.zipCode : currentVendor?.zipCode,
+    };
+    const shouldRefreshCoordinates =
+      Boolean(currentVendor) &&
+      ["address", "city", "state", "zipCode"].some((key) => (body as any)?.[key] !== undefined) &&
+      addressChanged(currentVendor, nextAddress);
+    if (shouldRefreshCoordinates) {
+      const geocodeResult = await geocodeAddress(nextAddress);
+      if (geocodeResult.status === "success") {
+        updateData.latitude = geocodeResult.latitude;
+        updateData.longitude = geocodeResult.longitude;
+        updateData.geocodedAt = geocodeResult.geocodedAt;
+      } else {
+        updateData.latitude = null;
+        updateData.longitude = null;
+        updateData.geocodedAt = null;
+      }
+    }
+
     // Update vendor in Prisma
     const updatedVendor = await prisma.vendor.update({
       where: { id: vendorId },
@@ -337,6 +376,9 @@ export async function PUT(request: Request) {
       state: updatedVendor.state ?? null,
       address: updatedVendor.address ?? null,
       zipCode: updatedVendor.zipCode ?? null,
+      latitude: (updatedVendor as any).latitude ?? null,
+      longitude: (updatedVendor as any).longitude ?? null,
+      geocodedAt: (updatedVendor as any).geocodedAt?.toISOString() ?? null,
       bio: updatedVendor.bio ?? null,
       website: updatedVendor.website ?? null,
       licenseNumber: updatedVendor.licenseNumber ?? null,

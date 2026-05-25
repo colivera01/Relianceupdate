@@ -2,7 +2,16 @@ import { prisma } from "@/server/db";
 
 type AdminAuditEntry = {
   actionType: string;
-  entityType: "vendor" | "service" | "review" | "review_window" | "consent" | "notification";
+  entityType:
+    | "vendor"
+    | "service"
+    | "review"
+    | "review_window"
+    | "consent"
+    | "notification"
+    | "booking"
+    | "device"
+    | "membership";
   entityId: string;
   actorUserId: string;
   previousValue?: Record<string, unknown> | null;

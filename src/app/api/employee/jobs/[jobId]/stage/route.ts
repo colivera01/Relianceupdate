@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { parseAssignmentMetadata, setStageProgressMetadata } from "@/lib/job-assignment";
+import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
@@ -90,6 +91,22 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
           : {}),
       },
       select: { id: true, customerMetadata: true, updatedAt: true },
+    });
+
+    await recordLifecycleAudit({
+      actionType: "job_stage_uploaded",
+      entityType: "booking",
+      entityId: booking.id,
+      actorUserId: userId,
+      newValue: {
+        stage,
+        awaitingReview: hasAllRequiredStages,
+      },
+      metadata: {
+        vendorId: booking.vendorId,
+        membershipIds: vendorMembershipIds,
+        sessionId: matchingSession?.id ? String(matchingSession.id) : null,
+      },
     });
 
     return NextResponse.json({

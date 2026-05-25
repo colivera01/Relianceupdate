@@ -7,6 +7,7 @@ import {
   HelpCircle,
   LogOut,
   Home,
+  Activity,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -27,6 +28,7 @@ type SidebarLink = {
 
 const sidebarLinks: SidebarLink[] = [
   { label: 'Dashboard', icon: Home, href: '/vendor/dashboard' },
+  { label: 'Telemetry', icon: Activity, href: '/vendor/telemetry' },
   { label: 'Profile & Settings', icon: Users, href: '/vendor/profile' },
   { label: 'View Reviews', icon: Star, href: '/vendor/reviews' },
   { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },

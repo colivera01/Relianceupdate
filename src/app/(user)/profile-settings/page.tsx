@@ -34,7 +34,7 @@ export default function ProfileSettingsPage() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [locationEnabled, setLocationEnabled] = useState(true);
+  const [locationEnabled, setLocationEnabled] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -52,6 +52,9 @@ export default function ProfileSettingsPage() {
     email: '',
     phone: '',
     address: '',
+    city: '',
+    state: '',
+    zipCode: '',
     bio: '',
     memberSince: '',
     lastLogin: '',
@@ -75,7 +78,10 @@ export default function ProfileSettingsPage() {
             lastName: parsed.lastName || '',
             email: parsed.email || '',
             phone: parsed.phone || '',
-            address: parsed.city && parsed.state ? `${parsed.city}, ${parsed.state}` : '',
+            address: parsed.address || '',
+            city: parsed.city || '',
+            state: parsed.state || '',
+            zipCode: parsed.zipCode || '',
             bio: parsed.bio || 'test test',
             memberSince: parsed.createdAt ? new Date(parsed.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
             lastLogin: new Date().toLocaleDateString(),
@@ -102,7 +108,10 @@ export default function ProfileSettingsPage() {
               lastName: data.profile.lastName || '',
               email: data.profile.email || '',
               phone: data.profile.phone || '',
-              address: data.profile.city && data.profile.state ? `${data.profile.city}, ${data.profile.state}` : '',
+              address: data.profile.address || '',
+              city: data.profile.city || '',
+              state: data.profile.state || '',
+              zipCode: data.profile.zipCode || '',
               bio: data.profile.bio || 'test test',
               memberSince: data.profile.createdAt ? new Date(data.profile.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
               lastLogin: new Date().toLocaleDateString(),
@@ -146,9 +155,10 @@ export default function ProfileSettingsPage() {
           email: tempProfile.email,
           phone: tempProfile.phone,
           bio: tempProfile.bio,
-          // Extract city and state from address if it's in "City, State" format
-          city: tempProfile.address.split(', ')[0] || parsed.city,
-          state: tempProfile.address.split(', ')[1] || parsed.state,
+          address: tempProfile.address,
+          city: tempProfile.city,
+          state: tempProfile.state,
+          zipCode: tempProfile.zipCode,
         };
         localStorage.setItem('userData', JSON.stringify(updatedUserData));
       }
@@ -167,8 +177,10 @@ export default function ProfileSettingsPage() {
             email: tempProfile.email,
             phone: tempProfile.phone,
             bio: tempProfile.bio,
-            city: tempProfile.address.split(', ')[0] || '',
-            state: tempProfile.address.split(', ')[1] || '',
+            address: tempProfile.address,
+            city: tempProfile.city,
+            state: tempProfile.state,
+            zipCode: tempProfile.zipCode,
           })
         });
 
@@ -218,7 +230,7 @@ export default function ProfileSettingsPage() {
 
   const toggleLocation = () => {
     if (locationEnabled) {
-      if (confirm('Are you sure you want to disable location services? This will affect service recommendations.')) {
+      if (confirm('Disable saved-address preference for future local discovery features?')) {
         setLocationEnabled(false);
       }
     } else {
@@ -400,7 +412,7 @@ export default function ProfileSettingsPage() {
                   </div>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
                   <div className="relative">
                     <input
                       type="text"
@@ -410,6 +422,38 @@ export default function ProfileSettingsPage() {
                       className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
                     <LocationIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <input
+                    type="text"
+                    value={isEditing ? tempProfile.city : userProfile.city}
+                    onChange={(e) => handleProfileChange('city', e.target.value)}
+                    disabled={!isEditing}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                    <input
+                      type="text"
+                      value={isEditing ? tempProfile.state : userProfile.state}
+                      onChange={(e) => handleProfileChange('state', e.target.value)}
+                      disabled={!isEditing}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
+                    <input
+                      type="text"
+                      value={isEditing ? tempProfile.zipCode : userProfile.zipCode}
+                      onChange={(e) => handleProfileChange('zipCode', e.target.value)}
+                      disabled={!isEditing}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                    />
                   </div>
                 </div>
                 <div className="md:col-span-2">
@@ -459,15 +503,15 @@ export default function ProfileSettingsPage() {
                 </div>
                 <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                   locationEnabled 
-                    ? 'bg-green-100 text-green-700' 
+                    ? 'bg-blue-100 text-blue-700' 
                     : 'bg-gray-100 text-gray-700'
                 }`}>
-                  {locationEnabled ? 'Location access granted' : 'Location disabled'}
+                  {locationEnabled ? 'Saved-address preference on' : 'Preference off'}
                 </div>
               </div>
               
               <p className="text-gray-600 mb-4">
-                Control how we use your location to find services near you.
+                Control whether Reliance should use your saved profile address for future local discovery features.
               </p>
 
               {/* Info Box */}
@@ -475,9 +519,9 @@ export default function ProfileSettingsPage() {
                 <div className="flex items-start gap-3">
                   <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                   <div>
-                    <h3 className="font-medium text-blue-900 mb-1">Why we need your location</h3>
+                    <h3 className="font-medium text-blue-900 mb-1">What this setting does today</h3>
                     <p className="text-blue-800 text-sm">
-                      We use your location to show you services and vendors near you. This helps you find the best local options and get accurate distance information.
+                      This is an app preference for your saved address. Live browser location and exact distance-based recommendations are not active yet.
                     </p>
                   </div>
                 </div>
@@ -488,10 +532,10 @@ export default function ProfileSettingsPage() {
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-3 rounded-full ${locationEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                   <span className="text-gray-900">
-                    Location Services - {locationEnabled ? 'Enabled' : 'Disabled'}
+                    Saved-address preference - {locationEnabled ? 'Enabled' : 'Disabled'}
                   </span>
                   {locationEnabled && (
-                    <span className="text-sm text-gray-600">You can see services near you</span>
+                    <span className="text-sm text-gray-600">Used only when location-aware discovery is available</span>
                   )}
                 </div>
                 <button
@@ -503,7 +547,7 @@ export default function ProfileSettingsPage() {
                   }`}
                 >
                   <MapPin className="w-4 h-4" />
-                  {locationEnabled ? 'Disable' : 'Enable'}
+                  {locationEnabled ? 'Disable Preference' : 'Enable Preference'}
                 </button>
               </div>
             </div>
@@ -635,13 +679,13 @@ export default function ProfileSettingsPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Location</span>
+                  <span className="text-gray-700">Saved Address</span>
                   <span className={`px-2 py-1 rounded-full text-sm font-medium ${
                     locationEnabled 
-                      ? 'bg-green-100 text-green-700' 
+                      ? 'bg-blue-100 text-blue-700' 
                       : 'bg-gray-100 text-gray-700'
                   }`}>
-                    {locationEnabled ? 'Enabled' : 'Disabled'}
+                    {locationEnabled ? 'Preferred' : 'Off'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

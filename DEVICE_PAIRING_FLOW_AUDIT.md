@@ -1,4 +1,4 @@
-# Device Pairing Flow Audit (2026-04-27)
+# Device Pairing Flow Audit (2026-04-27; refreshed 2026-05-20)
 
 ## Current Pairing Flow (MVP)
 1. Vendor opens dashboard and clicks **Pair Device**.
@@ -19,7 +19,7 @@
   - Returns `{ code, expiresAt }`.
 - `POST /api/device/pairing/confirm`
   - Validates 6-digit code + device metadata.
-  - Upserts device via raw SQL.
+  - Consumes the pairing code atomically and upserts the device through Prisma.
 - `POST /api/device/heartbeat`
   - Looks up device by UID and updates `lastSeenAt`.
   - Attempts to resolve active vendor membership for authorization context.
@@ -49,7 +49,7 @@
 - Customer gets proof-ready notification when approved visibility permits.
 
 ## Current Gaps
-- No strict binding yet between paired device and a single employee membership record.
+- Phone auto-pairing creates a `DeviceAssignment`; headset code redemption still requires the follow-up headset assignment route to bind a headset to one employee membership.
 - Heartbeat membership lookup depends on `pendingPhoneDeviceUid` path and can miss linked devices.
 - Legacy duplicate `/api/pairing/*` routes were removed; canonical surface is now `/api/device/pairing/*` + `/api/device/heartbeat`.
 - No formal device revocation/unpair lifecycle exposed in UI.

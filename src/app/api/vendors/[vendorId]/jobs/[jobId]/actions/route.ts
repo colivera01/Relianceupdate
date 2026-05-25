@@ -8,6 +8,7 @@ import {
   setOperationalPhaseOnMetadataJson,
 } from "@/lib/vendor-job-operational-phase";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
+import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -199,7 +200,7 @@ async function getVendorJobPackageState(vendorId: string, bookingId: string) {
 export async function PATCH(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const { vendorId, jobId } = await context.params;
-    await requireVendorMembership(request, vendorId);
+    const member = await requireVendorMembership(request, vendorId);
 
     const body = await request.json().catch(() => ({}));
     const action = String(body?.action || "").toUpperCase() as JobAction;
@@ -359,6 +360,19 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         data: { customerMetadata: JSON.stringify(metadata) },
         select: { id: true, status: true, customerMetadata: true, updatedAt: true },
       });
+
+      await recordLifecycleAudit({
+        actionType: "job_assigned",
+        entityType: "booking",
+        entityId: booking.id,
+        actorUserId: member.userId,
+        newValue: {
+          assignedMembershipIds: membershipIds,
+          assignedEmployees: displayNames,
+        },
+        metadata: { vendorId },
+      });
+
       return NextResponse.json({
         success: true,
         action,
