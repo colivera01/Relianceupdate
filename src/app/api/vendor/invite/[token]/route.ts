@@ -24,6 +24,30 @@ type InviteLookupDiagnostics = {
   vendorId: string | null;
 };
 
+type VendorInviteLookup = {
+  id: string;
+  vendorId: string;
+  token: string;
+  code: string | null;
+  expiresAt: Date | string | null;
+  maxUses: number | null;
+  usesCount: number;
+  isActive: boolean;
+};
+
+type InviteVendorLookup = {
+  id: string;
+  name: string | null;
+  businessName: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+type InviteWithVendorLookup = {
+  invite: VendorInviteLookup | null;
+  vendor: InviteVendorLookup | null;
+};
+
 async function withTimeout<T>(promise: Promise<T>, label: string, ms = 7000): Promise<T> {
   return Promise.race([
     promise,
@@ -33,8 +57,8 @@ async function withTimeout<T>(promise: Promise<T>, label: string, ms = 7000): Pr
   ]);
 }
 
-async function getInviteWithVendor(token: string) {
-  const invite = await withTimeout(
+async function getInviteWithVendor(token: string): Promise<InviteWithVendorLookup> {
+  const invite = await withTimeout<VendorInviteLookup | null>(
     (prisma as any).vendorInvite.findFirst({
       where: { token },
       select: {
@@ -51,7 +75,7 @@ async function getInviteWithVendor(token: string) {
     "vendorInvite.findFirst"
   );
   if (!invite) return { invite: null, vendor: null };
-  const vendor = await withTimeout(
+  const vendor = await withTimeout<InviteVendorLookup | null>(
     (prisma as any).vendor.findUnique({
       where: { id: invite.vendorId },
       select: { id: true, name: true, businessName: true, email: true, phone: true },
@@ -61,7 +85,7 @@ async function getInviteWithVendor(token: string) {
   return { invite, vendor };
 }
 
-function classifyInvite(invite: any): string {
+function classifyInvite(invite: VendorInviteLookup | null): string {
   if (!invite) return "NOT_FOUND";
   if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) return "EXPIRED";
   if (!invite.isActive && invite.maxUses && invite.usesCount >= invite.maxUses) return "ALREADY_ACCEPTED";
@@ -70,7 +94,7 @@ function classifyInvite(invite: any): string {
   return "ACTIVE";
 }
 
-function diagnosticsFor(token: string, invite: any): InviteLookupDiagnostics {
+function diagnosticsFor(token: string, invite: VendorInviteLookup | null): InviteLookupDiagnostics {
   const status = classifyInvite(invite);
   return {
     tokenReceived: token,
@@ -92,7 +116,7 @@ export async function GET(_request: Request, context: RouteParams): Promise<Next
     const { invite, vendor } = await getInviteWithVendor(tokenReceived);
     const diagnostics = diagnosticsFor(tokenReceived, invite);
     const status = diagnostics.status;
-    if (status !== "ACTIVE" || !vendor) {
+    if (status !== "ACTIVE" || !invite || !vendor) {
       const isAlreadyAccepted = status === "ALREADY_ACCEPTED";
       const isCancelled = status === "CANCELLED_OR_INACTIVE";
       return NextResponse.json(
@@ -331,8 +355,8 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         status: String(membership.status),
       },
       metadata: {
-        inviteId: String((invite as any).id),
-        inviteCode: String((invite as any).code),
+        inviteId: String(invite.id),
+        inviteCode: String(invite.code),
         devTestModeAliasUserCreated: createdDevAlias,
       },
     });

@@ -11,7 +11,12 @@ type AdminAuditEntry = {
     | "notification"
     | "booking"
     | "device"
-    | "membership";
+    | "membership"
+    | "user"
+    | "content_report"
+    | "promotion_campaign"
+    | "promotion_package"
+    | "ai_run";
   entityId: string;
   actorUserId: string;
   previousValue?: Record<string, unknown> | null;
@@ -39,26 +44,10 @@ export async function createAdminAuditLog(entry: AdminAuditEntry): Promise<void>
   const serializedNewValue = entry.newValue ? JSON.stringify(entry.newValue) : null;
   const serializedMetadata = entry.metadata ? JSON.stringify(entry.metadata) : null;
 
-  try {
-    await (prisma as any).adminAuditLog.create({
-      data: {
-        actionType: entry.actionType,
-        entityType: entry.entityType,
-        entityId: entry.entityId,
-        actorUserId: entry.actorUserId,
-        previousValue: serializedPreviousValue,
-        newValue: serializedNewValue,
-        metadata: serializedMetadata,
-      },
-    });
-    return;
-  } catch (error) {
-    if (!isAdminAuditSchemaMismatch(error)) {
-      throw error;
-    }
-  }
-
-  // Legacy DB compatibility: some environments still use `action` instead of `actionType`.
+  // Schema-safe raw insert first: some environments still require the legacy
+  // non-null `action` column, and Prisma logs that failed create loudly before
+  // the compatibility fallback can recover. Using the compatibility block
+  // first avoids noisy false-negative errors in healthy user-facing flows.
   const id = `audit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const actionType = sqlLiteral(entry.actionType);
   const entityType = sqlLiteral(entry.entityType);
@@ -69,7 +58,8 @@ export async function createAdminAuditLog(entry: AdminAuditEntry): Promise<void>
   const metadata = sqlLiteral(serializedMetadata);
   const auditId = sqlLiteral(id);
 
-  await (prisma as any).$executeRawUnsafe(`
+  try {
+    await (prisma as any).$executeRawUnsafe(`
 IF OBJECT_ID(N'dbo.admin_audit_logs', N'U') IS NOT NULL
 BEGIN
   IF COL_LENGTH('dbo.admin_audit_logs', 'action') IS NOT NULL
@@ -102,4 +92,36 @@ BEGIN
   END
 END
 `);
+    return;
+  } catch (error) {
+    // Fall back to Prisma create for environments whose table shape is fully
+    // aligned with the current Prisma model but reject the compatibility SQL.
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[admin-audit] raw compatibility insert failed, falling back to Prisma create", {
+        actionType: entry.actionType,
+        entityType: entry.entityType,
+        entityId: entry.entityId,
+        error: (error as Error)?.message || String(error),
+      });
+    }
+  }
+
+  try {
+    await (prisma as any).adminAuditLog.create({
+      data: {
+        actionType: entry.actionType,
+        entityType: entry.entityType,
+        entityId: entry.entityId,
+        actorUserId: entry.actorUserId,
+        previousValue: serializedPreviousValue,
+        newValue: serializedNewValue,
+        metadata: serializedMetadata,
+      },
+    });
+    return;
+  } catch (error) {
+    if (!isAdminAuditSchemaMismatch(error)) {
+      throw error;
+    }
+  }
 }

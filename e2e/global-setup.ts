@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { config as loadEnv } from 'dotenv';
 import { PrismaClient, Prisma } from '@prisma/client';
+import { normalizePrismaSqlServerUrl } from '../src/lib/prisma-sqlserver-url';
 
 const CUSTOMER_ID = 'e2e-smoke-customer';
 const CUSTOMER_EMAIL = 'e2e-smoke-customer@reliance.test';
@@ -10,7 +11,7 @@ const CUSTOMER_PREF_OFF_EMAIL = 'e2e-location-pref-off@reliance.test';
 const CUSTOMER_MISSING_COORDS_ID = 'e2e-location-missing-coords-customer';
 const CUSTOMER_MISSING_COORDS_EMAIL = 'e2e-location-missing-coords@reliance.test';
 const VENDOR_EMAIL = 'e2e-smoke-vendor@reliance.test';
-const SERVICE_NAME = 'E2E Smoke Service';
+const SERVICE_NAME = 'Metro Apartment Deep Clean';
 const E2E_VENDOR_COORDINATES = {
   address: '350 5th Ave',
   city: 'New York',
@@ -26,9 +27,9 @@ const E2E_DISTANCE_ORIGIN = {
 const EXTRA_COORDINATE_VENDOR_FIXTURES = [
   {
     email: 'e2e-midtown-vendor@reliance.test',
-    vendorName: 'E2E Midtown Vendor',
-    serviceName: 'E2E Nearby Midtown Service',
-    description: 'Deterministic Midtown listing for nearby browse coverage.',
+    vendorName: 'Midtown Home Detailers',
+    serviceName: 'Midtown Apartment Refresh',
+    description: 'Detailed apartment cleaning for Midtown homes and short-term rentals.',
     coordinates: {
       address: '11 W 53rd St',
       city: 'New York',
@@ -40,9 +41,9 @@ const EXTRA_COORDINATE_VENDOR_FIXTURES = [
   },
   {
     email: 'e2e-brooklyn-vendor@reliance.test',
-    vendorName: 'E2E Brooklyn Vendor',
-    serviceName: 'E2E Nearby Brooklyn Service',
-    description: 'Deterministic Brooklyn listing for nearby browse coverage.',
+    vendorName: 'Brooklyn Home Care Studio',
+    serviceName: 'Brooklyn Move-In Cleaning',
+    description: 'Move-in cleaning and room-by-room refresh for Brooklyn apartments.',
     coordinates: {
       address: '990 Washington Ave',
       city: 'Brooklyn',
@@ -54,16 +55,18 @@ const EXTRA_COORDINATE_VENDOR_FIXTURES = [
   },
 ] as const;
 /** Stable title so we can reset the chain on each globalSetup run. */
-const REVIEW_SMOKE_BOOKING_TITLE = 'E2E Review Smoke';
+const REVIEW_SMOKE_BOOKING_TITLE = 'Apartment Deep Clean Follow-Up';
 /** Public short MP4 playable in Chromium for review capture UI (soft prompt after play). */
 const REVIEW_SMOKE_VIDEO_URL =
   'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 const PUBLIC_SERVICE_REVIEW_COMMENT =
-  'Verified public storefront review for the E2E smoke service.';
+  'The team was punctual, thorough, and the finished walkthrough video made the whole service feel transparent.';
 
 async function deleteReviewSmokeChain(prisma: PrismaClient, bookingId: string) {
   await prisma.review.deleteMany({ where: { bookingId } });
   await prisma.reviewWindow.deleteMany({ where: { bookingId } });
+  await (prisma as any).vendorOperationalOutcome?.deleteMany?.({ where: { bookingId } });
+  await prisma.consentRecord.deleteMany({ where: { bookingId } });
   await prisma.mediaAsset.deleteMany({
     where: { mediaSession: { bookingId } },
   });
@@ -82,20 +85,35 @@ export default async function globalSetup() {
 
   const fixturePath = path.join(__dirname, 'smoke-fixture.json');
 
+  if (process.env.PLAYWRIGHT_SKIP_GLOBAL_DB_SETUP === '1' && fs.existsSync(fixturePath)) {
+    return;
+  }
+
   if (!process.env.DATABASE_URL) {
     throw new Error(
       'E2E global-setup: DATABASE_URL is required (set in .env / .env.local) so Prisma can upsert the smoke user and listing.'
     );
   }
 
-  const prisma = new PrismaClient();
+  const normalizedDatabaseUrl = normalizePrismaSqlServerUrl(process.env.DATABASE_URL);
+  if (!normalizedDatabaseUrl) {
+    throw new Error('E2E global-setup: failed to normalize DATABASE_URL for Prisma.');
+  }
+
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: normalizedDatabaseUrl,
+      },
+    },
+  });
   try {
     await prisma.user.upsert({
       where: { id: CUSTOMER_ID },
       create: {
         id: CUSTOMER_ID,
         email: CUSTOMER_EMAIL,
-        name: 'E2E Smoke',
+        name: 'Jordan Rivera',
         address: '47-01 Queens Blvd',
         city: 'Queens',
         state: 'NY',
@@ -108,7 +126,7 @@ export default async function globalSetup() {
       },
       update: {
         email: CUSTOMER_EMAIL,
-        name: 'E2E Smoke',
+        name: 'Jordan Rivera',
         address: '47-01 Queens Blvd',
         city: 'Queens',
         state: 'NY',
@@ -125,7 +143,7 @@ export default async function globalSetup() {
       create: {
         id: CUSTOMER_PREF_OFF_ID,
         email: CUSTOMER_PREF_OFF_EMAIL,
-        name: 'E2E Location Preference Off',
+        name: 'Saved Address Customer',
         address: '47-01 Queens Blvd',
         city: 'Queens',
         state: 'NY',
@@ -138,7 +156,7 @@ export default async function globalSetup() {
       },
       update: {
         email: CUSTOMER_PREF_OFF_EMAIL,
-        name: 'E2E Location Preference Off',
+        name: 'Saved Address Customer',
         address: '47-01 Queens Blvd',
         city: 'Queens',
         state: 'NY',
@@ -155,7 +173,7 @@ export default async function globalSetup() {
       create: {
         id: CUSTOMER_MISSING_COORDS_ID,
         email: CUSTOMER_MISSING_COORDS_EMAIL,
-        name: 'E2E Missing Coordinates',
+        name: 'Customer Without Coordinates',
         address: '47-01 Queens Blvd',
         city: 'Queens',
         state: 'NY',
@@ -168,7 +186,7 @@ export default async function globalSetup() {
       },
       update: {
         email: CUSTOMER_MISSING_COORDS_EMAIL,
-        name: 'E2E Missing Coordinates',
+        name: 'Customer Without Coordinates',
         address: '47-01 Queens Blvd',
         city: 'Queens',
         state: 'NY',
@@ -184,8 +202,8 @@ export default async function globalSetup() {
     if (!vendor) {
       vendor = await prisma.vendor.create({
         data: {
-          name: 'E2E Smoke Vendor',
-          businessName: 'E2E Smoke Vendor',
+          name: 'Metro Home Care Pros',
+          businessName: 'Metro Home Care Pros',
           email: VENDOR_EMAIL,
           phone: '555-0199',
           address: E2E_VENDOR_COORDINATES.address,
@@ -203,6 +221,8 @@ export default async function globalSetup() {
       vendor = await prisma.vendor.update({
         where: { id: vendor.id },
         data: {
+          name: 'Metro Home Care Pros',
+          businessName: 'Metro Home Care Pros',
           ...E2E_VENDOR_COORDINATES,
           geocodedAt: new Date('2026-01-01T00:00:00.000Z'),
           isPubliclyListed: true,
@@ -211,14 +231,17 @@ export default async function globalSetup() {
     }
 
     let service = await prisma.service.findFirst({
-      where: { vendorId: vendor.id, name: SERVICE_NAME },
+      where: {
+        vendorId: vendor.id,
+        OR: [{ name: SERVICE_NAME }, { name: 'E2E Smoke Service' }],
+      },
     });
     if (!service) {
       service = await prisma.service.create({
         data: {
           vendorId: vendor.id,
           name: SERVICE_NAME,
-          description: 'Minimal listing for browser smoke (pass 1).',
+          description: 'Detailed apartment and move-out cleaning with proof-backed service updates.',
           price: 49.99,
           demo: true,
           isPublished: true,
@@ -227,7 +250,11 @@ export default async function globalSetup() {
     } else {
       service = await prisma.service.update({
         where: { id: service.id },
-        data: { isPublished: true },
+        data: {
+          name: SERVICE_NAME,
+          description: 'Detailed apartment and move-out cleaning with proof-backed service updates.',
+          isPublished: true,
+        },
       });
     }
 
@@ -256,6 +283,8 @@ export default async function globalSetup() {
         extraVendor = await prisma.vendor.update({
           where: { id: extraVendor.id },
           data: {
+            name: fixture.vendorName,
+            businessName: fixture.vendorName,
             address: fixture.coordinates.address,
             city: fixture.coordinates.city,
             state: fixture.coordinates.state,
@@ -269,7 +298,13 @@ export default async function globalSetup() {
       }
 
       let extraService = await prisma.service.findFirst({
-        where: { vendorId: extraVendor.id, name: fixture.serviceName },
+        where: {
+          vendorId: extraVendor.id,
+          OR: [
+            { name: fixture.serviceName },
+            { name: fixture.email.includes('midtown') ? 'E2E Nearby Midtown Service' : 'E2E Nearby Brooklyn Service' },
+          ],
+        },
       });
       if (!extraService) {
         extraService = await prisma.service.create({
@@ -286,6 +321,7 @@ export default async function globalSetup() {
         extraService = await prisma.service.update({
           where: { id: extraService.id },
           data: {
+            name: fixture.serviceName,
             description: fixture.description,
             isPublished: true,
           },
@@ -300,7 +336,10 @@ export default async function globalSetup() {
     }
 
     const existingReviewBookings = await prisma.booking.findMany({
-      where: { userId: CUSTOMER_ID, title: REVIEW_SMOKE_BOOKING_TITLE },
+      where: {
+        userId: CUSTOMER_ID,
+        OR: [{ title: REVIEW_SMOKE_BOOKING_TITLE }, { title: 'E2E Review Smoke' }],
+      },
       select: { id: true },
     });
     for (const row of existingReviewBookings) {
@@ -338,7 +377,7 @@ export default async function globalSetup() {
             serviceId: service.id,
             sessionType: 'SERVICE_RECORD',
             status: 'COMPLETED',
-            title: 'E2E review smoke capture',
+            title: 'Completed service walkthrough',
           },
         });
 
@@ -374,7 +413,7 @@ export default async function globalSetup() {
             vendorId: vendor.id,
             bookingId: booking.id,
             mediaSessionId: mediaSession.id,
-            clientName: 'E2E Smoke',
+            clientName: 'Jordan Rivera',
             jobType: SERVICE_NAME,
             rating: 5,
             comment: PUBLIC_SERVICE_REVIEW_COMMENT,
@@ -409,7 +448,9 @@ export default async function globalSetup() {
 
     const payload = {
       serviceId: service.id,
-      serviceNameSearch: 'E2E Smoke',
+      serviceName: SERVICE_NAME,
+      vendorName: 'Metro Home Care Pros',
+      serviceNameSearch: 'Metro Apartment',
       customerEmail: CUSTOMER_EMAIL,
       vendorEmail: VENDOR_EMAIL,
       reviewBookingId: bookingId,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useAuth } from "@/contexts/AuthContext";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
+import {
+  STAGE_VIDEO_MAX_DURATION_SECONDS,
+  formatStageVideoDuration,
+  getStageVideoLimitCopy,
+  getVideoFileDurationSeconds,
+  isOverStageVideoLimit,
+} from "@/lib/stage-video-guidance";
 
 type JobLike = {
   id: string;
@@ -41,13 +48,15 @@ type SessionDetails = {
 };
 
 const STAGE_ORDER = [
-  { key: "INTRO", label: "Intro (Before Service)" },
-  { key: "IN_PROGRESS", label: "In Progress" },
-  { key: "COMPLETED", label: "Completed (Primary Proof)" },
+  { key: "INTRO", label: "Intro (Before Service)", cue: "Show the area or condition before work begins." },
+  { key: "IN_PROGRESS", label: "In Progress", cue: "Show active progress or work being performed." },
+  { key: "COMPLETED", label: "Completed (Primary Video)", cue: "Show the final result clearly." },
 ] as const;
 
 function normalizeStatus(value: string | null | undefined) {
-  return String(value || "").trim().toUpperCase();
+  const normalized = String(value || "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (normalized === "CONFIRMED") return "IN_PROGRESS";
+  return normalized;
 }
 
 function formatDateTimeUtc(value: string | null | undefined) {
@@ -92,13 +101,12 @@ export default function VendorJobDetailPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadingStage, setUploadingStage] = useState<string | null>(null);
-  const [resolvedContextVendorId, setResolvedContextVendorId] = useState<string>("");
-
   const headers = useMemo(() => getClientSessionHeaders(userId), [userId]);
-  const effectiveVendorId = String(resolvedContextVendorId || vendorId || "").trim();
+  const effectiveVendorId = String(vendorId || "").trim();
   const normalizedStatus = normalizeStatus(job?.status);
   const isManager = role === "MANAGER";
   const isEmployee = role === "EMPLOYEE";
+  const lastAutoLoadKeyRef = useRef<string>("");
 
   const stageMap = useMemo(() => {
     const out = new Map<string, SessionDetails | null>();
@@ -128,7 +136,10 @@ export default function VendorJobDetailPage() {
   }, [stageMap]);
 
   const allStagesExist = !nextMissingStage;
-  const canSubmitForManagerReview = isEmployee && allStagesExist && normalizedStatus === "IN_PROGRESS";
+  const canSubmitForManagerReview =
+    allStagesExist &&
+    (isEmployee || isManager) &&
+    ["PENDING", "IN_PROGRESS"].includes(normalizedStatus);
   const canManagerReview = isManager && normalizedStatus === "AWAITING_REVIEW";
 
   const load = async () => {
@@ -137,10 +148,17 @@ export default function VendorJobDetailPage() {
       setError("Missing job id.");
       return;
     }
+    if (vendorProfileLoading) {
+      return;
+    }
+    if (!effectiveVendorId) {
+      setLoading(false);
+      setError("Vendor context unavailable. Refresh and try again.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      let currentVendorId = String(effectiveVendorId || "").trim();
       const contextRes = await fetch("/api/vendor/context", {
         method: "GET",
         headers,
@@ -148,47 +166,30 @@ export default function VendorJobDetailPage() {
       });
       const contextJson = await contextRes.json().catch(() => ({}));
       setRole(String(contextJson?.role || "").trim().toUpperCase());
-      if (!currentVendorId) {
-        currentVendorId = String(contextJson?.vendorId || "").trim();
-        if (currentVendorId) {
-          setResolvedContextVendorId(currentVendorId);
-        }
-      }
-      if (!currentVendorId) {
-        throw new Error("Vendor context unavailable. Refresh and try again.");
-      }
 
-      const dashboardRes = await fetch(`/api/vendors/${currentVendorId}/dashboard`, {
+      const jobRes = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}`, {
         method: "GET",
-        headers: { ...headers, "x-vendor-id": currentVendorId },
+        headers,
         cache: "no-store",
       });
-      const dashboardJson = await dashboardRes.json().catch(() => ({}));
-      if (!dashboardRes.ok) {
-        throw new Error(String(dashboardJson?.error || "Failed to load job context"));
+      const jobJson = await jobRes.json().catch(() => ({}));
+      if (!jobRes.ok || !jobJson?.job) {
+        throw new Error(String(jobJson?.error || "Failed to load job detail"));
       }
-      const jobs = [
-        ...(Array.isArray(dashboardJson?.recentJobs) ? dashboardJson.recentJobs : []),
-        ...(Array.isArray(dashboardJson?.archivedJobs) ? dashboardJson.archivedJobs : []),
-      ] as JobLike[];
-      const found = jobs.find((row) => String(row?.id || "") === jobId) || null;
-      if (!found) {
-        throw new Error("Job not found in vendor dashboard feed.");
-      }
-      setJob(found);
+      setJob(jobJson.job as JobLike);
 
       const sessionsRes = await fetch(
-        `/api/vendors/${currentVendorId}/media/sessions?bookingId=${encodeURIComponent(jobId)}`,
+        `/api/vendors/${effectiveVendorId}/media/sessions?bookingId=${encodeURIComponent(jobId)}`,
         { method: "GET", headers, cache: "no-store" }
       );
       const sessionsJson = await sessionsRes.json().catch(() => ({}));
-      if (!sessionsRes.ok) throw new Error(String(sessionsJson?.error || "Failed to load proof sessions"));
+      if (!sessionsRes.ok) throw new Error(String(sessionsJson?.error || "Failed to load video sessions"));
       const baseSessions = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
       const details = await Promise.all(
         baseSessions.map(async (session: { id?: string }) => {
           const sessionId = String(session?.id || "").trim();
           if (!sessionId) return null;
-          const detailRes = await fetch(`/api/vendors/${currentVendorId}/media/sessions/${sessionId}`, {
+          const detailRes = await fetch(`/api/vendors/${effectiveVendorId}/media/sessions/${sessionId}`, {
             method: "GET",
             headers,
             cache: "no-store",
@@ -212,8 +213,16 @@ export default function VendorJobDetailPage() {
       setError("Missing job id.");
       return;
     }
+    if (vendorProfileLoading || !effectiveVendorId) {
+      return;
+    }
+    const loadKey = `${effectiveVendorId}:${jobId}`;
+    if (lastAutoLoadKeyRef.current === loadKey) {
+      return;
+    }
+    lastAutoLoadKeyRef.current = loadKey;
     void load();
-  }, [effectiveVendorId, jobId, userId, vendorProfileLoading]);
+  }, [effectiveVendorId, jobId, vendorProfileLoading]);
 
   const watchStage = async (stageKey: string) => {
     if (!effectiveVendorId) return;
@@ -227,7 +236,7 @@ export default function VendorJobDetailPage() {
     );
   };
 
-  const uploadStage = async (stageKey: string, file: File) => {
+  const uploadStage = async (stageKey: string, file: File, durationSeconds: number) => {
     if (!effectiveVendorId || !jobId) return;
     setUploadingStage(stageKey);
     setActionMessage(null);
@@ -280,6 +289,7 @@ export default function VendorJobDetailPage() {
           bytes: file.size,
           mimeType: file.type || "video/mp4",
           mediaSessionId,
+          durationSeconds,
         }),
       });
       const completeJson = await completeRes.json().catch(() => ({}));
@@ -300,9 +310,25 @@ export default function VendorJobDetailPage() {
       setActionMessage(`${stageKey} stage uploaded.`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to upload stage proof");
+      setError(e instanceof Error ? e.message : "Failed to upload stage video");
     } finally {
       setUploadingStage(null);
+    }
+  };
+
+  const validateAndUploadStage = async (stageKey: string, file: File) => {
+    setActionMessage(null);
+    try {
+      const durationSeconds = await getVideoFileDurationSeconds(file);
+      if (isOverStageVideoLimit(durationSeconds)) {
+        setError(
+          `Clip is ${formatStageVideoDuration(durationSeconds)}. Retake a ${formatStageVideoDuration(STAGE_VIDEO_MAX_DURATION_SECONDS)} max video for this stage.`
+        );
+        return;
+      }
+      await uploadStage(stageKey, file, durationSeconds);
+    } catch {
+      setError("Could not read the video duration. Retake or choose a 30-second max clip.");
     }
   };
 
@@ -441,7 +467,7 @@ export default function VendorJobDetailPage() {
                   <Badge className={statusBadgeClass(normalizedStatus || "UNKNOWN")}>{normalizedStatus || "UNKNOWN"}</Badge>
                   {canSubmitForManagerReview ? (
                     <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={submitForManagerReview} disabled={submitting}>
-                      {submitting ? "Submitting..." : "Submit for Manager Review"}
+                      {submitting ? "Submitting..." : isManager ? "Move to Review Queue" : "Submit for Manager Review"}
                     </Button>
                   ) : null}
                   {canManagerReview ? (
@@ -463,14 +489,14 @@ export default function VendorJobDetailPage() {
                 <CardContent className="p-4 rounded-lg border border-amber-200 bg-amber-50">
                   <p className="text-sm font-semibold text-amber-900">Rejected by manager</p>
                   <p className="mt-1 text-sm text-amber-800">{job.rejectionReason}</p>
-                  <p className="mt-2 text-xs text-amber-700">Fix required proof items, then resubmit for manager review.</p>
+                  <p className="mt-2 text-xs text-amber-700">Fix required video items, then resubmit for manager review.</p>
                 </CardContent>
               </Card>
             ) : null}
 
             <Card>
               <CardHeader>
-                <CardTitle>Proof Timeline</CardTitle>
+                <CardTitle>Video Timeline</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -496,6 +522,8 @@ export default function VendorJobDetailPage() {
                             {hasUpload ? "Uploaded" : "Missing"}
                           </Badge>
                         </div>
+                        <p className="mt-2 text-sm text-gray-600">{stage.cue}</p>
+                        <p className="mt-1 text-xs font-medium text-blue-700">{getStageVideoLimitCopy()}</p>
                         {hasUpload ? (
                           <div className="mt-3 space-y-2">
                             <p className="text-xs text-gray-600">
@@ -507,9 +535,20 @@ export default function VendorJobDetailPage() {
                             <Button size="sm" variant="outline" onClick={() => void watchStage(stage.key)}>
                               Watch
                             </Button>
+                            {isEmployee ? (
+                              <p className="text-xs text-amber-700">
+                                Retake supported: uploading again replaces this stage video.
+                              </p>
+                            ) : null}
                           </div>
                         ) : (
-                          <p className="mt-3 text-sm text-gray-500">No proof yet - start by uploading the intro video.</p>
+                          <p className="mt-3 text-sm text-gray-500">
+                            {stage.key === "INTRO"
+                              ? "No video yet — upload the intro (before service) video."
+                              : stage.key === "IN_PROGRESS"
+                                ? "No video yet — upload the in-progress video."
+                                : "No video yet — upload the completion video."}
+                          </p>
                         )}
                         <div className="mt-3">
                           {isEmployee ? (
@@ -523,7 +562,7 @@ export default function VendorJobDetailPage() {
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (!file) return;
-                                  void uploadStage(stage.key, file);
+                                  void validateAndUploadStage(stage.key, file);
                                   e.currentTarget.value = "";
                                 }}
                               />
@@ -543,10 +582,12 @@ export default function VendorJobDetailPage() {
                 {canSubmitForManagerReview ? (
                   <div className="mt-6 rounded-lg border border-emerald-300 bg-emerald-50 p-4">
                     <p className="text-sm text-emerald-900 font-semibold">
-                      All 3 stages uploaded. Ready to submit for manager review.
+                      {isManager
+                        ? "All 3 stages uploaded. Move this package into the review queue before approval."
+                        : "All 3 stages uploaded. Ready to submit for manager review."}
                     </p>
                     <Button className="mt-3 bg-emerald-600 hover:bg-emerald-700" onClick={submitForManagerReview} disabled={submitting}>
-                      {submitting ? "Submitting..." : "Submit for Manager Review"}
+                      {submitting ? "Submitting..." : isManager ? "Move to Review Queue" : "Submit for Manager Review"}
                     </Button>
                   </div>
                 ) : null}
@@ -615,4 +656,3 @@ export default function VendorJobDetailPage() {
     </div>
   );
 }
-

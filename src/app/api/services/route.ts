@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
+import { getUserIdFromRequest } from '@/lib/auth';
+import { accountStatusErrorBody, AccountStatusError, isVendorAccountRestricted } from '@/lib/account-status';
+import { resolveVendorAccessForUser } from '@/lib/vendor-context';
 
 function parsePositiveNumber(value: string | null): number | null {
   if (!value) return null;
@@ -147,16 +150,30 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const vendor = await prisma.vendor.findUnique({
       where: { id: vendorId },
-      select: { id: true },
+      select: { id: true, accountStatus: true },
     });
     if (!vendor) {
       return NextResponse.json(
         { error: 'Vendor not found' },
         { status: 404 }
       );
+    }
+    if (isVendorAccountRestricted((vendor as any).accountStatus)) {
+      const statusError = new AccountStatusError('vendor', (vendor as any).accountStatus);
+      return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
+    }
+
+    const vendorAccess = await resolveVendorAccessForUser(String(userId), {
+      preferredVendorId: vendorId,
+    });
+    if (!vendorAccess.vendorId || vendorAccess.vendorId !== vendorId || (vendorAccess.state !== 'ACTIVE' && vendorAccess.state !== 'PENDING')) {
+      return NextResponse.json({ error: 'Forbidden: Vendor ownership required' }, { status: 403 });
     }
 
     const created = await prisma.service.create({
@@ -189,6 +206,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating service:', error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     return NextResponse.json(
       { error: 'Failed to create service' },
       { status: 500 }

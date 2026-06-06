@@ -44,14 +44,24 @@ function readStoredUserRaw(): string | null {
   return null;
 }
 
+function persistClientSession(userData: AuthUser, authToken?: string | null) {
+  const serialized = JSON.stringify(userData);
+  localStorage.setItem('userData', serialized);
+  if (authToken && String(authToken).trim()) {
+    localStorage.setItem('authToken', String(authToken));
+    localStorage.setItem('auth_token', String(authToken));
+  }
+  document.cookie = `userId=${encodeURIComponent(String(userData.id))}; path=/; samesite=lax`;
+  document.cookie = `session_user_id=${encodeURIComponent(String(userData.id))}; path=/; samesite=lax`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    // Check for existing user data on app load
-    const checkAuth = () => {
+    const checkAuth = async () => {
       try {
         const userData = readStoredUserRaw();
         const authToken = localStorage.getItem('authToken') || localStorage.getItem('auth_token');
@@ -59,22 +69,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (userData && authToken) {
           const parsedUser = JSON.parse(userData) as AuthUser;
           setUser(parsedUser);
-          if (parsedUser?.id) {
-            document.cookie = `userId=${encodeURIComponent(String(parsedUser.id))}; path=/; samesite=lax`;
-            document.cookie = `session_user_id=${encodeURIComponent(String(parsedUser.id))}; path=/; samesite=lax`;
-          }
+          persistClientSession(parsedUser, authToken);
           if (DEV_AUTH_DEBUG) {
             console.info('[AuthProvider] hydrate session', {
               userId: parsedUser?.id,
               email: parsedUser?.email,
               userType: parsedUser?.userType,
-              tokenPreview: `${String(authToken).slice(0, 14)}…`,
+              tokenPreview: `${String(authToken).slice(0, 14)}...`,
+            });
+          }
+          return;
+        }
+
+        const response = await fetch('/api/auth/session', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
+        const sessionJson = await response.json().catch(() => ({}));
+
+        if (response.ok && sessionJson?.authenticated && sessionJson?.user) {
+          const sessionUser = sessionJson.user as AuthUser;
+          const sessionToken =
+            typeof sessionJson?.token === 'string' && sessionJson.token
+              ? sessionJson.token
+              : null;
+          setUser(sessionUser);
+          persistClientSession(sessionUser, sessionToken);
+          if (DEV_AUTH_DEBUG) {
+            console.info('[AuthProvider] hydrated from signed session cookie', {
+              userId: sessionUser?.id,
+              email: sessionUser?.email,
+              userType: sessionUser?.userType,
             });
           }
         }
       } catch (error) {
         console.error('Error checking auth:', error);
-        // Clear invalid data
         localStorage.removeItem('userData');
         localStorage.removeItem('authToken');
         localStorage.removeItem('auth_token');
@@ -83,35 +114,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    checkAuth();
+    void checkAuth();
   }, []);
 
   const login = (userData: AuthUser, authToken?: string | null) => {
     setUser(userData);
-    const serialized = JSON.stringify(userData);
-    localStorage.setItem('userData', serialized);
     const resolvedToken =
       (authToken != null && String(authToken).trim()) ||
       localStorage.getItem('authToken') ||
-      localStorage.getItem('auth_token') ||
-      'temp-jwt-token';
-    localStorage.setItem('authToken', resolvedToken);
-    localStorage.setItem('auth_token', resolvedToken);
-    document.cookie = `userId=${encodeURIComponent(String(userData.id))}; path=/; samesite=lax`;
-    document.cookie = `session_user_id=${encodeURIComponent(String(userData.id))}; path=/; samesite=lax`;
+      localStorage.getItem('auth_token');
+    persistClientSession(userData, resolvedToken);
     if (DEV_AUTH_DEBUG) {
       console.info('[AuthProvider] login()', {
         userId: userData.id,
         email: userData.email,
         userType: userData.userType,
-        tokenPreview: `${String(resolvedToken).slice(0, 14)}…`,
+        tokenPreview: `${String(resolvedToken).slice(0, 14)}...`,
       });
     }
   };
 
   const logout = async () => {
     try {
-      // Call logout API
       const response = await fetch('/api/auth/logout', {
         method: 'POST',
         headers: {
@@ -123,7 +147,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Logout API call failed, but continuing with client-side logout');
       }
 
-      // Clear client-side data
       setUser(null);
       localStorage.removeItem('userData');
       localStorage.removeItem('authToken');
@@ -131,16 +154,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem('registrationSuccess');
       sessionStorage.removeItem('registrationUserType');
 
-      // Clear cookies
-      document.cookie.split(";").forEach(function(c) { 
-        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+      document.cookie.split(';').forEach(function (c) {
+        document.cookie = c
+          .replace(/^ +/, '')
+          .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
       });
 
-      // Redirect to login
       router.push('/auth/login');
     } catch (error) {
       console.error('Logout error:', error);
-      // Even if API fails, clear client-side data
       setUser(null);
       localStorage.removeItem('userData');
       localStorage.removeItem('authToken');
@@ -179,4 +201,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-} 
+}

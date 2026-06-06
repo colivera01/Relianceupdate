@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   markTokenAsUsed,
+  findAnyAuthUserByEmail,
+  updateAnyAuthUserPassword,
   validateResetToken,
 } from "@/lib/password-reset-tokens";
-
-// Function to update user password (in production, this would update the database)
-function updateUserPassword(email: string, newPassword: string) {
-  // This would normally update the database
-  // For now, we'll just log the password change
-  console.log('Password updated for user:', email);
-  console.log('New password:', newPassword);
-  
-  // In production, you would:
-  // 1. Hash the new password
-  // 2. Update the user record in the database
-  // 3. Invalidate any existing sessions
-  // 4. Log the password change for audit purposes
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -75,18 +63,49 @@ export async function POST(request: NextRequest) {
 
     console.log('Resetting password for user:', resetToken.email);
 
-    // Update the user's password
-    updateUserPassword(resetToken.email, password);
+    const resetUser = await findAnyAuthUserByEmail(resetToken.email);
+    if (!resetUser.exists) {
+      return NextResponse.json(
+        { error: 'Account not found for this reset link' },
+        { status: 404 }
+      );
+    }
+
+    const updated = await updateAnyAuthUserPassword(resetToken.email, password);
+    if (!updated) {
+      return NextResponse.json(
+        { error: 'Failed to update password' },
+        { status: 500 }
+      );
+    }
 
     // Mark the token as used
     markTokenAsUsed(token);
 
     console.log('Password reset successful for:', resetToken.email);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: 'Password reset successfully'
     });
+    response.cookies.set("reliance_session", "", {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: true,
+      maxAge: 0,
+    });
+    response.cookies.set("userId", "", {
+      path: "/",
+      sameSite: "lax",
+      maxAge: 0,
+    });
+    response.cookies.set("session_user_id", "", {
+      path: "/",
+      sameSite: "lax",
+      maxAge: 0,
+    });
+
+    return response;
 
   } catch (error) {
     console.error('Password reset error:', error);

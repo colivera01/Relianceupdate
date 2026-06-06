@@ -2,27 +2,51 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { ChevronDown, LogOut, User as UserIcon, Bell } from 'lucide-react';
+import {
+  Activity,
+  BarChart3,
+  Bell,
+  Building2,
+  ChevronDown,
+  Clapperboard,
+  ClipboardList,
+  Home,
+  KeyRound,
+  LogOut,
+  MapPinned,
+  Megaphone,
+  Search,
+  Settings,
+  ShieldAlert,
+  Star,
+  User as UserIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import ProfileToggle from '@/components/ProfileToggle';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { useAuth } from '@/contexts/AuthContext';
+import { RelianceLogo } from '@/components/public/RelianceLogo';
 
 type AdminNavItem = {
   href: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
 };
 
 const adminNav: AdminNavItem[] = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: '📊' },
-  { href: '/admin/users', label: 'User Management', icon: '👥' },
-  { href: '/admin/vendors', label: 'Vendor Management', icon: '🏢' },
-  { href: '/admin/publish-management', label: 'Publish Management', icon: '📢' },
-  { href: '/admin/media-moderation', label: 'Media Moderation', icon: '🎬' },
-  { href: '/admin/reviews', label: 'Review Moderation', icon: '⭐' },
-  { href: '/admin/activity', label: 'Activity Monitoring', icon: '📈' },
-  { href: '/admin/audit-logs', label: 'Audit Logs', icon: '📋' },
-  { href: '/admin/reports', label: 'Reports & Analytics', icon: '📑' },
+  { href: '/admin/dashboard', label: 'Dashboard', icon: Home },
+  { href: '/admin/vendors', label: 'Vendor Management', icon: Building2 },
+  { href: '/admin/publish-management', label: 'Publish Management', icon: Megaphone },
+  { href: '/admin/promoted-listings', label: 'Promoted Listings', icon: MapPinned },
+  { href: '/admin/media-moderation', label: 'Media Moderation', icon: Clapperboard },
+  { href: '/admin/reviews', label: 'Review Moderation', icon: Star },
+  { href: '/admin/review-audit', label: 'Review Audit', icon: Search },
+  { href: '/admin/reported-content', label: 'Reported Content', icon: ShieldAlert },
+  { href: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
+  { href: '/admin/audit-logs', label: 'Audit Logs', icon: ClipboardList },
+  { href: '/admin/activity', label: 'Activity Monitoring', icon: Activity },
+  { href: '/admin/security', label: 'Admin Security', icon: KeyRound },
+  { href: '/admin/settings', label: 'Admin Settings', icon: Settings },
 ];
 
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
@@ -44,7 +68,6 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const adminAvatar = user?.avatar || null;
   const isAdminRoleReal = availableRoles.includes('admin');
 
-  // Close dropdown when clicking outside or pressing Escape.
   useEffect(() => {
     if (!dropdownOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
@@ -73,18 +96,19 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar — width and structure aligned with vendor sidebar (w-64,
-          white logo header + nav area). Bottom identity block intentionally
-          removed; identity now lives only in the top-right header. */}
-      <aside className="w-64 flex flex-col min-h-screen bg-white border-r border-gray-200">
-        {/* Logo area */}
-        <div className="flex items-center px-6 py-8 border-b border-gray-200 justify-center">
-          <img src="/reliance-logo.png" alt="Reliance Logo" className="w-32 h-32 rounded" />
+    <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen">
+      <aside className="reliance-operator-sidebar flex w-72 min-h-screen flex-col">
+        <div className="reliance-operator-sidebar-header flex items-center justify-center px-6 py-7">
+          <RelianceLogo
+            tone="light"
+            blend
+            compact
+            className="justify-center"
+            frameClassName="h-16 w-16"
+          />
         </div>
 
-        {/* Nav area */}
-        <nav className="flex-1 flex flex-col gap-1 px-4 py-6">
+        <nav className="flex flex-1 flex-col gap-1 px-4 py-6">
           {adminNav.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -92,29 +116,24 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-base font-medium transition-colors ${
-                  isActive
-                    ? 'bg-[#204080] text-white'
-                    : 'text-[#204080] hover:bg-[#e6f0fa]'
+                className={`reliance-operator-nav-link flex items-center gap-3 rounded-2xl px-3 py-2.5 text-base font-medium transition-colors ${
+                  isActive ? 'reliance-operator-nav-link-active' : ''
                 }`}
               >
-                <span className="text-xl leading-none">{item.icon}</span>
+                <item.icon className="h-5 w-5 shrink-0" />
                 <span className="flex-1 truncate">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="px-4 pb-4 text-xs text-gray-400">Reliance © 2023</div>
+        <div className="px-4 pb-4 text-center text-xs text-white/42">
+          Reliance Copyright 2026
+        </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="reliance-operator-main flex-1 overflow-auto">
         <div className="w-full max-w-6xl px-6 pt-10 pb-6">
-          {/* Top header — role toggle (primary action, center-right) +
-              account chip (secondary, flush-right). The chip is intentionally
-              lighter than the toggle so the role switch reads as the
-              dominant control. */}
           <div className="mb-6 flex items-center justify-end gap-4">
             {availableRoles.length > 1 ? (
               <ProfileToggle
@@ -129,89 +148,87 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                 aria-haspopup="menu"
                 aria-expanded={dropdownOpen}
                 onClick={() => setDropdownOpen((open) => !open)}
-                className="group flex items-center gap-2 h-9 pl-1 pr-2.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                className="group flex h-10 items-center gap-2 rounded-full border border-white/12 bg-white/6 pl-1 pr-2.5 text-white/84 backdrop-blur-md transition-colors hover:bg-white/10 hover:text-white"
               >
                 {adminAvatar ? (
                   <img
                     src={adminAvatar}
                     alt=""
                     aria-hidden
-                    className="w-7 h-7 rounded-full object-cover"
+                    className="h-7 w-7 rounded-full object-cover"
                   />
                 ) : (
                   <span
                     aria-hidden
-                    className="w-7 h-7 rounded-full bg-[#e6f0fa] flex items-center justify-center text-[11px] font-semibold text-[#204080]"
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(36,107,255,0.22)] text-[11px] font-semibold text-white"
                   >
                     {adminInitials}
                   </span>
                 )}
-                <span className="hidden sm:inline max-w-[120px] truncate text-sm font-medium">
+                <span className="hidden max-w-[120px] truncate text-sm font-medium sm:inline">
                   {adminName}
                 </span>
                 <ChevronDown
-                  className={`w-4 h-4 text-gray-500 transition-transform ${
+                  className={`h-4 w-4 text-white/54 transition-transform ${
                     dropdownOpen ? 'rotate-180' : ''
                   }`}
                 />
               </button>
 
-              {/* Account dropdown — compact, future-ready. */}
-              {dropdownOpen && (
+              {dropdownOpen ? (
                 <div
                   role="menu"
-                  className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg ring-1 ring-black/5 z-20 overflow-hidden"
+                  className="reliance-operator-surface absolute right-0 z-20 mt-2 w-64 overflow-hidden rounded-2xl"
                 >
-                  <div className="px-4 py-3 border-b border-gray-100">
+                  <div className="border-b border-white/8 px-4 py-3">
                     <div className="flex items-center gap-3">
                       {adminAvatar ? (
                         <img
                           src={adminAvatar}
                           alt=""
                           aria-hidden
-                          className="w-9 h-9 rounded-full object-cover"
+                          className="h-9 w-9 rounded-full object-cover"
                         />
                       ) : (
                         <span
                           aria-hidden
-                          className="w-9 h-9 rounded-full bg-[#e6f0fa] flex items-center justify-center text-sm font-semibold text-[#204080]"
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(36,107,255,0.2)] text-sm font-semibold text-white"
                         >
                           {adminInitials}
                         </span>
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-gray-900 truncate">
+                          <span className="truncate text-sm font-semibold text-white">
                             {adminName}
                           </span>
-                          {isAdminRoleReal && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase rounded bg-[#e6f0fa] text-[#204080]">
+                          {isAdminRoleReal ? (
+                            <span className="rounded-full bg-[rgba(36,107,255,0.16)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--reliance-blue-soft)]">
                               Admin
                             </span>
-                          )}
+                          ) : null}
                         </div>
-                        {adminEmail && (
-                          <div className="text-xs text-gray-500 truncate">
+                        {adminEmail ? (
+                          <div className="truncate text-xs text-white/62">
                             {adminEmail}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   </div>
 
                   <div className="py-1">
-                    {/* Future routes — disabled placeholders for now. */}
                     <button
                       type="button"
                       role="menuitem"
                       disabled
-                      className="w-full flex items-center justify-between gap-3 px-4 py-2 text-sm text-gray-400 cursor-not-allowed"
+                      className="flex w-full cursor-not-allowed items-center justify-between gap-3 px-4 py-2 text-sm text-white/40"
                     >
                       <span className="flex items-center gap-2">
-                        <UserIcon className="w-4 h-4" />
+                        <UserIcon className="h-4 w-4" />
                         My Account
                       </span>
-                      <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                      <span className="text-[10px] uppercase tracking-wide text-white/34">
                         Soon
                       </span>
                     </button>
@@ -219,19 +236,19 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                       type="button"
                       role="menuitem"
                       disabled
-                      className="w-full flex items-center justify-between gap-3 px-4 py-2 text-sm text-gray-400 cursor-not-allowed"
+                      className="flex w-full cursor-not-allowed items-center justify-between gap-3 px-4 py-2 text-sm text-white/40"
                     >
                       <span className="flex items-center gap-2">
-                        <Bell className="w-4 h-4" />
+                        <Bell className="h-4 w-4" />
                         Notifications
                       </span>
-                      <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                      <span className="text-[10px] uppercase tracking-wide text-white/34">
                         Soon
                       </span>
                     </button>
                   </div>
 
-                  <div className="border-t border-gray-100 py-1">
+                  <div className="border-t border-white/8 py-1">
                     <button
                       type="button"
                       role="menuitem"
@@ -239,14 +256,14 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                         setDropdownOpen(false);
                         handleSignOut();
                       }}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-white/82 hover:bg-white/6"
                     >
-                      <LogOut className="w-4 h-4" />
+                      <LogOut className="h-4 w-4" />
                       Sign out
                     </button>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
           {children}

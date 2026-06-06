@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
+import {
+  accountStatusErrorBody,
+  AccountStatusError,
+  ensureUserAccountCanAct,
+  isVendorAccountRestricted,
+} from '@/lib/account-status';
 import { mapBookingToContract } from '@/lib/booking-shape';
 import { checkVendorSlotAvailability } from '@/lib/availability-slots';
+import { deriveCustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
 import { findUserIdByEmailCaseInsensitive } from '@/lib/resolve-booking-owner-user-id';
+import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -63,6 +71,7 @@ export async function GET(request: NextRequest) {
     const requestedUserId = searchParams.get('userId');
     const vendorId = searchParams.get('vendorId');
     const status = searchParams.get('status');
+    const summaryOnly = searchParams.get('summaryOnly') === '1';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const safePage = Number.isFinite(page) && page > 0 ? page : 1;
@@ -77,12 +86,38 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
+    if (userId) {
+      await ensureUserAccountCanAct(userId);
+    }
 
     const where: any = {
       ...(userId ? { userId: String(userId) } : {}),
       ...(vendorId ? { vendorId: String(vendorId) } : {}),
       ...(status ? { status: String(status).toUpperCase() } : {}),
     };
+
+    if (summaryOnly) {
+      const [total, activeTotal] = await withTransientDbRetry(() =>
+        Promise.all([
+          prisma.booking.count({ where }),
+          prisma.booking.count({
+            where: {
+              ...where,
+              status: {
+                notIn: ['COMPLETED', 'CANCELED', 'CANCELLED'],
+              },
+            },
+          }),
+        ])
+      );
+
+      return NextResponse.json({
+        summary: {
+          total,
+          activeTotal,
+        },
+      });
+    }
 
     const [total, records] = await withTransientDbRetry(() =>
       Promise.all([
@@ -121,12 +156,56 @@ export async function GET(request: NextRequest) {
                 phone: true,
               },
             },
+            ...(userId
+              ? {
+                  reviews: {
+                    where: { userId: String(userId) },
+                    select: { createdAt: true },
+                    orderBy: { createdAt: 'desc' as const },
+                    take: 1,
+                  },
+                  mediaSessions: {
+                    where: { sessionType: 'JOB_SERVICE_VIDEO' },
+                    select: {
+                      vendorJobVideoStage: true,
+                      mediaAssets: {
+                        select: {
+                          mimeType: true,
+                          moderationStatus: true,
+                          visibilityStatus: true,
+                          archiveStatus: true,
+                        },
+                      },
+                    },
+                  },
+                  reviewWindows: {
+                    select: { status: true },
+                  },
+                }
+              : {}),
           },
         }),
       ])
     );
 
-    const bookings = records.map((booking) => mapBookingToContract(booking as any));
+    const bookings = records.map((booking) => {
+      const base = mapBookingToContract(booking as any);
+      if (!userId) return base;
+      const lifecycle = deriveCustomerBookingLifecycle({
+        bookingStatus: booking.status,
+        mediaSessions: (booking as any).mediaSessions || [],
+        hasSubmittedReview: Array.isArray((booking as any).reviews) && (booking as any).reviews.length > 0,
+        reviewWindows: (booking as any).reviewWindows || [],
+      });
+      const latestReview = Array.isArray((booking as any).reviews) ? (booking as any).reviews[0] : null;
+      return {
+        ...base,
+        customer_lifecycle: {
+          ...lifecycle,
+          review_submitted_at: latestReview?.createdAt?.toISOString?.() || null,
+        },
+      };
+    });
 
     return NextResponse.json({
       bookings,
@@ -140,6 +219,9 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     const err = error as any;
     console.error("[BOOKINGS_API_ERROR]", err);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     if (isTransientDbConnectivityError(err)) {
       return NextResponse.json(
         {
@@ -165,6 +247,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const authUserId = await getUserIdFromRequest(request);
+    if (authUserId) {
+      await ensureUserAccountCanAct(authUserId);
+      const verificationGate = await requireVerifiedEmailForAction({
+        userId: authUserId,
+        action: 'create_booking',
+      });
+      if (verificationGate) {
+        return verificationGate;
+      }
+    }
     const body = await request.json();
     const {
       service_id,
@@ -193,13 +285,17 @@ export async function POST(request: NextRequest) {
     const vendorId = String(vendor_id);
     const vendor = await prisma.vendor.findUnique({
       where: { id: vendorId },
-      select: { id: true },
+      select: { id: true, accountStatus: true },
     });
     if (!vendor) {
       return NextResponse.json(
         { error: 'Vendor not found' },
         { status: 404 }
       );
+    }
+    if (isVendorAccountRestricted((vendor as any).accountStatus)) {
+      const statusError = new AccountStatusError("vendor", (vendor as any).accountStatus);
+      return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
 
     // Resolve service for required Booking.serviceId FK.
@@ -295,6 +391,7 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+    await ensureUserAccountCanAct(bookingUserId);
 
     const combinedDateTime =
       booking_date && booking_time
@@ -416,6 +513,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating booking:', error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     return NextResponse.json(
       { error: 'Failed to create booking' },
       { status: 500 }

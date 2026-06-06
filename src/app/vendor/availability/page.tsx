@@ -1,127 +1,47 @@
-// BACKEND DEVELOPER NOTES:
-// - GET /api/vendor/availability: Fetch current weekly availability for the vendor (array of days, start/end times, exceptions)
-// - POST /api/vendor/availability: Save new availability (recurring, exceptions, etc.)
-// - (Optional) GET /api/vendor/availability/booked: Fetch booked slots to block out
-// - All endpoints must be authenticated and scoped to the current vendor
-// - This file currently uses local state for demonstration
-
 'use client';
-import { useState } from 'react';
+
+import Link from 'next/link';
+import { CalendarClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import TimePicker from 'react-time-picker';
-import 'react-time-picker/dist/TimePicker.css';
-import 'react-clock/dist/Clock.css';
-
-const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-const defaultAvailability = daysOfWeek.map((day) => ({
-  day,
-  enabled: false,
-  start: "09:00",
-  end: "17:00",
-}));
-
-type DayAvailability = (typeof defaultAvailability)[number];
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function VendorAvailabilityPage() {
-  const [availability, setAvailability] =
-    useState<DayAvailability[]>(defaultAvailability);
-  const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
-
-  const handleToggle = (idx: number) => {
-    setAvailability((avail) =>
-      avail.map((a, i) => (i === idx ? { ...a, enabled: !a.enabled } : a))
-    );
-  };
-  const handleTimeChange = (
-    idx: number,
-    field: keyof DayAvailability,
-    value: string | boolean | null
-  ) => {
-    setAvailability((avail) =>
-      avail.map((a, i) => (i === idx ? { ...a, [field]: value } : a))
-    );
-  };
-  const handleSave = () => {
-    setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 2000);
-    }, 800);
-  };
-  const handleCancel = () => {
-    setAvailability(defaultAvailability);
-  };
-
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold mb-4">Schedule Availability</h1>
-      <div className="mb-4 text-gray-700">Set your weekly working hours. Customers can only book you during these times. You can update your schedule at any time.</div>
-      <div className="bg-white rounded shadow border p-6 mb-6">
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th className="text-left p-2">Day</th>
-              <th className="text-left p-2">Available</th>
-              <th className="text-left p-2">Start</th>
-              <th className="text-left p-2">End</th>
-            </tr>
-          </thead>
-          <tbody>
-            {availability.map((a, idx) => (
-              <tr key={a.day} className="border-t">
-                <td className="p-2 font-medium">{a.day}</td>
-                <td className="p-2">
-                  <input type="checkbox" checked={a.enabled} onChange={() => handleToggle(idx)} />
-                </td>
-                <td className="p-2">
-                  <TimePicker
-                    onChange={value => handleTimeChange(idx, 'start', value)}
-                    value={a.start}
-                    disableClock={false}
-                    format="hh:mm a"
-                    clearIcon={null}
-                    clockIcon={null}
-                    disabled={!a.enabled}
-                    className="w-28"
-                  />
-                </td>
-                <td className="p-2">
-                  <TimePicker
-                    onChange={value => handleTimeChange(idx, 'end', value)}
-                    value={a.end}
-                    disableClock={false}
-                    format="hh:mm a"
-                    clearIcon={null}
-                    clockIcon={null}
-                    disabled={!a.enabled}
-                    className="w-28"
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="flex gap-4 mt-6">
-          <Button onClick={handleSave} disabled={saving} variant="default">{saving ? 'Saving...' : 'Save'}</Button>
-          <Button onClick={handleCancel} variant="ghost">Cancel</Button>
-          {success && <span className="text-green-700 font-semibold ml-4">Saved!</span>}
-        </div>
-      </div>
-      <div className="bg-blue-50 border border-blue-200 rounded p-4 text-sm">
-        <div className="font-semibold mb-1">Current Availability Summary:</div>
-        <ul className="list-disc pl-5">
-          {availability.filter(a => a.enabled).length === 0 ? (
-            <li>No days set as available.</li>
-          ) : (
-            availability.filter(a => a.enabled).map(a => (
-              <li key={a.day}>{a.day}: {a.start} – {a.end}</li>
-            ))
-          )}
-        </ul>
-      </div>
+    <div className="max-w-3xl mx-auto py-8 px-4">
+      <Card className="border-amber-200 bg-amber-50">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-amber-100 p-3 text-amber-700">
+              <CalendarClock className="h-6 w-6" />
+            </div>
+            <div>
+              <CardTitle>Availability scheduling is not live on this launch</CardTitle>
+              <p className="mt-1 text-sm text-amber-800">
+                The old weekly scheduler only saved local demo state and did not control real booking availability.
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 text-gray-700">
+          <p>
+            Reliance does not yet use an in-app vendor calendar to approve or block customer booking windows.
+            For this launch, vendors should manage incoming jobs through the live dashboard, jobs, and employee
+            assignment flows instead of relying on a fake saved schedule.
+          </p>
+          <p>
+            When a real availability system is introduced, it will persist to the backend and affect live
+            booking behavior. Until then, this page stays visible only as an honest launch note.
+          </p>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <Button asChild>
+              <Link href="/vendor/jobs">Open Manage Jobs</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/vendor/dashboard">Back to Dashboard</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
-} 
+}

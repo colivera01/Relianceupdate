@@ -64,7 +64,7 @@ export async function sendVendorApprovalEmail(data: VendorApprovalEmailData) {
         </div>
         
         <div style="background: #1e293b; color: white; padding: 20px; text-align: center; font-size: 12px;">
-          <p style="margin: 0;">© 2024 Reliance. All rights reserved.</p>
+          <p style="margin: 0;">© 2026 Reliance. All rights reserved.</p>
         </div>
       </div>
     `,
@@ -87,7 +87,7 @@ export async function sendVendorApprovalEmail(data: VendorApprovalEmailData) {
       
       If you have any questions, please don't hesitate to contact our support team.
       
-      © 2024 Reliance. All rights reserved.
+      © 2026 Reliance. All rights reserved.
     `
   };
 
@@ -164,7 +164,7 @@ export async function sendVendorRejectionEmail(data: VendorApprovalEmailData) {
         </div>
         
         <div style="background: #1e293b; color: white; padding: 20px; text-align: center; font-size: 12px;">
-          <p style="margin: 0;">© 2024 Reliance. All rights reserved.</p>
+          <p style="margin: 0;">© 2026 Reliance. All rights reserved.</p>
         </div>
       </div>
     `,
@@ -192,7 +192,7 @@ export async function sendVendorRejectionEmail(data: VendorApprovalEmailData) {
       
       If you have any questions about this decision, please contact our support team.
       
-      © 2024 Reliance. All rights reserved.
+      © 2026 Reliance. All rights reserved.
     `
   };
 
@@ -248,7 +248,7 @@ export async function sendAdminNotificationEmail(data: AdminNotificationEmailDat
         </div>
         
         <div style="background: #1e293b; color: white; padding: 20px; text-align: center; font-size: 12px;">
-          <p style="margin: 0;">© 2024 Reliance. All rights reserved.</p>
+          <p style="margin: 0;">© 2026 Reliance. All rights reserved.</p>
         </div>
       </div>
     `,
@@ -266,7 +266,7 @@ export async function sendAdminNotificationEmail(data: AdminNotificationEmailDat
       
       View Vendor Management: ${process.env.NEXT_PUBLIC_APP_URL}/admin/vendors
       
-      © 2024 Reliance. All rights reserved.
+      © 2026 Reliance. All rights reserved.
     `
   };
 
@@ -327,7 +327,7 @@ export async function sendNewVendorNotificationEmail(vendorData: any, adminEmail
         </div>
         
         <div style="background: #1e293b; color: white; padding: 20px; text-align: center; font-size: 12px;">
-          <p style="margin: 0;">© 2024 Reliance. All rights reserved.</p>
+          <p style="margin: 0;">© 2026 Reliance. All rights reserved.</p>
         </div>
       </div>
     `,
@@ -351,7 +351,7 @@ export async function sendNewVendorNotificationEmail(vendorData: any, adminEmail
       
       This vendor application requires your review and approval before they can access the platform.
       
-      © 2024 Reliance. All rights reserved.
+      © 2026 Reliance. All rights reserved.
     `
   };
 

@@ -10,6 +10,7 @@ import {
   getVisibilityStatusesForAudience,
   normalizeArchiveStatus,
 } from "@/lib/media-visibility";
+import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -35,13 +36,13 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const includeDeleted = searchParams.get("includeDeleted") === "true";
 
-    const where: any = {
+    const where: any = countableMediaAssetWhere({
       vendorId,
       ...getApprovedActiveBaseWhere(),
       visibilityStatus: {
         in: getVisibilityStatusesForAudience("vendor_internal"),
       },
-    }
+    });
 
     // Deprecated behavior: includeDeleted no longer bypasses moderation visibility guardrails.
     if (includeDeleted && process.env.NODE_ENV === "development") {
@@ -82,10 +83,7 @@ export async function GET(
 
     // Calculate total storage for this vendor (non-deleted only)
     const storageAggregate = await (prisma as any).mediaAsset.aggregate({
-      where: {
-        vendorId,
-        deletedAt: null,
-      },
+      where: countableMediaAssetWhere({ vendorId }),
       _sum: {
         bytes: true,
       },

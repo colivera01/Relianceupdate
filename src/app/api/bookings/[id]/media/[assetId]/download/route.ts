@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
+import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from '@/lib/account-status';
 import { generateDownloadUrl } from '@/lib/azure-blob-storage';
 import { getVisibilityStatusesForAudience } from '@/lib/media-visibility';
 
@@ -14,6 +15,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    await ensureUserAccountCanAct(userId);
 
     const { id: bookingId, assetId } = await context.params;
     if (!bookingId || !assetId) {
@@ -74,6 +76,9 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
     return NextResponse.redirect(secureUrl, { status: 302 });
   } catch (error: any) {
     console.error('[bookings/:id/media/:assetId/download] GET error:', error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     return NextResponse.json(
       { success: false, error: 'Failed to resolve customer media download', details: error?.message || 'Unknown error' },
       { status: 500 }

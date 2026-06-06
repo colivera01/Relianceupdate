@@ -3,7 +3,6 @@ import type { MockEmployee } from './fixtures/employees';
 import { mockEmployees } from './fixtures/employees';
 import { mockServices } from './fixtures/services';
 import { mockBookings } from './fixtures/bookings';
-import { mockReviews } from './fixtures/reviews';
 import { mockAvailability } from './fixtures/availability';
 import { mockUsers } from './fixtures/users';
 
@@ -150,41 +149,7 @@ export const handlers = [
     return HttpResponse.json({ success: true, data: booking });
   }),
 
-  // Review handlers
-  http.get('/api/reviews', () => {
-    return HttpResponse.json({
-      success: true,
-      data: mockReviews,
-      pagination: {
-        page: 1,
-        limit: 10,
-        total: mockReviews.length,
-        totalPages: 1
-      }
-    });
-  }),
-
-  http.get('/api/reviews/:id', ({ params }) => {
-    const review = mockReviews.find(rev => rev.id === params.id);
-    if (!review) {
-      return HttpResponse.json(
-        { success: false, message: 'Review not found' },
-        { status: 404 }
-      );
-    }
-    return HttpResponse.json({ success: true, data: review });
-  }),
-
-  http.post('/api/reviews', async ({ request }) => {
-    const newReview = (await request.json()) as Record<string, unknown>;
-    const review = {
-      ...newReview,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString()
-    };
-    mockReviews.push(review as unknown as (typeof mockReviews)[number]);
-    return HttpResponse.json({ success: true, data: review });
-  }),
+  // Review routes are intentionally not mocked; active review flows use real App Router handlers.
 
   // Availability handlers
   http.get('/api/availability/:vendorId', ({ params }) => {

@@ -19,7 +19,7 @@
 
 - **`e2e/booking-smoke.spec.ts`:** login → Discover (search) → service → booking wizard → confirmation → my-bookings.
 - **`e2e/favorites-smoke.spec.ts` (pass 2):** login → **`/favorites`** cleanup (remove smoke **`serviceId`** if present) → **`/discover`** (search) → **`/service/[serviceId]`** → **`service-page-favorite-toggle`** add → **`/favorites`** row **`favorites-row-<serviceId>`** → **View Service** back → toggle remove → **`/favorites`** asserts row gone. Real **`GET/POST/DELETE`** favorites APIs + DB; no route mocks.
-- **`e2e/review-smoke.spec.ts` (pass 3):** login → **`/my-bookings`** → **Past** tab → seeded row **`E2E Review Smoke`** → **Load Authorized Media** → **`SmartVideoPlayer`** ( **`POST /api/reviews/window/start`** on mount) → programmatic **`video.play()`** → soft overlay → **Positive** → **Quick Review** → **`POST /api/reviews/create`**; asserts JSON success + **`review.id`**, panel closes, no inline error. Persisted **`Review`** is asserted via the **create** response body (customer **`/reviews`** list is still mock-data–driven and is not used for this smoke).
+- **`e2e/review-smoke.spec.ts` (pass 3):** login → **`/my-bookings`** → **Past** tab → seeded row **`E2E Review Smoke`** → **Load Authorized Media** → **`SmartVideoPlayer`** ( **`POST /api/reviews/window/start`** on mount) → programmatic **`video.play()`** → soft overlay → **Positive** → **Quick Review** → **`POST /api/reviews/create`**; asserts JSON success + **`review.id`**, panel closes, no inline error. Persisted **`Review`** is asserted via the **create** response body; customer **`/reviews`** now reads from **`GET /api/reviews/me`** and is outside this smoke.
 
 ## Seed / fixture assumptions
 

@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  findUserByEmail,
+  findAnyAuthUserByEmail,
   storePasswordResetToken,
 } from "@/lib/password-reset-tokens";
+import { appendAuthNext, sanitizeAuthNextPath } from "@/lib/auth-next";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email } = body;
+    const safeNextPath = sanitizeAuthNextPath(
+      typeof body?.next === "string" ? body.next : null
+    );
 
     console.log("Password reset request for email:", email);
 
@@ -23,9 +27,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = findUserByEmail(email);
+    const user = await findAnyAuthUserByEmail(email);
 
-    if (!user) {
+    const isDev = process.env.NODE_ENV !== "production";
+
+    if (!user.exists) {
       console.log(
         "Password reset requested for non-existent email:",
         email
@@ -41,13 +47,20 @@ export async function POST(request: NextRequest) {
 
     console.log("Password reset token generated for:", email);
 
-    const resetLink = `${request.nextUrl.origin}/auth/reset-password?token=${resetToken}`;
+    const resetPath = appendAuthNext(`/auth/reset-password?token=${resetToken}`, safeNextPath);
+    const resetLink = `${request.nextUrl.origin}${resetPath}`;
     console.log("Password reset link (development only):", resetLink);
 
     return NextResponse.json({
       success: true,
       message:
         "If an account with that email exists, we have sent a password reset link.",
+      ...(isDev
+        ? {
+            resetLinkPreview: resetLink,
+            resetTokenPreview: resetToken,
+          }
+        : {}),
     });
   } catch (error) {
     console.error("Forgot password error:", error);

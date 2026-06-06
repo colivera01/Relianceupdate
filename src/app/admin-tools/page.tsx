@@ -1,6 +1,8 @@
 // Dev-only admin tools for seeding/resetting demo data
 // /admin-tools
 import 'server-only';
+import { headers } from 'next/headers';
+import { requireAdmin } from '@/lib/admin-auth';
 import { resetAction, seedAction } from './actions';
 
 export default async function AdminToolsPage({
@@ -12,6 +14,23 @@ export default async function AdminToolsPage({
   const action = (sp.action as string) || '';
   const ok = (sp.ok as string) || '';
   const batch = (sp.seedBatchId as string) || '';
+
+  const requestHeaders = await headers();
+  try {
+    await requireAdmin(
+      new Request('http://localhost/admin-tools', {
+        headers: requestHeaders,
+      })
+    );
+  } catch {
+    return (
+      <div style={{ padding: 16, maxWidth: 720 }}>
+        <div style={{ background: '#fee2e2', padding: 12, borderRadius: 8 }}>
+          <strong>Admin access required.</strong> This internal tools page is limited to signed-in admins.
+        </div>
+      </div>
+    );
+  }
 
   const isProd = process.env.NODE_ENV === 'production';
 
@@ -86,17 +105,17 @@ export default async function AdminToolsPage({
           }}
         >
           {action === 'seed' && ok === 'true' && (
-            <div>✅ Seed request sent. Check your pages for demo data.</div>
+            <div>Success: seed request sent. Check your pages for demo data.</div>
           )}
-          {action === 'seed' && ok !== 'true' && <div>❌ Seed failed. Check server logs.</div>}
+          {action === 'seed' && ok !== 'true' && <div>Seed failed. Check server logs.</div>}
 
           {action === 'reset' && ok === 'true' && (
             <div>
-              ✅ Reset request sent
+              Success: reset request sent
               {batch ? ` for batch ${batch}` : ''}. Demo data should be gone.
             </div>
           )}
-          {action === 'reset' && ok !== 'true' && <div>❌ Reset failed. Check server logs.</div>}
+          {action === 'reset' && ok !== 'true' && <div>Reset failed. Check server logs.</div>}
         </div>
       )}
     </div>

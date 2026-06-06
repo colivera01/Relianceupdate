@@ -6,6 +6,18 @@ import { getUserIdFromRequest } from '@/lib/auth';
 import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
 import { logNotificationEnvWarnings } from '@/lib/env/notification-config';
 
+type ConsentRequestRecord = {
+  id: string;
+  token: string;
+  bookingId: string;
+  vendorId: string;
+  mediaSessionId: string;
+  consentType: string;
+  status: string;
+  requestedAt: Date;
+  expiresAt: Date | null;
+};
+
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
   const message = String(error?.message || '');
@@ -55,6 +67,11 @@ function isLocalhostOrigin(origin: string | null | undefined): boolean {
   return /^http:\/\/localhost(?::\d+)?$/i.test(String(origin).trim());
 }
 
+function usableCustomerEmail(value: unknown): string {
+  const email = String(value || '').trim();
+  return email.toLowerCase().endsWith('@reliance.local') ? '' : email;
+}
+
 function resolveConsentBaseUrl(request: NextRequest, requestedOrigin?: string | null): string {
   const appBaseUrl = String(process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
   const isProd = process.env.NODE_ENV === 'production';
@@ -79,6 +96,7 @@ export async function POST(request: NextRequest) {
     const mediaSessionId = String(body?.mediaSessionId || '').trim();
     const consentType = String(body?.consentType || '').trim();
     const origin = String(body?.origin || '').trim();
+    const skipNotification = body?.skipNotification === true;
     const expiresAtInput = body?.expiresAt ? new Date(String(body.expiresAt)) : null;
     const defaultExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     const expiresAt =
@@ -115,12 +133,13 @@ export async function POST(request: NextRequest) {
     }
     const bookingMeta = parseCustomerMetadata(booking.customerMetadata || null);
     const customerEmail =
-      (booking.user?.email && String(booking.user.email).trim()) ||
-      (bookingMeta.client_email ? String(bookingMeta.client_email).trim() : '') ||
+      usableCustomerEmail(bookingMeta.client_email) ||
+      usableCustomerEmail(bookingMeta.claim_contact_email) ||
+      usableCustomerEmail(booking.user?.email) ||
       undefined;
     const customerPhone =
-      (booking.user?.phone && String(booking.user.phone).trim()) ||
       (bookingMeta.client_phone ? String(bookingMeta.client_phone).trim() : '') ||
+      (booking.user?.phone && String(booking.user.phone).trim()) ||
       undefined;
     const customerName =
       (booking.user?.name && String(booking.user.name).trim()) ||
@@ -130,14 +149,16 @@ export async function POST(request: NextRequest) {
       (booking.vendor?.businessName && String(booking.vendor.businessName).trim()) ||
       (booking.vendor?.name && String(booking.vendor.name).trim()) ||
       undefined;
-    const serviceName =
+    const bookingTitle =
       (booking.title && String(booking.title).trim()) ||
+      undefined;
+    const serviceName =
       (booking.service?.name && String(booking.service.name).trim()) ||
       undefined;
     const serviceDate = formatServiceDateLabel(booking.scheduledFor);
 
     const token = generateConsentToken();
-    const record = await withTransientDbRetry(() =>
+    const record = await withTransientDbRetry<ConsentRequestRecord>(() =>
       (prisma as any).consentRecord.create({
         data: {
           token,
@@ -176,46 +197,50 @@ export async function POST(request: NextRequest) {
     const consentBaseUrl = resolveConsentBaseUrl(request, origin);
     let notification: Awaited<ReturnType<typeof sendConsentLinkNotification>> | null = null;
     let notificationError: string | null = null;
-    try {
-      notification = await sendConsentLinkNotification({
-        consentRecordId: record.id,
-        actorUserId: String(actorUserId),
-        token,
-        consentPath,
-        absoluteBaseUrl: consentBaseUrl,
-        customerEmail,
-        customerPhone,
-        customerName,
-        vendorName,
-        serviceName,
-        serviceDate,
-        consentTypeLabel: consentType.replace(/_/g, ' '),
-      });
-      await withTransientDbRetry(() =>
-        (prisma as any).consentEvent.create({
-          data: {
-            consentRecordId: record.id,
-            eventType: 'notification_dispatch',
-            metadata: JSON.stringify({
-              anySuccess: notification.anySuccess,
-              channels: notification.channels,
-              absoluteFallbackLink: notification.absoluteFallbackLink,
-            }),
-          },
-        })
-      );
-    } catch (e) {
-      notificationError = e instanceof Error ? e.message : String(e);
-      console.error('[consent/request] notification dispatch failed:', e);
-      await withTransientDbRetry(() =>
-        (prisma as any).consentEvent.create({
-          data: {
-            consentRecordId: record.id,
-            eventType: 'notification_dispatch_failed',
-            metadata: JSON.stringify({ error: notificationError }),
-          },
-        })
-      );
+    if (!skipNotification) {
+      try {
+        const notificationResult = await sendConsentLinkNotification({
+          consentRecordId: record.id,
+          actorUserId: String(actorUserId),
+          token,
+          consentPath,
+          absoluteBaseUrl: consentBaseUrl,
+          customerEmail,
+          customerPhone,
+          customerName,
+          vendorName,
+          serviceName,
+          bookingTitle,
+          serviceDate,
+          consentTypeLabel: consentType.replace(/_/g, ' '),
+        });
+        notification = notificationResult;
+        await withTransientDbRetry(() =>
+          (prisma as any).consentEvent.create({
+            data: {
+              consentRecordId: record.id,
+              eventType: 'notification_dispatch',
+              metadata: JSON.stringify({
+                anySuccess: notificationResult.anySuccess,
+                channels: notificationResult.channels,
+                absoluteFallbackLink: notificationResult.absoluteFallbackLink,
+              }),
+            },
+          })
+        );
+      } catch (e) {
+        notificationError = e instanceof Error ? e.message : String(e);
+        console.error('[consent/request] notification dispatch failed:', e);
+        await withTransientDbRetry(() =>
+          (prisma as any).consentEvent.create({
+            data: {
+              consentRecordId: record.id,
+              eventType: 'notification_dispatch_failed',
+              metadata: JSON.stringify({ error: notificationError }),
+            },
+          })
+        );
+      }
     }
 
     return NextResponse.json({
@@ -225,10 +250,12 @@ export async function POST(request: NextRequest) {
       consentAbsoluteUrl: notification?.absoluteFallbackLink ?? null,
       notification,
       notificationError,
-      manualLinkRequired: !notification?.anySuccess,
+      manualLinkRequired: skipNotification ? false : !notification?.anySuccess,
       message: notification?.anySuccess
         ? undefined
-        : 'Delivery was not confirmed via email/SMS; share the consent link manually.',
+        : skipNotification
+          ? undefined
+          : 'Delivery was not confirmed via email/SMS; share the consent link manually.',
     });
   } catch (error) {
     console.error('[consent/request] POST error:', error);

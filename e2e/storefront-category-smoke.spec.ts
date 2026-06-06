@@ -1,6 +1,28 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
 
-async function signInCustomer(page: import('@playwright/test').Page, id: string, email: string) {
+const FIXTURE_PATH = path.join(__dirname, 'smoke-fixture.json');
+const DEFAULT_PASSWORD = 'E2E_Smoke_dev_only_9!';
+
+type SmokeFixture = {
+  customerEmail: string;
+  locationEdgeCustomers: {
+    preferenceOffCustomerId: string;
+    missingCoordinatesCustomerId: string;
+  };
+};
+
+function readFixture(): SmokeFixture {
+  const raw = fs.readFileSync(FIXTURE_PATH, 'utf-8');
+  return JSON.parse(raw) as SmokeFixture;
+}
+
+async function applySyntheticCustomerSession(
+  page: import('@playwright/test').Page,
+  id: string,
+  email: string
+) {
   await page.addInitScript(
     ({ userId, userEmail }) => {
       const userData = {
@@ -19,93 +41,120 @@ async function signInCustomer(page: import('@playwright/test').Page, id: string,
     {
       name: 'userId',
       value: id,
-      domain: '127.0.0.1',
-      path: '/',
+      url: 'http://localhost:3000',
     },
     {
       name: 'session_user_id',
       value: id,
-      domain: '127.0.0.1',
-      path: '/',
+      url: 'http://localhost:3000',
     },
   ]);
+}
+
+async function signInCustomer(page: import('@playwright/test').Page, email: string, password: string) {
+  const loginResponse = await page.request.post('/api/auth/login', {
+    data: { email, password },
+  });
+  const loginJson = (await loginResponse.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!loginResponse.ok()) {
+    throw new Error(`Customer sign-in failed for ${email}: ${JSON.stringify(loginJson)}`);
+  }
+
+  await page.goto('/auth/login');
+  await page.evaluate(({ user, token }) => {
+    localStorage.setItem('userData', JSON.stringify(user));
+    localStorage.setItem('authToken', String(token));
+    localStorage.setItem('auth_token', String(token));
+    document.cookie = `userId=${encodeURIComponent(String((user as { id: string }).id))}; path=/; samesite=lax`;
+    document.cookie = `session_user_id=${encodeURIComponent(String((user as { id: string }).id))}; path=/; samesite=lax`;
+  }, {
+    user: loginJson.user,
+    token: loginJson.token,
+  });
 }
 
 test('public storefront category deep link opens filtered browse results', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'See what is active on Reliance' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Trust Beyond Reviews' })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.locator('body')).not.toContainText(/\$\d/);
 
-  await page.goto('/browse?category=Deep%20Cleaning');
-  await expect(page).toHaveURL(/\/browse\?category=Deep(?:%20|\+)Cleaning$/);
+  await page.goto('/browse?category=Other%20Services');
+  await expect(page).toHaveURL(/\/browse\?category=Other(?:%20|\+)Services$/);
 
   await expect(
-    page.getByText('Browse trusted local professionals backed by real reviews and proof of completed work.')
+    page.getByText('Compare customer reviews, public service videos, and disclosure-friendly promoted placements without losing the organic marketplace underneath.')
   ).toBeVisible();
-  await expect(page.getByText('Real Reviews', { exact: true })).toBeVisible();
-  await expect(page.getByText('Proof Available', { exact: true })).toBeVisible();
-  await expect(page.getByText('Trusted Vendors', { exact: true })).toBeVisible();
+  await expect(page.getByText('Customer Reviews', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Service Videos', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Clear Promoted Labels', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Counts are backend-derived public inventory')).toHaveCount(0);
   await expect(page.getByText('Distance filter is not available yet in backend discovery.')).toHaveCount(0);
-  await expect(page.getByTestId('browse-category-select')).toHaveValue('Deep Cleaning', {
+  await expect(page.getByTestId('browse-category-select')).toHaveValue('Other Services', {
     timeout: 30_000,
   });
   await page.getByRole('button', { name: 'Toggle browse filters' }).click();
-  await expect(page.getByText('More filters coming soon.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Browse Filters' })).toBeVisible();
+  await expect(
+    page.getByText('Distance filters unlock automatically once a browse location is set.')
+  ).toBeVisible();
   await expect(page.getByTestId('browse-radius-select')).toHaveCount(0);
   await expect(page.locator('option[value="price_asc"]')).toHaveCount(0);
   await expect(page.locator('option[value="price_desc"]')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Deep Cleaning' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Browse trusted services with a clearer signal stack' })).toBeVisible();
   await expect(page.getByText('Selected filter')).toBeVisible();
 
-  await expect(page.getByRole('heading', { name: 'General Service Job' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Brooklyn Move-In Cleaning' })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' }).first()).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/\$\d/);
 
-  await page.getByPlaceholder('What service do you need?').fill('General');
+  await page.getByPlaceholder('What service do you need?').fill('Metro');
   await page.getByRole('button', { name: 'Search' }).click();
-  await page.waitForURL(/q=General/, { timeout: 30_000 });
-  await expect(page).toHaveURL(/category=Deep(?:\+|%20)Cleaning/);
+  await page.waitForURL(/q=Metro/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/category=Other(?:\+|%20)Services/);
 
   await page.locator('select').nth(1).selectOption('name');
   await expect(page).toHaveURL(/sortBy=name/);
 });
 
 test('public browse covers multiple deterministic geocoded vendors', async ({ page }) => {
-  await page.goto('/browse?q=E2E%20Nearby&lat=40.73061&lng=-73.935242&sortBy=distance&radiusMiles=10');
+  await page.goto('/browse?lat=40.73061&lng=-73.935242&sortBy=distance&radiusMiles=10');
 
-  await expect(page.getByRole('heading', { name: 'E2E Nearby Midtown Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole('heading', { name: 'E2E Nearby Brooklyn Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Midtown Apartment Refresh' })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByText(/miles away/)).toHaveCount(2);
+  await expect(page.getByRole('heading', { name: 'Brooklyn Move-In Cleaning' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText(/miles away/)).toHaveCount(3);
 });
 
 test('public browse shows real distance only with coordinate origin', async ({ page }) => {
-  await page.goto('/browse?q=E2E%20Smoke');
+  await page.goto('/browse?q=Metro%20Apartment');
 
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByText(/miles away/)).toHaveCount(0);
 
-  await page.goto('/browse?q=E2E%20Smoke&lat=40.73061&lng=-73.935242&sortBy=distance&radiusMiles=10');
+  await page.goto('/browse?q=Metro%20Apartment&lat=40.73061&lng=-73.935242&sortBy=distance&radiusMiles=10');
 
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByText('2.9 miles away')).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/distance unavailable/i);
 
-  await page.goto('/browse?q=E2E%20Smoke&lat=40.6413&lng=-73.7781&sortBy=distance');
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toBeVisible({
+  await page.goto('/browse?q=Metro%20Apartment&lat=40.6413&lng=-73.7781&sortBy=distance');
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible({
     timeout: 30_000,
   });
   await page.getByRole('button', { name: 'Toggle browse filters' }).click();
@@ -119,7 +168,7 @@ test('public browse shows real distance only with coordinate origin', async ({ p
 
   await page.getByTestId('browse-radius-select').selectOption('any');
   await expect(page).not.toHaveURL(/radiusMiles=/);
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible({
     timeout: 30_000,
   });
 });
@@ -149,9 +198,9 @@ test('guest browse current-location action is explicit and session-only', async 
     });
   });
 
-  await page.goto('/browse?q=E2E%20Smoke');
+  await page.goto('/browse?q=Metro%20Apartment');
 
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByRole('button', { name: 'Use my location' })).toBeVisible();
@@ -174,7 +223,7 @@ test('guest browse current-location action is explicit and session-only', async 
   await expect(page.getByText('Showing providers near your current location')).toHaveCount(0);
   await expect(page.getByText(/miles away/)).toHaveCount(0);
 
-  await page.goto('/browse?q=E2E%20Smoke&lat=40.7484&lng=-73.9857&sortBy=distance');
+  await page.goto('/browse?q=Metro%20Apartment&lat=40.7484&lng=-73.9857&sortBy=distance');
 
   await expect(page.getByText('Showing providers near your current location')).toHaveCount(0);
   await expect(page.getByText('0.0 miles away')).toBeVisible();
@@ -199,18 +248,19 @@ test('guest browse current-location denial stays friendly', async ({ page }) => 
     });
   });
 
-  await page.goto('/browse?q=E2E%20Smoke');
+  await page.goto('/browse?q=Metro%20Apartment');
   await page.getByRole('button', { name: 'Use my location' }).click();
 
   await expect(page.getByText('Location access was denied. You can still browse normally.')).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible();
   await expect(page.getByText(/miles away/)).toHaveCount(0);
 });
 
 test('signed-in customer browse uses saved location without browser prompt', async ({ page }) => {
-  await signInCustomer(page, 'e2e-smoke-customer', 'e2e-smoke-customer@reliance.test');
+  const fixture = readFixture();
+  await signInCustomer(page, fixture.customerEmail, process.env.E2E_CUSTOMER_PASSWORD ?? DEFAULT_PASSWORD);
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'geolocation', {
       configurable: true,
@@ -233,7 +283,7 @@ test('signed-in customer browse uses saved location without browser prompt', asy
     });
   });
 
-  await page.goto('/browse?q=E2E%20Smoke');
+  await page.goto('/browse?q=Metro%20Apartment');
 
   await expect(page.getByText('Showing results near your saved address')).toBeVisible({
     timeout: 30_000,
@@ -256,7 +306,7 @@ test('signed-in customer browse uses saved location without browser prompt', asy
   await expect(page.getByText(/miles away/)).toHaveCount(1);
   await expect(page).not.toHaveURL(/lat=/);
 
-  await page.goto('/browse?q=E2E%20Smoke&lat=40.7484&lng=-73.9857&sortBy=distance');
+  await page.goto('/browse?q=Metro%20Apartment&lat=40.7484&lng=-73.9857&sortBy=distance');
 
   await expect(page.getByText('Showing results near your saved address')).toHaveCount(0);
   await expect(page.getByText('0.0 miles away')).toBeVisible();
@@ -264,14 +314,15 @@ test('signed-in customer browse uses saved location without browser prompt', asy
 });
 
 test('saved-location assist stays off when preference disabled or coordinates missing', async ({ page }) => {
-  await signInCustomer(
+  const fixture = readFixture();
+  await applySyntheticCustomerSession(
     page,
-    'e2e-location-pref-off-customer',
+    fixture.locationEdgeCustomers.preferenceOffCustomerId,
     'e2e-location-pref-off@reliance.test'
   );
-  await page.goto('/browse?q=E2E%20Smoke');
+  await page.goto('/browse?q=Metro%20Apartment');
 
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByText('Showing results near your saved address')).toHaveCount(0);
@@ -282,8 +333,10 @@ test('saved-location assist stays off when preference disabled or coordinates mi
     window.localStorage.clear();
     document.cookie = 'userId=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
     document.cookie = 'session_user_id=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+  });
+  await page.evaluate(({ missingCoordinatesCustomerId }) => {
     const userData = {
-      id: 'e2e-location-missing-coords-customer',
+      id: missingCoordinatesCustomerId,
       name: 'E2E Missing Coordinates',
       email: 'e2e-location-missing-coords@reliance.test',
       userType: 'customer',
@@ -291,12 +344,12 @@ test('saved-location assist stays off when preference disabled or coordinates mi
     window.localStorage.setItem('userData', JSON.stringify(userData));
     window.localStorage.setItem('authToken', 'temp-jwt-token');
     window.localStorage.setItem('auth_token', 'temp-jwt-token');
-    document.cookie = 'userId=e2e-location-missing-coords-customer; path=/; samesite=lax';
-    document.cookie = 'session_user_id=e2e-location-missing-coords-customer; path=/; samesite=lax';
-  });
+    document.cookie = `userId=${encodeURIComponent(missingCoordinatesCustomerId)}; path=/; samesite=lax`;
+    document.cookie = `session_user_id=${encodeURIComponent(missingCoordinatesCustomerId)}; path=/; samesite=lax`;
+  }, { missingCoordinatesCustomerId: fixture.locationEdgeCustomers.missingCoordinatesCustomerId });
   await page.reload();
 
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Metro Apartment Deep Clean' })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByText('Showing results near your saved address')).toHaveCount(0);

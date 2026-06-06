@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/lib/admin-auth';
+import { isStaleApprovalQueueFixture } from '@/lib/launch-content-cleanup';
 
 export async function GET(request: NextRequest) {
   try {
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
         };
       })
       .filter((vendor: any) => {
+        if (isStaleApprovalQueueFixture(vendor)) return false;
         const matchesSearch =
           !searchLower ||
           vendor.businessName.toLowerCase().includes(searchLower) ||
@@ -87,7 +89,15 @@ export async function GET(request: NextRequest) {
       return (aTime - bTime) * direction;
     });
 
-    // Paginate mock data
+    const availableCategories = Array.from(
+      new Set<string>(
+        filteredVendors
+          .map((vendor: any) => String(vendor.category || "").trim())
+          .filter((value: string) => Boolean(value))
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
+    // Paginate filtered data
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
     const paginatedVendors = filteredVendors.slice(startIndex, endIndex);
@@ -104,6 +114,7 @@ export async function GET(request: NextRequest) {
           hasNextPage: endIndex < filteredVendors.length,
           hasPrevPage: page > 1,
         },
+        categories: availableCategories,
         filters: {
           search,
           category,

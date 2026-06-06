@@ -64,7 +64,7 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'token is required' }, { status: 400 });
     }
 
-    let consent = await withTransientDbRetry(() =>
+    let consent = await withTransientDbRetry<ConsentTokenRecord | null>(() =>
       (prisma as any).consentRecord.findUnique({
         where: { token: String(token) },
         include: {
@@ -88,16 +88,17 @@ export async function GET(request: Request, context: RouteContext) {
     const now = new Date();
     const pending = evaluateConsentRespondable(consent.status, consent.expiresAt, now);
     if (consent.status === 'requested' && pending.respondable === false && pending.reason === 'expired') {
+      const consentId = consent.id;
       await withTransientDbRetry(() =>
         (prisma as any).consentRecord.update({
-          where: { id: consent.id },
+          where: { id: consentId },
           data: { status: 'expired' },
         })
       );
       await withTransientDbRetry(() =>
         (prisma as any).consentEvent.create({
           data: {
-            consentRecordId: consent.id,
+            consentRecordId: consentId,
             eventType: 'expired',
             metadata: JSON.stringify({ source: 'get_token_auto_expire' }),
           },

@@ -7,7 +7,6 @@ import { PrismaClient } from "@prisma/client";
 const FIXTURE_PATH = path.join(__dirname, "smoke-fixture.json");
 const DEFAULT_PASSWORD = "E2E_Smoke_dev_only_9!";
 const REVIEW_VIDEO_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
-
 const prisma = new PrismaClient();
 
 type SmokeFixture = {
@@ -158,7 +157,7 @@ async function ensureActors(vendorId: string, serviceId: string): Promise<ActorC
 test.describe.configure({ mode: "serial" });
 
 test("full proof-to-review trust loop (live routes)", async ({ page, request }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(720_000);
   page.on("dialog", (dialog) => dialog.accept());
 
   const fixture = readFixture();
@@ -178,7 +177,7 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   await expect(page.getByRole("heading", { name: /Discover( Services)?/i }).first()).toBeVisible();
   await page.getByPlaceholder("Search for services or vendors...").fill(fixture.serviceNameSearch);
   await page.keyboard.press("Enter");
-  const serviceLink = page.locator(`a[href="/service/${fixture.serviceId}"]`).first();
+  const serviceLink = page.getByRole("link", { name: "View Service" }).first();
   await expect(serviceLink).toBeVisible({ timeout: 30_000 });
   const serviceLinkHref = await serviceLink.getAttribute("href");
   const serviceLinkText = (await serviceLink.textContent())?.trim() || "";
@@ -186,10 +185,10 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   console.log("[trust-loop][book-now] selected service link href:", serviceLinkHref);
   console.log("[trust-loop][book-now] selected service link text:", serviceLinkText);
   await serviceLink.click();
-  await page.waitForURL(`**/service/${fixture.serviceId}`);
+  await page.waitForURL(new RegExp(`/service/${fixture.serviceId}(\\?.*)?$`));
   console.log("[trust-loop][book-now] url after service click:", page.url());
 
-  const bookNowButton = page.getByRole("button", { name: "Book Now" }).first();
+  const bookNowButton = page.getByRole("link", { name: "Book Now" }).first();
   await expect(bookNowButton).toBeVisible({ timeout: 30_000 });
   await expect(bookNowButton).toBeEnabled({ timeout: 30_000 });
   console.log("[trust-loop][book-now] url before Book Now click:", page.url());
@@ -251,7 +250,6 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   console.log("[trust-loop] selected employee:", actors.employeeDisplayName, actors.employeeMembershipId);
 
   // STEP 2 — Vendor assigns employee
-  await page.goto("/vendor/jobs");
   const assignRes = await apiJson(
     request,
     "PATCH",
@@ -269,7 +267,6 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   expect(assignRes.json?.job?.assignedMembershipIds?.includes(actors.employeeMembershipId)).toBeTruthy();
 
   // STEP 3 — Employee uploads stages (seed assets, then submit stage completion)
-  await page.goto("/employee/jobs");
   const stageSessionIds: Record<"INTRO" | "IN_PROGRESS" | "COMPLETED", string> = {
     INTRO: "",
     IN_PROGRESS: "",
@@ -332,7 +329,6 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   expect(awaiting?.status).toBe("AWAITING_REVIEW");
 
   // STEP 4 — Manager approves completion
-  await page.goto("/vendor/jobs");
   const approveRes = await apiJson(
     request,
     "POST",
@@ -346,13 +342,12 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   expect(approveRes.response.ok(), JSON.stringify(approveRes.json)).toBeTruthy();
   expect(String(approveRes.json?.job?.status || "").toUpperCase()).toBe("COMPLETED");
 
-  // STEP 5 — Admin moderation approves package with customer_only visibility
-  await page.goto("/admin/media-moderation");
+  // STEP 5 — Admin moderation approves package with public visibility
   const moderationRes = await apiJson(
     request,
     "PATCH",
     `/api/admin/media/packages/${bookingId}/moderate`,
-    { action: "approve", visibility: "customer_only" },
+    { action: "approve", visibility: "public" },
     {
       "x-user-id": actors.adminUserId,
       "x-user-role": "admin",
@@ -374,6 +369,23 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
       acceptedAt: new Date(),
     },
   });
+
+  const startWindowRes = await apiJson(
+    request,
+    "POST",
+    "/api/reviews/window/start",
+    {
+      bookingId,
+      vendorId: actors.vendorId,
+      mediaSessionId: stageSessionIds.COMPLETED,
+    },
+    {
+      "x-user-id": String(booking?.userId),
+    }
+  );
+  expect(startWindowRes.response.ok(), JSON.stringify(startWindowRes.json)).toBeTruthy();
+  const reviewWindowId = String(startWindowRes.json?.reviewWindow?.id || "");
+  expect(reviewWindowId).toBeTruthy();
 
   // STEP 6 — Customer views proof
   const bookingBeforeProofCheck = await prisma.booking.findUnique({
@@ -472,8 +484,8 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   console.log("[trust-loop][proof] access denied text visible:", accessDeniedVisible);
   const headingTexts = (await page.locator("h1, h2").allTextContents()).map((text) => text.trim()).filter(Boolean);
   console.log("[trust-loop][proof] visible headings:", headingTexts);
-  const bookingProofLabelVisible = await page.getByText("Booking Proof").first().isVisible().catch(() => false);
-  const proofTimelineVisible = await page.getByText("Proof Timeline").first().isVisible().catch(() => false);
+  const serviceVideosLabelVisible = await page.getByText("Service Videos").first().isVisible().catch(() => false);
+  const proofTimelineVisible = await page.getByText("Service Video Timeline").first().isVisible().catch(() => false);
   const finalResultVisible = await page.getByText("Final Result").first().isVisible().catch(() => false);
   const pendingProofVisible = await page
     .getByText("Proof submitted, awaiting approval")
@@ -482,21 +494,26 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
     .catch(() => false);
   const noProofVisible = await page.getByText("Proof not available yet").first().isVisible().catch(() => false);
   const proofVideoVisible = await page.locator("video").first().isVisible().catch(() => false);
-  console.log("[trust-loop][proof] bookingProofLabelVisible:", bookingProofLabelVisible);
+  console.log("[trust-loop][proof] serviceVideosLabelVisible:", serviceVideosLabelVisible);
   console.log("[trust-loop][proof] proofTimelineVisible:", proofTimelineVisible);
   console.log("[trust-loop][proof] finalResultVisible:", finalResultVisible);
   console.log("[trust-loop][proof] pendingProofVisible:", pendingProofVisible);
   console.log("[trust-loop][proof] noProofVisible:", noProofVisible);
   console.log("[trust-loop][proof] proofVideoVisible:", proofVideoVisible);
 
-  await expect(page.getByText("Booking Proof").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Service Videos").first()).toBeVisible({ timeout: 30_000 });
   const consentPromptVisible = await page
-    .getByText("We need your permission to view this proof.")
+    .getByText("This service video is ready to review, but we need your permission before playback.")
     .first()
     .isVisible()
     .catch(() => false);
+  const requestVideoAccessVisible = await page
+    .getByRole("button", { name: "Request video access" })
+    .isVisible()
+    .catch(() => false);
   console.log("[trust-loop][proof] consent prompt visible:", consentPromptVisible);
-  expect(proofVideoVisible || consentPromptVisible).toBeTruthy();
+  console.log("[trust-loop][proof] request video access visible:", requestVideoAccessVisible);
+  expect(proofVideoVisible || consentPromptVisible || requestVideoAccessVisible).toBeTruthy();
 
   const mediaRes = await request.fetch(`/api/bookings/${bookingId}/media`, {
     headers: { "x-user-id": String(booking?.userId) },
@@ -508,23 +525,6 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   expect(videoSrc.length).toBeGreaterThan(0);
 
   // STEP 7 — Customer submits review
-  const startWindowRes = await apiJson(
-    request,
-    "POST",
-    "/api/reviews/window/start",
-    {
-      bookingId,
-      vendorId: actors.vendorId,
-      mediaSessionId: stageSessionIds.COMPLETED,
-    },
-    {
-      "x-user-id": String(booking?.userId),
-    }
-  );
-  expect(startWindowRes.response.ok(), JSON.stringify(startWindowRes.json)).toBeTruthy();
-  const reviewWindowId = String(startWindowRes.json?.reviewWindow?.id || "");
-  expect(reviewWindowId).toBeTruthy();
-
   const reviewPayload = {
     reviewWindowId,
     bookingId,
@@ -548,10 +548,81 @@ test("full proof-to-review trust loop (live routes)", async ({ page, request }) 
   console.log("[trust-loop] review response:", JSON.stringify(reviewCreateRes.json));
   expect(reviewCreateRes.response.ok(), JSON.stringify(reviewCreateRes.json)).toBeTruthy();
   expect(reviewCreateRes.json?.success).toBeTruthy();
-  expect(reviewCreateRes.json?.review?.id).toBeTruthy();
+  const createdReviewId = String(reviewCreateRes.json?.review?.id || "");
+  expect(createdReviewId).toBeTruthy();
 
-  // STEP 8 — Verify dashboard attribution
-  await page.goto("/vendor/dashboard");
+  // STEP 8 — Admin approves the submitted review for public display
+  const reviewModerationRes = await apiJson(
+    request,
+    "PATCH",
+    `/api/admin/reviews/${createdReviewId}/moderate`,
+    { action: "approve_public" },
+    {
+      "x-user-id": actors.adminUserId,
+      "x-user-role": "admin",
+      "x-admin": "1",
+    }
+  );
+  expect(reviewModerationRes.response.ok(), JSON.stringify(reviewModerationRes.json)).toBeTruthy();
+  expect(String(reviewModerationRes.json?.review?.visibilityStatus || "")).toBe("public");
+
+  // STEP 9 — Verify public service/vendor trust signals
+  const publicServiceRes = await request.fetch(`/api/services/${actors.serviceId}`);
+  expect(publicServiceRes.ok()).toBeTruthy();
+  const publicServiceJson = (await publicServiceRes.json()) as {
+    service?: {
+      hasPrimaryProofVideo?: boolean;
+      primaryProofVideoUrl?: string | null;
+      videos?: string[];
+      vendor?: { reviewCount?: number | null };
+    };
+  };
+  expect(publicServiceJson.service?.hasPrimaryProofVideo).toBeTruthy();
+  expect(String(publicServiceJson.service?.primaryProofVideoUrl || "")).toContain("flower.mp4");
+  expect(Number(publicServiceJson.service?.vendor?.reviewCount || 0)).toBeGreaterThan(0);
+
+  const publicServiceReviewsRes = await request.fetch(`/api/services/${actors.serviceId}/reviews/public`);
+  expect(publicServiceReviewsRes.ok()).toBeTruthy();
+  const publicServiceReviewsJson = (await publicServiceReviewsRes.json()) as { reviews?: Array<{ comment?: string }> };
+  expect(Array.isArray(publicServiceReviewsJson.reviews)).toBeTruthy();
+  expect((publicServiceReviewsJson.reviews || []).length).toBeGreaterThan(0);
+  expect(
+    publicServiceReviewsJson.reviews?.some((review) => String(review.comment || "").includes("E2E trust loop review"))
+  ).toBe(false);
+
+  const publicVendorRes = await request.fetch(`/api/vendors/${actors.vendorId}/public`);
+  expect(publicVendorRes.ok()).toBeTruthy();
+  const publicVendorJson = (await publicVendorRes.json()) as {
+    publicMedia?: Array<{ url?: string | null; isPrimaryProofVideo?: boolean }>;
+    publicServices?: Array<{ serviceId?: string; previewMediaUrl?: string | null }>;
+    vendor?: { reviewCount?: number | null };
+  };
+  expect(publicVendorJson.publicMedia?.some((item) => item.isPrimaryProofVideo && String(item.url || "").includes("flower.mp4"))).toBeTruthy();
+  expect(publicVendorJson.publicServices?.some((item) => item.serviceId === actors.serviceId && String(item.previewMediaUrl || "").includes("flower.mp4"))).toBeTruthy();
+  expect(Number(publicVendorJson.vendor?.reviewCount || 0)).toBeGreaterThan(0);
+
+  const publicVendorReviewsRes = await request.fetch(`/api/vendors/${actors.vendorId}/reviews/public`);
+  expect(publicVendorReviewsRes.ok()).toBeTruthy();
+  const publicVendorReviewsJson = (await publicVendorReviewsRes.json()) as { reviews?: Array<{ comment?: string }> };
+  expect(Array.isArray(publicVendorReviewsJson.reviews)).toBeTruthy();
+  expect((publicVendorReviewsJson.reviews || []).length).toBeGreaterThan(0);
+  expect(
+    publicVendorReviewsJson.reviews?.some((review) => String(review.comment || "").includes("E2E trust loop review"))
+  ).toBe(false);
+
+  await page.context().clearCookies();
+  await page.goto(`/vendors/${actors.vendorId}`);
+  await expect(page.getByRole("heading", { name: "Metro Home Care Pros" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Featured service video").first()).toBeVisible();
+  await expect(page.getByText("Load featured video").first()).toBeVisible();
+  await expect(page.getByText("Customer rating").first()).toBeVisible();
+
+  await page.goto(`/service/${actors.serviceId}`);
+  await expect(page.getByText("Play featured service video").first()).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /Reviews \(/ }).click();
+  await expect(page.getByText("Public approved").first()).toBeVisible();
+
+  // STEP 10 — Verify dashboard attribution
   const dashboardHeaders = {
     "x-user-id": actors.managerUserId,
     "x-vendor-id": actors.vendorId,

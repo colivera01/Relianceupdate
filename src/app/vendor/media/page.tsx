@@ -106,8 +106,8 @@ export default function VendorMediaPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Media / Proof Library</h1>
-          <p className="text-sm text-gray-600">Review approved, pending, and rejected media for your jobs.</p>
+          <h1 className="text-2xl font-semibold text-gray-900">Service Video Library</h1>
+          <p className="text-sm text-gray-600">Review approved, pending, and rejected service videos for your jobs.</p>
         </div>
         <Button asChild variant="outline">
           <Link href="/vendor/jobs">Back to Jobs</Link>
@@ -142,7 +142,7 @@ export default function VendorMediaPage() {
 
       {loading ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-gray-600">Loading media library...</CardContent>
+          <CardContent className="pt-6 text-sm text-gray-600">Loading service videos...</CardContent>
         </Card>
       ) : null}
 
@@ -150,14 +150,14 @@ export default function VendorMediaPage() {
         <Card>
           <CardContent className="space-y-2 pt-6">
             <p className="text-sm text-red-600">{error}</p>
-            <p className="text-sm text-gray-600">Media management is being finalized.</p>
+            <p className="text-sm text-gray-600">This video workspace is still being polished.</p>
           </CardContent>
         </Card>
       ) : null}
 
       {!loading && !error && filteredAssets.length === 0 ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-gray-600">Media management is being finalized.</CardContent>
+          <CardContent className="pt-6 text-sm text-gray-600">No service videos match this filter yet.</CardContent>
         </Card>
       ) : null}
 
@@ -175,10 +175,10 @@ export default function VendorMediaPage() {
                   {asset.mimeType ? <Badge variant="outline">{asset.mimeType}</Badge> : null}
                 </div>
                 <p className="text-gray-700">
-                  Job: <span className="font-medium">{asset.jobTitle || "N/A"}</span>
+                  Job: <span className="font-medium">{asset.jobTitle || "Not linked to a saved job"}</span>
                 </p>
                 <p className="text-gray-700">
-                  Client: <span className="font-medium">{asset.clientName || "N/A"}</span>
+                  Client: <span className="font-medium">{asset.clientName || "Not recorded"}</span>
                 </p>
                 <p className="text-xs text-gray-500">Uploaded: {new Date(asset.createdAt).toLocaleString()}</p>
               </CardContent>

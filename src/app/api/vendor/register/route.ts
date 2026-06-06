@@ -4,6 +4,11 @@ import { getUserIdFromRequest } from "@/lib/auth";
 import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 import { trySetVendorApprovalStatus } from "@/lib/vendor-status";
 import { getServiceTemplatesForCategory, type ServiceTemplate } from "@/config/service-templates";
+import { requireVerifiedEmailForAction } from "@/lib/email-verification-enforcement";
+import { addRegisteredUser, findRegisteredUserByEmail } from "@/lib/dev-registered-users";
+import { hashPassword } from "@/lib/auth-password";
+import { findDbCredentialByEmail, upsertDbCredential } from "@/lib/auth-credentials";
+import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
 
 type SelectedServiceInput = {
   name: string;
@@ -13,14 +18,44 @@ type SelectedServiceInput = {
   source?: string;
 };
 
+function parseOptionalString(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function parseOptionalInteger(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseBooleanFlag(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes";
+}
+
+function parseCommaSeparatedText(value: unknown) {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean);
+    return normalized.length > 0 ? normalized.join(", ") : null;
+  }
+
+  const normalized = String(value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return normalized.length > 0 ? normalized.join(", ") : null;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = await request.json();
+    const userId = await getUserIdFromRequest(request);
     const businessName = String(body?.businessName || "").trim();
     const rawBusinessType = String(body?.businessType || "").trim();
     const customBusinessType = String(body?.customBusinessType || "").trim();
@@ -31,6 +66,19 @@ export async function POST(request: NextRequest) {
     const zipCode = String(body?.zipCode || "").trim();
     const businessType =
       rawBusinessType.toLowerCase() === "other" ? customBusinessType : rawBusinessType;
+    const vendorProfileData = {
+      foundedYear: parseOptionalInteger(body?.foundedYear),
+      bio: parseOptionalString(body?.businessBio),
+      website: parseOptionalString(body?.website),
+      licenseNumber: parseOptionalString(body?.licenseNumber),
+      insuranceStatus: parseBooleanFlag(body?.insuranceStatus),
+      bondingStatus: parseBooleanFlag(body?.bondingStatus),
+      emergencyContact: parseOptionalString(body?.emergencyContact),
+      responseTimeSettings: parseOptionalString(body?.responseTime),
+      serviceTypes: parseCommaSeparatedText(body?.serviceTypes),
+      specializations: parseCommaSeparatedText(body?.specializations),
+      serviceAreas: parseCommaSeparatedText(body?.serviceAreas),
+    };
 
     if (!businessName || !businessType) {
       return NextResponse.json(
@@ -46,8 +94,129 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let verification:
+      | Awaited<ReturnType<typeof sendOrPreviewEmailVerification>>
+      | null = null;
+    let persistedCredentialId: string | null = null;
+    let resolvedUserId = userId ? String(userId) : "";
+
+    if (!resolvedUserId) {
+      const firstName = String(body?.firstName || "").trim();
+      const lastName = String(body?.lastName || "").trim();
+      const email = String(body?.email || "").trim().toLowerCase();
+      const phone = String(body?.phone || "").trim();
+      const password = String(body?.password || "");
+
+      if (!firstName || !lastName || !email || !phone || !password) {
+        return NextResponse.json(
+          {
+            error:
+              "First name, last name, email, phone number, and password are required to create a vendor account.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return NextResponse.json(
+          { error: "Invalid email format" },
+          { status: 400 }
+        );
+      }
+
+      if (password.length < 8) {
+        return NextResponse.json(
+          { error: "Password must be at least 8 characters long" },
+          { status: 400 }
+        );
+      }
+
+      const [existingCredential, existingUser, existingRegistryUser] = await Promise.all([
+        findDbCredentialByEmail(email).catch(() => null),
+        prisma.user.findUnique({
+          where: { email },
+          select: { id: true },
+        }),
+        Promise.resolve(findRegisteredUserByEmail(email)),
+      ]);
+      if (existingCredential || existingUser || existingRegistryUser) {
+        return NextResponse.json(
+          {
+            error:
+              "An account with this email already exists. Sign in first to continue vendor setup.",
+            code: "ACCOUNT_ALREADY_EXISTS",
+          },
+          { status: 409 }
+        );
+      }
+
+      const passwordHash = hashPassword(password);
+      const createdUser = await prisma.user.create({
+        data: {
+          name: `${firstName} ${lastName}`.trim(),
+          email,
+          phone,
+          address: address || null,
+          city: city || null,
+          state: state || null,
+          zipCode: zipCode || null,
+          locationPreferenceEnabled: false,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+        },
+      });
+      resolvedUserId = String(createdUser.id);
+
+      const credential = await upsertDbCredential({
+        userId: resolvedUserId,
+        email,
+        passwordHash,
+      });
+      persistedCredentialId = String(credential.id);
+      addRegisteredUser({
+        id: resolvedUserId,
+        firstName,
+        lastName,
+        email,
+        phone,
+        passwordHash,
+        userType: "vendor",
+        businessName,
+        businessType,
+        category: primaryCategory || businessType,
+        address,
+        city,
+        state,
+        zipCode,
+        createdAt: new Date().toISOString(),
+        isActive: true,
+      });
+      verification = await sendOrPreviewEmailVerification({
+        email,
+        credentialId: persistedCredentialId,
+        recipientName: `${firstName} ${lastName}`.trim() || null,
+        baseUrl: request.nextUrl.origin,
+      }).catch((sendError) => {
+        console.error("Vendor verification email send error:", sendError);
+        return null;
+      });
+    } else {
+      const verificationGate = await requireVerifiedEmailForAction({
+        userId: resolvedUserId,
+        action: "register_vendor_account",
+      });
+      if (verificationGate) {
+        return verificationGate;
+      }
+    }
+
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: resolvedUserId },
       select: { id: true, name: true, email: true, phone: true },
     });
     if (!user) {
@@ -56,7 +225,7 @@ export async function POST(request: NextRequest) {
 
     const existingManagerMembership = await (prisma as any).vendorMembership.findFirst({
       where: {
-        userId,
+        userId: resolvedUserId,
         role: "MANAGER",
       },
       include: {
@@ -98,11 +267,12 @@ export async function POST(request: NextRequest) {
             name: businessName,
             businessName,
             businessType,
-            category: businessType,
+            category: primaryCategory || businessType,
             address,
             city,
             state,
             zipCode,
+            ...vendorProfileData,
             ...(shouldRefreshCoordinates ? coordinateData : {}),
           },
         });
@@ -135,14 +305,16 @@ export async function POST(request: NextRequest) {
             name: businessName,
             businessName,
             businessType,
-            category: businessType,
-            firstName: user.name || null,
+            category: primaryCategory || businessType,
+            firstName: String(body?.firstName || "").trim() || user.name || null,
+            lastName: String(body?.lastName || "").trim() || null,
             email: user.email || null,
             phone: user.phone || null,
             address,
             city,
             state,
             zipCode,
+            ...vendorProfileData,
             ...coordinateData,
           },
         });
@@ -150,7 +322,7 @@ export async function POST(request: NextRequest) {
         const membership = await tx.vendorMembership.create({
           data: {
             vendorId: vendor.id,
-            userId,
+            userId: resolvedUserId,
             role: "MANAGER",
             status: "PENDING",
           },
@@ -168,11 +340,21 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Vendor registered successfully. Vendor account pending approval.",
+      message: userId
+        ? "Vendor registered successfully. Vendor account pending approval."
+        : "Vendor account created. Verify your email, then sign in to continue vendor setup.",
       vendorId,
       membershipId,
       requiresApproval: true,
       approved: false,
+      emailVerificationRequired: !userId,
+      emailDeliveryQueued: Boolean(verification?.sendResult.ok),
+      ...(process.env.NODE_ENV !== "production" && verification
+        ? {
+            verificationLinkPreview: verification.verificationLink,
+            verificationTokenPreview: verification.verificationTokenPreview,
+          }
+        : {}),
     });
   } catch (error) {
     console.error("Vendor registration error:", error);

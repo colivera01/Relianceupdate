@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -10,6 +11,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     const body = await request.json().catch(() => ({}));
     const deviceUid = String(body?.deviceUid || "").trim();
     const deviceType = String(body?.deviceType || "PHONE").trim().toUpperCase();
+    const model = String(body?.model || "").trim();
+    const os = String(body?.os || "").trim();
+    const appVersion = String(body?.appVersion || "").trim();
+    const deviceName =
+      model ||
+      (deviceType === "HEADSET" ? "Employee Headset" : "Employee Phone");
     if (!deviceUid) {
       return NextResponse.json({ error: "deviceUid is required" }, { status: 422 });
     }
@@ -36,22 +43,24 @@ export async function POST(request: Request): Promise<NextResponse> {
             deviceType,
             isActive: true,
             lastSeenAt: now,
-            model: String(body?.model || existing.model || ""),
-            os: String(body?.os || existing.os || ""),
-            appVersion: String(body?.appVersion || existing.appVersion || ""),
+            deviceName: deviceName || existing.deviceName,
+            model: model || existing.model || "",
+            os: os || existing.os || "",
+            appVersion: appVersion || existing.appVersion || "",
           },
         })
       : await (prisma as any).device.create({
           data: {
             vendorId: membership.vendorId,
             deviceUid,
+            deviceName,
             deviceType,
             isActive: true,
             pairedAt: now,
             lastSeenAt: now,
-            model: String(body?.model || ""),
-            os: String(body?.os || ""),
-            appVersion: String(body?.appVersion || ""),
+            model,
+            os,
+            appVersion,
           },
         });
 
@@ -90,10 +99,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         actorUserId: userId,
         newValue: {
           deviceUid,
+          deviceName,
           deviceType,
-          model: String(body?.model || ""),
-          os: String(body?.os || ""),
-          appVersion: String(body?.appVersion || ""),
+          model,
+          os,
+          appVersion,
         },
         metadata: {
           vendorId: membership.vendorId,
@@ -107,6 +117,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       pairing: {
         deviceId: device.id,
         deviceUid: device.deviceUid,
+        deviceName: device.deviceName,
         deviceType: device.deviceType,
         vendorId: membership.vendorId,
         membershipId: membership.id,
@@ -120,6 +131,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: "Failed to pair employee device", details: error?.message }, { status: 500 });
+    const runtimeError = getEmployeeRuntimeErrorResponse("pair", error);
+    return NextResponse.json(runtimeError.body, { status: runtimeError.status });
   }
 }

@@ -1,32 +1,51 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
+import { ArrowRight, CheckCircle2, Play, Search, ShieldCheck, Star, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { PublicHeroArtwork } from '@/components/public/PublicHeroArtwork';
+import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
+import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
+import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
-import { 
-  Search, 
-  Star, 
-  Shield, 
-  Clock, 
-  Users, 
-  CheckCircle, 
-  ArrowRight,
-  Play,
-  TrendingUp,
-  Zap,
-  Heart,
-  MessageCircle,
-  Settings,
-  Sparkles
-} from 'lucide-react';
+import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
 
-const HOME_MARKETPLACE_PREVIEW_LIMIT = 3;
+const HOME_MARKETPLACE_PREVIEW_LIMIT = 4;
+
+const trustPillars = [
+  {
+    title: 'Customer Reviews',
+    description: 'Public customer feedback remains visible as its own signal.',
+    icon: Star,
+  },
+  {
+    title: 'Verified Service Videos',
+    description: 'Approved public service videos add visual accountability.',
+    icon: Video,
+  },
+  {
+    title: 'Reliance Trust Score',
+    description: 'Platform-generated performance scoring stays separate from reviews.',
+    icon: ShieldCheck,
+  },
+];
+
+const trustMetrics = [
+  { label: 'Workflow completion', value: 'Measured' },
+  { label: 'Video verification', value: 'Verified' },
+  { label: 'Dispute-free completion', value: 'Tracked' },
+  { label: 'Operational reliability', value: 'Weighted' },
+];
+
+function isPlaceholderMarketplacePreview(url: string | null | undefined) {
+  const normalized = String(url || '').trim().toLowerCase();
+  if (!normalized) return true;
+  return normalized.includes('interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4');
+}
 
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<'user' | 'vendor'>('user');
   const {
     data: marketplaceData,
     isLoading: marketplaceLoading,
@@ -41,459 +60,437 @@ export default function HomePage() {
     isError: categoriesError,
   } = useServiceCategories();
 
-  const features = [
-    {
-      icon: <Search className="h-6 w-6" />,
-      title: "Discover Local Services",
-      description: "Find exactly what you need, when you need it."
-    },
-    {
-      icon: <MessageCircle className="h-6 w-6" />,
-      title: "Transparent Video Profiles",
-      description: "See vendors in action with video showcases and demonstrations."
-    },
-    {
-      icon: <TrendingUp className="h-6 w-6" />,
-      title: "Powerful Analytics",
-      description: "Vendors get detailed insights to grow their business."
-    },
-    {
-      icon: <Star className="h-6 w-6" />,
-      title: "Enhanced Reviews",
-      description: "Generate more authentic reviews than other platforms."
-    }
-  ];
-
-  const vendorBenefits = [
-    "Scale your business with new customers",
-    "Create compelling video profiles",
-    "Build your brand and reputation",
-    "Access powerful business analytics",
-    "Generate authentic customer reviews"
-  ];
-
-  const userBenefits = [
-    "Find local professionals with video profiles",
-    "See vendors in action before hiring",
-    "Read real customer reviews",
-    "Make informed decisions with transparency",
-    "Connect with local service providers"
-  ];
-
   const marketplaceResults = marketplaceData?.results || [];
-  const categoryPreview = (categoryData?.categories || []).slice(0, 4);
+  const featuredService =
+    marketplaceResults.find((item) => Boolean(item.previewMediaUrl) && Boolean(item.previewMediaType)) ||
+    marketplaceResults[0] ||
+    null;
+  const secondaryServices = marketplaceResults
+    .filter((item) => item.serviceId !== featuredService?.serviceId)
+    .slice(0, 3);
+  const categoryPreview = (categoryData?.categories || []).slice(0, 5);
   const totalPublicServices = marketplaceData?.pagination?.total ?? categoryData?.meta?.countedServices ?? 0;
+  const hasCuratedHeroMedia =
+    Boolean(featuredService?.previewMediaUrl) &&
+    Boolean(featuredService?.previewMediaType) &&
+    !isPlaceholderMarketplacePreview(featuredService?.previewMediaUrl);
+  const heroServiceName = featuredService?.serviceName || 'See trusted work before you book';
+  const heroVendorName = featuredService?.vendorName || 'Reliance marketplace';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 text-slate-900">
-      {/* Navigation */}
-      <nav className="border-b border-blue-200 bg-white/95 backdrop-blur-sm sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-3 group">
-                <div className="relative">
-                  <img src="/reliance-logo.png" alt="Reliance" className="h-16 w-16 transition-transform group-hover:scale-110 drop-shadow-md" />
-                </div>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link href="/browse">
-                <Button variant="ghost" className="text-slate-600 hover:text-blue-700 hover:bg-blue-50">
-                  Browse Services
-                </Button>
-              </Link>
-              <Link href="/auth/login">
-                <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400">
-                  Sign In
-                </Button>
-              </Link>
-              <Link href="#register">
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200">
-                  Get Started
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] text-white">
+      <section className="reliance-dark-shell reliance-grid-lines relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(53,214,165,0.14),transparent_20%)]" />
+        <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pb-24">
+          <PublicSiteHeader
+            tone="dark"
+            hideLogo
+            links={[
+              { href: '/', label: 'Home' },
+              { href: '/browse', label: 'Services' },
+              { href: '/help', label: 'How It Works' },
+            ]}
+            className="mb-10"
+            ctaLabel="Find a Service"
+            ctaHref="/browse"
+          />
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800">
-        {/* Animated background elements */}
-        <div className="absolute inset-0">
-          <div className="absolute top-20 left-10 w-20 h-20 bg-blue-400/20 rounded-full blur-xl animate-pulse"></div>
-          <div className="absolute top-40 right-20 w-32 h-32 bg-blue-300/20 rounded-full blur-xl animate-pulse delay-1000"></div>
-          <div className="absolute bottom-20 left-1/4 w-24 h-24 bg-blue-500/20 rounded-full blur-xl animate-pulse delay-2000"></div>
-        </div>
-        
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/90 to-blue-800/90"></div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-32">
-          <div className="text-center">
-            <div className="flex justify-center mb-8">
-              <div className="relative">
-                <div className="bg-white rounded-full p-6 shadow-2xl">
-                  <img src="/reliance-logo.png" alt="Reliance" className="h-48 w-48 mx-auto drop-shadow-lg" />
-                </div>
-              </div>
-            </div>
-            <h1 className="text-6xl md:text-7xl font-bold text-white mb-6 leading-tight">
-              Get the Job Done Right
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-200 to-white">
-                {" "}— With People You Can Count On
-              </span>
-            </h1>
-            <p className="text-xl text-blue-100 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Whether you're looking for help at home or support from a specialist, Reliance connects you with local professionals you can trust — no hassle, no guesswork.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="#register">
-                <Button size="lg" className="text-lg px-8 py-4 bg-white text-blue-700 hover:bg-blue-50 shadow-lg hover:shadow-xl transition-all duration-200 group">
-                  <Play className="mr-2 h-5 w-5 group-hover:animate-pulse" />
-                  Get Started
-                </Button>
-              </Link>
-              <Link href="/browse">
-                <Button size="lg" className="text-lg px-8 py-4 bg-blue-600 text-white hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200 group font-semibold">
-                  <Search className="mr-2 h-5 w-5 group-hover:animate-pulse" />
-                  Browse Services
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-slate-900 mb-4">
-              Why Choose Reliance?
-            </h2>
-            <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-4">
-              Built for transparency, powered by integrity.
-            </p>
-            <p className="text-lg text-slate-600 max-w-3xl mx-auto">
-              Reliance is designed for those who want more than just a quick hire — we're here to make service experiences smooth, honest, and reliable from the very beginning.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {features.map((feature, index) => (
-              <Card key={index} className="text-center border-0 bg-gradient-to-br from-blue-50 to-white hover:from-blue-100 hover:to-white transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl group">
-                <CardHeader>
-                  <div className="mx-auto w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg flex items-center justify-center text-white mb-4 shadow-md group-hover:scale-110 transition-transform">
-                    {feature.icon}
+          <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+            <div className="max-w-2xl">
+              <div className="mb-7 -mt-1">
+                <div className="flex h-[19rem] w-full max-w-[35rem] items-end justify-center overflow-visible sm:h-[20rem] lg:h-[21rem] lg:max-w-[37rem]">
+                  <div className="relative -translate-y-5 w-[25rem] max-w-full sm:w-[27rem] lg:w-[29rem]">
+                    <div className="aspect-[864/618] w-full">
+                      <div className="pointer-events-none absolute inset-[-8%] bg-[radial-gradient(circle_at_28%_24%,rgba(255,255,255,0.26),rgba(130,167,255,0.2)_34%,rgba(36,107,255,0.18)_58%,transparent_78%)] blur-2xl" />
+                      <div
+                        role="img"
+                        aria-label="Reliance"
+                        className="relative z-[1] h-full w-full bg-[linear-gradient(145deg,#ffffff_4%,#edf4ff_22%,#a8c6ff_48%,#5c95ff_74%,#246bff_100%)] [mask-image:url('/reliance-logo-tight.png')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/reliance-logo-tight.png')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain]"
+                      />
+                    </div>
                   </div>
-                  <CardTitle className="text-lg text-slate-900">{feature.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-slate-600">
-                    {feature.description}
-                  </CardDescription>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+                <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.32em] text-white/48">
+                  Customer Reviews + Verified Service Videos + Trust Score
+                </div>
+              </div>
+              <h1 className="max-w-3xl font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl lg:text-7xl">
+                Trust Beyond <span className="text-[var(--reliance-blue-soft)]">Reviews</span>
+              </h1>
+              <p className="mt-6 max-w-2xl text-lg leading-8 text-white/76 sm:text-xl">
+                Reliance helps customers compare real public reviews, verified service videos,
+                and the Reliance Trust Score without changing how the underlying platform works.
+              </p>
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link href="/browse">
+                  <Button className="h-12 rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-6 text-white shadow-[0_22px_50px_rgba(36,107,255,0.32)] hover:brightness-110">
+                    <Search className="mr-2 h-4 w-4" />
+                    Explore Services
+                  </Button>
+                </Link>
+                <Link href="/auth/register?type=user">
+                  <Button
+                    variant="outline"
+                    className="h-12 rounded-full border-white/16 bg-white/6 px-6 text-white backdrop-blur-md hover:bg-white/10 hover:text-white"
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    Join Reliance
+                  </Button>
+                </Link>
+              </div>
+
+              <div className="mt-10 grid gap-3 sm:grid-cols-3">
+                {trustPillars.map((item) => (
+                  <div
+                    key={item.title}
+                    className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-lg"
+                  >
+                    <item.icon className="h-5 w-5 text-[var(--reliance-blue-soft)]" />
+                    <div className="mt-3 text-sm font-semibold">{item.title}</div>
+                    <p className="mt-1 text-sm leading-6 text-white/68">{item.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-5">
+              <div className="reliance-glass rounded-[32px] border border-white/10 p-5 shadow-[0_30px_80px_rgba(4,9,20,0.38)]">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/62">
+                      Featured Service Story
+                    </div>
+                    <div className="mt-2 font-display text-2xl text-white">
+                      {heroServiceName}
+                    </div>
+                  </div>
+                  <Badge className="bg-[var(--reliance-blue)] text-white hover:bg-[var(--reliance-blue)]">
+                    {marketplaceLoading ? 'Loading live listings' : `${totalPublicServices} public services`}
+                  </Badge>
+                </div>
+
+                <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(6,17,31,0.55)]">
+                  {hasCuratedHeroMedia && featuredService ? (
+                    <PublicMediaPreview
+                      autoPlayVideo
+                      url={featuredService.previewMediaUrl}
+                      type={featuredService.previewMediaType}
+                      alt={featuredService.serviceName}
+                      className="h-72 w-full object-cover"
+                      videoLabel="Verified service story"
+                    />
+                  ) : (
+                    <PublicHeroArtwork serviceName={heroServiceName} vendorName={heroVendorName} />
+                  )}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white/92">
+                      {heroVendorName}
+                    </p>
+                    <p className="mt-1 max-w-xl text-sm leading-6 text-white/64">
+                      {featuredService
+                        ? cleanPublicServiceDescription(featuredService.serviceDescription, featuredService.vendorName) ||
+                          'Public-safe service listing'
+                        : 'Browse local services backed by public videos, reviews, and platform trust signals.'}
+                    </p>
+                  </div>
+                  {featuredService ? (
+                    <Link href={`/service/${featuredService.serviceId}`}>
+                      <Button className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
+                        View Service
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-[1.15fr_0.85fr]">
+                <div className="reliance-light-card rounded-[28px] px-5 py-5 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
+                    Dual-Layer Trust
+                  </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">
+                      Customer Ratings stay visible. Reliance Trust Score stays independent. Verified Service Videos
+                      connect the two with real completed-service visibility.
+                    </p>
+                  <div className="mt-5 space-y-3">
+                    {trustMetrics.map((item) => (
+                      <div key={item.label} className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
+                        <span className="text-sm font-medium text-slate-700">{item.label}</span>
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                          {item.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="reliance-light-card rounded-[28px] px-5 py-5 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
+                    Marketplace Signal
+                  </div>
+                  <div className="mt-3 text-3xl font-semibold text-slate-950">
+                    {marketplaceLoading ? '...' : totalPublicServices}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Publicly listed services are discoverable as soon as the approved vendor, videos, and listing state are ready.
+                  </p>
+                  <div className="mt-6 space-y-3">
+                    {secondaryServices.length > 0 ? (
+                      secondaryServices.map((item) => (
+                        <Link
+                          key={item.serviceId}
+                          href={`/service/${item.serviceId}`}
+                          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3 transition hover:border-[var(--reliance-blue)] hover:bg-slate-50"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-slate-900">{item.serviceName}</div>
+                            <div className="truncate text-xs text-slate-500">{item.vendorName}</div>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-slate-400" />
+                        </Link>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                        Public categories and vendors appear here as listings load.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Live Marketplace Preview */}
-      <section className="py-20 bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
-            <div>
-              <Badge className="mb-3 bg-blue-100 text-blue-800 hover:bg-blue-100">
-                Live marketplace
-              </Badge>
-              <h2 className="text-4xl font-bold text-slate-900 mb-3">
-                See what is active on Reliance
-              </h2>
-              <p className="text-lg text-slate-600 max-w-2xl">
-                These listings and category counts come from the same public-safe inventory that powers Browse.
-              </p>
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <div>
+            <div className="reliance-kicker border border-[var(--reliance-border)] bg-white/5 text-white/62">
+              Trust System
             </div>
-            <Link href="/browse">
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                View All Services
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+            <h2 className="mt-4 font-display text-3xl font-semibold text-slate-950 sm:text-4xl">
+              Three signals, one clearer hiring decision
+            </h2>
           </div>
+          <Link href="/browse" className="text-sm font-semibold text-[var(--reliance-blue)]">
+            Browse live marketplace
+          </Link>
+        </div>
 
-          <div className="grid lg:grid-cols-[1.6fr_1fr] gap-8">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-slate-900">Newest Public Services</h3>
-                <span className="text-sm text-slate-500">
-                  {marketplaceLoading ? 'Loading...' : `${totalPublicServices} public service${totalPublicServices === 1 ? '' : 's'}`}
-                </span>
+        <div className="grid gap-5 lg:grid-cols-3">
+          {trustPillars.map((item) => (
+            <div
+              key={item.title}
+              className="reliance-light-card rounded-[30px] px-6 py-6"
+            >
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(36,107,255,0.15),rgba(53,214,165,0.16))] text-[var(--reliance-blue)]">
+                <item.icon className="h-5 w-5" />
               </div>
+              <h3 className="mt-5 font-display text-2xl font-semibold text-slate-950">{item.title}</h3>
+              <p className="mt-3 text-sm leading-7 text-slate-600">{item.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-              {marketplaceLoading ? (
-                <div className="grid md:grid-cols-3 gap-4">
-                  {[1, 2, 3].map((item) => (
-                    <Card key={item} className="animate-pulse border-blue-100">
-                      <CardContent className="p-5">
-                        <div className="h-4 bg-slate-200 rounded mb-3" />
-                        <div className="h-3 bg-slate-200 rounded mb-2" />
-                        <div className="h-3 bg-slate-200 rounded w-2/3 mb-5" />
-                        <div className="h-9 bg-slate-200 rounded" />
-                      </CardContent>
-                    </Card>
-                  ))}
+      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+        <div className="grid gap-8 lg:grid-cols-[0.82fr_1.18fr]">
+          <div className="reliance-light-card rounded-[32px] px-6 py-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
+                  Browse by Category
                 </div>
-              ) : marketplaceError ? (
-                <Card className="border-amber-200 bg-amber-50">
-                  <CardContent className="p-5 text-sm text-amber-900">
-                    We could not load live marketplace services right now. You can still browse the public catalog.
-                  </CardContent>
-                </Card>
-              ) : marketplaceResults.length === 0 ? (
-                <Card className="border-slate-200 bg-white">
-                  <CardContent className="p-5 text-sm text-slate-600">
-                    No public services are available yet. Check back as vendors publish approved listings.
-                  </CardContent>
-                </Card>
+                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Public inventory, grouped cleanly</h2>
+              </div>
+              <Link href="/browse">
+                <Button variant="outline" className="rounded-full border-slate-300 bg-white">
+                  Open Browse
+                </Button>
+              </Link>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              {categoriesLoading ? (
+                Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+                ))
+              ) : categoriesError ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                  Category counts are temporarily unavailable, but the marketplace is still browseable.
+                </div>
+              ) : categoryPreview.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                  Public categories will appear here as more approved listings go live.
+                </div>
               ) : (
-                <div className="grid md:grid-cols-3 gap-4">
-                  {marketplaceResults.map((item) => (
-                    <Card key={item.serviceId} className="bg-white border-blue-100 shadow-sm hover:shadow-lg transition-shadow">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <CardTitle className="text-lg leading-snug text-slate-900">
-                            {item.serviceName}
-                          </CardTitle>
-                          {item.vendorCategory ? (
-                            <Badge variant="outline" className="text-xs">
-                              {item.vendorCategory}
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <CardDescription className="line-clamp-2">
-                          {item.serviceDescription || 'Public service listing'}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="pt-0">
-                        <p className="text-sm text-slate-700 mb-2">
-                          Vendor:{' '}
-                          <Link href={`/vendors/${item.vendorId}`} className="font-medium text-blue-700 hover:text-blue-800">
-                            {item.vendorName}
-                          </Link>
-                        </p>
-                        <div className="flex items-center justify-between text-sm text-slate-600 mb-4">
-                          {typeof item.rating === 'number' && typeof item.reviewCount === 'number' ? (
-                            <span className="flex items-center gap-1 font-medium text-slate-900">
-                              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                              {item.rating.toFixed(1)} ({item.reviewCount} public review{item.reviewCount === 1 ? '' : 's'})
-                            </span>
-                          ) : (
-                            <span className="font-medium text-slate-900">New public listing</span>
-                          )}
-                          <span>{item.publicListing.hasPublicMedia ? 'Public proof available' : 'Vendor verified listing'}</span>
-                        </div>
-                        <Link href={`/service/${item.serviceId}`}>
-                          <Button variant="outline" className="w-full border-blue-300 text-blue-700 hover:bg-blue-50">
-                            View Service
-                          </Button>
-                        </Link>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                categoryPreview.map((category) => (
+                  <Link
+                    key={category.key}
+                    href={`/browse?category=${encodeURIComponent(category.label)}`}
+                    className="flex items-center justify-between gap-3 rounded-[24px] border border-slate-200 px-4 py-4 transition hover:border-[var(--reliance-blue)] hover:bg-slate-50"
+                  >
+                    <div>
+                      <div className="font-semibold text-slate-950">{category.label}</div>
+                      <div className="mt-1 text-sm text-slate-500">Public category inventory</div>
+                    </div>
+                    <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+                      {category.serviceCount}
+                    </div>
+                  </Link>
+                ))
               )}
             </div>
-
-            <Card className="bg-white border-blue-100 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-xl text-slate-900">Public Categories</CardTitle>
-                <CardDescription>Backend-derived category counts from public inventory.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {categoriesLoading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3].map((item) => (
-                      <div key={item} className="h-10 bg-slate-100 rounded animate-pulse" />
-                    ))}
-                  </div>
-                ) : categoriesError ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                    Category counts are temporarily unavailable.
-                  </div>
-                ) : categoryPreview.length === 0 ? (
-                  <div className="text-sm text-slate-600">
-                    Categories will appear as public services are published.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {categoryPreview.map((category) => (
-                      <Link
-                        key={category.key}
-                        href={`/browse?category=${encodeURIComponent(category.label)}`}
-                        className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-blue-300 hover:bg-blue-50 transition-colors"
-                      >
-                        <span className="font-medium text-slate-800">{category.label}</span>
-                        <span className="text-sm text-slate-500">
-                          {category.serviceCount} service{category.serviceCount === 1 ? '' : 's'}
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Registration Section */}
-      <section id="register" className="py-20 bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-slate-900 mb-4">
-              Join Reliance Today
-            </h2>
-            <p className="text-lg text-slate-600">
-              Choose your path and start your journey
-            </p>
           </div>
 
-          {/* Toggle Buttons */}
-          <div className="flex justify-center mb-8">
-            <div className="bg-white rounded-lg p-1 shadow-lg">
-              <button
-                onClick={() => setActiveTab('user')}
-                className={`px-8 py-3 rounded-md font-medium transition-all ${
-                  activeTab === 'user'
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg'
-                    : 'text-slate-600 hover:text-blue-700'
-                }`}
-              >
-                I Need Services
-              </button>
-              <button
-                onClick={() => setActiveTab('vendor')}
-                className={`px-8 py-3 rounded-md font-medium transition-all ${
-                  activeTab === 'vendor'
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg'
-                    : 'text-slate-600 hover:text-blue-700'
-                }`}
-              >
-                I Provide Services
-              </button>
-            </div>
-          </div>
-
-          {/* Registration Cards */}
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* User Registration */}
-            <Card className={`transition-all duration-300 bg-white border-blue-200 shadow-lg hover:shadow-xl ${activeTab === 'user' ? 'ring-2 ring-blue-500 scale-105' : 'opacity-90'}`}>
-              <CardHeader>
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Users className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl text-slate-900">Find Services</CardTitle>
-                    <CardDescription className="text-slate-600">Join as a customer</CardDescription>
-                  </div>
+          <div className="reliance-light-card rounded-[32px] px-6 py-6">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
+                  Newest Public Services
                 </div>
-                <ul className="space-y-3">
-                  {userBenefits.map((benefit, index) => (
-                    <li key={index} className="flex items-center space-x-3">
-                      <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-                      <span className="text-slate-700">{benefit}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardHeader>
-              <CardContent>
-                <Link href="/auth/register?type=user">
-                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 group">
-                    Join as Customer
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* Vendor Registration */}
-            <Card className={`transition-all duration-300 bg-white border-blue-200 shadow-lg hover:shadow-xl ${activeTab === 'vendor' ? 'ring-2 ring-blue-500 scale-105' : 'opacity-90'}`}>
-              <CardHeader>
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <TrendingUp className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl text-slate-900">Provide Services</CardTitle>
-                    <CardDescription className="text-slate-600">Join as a vendor</CardDescription>
-                  </div>
-                </div>
-                <ul className="space-y-3">
-                  {vendorBenefits.map((benefit, index) => (
-                    <li key={index} className="flex items-center space-x-3">
-                      <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-                      <span className="text-slate-700">{benefit}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardHeader>
-              <CardContent>
-                <Link href="/auth/register?type=vendor">
-                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 group">
-                    Join as Vendor
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-slate-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div>
-              <div className="flex items-center space-x-2 mb-4">
-                <img src="/reliance-logo.png" alt="Reliance" className="h-12 w-12 rounded drop-shadow-md" />
-                <span className="text-xl font-bold text-white">RELIANCE</span>
+                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Scroll the live marketplace like a premium catalog</h2>
               </div>
-              <p className="text-slate-400">
-                Connecting local professionals with customers through transparency and video profiles.
-              </p>
+              <span className="text-sm text-slate-500">
+                {marketplaceLoading ? 'Loading...' : `${totalPublicServices} total public services`}
+              </span>
             </div>
-            <div>
-              <h3 className="font-semibold mb-4 text-white">For Customers</h3>
-              <ul className="space-y-2 text-slate-400">
-                <li><Link href="/browse" className="hover:text-white transition-colors">Browse Services</Link></li>
-                <li><Link href="/auth/register?type=user" className="hover:text-white transition-colors">Sign Up</Link></li>
-                <li><Link href="/auth/login" className="hover:text-white transition-colors">Sign In</Link></li>
-              </ul>
+
+            <div className="mt-6 grid gap-5 md:grid-cols-2">
+              {marketplaceLoading ? (
+                Array.from({ length: 4 }).map((_, index) => (
+                  <Card key={index} className="overflow-hidden rounded-[26px] border-slate-200">
+                    <div className="h-44 animate-pulse bg-slate-100" />
+                    <CardContent className="space-y-3 p-5">
+                      <div className="h-4 w-32 animate-pulse rounded bg-slate-100" />
+                      <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
+                      <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
+                    </CardContent>
+                  </Card>
+                ))
+              ) : marketplaceError ? (
+                <div className="md:col-span-2 rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900">
+                  We could not load live marketplace services right now. The public catalog is still available through Browse.
+                </div>
+              ) : marketplaceResults.length === 0 ? (
+                <div className="md:col-span-2 rounded-[26px] border border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
+                  No public services are available yet. Check back as vendors publish approved listings.
+                </div>
+              ) : (
+                marketplaceResults.map((item) => (
+                  <Card key={item.serviceId} className="overflow-hidden rounded-[26px] border-slate-200 bg-white shadow-none">
+                    <PublicMediaPreview
+                      url={item.previewMediaUrl}
+                      type={item.previewMediaType}
+                      alt={item.serviceName}
+                      className="h-48 w-full object-cover"
+                      videoLabel="Verified service video"
+                    />
+                    <CardContent className="space-y-3 p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-display text-xl font-semibold text-slate-950">{item.serviceName}</div>
+                          <div className="mt-1 text-sm text-slate-500">{item.vendorName}</div>
+                        </div>
+                        {item.vendorCategory ? (
+                          <Badge variant="outline" className="rounded-full border-slate-300 bg-slate-50 text-slate-700">
+                            {item.vendorCategory}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="line-clamp-2 text-sm leading-6 text-slate-600">
+                        {cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Public service listing'}
+                      </p>
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                          <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
+                            {item.publicListing.hasPublicMedia ? 'Service videos' : 'Verified listing'}
+                          </span>
+                          {typeof item.rating === 'number' && typeof item.reviewCount === 'number' ? (
+                            <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+                              {item.rating.toFixed(1)} • {item.reviewCount} reviews
+                            </span>
+                          ) : null}
+                        </div>
+                        <Link href={`/service/${item.serviceId}`} className="text-sm font-semibold text-[var(--reliance-blue)]">
+                          View
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
-            <div>
-              <h3 className="font-semibold mb-4 text-white">For Vendors</h3>
-              <ul className="space-y-2 text-slate-400">
-                <li><Link href="/auth/register?type=vendor" className="hover:text-white transition-colors">Join as Vendor</Link></li>
-                <li><Link href="/auth/login" className="hover:text-white transition-colors">Sign In</Link></li>
-                <li><Link href="/auth/login" className="hover:text-white transition-colors">Vendor Portal</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-4 text-white">Support</h3>
-              <ul className="space-y-2 text-slate-400">
-                <li><Link href="/help" className="hover:text-white transition-colors">Help Center</Link></li>
-                <li><Link href="/contact" className="hover:text-white transition-colors">Contact Us</Link></li>
-                <li><Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-slate-800 mt-8 pt-8 text-center text-slate-400">
-            <p>&copy; 2024 Reliance. All rights reserved.</p>
           </div>
         </div>
-      </footer>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="reliance-light-card rounded-[32px] px-6 py-7">
+            <div className="reliance-kicker border border-[var(--reliance-border)] bg-slate-50 text-slate-600">
+              For Customers
+            </div>
+            <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">
+              Find verified local work with less guesswork
+            </h3>
+            <ul className="mt-5 space-y-3 text-sm text-slate-600">
+              {[
+                'Compare public reviews, service videos, and platform trust separately.',
+                'Browse vendor and service pages that feel curated instead of crowded.',
+                'Keep the same booking logic and support flows you already built.',
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-emerald)]" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-6">
+              <Link href="/auth/register?type=user">
+                <Button className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
+                  Join as Customer
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          <div className="reliance-light-card rounded-[32px] px-6 py-7">
+            <div className="reliance-kicker border border-[var(--reliance-border)] bg-slate-50 text-slate-600">
+              For Vendors
+            </div>
+            <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">
+              Present your business like a premium trust brand
+            </h3>
+            <ul className="mt-5 space-y-3 text-sm text-slate-600">
+              {[
+                'Showcase verified service videos instead of relying on text alone.',
+                'Benefit from stronger trust-score presentation without altering the score itself.',
+                'Keep your vendor, employee, moderation, and review workflows exactly as they are.',
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-blue)]" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-6">
+              <Link href="/auth/register?type=vendor">
+                <Button variant="outline" className="rounded-full border-slate-300 bg-white text-slate-900 hover:bg-slate-50">
+                  Join as Vendor
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <PublicSiteFooter />
     </div>
   );
 }

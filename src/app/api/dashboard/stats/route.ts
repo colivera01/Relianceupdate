@@ -1,70 +1,103 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
+import { prisma } from "@/server/db";
+import {
+  countableReviewWhere,
+  countableUserWhere,
+  countableVendorWhere,
+} from "@/lib/metrics-exclusion";
 
-// TODO: BACKEND DEVELOPER - Replace this mock implementation with actual database queries
-// This is a template showing the expected response format
+function getMonthBounds(referenceDate = new Date()) {
+  const startOfCurrentMonth = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    1
+  );
+  const startOfNextMonth = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth() + 1,
+    1
+  );
+  const startOfPreviousMonth = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth() - 1,
+    1
+  );
 
-export async function GET() {
+  return {
+    startOfCurrentMonth,
+    startOfNextMonth,
+    startOfPreviousMonth,
+  };
+}
+
+function calculateGrowthRate(currentCount: number, previousCount: number) {
+  if (previousCount <= 0) {
+    return currentCount > 0 ? 100 : 0;
+  }
+
+  return Math.round(((currentCount - previousCount) / previousCount) * 100);
+}
+
+export async function GET(request: Request) {
   try {
-    // TODO: Replace with actual database queries
-    // Example queries your backend should implement:
-    
-    // const totalUsers = await db.users.count({
-    //   where: {
-    //     userType: 'customer',
-    //     status: 'active'
-    //   }
-    // });
-    
-    // const totalVendors = await db.users.count({
-    //   where: {
-    //     userType: 'service_provider', 
-    //     status: 'active'
-    //   }
-    // });
-    
-    // const totalReviews = await db.reviews.count();
-    
-    // const growthRate = await calculateGrowthRate(); // Your growth calculation logic
+    await requireAdmin(request);
 
-    // Mock data for development
-    const mockStats = {
-      totalUsers: 1250,
-      totalVendors: 89,
-      totalReviews: 5670,
-      growthRate: 12,
-      lastUpdated: new Date().toISOString()
-    };
+    const { startOfCurrentMonth, startOfNextMonth, startOfPreviousMonth } =
+      getMonthBounds();
 
-    return NextResponse.json(mockStats);
-  } catch (error) {
-    console.error('Dashboard stats error:', error);
+    const [
+      totalUsers,
+      totalVendors,
+      totalReviews,
+      currentMonthUsers,
+      previousMonthUsers,
+    ] = await Promise.all([
+      prisma.user.count({ where: countableUserWhere() }),
+      prisma.vendor.count({ where: countableVendorWhere() }),
+      prisma.review.count({ where: countableReviewWhere() }),
+      prisma.user.count({
+        where: countableUserWhere({
+          createdAt: {
+            gte: startOfCurrentMonth,
+            lt: startOfNextMonth,
+          },
+        }),
+      }),
+      prisma.user.count({
+        where: countableUserWhere({
+          createdAt: {
+            gte: startOfPreviousMonth,
+            lt: startOfCurrentMonth,
+          },
+        }),
+      }),
+    ]);
+
+    return NextResponse.json({
+      totalUsers,
+      totalVendors,
+      totalReviews,
+      growthRate: calculateGrowthRate(currentMonthUsers, previousMonthUsers),
+      growthRateDefinition:
+        "Month-over-month change in countable customer registrations.",
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Dashboard stats error:", error);
+    if (
+      error.message === "Unauthorized" ||
+      String(error.message).includes("Forbidden")
+    ) {
+      return NextResponse.json(
+        { error: error.message || "Forbidden" },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
-      { error: 'Failed to fetch dashboard statistics' },
+      { error: "Failed to fetch dashboard statistics" },
       { status: 500 }
     );
   }
 }
-
-// TODO: BACKEND DEVELOPER - Add these helper functions as needed
-
-// Example growth rate calculation
-// async function calculateGrowthRate() {
-//   const currentMonth = await db.users.count({
-//     where: {
-//       createdAt: {
-//         gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-//       }
-//     }
-//   });
-//   
-//   const lastMonth = await db.users.count({
-//     where: {
-//       createdAt: {
-//         gte: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1),
-//         lt: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-//       }
-//     }
-//   });
-//   
-//   return lastMonth > 0 ? Math.round(((currentMonth - lastMonth) / lastMonth) * 100) : 0;
-// } 

@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, MapPin, SlidersHorizontal, X, Image as ImageIcon, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
+import { Search, MapPin, SlidersHorizontal, X, ChevronLeft, ChevronRight, Heart } from 'lucide-react';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAddFavorite, useFavoritesOptional, useRemoveFavorite } from '@/hooks/useFavorites';
+import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
 
 export default function UserDiscoverPage() {
   const [searchInput, setSearchInput] = useState('');
@@ -75,6 +76,8 @@ export default function UserDiscoverPage() {
       setFavoriteActionError(error?.message || 'Failed to update favorite');
     }
   };
+  const serviceReturnHref = '/discover';
+  const serviceReturnLabel = 'Back to Discover';
 
   return (
     <div className="pt-6">
@@ -129,7 +132,7 @@ export default function UserDiscoverPage() {
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="all">All Categories</option>
+                <option value="all">All Services</option>
                 {categories.map((category) => (
                   <option key={category.key} value={category.label}>
                     {category.label} ({category.serviceCount})
@@ -204,16 +207,12 @@ export default function UserDiscoverPage() {
           {results.map((item) => (
             <Card key={item.serviceId} className="hover:shadow-lg transition-shadow mb-4">
               <div className="relative">
-                {item.previewMediaUrl ? (
-                  <img src={item.previewMediaUrl} alt={item.serviceName} className="w-full h-48 object-cover rounded-t-lg" />
-                ) : (
-                  <div className="w-full h-48 rounded-t-lg bg-gray-100 flex items-center justify-center">
-                    <div className="text-center text-gray-500">
-                      <ImageIcon className="h-6 w-6 mx-auto mb-1" />
-                      <span className="text-xs">No public media preview</span>
-                    </div>
-                  </div>
-                )}
+                <PublicMediaPreview
+                  url={item.previewMediaUrl}
+                  type={item.previewMediaType}
+                  alt={item.serviceName}
+                  className="w-full h-48 object-cover rounded-t-lg"
+                />
               </div>
 
               <CardContent className="p-4">
@@ -235,12 +234,26 @@ export default function UserDiscoverPage() {
                     {item.location}
                   </div>
                 ) : null}
-                {typeof item.rating === 'number' && typeof item.reviewCount === 'number' ? (
-                  <p className="text-sm text-gray-700 mb-2">
-                    <span className="font-semibold">{item.rating.toFixed(1)}★</span>{' '}
-                    <span className="text-gray-500">({item.reviewCount} review{item.reviewCount === 1 ? '' : 's'})</span>
-                  </p>
-                ) : null}
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-2xl bg-blue-50 px-3 py-2 text-blue-900">
+                    <div className="font-semibold">
+                      {typeof item.rating === 'number' ? `${item.rating.toFixed(1)} stars` : 'New listing'}
+                    </div>
+                    <div className="text-blue-700">
+                      {typeof item.reviewCount === 'number'
+                        ? `${item.reviewCount} review${item.reviewCount === 1 ? '' : 's'}`
+                        : 'Reviews pending'}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 px-3 py-2 text-slate-800">
+                    <div className="font-semibold">
+                      {item.trustScore?.scored && item.trustScore.totalScorePct !== null
+                        ? `${item.trustScore.totalScorePct}%`
+                        : 'Building'}
+                    </div>
+                    <div className="text-slate-600">Reliance Trust Score</div>
+                  </div>
+                </div>
 
                 <div className="flex items-center justify-between mt-3">
                   <div className="text-base font-bold text-gray-900">${item.price.toFixed(2)}</div>
@@ -252,7 +265,10 @@ export default function UserDiscoverPage() {
                 </div>
 
                 <div className="mt-4 space-y-2">
-                  <Link href={`/service/${item.serviceId}`} className="block">
+                  <Link
+                    href={`/service/${item.serviceId}?returnTo=${encodeURIComponent(serviceReturnHref)}&returnLabel=${encodeURIComponent(serviceReturnLabel)}`}
+                    className="block"
+                  >
                     <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
                       View Service
                     </Button>

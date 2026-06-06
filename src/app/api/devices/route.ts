@@ -18,10 +18,34 @@ export async function GET(req: Request) {
 
     const devices = await (prisma as any).device.findMany({
       where: { vendorId },
-      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        vendorId: true,
+        deviceUid: true,
+        employeeId: true,
+        deviceType: true,
+        pairedAt: true,
+        lastSeenAt: true,
+        isActive: true,
+        model: true,
+      },
+      orderBy: [{ lastSeenAt: "desc" }, { pairedAt: "desc" }],
     });
 
-    return NextResponse.json({ devices });
+    return NextResponse.json({
+      devices: devices.map((device: any) => ({
+        id: device.id,
+        vendorId: device.vendorId,
+        deviceUid: device.deviceUid,
+        employeeId: device.employeeId,
+        deviceType: device.deviceType,
+        deviceName: device.model || device.deviceUid || `${device.deviceType} device`,
+        userAgent: null,
+        lastSeenAt: device.lastSeenAt,
+        createdAt: device.pairedAt,
+        isActive: device.isActive,
+      })),
+    });
   } catch (error: any) {
     console.error("[devices] Error:", error);
     return NextResponse.json(

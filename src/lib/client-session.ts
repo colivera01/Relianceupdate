@@ -20,6 +20,11 @@ export function getClientSessionHeaders(preferredUserId?: string | null): Record
     return headers;
   }
 
+  const token = localStorage.getItem("authToken") || localStorage.getItem("auth_token");
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const normalizedPreferredUserId =
     typeof preferredUserId === "string"
       ? preferredUserId.trim()
@@ -27,18 +32,15 @@ export function getClientSessionHeaders(preferredUserId?: string | null): Record
       ? String(preferredUserId)
       : "";
 
-  if (normalizedPreferredUserId) {
-    headers["x-user-id"] = normalizedPreferredUserId;
-  } else {
-    const id = readStoredUserIdFromBrowser();
-    if (id) {
-      headers["x-user-id"] = id;
+  if (!token && AUTH_DEBUG) {
+    if (normalizedPreferredUserId) {
+      headers["x-user-id"] = normalizedPreferredUserId;
+    } else {
+      const id = readStoredUserIdFromBrowser();
+      if (id) {
+        headers["x-user-id"] = id;
+      }
     }
-  }
-
-  const token = localStorage.getItem("authToken") || localStorage.getItem("auth_token");
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
   }
 
   if (AUTH_DEBUG) {
@@ -52,3 +54,23 @@ export function getClientSessionHeaders(preferredUserId?: string | null): Record
   return headers;
 }
 
+export function getClientAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  if (typeof window === "undefined") {
+    return headers;
+  }
+
+  const token = localStorage.getItem("authToken") || localStorage.getItem("auth_token");
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  if (AUTH_DEBUG) {
+    console.info(
+      `[getClientAuthHeaders] auth=${token ? `Bearer ${String(token).slice(0, 12)}...` : "null"}`
+    );
+  }
+
+  return headers;
+}

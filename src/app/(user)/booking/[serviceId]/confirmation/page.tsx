@@ -2,7 +2,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import { formatDisplayDate, formatDisplayTime } from '@/lib/date-display';
 import {
   CheckCircle,
   Calendar,
@@ -78,12 +78,8 @@ function BookingConfirmationPageInner() {
     setLoading(true);
     setError(null);
     try {
-      const userId = resolveCustomerUserId(user?.id);
       const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
         method: 'GET',
-        headers: {
-          ...(userId ? { 'x-user-id': userId } : {}),
-        },
         cache: 'no-store',
       });
       const payload = await response.json().catch(() => ({}));
@@ -125,15 +121,22 @@ function BookingConfirmationPageInner() {
       customerEmail: pickString(meta?.client_email) ?? pickString(cf?.customer_email),
       customerPhone: pickString(meta?.client_phone) ?? pickString(cf?.customer_phone),
       customerNotes: pickString(meta?.user_notes),
-      dateText: dt && !Number.isNaN(dt.getTime())
-        ? dt.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })
-        : booking.booking_date || '-',
-      timeText: booking.booking_time || '-',
+      dateText:
+        formatDisplayDate(booking.booking_date, {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }) ||
+        (dt && !Number.isNaN(dt.getTime())
+          ? dt.toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })
+          : booking.booking_date || '-'),
+      timeText: formatDisplayTime(booking.booking_time) || booking.booking_time || '-',
       total: Number(booking.total_price || booking.service?.price || 0),
       status: booking.status,
       createdAt: booking.created_at,

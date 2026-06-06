@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  appendAuthNext,
+  getAuthEntryBackHref,
+  getAuthEntryBackLabel,
+  getAuthEntryDescription,
+  sanitizeAuthNextPath,
+} from '@/lib/auth-next';
 import { 
   User, 
   Shield, 
@@ -887,6 +894,11 @@ function RegisterPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const type = searchParams?.get('type') as 'vendor' | 'user';
+  const safeNextPath = sanitizeAuthNextPath(searchParams?.get('next'));
+  const loginHref = appendAuthNext('/auth/login', safeNextPath);
+  const entryBackHref = getAuthEntryBackHref(safeNextPath);
+  const entryBackLabel = getAuthEntryBackLabel(safeNextPath);
+  const entryDescription = getAuthEntryDescription('register', safeNextPath);
 
   // State management
   const [userType, setUserType] = useState<'user' | 'vendor'>(type || 'user');
@@ -902,6 +914,10 @@ function RegisterPageInner() {
   const [serviceTypeCustomNames, setServiceTypeCustomNames] = useState<Record<string, string>>({});
   const [customServices, setCustomServices] = useState<CustomServiceDraft[]>([]);
   const [customServicesError, setCustomServicesError] = useState('');
+  const registerIntroCopy =
+    userType === 'vendor'
+      ? 'Create your vendor account and launch your dashboard.'
+      : entryDescription || 'Create your account and start your journey';
 
   // City autocomplete states
   const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
@@ -943,6 +959,14 @@ function RegisterPageInner() {
     website: '',
     emergencyContact: ''
   });
+  const yearsInBusinessPreview = useMemo(() => {
+    const foundedYear = Number.parseInt(String(formData.foundedYear || '').trim(), 10);
+    const currentYear = new Date().getFullYear();
+    if (!Number.isFinite(foundedYear) || foundedYear < 1900 || foundedYear > currentYear) {
+      return '';
+    }
+    return String(Math.max(0, currentYear - foundedYear));
+  }, [formData.foundedYear]);
 
   // Error state
   const [errors, setErrors] = useState<{[key: string]: string}>({});
@@ -1132,18 +1156,6 @@ function RegisterPageInner() {
       }
     }
     
-    if (!formData.totalEmployees) newErrors.totalEmployees = 'Number of employees is required';
-    else {
-      const employees = parseInt(formData.totalEmployees);
-      if (employees < 1) newErrors.totalEmployees = 'Number of employees must be at least 1';
-    }
-    
-    if (!formData.yearsInBusiness) newErrors.yearsInBusiness = 'Years in business is required';
-    else {
-      const years = parseInt(formData.yearsInBusiness);
-      if (years < 0 || years > 100) newErrors.yearsInBusiness = 'Years in business must be between 0 and 100';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -1231,20 +1243,6 @@ function RegisterPageInner() {
 
       console.log('Registration data prepared:', { ...registrationData, password: '[HIDDEN]' });
 
-      // Check if user already exists (for vendor registration)
-      let existingUser = null;
-      if (userType === 'vendor') {
-        try {
-          const checkResponse = await fetch(`/api/profile/check-vendor-eligibility?userId=${formData.email}`);
-          if (checkResponse.ok) {
-            const checkData = await checkResponse.json();
-            existingUser = checkData.existingVendorProfile ? formData.email : null;
-          }
-        } catch (error) {
-          console.log('Could not check existing user, proceeding with registration');
-        }
-      }
-
       // Determine the correct API endpoint based on user type
       const apiEndpoint = userType === 'vendor' ? '/api/vendor/register' : '/api/customer/register';
       console.log('Making API call to:', apiEndpoint);
@@ -1268,28 +1266,33 @@ function RegisterPageInner() {
         setSubmitError('');
         setSubmitSuccess('Account created successfully! Redirecting...');
         
-        // Redirect immediately after successful registration
-        console.log('About to redirect. userType:', userType);
-        
-        // Store registration success in sessionStorage to prevent form reset
-        sessionStorage.setItem('registrationSuccess', 'true');
+        // Registration creates the account, but does not create a signed-in session.
+        // Send the user to login with a truthful next step instead of a protected dashboard.
+        console.log('About to redirect to login after registration. userType:', userType);
+
+        sessionStorage.setItem(
+          'registrationSuccess',
+          userType === 'vendor'
+            ? 'Vendor account created. Verify your email, then sign in to continue vendor setup.'
+            : 'Account created. Verify your email, then sign in to continue.'
+        );
         sessionStorage.setItem('registrationUserType', userType);
-        
-        if (userType === 'vendor') {
-          console.log('Redirecting to /vendor/dashboard');
-          router.replace('/vendor/dashboard');
-          // Fallback redirect
-          setTimeout(() => {
-            window.location.href = '/vendor/dashboard';
-          }, 1000);
-        } else {
-          console.log('Redirecting to /user-dashboard');
-          router.replace('/user-dashboard');
-          // Fallback redirect
-          setTimeout(() => {
-            window.location.href = '/user-dashboard';
-          }, 1000);
+
+        const loginParams = new URLSearchParams();
+        loginParams.set('registered', '1');
+        loginParams.set('role', userType);
+        if (typeof registrationData.email === 'string' && registrationData.email.trim()) {
+          loginParams.set('email', registrationData.email.trim());
         }
+        if (safeNextPath) {
+          loginParams.set('next', safeNextPath);
+        }
+        const loginRedirect = `/auth/login?${loginParams.toString()}`;
+        console.log('Redirecting to', loginRedirect);
+        router.replace(loginRedirect);
+        setTimeout(() => {
+          window.location.href = loginRedirect;
+        }, 1000);
       } else {
         console.log('Registration failed with status:', response.status);
         // Handle different types of errors
@@ -1617,15 +1620,15 @@ function RegisterPageInner() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
+          <Link href={entryBackHref} className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Home
+            {entryBackLabel}
           </Link>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Join Reliance
           </h1>
           <p className="text-gray-600">
-            Create your account and start your journey
+            {registerIntroCopy}
           </p>
         </div>
 
@@ -2427,43 +2430,33 @@ function RegisterPageInner() {
                         )}
                       </div>
                       <div>
-                        <Label htmlFor="totalEmployees">Total Employees *</Label>
+                        <Label htmlFor="totalEmployees">Estimated Team Size</Label>
                         <Input
                           id="totalEmployees"
                           type="number"
                           value={formData.totalEmployees}
                           onChange={(e) => handleInputChange('totalEmployees', e.target.value)}
-                          className={errors.totalEmployees ? 'border-red-500' : ''}
                           min="1"
-                          required
                         />
-                        {errors.totalEmployees && (
-                          <p className="text-red-500 text-sm mt-1 flex items-center">
-                            <AlertCircle className="w-4 h-4 mr-1" />
-                            {errors.totalEmployees}
-                          </p>
-                        )}
+                        <p className="text-sm text-gray-500 mt-1">
+                          Optional. Add actual employee accounts later from the Employees workspace.
+                        </p>
                       </div>
                     </div>
 
                     <div>
-                      <Label htmlFor="yearsInBusiness">Years in Business *</Label>
+                      <Label htmlFor="yearsInBusiness">Years in Business</Label>
                       <Input
                         id="yearsInBusiness"
                         type="number"
-                        value={formData.yearsInBusiness}
-                        onChange={(e) => handleInputChange('yearsInBusiness', e.target.value)}
-                        className={errors.yearsInBusiness ? 'border-red-500' : ''}
+                        value={yearsInBusinessPreview}
+                        readOnly
                         min="0"
                         max="100"
-                        required
                       />
-                      {errors.yearsInBusiness && (
-                        <p className="text-red-500 text-sm mt-1 flex items-center">
-                          <AlertCircle className="w-4 h-4 mr-1" />
-                          {errors.yearsInBusiness}
-                        </p>
-                      )}
+                      <p className="text-sm text-gray-500 mt-1">
+                        Calculated from the founded year so your onboarding and saved profile stay consistent.
+                      </p>
                     </div>
 
                     <div>
@@ -2714,8 +2707,7 @@ function RegisterPageInner() {
                          type="submit" 
                          className="flex-1"
                                                 disabled={!formData.businessName || !formData.businessType || !formData.category ||
-                                !formData.businessBio || !formData.foundedYear || !formData.totalEmployees || 
-                                !formData.yearsInBusiness || isSubmitting}
+                                !formData.businessBio || !formData.foundedYear || isSubmitting}
                        >
                          {isSubmitting ? (
                            <div className="flex items-center">
@@ -2800,7 +2792,7 @@ function RegisterPageInner() {
               
               <div className="mt-6 p-4 bg-blue-50 rounded-lg">
                 <h4 className="font-semibold text-blue-900 mb-2">Already have an account?</h4>
-                <Link href="/auth/login">
+                <Link href={loginHref}>
                   <Button variant="outline" className="w-full">
                     Sign In
                   </Button>

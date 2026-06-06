@@ -1,16 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Mail, CheckCircle, AlertCircle } from 'lucide-react';
+import { AuthExperienceShell } from '@/components/auth/AuthExperienceShell';
+import { appendAuthNext, getAuthContinuationPhrase, sanitizeAuthNextPath } from '@/lib/auth-next';
+import { Mail, CheckCircle, AlertCircle } from 'lucide-react';
+import { HAS_LAUNCH_SUPPORT_EMAIL, LAUNCH_SUPPORT_EMAIL, LAUNCH_SUPPORT_MAILTO } from '@/lib/support';
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const safeNextPath = sanitizeAuthNextPath(searchParams?.get('next'));
+  const loginHref = appendAuthNext('/auth/login', safeNextPath);
+  const continuationPhrase = getAuthContinuationPhrase(safeNextPath);
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -29,7 +36,10 @@ export default function ForgotPasswordPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          ...(safeNextPath ? { next: safeNextPath } : {}),
+        }),
       });
 
       const data = await response.json();
@@ -51,42 +61,40 @@ export default function ForgotPasswordPage() {
 
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12">
-        <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <Link href="/auth/login" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Login
-            </Link>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Check Your Email
-            </h1>
-            <p className="text-gray-600">
-              We've sent you a password reset link
-            </p>
-          </div>
-
-          {/* Success Card */}
-          <Card className="shadow-xl">
+      <AuthExperienceShell
+        backHref={loginHref}
+        backLabel="Back to Login"
+        title="Check Your Email"
+        description={
+          continuationPhrase
+            ? `We've sent you a password reset link so you can ${continuationPhrase}.`
+            : "We've sent you a password reset link."
+        }
+        heroTitle="Recover access without losing context."
+        heroDescription="Password recovery should feel like a continuation of the same marketplace journey, not a separate detour. Reliance keeps the destination and purpose visible all the way through."
+        heroBadge="Recovery that keeps the trust flow intact."
+      >
+          <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
             <CardHeader className="text-center">
               <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
                 <CheckCircle className="w-6 h-6 text-green-600" />
               </div>
-              <CardTitle className="text-xl">Reset Email Sent</CardTitle>
+              <CardTitle className="font-display text-2xl">Reset Email Sent</CardTitle>
               <CardDescription>
                 We've sent a password reset link to <strong>{email}</strong>
               </CardDescription>
             </CardHeader>
             <CardContent className="text-center space-y-4">
               <p className="text-sm text-gray-600">
-                Click the link in your email to reset your password. The link will expire in 1 hour.
+                {continuationPhrase
+                  ? `Click the link in your email to reset your password and ${continuationPhrase}. The link will expire in 1 hour.`
+                  : 'Click the link in your email to reset your password. The link will expire in 1 hour.'}
               </p>
               
               <div className="space-y-2">
                 <Button 
-                  onClick={() => router.push('/auth/login')} 
-                  className="w-full"
+                  onClick={() => router.push(loginHref)} 
+                  className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] text-white shadow-[0_20px_45px_rgba(36,107,255,0.28)] hover:brightness-110"
                 >
                   Back to Login
                 </Button>
@@ -96,7 +104,7 @@ export default function ForgotPasswordPage() {
                     setIsSubmitted(false);
                     setEmail('');
                   }} 
-                  className="w-full"
+                  className="h-12 w-full rounded-2xl border-slate-200 bg-white"
                 >
                   Send Another Email
                 </Button>
@@ -104,38 +112,44 @@ export default function ForgotPasswordPage() {
 
               <div className="text-xs text-gray-500">
                 <p>Didn't receive the email? Check your spam folder.</p>
-                <p>Still having trouble? Contact support.</p>
+                <p>
+                  Still having trouble?{' '}
+                  {HAS_LAUNCH_SUPPORT_EMAIL ? (
+                    <a href={LAUNCH_SUPPORT_MAILTO} className="font-medium text-blue-700 underline">
+                      Contact {LAUNCH_SUPPORT_EMAIL}
+                    </a>
+                  ) : (
+                    'Contact support.'
+                  )}
+                </p>
               </div>
             </CardContent>
           </Card>
-        </div>
-      </div>
+      </AuthExperienceShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12">
-      <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <Link href="/auth/login" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Login
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Forgot Password?
-          </h1>
-          <p className="text-gray-600">
-            Enter your email to receive a password reset link
-          </p>
-        </div>
-
-        {/* Forgot Password Form */}
-        <Card className="shadow-xl">
+    <AuthExperienceShell
+      backHref={loginHref}
+      backLabel="Back to Login"
+      title="Forgot Password?"
+      description={
+        continuationPhrase
+          ? `Reset your password to ${continuationPhrase}.`
+          : 'Enter your email to receive a password reset link.'
+      }
+      heroTitle="Recovery should still feel premium."
+      heroDescription="Use the same trusted path back into Reliance without losing your destination, your context, or the trust-first story behind the platform."
+      heroBadge="Reset links keep the journey intact."
+    >
+        <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
           <CardHeader>
-            <CardTitle className="text-xl text-center">Reset Password</CardTitle>
-            <CardDescription className="text-center">
-              We'll send you a link to reset your password
+            <CardTitle className="text-center font-display text-2xl">Reset Password</CardTitle>
+            <CardDescription className="text-center text-sm leading-6">
+              {continuationPhrase
+                ? `We'll send you a link so you can ${continuationPhrase}.`
+                : "We'll send you a link to reset your password"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -162,7 +176,7 @@ export default function ForgotPasswordPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
+                    className="h-12 rounded-2xl border-slate-200 bg-white pl-10 shadow-sm"
                     placeholder="Enter your email address"
                     required
                   />
@@ -171,7 +185,7 @@ export default function ForgotPasswordPage() {
 
               <Button 
                 type="submit" 
-                className="w-full" 
+                className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] text-white shadow-[0_20px_45px_rgba(36,107,255,0.28)] hover:brightness-110" 
                 disabled={isLoading || !email}
               >
                 {isLoading ? 'Sending...' : 'Send Reset Link'}
@@ -181,14 +195,49 @@ export default function ForgotPasswordPage() {
             <div className="mt-6 text-center">
               <p className="text-gray-600">
                 Remember your password?{' '}
-                <Link href="/auth/login" className="text-blue-600 hover:text-blue-800 font-medium">
+                <Link href={loginHref} className="text-blue-600 hover:text-blue-800 font-medium">
                   Sign in
                 </Link>
               </p>
             </div>
           </CardContent>
         </Card>
-      </div>
-    </div>
+    </AuthExperienceShell>
   );
-} 
+}
+
+function ForgotPasswordPageFallback() {
+  return (
+    <AuthExperienceShell
+      backHref="/auth/login"
+      backLabel="Back to Login"
+      title="Forgot Password?"
+      description="Preparing your recovery options."
+      heroTitle="Recovery should still feel premium."
+      heroDescription="Use the same trusted path back into Reliance without losing your destination, your context, or the trust-first story behind the platform."
+      heroBadge="Reset links keep the journey intact."
+    >
+      <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+        <CardHeader>
+          <CardTitle className="text-center font-display text-2xl">Reset Password</CardTitle>
+          <CardDescription className="text-center text-sm leading-6">
+            Preparing your recovery details.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center py-12 text-sm text-slate-500">
+            Loading recovery details...
+          </div>
+        </CardContent>
+      </Card>
+    </AuthExperienceShell>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<ForgotPasswordPageFallback />}>
+      <ForgotPasswordPageContent />
+    </Suspense>
+  );
+}

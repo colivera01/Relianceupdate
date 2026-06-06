@@ -63,10 +63,21 @@ export async function GET(
         isAzureBlobHost: /\.blob\.core\.windows\.net/i.test(downloadUrl || ""),
       });
     } catch (error: any) {
-      // Fallback if Azure Storage not configured
-      console.warn("Azure Storage not configured, using stored URL or placeholder:", error.message);
-      downloadUrl = asset.blobUrl || 
-        `${process.env.BLOB_STORAGE_URL || 'https://storage.example.com'}/${asset.blobKey}?sas_token=...`;
+      console.error("[media/download] Storage unavailable", {
+        vendorId,
+        assetId,
+        blobKey: asset.blobKey,
+        message: error?.message || String(error),
+      });
+      return NextResponse.json(
+        {
+          code: "MEDIA_STORAGE_UNAVAILABLE",
+          error:
+            "Media download is temporarily unavailable because secure storage is not configured or not reachable.",
+          details: error?.message || String(error),
+        },
+        { status: 503 }
+      );
     }
 
     const responseBody = {
@@ -91,4 +102,3 @@ export async function GET(
     );
   }
 }
-

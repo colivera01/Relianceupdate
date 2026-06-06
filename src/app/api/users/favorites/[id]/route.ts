@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from "@/lib/account-status";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -25,6 +26,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         { status: 401 }
       );
     }
+    await ensureUserAccountCanAct(userId);
 
     const { id } = await params;
     const rawId = String(id || "").trim();
@@ -61,6 +63,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     });
   } catch (error: any) {
     console.error("[users/favorites/:id] DELETE error:", error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     return NextResponse.json(
       { error: "Failed to remove favorite", details: error?.message || "Unknown error" },
       { status: 500 }

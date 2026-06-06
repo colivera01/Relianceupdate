@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db";
+import { countableReviewWhere } from "@/lib/metrics-exclusion";
 
 export interface VendorReviewAggregate {
   vendorId: string;
@@ -27,7 +28,7 @@ export async function getVendorReviewAggregatesForPublic(
 
   const grouped = await prisma.review.groupBy({
     by: ["vendorId"],
-    where: {
+    where: countableReviewWhere({
       vendorId: { in: ids },
       moderationStatus: "approved",
       visibilityStatus: "public",
@@ -35,7 +36,7 @@ export async function getVendorReviewAggregatesForPublic(
         gte: 1,
         lte: 5,
       },
-    },
+    }),
     _avg: {
       rating: true,
     },

@@ -3,6 +3,7 @@
 
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest, getVendorIdFromRequest } from "./auth";
+import { ensureUserAccountCanAct, ensureVendorAccountCanOperate } from "@/lib/account-status";
 export { getUserIdFromRequest };
 
 export type MembershipRole = "MANAGER" | "EMPLOYEE";
@@ -79,11 +80,13 @@ export async function requireVendorManager(
   if (!userId) {
     throw new Error("Unauthorized");
   }
+  await ensureUserAccountCanAct(userId);
 
   const targetVendorId = vendorId || (await getVendorIdFromRequest(request));
   if (!targetVendorId) {
     throw new Error("Vendor ID required");
   }
+  await ensureVendorAccountCanOperate(targetVendorId);
 
   const membership = await getVendorMembership(targetVendorId, userId);
   const normalizedRole = String(membership?.role || "").trim().toUpperCase();
@@ -119,6 +122,8 @@ export async function requireVendorMembership(
   if (!userId) {
     throw new Error("Unauthorized");
   }
+  await ensureUserAccountCanAct(userId);
+  await ensureVendorAccountCanOperate(vendorId);
 
   const membership = await getVendorMembership(vendorId, userId);
   const normalizedStatus = String(membership?.status || "").trim().toUpperCase();

@@ -180,15 +180,15 @@ export default function EmployeesPage() {
       const smsChannel = Array.isArray(json?.notification?.channels)
         ? json.notification.channels.find((c: any) => c?.channel === "sms")
         : null;
-      const fallbackMessage = `Invite created. Share this link: ${json.invite.inviteUrl}`;
+      const fallbackMessage = `Invite created. Copy and share this link: ${json.invite.inviteUrl}`;
       if (emailChannel?.success && smsChannel?.attempted && !smsChannel?.success) {
         setInviteMessage(
           `Email sent. SMS failed: ${String(smsChannel?.errorMessage || "unknown_error")} (${String(
             smsChannel?.errorCode || "no_code"
-          )}). Invite link: ${json.invite.inviteUrl}`
+          )}). Share this invite link: ${json.invite.inviteUrl}`
         );
       } else {
-        setInviteMessage(json?.delivery ? `${json.delivery} ${json.invite.inviteUrl}` : fallbackMessage);
+        setInviteMessage(json?.delivery ? `${json.delivery} Share this invite link: ${json.invite.inviteUrl}` : fallbackMessage);
       }
       setInviteName("");
       setInviteEmail("");

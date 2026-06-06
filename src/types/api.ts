@@ -165,9 +165,14 @@ export interface DiscoverServiceResult {
   location: string | null;
   distanceMiles?: number | null;
   previewMediaUrl: string | null;
+  previewMediaType: 'image' | 'video' | null;
   price: number;
   rating: number | null;
   reviewCount: number | null;
+  trustScore: {
+    scored: boolean;
+    totalScorePct: number | null;
+  };
   badges: {
     verified: boolean | null;
     featured: boolean | null;
@@ -176,10 +181,24 @@ export interface DiscoverServiceResult {
     serviceEligible: boolean;
     hasPublicMedia: boolean;
   };
+  promotion?: {
+    campaignId: string;
+    campaignName: string;
+    packageKey?: string;
+    placementType: string;
+    label: string;
+    explainer: string;
+    targetCategory: string | null;
+    targetCity: string | null;
+    targetState: string | null;
+    targetRadiusMiles?: number | null;
+    endsAt: string | null;
+  };
 }
 
 export interface DiscoverServicesResponse {
   success: boolean;
+  promotedListings?: DiscoverServiceResult[];
   results: DiscoverServiceResult[];
   pagination: Pagination;
   appliedFilters: {
@@ -390,6 +409,7 @@ export interface FavoriteServiceItem {
   rating: number | null;
   reviewCount: number | null;
   previewMediaUrl: string | null;
+  previewMediaType: 'image' | 'video' | null;
   publicListing: {
     serviceEligible: boolean;
     hasPublicMedia: boolean;
@@ -421,5 +441,3 @@ export interface ApiError {
   statusCode: number;
   details?: any;
 }
-
-

@@ -17,7 +17,9 @@ const hoisted = vi.hoisted(() => {
   const serviceCreate = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
   const userFindFirst = vi.fn();
+  const userFindUnique = vi.fn();
   const userCreate = vi.fn();
+  const reviewFindFirst = vi.fn();
   const queryRaw = vi.fn();
 
   const prisma = {
@@ -31,7 +33,8 @@ const hoisted = vi.hoisted(() => {
     vendor: { findUnique: vendorFindUnique },
     service: { findFirst: serviceFindFirst, findUnique: serviceFindUnique, create: serviceCreate },
     vendorMembership: { findFirst: vendorMembershipFindFirst },
-    user: { findFirst: userFindFirst, create: userCreate },
+    user: { findFirst: userFindFirst, findUnique: userFindUnique, create: userCreate },
+    review: { findFirst: reviewFindFirst },
     $queryRaw: queryRaw,
   };
 
@@ -48,7 +51,9 @@ const hoisted = vi.hoisted(() => {
     serviceCreate,
     vendorMembershipFindFirst,
     userFindFirst,
+    userFindUnique,
     userCreate,
+    reviewFindFirst,
     queryRaw,
   };
 });
@@ -63,6 +68,10 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/availability-slots', () => ({
   checkVendorSlotAvailability: vi.fn(),
+}));
+
+vi.mock('@/lib/email-verification-enforcement', () => ({
+  requireVerifiedEmailForAction: vi.fn().mockResolvedValue(null),
 }));
 
 function jsonRequest(url: string, body?: unknown, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET') {
@@ -189,11 +198,15 @@ describe('POST /api/bookings', () => {
     hoisted.bookingFindUnique.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.userFindFirst.mockReset();
+    hoisted.userFindUnique.mockReset();
     hoisted.userCreate.mockReset();
+    hoisted.reviewFindFirst.mockReset();
     hoisted.queryRaw.mockReset();
     hoisted.vendorMembershipFindFirst.mockResolvedValue(null);
     hoisted.userFindFirst.mockResolvedValue(null);
+    hoisted.userFindUnique.mockResolvedValue(null);
     hoisted.userCreate.mockResolvedValue({ id: 'placeholder-user-1' });
+    hoisted.reviewFindFirst.mockResolvedValue(null);
     hoisted.queryRaw.mockResolvedValue([]);
   });
 

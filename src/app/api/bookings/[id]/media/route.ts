@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from "@/lib/account-status";
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
 import {
   isCompletedStageProofVideo,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
+import {
+  PUBLIC_DB_UNAVAILABLE_CODE,
+  PUBLIC_DB_UNAVAILABLE_MESSAGE,
+  isTransientDbConnectivityError,
+} from "@/lib/transient-db-errors";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -22,6 +28,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
     if (!userId) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+    await ensureUserAccountCanAct(userId);
 
     const { id: bookingId } = await context.params;
 
@@ -111,7 +118,8 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
         bytes: typeof asset.bytes === "bigint" ? asset.bytes.toString() : String(asset.bytes || "0"),
         mimeType,
         blobKey: asset.blobKey,
-        blobUrl: asset.blobUrl,
+        // Customer playback should go through the consent-aware download route.
+        blobUrl: null,
         archiveStatus: asset.archiveStatus,
         moderationReason: asset.moderationReason,
         moderatedAt: asset.moderatedAt,
@@ -120,7 +128,9 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
         description: asset.mediaSession?.description || "",
         bookingId: asset.mediaSession?.bookingId || null,
         serviceId: asset.mediaSession?.serviceId || null,
+        videoStage: proofStage,
         proofStage,
+        isPrimaryServiceVideo: isCompletedStageProofVideo(asset?.mediaSession || null),
         isPrimaryProofVideo: isCompletedStageProofVideo(asset?.mediaSession || null),
       };
     });
@@ -134,6 +144,15 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
     });
   } catch (error: any) {
     console.error("[bookings/:id/media] GET error:", error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
+    if (isTransientDbConnectivityError(error)) {
+      return NextResponse.json(
+        { success: false, error: PUBLIC_DB_UNAVAILABLE_MESSAGE, code: PUBLIC_DB_UNAVAILABLE_CODE },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: "Failed to fetch booking media", details: error?.message || "Unknown error" },
       { status: 500 }

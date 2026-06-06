@@ -1,3 +1,5 @@
+import type { VendorOnboardingState, VendorMembershipState } from "@/lib/vendor-onboarding-state";
+
 // src/types/vendor.ts
 
 export interface VendorDashboardProfile {
@@ -21,12 +23,20 @@ export interface VendorDashboardProfile {
   rating?: number;
 }
 
+export type VendorJobStatus =
+  | 'completed'
+  | 'in progress'
+  | 'scheduled'
+  | 'canceled'
+  | 'awaiting_review'
+  | 'archived';
+
 export interface VendorJob {
   id: string;
   title: string;
   client: string;
   amount: number;
-  status: 'completed' | 'in progress' | 'scheduled' | 'canceled';
+  status: VendorJobStatus;
   date: string; // ISO string
 }
 
@@ -73,6 +83,14 @@ export interface VendorDashboardResponse {
     reviewCount: number;
   }>;
   recentJobs: VendorJob[];
+  lifecycleCounts?: {
+    scheduled: number;
+    inProgress: number;
+    awaitingReview: number;
+    completed: number;
+    canceled: number;
+    archived: number;
+  };
   recentReviews: VendorReview[];
   insights: VendorInsight[];
   notifications: VendorNotification[];
@@ -144,11 +162,18 @@ export interface VendorProfile {
   sessionTimeout?: number;
   passwordExpiry?: number | null;
   failedLoginLockout?: number | null;
+  membershipStatus?: VendorMembershipState;
+  isPubliclyListed?: boolean;
+  publiclyListedAt?: string | null;
+  serviceDraftCount?: number;
+  publishedServiceCount?: number;
+  onboarding?: VendorOnboardingState;
 }
 
 export interface VendorProfileResponse {
   success: boolean;
   profile: VendorProfile;
+  approvalPending?: boolean;
 }
 
 export interface VendorProfileUpdateRequest {
@@ -218,6 +243,27 @@ export interface VendorDevice {
 export interface PairingRequestResponse {
   code: string;
   expiresAt: string; // ISO string
+  pairingUrl: string;
+  inviteToken?: string;
+  linkAccessMode?: "public" | "local_only";
+  inviteDelivery?: {
+    anySuccess: boolean;
+    email?: {
+      attempted: boolean;
+      success: boolean;
+      errorMessage?: string;
+      providerMessageId?: string;
+    };
+    sms?: {
+      attempted: boolean;
+      success: boolean;
+      errorMessage?: string;
+      providerMessageId?: string;
+      errorCode?: string;
+      trialRestriction?: boolean;
+    };
+    summaryMessage?: string | null;
+  };
 }
 
 export interface PairingConfirmBody {

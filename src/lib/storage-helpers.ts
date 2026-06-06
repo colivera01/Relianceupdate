@@ -2,6 +2,7 @@
 // Storage calculation and alert helpers
 
 import { prisma } from "@/server/db";
+import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 
 export interface StorageUsage {
   usedBytes: bigint;
@@ -32,10 +33,7 @@ export async function calculateStorageUsage(vendorId: string): Promise<StorageUs
 
   // Calculate used storage (only non-deleted assets)
   const storageAggregate = await (prisma as any).mediaAsset.aggregate({
-    where: {
-      vendorId,
-      deletedAt: null,
-    },
+    where: countableMediaAssetWhere({ vendorId }),
     _sum: {
       bytes: true,
     },

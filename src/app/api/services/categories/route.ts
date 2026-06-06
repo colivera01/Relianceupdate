@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 
+const FALLBACK_CATEGORY_LABEL = "Other Services";
+
 /**
  * GET /api/services/categories
  * Public-safe category aggregation for browse.
@@ -16,6 +18,7 @@ export async function GET(): Promise<NextResponse> {
         isPublished: true,
         vendor: {
           isPubliclyListed: true,
+          accountStatus: "active",
         },
       },
       select: {
@@ -55,7 +58,7 @@ export async function GET(): Promise<NextResponse> {
 
     for (const service of services) {
       const rawCategory = String(service.vendor.category || service.vendor.businessType || "").trim();
-      const categoryLabel = rawCategory || "Uncategorized";
+      const categoryLabel = rawCategory || FALLBACK_CATEGORY_LABEL;
       const categoryKey = categoryLabel.toLowerCase().replace(/\s+/g, "-");
 
       if (!categoryMap.has(categoryKey)) {
@@ -92,7 +95,7 @@ export async function GET(): Promise<NextResponse> {
       meta: {
         countedServices: services.length,
         eligibilityRule:
-          "Only services where vendor.isPubliclyListed=true and service.isPublished=true are counted.",
+          "Only services where vendor.accountStatus=active, vendor.isPubliclyListed=true, and service.isPublished=true are counted.",
       },
     });
   } catch (error: any) {

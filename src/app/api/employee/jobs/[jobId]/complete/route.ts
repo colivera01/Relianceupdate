@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import {
+  accountStatusErrorBody,
+  AccountStatusError,
+  ensureUserAccountCanAct,
+  ensureVendorAccountCanOperate,
+} from "@/lib/account-status";
+import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 
 interface RouteParams {
@@ -11,6 +18,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
   try {
     const userId = await getUserIdFromRequest(request);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    await ensureUserAccountCanAct(userId);
     const { jobId } = await context.params;
     console.log("[employee-complete] route hit", { jobId, userId });
 
@@ -23,6 +31,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       select: { id: true, vendorId: true, status: true, customerMetadata: true },
     });
     if (!booking) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    await ensureVendorAccountCanOperate(booking.vendorId);
 
     const vendorMembershipsForJobVendor = memberships.filter((m) => m.vendorId === booking.vendorId);
     const vendorMembershipIds = vendorMembershipsForJobVendor.map((m) => m.id);
@@ -36,6 +45,18 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     const isAssignedToRequester = assigned.assignedMembershipIds.some((id) => vendorMembershipIds.includes(id));
     if (!isAssignedToRequester && !hasManagerMembershipForVendor) {
       return NextResponse.json({ error: "Forbidden: this job is not assigned to you" }, { status: 403 });
+    }
+
+    const normalizedStatus = String(booking.status || "").trim().toUpperCase();
+    if (!["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(normalizedStatus)) {
+      return NextResponse.json(
+        {
+          error: "Only active assigned jobs can be submitted for manager review.",
+          code: "INVALID_COMPLETE_STATUS",
+          status: normalizedStatus || "UNKNOWN",
+        },
+        { status: 409 }
+      );
     }
 
     const sessions = await (prisma as any).mediaSession.findMany({
@@ -73,6 +94,10 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     });
     return NextResponse.json({ success: true, job: updated });
   } catch (error: any) {
-    return NextResponse.json({ error: "Failed to complete employee job", details: error?.message }, { status: 500 });
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
+    const runtimeError = getEmployeeRuntimeErrorResponse("complete", error);
+    return NextResponse.json(runtimeError.body, { status: runtimeError.status });
   }
 }

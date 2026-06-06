@@ -8,10 +8,27 @@ import {
 } from "@/lib/proof-media-policy";
 import { getGeocodingProvider } from "@/lib/geocoding";
 import { distanceMiles, hasValidCoordinates, roundDistanceMiles, type Coordinates } from "@/lib/distance";
+import {
+  applyPromotionInventoryRules,
+  campaignMatchesTargetRadius,
+  isCampaignCurrentlyRenderable,
+  PROMOTION_PUBLIC_EXPLAINER,
+  PROMOTION_PUBLIC_LABEL,
+} from "@/lib/promoted-listings";
+import {
+  countableMediaAssetWhere,
+  countablePromotionCampaignWhere,
+  countableServiceWhere,
+  countableVendorWhere,
+} from "@/lib/metrics-exclusion";
+import { cleanPublicServiceDescription } from "@/lib/launch-content-cleanup";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 12;
 const MAX_LIMIT = 50;
+const FALLBACK_CATEGORY_LABEL = "Other Services";
+const FALLBACK_CATEGORY_KEY = "other-services";
+const LEGACY_FALLBACK_CATEGORY_LABEL = "Uncategorized";
 
 type SortBy = "newest" | "price_asc" | "price_desc" | "name" | "distance";
 type LocationInputSource = "none" | "coordinates" | "address";
@@ -25,11 +42,76 @@ function normalizeSortBy(value: string | null): SortBy {
   return "newest";
 }
 
+function normalizeCategoryFilter(value: string | null): string {
+  return String(value || "").trim();
+}
+
+function isFallbackCategoryFilter(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === FALLBACK_CATEGORY_LABEL.toLowerCase() ||
+    normalized === FALLBACK_CATEGORY_KEY ||
+    normalized === LEGACY_FALLBACK_CATEGORY_LABEL.toLowerCase()
+  );
+}
+
+function buildServiceCategoryFilter(category: string) {
+  if (isFallbackCategoryFilter(category)) {
+    return {
+      OR: [
+        { vendor: { category: FALLBACK_CATEGORY_LABEL } },
+        { vendor: { businessType: FALLBACK_CATEGORY_LABEL } },
+        { vendor: { category: LEGACY_FALLBACK_CATEGORY_LABEL } },
+        { vendor: { businessType: LEGACY_FALLBACK_CATEGORY_LABEL } },
+        { vendor: { category: null, businessType: null } },
+        { vendor: { category: "", businessType: null } },
+        { vendor: { category: null, businessType: "" } },
+        { vendor: { category: "", businessType: "" } },
+      ],
+    };
+  }
+
+  return {
+    OR: [{ vendor: { category } }, { vendor: { businessType: category } }],
+  };
+}
+
+function buildPromotionCategoryFilter(category: string) {
+  if (isFallbackCategoryFilter(category)) {
+    return {
+      OR: [
+        { targetCategory: null },
+        { targetCategory: "" },
+        { targetCategory: FALLBACK_CATEGORY_LABEL },
+        { targetCategory: LEGACY_FALLBACK_CATEGORY_LABEL },
+        { service: { vendor: { category: FALLBACK_CATEGORY_LABEL } } },
+        { service: { vendor: { businessType: FALLBACK_CATEGORY_LABEL } } },
+        { service: { vendor: { category: LEGACY_FALLBACK_CATEGORY_LABEL } } },
+        { service: { vendor: { businessType: LEGACY_FALLBACK_CATEGORY_LABEL } } },
+        { service: { vendor: { category: null, businessType: null } } },
+        { service: { vendor: { category: "", businessType: null } } },
+        { service: { vendor: { category: null, businessType: "" } } },
+        { service: { vendor: { category: "", businessType: "" } } },
+      ],
+    };
+  }
+
+  return {
+    OR: [
+      { targetCategory: null },
+      { targetCategory: "" },
+      { targetCategory: category },
+      { service: { vendor: { category } } },
+      { service: { vendor: { businessType: category } } },
+    ],
+  };
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
     const q = String(searchParams.get("q") || "").trim();
-    const category = String(searchParams.get("category") || "").trim();
+    const category = normalizeCategoryFilter(searchParams.get("category"));
     const sortBy = normalizeSortBy(searchParams.get("sortBy"));
     const latitude = parseOptionalNumber(searchParams.get("lat"));
     const longitude = parseOptionalNumber(searchParams.get("lng"));
@@ -49,11 +131,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: any = countableServiceWhere({
       isPublished: true,
-      vendor: {
+      vendor: countableVendorWhere({
         isPubliclyListed: true,
-      },
+        accountStatus: "active",
+      }),
       ...(q
         ? {
             OR: [
@@ -64,12 +147,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             ],
           }
         : {}),
-      ...(category
-        ? {
-            OR: [{ vendor: { category } }, { vendor: { businessType: category } }],
-          }
-        : {}),
-    };
+      ...(category ? buildServiceCategoryFilter(category) : {}),
+    });
 
     const orderBy: any =
       sortBy === "distance"
@@ -81,6 +160,37 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         : sortBy === "name"
         ? { name: "asc" }
         : { createdAt: "desc" };
+
+    const now = new Date();
+    const promotionWhere: any = countablePromotionCampaignWhere({
+      status: "active",
+      paymentStatus: { in: ["paid", "waived"] },
+      placementType: "BROWSE_FEATURED",
+      startAt: { lte: now },
+      endAt: { gte: now },
+      serviceId: { not: null },
+      service: {
+        isPublished: true,
+        vendor: countableVendorWhere({
+          isPubliclyListed: true,
+          accountStatus: "active",
+        }),
+      },
+    });
+    const promotionAnd: any[] = [];
+    if (q) {
+      promotionAnd.push({
+        OR: [
+          { name: { contains: q } },
+          { vendor: { name: { contains: q } } },
+          { vendor: { businessName: { contains: q } } },
+          { service: { name: { contains: q } } },
+          { service: { description: { contains: q } } },
+        ],
+      });
+    }
+    if (category) promotionAnd.push(buildPromotionCategoryFilter(category));
+    if (promotionAnd.length) promotionWhere.AND = promotionAnd;
 
     const [total, services] = await Promise.all([
       distanceProcessingRequested ? Promise.resolve(0) : prisma.service.count({ where }),
@@ -109,16 +219,52 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               longitude: true,
               geocodedAt: true,
               isPubliclyListed: true,
+              accountStatus: true,
             },
           },
         },
       }),
     ]);
 
-    const serviceIds = services.map((s) => s.id);
+    let promotedCampaigns: any[] = [];
+    try {
+      promotedCampaigns = await (prisma as any).promotionCampaign.findMany({
+        where: promotionWhere,
+        orderBy: [{ rankPriority: "asc" }, { startAt: "desc" }],
+        take: 12,
+        include: {
+          vendor: true,
+          service: {
+            include: {
+              vendor: true,
+            },
+          },
+        },
+      });
+    } catch (promotionError: any) {
+      const message = String(promotionError?.message || "");
+      const code = String(promotionError?.code || "");
+      const tableMissing =
+        code === "P2021" ||
+        message.includes("promotion_campaigns") ||
+        message.includes("PromotionCampaign");
+      if (!tableMissing) throw promotionError;
+      promotedCampaigns = [];
+    }
+
+    const promotedServices = promotedCampaigns
+      .filter(
+        (campaign: any) =>
+          campaign?.placementType === "BROWSE_FEATURED" &&
+          isCampaignCurrentlyRenderable(campaign, now) &&
+          campaignMatchesTargetRadius(campaign, origin) &&
+          campaign.service
+      )
+      .map((campaign: any) => campaign.service);
+    const serviceIds = Array.from(new Set([...services, ...promotedServices].map((s) => s.id)));
     const publicAssets = serviceIds.length
       ? await (prisma as any).mediaAsset.findMany({
-          where: {
+          where: countableMediaAssetWhere({
             ...getApprovedActiveBaseWhere(),
             visibilityStatus: {
               in: getVisibilityStatusesForAudience("public"),
@@ -126,7 +272,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             mediaSession: {
               serviceId: { in: serviceIds },
             },
-          },
+          }),
           orderBy: { createdAt: "desc" },
           select: {
             mimeType: true,
@@ -147,25 +293,58 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
     );
 
-    const previewByServiceId = new Map<string, string>();
-    const primaryProofPreviewByServiceId = new Map<string, string>();
+    const previewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
+    const primaryProofPreviewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
     for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
       const blobUrl = String(asset?.blobUrl || "").trim();
       if (!serviceId || !blobUrl || primaryProofPreviewByServiceId.has(serviceId)) continue;
       if (!String(asset?.mimeType || "").startsWith("video/")) continue;
       if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
-      primaryProofPreviewByServiceId.set(serviceId, blobUrl);
+      primaryProofPreviewByServiceId.set(serviceId, { url: blobUrl, type: "video" });
     }
     for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
       const blobUrl = String(asset?.blobUrl || "").trim();
       if (!serviceId || !blobUrl || previewByServiceId.has(serviceId)) continue;
-      previewByServiceId.set(serviceId, blobUrl);
+      previewByServiceId.set(serviceId, {
+        url: blobUrl,
+        type: String(asset?.mimeType || "").startsWith("video/") ? "video" : "image",
+      });
     }
 
-    const vendorIds = Array.from(new Set(services.map((s) => s.vendorId)));
+    const vendorIds = Array.from(new Set([...services, ...promotedServices].map((s) => s.vendorId)));
     const vendorReviewAggregates = await getVendorReviewAggregatesForPublic(vendorIds);
+    const vendorTrustScores = new Map<string, number | null>();
+    try {
+      const trustScoreDelegate = (prisma as any).vendorTrustScoreSnapshot;
+      if (trustScoreDelegate?.findMany && vendorIds.length > 0) {
+        const trustScoreRows = await trustScoreDelegate.findMany({
+          where: {
+            vendorId: { in: vendorIds },
+            isCurrent: true,
+          },
+          select: {
+            vendorId: true,
+            totalScorePct: true,
+            computedAt: true,
+          },
+          orderBy: [{ vendorId: "asc" }, { computedAt: "desc" }],
+        });
+        for (const row of trustScoreRows as Array<{ vendorId?: string; totalScorePct?: number | null }>) {
+          const rowVendorId = String(row?.vendorId || "").trim();
+          if (!rowVendorId || vendorTrustScores.has(rowVendorId)) continue;
+          vendorTrustScores.set(
+            rowVendorId,
+            typeof row?.totalScorePct === "number" && Number.isFinite(row.totalScorePct)
+              ? Math.round(row.totalScorePct)
+              : null
+          );
+        }
+      }
+    } catch (trustScoreReadError) {
+      console.warn("[services/discover] trust score snapshot read skipped", trustScoreReadError);
+    }
     const geocodedVendorCount = services.filter(
       (service) =>
         typeof (service.vendor as any).latitude === "number" &&
@@ -173,7 +352,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         Boolean((service.vendor as any).geocodedAt)
     ).length;
 
-    const mappedResults = services.map((service) => {
+    const mapServiceResult = (service: any) => {
+      const vendorName = service.vendor.businessName || service.vendor.name || "Unknown Vendor";
       const vendorCoordinates =
         origin && (service.vendor as any).geocodedAt && hasValidCoordinates(service.vendor)
           ? {
@@ -186,32 +366,72 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           ? roundDistanceMiles(distanceMiles(origin, vendorCoordinates))
           : null;
 
+      const previewMedia = primaryProofPreviewByServiceId.get(service.id) || previewByServiceId.get(service.id) || null;
+
       return {
         serviceId: service.id,
         serviceName: service.name,
-        serviceDescription: service.description || "",
+        serviceDescription: cleanPublicServiceDescription(service.description || "", vendorName),
         vendorId: service.vendorId,
-        vendorName: service.vendor.businessName || service.vendor.name || "Unknown Vendor",
+        vendorName,
         vendorCategory: service.vendor.category || null,
         vendorBusinessType: service.vendor.businessType || null,
         location:
           [service.vendor.city, service.vendor.state].filter(Boolean).join(", ") || null,
         distanceMiles: distance,
-        previewMediaUrl:
-          primaryProofPreviewByServiceId.get(service.id) || previewByServiceId.get(service.id) || null,
+        previewMediaUrl: previewMedia?.url || null,
+        previewMediaType: previewMedia?.type || null,
         price: Number(service.price),
         rating: vendorReviewAggregates.get(service.vendorId)?.rating ?? null,
         reviewCount: vendorReviewAggregates.get(service.vendorId)?.reviewCount ?? null,
+        trustScore: {
+          scored: vendorTrustScores.has(service.vendorId) && vendorTrustScores.get(service.vendorId) !== null,
+          totalScorePct: vendorTrustScores.get(service.vendorId) ?? null,
+        },
         badges: {
           verified: null,
           featured: null,
         },
         publicListing: {
-          serviceEligible: Boolean(service.isPublished && service.vendor?.isPubliclyListed),
-          hasPublicMedia: Boolean(previewByServiceId.get(service.id)),
+          serviceEligible: Boolean(
+            service.isPublished &&
+              service.vendor?.isPubliclyListed &&
+              String((service.vendor as any)?.accountStatus || "active").toLowerCase() === "active"
+          ),
+          hasPublicMedia: Boolean(previewMedia),
         },
       };
-    });
+    };
+
+    const mappedResults = services.map(mapServiceResult);
+    const promotedCandidates = promotedCampaigns
+      .filter(
+        (campaign: any) =>
+          campaign?.placementType === "BROWSE_FEATURED" &&
+          isCampaignCurrentlyRenderable(campaign, now) &&
+          campaignMatchesTargetRadius(campaign, origin) &&
+          campaign.service
+      )
+      .map((campaign: any) => ({
+        ...mapServiceResult(campaign.service),
+        badges: {
+          verified: null,
+          featured: true,
+        },
+        promotion: {
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          packageKey: campaign.packageKey,
+          placementType: campaign.placementType,
+          label: PROMOTION_PUBLIC_LABEL,
+          explainer: PROMOTION_PUBLIC_EXPLAINER,
+          targetCategory: campaign.targetCategory,
+          targetCity: campaign.targetCity,
+          targetState: campaign.targetState,
+          targetRadiusMiles: campaign.targetRadiusMiles,
+          endsAt: campaign.endAt instanceof Date ? campaign.endAt.toISOString() : new Date(campaign.endAt).toISOString(),
+        },
+      }));
     const radiusFilteredResults =
       origin && radiusFilterRequested
         ? mappedResults.filter(
@@ -239,9 +459,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const responseTotal = distanceProcessingRequested ? distanceSortedResults.length : total;
     const distanceFilteringApplied = Boolean(origin && radiusFilterRequested);
     const distanceSortingApplied = Boolean(origin && distanceSortRequested && distanceResultCount > 0);
+    const promotedListings = applyPromotionInventoryRules(promotedCandidates, {
+      zone: "BROWSE_FEATURED",
+      organicResultCount: responseTotal,
+      hasCategoryFilter: Boolean(category),
+    });
 
     return NextResponse.json({
       success: true,
+      promotedListings,
       results,
       pagination: {
         page,

@@ -4,9 +4,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
-import { getBlobProperties } from "@/lib/azure-blob-storage";
+import { downloadBlobToBuffer, getBlobProperties } from "@/lib/azure-blob-storage";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
+import { STAGE_VIDEO_MAX_DURATION_SECONDS } from "@/lib/stage-video-guidance";
+import { probeVideoDurationSecondsFromBuffer } from "@/lib/server-video-duration";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -38,6 +40,7 @@ export async function POST(
       mimeType,
       deviceId,
       mediaSessionId,
+      durationSeconds,
     } = body;
 
     if (!assetId || !blobKey || !bytes || !mimeType) {
@@ -117,7 +120,7 @@ export async function POST(
           id: mediaSessionId,
           vendorId,
         },
-        select: { id: true },
+        select: { id: true, vendorJobVideoStage: true, sessionType: true },
       });
 
       if (!session) {
@@ -125,6 +128,77 @@ export async function POST(
           { error: "Invalid mediaSessionId for this vendor" },
           { status: 422 }
         );
+      }
+      const isStagedJobVideo =
+        Boolean(String(session.vendorJobVideoStage || "").trim()) ||
+        String(session.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO";
+      if (isStagedJobVideo) {
+        if (!String(mimeType || "").toLowerCase().startsWith("video/")) {
+          return NextResponse.json(
+            {
+              error: "STAGE_VIDEO_MIME_TYPE_REQUIRED",
+              message: "Stage uploads must be video files.",
+            },
+            { status: 422 }
+          );
+        }
+
+        const declaredDurationSeconds = Number(durationSeconds);
+        if (!Number.isFinite(declaredDurationSeconds) || declaredDurationSeconds <= 0) {
+          return NextResponse.json(
+            {
+              error: "STAGE_VIDEO_DURATION_REQUIRED",
+              message: "Stage video uploads must include a readable duration so the 30-second limit can be enforced.",
+            },
+            { status: 422 }
+          );
+        }
+        if (declaredDurationSeconds > STAGE_VIDEO_MAX_DURATION_SECONDS) {
+          return NextResponse.json(
+            {
+              error: "STAGE_VIDEO_TOO_LONG",
+              message: `Stage videos must be ${STAGE_VIDEO_MAX_DURATION_SECONDS} seconds or less.`,
+              maxDurationSeconds: STAGE_VIDEO_MAX_DURATION_SECONDS,
+              durationSeconds: declaredDurationSeconds,
+            },
+            { status: 413 }
+          );
+        }
+
+        let verifiedDurationSeconds: number;
+        try {
+          const uploadedVideo = await downloadBlobToBuffer(blobKey);
+          verifiedDurationSeconds = probeVideoDurationSecondsFromBuffer(uploadedVideo, mimeType);
+        } catch (error: any) {
+          console.warn("[media/upload/complete] Stage video duration probe failed", {
+            vendorId,
+            assetId,
+            blobKey,
+            message: error?.message || String(error),
+          });
+          return NextResponse.json(
+            {
+              error: "STAGE_VIDEO_DURATION_UNVERIFIABLE",
+              message:
+                "Stage video duration could not be verified from the uploaded media. Please retry with a supported video file.",
+            },
+            { status: 422 }
+          );
+        }
+
+        if (verifiedDurationSeconds > STAGE_VIDEO_MAX_DURATION_SECONDS) {
+          return NextResponse.json(
+            {
+              error: "STAGE_VIDEO_TOO_LONG",
+              message: `Stage videos must be ${STAGE_VIDEO_MAX_DURATION_SECONDS} seconds or less.`,
+              maxDurationSeconds: STAGE_VIDEO_MAX_DURATION_SECONDS,
+              durationSeconds: verifiedDurationSeconds,
+              declaredDurationSeconds,
+              verifiedByServer: true,
+            },
+            { status: 413 }
+          );
+        }
       }
       validMediaSessionId = session.id;
     }
@@ -189,7 +263,7 @@ export async function POST(
           const st = String(bookingRow?.status || "")
             .trim()
             .toUpperCase();
-          if (bookingRow && st === "CONFIRMED") {
+          if (bookingRow && ["PENDING", "CONFIRMED", "IN_PROGRESS", "AWAITING_REVIEW"].includes(st)) {
             const sessions = await (prisma as any).mediaSession.findMany({
               where: { vendorId, bookingId },
               select: {
@@ -204,13 +278,19 @@ export async function POST(
               },
             });
             const packageState = evaluateVendorJobPackageState(sessions);
+            const hasAllRequiredStages = packageState.hasAllRequiredStages;
             const nextMeta = setOperationalPhaseOnMetadataJson(
               bookingRow.customerMetadata,
-              packageState.hasAllRequiredStages ? "AWAITING_ADMIN_REVIEW" : "IN_PROGRESS"
+              hasAllRequiredStages ? "AWAITING_ADMIN_REVIEW" : "IN_PROGRESS"
             );
             await prisma.booking.update({
               where: { id: bookingRow.id },
-              data: { customerMetadata: nextMeta },
+              data: {
+                customerMetadata: nextMeta,
+                ...(hasAllRequiredStages && st !== "AWAITING_REVIEW"
+                  ? { status: "AWAITING_REVIEW" }
+                  : {}),
+              },
             });
           }
         }
@@ -276,4 +356,3 @@ export async function POST(
     );
   }
 }
-

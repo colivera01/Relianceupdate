@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -136,7 +136,7 @@ export default function VendorInvitePage() {
     <div className="min-h-screen bg-gray-50 px-4 py-10">
       <div className="mx-auto w-full max-w-xl rounded-lg border bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-bold text-gray-900">Team Invite</h1>
-        {loading ? <p className="mt-4 text-sm text-gray-600">Loading invite…</p> : null}
+        {loading ? <p className="mt-4 text-sm text-gray-600">Loading invite...</p> : null}
         {error ? <p className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
         {!loading && loadState === "invalid_or_expired" ? (
           <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -198,7 +198,7 @@ export default function VendorInvitePage() {
                   onClick={() => void onAccept()}
                   className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
                 >
-                  {submitting ? "Accepting…" : "Accept Invite"}
+                  {submitting ? "Accepting..." : "Accept Invite"}
                 </button>
               </>
             )}
@@ -211,3 +211,4 @@ export default function VendorInvitePage() {
     </div>
   );
 }
+

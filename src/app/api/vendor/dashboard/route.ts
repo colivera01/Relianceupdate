@@ -5,7 +5,24 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 
 import { getVendorIdFromRequest } from "@/lib/auth";
+import { resolveOperationalClientKey, resolveOperationalClientLabel } from "@/lib/operational-client";
+import {
+  countableReviewWhere,
+  vendorOperationalBookingWhere,
+} from "@/lib/metrics-exclusion";
 
+function approvedCustomerReviewWhereForVendor(
+  vendorId: string,
+  extra: Record<string, unknown> = {}
+) {
+  return countableReviewWhere({
+    vendorId,
+    source: "customer",
+    moderationStatus: "approved",
+    bookingId: { not: null },
+    ...extra,
+  });
+}
 
 
 export async function GET(request: Request) {
@@ -50,7 +67,7 @@ export async function GET(request: Request) {
 
         by: ['vendorId'],
 
-        where: { vendorId },
+        where: vendorOperationalBookingWhere({ vendorId }),
 
         _count: { _all: true },
 
@@ -60,7 +77,7 @@ export async function GET(request: Request) {
 
       prisma.booking.findMany({
 
-        where: { vendorId },
+        where: vendorOperationalBookingWhere({ vendorId }),
 
         include: {
 
@@ -78,7 +95,7 @@ export async function GET(request: Request) {
 
       prisma.review.findMany({
 
-        where: { vendorId },
+        where: approvedCustomerReviewWhereForVendor(vendorId),
 
         include: {
 
@@ -94,15 +111,25 @@ export async function GET(request: Request) {
 
       prisma.booking.findMany({
 
-        where: { vendorId },
+        where: vendorOperationalBookingWhere({ vendorId }),
 
-        select: { userId: true },
+        select: {
+          userId: true,
+          clientName: true,
+          user: {
+            select: {
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
 
       }),
 
       prisma.review.findMany({
 
-        where: { vendorId },
+        where: approvedCustomerReviewWhereForVendor(vendorId),
 
         select: { rating: true },
 
@@ -111,13 +138,13 @@ export async function GET(request: Request) {
       // Calculate earnings only from COMPLETED bookings
       prisma.booking.findMany({
 
-        where: { 
+        where: vendorOperationalBookingWhere({ 
 
           vendorId,
 
           status: 'COMPLETED'
 
-        },
+        }),
 
         select: { amount: true },
 
@@ -155,7 +182,19 @@ export async function GET(request: Request) {
       0
     );
 
-    const totalClients = new Set(allBookings.map((b) => b.userId).filter(Boolean)).size;
+    const totalClients = new Set(
+      allBookings
+        .map((booking) =>
+          resolveOperationalClientKey({
+            userId: booking.userId,
+            clientName: booking.clientName,
+            userName: booking.user?.name,
+            email: booking.user?.email,
+            phone: booking.user?.phone,
+          })
+        )
+        .filter(Boolean)
+    ).size;
 
     const ratings = allReviews.map((r) => r.rating).filter((r) => r > 0);
 
@@ -191,7 +230,10 @@ export async function GET(request: Request) {
 
         title: booking.title || booking.service?.name || 'Untitled Job',
 
-        client: booking.clientName || booking.user?.name || 'Unknown Client',
+        client: resolveOperationalClientLabel({
+          clientName: booking.clientName,
+          userName: booking.user?.name,
+        }),
 
         amount: booking.amount ?? 0,
 
@@ -211,7 +253,10 @@ export async function GET(request: Request) {
 
       id: review.id,
 
-      client: review.clientName || review.user?.name || 'Unknown Client',
+      client: resolveOperationalClientLabel({
+        clientName: review.clientName,
+        userName: review.user?.name,
+      }),
 
       rating: review.rating,
 

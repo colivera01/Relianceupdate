@@ -79,9 +79,20 @@ export async function POST(
     try {
       sasUrl = await generateUploadUrl(blobKey, 60);
     } catch (error: any) {
-      // Fallback if Azure Storage not configured
-      console.warn("Azure Storage not configured, using placeholder URL:", error.message);
-      sasUrl = `${process.env.BLOB_STORAGE_URL || 'https://storage.example.com'}/${blobKey}?sas_token=...`;
+      console.error("[media/upload/init] Storage unavailable", {
+        vendorId,
+        blobKey,
+        message: error?.message || String(error),
+      });
+      return NextResponse.json(
+        {
+          code: "MEDIA_STORAGE_UNAVAILABLE",
+          error:
+            "Media upload is temporarily unavailable because secure storage is not configured or not reachable.",
+          details: error?.message || String(error),
+        },
+        { status: 503 }
+      );
     }
 
     return NextResponse.json({
@@ -106,4 +117,3 @@ export async function POST(
     );
   }
 }
-

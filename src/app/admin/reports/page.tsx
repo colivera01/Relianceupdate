@@ -1,6 +1,5 @@
-'use client';
-import ReportsAnalytics from '@/components/ReportsAnalytics';
+import AdminReportsClient from "./AdminReportsClient";
 
 export default function ReportsPage() {
-  return <ReportsAnalytics />;
-} 
+  return <AdminReportsClient />;
+}

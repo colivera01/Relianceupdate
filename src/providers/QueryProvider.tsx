@@ -10,8 +10,12 @@ import { useState } from 'react';
  * async chunk on every route; after HMR / .next cache issues (common on Windows
  * dev), that chunk URL can 404 → ChunkLoadError on unrelated pages.
  */
+const ENABLE_QUERY_DEVTOOLS =
+  process.env.NODE_ENV === 'development' &&
+  process.env.NEXT_PUBLIC_ENABLE_QUERY_DEVTOOLS === 'true';
+
 const ReactQueryDevtools =
-  process.env.NODE_ENV === 'development'
+  ENABLE_QUERY_DEVTOOLS
     ? dynamic(
         () =>
           import('@tanstack/react-query-devtools').then((mod) => mod.ReactQueryDevtools),

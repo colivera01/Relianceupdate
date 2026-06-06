@@ -82,6 +82,10 @@ model Vendor {
   overLimitSince      DateTime?
   isPubliclyListed    Boolean   @default(false)
   publiclyListedAt    DateTime?
+  accountStatus       String    @default("active")
+  accountStatusUpdatedAt DateTime?
+  accountStatusReason String?
+  accountStatusAdminNotes String? @db.NVarChar(Max)
   
   // Relations
   employees           Employee[]
@@ -99,6 +103,10 @@ model Vendor {
   consentRecords      ConsentRecord[]
   storageAlerts       VendorStorageAlert[]
   adminNotifications AdminNotification[]
+  promotionCampaigns  PromotionCampaign[]
+  serviceIssues       BookingServiceIssue[]
+  operationalOutcomes VendorOperationalOutcome[]
+  trustScoreSnapshots VendorTrustScoreSnapshot[]
 
   @@map("vendors")
 }
@@ -140,8 +148,81 @@ model Service {
   bookings    Booking[]
   mediaSessions MediaSession[]
   favorites   Favorite[]
+  promotionCampaigns PromotionCampaign[]
 
   @@map("services")
+}
+
+model PromotionCampaign {
+  id               String   @id @default(cuid())
+  vendorId         String
+  serviceId        String?
+  name             String
+  packageKey       String   @default("browse-local-7-day")
+  packageSnapshotJson String? @db.NVarChar(Max)
+  packageSnapshotAt DateTime?
+  placementType    String   @default("BROWSE_FEATURED")
+  status           String   @default("draft")
+  paymentStatus    String   @default("not_started")
+  startAt          DateTime
+  endAt            DateTime
+  targetCategory   String?
+  targetCity       String?
+  targetState      String?
+  targetZip        String?
+  targetRadiusMiles Int     @default(10)
+  rankPriority     Int      @default(100)
+  adminNotes       String?  @db.NVarChar(Max)
+  amountDueCents   Int      @default(0)
+  stripePaymentLinkUrl String? @db.NVarChar(2048)
+  paymentReference String?
+  paidAt           DateTime?
+  paymentNotes     String?  @db.NVarChar(Max)
+  createdByUserId  String?
+  approvedByUserId String?
+  approvedAt       DateTime?
+  pausedAt         DateTime?
+  endedAt          DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  vendor           Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  service          Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([status, placementType, startAt, endAt])
+  @@index([vendorId, status])
+  @@index([serviceId])
+  @@index([targetCategory])
+  @@index([paymentStatus])
+  @@index([packageKey])
+  @@index([paidAt])
+  @@map("promotion_campaigns")
+}
+
+model PromotionPackage {
+  id                    String   @id @default(cuid())
+  packageKey            String   @unique
+  name                  String
+  publicSummary         String   @db.NVarChar(1000)
+  adminDescription      String   @db.NVarChar(Max)
+  bestFor               String   @db.NVarChar(1000)
+  placementExplanation  String   @db.NVarChar(1000)
+  audience              String   @db.NVarChar(1000)
+  placementType         String
+  durationDays          Int
+  defaultRadiusMiles    Int
+  maxRadiusMiles        Int
+  allowCategoryTargeting Boolean @default(false)
+  maxConcurrentInZone   Int
+  defaultPriceCents     Int
+  isActive              Boolean @default(true)
+  isFoundingRate        Boolean @default(false)
+  pricingLabel          String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([isActive, placementType])
+  @@map("promotion_packages")
 }
 
 model User {
@@ -161,8 +242,13 @@ model User {
   updatedAt   DateTime @updatedAt
   demo        Boolean  @default(false)
   seedBatchId String?
+  accountStatus String   @default("active")
+  accountStatusUpdatedAt DateTime?
+  accountStatusReason String?
+  accountStatusAdminNotes String? @db.NVarChar(Max)
   
   // Relations
+  authCredential   AuthCredential?
   bookings         Booking[]
   reviews          Review[]
   memberships      VendorMembership[]
@@ -171,6 +257,116 @@ model User {
   favorites        Favorite[]
 
   @@map("users")
+}
+
+model AuthCredential {
+    id                String   @id @default(cuid())
+    userId            String   @unique
+    email             String   @unique
+    passwordHash      String
+    emailVerifiedAt   DateTime?
+    passwordUpdatedAt DateTime @default(now())
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+  
+    user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    emailVerificationTokens EmailVerificationToken[]
+    mfaChallenges        AuthMfaChallenge[]
+    trustedDevices       AuthTrustedDevice[]
+    passkeys             AuthPasskey[]
+    passkeyChallenges    AuthPasskeyChallenge[]
+  
+    @@index([email])
+    @@map("auth_credentials")
+  }
+
+model AuthPasskey {
+    id                   String   @id @default(cuid())
+    credentialId         String   @unique
+    credentialPublicKey  String
+    webauthnUserId       String
+    counter              Int      @default(0)
+    transportsJson       String?
+    deviceType           String
+    backedUp             Boolean  @default(false)
+    label                String?
+    lastUsedAt           DateTime?
+    revokedAt            DateTime?
+    createdAt            DateTime @default(now())
+    updatedAt            DateTime @updatedAt
+    authCredentialId     String
+
+    credential           AuthCredential @relation(fields: [authCredentialId], references: [id], onDelete: Cascade)
+
+    @@index([authCredentialId, revokedAt, createdAt])
+    @@map("auth_passkeys")
+}
+
+model AuthPasskeyChallenge {
+    id               String   @id @default(cuid())
+    authCredentialId String
+    challenge        String
+    purpose          String
+    expiresAt        DateTime
+    consumedAt       DateTime?
+    createdAt        DateTime @default(now())
+
+    credential       AuthCredential @relation(fields: [authCredentialId], references: [id], onDelete: Cascade)
+
+    @@index([authCredentialId, purpose, consumedAt, expiresAt])
+    @@map("auth_passkey_challenges")
+}
+
+model EmailVerificationToken {
+    id            String   @id @default(cuid())
+    credentialId  String
+    email         String
+    tokenHash     String   @unique
+    expiresAt     DateTime
+    consumedAt    DateTime?
+    createdAt     DateTime @default(now())
+
+    credential    AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+    @@index([credentialId, email, consumedAt])
+    @@index([email, expiresAt])
+    @@map("email_verification_tokens")
+}
+
+model AuthMfaChallenge {
+    id            String   @id @default(cuid())
+    credentialId  String
+    userId        String
+    email         String
+    codeHash      String
+    purpose       String
+    expiresAt     DateTime
+    consumedAt    DateTime?
+    createdAt     DateTime @default(now())
+
+    credential    AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+    @@index([userId, purpose, consumedAt])
+    @@index([credentialId, purpose, expiresAt])
+    @@map("auth_mfa_challenges")
+}
+
+model AuthTrustedDevice {
+    id            String   @id @default(cuid())
+    credentialId  String
+    userId        String
+    tokenHash     String   @unique
+    label         String?
+    expiresAt     DateTime
+    revokedAt     DateTime?
+    lastUsedAt    DateTime?
+    createdAt     DateTime @default(now())
+
+    credential    AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+    @@index([userId, revokedAt, expiresAt])
+    @@index([credentialId, expiresAt])
+    @@map("auth_trusted_devices")
 }
 
 model Booking {
@@ -202,6 +398,8 @@ model Booking {
   reviewWindows ReviewWindow[]
   consentRecords ConsentRecord[]
   reviews      Review[]
+  serviceIssues BookingServiceIssue[]
+  operationalOutcomes VendorOperationalOutcome[]
 
   @@map("bookings")
 }
@@ -254,6 +452,7 @@ model Device {
   deviceUid     String?    @unique
   // Legacy fallback field used by older pairing MVP rows.
   employeeId    String?
+  deviceName    String
   deviceType    String     // "PHONE" | "HEADSET"
   pairedAt      DateTime  @default(now())
   lastSeenAt    DateTime?
@@ -480,6 +679,130 @@ model AdminNotification {
   @@index([read, createdAt])
   @@index([vendorId])
   @@map("admin_notifications")
+}
+
+model ContentReport {
+  id               String    @id @default(cuid())
+  targetType       String
+  targetId         String
+  bookingId        String?
+  vendorId         String?
+  reportedUserId   String?
+  reportedVendorId String?
+  reporterUserId   String?
+  reporterVendorId String?
+  reporterRole     String
+  reasonCategory   String
+  reasonDetail     String?   @db.NVarChar(Max)
+  status           String    @default("open")
+  severity         String    @default("medium")
+  autoHidden       Boolean   @default(false)
+  adminOwnerUserId String?
+  notificationSentAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  resolvedAt       DateTime?
+  resolutionNotes  String?   @db.NVarChar(Max)
+
+  @@index([targetType, targetId])
+  @@index([status, createdAt])
+  @@index([vendorId, createdAt])
+  @@index([reportedUserId, createdAt])
+  @@index([reportedVendorId, createdAt])
+  @@map("content_reports")
+}
+
+model BookingServiceIssue {
+  id                String   @id @default(cuid())
+  bookingId         String
+  vendorId          String
+  issueType         String
+  status            String   @default("PENDING")
+  sourceEntityType  String?
+  sourceEntityId    String?
+  reportedByUserId  String?
+  validatedAt       DateTime?
+  rejectedAt        DateTime?
+  refundApprovedAt  DateTime?
+  finalizedAt       DateTime?
+  finalizedByUserId String?
+  resolutionNotes   String?  @db.NVarChar(Max)
+  metadata          String?  @db.NVarChar(Max)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  booking           Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor            Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([bookingId, status])
+  @@index([vendorId, status, finalizedAt])
+  @@index([issueType, status])
+  @@index([sourceEntityType, sourceEntityId])
+  @@map("booking_service_issues")
+}
+
+model VendorOperationalOutcome {
+  id                String   @id @default(cuid())
+  vendorId          String
+  bookingId         String?
+  outcomeType       String
+  status            String   @default("FINALIZED")
+  sourceEntityType  String?
+  sourceEntityId    String?
+  finalizedAt       DateTime
+  finalizedByUserId String?
+  metadata          String?  @db.NVarChar(Max)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  vendor            Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking           Booking? @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([vendorId, outcomeType, finalizedAt])
+  @@index([bookingId, outcomeType])
+  @@index([sourceEntityType, sourceEntityId])
+  @@map("vendor_operational_outcomes")
+}
+
+// Trust Score Phase 1B: internal-only platform-generated score snapshots.
+// Separate from `Review` (Customer Rating). `visibilityStatus` defaults to "internal"
+// so no public/vendor surface reads these rows until a later UI phase opts in.
+model VendorTrustScoreSnapshot {
+  id                                String   @id @default(cuid())
+  vendorId                          String
+  scoreVersion                      Int      @default(1)
+  // Null pct = metric/total not yet measurable (no finalized denominator).
+  totalScorePct                     Float?
+  workflowCompletionPct             Float?
+  videoVerificationPct              Float?
+  disputeFreePct                    Float?
+  operationalReliabilityPct         Float?
+  workflowCompletionNumerator       Int      @default(0)
+  workflowCompletionDenominator     Int      @default(0)
+  videoVerificationNumerator        Int      @default(0)
+  videoVerificationDenominator      Int      @default(0)
+  disputeFreeNumerator              Int      @default(0)
+  disputeFreeDenominator            Int      @default(0)
+  operationalReliabilityNumerator   Int      @default(0)
+  operationalReliabilityDenominator Int      @default(0)
+  computedAt                        DateTime @default(now())
+  periodStart                       DateTime?
+  periodEnd                         DateTime?
+  inputHash                         String?
+  isCurrent                         Boolean  @default(true)
+  visibilityStatus                  String   @default("internal")
+  recalcReason                      String?
+  recalcSource                      String?
+  detailJson                        String?  @db.NVarChar(Max)
+  createdAt                         DateTime @default(now())
+  updatedAt                         DateTime @updatedAt
+
+  vendor                            Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([vendorId, isCurrent])
+  @@index([vendorId, computedAt])
+  @@index([inputHash])
+  @@map("vendor_trust_score_snapshots")
 }
 
 model AdminAuditLog {

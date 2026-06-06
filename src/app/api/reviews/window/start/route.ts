@@ -3,7 +3,14 @@ import { prisma } from '@/server/db';
 import { getOrCreateActiveReviewWindow } from '@/lib/review-capture';
 import { scheduleReviewReminder } from '@/lib/review-notifications';
 import { getUserIdFromRequest } from '@/lib/auth';
+import {
+  accountStatusErrorBody,
+  AccountStatusError,
+  ensureUserAccountCanAct,
+  ensureVendorAccountCanOperate,
+} from '@/lib/account-status';
 import { getVisibilityStatusesForAudience } from '@/lib/media-visibility';
+import { isCompletedStatus, normalizeBookingStatusKey } from '@/lib/my-bookings';
 
 // TODO(server-hardening): Optionally require getUserIdFromRequest + booking.userId match (see REVIEW_ROUTE_SERVER_HARDENING_AUDIT.md). Consent checks must remain.
 
@@ -38,12 +45,14 @@ export async function POST(request: NextRequest) {
     if (!requesterUserId) {
       return NextResponse.json({ success: false, error: 'Unauthorized: customer context is required' }, { status: 401 });
     }
+    await ensureUserAccountCanAct(requesterUserId);
+    await ensureVendorAccountCanOperate(vendorId);
 
     step = 'booking_lookup';
     logStep(step);
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { id: true, vendorId: true, userId: true },
+      select: { id: true, vendorId: true, userId: true, status: true },
     });
 
     step = 'booking_vendor_check';
@@ -59,12 +68,45 @@ export async function POST(request: NextRequest) {
     if (String(booking.userId || '') !== String(requesterUserId)) {
       return NextResponse.json({ success: false, error: 'Forbidden: booking does not belong to this user' }, { status: 403 });
     }
+    if (!isCompletedStatus(normalizeBookingStatusKey(booking.status))) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Review window can only open after the booking is completed',
+          code: 'BOOKING_NOT_COMPLETED',
+        },
+        { status: 409 }
+      );
+    }
+
+    step = 'existing_review_check';
+    logStep(step);
+    const existingReview = await (prisma as any).review.findFirst({
+      where: { bookingId },
+      select: { id: true },
+    });
+    if (existingReview?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'A review already exists for this booking',
+          code: 'REVIEW_ALREADY_EXISTS',
+        },
+        { status: 409 }
+      );
+    }
 
     step = 'media_session_lookup';
     logStep(step);
     const mediaSession = await (prisma as any).mediaSession.findUnique({
       where: { id: mediaSessionId },
-      select: { id: true, bookingId: true, vendorId: true },
+      select: {
+        id: true,
+        bookingId: true,
+        vendorId: true,
+        sessionType: true,
+        vendorJobVideoStage: true,
+      },
     });
 
     step = 'media_session_validate';
@@ -75,6 +117,19 @@ export async function POST(request: NextRequest) {
     });
     if (!mediaSession || String(mediaSession.vendorId) !== vendorId || String(mediaSession.bookingId || '') !== bookingId) {
       return NextResponse.json({ success: false, error: 'Invalid mediaSession for booking/vendor' }, { status: 404 });
+    }
+    if (
+      String(mediaSession.sessionType || '').trim().toUpperCase() !== 'JOB_SERVICE_VIDEO' ||
+      String(mediaSession.vendorJobVideoStage || '').trim().toUpperCase() !== 'COMPLETED'
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Review window requires the completed-stage service video',
+          code: 'REVIEW_REQUIRES_COMPLETED_STAGE_VIDEO',
+        },
+        { status: 409 }
+      );
     }
 
     step = 'media_visibility_validate';
@@ -162,6 +217,9 @@ export async function POST(request: NextRequest) {
       reminderDispatch,
     });
   } catch (error: any) {
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     const errorMessage = error?.message || String(error);
     const errorCode = error?.code || null;
     const errorMeta = error?.meta || null;

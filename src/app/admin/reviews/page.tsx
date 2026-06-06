@@ -1,11 +1,15 @@
 'use client';
 
+import { Suspense } from 'react';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getAdminRequestHeaders } from '@/lib/admin-client';
 import { RefreshCw, ShieldAlert } from 'lucide-react';
 
 type ReviewQueueRow = {
@@ -26,13 +30,39 @@ type ReviewQueueRow = {
   moderatedAt: string | null;
 };
 
+function formatReviewerEmail(email: string | null | undefined) {
+  const normalized = String(email || '').trim();
+  if (!normalized || /@reliance\.test$/i.test(normalized)) return null;
+  return normalized;
+}
+
+function prettyStatus(value: string | null | undefined) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'Unknown';
+  if (normalized === 'pending_review') return 'Pending Review';
+  return normalized
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function reviewVisibilityLabel(value: string | null | undefined) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'Unknown';
+  if (normalized === 'public') return 'Public';
+  if (normalized === 'private') return 'Private';
+  return prettyStatus(normalized);
+}
+
 type ReviewModerationAction =
   | 'approve_public'
   | 'approve_vendor_private'
   | 'reject'
   | 'flag';
 
-export default function ReviewsPage() {
+function ReviewsPageContent() {
+  const searchParams = useSearchParams();
   const [reviews, setReviews] = useState<ReviewQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -50,44 +80,42 @@ export default function ReviewsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
-  const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectTarget, setRejectTarget] = useState<ReviewQueueRow | null>(null);
+  const [moderationNoteModalOpen, setModerationNoteModalOpen] = useState(false);
+  const [moderationNoteReason, setModerationNoteReason] = useState('');
+  const [moderationNoteTarget, setModerationNoteTarget] = useState<ReviewQueueRow | null>(null);
+  const [moderationNoteAction, setModerationNoteAction] = useState<'reject' | 'flag' | null>(null);
 
-  const adminHeaders = () => {
-    const user = (() => {
-      try {
-        const raw = localStorage.getItem('user');
-        return raw ? JSON.parse(raw) : null;
-      } catch {
-        return null;
-      }
-    })();
-    const userId = user?.id || 'D43B6BB3-1A72-45EC-A362-A6E1E0580EA0';
-    return {
-      'Content-Type': 'application/json',
-      'x-user-id': String(userId),
-      'x-user-role': 'admin',
-      'x-admin': 'true',
-    };
-  };
-
-  const fetchQueue = async (nextPage = page, nextLimit = limit) => {
+  const fetchQueue = async (
+    nextPage = page,
+    nextLimit = limit,
+    overrides?: Partial<{
+      moderationStatus: string;
+      visibilityStatus: string;
+      vendorId: string;
+      date: string;
+      search: string;
+    }>
+  ) => {
     setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.set('moderationStatus', statusFilter);
-      if (visibilityFilter !== 'all') params.set('visibilityStatus', visibilityFilter);
-      if (vendorFilter !== 'all') params.set('vendorId', vendorFilter);
-      if (dateFilter) params.set('date', dateFilter);
-      if (search.trim()) params.set('q', search.trim());
+      const moderationStatus = overrides?.moderationStatus ?? statusFilter;
+      const visibilityStatus = overrides?.visibilityStatus ?? visibilityFilter;
+      const resolvedVendorId = overrides?.vendorId ?? vendorFilter;
+      const resolvedDate = overrides?.date ?? dateFilter;
+      const resolvedSearch = overrides?.search ?? search;
+      if (moderationStatus !== 'all') params.set('moderationStatus', moderationStatus);
+      if (visibilityStatus !== 'all') params.set('visibilityStatus', visibilityStatus);
+      if (resolvedVendorId !== 'all') params.set('vendorId', resolvedVendorId);
+      if (resolvedDate) params.set('date', resolvedDate);
+      if (resolvedSearch.trim()) params.set('q', resolvedSearch.trim());
       params.set('page', String(nextPage));
       params.set('limit', String(nextLimit));
 
       const res = await fetch(`/api/admin/reviews/moderation-queue?${params.toString()}`, {
         method: 'GET',
-        headers: adminHeaders(),
+        headers: getAdminRequestHeaders(),
         cache: 'no-store',
       });
       const json = await res.json().catch(() => ({}));
@@ -106,9 +134,12 @@ export default function ReviewsPage() {
   };
 
   useEffect(() => {
-    fetchQueue(1, limit);
+    const routeSearch = String(searchParams?.get('q') || '').trim();
+    setSearch((current) => (current === routeSearch ? current : routeSearch));
+    setPage(1);
+    fetchQueue(1, limit, { search: routeSearch });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams, limit]);
 
   const applyModerationAction = async (
     review: ReviewQueueRow,
@@ -120,7 +151,7 @@ export default function ReviewsPage() {
     try {
       const res = await fetch(`/api/admin/reviews/${review.reviewId}/moderate`, {
         method: 'PATCH',
-        headers: adminHeaders(),
+        headers: getAdminRequestHeaders(),
         body: JSON.stringify({
           action,
           moderationReason: moderationReason || undefined,
@@ -179,18 +210,43 @@ export default function ReviewsPage() {
     [reviews]
   );
 
-  const openRejectModal = (review: ReviewQueueRow) => {
-    setRejectTarget(review);
-    setRejectReason('');
-    setRejectModalOpen(true);
+  const summary = useMemo(() => {
+    const pending = reviews.filter((review) => String(review.moderationStatus).toLowerCase() === 'pending_review').length;
+    const approvedPublic = reviews.filter(
+      (review) =>
+        String(review.moderationStatus).toLowerCase() === 'approved' &&
+        String(review.visibilityStatus).toLowerCase() === 'public'
+    ).length;
+    const approvedPrivate = reviews.filter(
+      (review) =>
+        String(review.moderationStatus).toLowerCase() === 'approved' &&
+        String(review.visibilityStatus).toLowerCase() === 'private'
+    ).length;
+    const flaggedOrRejected = reviews.filter((review) => {
+      const status = String(review.moderationStatus).toLowerCase();
+      return status === 'flagged' || status === 'rejected';
+    }).length;
+    return { pending, approvedPublic, approvedPrivate, flaggedOrRejected };
+  }, [reviews]);
+
+  const openModerationNoteModal = (review: ReviewQueueRow, action: 'reject' | 'flag') => {
+    setModerationNoteTarget(review);
+    setModerationNoteAction(action);
+    setModerationNoteReason('');
+    setModerationNoteModalOpen(true);
   };
 
-  const submitReject = async () => {
-    if (!rejectTarget || !rejectReason.trim()) return;
-    await applyModerationAction(rejectTarget, 'reject', rejectReason.trim());
-    setRejectModalOpen(false);
-    setRejectTarget(null);
-    setRejectReason('');
+  const closeModerationNoteModal = () => {
+    setModerationNoteModalOpen(false);
+    setModerationNoteTarget(null);
+    setModerationNoteAction(null);
+    setModerationNoteReason('');
+  };
+
+  const submitModerationNote = async () => {
+    if (!moderationNoteTarget || !moderationNoteAction || !moderationNoteReason.trim()) return;
+    await applyModerationAction(moderationNoteTarget, moderationNoteAction, moderationNoteReason.trim());
+    closeModerationNoteModal();
   };
 
   const queueEmpty = !loading && !error && reviews.length === 0;
@@ -200,13 +256,62 @@ export default function ReviewsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Review Moderation</h1>
-          <p className="text-gray-600 mt-1">Review customer feedback and apply public visibility decisions.</p>
+          <p className="text-gray-600 mt-1">Review customer feedback, choose visibility, and keep launch-facing reviews trustworthy.</p>
         </div>
         <Button variant="outline" onClick={() => fetchQueue(page, limit)} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Pending Review</div>
+              <div className="mt-2 text-2xl font-bold text-amber-900">{summary.pending}</div>
+              <p className="mt-1 text-sm text-amber-800">Needs an admin visibility decision.</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Approved Public</div>
+              <div className="mt-2 text-2xl font-bold text-emerald-900">{summary.approvedPublic}</div>
+              <p className="mt-1 text-sm text-emerald-800">Visible on public vendor and service pages.</p>
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Approved Private</div>
+              <div className="mt-2 text-2xl font-bold text-blue-900">{summary.approvedPrivate}</div>
+              <p className="mt-1 text-sm text-blue-800">Kept out of public discovery while still retained.</p>
+            </div>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-rose-700">Flagged Or Rejected</div>
+              <div className="mt-2 text-2xl font-bold text-rose-900">{summary.flaggedOrRejected}</div>
+              <p className="mt-1 text-sm text-rose-800">Reviews that need follow-up or were not approved.</p>
+            </div>
+          </div>
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="text-sm font-semibold text-slate-900">Operator flow</div>
+            <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
+              <p>1. Check the rating, comment, vendor, and reviewer details.</p>
+              <p>2. Choose whether the review should be public, private, rejected, or flagged.</p>
+              <p>3. Record a clear reason when you reject or escalate a review.</p>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 text-sm">
+              <Link
+                href="/admin/review-audit"
+                className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-100"
+              >
+                Open Review Audit
+              </Link>
+              <Link
+                href="/admin/activity?aiFeature=dispute_summary_assistant"
+                className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 font-medium text-slate-700 transition hover:bg-slate-100"
+              >
+                Open AI Activity Monitoring
+              </Link>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {feedback && (
         <div
@@ -222,7 +327,7 @@ export default function ReviewsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle>Queue Filters</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-6 gap-3">
           <Input
@@ -236,9 +341,10 @@ export default function ReviewsPage() {
             className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <option value="all">All moderation statuses</option>
-            <option value="approved">approved</option>
-            <option value="rejected">rejected</option>
-            <option value="flagged">flagged</option>
+            <option value="pending_review">Pending Review</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="flagged">Flagged</option>
           </select>
           <select
             value={visibilityFilter}
@@ -246,8 +352,8 @@ export default function ReviewsPage() {
             className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <option value="all">All visibility states</option>
-            <option value="public">public</option>
-            <option value="private">private</option>
+            <option value="public">Public</option>
+            <option value="private">Private</option>
           </select>
           <select
             value={vendorFilter}
@@ -309,7 +415,7 @@ export default function ReviewsPage() {
         <div className="space-y-3">
           <Card>
             <CardContent className="py-3 text-sm text-gray-600">
-              Showing {reviews.length} of {totalCount} total reviews.
+              Showing {reviews.length} of {totalCount} total reviews matching the current filters.
             </CardContent>
           </Card>
           {reviews.map((review) => {
@@ -322,8 +428,19 @@ export default function ReviewsPage() {
                       <div className="font-semibold text-base">
                         Review #{review.reviewId}
                       </div>
+                      {String(review.moderationStatus).toLowerCase() === 'pending_review' ? (
+                        <div className="inline-flex w-fit rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                          Awaiting admin decision
+                        </div>
+                      ) : null}
                       <div>Vendor: {review.vendorName || review.vendorId}</div>
-                      <div>Reviewer: {review.reviewerName || review.userId}{review.reviewerEmail ? ` • ${review.reviewerEmail}` : ''}</div>
+                      <div>
+                        Reviewer: {review.reviewerName || review.userId}
+                        {(() => {
+                          const reviewerEmail = formatReviewerEmail(review.reviewerEmail);
+                          return reviewerEmail ? ` • ${reviewerEmail}` : '';
+                        })()}
+                      </div>
                       <div>Rating: {review.rating}/5</div>
                       {review.jobType ? <div>Job Type: {review.jobType}</div> : null}
                       <div className="text-gray-700">Comment: {review.comment || '-'}</div>
@@ -331,9 +448,9 @@ export default function ReviewsPage() {
                       {review.moderatedAt ? <div>Moderated: {new Date(review.moderatedAt).toLocaleString()}</div> : null}
                     </div>
                     <div className="lg:col-span-2 space-y-2">
-                      <Badge className="block w-fit">{review.moderationStatus}</Badge>
+                      <Badge className="block w-fit">{prettyStatus(review.moderationStatus)}</Badge>
                       <Badge variant="outline" className="block w-fit">
-                        {review.visibilityStatus}
+                        {reviewVisibilityLabel(review.visibilityStatus)}
                       </Badge>
                       {review.moderationReason ? (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
@@ -356,10 +473,10 @@ export default function ReviewsPage() {
                       >
                         Keep Private
                       </Button>
-                      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openRejectModal(review)}>
+                      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'reject')}>
                         Reject
                       </Button>
-                      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => applyModerationAction(review, 'flag')}>
+                      <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'flag')}>
                         <ShieldAlert className="w-4 h-4 mr-1" />
                         Flag
                       </Button>
@@ -418,11 +535,11 @@ export default function ReviewsPage() {
                 <div>Vendor: {selectedReview.vendorName || '-'}</div>
                 <div>User ID: {selectedReview.userId}</div>
                 <div>Reviewer: {selectedReview.reviewerName || '-'}</div>
-                <div>Email: {selectedReview.reviewerEmail || '-'}</div>
+                <div>Email: {formatReviewerEmail(selectedReview.reviewerEmail) || '-'}</div>
                 <div>Rating: {selectedReview.rating}/5</div>
                 <div>Created: {new Date(selectedReview.createdAt).toLocaleString()}</div>
-                <div>Moderation: {selectedReview.moderationStatus}</div>
-                <div>Visibility: {selectedReview.visibilityStatus}</div>
+                <div>Moderation: {prettyStatus(selectedReview.moderationStatus)}</div>
+                <div>Visibility: {reviewVisibilityLabel(selectedReview.visibilityStatus)}</div>
               </div>
               <div className="rounded border p-3 bg-gray-50">
                 <p className="font-medium mb-1">Comment</p>
@@ -443,28 +560,52 @@ export default function ReviewsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={rejectModalOpen} onOpenChange={setRejectModalOpen}>
+      <Dialog open={moderationNoteModalOpen} onOpenChange={(open) => !open && closeModerationNoteModal()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Review</DialogTitle>
-            <DialogDescription>Provide moderation reason to reject this review.</DialogDescription>
+            <DialogTitle>{moderationNoteAction === 'flag' ? 'Flag Review' : 'Reject Review'}</DialogTitle>
+            <DialogDescription>
+              {moderationNoteAction === 'flag'
+                ? 'Provide moderation reason to flag this review for follow-up.'
+                : 'Provide moderation reason to reject this review.'}
+            </DialogDescription>
           </DialogHeader>
           <textarea
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="Enter rejection reason..."
+            value={moderationNoteReason}
+            onChange={(e) => setModerationNoteReason(e.target.value)}
+            placeholder={moderationNoteAction === 'flag' ? 'Enter flag reason...' : 'Enter rejection reason...'}
             className="w-full min-h-[120px] rounded border border-input px-3 py-2 text-sm"
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectModalOpen(false)}>
+            <Button variant="outline" onClick={closeModerationNoteModal}>
               Cancel
             </Button>
-            <Button onClick={submitReject} disabled={!rejectReason.trim() || Boolean(reviewActionLoadingId)}>
-              Submit Rejection
+            <Button onClick={submitModerationNote} disabled={!moderationNoteReason.trim() || Boolean(reviewActionLoadingId)}>
+              {moderationNoteAction === 'flag' ? 'Submit Flag' : 'Submit Rejection'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function ReviewsPageFallback() {
+  return (
+    <div className="container mx-auto p-6 max-w-7xl">
+      <Card>
+        <CardContent className="py-12 text-center text-gray-500">
+          Loading review moderation queue...
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function ReviewsPage() {
+  return (
+    <Suspense fallback={<ReviewsPageFallback />}>
+      <ReviewsPageContent />
+    </Suspense>
   );
 }

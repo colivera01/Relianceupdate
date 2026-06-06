@@ -1,13 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, Clock, RefreshCw, Star } from 'lucide-react';
 import { SmartVideoPlayer } from '@/components/reviews/SmartVideoPlayer';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import type { CustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
+import { getCustomerReviewGateMessage } from '@/lib/customer-reviews';
+import { formatDisplayTime } from '@/lib/date-display';
+import {
+  formatMyBookingsStatusDisplay,
+  isArchivedStatus,
+  isCompletedStatus,
+  normalizeBookingStatusKey,
+  resolveBookingScheduleInstant,
+} from '@/lib/my-bookings';
 import { Badge } from '@/components/ui/badge';
+import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 
 type BookingDetail = {
   id: string;
@@ -18,6 +29,16 @@ type BookingDetail = {
   notes?: string | null;
   service?: { id?: string | null; name?: string | null } | null;
   vendor?: { id?: string | null; name?: string | null; business_name?: string | null; businessName?: string | null } | null;
+  customerReview?: {
+    id: string;
+    rating: number;
+    comment: string;
+    submittedAt: string;
+  } | null;
+};
+
+type BookingLifecycleDetail = CustomerBookingLifecycle & {
+  reviewSubmittedAt?: string | null;
 };
 
 type BookingMediaAsset = {
@@ -48,10 +69,46 @@ function normalizeStatus(status: string | null | undefined): string {
 }
 
 function stageLabel(stage: 'before' | 'during' | 'after' | null | undefined): string {
-  if (stage === 'before') return 'Before / INTRO';
-  if (stage === 'during') return 'During / IN_PROGRESS';
-  if (stage === 'after') return 'Completed / COMPLETED';
-  return 'Proof Stage';
+  if (stage === 'before') return 'Before Service';
+  if (stage === 'during') return 'During Service';
+  if (stage === 'after') return 'Completed';
+  return 'Service Video';
+}
+
+function stageSummary(
+  stage: 'before' | 'during' | 'after' | null | undefined,
+  options?: { hasExistingReview?: boolean }
+): {
+  heading: string;
+  description: string;
+  consentPrompt: string;
+} {
+  const hasExistingReview = options?.hasExistingReview === true;
+  if (stage === 'before') {
+    return {
+      heading: 'Before Service',
+      description: 'This is the pre-service overview shared by your provider before work began.',
+      consentPrompt: hasExistingReview
+        ? 'This service video is available to watch, but we need your permission before playback.'
+        : 'This service video is available to review, but we need your permission before playback.',
+    };
+  }
+  if (stage === 'during') {
+    return {
+      heading: 'During Service',
+      description: 'This is the in-progress service footage shared while work was being performed.',
+      consentPrompt: hasExistingReview
+        ? 'This service video is available to watch, but we need your permission before playback.'
+        : 'This service video is available to review, but we need your permission before playback.',
+    };
+  }
+  return {
+    heading: 'Final Result',
+    description: 'This is the completed work shared by your provider.',
+    consentPrompt: hasExistingReview
+      ? 'This completed service video is available to watch, but we need your permission before playback.'
+      : 'This service video is ready to review, but we need your permission before playback.',
+  };
 }
 
 function formatServiceDate(dateValue: string | null | undefined): string {
@@ -77,20 +134,27 @@ function bookingStatusBadgeClass(status: string | null | undefined): string {
   return 'border-gray-200 bg-gray-50 text-gray-700';
 }
 
-export default function BookingMediaDetailPage() {
+function BookingMediaDetailPageContent() {
   const params = useParams<{ bookingId: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
   const bookingId = String(params?.bookingId || '').trim();
   const consentAcceptedFromReturn = searchParams?.get('consentAccepted') === '1';
-  const proofReadyFromLink = searchParams?.get('proofReady') === '1';
+  const videoReadyFromLink =
+    searchParams?.get('videoReady') === '1' || searchParams?.get('proofReady') === '1';
   const consentTokenFromReturn = String(searchParams?.get('consentToken') || '').trim();
   const consentedMediaSessionId = String(searchParams?.get('mediaSessionId') || '').trim();
+  const requestedReturnTo = String(searchParams?.get('returnTo') || '').trim();
+  const cleanedDetailHref =
+    requestedReturnTo === '/reviews'
+      ? `/my-bookings/${bookingId}?returnTo=${encodeURIComponent('/reviews')}`
+      : `/my-bookings/${bookingId}`;
   const { user, isLoading: authLoading } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [booking, setBooking] = useState<BookingDetail | null>(null);
+  const [customerLifecycle, setCustomerLifecycle] = useState<BookingLifecycleDetail | null>(null);
   const [assets, setAssets] = useState<BookingMediaAsset[]>([]);
   const [videos, setVideos] = useState<BookingMediaAsset[]>([]);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
@@ -105,6 +169,8 @@ export default function BookingMediaDetailPage() {
   const [reviewStatusMessage, setReviewStatusMessage] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [storyMode, setStoryMode] = useState(false);
+  const [storyAutoPlayToken, setStoryAutoPlayToken] = useState<number | null>(null);
 
   const userId = resolveCustomerUserId(user?.id);
   const bypassConsent = process.env.NEXT_PUBLIC_BYPASS_CONSENT === 'true';
@@ -124,17 +190,14 @@ export default function BookingMediaDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const headers = { 'x-user-id': userId };
       const [bookingRes, mediaRes] = await Promise.all([
         fetch(`/api/bookings/${bookingId}`, {
           method: 'GET',
-          headers,
           cache: 'no-store',
           credentials: 'include',
         }),
         fetch(`/api/bookings/${bookingId}/media`, {
           method: 'GET',
-          headers,
           cache: 'no-store',
           credentials: 'include',
         }),
@@ -146,14 +209,19 @@ export default function BookingMediaDetailPage() {
       }
       const mediaJson = await mediaRes.json().catch(() => ({}));
       if (!mediaRes.ok) {
-        throw new Error(mediaJson?.error || `Failed to load booking media (${mediaRes.status})`);
+        throw new Error(mediaJson?.error || `Failed to load service videos (${mediaRes.status})`);
       }
 
       const nextBooking = (bookingJson?.booking || null) as BookingDetail | null;
+      if (nextBooking) {
+        nextBooking.customerReview = bookingJson?.customerReview || null;
+      }
+      const nextLifecycle = (bookingJson?.customerLifecycle || null) as BookingLifecycleDetail | null;
       const nextAssets = Array.isArray(mediaJson?.assets) ? (mediaJson.assets as BookingMediaAsset[]) : [];
       const nextVideos = Array.isArray(mediaJson?.videos) ? (mediaJson.videos as BookingMediaAsset[]) : [];
 
       setBooking(nextBooking);
+      setCustomerLifecycle(nextLifecycle);
       setAssets(nextAssets);
       setVideos(nextVideos);
 
@@ -169,6 +237,7 @@ export default function BookingMediaDetailPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load booking details');
       setBooking(null);
+      setCustomerLifecycle(null);
       setAssets([]);
       setVideos([]);
       setActiveVideoId(null);
@@ -219,6 +288,13 @@ export default function BookingMediaDetailPage() {
     }
     return byStage;
   }, [playableVideos]);
+  const orderedStageVideos = useMemo(
+    () =>
+      (['before', 'during', 'after'] as const)
+        .map((stage) => timelineVideos[stage])
+        .filter(Boolean) as BookingMediaAsset[],
+    [timelineVideos]
+  );
   const activeStage = activeVideo?.proofStage || null;
 
   const additionalMedia = useMemo(() => assets.filter((asset) => asset.id !== activeVideo?.id), [assets, activeVideo?.id]);
@@ -231,6 +307,12 @@ export default function BookingMediaDetailPage() {
     booking?.status && !['CANCELLED', 'CANCELED'].includes(String(booking.status).trim().toUpperCase())
   );
   const reviewCaptureForActiveStage = Boolean(canUseReviewCapture && activeVideo?.proofStage === 'after' && activeVideo?.mediaSessionId);
+  const hasReviewableCompletedVideo = Boolean(
+    canUseReviewCapture &&
+    userId &&
+    booking?.vendor?.id &&
+    timelineVideos.after?.mediaSessionId
+  );
   const canShowInlineReview = Boolean(
     canUseReviewCapture &&
     userId &&
@@ -238,11 +320,159 @@ export default function BookingMediaDetailPage() {
     activeVideo?.proofStage === 'after' &&
     activeVideo?.mediaSessionId
   );
+  const existingCustomerReview = booking?.customerReview || null;
+  const hasExistingCustomerReview = Boolean(existingCustomerReview?.id);
+  const reviewSubmitted =
+    hasExistingCustomerReview || customerLifecycle?.reviewSubmitted === true;
+  const reviewEligible = customerLifecycle?.reviewEligible === true;
+  const reviewSubmittedWithoutEligibleVideo =
+    customerLifecycle?.reviewSubmittedWithoutEligibleVideo === true;
+  const completedVideoPendingApproval =
+    customerLifecycle?.videoPendingApproval === true ||
+    customerLifecycle?.videoState === 'pending_approval';
+  const completedVideoAvailableToCustomer =
+    customerLifecycle?.videoAvailableToCustomer === true;
+  const lifecycleVideoState = customerLifecycle?.videoState || null;
+  const consentAllowsInlineReview = Boolean(bypassConsent || hasConsent);
+  const canStartInlineReview = Boolean(canShowInlineReview && consentAllowsInlineReview && !hasExistingCustomerReview);
+  const reviewGateMessage = getCustomerReviewGateMessage({
+    hasReviewableCompletedVideo,
+    canShowInlineReview,
+    consentAllowsInlineReview: consentAllowsInlineReview && !hasExistingCustomerReview,
+  });
   const normalizedBookingStatus = String(booking?.status || '').trim().toUpperCase();
+  const statusKey = normalizeBookingStatusKey(booking?.status);
+  const { instant: bookingScheduleInstant } = resolveBookingScheduleInstant(
+    booking?.booking_date,
+    booking?.booking_time,
+    booking?.id || null
+  );
+  const archivedRecord = isArchivedStatus(statusKey);
+  const completedRecord = isCompletedStatus(statusKey);
+  const followUpRecord =
+    !archivedRecord &&
+    !completedRecord &&
+    !Number.isNaN(bookingScheduleInstant.getTime()) &&
+    bookingScheduleInstant.getTime() < Date.now();
+  const bookingStatusDisplay = formatMyBookingsStatusDisplay(booking?.status, {
+    scheduleInstant: bookingScheduleInstant,
+    now: new Date(),
+  });
   const proofPendingApproval =
-    (normalizedBookingStatus === 'AWAITING_REVIEW' || normalizedBookingStatus === 'IN_PROGRESS') &&
-    playableVideos.length === 0 &&
-    approvedVideos.length === 0;
+    customerLifecycle
+      ? completedVideoPendingApproval
+      : (normalizedBookingStatus === 'AWAITING_REVIEW' || normalizedBookingStatus === 'IN_PROGRESS') &&
+        playableVideos.length === 0 &&
+        approvedVideos.length === 0;
+  const bookingTimeDisplay = formatDisplayTime(booking?.booking_time) || booking?.booking_time || 'Time pending';
+  const activeStageSummary = stageSummary(activeVideo?.proofStage || null, {
+    hasExistingReview: hasExistingCustomerReview,
+  });
+  const resolvedReturnTo = requestedReturnTo === '/reviews' ? '/reviews' : '/my-bookings';
+  const returnLinkLabel = resolvedReturnTo === '/reviews' ? 'Back to My Reviews' : 'Back to My Services';
+  const awaitingApprovedReviewVideo =
+    resolvedReturnTo === '/reviews' &&
+    !archivedRecord &&
+    !followUpRecord &&
+    !hasExistingCustomerReview &&
+    (customerLifecycle ? !reviewEligible : playableVideos.length === 0 && !proofPendingApproval);
+  const detailReturnPath =
+    resolvedReturnTo === '/reviews'
+      ? `/my-bookings/${bookingId}?returnTo=${encodeURIComponent('/reviews')}`
+      : `/my-bookings/${bookingId}`;
+  const helpReturnLabel = resolvedReturnTo === '/reviews' ? 'Back to review detail' : 'Back to service page';
+  const customerHelpHref = `/help?role=customer&returnTo=${encodeURIComponent(detailReturnPath)}&returnLabel=${encodeURIComponent(helpReturnLabel)}`;
+  const canPlayFullStory = orderedStageVideos.length > 1;
+  const completedWithoutCustomerVisibleVideo =
+    completedRecord &&
+    (customerLifecycle
+      ? !completedVideoAvailableToCustomer && !completedVideoPendingApproval
+      : playableVideos.length === 0 && !proofPendingApproval);
+  const existingReviewSupportMessage = archivedRecord
+    ? 'This archived record no longer includes customer-visible media, but your review remains on file.'
+    : playableVideos.length > 0
+      ? 'You can still approve video access to rewatch the completed service, but this booking does not need another review submission.'
+      : completedWithoutCustomerVisibleVideo
+        ? 'Your review remains on file for this completed booking, but no customer-visible approved service video is currently available here.'
+        : 'Your review is already on file for this booking. No additional review submission is needed.';
+  const lifecycleRows =
+    completedRecord && customerLifecycle
+      ? [
+          { label: 'Vendor completed work', value: 'Yes' },
+          {
+            label: 'Completed-stage video submitted',
+            value: customerLifecycle.videoSubmitted ? 'Yes' : 'No',
+          },
+          {
+            label: 'Completed-stage video approval',
+            value: completedVideoAvailableToCustomer
+              ? 'Approved'
+              : completedVideoPendingApproval
+                ? 'Pending approval'
+                : lifecycleVideoState === 'approved_not_customer_visible'
+                  ? 'Approved, not customer-visible'
+                  : lifecycleVideoState === 'rejected'
+                    ? 'Rejected / not customer-visible'
+                    : 'Not submitted',
+          },
+          {
+            label: 'Customer video access',
+            value: completedVideoAvailableToCustomer ? 'Available' : 'Not available',
+          },
+          {
+            label: 'Review window',
+            value: reviewSubmitted
+              ? 'Closed after submission'
+              : reviewEligible
+                ? customerLifecycle.reviewWindowOpen
+                  ? 'Open'
+                  : 'Opens from the approved video'
+                : 'Closed until approved video is available',
+          },
+          {
+            label: 'Review',
+            value: reviewSubmitted ? 'Submitted' : reviewEligible ? 'Ready when you are' : 'Not open yet',
+          },
+        ]
+      : [];
+
+  const startFullStoryPlayback = () => {
+    if (orderedStageVideos.length === 0) return;
+    setStoryMode(true);
+    setHasStageInteraction(true);
+    setActiveVideoId(orderedStageVideos[0].id);
+    setStoryAutoPlayToken(Date.now());
+  };
+
+  const stopFullStoryPlayback = () => {
+    setStoryMode(false);
+    setStoryAutoPlayToken(null);
+  };
+
+  const handleStoryStageEnded = () => {
+    if (!storyMode || !activeVideo) return;
+    const currentIndex = orderedStageVideos.findIndex((video) => video.id === activeVideo.id);
+    if (currentIndex < 0) {
+      setStoryMode(false);
+      setStoryAutoPlayToken(null);
+      return;
+    }
+    const nextVideo = orderedStageVideos[currentIndex + 1];
+    if (!nextVideo) {
+      setStoryMode(false);
+      setStoryAutoPlayToken(null);
+      return;
+    }
+    setActiveVideoId(nextVideo.id);
+    setStoryAutoPlayToken(Date.now());
+  };
+
+  const nextStoryStageLabel = useMemo(() => {
+    if (!storyMode || !activeVideo) return null;
+    const currentIndex = orderedStageVideos.findIndex((video) => video.id === activeVideo.id);
+    const nextVideo = currentIndex >= 0 ? orderedStageVideos[currentIndex + 1] : null;
+    return nextVideo ? stageLabel(nextVideo.proofStage) : null;
+  }, [activeVideo, orderedStageVideos, storyMode]);
 
   useEffect(() => {
     if (!bookingId) return;
@@ -254,23 +484,23 @@ export default function BookingMediaDetailPage() {
     if (storedConsent === 'true') {
       setHasConsent(true);
       if (hasConsentQueryParams) {
-        router.replace(`/my-bookings/${bookingId}`);
+        router.replace(cleanedDetailHref);
       }
       return;
     }
     if (consentAcceptedFromReturn) {
       setHasConsent(true);
       sessionStorage.setItem(storageKey, 'true');
-      router.replace(`/my-bookings/${bookingId}`);
+      router.replace(cleanedDetailHref);
     }
-  }, [bookingId, consentAcceptedFromReturn, consentTokenFromReturn, consentedMediaSessionId, router]);
+  }, [bookingId, cleanedDetailHref, consentAcceptedFromReturn, consentTokenFromReturn, consentedMediaSessionId, router]);
 
   useEffect(() => {
-    if (!proofReadyFromLink) return;
-    const target = document.getElementById('proof-of-completed-work');
+    if (!videoReadyFromLink) return;
+    const target = document.getElementById('completed-service-video');
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [proofReadyFromLink, loading, activeVideo?.id]);
+  }, [videoReadyFromLink, loading, activeVideo?.id]);
 
   useEffect(() => {
     if (!activeVideo) {
@@ -304,7 +534,7 @@ export default function BookingMediaDetailPage() {
   }, [activeVideoId]);
 
   useEffect(() => {
-    if (!canShowInlineReview || !activeVideo?.mediaSessionId || !booking?.vendor?.id || !userId) {
+    if (!canStartInlineReview || !activeVideo?.mediaSessionId || !booking?.vendor?.id || !userId) {
       setReviewWindowId(null);
       setReviewWindowMediaSessionId(null);
       return;
@@ -318,7 +548,6 @@ export default function BookingMediaDetailPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-user-id': userId,
           },
           body: JSON.stringify({
             bookingId,
@@ -349,14 +578,14 @@ export default function BookingMediaDetailPage() {
     activeVideo?.mediaSessionId,
     booking?.vendor?.id,
     bookingId,
-    canShowInlineReview,
+    canStartInlineReview,
     reviewWindowId,
     reviewWindowMediaSessionId,
     userId,
   ]);
 
   const submitInlineReview = async () => {
-    if (!canShowInlineReview || !reviewWindowId || !booking?.vendor?.id || !userId || reviewSubmitting) return;
+    if (!canStartInlineReview || !reviewWindowId || !booking?.vendor?.id || !userId || reviewSubmitting) return;
     if (selectedRating < 1 || selectedRating > 5) {
       setReviewError('Please select a rating before submitting.');
       return;
@@ -369,7 +598,6 @@ export default function BookingMediaDetailPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': userId,
         },
         body: JSON.stringify({
           reviewWindowId,
@@ -408,33 +636,44 @@ export default function BookingMediaDetailPage() {
     }
     setConsentStatus('requesting');
     setConsentError(null);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
     try {
       const res = await fetch('/api/consent/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(userId ? { 'x-user-id': userId } : {}),
         },
+        signal: controller.signal,
         body: JSON.stringify({
           bookingId,
           vendorId: String(booking.vendor.id),
           mediaSessionId: String(activeVideo.mediaSessionId),
           consentType: 'video_access',
           origin: window.location.origin,
+          skipNotification: true,
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.consentUrl) {
         throw new Error(json?.error || json?.message || `Failed to request consent (${res.status})`);
       }
-      const returnTo = `/my-bookings/${bookingId}`;
+      const returnTo = detailReturnPath;
       const consentUrl = new URL(String(json.consentUrl), window.location.origin);
       consentUrl.searchParams.set('returnTo', returnTo);
       consentUrl.searchParams.set('mediaSessionId', String(activeVideo.mediaSessionId));
       window.location.href = `${consentUrl.pathname}${consentUrl.search}${consentUrl.hash}`;
     } catch (e) {
       setConsentStatus('required');
-      setConsentError(e instanceof Error ? e.message : 'Failed to request consent');
+      const message =
+        e instanceof DOMException && e.name === 'AbortError'
+          ? 'Request timed out while preparing consent. Please try again.'
+          : e instanceof Error
+            ? e.message
+            : 'Failed to request consent';
+      setConsentError(message);
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   };
 
@@ -443,6 +682,10 @@ export default function BookingMediaDetailPage() {
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-5xl mx-auto px-4 py-10">
           <div className="rounded-lg border bg-white p-6 space-y-4">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+              <p className="text-sm font-medium text-blue-900">Loading booking details...</p>
+              <p className="text-xs text-blue-800">Fetching service videos, timeline stages, and customer review tools.</p>
+            </div>
             <div className="h-5 w-44 rounded bg-gray-200 animate-pulse" />
             <div className="h-56 w-full rounded bg-gray-200 animate-pulse" />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -459,25 +702,51 @@ export default function BookingMediaDetailPage() {
   if (error) {
     const maybeUnauthorized = /unauthorized|forbidden|sign in/i.test(error);
     const maybeNotFound = /not found/i.test(error);
+    const maybeTemporarilyUnavailable = /temporarily unavailable|cannot reach the service database/i.test(error);
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-5xl mx-auto px-4 py-10 space-y-3">
           <div className="rounded border border-red-200 bg-red-50 px-4 py-6 text-sm text-red-700">
-            We couldn't load this booking proof.
+            {maybeTemporarilyUnavailable
+              ? 'Service videos are temporarily unavailable right now.'
+              : "We couldn't load this service video page."}
           </div>
+          {maybeTemporarilyUnavailable ? (
+            <p className="text-sm text-gray-700">
+              Reliance is having trouble reaching the service database. Please try again in a moment.
+            </p>
+          ) : null}
+          {bookingId ? (
+            <p className="text-xs text-gray-500">
+              Booking ID: <span className="font-mono">{bookingId}</span>
+            </p>
+          ) : null}
           <div className="text-sm text-gray-700">
             {maybeUnauthorized ? (
               <Link href="/auth/login" className="text-blue-700 underline font-medium">
                 Sign in to continue
               </Link>
             ) : maybeNotFound ? (
-              <Link href="/my-bookings" className="text-blue-700 underline font-medium">
-                Back to My Services
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link href={resolvedReturnTo} className="text-blue-700 underline font-medium">
+                  {returnLinkLabel}
+                </Link>
+                <Link href="/help" className="text-blue-700 underline font-medium">
+                  Open Help Center
+                </Link>
+              </div>
             ) : (
-              <button type="button" onClick={() => void loadPage()} className="text-blue-700 underline font-medium">
-                Try again
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" onClick={() => void loadPage()} className="text-blue-700 underline font-medium">
+                  Try again
+                </button>
+                <Link href={resolvedReturnTo} className="text-blue-700 underline font-medium">
+                  {returnLinkLabel}
+                </Link>
+                <Link href="/help" className="text-blue-700 underline font-medium">
+                  Open Help Center
+                </Link>
+              </div>
             )}
           </div>
         </div>
@@ -491,35 +760,38 @@ export default function BookingMediaDetailPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold text-gray-900">{booking?.service?.name || booking?.title || 'Service booking'}</h1>
-            <p className="text-sm text-gray-600">Booking Proof</p>
+            <p className="text-sm text-gray-600">
+              {archivedRecord
+                ? 'Archived Service Record'
+                : followUpRecord
+                  ? 'Service Follow-Up'
+                  : awaitingApprovedReviewVideo
+                    ? 'Awaiting Service Video'
+                    : completedWithoutCustomerVisibleVideo
+                      ? 'Completed Booking Record'
+                      : 'Service Videos'}
+            </p>
           </div>
           <div className="flex items-center gap-2">
-            <Link href={`/my-bookings/${bookingId}`} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">
-              Open Booking
-            </Link>
             {activeVideo && activeVideo.downloadUrl ? (
               <a
-                href="#proof-of-completed-work"
+                href="#completed-service-video"
                 className="rounded-lg border border-blue-300 px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
               >
-                View Proof
+                {bypassConsent || hasConsent
+                  ? 'Watch Video'
+                  : hasExistingCustomerReview
+                    ? 'Access completed video'
+                    : 'Review video access'}
               </a>
             ) : null}
-            {canShowInlineReview ? (
+            {canStartInlineReview ? (
               <a
                 href="#leave-review"
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
                 Leave Review
               </a>
-            ) : null}
-            {normalizedBookingStatus === 'PENDING' ? (
-              <Link
-                href="/my-bookings"
-                className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50"
-              >
-                Cancel Booking
-              </Link>
             ) : null}
             <button
               type="button"
@@ -529,8 +801,8 @@ export default function BookingMediaDetailPage() {
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </button>
-            <Link href="/my-bookings" className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-              Back to My Services
+            <Link href={resolvedReturnTo} className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+              {returnLinkLabel}
             </Link>
           </div>
         </div>
@@ -541,7 +813,7 @@ export default function BookingMediaDetailPage() {
               <p className="text-sm text-gray-600">{vendorName}</p>
               <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
                 <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${bookingStatusBadgeClass(booking?.status)}`}>
-                  {normalizeStatus(booking?.status)}
+                  {bookingStatusDisplay}
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <Calendar className="h-4 w-4 text-gray-500" />
@@ -550,23 +822,78 @@ export default function BookingMediaDetailPage() {
                 {booking?.booking_time ? (
                   <span className="inline-flex items-center gap-1">
                     <Clock className="h-4 w-4 text-gray-500" />
-                    {booking.booking_time}
+                    {bookingTimeDisplay}
                   </span>
                 ) : null}
               </div>
             </div>
-            {proofReadyFromLink ? <Badge className="bg-emerald-100 text-emerald-800">Proof ready</Badge> : null}
+            {videoReadyFromLink ? <Badge className="bg-emerald-100 text-emerald-800">Video ready</Badge> : null}
           </div>
         </div>
 
+        {lifecycleRows.length > 0 ? (
+          <div className="rounded-lg border bg-white p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-gray-900">Current booking state</p>
+              <p className="text-xs text-gray-600">
+                Work completion, video approval, customer access, and review availability are tracked separately.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {lifecycleRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{row.label}</p>
+                  <p className="mt-1 font-medium text-gray-900">{row.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {awaitingApprovedReviewVideo ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-1">
+            <p className="text-sm font-medium text-amber-900">Awaiting approved service video</p>
+            <p className="text-sm text-amber-900">
+              {completedVideoPendingApproval
+                ? 'This booking is completed and the completed-stage video is pending approval before Reliance can open the video-based review flow.'
+                : lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
+                  ? 'This booking is completed, but the submitted completed-stage video is not customer-visible right now.'
+                  : 'This completed booking is still in your review queue, but Reliance cannot open the video-based review flow until an approved completed-service video is attached.'}
+            </p>
+            <p className="text-xs text-amber-800">
+              {completedVideoPendingApproval
+                ? 'Once approval is complete, this booking will move from Awaiting Service Videos into Ready to Review.'
+                : lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
+                  ? 'If you expected a playable completed-stage video here, contact support with the booking ID from My Services.'
+                  : 'Once that approved video is available, this booking will move from Awaiting Service Videos into Ready to Review.'}
+            </p>
+          </div>
+        ) : null}
+
         {activeVideo && activeVideo.downloadUrl ? (
           <div
-            id="proof-of-completed-work"
+            id="completed-service-video"
             className={`rounded-lg border bg-white p-4 space-y-2 ${
-              proofReadyFromLink ? 'ring-2 ring-emerald-200 border-emerald-300' : ''
+              videoReadyFromLink ? 'ring-2 ring-emerald-200 border-emerald-300' : ''
             }`}
           >
-            <p className="text-xs font-medium tracking-wide text-gray-600">{stageLabel(activeVideo.proofStage)}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-medium tracking-wide text-gray-600">{stageLabel(activeVideo.proofStage)}</p>
+              <ReportContentDialog
+                targetType="media_asset"
+                targetId={activeVideo.id}
+                isSignedIn={Boolean(userId)}
+                userId={userId}
+                triggerLabel="Report video"
+                title="Report this video"
+                description="Tell us if this video seems unsafe, private, misleading, or otherwise concerning."
+                signInHref={`/auth/login?next=${encodeURIComponent(`/my-bookings/${bookingId}`)}`}
+                className="rounded border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+              />
+            </div>
             {bypassConsent ? (
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 Consent will be required in production before accessing video.
@@ -580,11 +907,13 @@ export default function BookingMediaDetailPage() {
                 mediaSessionId={activeVideo.mediaSessionId || activeVideo.id}
                 reviewCaptureEnabled={reviewCaptureForActiveStage}
                 userId={userId ?? undefined}
+                autoPlayToken={storyAutoPlayToken ?? undefined}
+                onEnded={handleStoryStageEnded}
                 className="w-full max-w-full"
               />
             ) : (
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 space-y-3">
-                <p>We need your permission to view this proof.</p>
+                <p>{activeStageSummary.consentPrompt}</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
@@ -592,63 +921,165 @@ export default function BookingMediaDetailPage() {
                     disabled={consentStatus === 'checking' || consentStatus === 'requesting'}
                     className="rounded bg-blue-600 px-3 py-2 text-white text-sm hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {consentStatus === 'requesting' ? 'Preparing consent...' : 'Retry'}
+                    {consentStatus === 'requesting' ? 'Preparing consent...' : 'Request video access'}
                   </button>
                   <Link
-                    href="/my-bookings"
+                    href={customerHelpHref}
                     className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                   >
-                    Back to My Bookings
+                    Open Help Center
                   </Link>
                 </div>
-                {consentStatus === 'checking' ? <p className="text-xs text-amber-800">Checking consent status…</p> : null}
+                {consentStatus === 'checking' ? <p className="text-xs text-amber-800">Checking consent status...</p> : null}
                 {consentError ? <p className="text-xs text-red-700">{consentError}</p> : null}
               </div>
             )}
             <div className="space-y-0.5 pt-1">
-              <p className="text-sm font-semibold text-gray-900">Final Result</p>
-              <p className="text-sm text-gray-600">This is the completed work shared by your provider.</p>
+              <p className="text-sm font-semibold text-gray-900">{activeStageSummary.heading}</p>
+              <p className="text-sm text-gray-600">{activeStageSummary.description}</p>
             </div>
+            {canPlayFullStory ? (
+              <div className="rounded border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-900">
+                <div className="flex flex-wrap items-center gap-2">
+                  {bypassConsent || hasConsent ? (
+                    <button
+                      type="button"
+                      onClick={storyMode ? stopFullStoryPlayback : startFullStoryPlayback}
+                      className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                      {storyMode ? 'Stop service story' : 'Play full service story'}
+                    </button>
+                  ) : null}
+                  <p className="text-sm">
+                    {bypassConsent || hasConsent
+                      ? 'Watch the Before, During, and Completed stages in sequence, or use the stage buttons below to jump to one part.'
+                      : 'Approve video access first, then you can watch the full service story straight through or jump to one stage below.'}
+                  </p>
+                </div>
+                {storyMode ? (
+                  <p className="mt-2 text-xs text-blue-800">
+                    {nextStoryStageLabel
+                      ? `Up next: ${nextStoryStageLabel}`
+                      : 'This is the final stage of the service story.'}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : approvedVideos.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 text-sm text-gray-700">
-            Proof submitted, awaiting approval.
+            Video submitted, awaiting approval.
           </div>
         ) : proofPendingApproval ? (
           <div className="rounded-lg border bg-white p-4 text-sm text-gray-700 space-y-1">
-            <p className="font-medium text-gray-900">Proof submitted, awaiting approval</p>
-            <p>The vendor has submitted proof and it is being reviewed before it can be shown here.</p>
+            <p className="font-medium text-gray-900">Video submitted, awaiting approval</p>
+            <p>The vendor has submitted a service video and it is being reviewed before it can be shown here.</p>
           </div>
         ) : (
           <div className="rounded-lg border bg-white p-4 text-sm text-gray-700 space-y-1">
-            <p className="font-medium text-gray-900">Proof not available yet</p>
-            <p>The vendor has not submitted approved proof for this job yet.</p>
-            <p className="text-xs text-gray-500">You&apos;ll be notified when proof is ready.</p>
+            <p className="font-medium text-gray-900">
+              {archivedRecord
+                ? 'No retained media'
+                : followUpRecord
+                  ? 'No approved service video is attached yet'
+                  : completedVideoPendingApproval
+                    ? 'Service completed. Video is pending approval.'
+                  : awaitingApprovedReviewVideo
+                    ? 'No approved video is attached yet'
+                    : completedWithoutCustomerVisibleVideo
+                      ? 'No customer-visible service video available'
+                      : 'Video not available yet'}
+            </p>
+            <p>
+              {archivedRecord
+                ? 'This archived record does not currently include retained customer-visible media.'
+                : followUpRecord
+                  ? 'This service date passed without a completed vendor closeout, so no approved service video is attached yet.'
+                  : completedVideoPendingApproval
+                    ? 'The vendor submitted a completed-stage service video and it is still being reviewed before it can be shown here.'
+                  : awaitingApprovedReviewVideo
+                    ? lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
+                      ? 'A completed-stage video was submitted for this booking, but it is not customer-visible right now.'
+                      : 'We will open the completed video and review flow here after an approved completed-service video is attached.'
+                    : completedWithoutCustomerVisibleVideo
+                      ? reviewSubmitted
+                        ? 'This completed booking already has a submitted review on file, but no customer-visible approved service video is currently attached.'
+                        : lifecycleVideoState === 'rejected'
+                          ? 'This booking is marked completed, and a completed-stage video was submitted, but it is not customer-visible right now.'
+                          : lifecycleVideoState === 'approved_not_customer_visible'
+                            ? 'This booking is marked completed, and a completed-stage video exists, but it is not customer-visible right now.'
+                            : 'This booking is marked completed, but no customer-visible approved service video is currently attached.'
+                      : 'No customer-visible approved service video is available for this job yet.'}
+            </p>
+            {archivedRecord ? (
+              <p className="text-xs text-gray-500">This record is kept for reference only.</p>
+            ) : followUpRecord ? (
+              <p className="text-xs text-gray-500">If you still need help on this booking, contact support with the booking ID from My Services.</p>
+            ) : completedVideoPendingApproval ? (
+              <p className="text-xs text-gray-500">You&apos;ll be notified once approval is complete and the video can be opened here.</p>
+            ) : awaitingApprovedReviewVideo ? (
+              <p className="text-xs text-gray-500">
+                {lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
+                  ? 'If you expected a playable completed-stage video here, contact support and include the booking ID from My Services.'
+                  : "You'll be notified when the approved video is ready."}
+              </p>
+            ) : completedWithoutCustomerVisibleVideo ? (
+              <p className="text-xs text-gray-500">
+                {reviewSubmitted
+                  ? 'Your earlier review remains on file even though this completed booking does not currently include a customer-visible service video.'
+                  : 'If you expected a playable service video here, contact support and include the booking ID from My Services.'}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500">You&apos;ll be notified when video is ready.</p>
+            )}
+            {(archivedRecord || followUpRecord || completedWithoutCustomerVisibleVideo) ? (
+              <div className="pt-2 flex flex-wrap items-center gap-2">
+                <Link
+                  href={customerHelpHref}
+                  className="rounded border border-blue-300 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
+                >
+                  Open Help Center
+                </Link>
+              </div>
+            ) : awaitingApprovedReviewVideo ? (
+              <div className="pt-2 flex flex-wrap items-center gap-2">
+                <Link
+                  href={customerHelpHref}
+                  className="rounded border border-blue-300 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
+                >
+                  Open Help Center
+                </Link>
+              </div>
+            ) : null}
           </div>
         )}
 
         {playableVideos.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 space-y-2">
-            <p className="text-sm font-medium text-gray-900">Proof Timeline</p>
+            <p className="text-sm font-medium text-gray-900">Service Video Timeline</p>
             {!hasStageInteraction ? (
-              <p className="text-xs text-gray-500">Tap to view each stage of the service</p>
+              <p className="text-xs text-gray-500">
+                {canPlayFullStory
+                  ? 'Play the full service story above, or tap any stage below to jump directly to it.'
+                  : 'Tap to view each shared stage of the service.'}
+              </p>
             ) : null}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {[
                 {
                   key: 'before' as const,
                   title: 'Before',
-                  subtitle: 'INTRO',
+                  subtitle: 'Before Service',
                 },
                 {
                   key: 'during' as const,
                   title: 'During',
-                  subtitle: 'IN_PROGRESS',
+                  subtitle: 'During Service',
                 },
                 {
                   key: 'after' as const,
                   title: 'Completed',
-                  subtitle: 'COMPLETED',
+                  subtitle: 'Completed',
                 },
               ].map((stage) => {
                 const stageVideo = timelineVideos[stage.key];
@@ -662,6 +1093,8 @@ export default function BookingMediaDetailPage() {
                     disabled={!isClickable}
                     onClick={() => {
                       if (!stageVideo) return;
+                      setStoryMode(false);
+                      setStoryAutoPlayToken(null);
                       setHasStageInteraction(true);
                       setActiveVideoId(stageVideo.id);
                     }}
@@ -675,8 +1108,8 @@ export default function BookingMediaDetailPage() {
                           : 'border-gray-200 bg-white'
                     } ${isClickable ? 'hover:border-blue-300 hover:bg-blue-50/40' : 'cursor-not-allowed opacity-70'}`}
                     aria-label={isClickable ? `View ${stage.title}` : `${stage.title} not shared`}
-                  >
-                    <p className={`text-sm font-semibold ${isFinalStage ? 'text-emerald-800' : 'text-gray-900'}`}>{stage.title}</p>
+                    >
+                      <p className={`text-sm font-semibold ${isFinalStage ? 'text-emerald-800' : 'text-gray-900'}`}>{stage.title}</p>
                     <p className={`text-xs ${isFinalStage ? 'text-emerald-700' : 'text-gray-600'}`}>{stage.subtitle}</p>
                     {stageVideo ? (
                       <p
@@ -684,7 +1117,13 @@ export default function BookingMediaDetailPage() {
                           isActive ? (isFinalStage ? 'text-emerald-700' : 'text-blue-700') : 'text-gray-700'
                         }`}
                       >
-                        {isActive ? 'Now Viewing' : 'View proof'}
+                        {isActive
+                          ? storyMode
+                            ? 'Playing now'
+                            : 'Selected'
+                          : bypassConsent || hasConsent
+                            ? 'Watch video'
+                            : 'Open stage'}
                       </p>
                     ) : (
                       <p className="mt-3 text-xs text-gray-500">Not shared</p>
@@ -697,44 +1136,105 @@ export default function BookingMediaDetailPage() {
           </div>
         ) : null}
 
-        <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-3">
-          <p className="text-sm font-medium text-gray-900">Leave a review</p>
-          <div className="flex items-center gap-1">
-            {Array.from({ length: 5 }).map((_, index) => {
-              const value = index + 1;
-              const selected = value <= selectedRating;
-              return (
+        {hasExistingCustomerReview ? (
+          <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-3">
+            <p className="text-sm font-medium text-gray-900">Your review is already submitted</p>
+            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <div className="flex items-center gap-1">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Star
+                    key={`existing-review-${index}`}
+                    className={`h-4 w-4 ${
+                      index < Math.max(0, Math.min(5, Math.round(existingCustomerReview?.rating || 0)))
+                        ? 'fill-yellow-400 text-yellow-400'
+                        : 'text-gray-300'
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-gray-600">
+                Submitted on {formatServiceDate(existingCustomerReview?.submittedAt)}
+              </p>
+              <p className="text-sm text-gray-700">
+                {existingCustomerReview?.comment?.trim() || 'No written comment was included with this review.'}
+              </p>
+            </div>
+            <p className="text-sm text-gray-600">{existingReviewSupportMessage}</p>
+          </div>
+        ) : null}
+
+        {!hasExistingCustomerReview ? (
+          archivedRecord ? (
+            <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-2">
+              <p className="text-sm font-medium text-gray-900">Archived record</p>
+              <p className="text-sm text-gray-700">
+                This archived service record is kept for reference only. New review prompts are no longer active here.
+              </p>
+            </div>
+          ) : followUpRecord && !hasReviewableCompletedVideo ? (
+            <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-2">
+              <p className="text-sm font-medium text-gray-900">Review not active yet</p>
+              <p className="text-sm text-gray-700">
+                This service date passed without an approved completed-work video, so review prompts are not active on this booking yet.
+              </p>
+            </div>
+          ) : !canShowInlineReview ? (
+            <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-2">
+              <p className="text-sm font-medium text-gray-900">
+                {awaitingApprovedReviewVideo ? 'Review not active yet' : 'Review availability'}
+              </p>
+              <p className="text-sm text-gray-700">
+                {awaitingApprovedReviewVideo
+                  ? 'Your review stays paused until the approved completed-service video is attached.'
+                  : reviewGateMessage || 'Review prompts are not active for this stage yet.'}
+              </p>
+            </div>
+          ) : !consentAllowsInlineReview ? (
+            <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-2">
+              <p className="text-sm font-medium text-gray-900">Approve video access first</p>
+              <p className="text-sm text-gray-700">
+                {reviewGateMessage || 'Approve video access before leaving your review.'}
+              </p>
+            </div>
+          ) : (
+            <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-3">
+              <p className="text-sm font-medium text-gray-900">Leave a review</p>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: 5 }).map((_, index) => {
+                  const value = index + 1;
+                  const selected = value <= selectedRating;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setSelectedRating(value)}
+                      className="rounded p-1 transition hover:bg-gray-100"
+                      aria-label={`Select ${value} star${value > 1 ? 's' : ''}`}
+                    >
+                      <Star className={`h-5 w-5 ${selected ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  key={value}
                   type="button"
-                  onClick={() => setSelectedRating(value)}
-                  className="rounded p-1 transition hover:bg-gray-100"
-                  aria-label={`Select ${value} star${value > 1 ? 's' : ''}`}
+                  onClick={() => void submitInlineReview()}
+                  disabled={!canStartInlineReview || !reviewWindowId || reviewSubmitting}
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Star className={`h-5 w-5 ${selected ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+                  {reviewSubmitting ? 'Submitting...' : 'Leave Review'}
                 </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void submitInlineReview()}
-              disabled={!canShowInlineReview || !reviewWindowId || reviewSubmitting}
-              className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {reviewSubmitting ? 'Submitting...' : 'Leave Review'}
-            </button>
-            {!canShowInlineReview ? (
-              <span className="text-xs text-gray-500">Switch to Completed stage to submit your review.</span>
-            ) : null}
-            {canShowInlineReview && !reviewWindowId ? (
-              <span className="text-xs text-gray-500">Preparing review session...</span>
-            ) : null}
-          </div>
-          {reviewStatusMessage ? <p className="text-xs text-emerald-700">{reviewStatusMessage}</p> : null}
-          {reviewError ? <p className="text-xs text-red-700">{reviewError}</p> : null}
-        </div>
+                {reviewGateMessage ? <span className="text-xs text-gray-500">{reviewGateMessage}</span> : null}
+                {canStartInlineReview && !reviewWindowId ? (
+                  <span className="text-xs text-gray-500">Preparing review session...</span>
+                ) : null}
+              </div>
+              {reviewStatusMessage ? <p className="text-xs text-emerald-700">{reviewStatusMessage}</p> : null}
+              {reviewError ? <p className="text-xs text-red-700">{reviewError}</p> : null}
+            </div>
+          )
+        ) : null}
 
         <div className="rounded-lg border bg-white p-4">
           <button
@@ -748,6 +1248,10 @@ export default function BookingMediaDetailPage() {
           {showDetails ? (
             <div className="mt-3 grid gap-2 text-sm text-gray-700">
               <p>
+                <span className="font-medium text-gray-900">Booking ID:</span>{' '}
+                <span className="font-mono text-xs">{bookingId}</span>
+              </p>
+              <p>
                 <span className="font-medium text-gray-900">Service:</span> {booking?.service?.name || booking?.title || 'Service booking'}
               </p>
               <p>
@@ -755,7 +1259,7 @@ export default function BookingMediaDetailPage() {
               </p>
               <p>
                 <span className="font-medium text-gray-900">Date:</span> {formatServiceDate(booking?.booking_date)}
-                {booking?.booking_time ? ` at ${booking.booking_time}` : ''}
+                {booking?.booking_time ? ` at ${bookingTimeDisplay}` : ''}
               </p>
               <p>
                 <span className="font-medium text-gray-900">Notes:</span> {booking?.notes?.trim() ? booking.notes : 'No additional details provided.'}
@@ -770,5 +1274,23 @@ export default function BookingMediaDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function BookingMediaDetailPageFallback() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="rounded-lg border bg-white p-4 text-sm text-gray-700">
+        Loading booking details...
+      </div>
+    </div>
+  );
+}
+
+export default function BookingMediaDetailPage() {
+  return (
+    <Suspense fallback={<BookingMediaDetailPageFallback />}>
+      <BookingMediaDetailPageContent />
+    </Suspense>
   );
 }

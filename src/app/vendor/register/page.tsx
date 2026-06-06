@@ -5,10 +5,13 @@
 
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { getServiceTemplatesForCategory, SERVICE_TEMPLATES } from '@/config/service-templates';
+import { useAuth } from '@/contexts/AuthContext';
 
 const serviceCatalog = [
   'Automotive Repair',
@@ -48,9 +51,15 @@ export default function VendorRegisterPage() {
     price: string;
     description: string;
   };
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('');
   const [customBusinessType, setCustomBusinessType] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [zipCode, setZipCode] = useState('');
   const [primaryServiceCategory, setPrimaryServiceCategory] = useState('');
   const [selectedTemplateServices, setSelectedTemplateServices] = useState<
     Array<{ templateKey: string; name: string; defaultDuration: number; price?: number; description?: string; source?: string }>
@@ -66,6 +75,10 @@ export default function VendorRegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!businessName.trim() || !businessType.trim()) return;
+    if (!address.trim() || !city.trim() || !state.trim() || !zipCode.trim()) {
+      setError('Street address, city, state, and ZIP code are required before vendor review can start.');
+      return;
+    }
     if (businessType === 'Other' && !customBusinessType.trim()) return;
     if (primaryServiceCategory && selectedTemplateServices.length === 0) {
       setError('Select at least one service you offer.');
@@ -135,6 +148,10 @@ export default function VendorRegisterPage() {
           businessType: businessType.trim(),
           customBusinessType: customBusinessType.trim(),
           category: primaryServiceCategory.trim(),
+          address: address.trim(),
+          city: city.trim(),
+          state: state.trim(),
+          zipCode: zipCode.trim(),
           selectedServices: selectedServicesPayload,
         }),
       });
@@ -145,6 +162,9 @@ export default function VendorRegisterPage() {
 
       setPendingRequest(Boolean(payload?.requiresApproval ?? true));
       setSubmitted(true);
+      window.setTimeout(() => {
+        router.push('/vendor/dashboard');
+      }, 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to register vendor account');
     } finally {
@@ -152,42 +172,113 @@ export default function VendorRegisterPage() {
     }
   };
 
+  const alreadyVendorEnabled =
+    user?.userType === 'vendor' ||
+    user?.userType === 'both' ||
+    user?.availableProfiles?.includes('vendor');
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-5 text-sm text-white/72">
+          Loading vendor onboarding…
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
+        <Card className="w-full max-w-2xl border-white/10 bg-slate-950 text-white shadow-[0_24px_70px_rgba(15,23,42,0.45)]">
+          <CardHeader>
+            <CardTitle className="text-3xl">Start vendor onboarding</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-white/72">
+            <p>
+              This page is for signed-in users who are adding a vendor profile to an existing Reliance account.
+              If you are brand new to Reliance, create your vendor account first.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/auth/register?type=vendor"
+                className="inline-flex items-center rounded-full bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-500"
+              >
+                Create a new vendor account
+              </Link>
+              <Link
+                href="/auth/login?next=%2Fvendor%2Fregister"
+                className="inline-flex items-center rounded-full border border-white/14 bg-white/6 px-4 py-2 font-semibold text-white transition hover:bg-white/10"
+              >
+                Sign in to continue vendor setup
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (alreadyVendorEnabled) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
+        <Card className="w-full max-w-2xl border-white/10 bg-slate-950 text-white shadow-[0_24px_70px_rgba(15,23,42,0.45)]">
+          <CardHeader>
+            <CardTitle className="text-3xl">Vendor access already exists</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-white/72">
+            <p>
+              This account already has vendor access or a vendor application in progress. Continue in the vendor dashboard instead of starting a duplicate request.
+            </p>
+            <Button onClick={() => router.push('/vendor/dashboard')} className="bg-blue-600 hover:bg-blue-500 text-white">
+              Open vendor dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <Card className="w-full max-w-lg">
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4 py-8">
+      <Card className="w-full max-w-3xl border-white/10 bg-slate-950 text-white shadow-[0_24px_70px_rgba(15,23,42,0.45)]">
         <CardHeader>
-          <CardTitle>Register as a Vendor</CardTitle>
+          <CardTitle className="text-3xl">Continue vendor setup</CardTitle>
         </CardHeader>
         <CardContent>
           {error && (
-            <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
               {error}
             </div>
           )}
           {submitted ? (
             pendingRequest ? (
-              <div className="text-center text-yellow-700 font-medium">
-                Your registration is pending approval. You will be notified once your business is approved.
+              <div className="text-center text-amber-200 font-medium">
+                Vendor setup saved. Admin approval is now pending, and you are being sent to the vendor dashboard.
               </div>
             ) : (
-              <div className="text-center text-green-700 font-medium">
+              <div className="text-center text-green-200 font-medium">
                 Registration successful! Welcome to Reliance.
               </div>
             )
           ) : (
             <form className="space-y-5" onSubmit={handleSubmit}>
+              <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4 text-sm text-blue-100">
+                Use this signed-in flow when you already have a Reliance account and need to add a vendor business profile. Your business will stay internal until admin approval and publish steps are complete.
+              </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Business Name</label>
+                <label className="block text-sm font-medium mb-1 text-white/88">Business Name</label>
                 <Input
                   value={businessName}
                   onChange={e => setBusinessName(e.target.value)}
                   required
+                  className="border-white/12 bg-white/6 text-white"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Business Type</label>
+                <label className="block text-sm font-medium mb-1 text-white/88">Business Type</label>
                 <select
-                  className="border rounded px-3 py-2 w-full"
+                  className="w-full rounded border border-white/12 bg-white/6 px-3 py-2 text-white"
                   value={businessType}
                   onChange={e => setBusinessType(e.target.value)}
                   required
@@ -198,10 +289,28 @@ export default function VendorRegisterPage() {
                   ))}
                 </select>
               </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-white/88">Street Address</label>
+                  <Input value={address} onChange={(e) => setAddress(e.target.value)} required className="border-white/12 bg-white/6 text-white" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-white/88">City</label>
+                  <Input value={city} onChange={(e) => setCity(e.target.value)} required className="border-white/12 bg-white/6 text-white" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-white/88">State</label>
+                  <Input value={state} onChange={(e) => setState(e.target.value)} required className="border-white/12 bg-white/6 text-white" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-white/88">ZIP Code</label>
+                  <Input value={zipCode} onChange={(e) => setZipCode(e.target.value)} required className="border-white/12 bg-white/6 text-white" />
+                </div>
+              </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Primary Service Category</label>
+                <label className="block text-sm font-medium mb-1 text-white/88">Primary Service Category</label>
                 <select
-                  className="border rounded px-3 py-2 w-full"
+                  className="w-full rounded border border-white/12 bg-white/6 px-3 py-2 text-white"
                   value={primaryServiceCategory}
                   onChange={(e) => {
                     const category = e.target.value;
@@ -221,15 +330,15 @@ export default function VendorRegisterPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Prebuilt Service Templates</label>
+                <label className="block text-sm font-medium mb-1 text-white/88">Prebuilt Service Templates</label>
                 {primaryServiceCategory && availableTemplates.length > 0 ? (
-                  <div className="space-y-2 rounded border p-3">
+                  <div className="space-y-2 rounded border border-white/12 bg-white/5 p-3">
                     {availableTemplates.map((template, idx) => {
                       const templateKey = `${idx}-${template.name}`;
                       const selected = selectedTemplateServices.some((s) => s.templateKey === templateKey);
                       const selectedService = selectedTemplateServices.find((s) => s.templateKey === templateKey);
                       return (
-                        <div key={`${template.name}-${template.defaultDuration}`} className="rounded border p-2">
+                        <div key={`${template.name}-${template.defaultDuration}`} className="rounded border border-white/10 bg-white/5 p-2">
                           <label className="flex items-center gap-2 text-sm font-medium">
                             <input
                               type="checkbox"
@@ -251,7 +360,6 @@ export default function VendorRegisterPage() {
                           </label>
                           {selected ? (
                             <Input
-                              className="mt-2"
                               value={selectedService?.name || template.name}
                               onChange={(e) => {
                                 const nextName = e.target.value;
@@ -264,6 +372,7 @@ export default function VendorRegisterPage() {
                                 );
                               }}
                               placeholder="Edit service name"
+                              className="mt-2 border-white/12 bg-slate-950/60 text-white"
                             />
                           ) : null}
                         </div>
@@ -271,12 +380,12 @@ export default function VendorRegisterPage() {
                     })}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500">Select a primary service category to load templates.</p>
+                  <p className="text-xs text-white/48">Select a primary service category to load templates.</p>
                 )}
               </div>
-              <div className="rounded border p-3">
+              <div className="rounded border border-white/12 bg-white/5 p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="block text-sm font-medium">Custom Services</label>
+                  <label className="block text-sm font-medium text-white/88">Custom Services</label>
                   <Button
                     type="button"
                     variant="outline"
@@ -297,15 +406,16 @@ export default function VendorRegisterPage() {
                   </Button>
                 </div>
                 {customServices.length === 0 ? (
-                  <p className="text-xs text-gray-500">Add custom services when templates do not include what you offer.</p>
+                  <p className="text-xs text-white/48">Add custom services when templates do not include what you offer.</p>
                 ) : (
                   <div className="space-y-3">
                     {customServices.map((custom) => (
-                      <div key={custom.id} className="rounded border p-2">
+                      <div key={custom.id} className="rounded border border-white/10 bg-slate-950/60 p-2">
                         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                           <Input
                             placeholder="Service name *"
                             value={custom.name}
+                            className="border-white/12 bg-white/6 text-white"
                             onChange={(e) =>
                               setCustomServices((prev) =>
                                 prev.map((item) => (item.id === custom.id ? { ...item, name: e.target.value } : item))
@@ -317,6 +427,7 @@ export default function VendorRegisterPage() {
                             min="1"
                             placeholder="Duration (minutes)"
                             value={custom.defaultDuration}
+                            className="border-white/12 bg-white/6 text-white"
                             onChange={(e) =>
                               setCustomServices((prev) =>
                                 prev.map((item) =>
@@ -331,6 +442,7 @@ export default function VendorRegisterPage() {
                             step="0.01"
                             placeholder="Price"
                             value={custom.price}
+                            className="border-white/12 bg-white/6 text-white"
                             onChange={(e) =>
                               setCustomServices((prev) =>
                                 prev.map((item) => (item.id === custom.id ? { ...item, price: e.target.value } : item))
@@ -340,6 +452,7 @@ export default function VendorRegisterPage() {
                           <Input
                             placeholder="Description"
                             value={custom.description}
+                            className="border-white/12 bg-white/6 text-white"
                             onChange={(e) =>
                               setCustomServices((prev) =>
                                 prev.map((item) =>
@@ -360,20 +473,21 @@ export default function VendorRegisterPage() {
                     ))}
                   </div>
                 )}
-                {customServiceError ? <p className="mt-2 text-xs text-red-600">{customServiceError}</p> : null}
+                {customServiceError ? <p className="mt-2 text-xs text-red-300">{customServiceError}</p> : null}
               </div>
               {businessType === 'Other' && (
                 <div>
-                  <label className="block text-sm font-medium mb-1">Custom Business Type</label>
+                  <label className="block text-sm font-medium mb-1 text-white/88">Custom Business Type</label>
                   <Input
                     value={customBusinessType}
                     onChange={e => setCustomBusinessType(e.target.value)}
                     placeholder="Enter your business type"
                     required
+                    className="border-white/12 bg-white/6 text-white"
                   />
                 </div>
               )}
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white" disabled={isSubmitting}>
                 {isSubmitting ? 'Submitting...' : 'Register'}
               </Button>
             </form>

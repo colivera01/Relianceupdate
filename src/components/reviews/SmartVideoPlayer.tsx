@@ -5,6 +5,7 @@ import { ReviewOverlay } from './ReviewOverlay';
 import { ExitIntentPrompt } from './ExitIntentPrompt';
 import { QuickReviewPanel } from './QuickReviewPanel';
 import { PrivateFeedbackPanel } from './PrivateFeedbackPanel';
+import { getClientAuthHeaders } from '@/lib/client-session';
 
 type Props = {
   src: string;
@@ -13,10 +14,12 @@ type Props = {
   vendorId: string;
   mediaSessionId: string;
   className?: string;
+  onEnded?: () => void;
+  autoPlayToken?: number;
   /** When false, plays video only (no review window, prompts, or review API calls). Default true. */
   reviewCaptureEnabled?: boolean;
   /**
-   * Customer user id for `x-user-id` on review APIs — same model as `/my-bookings` media/list.
+   * Customer user id used only to decide whether review capture should run.
    * If omitted or blank while `reviewCaptureEnabled` is true, review APIs are skipped (watch-only).
    */
   userId?: string | null;
@@ -29,6 +32,8 @@ export function SmartVideoPlayer({
   vendorId,
   mediaSessionId,
   className,
+  onEnded,
+  autoPlayToken,
   reviewCaptureEnabled = true,
   userId,
 }: Props) {
@@ -53,9 +58,9 @@ export function SmartVideoPlayer({
     () =>
       ({
         'Content-Type': 'application/json',
-        'x-user-id': trimmedUserId,
+        ...getClientAuthHeaders(),
       }) as const,
-    [trimmedUserId]
+    []
   );
 
   const isReady = useMemo(
@@ -108,14 +113,27 @@ export function SmartVideoPlayer({
         if (res.ok && json?.reviewWindow?.id) {
           setReviewWindowId(String(json.reviewWindow.id));
         } else {
-          const backendError = String(json?.error || json?.message || 'Video access is not available');
-          const backendStep = String(json?.step || json?.details?.step || 'unknown_step');
           const backendCode = String(json?.code || json?.details?.code || 'none');
+          const backendError = String(json?.error || json?.message || 'Video access is not available');
+          const backendMessage = String(json?.message || '');
+          const isReviewAlreadySubmitted =
+            res.status === 409 &&
+            (backendCode === 'REVIEW_ALREADY_EXISTS' ||
+              backendError.toLowerCase().includes('review already exists') ||
+              backendMessage.toLowerCase().includes('review already exists'));
+          if (isReviewAlreadySubmitted) {
+            setReviewAlreadySubmitted(true);
+            setReviewWindowId(null);
+            setAccessError(null);
+            setAccessErrorDetails(null);
+            return;
+          }
+          const backendStep = String(json?.step || json?.details?.step || 'unknown_step');
           const backendMeta = json?.meta ?? json?.details?.meta ?? null;
           const backendDetailError = String(json?.details?.error || backendError);
           setAccessError(backendError);
           setAccessErrorDetails(
-            `review window start failed (${res.status}) | step=${backendStep} code=${backendCode} | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} x-user-id=${trimmedUserId || 'missing'} | backend="${backendDetailError}" meta=${JSON.stringify(backendMeta)}`
+            `review window start failed (${res.status}) | step=${backendStep} code=${backendCode} | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} auth=${reviewApisEnabled ? 'signed' : 'missing'} | backend="${backendDetailError}" meta=${JSON.stringify(backendMeta)}`
           );
         }
       } catch (e: unknown) {
@@ -123,7 +141,7 @@ export function SmartVideoPlayer({
         const message = e instanceof Error ? e.message : 'Failed to start review session';
         setAccessError(message);
         setAccessErrorDetails(
-          `review window start request error | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} x-user-id=${trimmedUserId || 'missing'} | error="${message}"`
+          `review window start request error | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} auth=${reviewApisEnabled ? 'signed' : 'missing'} | error="${message}"`
         );
       }
     })();
@@ -165,6 +183,49 @@ export function SmartVideoPlayer({
     setShowExit(true);
     await logPromptEvent('exit_prompt_shown');
   }, [logPromptEvent]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !onEnded) return;
+    const handleEnded = () => {
+      onEnded();
+    };
+    video.addEventListener('ended', handleEnded);
+    return () => {
+      video.removeEventListener('ended', handleEnded);
+    };
+  }, [onEnded, src]);
+
+  useEffect(() => {
+    if (autoPlayToken == null) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    let cancelled = false;
+    const tryPlay = async () => {
+      try {
+        await video.play();
+      } catch {
+        // Browser autoplay can still be blocked; keep the new stage selected
+        // and let the viewer press play manually if needed.
+      }
+    };
+
+    if (video.readyState >= 2) {
+      void tryPlay();
+      return;
+    }
+
+    const onLoadedData = () => {
+      if (cancelled) return;
+      void tryPlay();
+    };
+    video.addEventListener('loadeddata', onLoadedData, { once: true });
+    return () => {
+      cancelled = true;
+      video.removeEventListener('loadeddata', onLoadedData);
+    };
+  }, [autoPlayToken, src]);
 
   const handleSentiment = async (sentiment: 'positive' | 'neutral' | 'negative') => {
     setPrompt('none');
@@ -298,7 +359,7 @@ export function SmartVideoPlayer({
 
       {reviewApisEnabled && !reviewAlreadySubmitted && prompt !== 'none' ? (
         <ReviewOverlay
-          title={prompt === 'soft' ? 'How was your completed service?' : 'Please confirm your experience after reviewing the completed proof.'}
+          title={prompt === 'soft' ? 'How was your completed service?' : 'Please confirm your experience after reviewing the completed service video.'}
           onDismiss={async () => {
             setPrompt('none');
             await logPromptEvent('dismissed', { phase: prompt });

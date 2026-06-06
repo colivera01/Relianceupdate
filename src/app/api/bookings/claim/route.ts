@@ -189,7 +189,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       success: true,
       booking: mapBookingToContract(updated as any),
-      message: "Booking claimed successfully. You can now access agreements and approved proof.",
+      message: "Booking claimed successfully. You can now access agreements and approved service videos.",
     });
   } catch (error: any) {
     console.error("[bookings/claim] POST error:", error);

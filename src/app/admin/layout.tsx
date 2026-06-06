@@ -1,5 +1,48 @@
-import SidebarLayout from '../SidebarLayout';
+import Link from "next/link";
+import { headers } from "next/headers";
+import SidebarLayout from "../SidebarLayout";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { readAdminAccess } from "@/lib/admin-auth";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const requestHeaders = await headers();
+  const adminAccess = await readAdminAccess(
+    new Request("http://localhost/admin", {
+      headers: requestHeaders,
+    })
+  );
+
+  if (!adminAccess.isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <div className="mx-auto flex min-h-screen w-full max-w-4xl items-center px-6 py-12">
+          <Card className="w-full border-amber-200 bg-amber-50">
+            <CardHeader>
+              <CardTitle>Admin access required</CardTitle>
+              <CardDescription>
+                Sign in with an admin-capable account to open the Reliance admin console.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm text-muted-foreground">
+              <p>
+                Admin routes include moderation, launch-readiness settings, reporting, vendor controls,
+                and other internal operator tools. They are intentionally hidden until an admin session is
+                active.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/auth/login?next=/admin/dashboard" className="font-medium text-blue-600 underline">
+                  Sign in
+                </Link>
+                <Link href="/" className="font-medium text-blue-600 underline">
+                  Back to home
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return <SidebarLayout>{children}</SidebarLayout>;
-} 
+}

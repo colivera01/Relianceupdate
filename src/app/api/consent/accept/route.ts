@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'token is required' }, { status: 400 });
     }
 
-    const existing = await withTransientDbRetry(() =>
+    const existing = await withTransientDbRetry<ConsentRecordRow | null>(() =>
       (prisma as any).consentRecord.findUnique({ where: { token } })
     );
     if (!existing) {
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     const ipStored = ipAddress ? String(ipAddress).split(',')[0].trim().slice(0, 255) : null;
     const uaStored = userAgent ? String(userAgent).slice(0, 1024) : null;
 
-    const updated = await withTransientDbRetry(() =>
+    const updated = await withTransientDbRetry<ConsentRecordRow>(() =>
       (prisma as any).consentRecord.update({
         where: { token },
         data: {

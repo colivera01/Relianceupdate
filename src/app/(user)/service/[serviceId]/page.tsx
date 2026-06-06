@@ -1,8 +1,16 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { Suspense, useState, useEffect } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import { PUBLIC_DB_UNAVAILABLE_CODE, PUBLIC_DB_UNAVAILABLE_MESSAGE } from '@/lib/transient-db-errors';
+import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
+import { ServiceImage } from '@/components/ServiceImage';
+import { LazyVideoFrame } from '@/components/public/LazyVideoFrame';
+import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
+import { RelianceLogo } from '@/components/public/RelianceLogo';
+import { PublicTrustScorePanel } from '@/components/public/PublicTrustScorePanel';
 import { 
   MapPin, 
   Star, 
@@ -19,12 +27,58 @@ import {
   Clock as TimeIcon
 } from 'lucide-react';
 
-export default function ServiceDetailPage() {
+function getPublicVendorEmail(value: unknown): string | null {
+  const email = typeof value === 'string' ? value.trim() : '';
+  if (!email) return null;
+  if (/@(?:example\.(?:com|org|net)|reliance\.test)$/i.test(email)) return null;
+  return email;
+}
+
+function sanitizeReturnPath(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith('/')) return null;
+  if (value.startsWith('//')) return null;
+  return value;
+}
+
+function sanitizeReturnLabel(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+const SERVICE_DETAIL_TIMEOUT_MS = 30_000;
+const SERVICE_DETAIL_RETRY_ATTEMPTS = 3;
+
+type ServiceVideoItem = {
+  id: string;
+  url: string;
+  isPrimaryProofVideo?: boolean;
+  createdAt?: string | null;
+  stageKey?: string | null;
+  stageLabel?: string | null;
+};
+
+function formatMediaTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function ServiceDetailPageContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const serviceId = String(params?.serviceId ?? "");
   const isSignedIn = Boolean(user?.id);
+  const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
+  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null);
 
   const [isFavorite, setIsFavorite] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'reviews' | 'photos'>('overview');
@@ -36,83 +90,141 @@ export default function ServiceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [favoriteResolved, setFavoriteResolved] = useState(false);
 
-  // Fetch service details, reviews, and availability
-  useEffect(() => {
-    const fetchServiceData = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch service details
-        const serviceResponse = await fetch(`/api/services/${serviceId}`);
-        const serviceData = await serviceResponse.json().catch(() => ({}));
-        if (!serviceResponse.ok) {
-          if (serviceResponse.status === 404) {
-            setService(null);
-            setError(null);
-            return;
-          }
-          throw new Error(serviceData?.error || 'Failed to fetch service details');
-        }
-        setService(serviceData.service);
+  const loadServiceData = async (isMounted: () => boolean) => {
+    const fetchServiceResponse = async () => {
+      let lastError: unknown = null;
 
-        // Fetch public-safe service reviews only.
-        const reviewsResponse = await fetch(`/api/services/${serviceId}/reviews/public`, {
-          cache: 'no-store',
-        });
-        if (reviewsResponse.ok) {
-          const reviewsData = await reviewsResponse.json();
-          setReviews(reviewsData.reviews || []);
-        }
+      for (let attempt = 0; attempt < SERVICE_DETAIL_RETRY_ATTEMPTS; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), SERVICE_DETAIL_TIMEOUT_MS);
 
-        // Fetch availability
-        if (serviceData.service.vendor?.id) {
-          const availabilityResponse = await fetch(`/api/availability/vendor/${serviceData.service.vendor.id}`);
-          if (availabilityResponse.ok) {
-            const availabilityData = await availabilityResponse.json();
-            setAvailability(availabilityData.availability);
-          }
-        }
-
-        // Favorites are account-scoped; signed-out visitors get a clear CTA instead.
-        const userId = resolveCustomerUserId(user?.id);
-        if (userId) {
-          const favoritesQuery = `?userId=${encodeURIComponent(userId)}`;
-          const favoritesResponse = await fetch(`/api/users/favorites${favoritesQuery}`, {
-            headers: {
-              'x-user-id': userId,
-            },
+        try {
+          return await fetch(`/api/services/${serviceId}`, {
+            signal: controller.signal,
           });
-          if (favoritesResponse.ok) {
-            const favoritesData = await favoritesResponse.json();
-            const existingFavorite = favoritesData.favorites?.find((fav: any) => fav.serviceId === serviceId);
-            setIsFavorite(Boolean(existingFavorite));
-            setFavoriteId(existingFavorite?.favoriteId || null);
+        } catch (error) {
+          lastError = error;
+          if ((error as { name?: string })?.name !== 'AbortError') {
+            throw error;
           }
-        } else {
-          setIsFavorite(false);
-          setFavoriteId(null);
+        } finally {
+          window.clearTimeout(timeoutId);
         }
-
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
       }
+
+      throw lastError ?? new Error('Service details took too long to load.');
     };
 
-    if (serviceId) {
-      fetchServiceData();
-    }
-  }, [serviceId, user?.id]);
+    try {
+      if (!isMounted()) return;
+      setLoading(true);
+      setError(null);
 
-  const handleBookNow = () => {
-    if (!isSignedIn) {
-      router.push(`/auth/login?next=${encodeURIComponent(`/booking/${serviceId}`)}`);
-      return;
+      const serviceResponse = await fetchServiceResponse();
+      const serviceData = await serviceResponse.json().catch(() => ({}));
+      if (!serviceResponse.ok) {
+        if (serviceResponse.status === 404) {
+          if (!isMounted()) return;
+          setService(null);
+          setError(null);
+          return;
+        }
+        if (serviceResponse.status === 503 || serviceData?.code === PUBLIC_DB_UNAVAILABLE_CODE) {
+          throw new Error(PUBLIC_DB_UNAVAILABLE_MESSAGE);
+        }
+        throw new Error(serviceData?.error || 'Failed to fetch service details');
+      }
+      if (!isMounted()) return;
+      setService(serviceData.service);
+      setLoading(false);
+
+      fetch(`/api/services/${serviceId}/reviews/public`, {
+        cache: 'no-store',
+      })
+        .then(async (reviewsResponse) => {
+          if (!reviewsResponse.ok || !isMounted()) return;
+          const reviewsData = await reviewsResponse.json();
+          if (isMounted()) {
+            setReviews(reviewsData.reviews || []);
+          }
+        })
+        .catch((err) => {
+          console.error('Error fetching service reviews:', err);
+        });
+
+      if (serviceData.service.vendor?.id) {
+        fetch(`/api/availability/vendor/${serviceData.service.vendor.id}?serviceId=${encodeURIComponent(serviceId)}`)
+          .then(async (availabilityResponse) => {
+            if (!availabilityResponse.ok || !isMounted()) return;
+            const availabilityData = await availabilityResponse.json();
+            if (isMounted()) {
+              setAvailability(availabilityData.availability);
+            }
+          })
+          .catch((err) => {
+            console.error('Error fetching availability:', err);
+          });
+      }
+
+      const userId = resolveCustomerUserId(user?.id);
+      if (userId) {
+        setFavoriteResolved(false);
+        fetch(`/api/users/favorites`)
+          .then(async (favoritesResponse) => {
+            if (!isMounted()) return;
+            if (!favoritesResponse.ok) {
+              setFavoriteResolved(true);
+              return;
+            }
+            const favoritesData = await favoritesResponse.json();
+            const existingFavorite = favoritesData.favorites?.find((fav: any) => fav.serviceId === serviceId);
+            if (isMounted()) {
+              setIsFavorite(Boolean(existingFavorite));
+              setFavoriteId(existingFavorite?.favoriteId || null);
+              setFavoriteResolved(true);
+            }
+          })
+          .catch((err) => {
+            console.error('Error fetching favorites:', err);
+            if (isMounted()) {
+              setFavoriteResolved(true);
+            }
+          });
+      } else {
+        setIsFavorite(false);
+        setFavoriteId(null);
+        setFavoriteResolved(true);
+      }
+    } catch (err) {
+      if (!isMounted()) return;
+      const message =
+        (err as { name?: string })?.name === 'AbortError'
+          ? 'Service details took too long to load. Please retry.'
+          : err instanceof Error
+            ? err.message
+            : 'An error occurred';
+      setError(message);
+    } finally {
+      if (isMounted()) {
+        setLoading(false);
+      }
     }
-    router.push(`/booking/${serviceId}`);
   };
+
+  // Fetch service details first; optional enrichment should not block booking.
+  useEffect(() => {
+    let isMounted = true;
+
+    if (serviceId) {
+      void loadServiceData(() => isMounted);
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [serviceId, user?.id]);
 
   const handleContactVendor = () => {
     if (service?.vendor?.phone) {
@@ -127,36 +239,36 @@ export default function ServiceDetailPage() {
       return;
     }
 
+    const previousIsFavorite = isFavorite;
+    const previousFavoriteId = favoriteId;
+
     try {
       setFavoriteLoading(true);
       
       if (isFavorite) {
+        setIsFavorite(false);
+        setFavoriteId(null);
+
         // Remove from favorites
-        const userId = resolveCustomerUserId(user?.id);
-        const removeQuery = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-        const response = await fetch(`/api/users/favorites/${favoriteId || serviceId}${removeQuery}`, {
+        const response = await fetch(`/api/users/favorites/${favoriteId || serviceId}`, {
           method: 'DELETE',
-          headers: {
-            ...(userId ? { 'x-user-id': userId } : {}),
-          },
         });
         
-        if (response.ok) {
-          setIsFavorite(false);
-          setFavoriteId(null);
+        if (!response.ok) {
+          setIsFavorite(previousIsFavorite);
+          setFavoriteId(previousFavoriteId);
         }
       } else {
+        setIsFavorite(true);
+
         // Add to favorites
-        const userId = resolveCustomerUserId(user?.id);
         const response = await fetch('/api/users/favorites', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(userId ? { 'x-user-id': userId } : {}),
           },
           body: JSON.stringify({
             serviceId,
-            ...(userId ? { userId } : {}),
           }),
         });
         
@@ -164,10 +276,15 @@ export default function ServiceDetailPage() {
           const payload = await response.json();
           setIsFavorite(true);
           setFavoriteId(payload?.favorite?.favoriteId || null);
+        } else {
+          setIsFavorite(previousIsFavorite);
+          setFavoriteId(previousFavoriteId);
         }
       }
     } catch (err) {
       console.error('Error toggling favorite:', err);
+      setIsFavorite(previousIsFavorite);
+      setFavoriteId(previousFavoriteId);
     } finally {
       setFavoriteLoading(false);
     }
@@ -186,12 +303,20 @@ export default function ServiceDetailPage() {
       // You could show a toast notification here
     }
   };
+  const resolvedBackLabel = returnLabel || 'Back to Discover';
+  const handleBack = () => {
+    if (returnTo) {
+      router.push(returnTo);
+      return;
+    }
+    router.back();
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--reliance-blue)] mx-auto mb-4"></div>
           <p className="text-gray-600">Loading service details...</p>
         </div>
       </div>
@@ -200,16 +325,24 @@ export default function ServiceDetailPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] flex items-center justify-center">
         <div className="text-center">
-          <div className="text-red-500 mb-4">⚠️</div>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button 
-            onClick={() => router.back()}
-            className="bg-purple-500 text-white px-6 py-2 rounded-lg hover:bg-purple-600 transition-colors"
-          >
-            Go Back
-          </button>
+          <div className="text-red-500 mb-4">Warning</div>
+          <p className="text-gray-600 mb-4 max-w-md">{error}</p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => void loadServiceData(() => true)}
+              className="rounded-full bg-[var(--reliance-blue)] px-6 py-2 text-white transition-colors hover:bg-[#1a58db]"
+            >
+              Retry
+            </button>
+            <button
+              onClick={handleBack}
+              className="bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              {resolvedBackLabel}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -217,14 +350,14 @@ export default function ServiceDetailPage() {
 
   if (!service) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Service not found</p>
           <button 
-            onClick={() => router.back()}
-            className="bg-purple-500 text-white px-6 py-2 rounded-lg hover:bg-purple-600 transition-colors"
+            onClick={handleBack}
+            className="rounded-full bg-[var(--reliance-blue)] px-6 py-2 text-white transition-colors hover:bg-[#1a58db]"
           >
-            Go Back
+            {resolvedBackLabel}
           </button>
         </div>
       </div>
@@ -240,28 +373,107 @@ export default function ServiceDetailPage() {
     typeof service?.vendor?.rating === 'number' ? service.vendor.rating : null;
   const vendorReviewCount =
     typeof service?.vendor?.reviewCount === 'number' ? service.vendor.reviewCount : 0;
+  const servicePublicReviewCount =
+    typeof service?.publicReviewCount === 'number' ? service.publicReviewCount : 0;
+  const headerReviewCount = servicePublicReviewCount || vendorReviewCount;
   const vendorRatingLabel = vendorRating == null ? 'New' : vendorRating.toFixed(1);
+  const publicVendorEmail = getPublicVendorEmail(service?.vendor?.email);
+  const servicePrice = Number(service?.price);
+  const hasPublicPrice = Number.isFinite(servicePrice) && servicePrice > 0;
+  const favoriteStatusPending = isSignedIn && !favoriteResolved;
+  const vendorResponseTime =
+    typeof service?.vendor?.response_time === 'string' && service.vendor.response_time.trim()
+      ? service.vendor.response_time.trim()
+      : null;
+  const serviceVideoItems: ServiceVideoItem[] = Array.isArray(service?.videoItems) && service.videoItems.length
+    ? service.videoItems
+    : Array.isArray(service?.videos)
+      ? service.videos.map((video: string, index: number) => ({
+          id: `${index}`,
+          url: video,
+          createdAt: null,
+          stageKey: null,
+          stageLabel: 'Service Video',
+          isPrimaryProofVideo: Boolean(primaryProofVideoUrl && video === primaryProofVideoUrl && index === 0),
+        }))
+      : [];
+  const orderedServiceVideoItems = [...serviceVideoItems].sort((left, right) => {
+    const leftFeatured = Boolean(left.isPrimaryProofVideo);
+    const rightFeatured = Boolean(right.isPrimaryProofVideo);
+    if (leftFeatured !== rightFeatured) {
+      return leftFeatured ? -1 : 1;
+    }
+
+    const leftTimestamp = left.createdAt ? Date.parse(left.createdAt) : NaN;
+    const rightTimestamp = right.createdAt ? Date.parse(right.createdAt) : NaN;
+    const leftValid = Number.isFinite(leftTimestamp);
+    const rightValid = Number.isFinite(rightTimestamp);
+
+    if (leftValid && rightValid && leftTimestamp !== rightTimestamp) {
+      return rightTimestamp - leftTimestamp;
+    }
+
+    if (leftValid !== rightValid) {
+      return leftValid ? -1 : 1;
+    }
+
+    return 0;
+  });
+  const heroVideoItem =
+    orderedServiceVideoItems.find((video) => Boolean(video.isPrimaryProofVideo)) ||
+    orderedServiceVideoItems[0] ||
+    null;
+  const heroImageUrl =
+    Array.isArray(service?.images) && typeof service.images[0] === 'string' && service.images[0].trim()
+      ? service.images[0]
+      : null;
+  const serviceImageCount = Array.isArray(service?.images) ? service.images.length : 0;
+  const serviceVideoCount = orderedServiceVideoItems.length;
+  const totalServiceMediaCount = serviceImageCount + serviceVideoCount;
+  const photosTabLabel =
+    serviceImageCount > 0 && serviceVideoCount > 0
+      ? `Photos & Videos (${totalServiceMediaCount})`
+      : serviceVideoCount > 0
+        ? `Videos (${serviceVideoCount})`
+        : `Photos (${serviceImageCount})`;
+  const vendorSidebarStats = [
+    vendorResponseTime
+      ? { label: 'Response Time', value: vendorResponseTime }
+      : { label: 'Response Time', value: 'Contact vendor' },
+    service?.vendor?.isPubliclyListed ? { label: 'Reliance Listing', value: 'Public' } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div className="sticky top-0 z-10 border-b border-white/8 bg-[rgba(4,9,18,0.88)] backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <button 
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <ChevronLeft className="w-5 h-5" />
-              <span>Back</span>
-            </button>
+            <div className="flex items-center gap-4">
+              <RelianceLogo
+                href="/"
+                tone="light"
+                compact
+                blend
+                frameClassName="h-[4.8rem] w-[4.8rem]"
+              />
+              <button 
+                onClick={handleBack}
+                className="flex items-center gap-2 text-white/72 hover:text-white transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+                <span>{resolvedBackLabel}</span>
+              </button>
+            </div>
             
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 data-testid="service-page-favorite-toggle"
                 aria-label={
-                  !isSignedIn
+                  favoriteStatusPending
+                    ? 'Checking favorite status'
+                    : !isSignedIn
                     ? 'Sign in to save service'
                     : isFavorite
                     ? 'Remove from favorites'
@@ -269,16 +481,18 @@ export default function ServiceDetailPage() {
                 }
                 title={!isSignedIn ? 'Sign in to save this service' : undefined}
                 onClick={handleToggleFavorite}
-                disabled={favoriteLoading}
+                disabled={favoriteLoading || favoriteStatusPending}
                 className={`p-2 rounded-full transition-colors ${
-                  isFavorite ? 'bg-pink-100 text-pink-600' : 'bg-gray-100 text-gray-600 hover:bg-pink-100 hover:text-pink-600'
+                  isFavorite
+                    ? 'bg-pink-500/16 text-pink-200'
+                    : 'bg-white/8 text-white/64 hover:bg-pink-500/16 hover:text-pink-200'
                 } ${favoriteLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
               </button>
               <button 
                 onClick={handleShare}
-                className="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-600 transition-colors"
+                className="p-2 rounded-full bg-white/8 text-white/64 transition-colors hover:bg-[rgba(36,107,255,0.18)] hover:text-white"
               >
                 <Share2 className="w-5 h-5" />
               </button>
@@ -294,11 +508,22 @@ export default function ServiceDetailPage() {
             {/* Service Images */}
             <div className="bg-white rounded-2xl overflow-hidden shadow-sm mb-6">
               <div className="relative">
-                <img 
-                  src={service.images?.[0] || '/placeholder-service.jpg'} 
-                  alt={service.name}
-                  className="w-full h-96 object-cover"
-                />
+                {heroVideoItem ? (
+                  <LazyVideoFrame
+                    src={heroVideoItem.url}
+                    title={service.name}
+                    buttonLabel={heroVideoItem.isPrimaryProofVideo ? 'Play featured service video' : 'Play service video'}
+                    className="h-96 w-full object-cover"
+                  />
+                ) : (
+                  <ServiceImage
+                    src={heroImageUrl}
+                    alt={service.name}
+                    title={service.name}
+                    className="h-96 w-full object-cover"
+                    fallbackClassName="h-96 w-full"
+                  />
+                )}
                 {isSignedIn && service.original_price && service.price < service.original_price && (
                   <div className="absolute top-4 left-4">
                     <div className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
@@ -306,6 +531,13 @@ export default function ServiceDetailPage() {
                     </div>
                   </div>
                 )}
+                {heroVideoItem ? (
+                  <div className="absolute bottom-4 left-4">
+                    <div className="rounded-full border border-white/20 bg-black/55 px-4 py-2 text-sm font-medium text-white backdrop-blur-md">
+                      {heroVideoItem.isPrimaryProofVideo ? 'Verified Service Video' : 'Service Video'}
+                    </div>
+                  </div>
+                ) : null}
                 {service.socialProof && (
                   <div className="absolute top-4 right-4">
                     <div className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1">
@@ -316,90 +548,69 @@ export default function ServiceDetailPage() {
                 )}
               </div>
               
-              {/* Media Gallery */}
-              {((service.images && service.images.length > 0) || (service.videos && service.videos.length > 0)) && (
-                <div className="p-4">
-                  <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
-                    {hasPrimaryProofVideo ? (
-                      <p className="text-emerald-900">
-                        <strong>Primary proof video available.</strong> This completed service clip is highlighted across customer views.
-                      </p>
-                    ) : (
-                      <p className="text-amber-900">
-                        <strong>No completed proof video yet.</strong> A primary proof video appears here once available.
-                      </p>
-                    )}
-                  </div>
-                  {/* Media Filter */}
-                  <div className="flex gap-2 mb-3">
-                    <button
-                      onClick={() => setMediaFilter('all')}
-                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                        mediaFilter === 'all' 
-                          ? 'bg-purple-500 text-white' 
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      All ({(service.images?.length || 0) + (service.videos?.length || 0)})
-                    </button>
-                    <button
-                      onClick={() => setMediaFilter('images')}
-                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                        mediaFilter === 'images' 
-                          ? 'bg-purple-500 text-white' 
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      Photos ({service.images?.length || 0})
-                    </button>
-                    <button
-                      onClick={() => setMediaFilter('videos')}
-                      className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-                        mediaFilter === 'videos' 
-                          ? 'bg-purple-500 text-white' 
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      Videos ({service.videos?.length || 0})
-                    </button>
-                  </div>
-                  
-                  <div className="flex gap-2 overflow-x-auto">
-                    {/* Images */}
-                    {mediaFilter !== 'videos' && service.images?.map((image: string, index: number) => (
-                      <div key={`image-${index}`} className="relative flex-shrink-0">
-                        <img 
-                          src={image} 
-                          alt={`${service.name} photo ${index + 1}`}
-                          className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
-                        />
-                        <div className="absolute top-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 py-0.5 rounded">
-                          Photo
+              {((service.images && service.images.length > 0) || serviceVideoCount > 0) && (
+                <div className="border-t border-slate-100 p-5">
+                  <div className="reliance-light-card rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-slate-900">Service media</p>
+                          <p className="text-sm text-slate-700">
+                            Browse one gallery for service photos and approved service videos below. The featured completed-service clip stays highlighted here, and the remaining videos appear from newest to oldest in the Videos tab.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs font-medium">
+                          <span className="rounded-full bg-white px-3 py-1 text-slate-700 shadow-sm">
+                            {totalServiceMediaCount} media item{totalServiceMediaCount === 1 ? '' : 's'}
+                          </span>
+                          {serviceImageCount > 0 ? (
+                            <span className="rounded-full bg-white px-3 py-1 text-slate-700 shadow-sm">
+                              {serviceImageCount} photo{serviceImageCount === 1 ? '' : 's'}
+                            </span>
+                          ) : null}
+                          {serviceVideoCount > 0 ? (
+                            <span className="rounded-full bg-white px-3 py-1 text-slate-700 shadow-sm">
+                              {serviceVideoCount} service video{serviceVideoCount === 1 ? '' : 's'}
+                            </span>
+                          ) : null}
+                          {hasPrimaryProofVideo ? (
+                            <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-900 shadow-sm">
+                              Featured completed-service video
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-900 shadow-sm">
+                              Featured completed-service video coming soon
+                            </span>
+                          )}
                         </div>
                       </div>
-                    ))}
-                    
-                    {/* Videos */}
-                    {mediaFilter !== 'images' && service.videos?.map((video: string, index: number) => (
-                      <div key={`video-${index}`} className="relative flex-shrink-0">
-                        <video 
-                          src={video}
-                          className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
-                          muted
-                          preload="metadata"
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-8 h-8 bg-black bg-opacity-50 rounded-full flex items-center justify-center">
-                            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M8 5v10l8-5-8-5z"/>
-                            </svg>
-                          </div>
-                        </div>
-                        <div className="absolute top-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 py-0.5 rounded">
-                          {primaryProofVideoUrl && video === primaryProofVideoUrl ? 'Primary proof' : 'Video'}
-                        </div>
+                      <div className="flex flex-wrap gap-2">
+                        {serviceVideoCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('photos');
+                              setMediaFilter('videos');
+                            }}
+                            className="rounded-full bg-[var(--reliance-blue)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a58db]"
+                          >
+                            Open Videos
+                          </button>
+                        ) : null}
+                        {serviceImageCount > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('photos');
+                              setMediaFilter('images');
+                            }}
+                            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100"
+                          >
+                            Open Photos
+                          </button>
+                        ) : null}
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -415,7 +626,7 @@ export default function ServiceDetailPage() {
                       <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
                       <span className="font-medium">{vendorRatingLabel}</span>
                       <span>
-                        ({vendorReviewCount} public review{vendorReviewCount === 1 ? '' : 's'})
+                        ({headerReviewCount} public review{headerReviewCount === 1 ? '' : 's'})
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
@@ -431,11 +642,17 @@ export default function ServiceDetailPage() {
                 
                 {isSignedIn ? (
                   <div className="text-right">
-                    <div className="text-3xl font-bold text-purple-600">${service.price}</div>
-                    {service.original_price && service.price < service.original_price && (
+                    {hasPublicPrice ? (
+                      <div className="text-3xl font-bold text-[var(--reliance-blue)]">${servicePrice}</div>
+                    ) : (
+                      <div className="max-w-40 text-sm font-semibold text-blue-700">
+                        Estimate provided after review
+                      </div>
+                    )}
+                    {hasPublicPrice && service.original_price && servicePrice < service.original_price && (
                       <>
                         <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
-                        <div className="text-sm text-green-600 font-medium">Save ${service.original_price - service.price}</div>
+                        <div className="text-sm text-green-600 font-medium">Save ${service.original_price - servicePrice}</div>
                       </>
                     )}
                   </div>
@@ -476,7 +693,7 @@ export default function ServiceDetailPage() {
                     {service.features.map((feature: string, index: number) => (
                       <span 
                         key={index}
-                        className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium"
+                        className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"
                       >
                         {feature}
                       </span>
@@ -492,15 +709,15 @@ export default function ServiceDetailPage() {
                 <nav className="flex space-x-8 px-6">
                   {[
                     { id: 'overview', label: 'Overview', icon: null },
-                    { id: 'reviews', label: `Reviews (${reviews.length})`, icon: null },
-                    { id: 'photos', label: `Photos & Videos (${(service.images?.length || 0) + (service.videos?.length || 0)})`, icon: null }
+                    { id: 'reviews', label: `Reviews (${reviews.length || servicePublicReviewCount})`, icon: null },
+                    { id: 'photos', label: photosTabLabel, icon: null }
                   ].map((tab) => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as any)}
                       className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                         activeTab === tab.id
-                          ? 'border-purple-500 text-purple-600'
+                          ? 'border-[var(--reliance-blue)] text-[var(--reliance-blue)]'
                           : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                       }`}
                     >
@@ -528,7 +745,7 @@ export default function ServiceDetailPage() {
                           <div key={review.reviewId} className="border-b border-gray-200 pb-6 last:border-b-0">
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400">
                                   <span className="text-white font-semibold text-sm">
                                     {String(review.reviewerDisplayName || 'Verified Customer')
                                       .split(' ')
@@ -541,7 +758,7 @@ export default function ServiceDetailPage() {
                                     <span className="font-semibold text-gray-900">
                                       {review.reviewerDisplayName || 'Verified Customer'}
                                     </span>
-                                    <span className="text-blue-500 text-xs">✓ Public approved</span>
+                                    <span className="text-blue-500 text-xs">Public approved</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     {[...Array(5)].map((_, i) => (
@@ -556,6 +773,17 @@ export default function ServiceDetailPage() {
                                   </div>
                                 </div>
                               </div>
+                              <ReportContentDialog
+                                targetType="review"
+                                targetId={String(review.reviewId || '')}
+                                isSignedIn={isSignedIn}
+                                userId={resolveCustomerUserId(user?.id)}
+                                triggerLabel={isSignedIn ? 'Report' : 'Sign in to report'}
+                                title="Report this review"
+                                description="Tell us if this review seems inappropriate, unsafe, or misleading."
+                                signInHref={`/auth/login?next=${encodeURIComponent(`/service/${serviceId}`)}`}
+                                className="text-xs font-medium text-gray-500 underline-offset-4 hover:text-red-700 hover:underline"
+                              />
                             </div>
                             <p className="text-gray-700 leading-relaxed">{review.comment}</p>
                           </div>
@@ -576,11 +804,11 @@ export default function ServiceDetailPage() {
                     <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
                       {hasPrimaryProofVideo ? (
                         <p className="text-emerald-900">
-                          Primary proof is marked directly on the completed service video.
+                          Featured completed-service video stays highlighted first. Remaining approved service videos are ordered from newest to oldest.
                         </p>
                       ) : (
                         <p className="text-amber-900">
-                          No completed proof video is available yet for this service.
+                          No featured completed-service video is available yet. Approved service videos still appear below in gallery order.
                         </p>
                       )}
                     </div>
@@ -590,33 +818,42 @@ export default function ServiceDetailPage() {
                         onClick={() => setMediaFilter('all')}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           mediaFilter === 'all' 
-                            ? 'bg-purple-500 text-white' 
+                            ? 'bg-[var(--reliance-blue)] text-white' 
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                       >
-                        All Media ({(service.images?.length || 0) + (service.videos?.length || 0)})
+                        All Media ({totalServiceMediaCount})
                       </button>
-                      <button
-                        onClick={() => setMediaFilter('images')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          mediaFilter === 'images' 
-                            ? 'bg-purple-500 text-white' 
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        Photos ({service.images?.length || 0})
-                      </button>
-                      <button
-                        onClick={() => setMediaFilter('videos')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          mediaFilter === 'videos' 
-                            ? 'bg-purple-500 text-white' 
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        Videos ({service.videos?.length || 0})
-                      </button>
+                      {serviceImageCount > 0 ? (
+                        <button
+                          onClick={() => setMediaFilter('images')}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            mediaFilter === 'images' 
+                              ? 'bg-[var(--reliance-blue)] text-white' 
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          Photos ({serviceImageCount})
+                        </button>
+                      ) : null}
+                      {serviceVideoCount > 0 ? (
+                        <button
+                          onClick={() => setMediaFilter('videos')}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            mediaFilter === 'videos' 
+                              ? 'bg-[var(--reliance-blue)] text-white' 
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          Videos ({serviceVideoCount})
+                        </button>
+                      ) : null}
                     </div>
+                    {serviceVideoCount > 0 ? (
+                      <p className="mb-4 text-sm text-slate-600">
+                        Service videos are labeled by stage so customers can quickly tell whether they are watching the before-service, during-service, or completed-service portion of the job.
+                      </p>
+                    ) : null}
                     
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       {/* Images */}
@@ -634,23 +871,33 @@ export default function ServiceDetailPage() {
                       ))}
                       
                       {/* Videos */}
-                      {mediaFilter !== 'images' && service.videos?.map((video: string, index: number) => (
-                        <div key={`video-${index}`} className="relative group">
-                          <video 
-                            src={video}
-                            className="w-full h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                      {mediaFilter !== 'images' && orderedServiceVideoItems.map((video, index: number) => (
+                        <div key={`video-${video.id || index}`} className="relative group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                          <LazyVideoFrame
+                            src={video.url}
+                            title={`${service.name} ${video.stageLabel || 'service video'} ${index + 1}`}
+                            className="w-full h-48 object-cover"
+                            buttonLabel="Play service video"
                             muted
-                            preload="metadata"
                           />
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-12 h-12 bg-black bg-opacity-50 rounded-full flex items-center justify-center group-hover:bg-opacity-70 transition-all">
-                              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M8 5v10l8-5-8-5z"/>
-                              </svg>
-                            </div>
+                          <div className="absolute top-2 left-2 rounded-full bg-black/60 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
+                            {video.isPrimaryProofVideo ? 'Featured video' : (video.stageLabel || 'Service Video')}
                           </div>
-                          <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                            {primaryProofVideoUrl && video === primaryProofVideoUrl ? 'Primary proof' : 'Video'}
+                          <div className="space-y-1 px-3 py-3">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {video.isPrimaryProofVideo
+                                ? 'Featured completed-service video'
+                                : (video.stageLabel || 'Service Video')}
+                            </p>
+                            {formatMediaTimestamp(video.createdAt) ? (
+                              <p className="text-xs text-slate-500">
+                                Published {formatMediaTimestamp(video.createdAt)}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-500">
+                                Approved public service video
+                              </p>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -668,7 +915,7 @@ export default function ServiceDetailPage() {
               <div className="text-center mb-6">
                 {isSignedIn ? (
                   <>
-                    <div className="text-3xl font-bold text-purple-600 mb-1">${service.price}</div>
+                    <div className="mb-1 text-3xl font-bold text-[var(--reliance-blue)]">${service.price}</div>
                     {service.original_price && service.price < service.original_price && (
                       <>
                         <div className="text-lg text-gray-500 line-through">${service.original_price}</div>
@@ -697,12 +944,12 @@ export default function ServiceDetailPage() {
                 </div>
               </div>
 
-              <button 
-                onClick={handleBookNow}
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200 mb-4"
+              <Link
+                href={isSignedIn ? `/booking/${serviceId}` : `/auth/login?next=${encodeURIComponent(`/booking/${serviceId}`)}`}
+                className="mb-4 block w-full rounded-xl bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] py-3 text-center font-semibold text-white transition-all duration-200 hover:brightness-110"
               >
                 {isSignedIn ? 'Book Now' : 'Sign in to Book'}
-              </button>
+              </Link>
 
               {!isSignedIn ? (
                 <p className="text-xs text-gray-500 text-center mb-4">
@@ -722,7 +969,7 @@ export default function ServiceDetailPage() {
             {service.vendor && (
               <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full flex items-center justify-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400">
                     <span className="text-white font-semibold text-lg">
                       {service.vendor.name?.split(' ').map((n: string) => n[0]).join('') || 'V'}
                     </span>
@@ -749,15 +996,28 @@ export default function ServiceDetailPage() {
                       <span>{service.vendor.phone}</span>
                     </div>
                   )}
-                  {service.vendor.email && (
+                  {publicVendorEmail && (
                     <div className="flex items-center gap-2 text-gray-600">
                       <Mail className="w-4 h-4" />
-                      <span>{service.vendor.email}</span>
+                      <span>{publicVendorEmail}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-200">
+                {vendorSidebarStats.length ? (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {vendorSidebarStats.map((item) => (
+                        <div key={item.label}>
+                          <div className="text-gray-500">{item.label}</div>
+                          <div className="font-medium">{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="hidden">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <div className="text-gray-500">Response Time</div>
@@ -773,7 +1033,7 @@ export default function ServiceDetailPage() {
                     </div>
                     <div>
                       <div className="text-gray-500">Verified</div>
-                      <div className="font-medium text-green-600">✓ {service.vendor.verified ? 'Yes' : 'No'}</div>
+                      <div className="font-medium text-green-600">{service.vendor.verified ? 'Verified' : 'Not verified'}</div>
                     </div>
                   </div>
                 </div>
@@ -795,6 +1055,17 @@ export default function ServiceDetailPage() {
               </div>
             )}
 
+            {service.vendor?.id ? (
+              <div className="mb-6">
+                <PublicTrustScorePanel
+                  vendorId={service.vendor.id}
+                  customerRating={vendorRating}
+                  customerReviewCount={vendorReviewCount}
+                  compact
+                />
+              </div>
+            ) : null}
+
             {/* Social Proof */}
             {service.socialProof && (
               <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
@@ -815,6 +1086,27 @@ export default function ServiceDetailPage() {
           </div>
         </div>
       </div>
+
+      <PublicSiteFooter />
     </div>
   );
-} 
+}
+
+function ServiceDetailPageFallback() {
+  return (
+    <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--reliance-blue)] mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading service details...</p>
+      </div>
+    </div>
+  );
+}
+
+export default function ServiceDetailPage() {
+  return (
+    <Suspense fallback={<ServiceDetailPageFallback />}>
+      <ServiceDetailPageContent />
+    </Suspense>
+  );
+}

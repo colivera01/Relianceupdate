@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db";
+import { countableReviewWhere } from "@/lib/metrics-exclusion";
 
 type RatingStats = {
   averageRating: number;
@@ -31,10 +32,10 @@ function toStatsFromRows(rows: Array<{ rating: number }>): RatingStats {
 export async function getVendorRatingStats(vendorId: string): Promise<RatingStats> {
   try {
     const rows = await prisma.review.findMany({
-      where: {
+      where: countableReviewWhere({
         vendorId,
         ...ELIGIBLE_REVIEW_WHERE,
-      },
+      }),
       select: { rating: true },
     });
     return toStatsFromRows(rows);
@@ -53,11 +54,11 @@ export async function getEmployeeRatingStats(
   }
   try {
     const rows = await (prisma as any).review.findMany({
-      where: {
+      where: countableReviewWhere({
         vendorId,
         assignedMembershipId: normalizedMembershipId,
         ...ELIGIBLE_REVIEW_WHERE,
-      },
+      }),
       select: { rating: true },
     });
     return toStatsFromRows(rows);
@@ -81,11 +82,11 @@ export async function getEmployeeRatingsForVendor(
     ? Array.from(new Set(membershipIds.map((id) => String(id || "").trim()).filter(Boolean)))
     : null;
 
-  const where: any = {
+  const where: any = countableReviewWhere({
     vendorId,
     ...ELIGIBLE_REVIEW_WHERE,
     assignedMembershipId: { not: null },
-  };
+  });
   if (normalizedIds && normalizedIds.length > 0) {
     where.assignedMembershipId = { in: normalizedIds };
   }

@@ -1,176 +1,47 @@
-// BACKEND DEVELOPER NOTES:
-// - Fetch vendor's business type and available services from the service catalog
-// - On save, send updated pricing to backend
-// - Custom services can be submitted for admin approval if needed
-
 'use client';
-import { useState } from 'react';
-import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Trash2 } from 'lucide-react';
-import { Checkbox } from '@/components/ui/checkbox';
 
-// Example: This would be fetched based on vendor profile
-const vendorBusinessType = 'Plumbing';
-const serviceCatalog = {
-  'Plumbing': [
-    'Kitchen Sink Repair',
-    'Faucet Installation',
-    'Garbage Disposal Repair',
-    'Pipe Leak Fix',
-    'Other',
-  ],
-  // ...other business types
-};
+import Link from 'next/link';
+import { Tags } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 export default function PricingManagement() {
-  const [pricing, setPricing] = useState<
-    {
-      service: string;
-      price: string;
-      custom?: boolean;
-      pending?: boolean;
-      enabled?: boolean;
-    }[]
-  >(
-    serviceCatalog[vendorBusinessType].map((service) => ({
-      service,
-      price: "",
-      custom: service === "Other",
-      enabled: false,
-    }))
-  );
-  const [customService, setCustomService] = useState('');
-  const [customPrice, setCustomPrice] = useState('');
-  const [saved, setSaved] = useState(false);
-  const [pendingCustomMessage, setPendingCustomMessage] = useState('');
-  const [validationError, setValidationError] = useState('');
-
-  const handlePriceChange = (idx: number, value: string) => {
-    setPricing(pricing => pricing.map((p, i) => i === idx ? { ...p, price: value } : p));
-  };
-
-  const handleAddCustom = () => {
-    if (customService && customPrice) {
-      setPricing([
-        ...pricing,
-        { service: customService, price: customPrice, custom: true, pending: true },
-      ]);
-      setCustomService('');
-      setCustomPrice('');
-      setPendingCustomMessage('Your custom service is pending admin approval. You’ll be able to set a price and offer it to customers once approved.');
-      setTimeout(() => setPendingCustomMessage(''), 4000);
-    }
-  };
-
-  const handleDeleteCustom = (idx: number) => {
-    setPricing(pricing => pricing.filter((_, i) => i !== idx));
-  };
-
-  const handleToggleService = (idx: number) => {
-    setPricing(pricing => pricing.map((p, i) =>
-      i === idx ? { ...p, enabled: !p.enabled } : p
-    ));
-  };
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Require at least one core (catalog, not custom) service enabled and priced
-    const hasCoreService = pricing.some(p => !p.custom && p.enabled && p.price && Number(p.price) > 0);
-    if (!hasCoreService) {
-      setValidationError('You must enable and set a price for at least one core service.');
-      return;
-    }
-    setValidationError('');
-    setSaved(true);
-    // Would send pricing to backend here
-    setTimeout(() => setSaved(false), 2000);
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <Card className="w-full max-w-2xl">
+    <div className="min-h-[60vh] flex items-center justify-center px-4 py-10">
+      <Card className="w-full max-w-2xl border-amber-200 bg-amber-50">
         <CardHeader>
-          <CardTitle>Update Pricing</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-6" onSubmit={handleSave}>
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-amber-100 p-3 text-amber-700">
+              <Tags className="h-6 w-6" />
+            </div>
             <div>
-              <div className="grid grid-cols-2 gap-4 font-semibold mb-2">
-                <span>Service</span>
-                <span>Price ($)</span>
-              </div>
-              {pendingCustomMessage && (
-                <div className="text-yellow-700 text-center font-medium mb-2">{pendingCustomMessage}</div>
-              )}
-              {validationError && (
-                <div className="text-red-700 text-center font-medium mb-2">{validationError}</div>
-              )}
-              {pricing.map((p, idx) => (
-                <div className="grid grid-cols-2 gap-4 mb-2 items-center" key={idx}>
-                  <span className="flex items-center gap-2">
-                    {!p.custom && (
-                      <Checkbox
-                        checked={p.enabled !== false}
-                        onCheckedChange={() => handleToggleService(idx)}
-                        className="mr-2"
-                        aria-label={p.enabled !== false ? `Disable ${p.service}` : `Enable ${p.service}`}
-                      />
-                    )}
-                    {p.service}
-                    {p.custom && p.pending && (
-                      <Badge className="bg-gray-200 text-gray-700 ml-2">Pending Approval</Badge>
-                    )}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min="0"
-                      value={p.price}
-                      onChange={e => handlePriceChange(idx, e.target.value)}
-                      placeholder="Enter price"
-                      required
-                      disabled={p.custom && p.pending || (!p.custom && p.enabled === false)}
-                    />
-                    {p.custom && (
-                      <button
-                        type="button"
-                        className="ml-1 text-red-600 hover:text-red-800"
-                        onClick={() => handleDeleteCustom(idx)}
-                        aria-label="Delete custom service"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+              <CardTitle>Pricing templates are not live on this launch</CardTitle>
+              <p className="mt-1 text-sm text-amber-800">
+                The previous pricing builder only stored temporary local changes and did not update real vendor pricing.
+              </p>
             </div>
-            <div className="border-t pt-4 mt-4">
-              <div className="font-semibold mb-2">Add Custom Service</div>
-              <div className="grid grid-cols-2 gap-4 mb-2">
-                <Input
-                  value={customService}
-                  onChange={e => setCustomService(e.target.value)}
-                  placeholder="Service name"
-                />
-                <Input
-                  type="number"
-                  min="0"
-                  value={customPrice}
-                  onChange={e => setCustomPrice(e.target.value)}
-                  placeholder="Price"
-                />
-              </div>
-              <Button type="button" onClick={handleAddCustom} className="w-full mb-2">Add Service</Button>
-            </div>
-            <Button type="submit" className="w-full">Save Pricing</Button>
-            {saved && <div className="text-green-700 text-center font-medium mt-2">Pricing saved!</div>}
-          </form>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 text-gray-700">
+          <p>
+            Reliance already exposes the live vendor profile and services surfaces used in this launch. Those are
+            the places to review your public service details while the retired template-based pricing editor stays
+            offline.
+          </p>
+          <p>
+            When structured pricing management is brought back, it will be connected to persisted vendor services
+            instead of a local-only draft form.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button asChild>
+              <Link href="/vendor/profile">Open Profile &amp; Settings</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/vendor/services">Open Services</Link>
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
   );
-} 
+}

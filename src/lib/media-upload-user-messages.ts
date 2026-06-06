@@ -32,6 +32,8 @@ const VENDOR_MEDIA_CODE_MESSAGES: Record<string, string> = {
   FOREIGN_KEY_VIOLATION:
     "We could not link this upload to your vendor or job. Confirm the job still exists and try again.",
   MEDIA_SESSION_CREATE_FAILED: "We could not start your upload. Please try again in a moment.",
+  MEDIA_STORAGE_UNAVAILABLE:
+    "Secure video storage is temporarily unavailable. Please try again shortly. If it keeps happening, contact support.",
 };
 
 export function getVendorMediaApiUserMessage(parsed: unknown, status: number): string {

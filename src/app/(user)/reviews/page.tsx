@@ -15,7 +15,19 @@ type PendingReviewItem = {
   serviceName: string;
   serviceDate: string | null;
   status: string;
+  videoUrl: string | null;
   proofUrl: string | null;
+};
+
+type AwaitingReviewItem = {
+  bookingId: string;
+  vendorId: string;
+  vendorName: string;
+  serviceName: string;
+  serviceDate: string | null;
+  status: string;
+  videoState: 'pending_approval' | 'approved_not_customer_visible' | 'rejected' | 'not_submitted';
+  statusMessage: string;
 };
 
 type SubmittedReviewItem = {
@@ -27,15 +39,54 @@ type SubmittedReviewItem = {
   rating: number;
   comment: string;
   submittedAt: string;
+  hasVideo: boolean;
+  videoUrl: string | null;
   hasProof: boolean;
   proofUrl: string | null;
+  hasLinkedMediaRecord: boolean;
+  mediaState: 'customer_visible_video' | 'linked_media_unavailable' | 'no_linked_media';
+  statusMessage: string | null;
 };
 
 type ReviewsMeResponse = {
   pending: PendingReviewItem[];
+  awaiting: AwaitingReviewItem[];
   submitted: SubmittedReviewItem[];
-  proofBased: SubmittedReviewItem[];
 };
+
+function reviewsCacheKey(userId: string | null | undefined): string | null {
+  if (!userId) return null;
+  return `customer_reviews_cache:${userId}`;
+}
+
+function readCachedReviews(userId: string | null | undefined): ReviewsMeResponse | null {
+  if (typeof window === 'undefined') return null;
+  const key = reviewsCacheKey(userId);
+  if (!key) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ReviewsMeResponse>;
+    return {
+      pending: Array.isArray(parsed?.pending) ? parsed.pending : [],
+      awaiting: Array.isArray(parsed?.awaiting) ? parsed.awaiting : [],
+      submitted: Array.isArray(parsed?.submitted) ? parsed.submitted : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedReviews(userId: string | null | undefined, value: ReviewsMeResponse): void {
+  if (typeof window === 'undefined') return;
+  const key = reviewsCacheKey(userId);
+  if (!key) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore client storage failures and keep the live view working.
+  }
+}
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return 'Date unavailable';
@@ -63,6 +114,24 @@ function renderStars(rating: number) {
   );
 }
 
+function bookingMetaRow(bookingId: string | null | undefined, dateLabel: string, dateValue: string | null | undefined) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+      <p>{dateLabel}: {formatDate(dateValue)}</p>
+      {bookingId ? (
+        <p>
+          Booking ID:{' '}
+          <span className="font-mono text-[11px] text-gray-600">{bookingId}</span>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function reviewsBookingHref(bookingId: string): string {
+  return `/my-bookings/${bookingId}?returnTo=${encodeURIComponent('/reviews')}`;
+}
+
 function sectionEmptyState(message: string) {
   return (
     <div className="bg-white rounded-xl shadow-sm border p-3 mb-3 text-sm text-gray-600">{message}</div>
@@ -85,11 +154,12 @@ export default function ReviewsPage() {
 
   const [data, setData] = useState<ReviewsMeResponse>({
     pending: [],
+    awaiting: [],
     submitted: [],
-    proofBased: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCachedNotice, setShowCachedNotice] = useState(false);
 
   const loadReviews = useCallback(async () => {
     if (!userId) {
@@ -100,6 +170,7 @@ export default function ReviewsPage() {
 
     setLoading(true);
     setError(null);
+    setShowCachedNotice(false);
     try {
       const headers = getClientSessionHeaders(userId);
       const response = await fetch('/api/reviews/me', {
@@ -113,18 +184,27 @@ export default function ReviewsPage() {
         throw new Error(String(json?.error || `Failed to load reviews (${response.status})`));
       }
 
-      setData({
+      const nextData = {
         pending: Array.isArray(json?.pending) ? json.pending : [],
+        awaiting: Array.isArray(json?.awaiting) ? json.awaiting : [],
         submitted: Array.isArray(json?.submitted) ? json.submitted : [],
-        proofBased: Array.isArray(json?.proofBased) ? json.proofBased : [],
-      });
+      };
+      setData(nextData);
+      writeCachedReviews(userId, nextData);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : 'Failed to load reviews');
-      setData({
-        pending: [],
-        submitted: [],
-        proofBased: [],
-      });
+      const cachedData = readCachedReviews(userId);
+      if (cachedData) {
+        setData(cachedData);
+        setShowCachedNotice(true);
+        setError(null);
+      } else {
+        setError(fetchError instanceof Error ? fetchError.message : 'Failed to load reviews');
+        setData({
+          pending: [],
+          awaiting: [],
+          submitted: [],
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -135,116 +215,194 @@ export default function ReviewsPage() {
     void loadReviews();
   }, [authLoading, loadReviews]);
 
+  const proofBackedSubmittedCount = data.submitted.filter((item) => item.hasProof).length;
+  const awaitingVideoCount = data.awaiting.length;
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="w-full max-w-4xl">
-        <div className="flex items-center justify-between gap-3">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-semibold text-gray-900">My Reviews</h1>
-            <p className="text-sm text-gray-600">Track what needs feedback and what you have submitted.</p>
-            <p className="text-sm text-gray-600">
-              You have: {data.pending.length} Pending Reviews - {data.submitted.length} Submitted Reviews
+    <div className="w-full max-w-5xl space-y-8">
+      <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
+        <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+          Customer review hub
+        </div>
+        <div className="mt-5 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl space-y-4">
+            <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
+              Customer reviews stay separate from the Reliance Trust Score
+            </h1>
+            <p className="max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
+              Review completed services with approved service videos, keep submitted feedback tied
+              to real bookings, and follow exactly where each service still needs customer action.
+            </p>
+            <p className="text-sm leading-7 text-white/68">
+              {loading || authLoading
+                ? 'Loading your review totals and booking-linked feedback history...'
+                : `You have ${data.pending.length} ${data.pending.length === 1 ? 'review' : 'reviews'} ready to submit${
+                    awaitingVideoCount > 0
+                      ? `, ${awaitingVideoCount} completed ${awaitingVideoCount === 1 ? 'booking is' : 'bookings are'} not ready for review yet,`
+                      : ''
+                  } and ${data.submitted.length} submitted ${data.submitted.length === 1 ? 'review' : 'reviews'}.${
+                    proofBackedSubmittedCount > 0
+                      ? ` ${proofBackedSubmittedCount} submitted ${
+                          proofBackedSubmittedCount === 1 ? 'review is' : 'reviews are'
+                        } verified with service videos or images.`
+                      : ''
+                  }`}
             </p>
           </div>
-          <Button variant="outline" onClick={() => void loadReviews()} disabled={loading || authLoading}>
-            Refresh
+          <div className="grid min-w-[220px] grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)]">
+              <p className="text-xs uppercase tracking-[0.28em] text-white/46">Ready now</p>
+              <p className="mt-2 text-3xl font-semibold text-white">{data.pending.length}</p>
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)]">
+              <p className="text-xs uppercase tracking-[0.28em] text-white/46">Not ready yet</p>
+              <p className="mt-2 text-3xl font-semibold text-white">{awaitingVideoCount}</p>
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)] sm:col-span-3 xl:col-span-1">
+              <p className="text-xs uppercase tracking-[0.28em] text-white/46">Submitted</p>
+              <p className="mt-2 text-3xl font-semibold text-white">{data.submitted.length}</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex items-center justify-end">
+        <Button variant="outline" onClick={() => void loadReviews()} disabled={loading || authLoading}>
+          Refresh
+        </Button>
+      </div>
+
+      {loading || authLoading ? (
+        <section className="mb-10">
+          <h2 className="text-xl font-semibold text-gray-900">Loading your reviews...</h2>
+          {sectionSkeletonRows()}
+        </section>
+      ) : null}
+
+      {error ? (
+        <div className="reliance-operator-surface rounded-[28px] border border-red-200/70 bg-red-50/80 p-4 mb-10 space-y-3">
+          <p className="text-sm text-red-700">We couldn&apos;t load your reviews.</p>
+          <Button type="button" variant="outline" onClick={() => void loadReviews()}>
+            Retry
           </Button>
         </div>
+      ) : null}
 
-        {loading || authLoading ? (
+      {!loading && !authLoading && !error && showCachedNotice ? (
+        <div className="reliance-operator-surface rounded-[28px] border border-amber-200/70 bg-amber-50/80 p-4 mb-6 text-sm text-amber-900">
+          Showing your most recent saved review history while Reliance refreshes live review data.
+        </div>
+      ) : null}
+
+      {!loading && !authLoading && !error ? (
+        <>
           <section className="mb-10">
-            <h2 className="text-xl font-semibold text-gray-900">Loading your reviews...</h2>
-            {sectionSkeletonRows()}
+            <div className="space-y-1 mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Ready to Review</h2>
+              <p className="text-sm text-gray-600">
+                These completed bookings have approved service videos and are ready for the
+                video-based review flow.
+              </p>
+            </div>
+            {data.pending.length === 0
+              ? sectionEmptyState('You have no completed services waiting for a review.')
+              : data.pending.map((item) => (
+                  <div
+                    key={item.bookingId}
+                    className="reliance-operator-surface rounded-[28px] border border-amber-200/70 bg-amber-50/80 p-4 mb-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="space-y-1">
+                      <p className="text-lg font-bold text-gray-900">{item.serviceName}</p>
+                      <p className="text-sm text-gray-700">{item.vendorName}</p>
+                      {bookingMetaRow(item.bookingId, 'Service date', item.serviceDate)}
+                    </div>
+                    <Link href={reviewsBookingHref(item.bookingId)}>
+                      <Button
+                        size="default"
+                        className="bg-[var(--reliance-blue)] text-white hover:bg-[#1f56cf]"
+                      >
+                        <Star className="mr-2 h-4 w-4 fill-current" />
+                        Leave Review
+                      </Button>
+                    </Link>
+                  </div>
+                ))}
           </section>
-        ) : null}
 
-        {error ? (
-          <div className="bg-white rounded-xl shadow-sm border p-3 mb-10 space-y-3">
-            <p className="text-sm text-red-700">We couldn't load your reviews.</p>
-            <Button type="button" variant="outline" onClick={() => void loadReviews()}>
-              Retry
-            </Button>
-          </div>
-        ) : null}
-
-        {!loading && !authLoading && !error ? (
-          <>
+          {data.awaiting.length > 0 ? (
             <section className="mb-10">
               <div className="space-y-1 mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Pending Reviews</h2>
-                <p className="text-sm text-gray-600">Complete these first.</p>
+                <h2 className="text-xl font-semibold text-gray-900">Review Not Open Yet</h2>
+                <p className="text-sm text-gray-600">
+                  These completed bookings are not reviewable yet. Open the booking to see whether
+                  the service video is pending approval, not customer-visible, or still unavailable.
+                </p>
               </div>
-              {data.pending.length === 0
-                ? sectionEmptyState('You have no reviews to complete')
-                : data.pending.map((item) => (
-                    <div key={item.bookingId} className="bg-yellow-50 rounded-xl shadow-sm border border-yellow-300 p-3 mb-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div className="space-y-1">
-                          <p className="text-lg font-bold text-gray-900">{item.serviceName}</p>
-                          <p className="text-sm text-gray-700">{item.vendorName}</p>
-                          <p className="text-sm text-gray-500">Date: {formatDate(item.serviceDate)}</p>
-                        </div>
-                        <Link href={`/my-bookings/${item.bookingId}`}>
-                          <Button size="default" className="bg-yellow-500 text-white hover:bg-yellow-600">
-                            ⭐ Leave Review
-                          </Button>
-                        </Link>
-                    </div>
-                  ))}
+              {data.awaiting.map((item) => (
+                <div
+                  key={item.bookingId}
+                  className="bg-white rounded-[28px] shadow-sm border p-4 mb-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="space-y-1">
+                    <p className="text-lg font-bold text-gray-900">{item.serviceName}</p>
+                    <p className="text-sm text-gray-700">{item.vendorName}</p>
+                    {bookingMetaRow(item.bookingId, 'Service date', item.serviceDate)}
+                    <p className="text-xs text-amber-700">{item.statusMessage}</p>
+                  </div>
+                  <Link href={reviewsBookingHref(item.bookingId)}>
+                    <Button variant="outline">View booking</Button>
+                  </Link>
+                </div>
+              ))}
             </section>
+          ) : null}
 
-            <section className="mb-10">
-              <div className="space-y-1 mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Submitted Reviews</h2>
-                <p className="text-sm text-gray-600">Your completed feedback.</p>
-              </div>
-              {data.submitted.length === 0
-                ? sectionEmptyState('No reviews yet — your feedback will appear here')
-                : data.submitted.map((item) => (
-                    <div key={item.reviewId} className="bg-white rounded-xl shadow-sm border p-3 mb-3 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div className="space-y-2.5">
-                          <p className="text-lg font-semibold text-gray-900">{item.serviceName}</p>
-                          <p className="text-sm text-gray-700">{item.vendorName}</p>
-                          {renderStars(item.rating)}
-                          <p className="text-sm text-gray-600 leading-6 line-clamp-2">{item.comment || 'No written comment.'}</p>
-                          <p className="text-sm text-gray-500">Date: {formatDate(item.submittedAt)}</p>
-                        </div>
-                        {item.bookingId && (item.proofUrl || item.hasProof) ? (
-                          <Link href={`/my-bookings/${item.bookingId}`}>
-                            <Button variant="outline">View Proof</Button>
-                          </Link>
-                        ) : null}
+          <section className="mb-10">
+            <div className="space-y-1 mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Submitted Reviews</h2>
+              <p className="text-sm text-gray-600">
+                Your persisted review history. Reviews connected to customer-visible approved
+                completed-service videos are marked below.
+              </p>
+            </div>
+            {data.submitted.length === 0
+              ? sectionEmptyState('No submitted reviews yet. Your completed feedback will appear here.')
+              : data.submitted.map((item) => (
+                  <div
+                    key={item.reviewId}
+                    className="bg-white rounded-[28px] shadow-sm border p-4 mb-3 flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
+                  >
+                    <div className="space-y-2.5">
+                      {item.hasProof ? (
+                        <p className="text-xs font-medium uppercase tracking-wide text-green-700">
+                          Verified with customer-visible service video
+                        </p>
+                      ) : null}
+                      <p className="text-lg font-semibold text-gray-900">{item.serviceName}</p>
+                      <p className="text-sm text-gray-700">{item.vendorName}</p>
+                      {bookingMetaRow(item.bookingId, 'Review submitted', item.submittedAt)}
+                      {renderStars(item.rating)}
+                      <p className="text-sm text-gray-600 leading-6 line-clamp-2">
+                        {item.comment || 'No written comment.'}
+                      </p>
+                      {!item.hasProof && item.statusMessage ? (
+                        <p className="text-xs text-gray-500">{item.statusMessage}</p>
+                      ) : null}
                     </div>
-                  ))}
-            </section>
-
-            <section className="mb-10">
-              <div className="space-y-1 mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Proof-Based Reviews</h2>
-                <p className="text-sm text-gray-600">Trusted reviews tied to service proof.</p>
-              </div>
-              {data.proofBased.length === 0
-                ? sectionEmptyState('No proof-based reviews yet.')
-                : data.proofBased.map((item) => (
-                    <div key={`proof-${item.reviewId}`} className="bg-green-50 rounded-xl shadow-sm border border-green-300 p-3 mb-3 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div className="space-y-2.5">
-                          <p className="text-xs text-green-700 font-medium">✔ Verified with Proof</p>
-                          <p className="text-lg font-semibold text-gray-900">{item.serviceName}</p>
-                          <p className="text-sm text-gray-700">{item.vendorName}</p>
-                          {renderStars(item.rating)}
-                          <p className="text-sm text-gray-700 leading-6 line-clamp-2">{item.comment || 'No written comment.'}</p>
-                          <p className="text-sm text-gray-500">Date: {formatDate(item.submittedAt)}</p>
-                        </div>
-                        {item.bookingId ? (
-                          <Link href={`/my-bookings/${item.bookingId}`}>
-                            <Button variant="outline">View Proof</Button>
-                          </Link>
-                        ) : null}
-                    </div>
-                  ))}
-            </section>
-          </>
-        ) : null}
-      </div>
+                    {item.bookingId && item.videoUrl ? (
+                      <Link href={reviewsBookingHref(item.bookingId)}>
+                        <Button variant="outline">View service videos</Button>
+                      </Link>
+                    ) : item.bookingId ? (
+                      <Link href={reviewsBookingHref(item.bookingId)}>
+                        <Button variant="outline">View booking record</Button>
+                      </Link>
+                    ) : null}
+                  </div>
+                ))}
+          </section>
+        </>
+      ) : null}
     </div>
   );
 }

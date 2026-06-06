@@ -6,6 +6,7 @@ import { getUserIdFromRequest } from '@/lib/auth';
 
 const hoisted = vi.hoisted(() => {
   const bookingFindUnique = vi.fn();
+  const reviewFindFirst = vi.fn();
   const mediaSessionFindUnique = vi.fn();
   const consentRecordFindFirst = vi.fn();
   const mediaAssetFindFirst = vi.fn();
@@ -14,6 +15,7 @@ const hoisted = vi.hoisted(() => {
 
   const prisma = {
     booking: { findUnique: bookingFindUnique },
+    review: { findFirst: reviewFindFirst },
     mediaSession: { findUnique: mediaSessionFindUnique },
     consentRecord: { findFirst: consentRecordFindFirst },
     mediaAsset: { findFirst: mediaAssetFindFirst },
@@ -26,6 +28,7 @@ const hoisted = vi.hoisted(() => {
   return {
     prisma,
     bookingFindUnique,
+    reviewFindFirst,
     mediaSessionFindUnique,
     consentRecordFindFirst,
     mediaAssetFindFirst,
@@ -64,6 +67,7 @@ async function readJson(res: Response) {
 describe('POST /api/reviews/window/start', () => {
   beforeEach(() => {
     hoisted.bookingFindUnique.mockReset();
+    hoisted.reviewFindFirst.mockReset();
     hoisted.mediaSessionFindUnique.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
     hoisted.mediaAssetFindFirst.mockReset();
@@ -72,6 +76,7 @@ describe('POST /api/reviews/window/start', () => {
     vi.mocked(scheduleReviewReminder).mockClear();
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
     hoisted.mediaAssetFindFirst.mockResolvedValue({ id: 'asset-visible' });
+    hoisted.reviewFindFirst.mockResolvedValue(null);
   });
 
   it('returns 400 when bookingId is missing', async () => {
@@ -107,8 +112,55 @@ describe('POST /api/reviews/window/start', () => {
     expect(hoisted.mediaSessionFindUnique).not.toHaveBeenCalled();
   });
 
+  it('returns 409 when the booking already has a submitted review', async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
+    hoisted.reviewFindFirst.mockResolvedValue({ id: 'review-1' });
+
+    const res = await reviewWindowStartPOST(
+      postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
+    );
+
+    expect(res.status).toBe(409);
+    const j = await readJson(res);
+    expect(j.code).toBe('REVIEW_ALREADY_EXISTS');
+    expect(hoisted.mediaSessionFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the booking is not completed yet', async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'PENDING' });
+
+    const res = await reviewWindowStartPOST(
+      postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
+    );
+
+    expect(res.status).toBe(409);
+    const j = await readJson(res);
+    expect(j.code).toBe('BOOKING_NOT_COMPLETED');
+    expect(hoisted.mediaSessionFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the selected media session is not the completed-stage service video', async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
+    hoisted.mediaSessionFindUnique.mockResolvedValue({
+      id: 'ms1',
+      bookingId: 'b1',
+      vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'INTRO',
+    });
+
+    const res = await reviewWindowStartPOST(
+      postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
+    );
+
+    expect(res.status).toBe(409);
+    const j = await readJson(res);
+    expect(j.code).toBe('REVIEW_REQUIRES_COMPLETED_STAGE_VIDEO');
+    expect(hoisted.consentRecordFindFirst).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when vendorId does not match booking', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v-correct', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v-correct', userId: 'u1', status: 'COMPLETED' });
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v-wrong', mediaSessionId: 'ms1' })
     );
@@ -117,7 +169,7 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('returns 404 when media session missing', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue(null);
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
@@ -128,11 +180,13 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('returns 404 when media session vendor does not match', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
       bookingId: 'b1',
       vendorId: 'v-other',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
     });
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
@@ -141,11 +195,13 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('returns 404 when media session bookingId does not match', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
       bookingId: 'b-other',
       vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
     });
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
@@ -154,11 +210,13 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('returns 403 when video consent is not accepted', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
       bookingId: 'b1',
       vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
     });
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
     const res = await reviewWindowStartPOST(
@@ -170,12 +228,36 @@ describe('POST /api/reviews/window/start', () => {
     expect(hoisted.reviewWindowFindFirst).not.toHaveBeenCalled();
   });
 
-  it('returns 200 and does not schedule reminder when window already exists', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+  it('returns 403 when the completed-stage video is not customer-visible yet', async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
       bookingId: 'b1',
       vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
+    });
+    hoisted.consentRecordFindFirst.mockResolvedValue({ id: 'consent-1' });
+    hoisted.mediaAssetFindFirst.mockResolvedValue(null);
+
+    const res = await reviewWindowStartPOST(
+      postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
+    );
+
+    expect(res.status).toBe(403);
+    const j = await readJson(res);
+    expect(j.error).toBe('Selected media session is not customer-visible');
+    expect(hoisted.reviewWindowFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 and does not schedule reminder when window already exists', async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
+    hoisted.mediaSessionFindUnique.mockResolvedValue({
+      id: 'ms1',
+      bookingId: 'b1',
+      vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
     });
     hoisted.consentRecordFindFirst.mockResolvedValue({ id: 'consent-1' });
     const existingWindow = {
@@ -201,11 +283,13 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('returns 200, creates window, and schedules reminder when created', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
       bookingId: 'b1',
       vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
     });
     hoisted.consentRecordFindFirst.mockResolvedValue({ id: 'consent-1' });
     hoisted.reviewWindowFindFirst.mockResolvedValue(null);
@@ -238,11 +322,13 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('returns 200 when window create races with unique conflict (P2002)', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
       bookingId: 'b1',
       vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
     });
     hoisted.consentRecordFindFirst.mockResolvedValue({ id: 'consent-1' });
     const fallbackWindow = {
@@ -281,7 +367,7 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('returns 403 when booking belongs to a different user', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u-other' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u-other', status: 'COMPLETED' });
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
     );
@@ -291,11 +377,13 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('returns 403 when selected media is not customer-visible', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
       bookingId: 'b1',
       vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
     });
     hoisted.mediaAssetFindFirst.mockResolvedValue(null);
     const res = await reviewWindowStartPOST(
@@ -307,23 +395,25 @@ describe('POST /api/reviews/window/start', () => {
   });
 
   it('accepts booking-level consent across different media sessions', async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1' });
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
-      id: 'ms-during',
+      id: 'ms-completed',
       bookingId: 'b1',
       vendorId: 'v1',
+      sessionType: 'JOB_SERVICE_VIDEO',
+      vendorJobVideoStage: 'COMPLETED',
     });
     hoisted.consentRecordFindFirst.mockResolvedValue({ id: 'consent-booking-level' });
     hoisted.reviewWindowFindFirst.mockResolvedValue({
-      id: 'rw-during',
+      id: 'rw-completed',
       bookingId: 'b1',
       vendorId: 'v1',
-      mediaSessionId: 'ms-during',
+      mediaSessionId: 'ms-completed',
       status: 'active',
       expiresAt: new Date(Date.now() + 3600_000),
     });
     const res = await reviewWindowStartPOST(
-      postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms-during' })
+      postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms-completed' })
     );
     expect(res.status).toBe(200);
     const j = await readJson(res);

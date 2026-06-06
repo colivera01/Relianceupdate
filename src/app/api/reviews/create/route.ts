@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
+import {
+  accountStatusErrorBody,
+  AccountStatusError,
+  ensureUserAccountCanAct,
+  ensureVendorAccountCanOperate,
+} from '@/lib/account-status';
 import { assertReviewWindowActive, isValidSubmittedVia } from '@/lib/review-capture';
 import { createAdminAuditLog } from '@/lib/admin-audit';
 import { parseAssignmentMetadata } from '@/lib/job-assignment';
+import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
 
 export async function POST(request: NextRequest) {
   let step = 'parse_request';
@@ -13,6 +20,14 @@ export async function POST(request: NextRequest) {
     const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
+    }
+    await ensureUserAccountCanAct(userId);
+    const verificationGate = await requireVerifiedEmailForAction({
+      userId,
+      action: 'submit_review',
+    });
+    if (verificationGate) {
+      return verificationGate;
     }
 
     step = 'parse_body';
@@ -32,6 +47,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    await ensureVendorAccountCanOperate(vendorId);
     if (rating < 1 || rating > 5) {
       return NextResponse.json({ success: false, error: 'rating must be between 1 and 5' }, { status: 400 });
     }
@@ -148,7 +164,7 @@ export async function POST(request: NextRequest) {
           assignedEmployeeName: assignedEmployeeName || null,
           assignedUserId: assignedUserId || null,
           attributionVersion: 1,
-          moderationStatus: 'approved',
+          moderationStatus: 'pending_review',
           visibilityStatus: 'private',
           date: new Date(),
         },
@@ -157,6 +173,18 @@ export async function POST(request: NextRequest) {
       await (tx as any).reviewWindow.update({
         where: { id: reviewWindowId },
         data: { status: 'submitted', reviewId: review.id, closedAt: new Date() },
+      });
+
+      await (tx as any).reviewWindow.updateMany({
+        where: {
+          bookingId,
+          status: 'active',
+          id: { not: reviewWindowId },
+        },
+        data: {
+          status: 'closed',
+          closedAt: new Date(),
+        },
       });
 
       await (tx as any).reviewPromptEvent.create({
@@ -189,6 +217,9 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     if (error?.code === 'P2002') {
       return NextResponse.json(
         {

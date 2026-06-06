@@ -267,7 +267,7 @@ The lists below are the broad page + API enumeration captured on 2026-04-12. The
 - `/user-dashboard`, `/profile-settings` → `/api/customer/profile`
 - `/discover` → `/api/services/discover`, `/api/services/categories`, favorites APIs (hooks/SDK)
 - `/favorites` → `/api/users/favorites`, `/api/users/favorites/[id]`
-- `/service/[serviceId]` → `/api/services/[id]`, `/api/reviews`, `/api/availability/vendor/[vendorId]`, favorites
+- `/service/[serviceId]` → `/api/services/[id]`, `/api/services/[id]/reviews/public`, `/api/availability/vendor/[vendorId]`, favorites
 - `/booking/[serviceId]`, `/booking/[serviceId]/confirmation` → `/api/services/[id]`, availability, `/api/bookings`, `/api/bookings/[id]`
 - `/my-bookings` → `/api/bookings` (query + `x-user-id`), `/api/bookings/[id]/cancel`, `/api/bookings/[id]/media`; review/consent overlays use review + consent APIs as configured in `SmartVideoPlayer`
 - `/consent/[token]` → `/api/consent/[token]`, accept/decline via API from page actions

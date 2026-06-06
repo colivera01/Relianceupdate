@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { registeredUsers } from "@/lib/dev-registered-users";
+import { findRegisteredUserByEmail, registeredUsers, addRegisteredUser } from "@/lib/dev-registered-users";
+import { hashPassword, verifyPassword } from "@/lib/auth-password";
+import {
+  accountStatusErrorBody,
+  AccountStatusError,
+  isUserAccountRestricted,
+} from "@/lib/account-status";
+import { isOwnerAdminEmail, isOwnerAdminPhone, isOwnerAdminUserId } from "@/lib/internal-identities";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
+import { clearFailedLoginAttempts, getAuthRateLimitKey, getLoginThrottleState, recordFailedLoginAttempt } from "@/lib/auth-rate-limit";
+import { findDbCredentialByEmail, upsertDbCredential } from "@/lib/auth-credentials";
+import { issueLoginMfaChallenge, requiresLoginMfa, resolveTrustedDeviceUserIdFromRequest } from "@/lib/auth-mfa";
+import { buildSuccessfulLoginResponse } from "@/lib/auth-login-response";
+import type { AuthLoginUserPayload } from "@/lib/auth-login-response";
 import { prisma } from "@/server/db";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
@@ -13,18 +25,26 @@ function normalizeEmail(value: unknown): string {
 
 function getRegistryProfiles(user: any): Set<string> {
   const profiles = new Set<string>();
+  const normalizedUserType = String(user?.userType ?? "")
+    .trim()
+    .toLowerCase();
+  const hasVendorSignals = Boolean(
+    user?.businessName || user?.category || user?.serviceTypes
+  );
 
-  if (
-    user.userType === "vendor" ||
-    user.userType === "both" ||
-    user.businessName ||
-    user.category ||
-    user.serviceTypes
-  ) {
+  if (normalizedUserType === "admin") {
+    profiles.add("admin");
+  }
+
+  if (normalizedUserType === "vendor" || normalizedUserType === "both" || hasVendorSignals) {
     profiles.add("vendor");
   }
 
-  if (user.userType === "customer" || user.userType === "both" || !user.businessName) {
+  if (normalizedUserType === "customer" || normalizedUserType === "both") {
+    profiles.add("customer");
+  }
+
+  if (!profiles.size && !hasVendorSignals) {
     profiles.add("customer");
   }
 
@@ -32,6 +52,7 @@ function getRegistryProfiles(user: any): Set<string> {
 }
 
 function toSessionUserType(profiles: Set<string>, fallbackUserType: string | undefined): string {
+  if (profiles.has("admin")) return "admin";
   if (profiles.has("customer") && profiles.has("vendor")) return "both";
   if (profiles.has("vendor")) return "vendor";
   if (profiles.has("customer")) return "customer";
@@ -46,6 +67,24 @@ export async function POST(request: NextRequest) {
 
     console.log("[auth/login] attempt", { email: emailNorm, passwordLen: passwordRaw.length });
 
+    const rateLimitKey = getAuthRateLimitKey(emailNorm, request);
+    const throttleState = getLoginThrottleState(rateLimitKey);
+    if (throttleState.blocked) {
+      return NextResponse.json(
+        {
+          error: "Too many failed sign-in attempts. Please try again later.",
+          code: "LOGIN_TEMPORARILY_LOCKED",
+          retryAfterSeconds: throttleState.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(throttleState.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
     if (!emailNorm || !passwordRaw) {
       return NextResponse.json(
         {
@@ -56,11 +95,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = registeredUsers.find(
-      (u) => u?.email && String(u.email).trim().toLowerCase() === emailNorm
-    );
+    const user = findRegisteredUserByEmail(emailNorm);
+    let dbCredential: Awaited<ReturnType<typeof findDbCredentialByEmail>> = null;
+    try {
+      dbCredential = await findDbCredentialByEmail(emailNorm);
+    } catch (credentialLookupError) {
+      if (!IS_DEV) {
+        throw credentialLookupError;
+      }
+      console.warn("[auth/login] credential lookup skipped:", credentialLookupError);
+    }
 
-    if (!user) {
+    if (!user && !dbCredential) {
+      recordFailedLoginAttempt(rateLimitKey);
       console.warn("[auth/login] USER_NOT_FOUND in dev registry", {
         email: emailNorm,
         knownEmails: registeredUsers.map((u) => u?.email).filter(Boolean),
@@ -76,7 +123,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (user.password !== passwordRaw) {
+    const credentialSource = dbCredential?.passwordHash
+      ? dbCredential.passwordHash
+      : String(user?.passwordHash || user?.password || "");
+
+    if (!verifyPassword(passwordRaw, credentialSource)) {
+      recordFailedLoginAttempt(rateLimitKey);
       console.warn("[auth/login] INVALID_PASSWORD", { email: emailNorm });
       return NextResponse.json(
         {
@@ -89,21 +141,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (user && !user.passwordHash) {
+      addRegisteredUser({
+        ...user,
+        passwordHash: hashPassword(passwordRaw),
+      });
+    }
+
+    clearFailedLoginAttempts(rateLimitKey);
+
     console.log("[auth/login] credentials OK, resolving DB user for:", emailNorm);
 
     let usedDevRegistryIdBecauseDbUnreachable = false;
 
-    let resolvedUserId = user.id || "temp-id";
+    let resolvedUserId = dbCredential?.userId || user?.id || "temp-id";
+    let resolvedDbUser: { id: string; accountStatus: string; name?: string | null; email?: string | null; phone?: string | null } | null = null;
     try {
       const dbUser = await prisma.user.findFirst({
-        where: { email: user.email },
-        select: { id: true },
+        where: { email: user?.email || emailNorm },
+        select: { id: true, accountStatus: true, name: true, email: true, phone: true },
       });
       if (dbUser?.id) {
+        resolvedDbUser = dbUser;
+        if (isUserAccountRestricted(dbUser.accountStatus)) {
+          const statusError = new AccountStatusError("user", dbUser.accountStatus);
+          return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
+        }
         resolvedUserId = dbUser.id;
       } else if (IS_DEV) {
         console.warn("[auth/login] no Prisma user row for email; using dev registry id", {
-          email: user.email,
+          email: user?.email || emailNorm,
           fallbackId: resolvedUserId,
         });
       }
@@ -127,11 +194,20 @@ export async function POST(request: NextRequest) {
     }
 
     const profileSet = getRegistryProfiles(user);
+    const isOwnerAdminIdentity =
+      isOwnerAdminEmail(user?.email || resolvedDbUser?.email || emailNorm) ||
+      isOwnerAdminPhone(user?.phone || resolvedDbUser?.phone) ||
+      isOwnerAdminUserId(resolvedUserId) ||
+      isOwnerAdminUserId(user?.id);
+
+    if (isOwnerAdminIdentity) {
+      profileSet.add("admin");
+    }
+
     try {
       const vendorAccess = await resolveVendorAccessForUser(resolvedUserId);
-      if (vendorAccess.state === "ACTIVE" && vendorAccess.vendorId) {
+      if ((vendorAccess.state === "ACTIVE" || vendorAccess.state === "PENDING") && vendorAccess.vendorId) {
         profileSet.add("vendor");
-        profileSet.add("customer");
       }
     } catch (vendorErr: unknown) {
       const msg = vendorErr instanceof Error ? vendorErr.message : String(vendorErr);
@@ -147,27 +223,95 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const availableProfiles = (["customer", "vendor"] as const).filter((profile) =>
+    const availableProfiles = (["customer", "vendor", "admin"] as const).filter((profile) =>
       profileSet.has(profile)
     );
-    const sessionUserType = toSessionUserType(profileSet, user.userType);
+    const sessionUserType = toSessionUserType(profileSet, user?.userType);
 
-    const userResponse = {
+    const userResponse: AuthLoginUserPayload = {
       id: resolvedUserId,
-      name: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      userType: sessionUserType,
+      name:
+        `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+        resolvedDbUser?.name ||
+        user?.email ||
+        resolvedDbUser?.email ||
+        emailNorm,
+      email: user?.email || resolvedDbUser?.email || emailNorm,
+      userType: sessionUserType as AuthLoginUserPayload["userType"],
       availableProfiles,
+      emailVerified: Boolean(dbCredential?.emailVerifiedAt),
+      emailVerifiedAt: dbCredential?.emailVerifiedAt?.toISOString?.() ?? null,
       avatar:
-        user.avatar ||
+        user?.avatar ||
         `https://randomuser.me/api/portraits/${sessionUserType === "vendor" ? "men" : "women"}/44.jpg`,
     };
 
-    const response = NextResponse.json({
-      success: true,
-      message: "Login successful",
+    let resolvedCredentialForMfa = dbCredential;
+    try {
+      const syncedCredential = await upsertDbCredential({
+        userId: resolvedUserId,
+        email: user?.email || emailNorm,
+        passwordHash: dbCredential?.passwordHash || String(user?.passwordHash || ""),
+      });
+      if (syncedCredential?.id && syncedCredential?.email) {
+        resolvedCredentialForMfa = syncedCredential;
+      }
+    } catch (credentialUpsertError) {
+      if (!IS_DEV) {
+        throw credentialUpsertError;
+      }
+      console.warn("[auth/login] credential upsert skipped:", credentialUpsertError);
+    }
+    const mfaRequired = requiresLoginMfa(availableProfiles);
+    const trustedDeviceUserId = mfaRequired
+      ? await resolveTrustedDeviceUserIdFromRequest(request).catch(() => null)
+      : null;
+    const trustedDeviceMatchesUser =
+      mfaRequired && trustedDeviceUserId && String(trustedDeviceUserId) === String(resolvedUserId);
+
+    if (mfaRequired && !trustedDeviceMatchesUser) {
+      const credentialForMfa =
+        resolvedCredentialForMfa?.id && resolvedCredentialForMfa?.email
+          ? resolvedCredentialForMfa
+          : await findDbCredentialByEmail(userResponse.email).catch(() => null);
+      if (!credentialForMfa?.id || !credentialForMfa.email) {
+        return NextResponse.json(
+          {
+            error: IS_DEV
+              ? "Reliance could not load the email-backed sign-in credential required to start MFA. Try again; if it keeps happening, check Azure SQL connectivity."
+              : "Sign-in is temporarily unavailable. Please try again.",
+            code: "MFA_CREDENTIAL_UNAVAILABLE",
+          },
+          { status: 503 }
+        );
+      }
+
+      const challenge = await issueLoginMfaChallenge({
+        credentialId: String(credentialForMfa.id),
+        userId: resolvedUserId,
+        email: credentialForMfa.email,
+        recipientName: userResponse.name,
+        baseUrl: request.nextUrl.origin,
+        userSnapshot: userResponse,
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          mfaRequired: true,
+          message: "A sign-in code was sent to your email.",
+          challengeId: challenge.challengeId,
+          email: credentialForMfa.email,
+          availableProfiles,
+          userType: sessionUserType,
+          ...(IS_DEV ? { mfaCodePreview: challenge.codePreview } : {}),
+        },
+        { status: 202 }
+      );
+    }
+
+    return buildSuccessfulLoginResponse({
       user: userResponse,
-      token: "temp-jwt-token",
       ...(IS_DEV && usedDevRegistryIdBecauseDbUnreachable
         ? {
             devWarning:
@@ -175,20 +319,6 @@ export async function POST(request: NextRequest) {
           }
         : {}),
     });
-
-    // Persist server-readable user session context for API routes.
-    response.cookies.set("userId", resolvedUserId, {
-      path: "/",
-      sameSite: "lax",
-      httpOnly: false,
-    });
-    response.cookies.set("session_user_id", resolvedUserId, {
-      path: "/",
-      sameSite: "lax",
-      httpOnly: false,
-    });
-
-    return response;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("[auth/login] unhandled error:", error);

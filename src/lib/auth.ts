@@ -1,5 +1,7 @@
 // import jwt from 'jsonwebtoken'; // Uncomment when ready to use real JWT
 import { prisma } from "@/server/db";
+import { registeredUsers, syncRegisteredUsersFromDisk } from "@/lib/dev-registered-users";
+import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "@/lib/auth-session";
 
 export interface JWTPayload {
   sub?: string;
@@ -72,21 +74,56 @@ function getCookieCandidate(
   return null;
 }
 
+const IS_DEV = process.env.NODE_ENV !== "production";
+
+async function resolveDevRegistryUserId(userId: string | null): Promise<string | null> {
+  const normalized = typeof userId === "string" ? userId.trim() : "";
+  if (!IS_DEV || !normalized) return normalized || null;
+
+  syncRegisteredUsersFromDisk();
+  const registryUser = registeredUsers.find((candidate) => String(candidate?.id || "").trim() === normalized);
+  if (!registryUser?.email) return normalized;
+
+  try {
+    const dbUser = await prisma.user.findFirst({
+      where: { email: String(registryUser.email).trim().toLowerCase() },
+      select: { id: true },
+    });
+    return dbUser?.id ? String(dbUser.id) : normalized;
+  } catch {
+    return normalized;
+  }
+}
+
 /**
  * Extract userId from request in this order:
- * 1) JWT bearer token payload
- * 2) cookie/session values
- * 3) temporary fallback header x-user-id
+ * 1) signed session cookie
+ * 2) signed bearer token
+ * 3) dev-only unsigned JWT compatibility
+ * 4) cookie/session compatibility values
+ * 5) dev-only x-user-id fallback
  */
 export async function getUserIdFromRequest(request: Request): Promise<string | null> {
+  const signedSession = getAuthSessionClaimsFromRequest(request);
+  if (signedSession?.userId) {
+    return await resolveDevRegistryUserId(signedSession.userId);
+  }
+
   const bearerToken = getBearerTokenFromRequest(request);
   if (bearerToken) {
-    try {
-      const payload = await verifyJwt(bearerToken);
-      const jwtUserId = (payload.userId || payload.sub) as string | undefined;
-      if (jwtUserId) return jwtUserId;
-    } catch {
-      // Fall through to cookie/header extraction for compatibility.
+    const signedClaims = verifyAuthBearerToken(bearerToken);
+    if (signedClaims?.userId) {
+      return await resolveDevRegistryUserId(signedClaims.userId);
+    }
+
+    if (IS_DEV) {
+      try {
+        const payload = await verifyJwt(bearerToken);
+        const jwtUserId = (payload.userId || payload.sub) as string | undefined;
+        if (jwtUserId) return await resolveDevRegistryUserId(jwtUserId);
+      } catch {
+        // Fall through to cookie/header extraction for dev compatibility.
+      }
     }
   }
 
@@ -97,29 +134,58 @@ export async function getUserIdFromRequest(request: Request): Promise<string | n
     "uid",
     "session_user_id",
   ]);
-  if (cookieUserId) return cookieUserId;
+  if (cookieUserId) return await resolveDevRegistryUserId(cookieUserId);
 
   const headerUserId = request.headers.get("x-user-id");
-  if (headerUserId && headerUserId.trim()) return headerUserId.trim();
+  if (IS_DEV && headerUserId && headerUserId.trim()) {
+    return await resolveDevRegistryUserId(headerUserId.trim());
+  }
 
   return null;
 }
 
 /**
  * Extract vendorId from request in this order:
- * 1) JWT bearer token payload
- * 2) cookie/session values
- * 3) temporary fallback header x-vendor-id
+ * 1) signed session / signed bearer context
+ * 2) dev-only unsigned JWT compatibility
+ * 3) cookie/session compatibility values
+ * 4) dev-only x-vendor-id fallback
  */
 export async function getVendorIdFromRequest(request: Request): Promise<string | null> {
+  const signedSession = getAuthSessionClaimsFromRequest(request);
+  const signedUserId = signedSession?.userId ? await resolveDevRegistryUserId(signedSession.userId) : null;
+
   const bearerToken = getBearerTokenFromRequest(request);
   if (bearerToken) {
-    try {
-      const payload = await verifyJwt(bearerToken);
-      const jwtVendorId = payload.vendorId as string | undefined;
-      if (jwtVendorId) return jwtVendorId;
-    } catch {
-      // Fall through to cookie/header extraction for compatibility.
+    const signedClaims = verifyAuthBearerToken(bearerToken);
+    if (signedClaims?.userId) {
+      const activeMembership = await (prisma as any).vendorMembership.findFirst({
+        where: {
+          userId: await resolveDevRegistryUserId(signedClaims.userId),
+          status: "ACTIVE",
+          vendor: {
+            accountStatus: "active",
+          },
+        },
+        select: {
+          vendorId: true,
+        },
+        orderBy: [{ approvedAt: "desc" }, { requestedAt: "desc" }],
+      });
+
+      if (activeMembership?.vendorId) {
+        return String(activeMembership.vendorId);
+      }
+    }
+
+    if (IS_DEV) {
+      try {
+        const payload = await verifyJwt(bearerToken);
+        const jwtVendorId = payload.vendorId as string | undefined;
+        if (jwtVendorId) return jwtVendorId;
+      } catch {
+        // Fall through to cookie/header extraction for dev compatibility.
+      }
     }
   }
 
@@ -133,17 +199,20 @@ export async function getVendorIdFromRequest(request: Request): Promise<string |
   if (cookieVendorId) return cookieVendorId;
 
   const headerVendorId = request.headers.get("x-vendor-id");
-  if (headerVendorId && headerVendorId.trim()) return headerVendorId.trim();
+  if (IS_DEV && headerVendorId && headerVendorId.trim()) return headerVendorId.trim();
 
   // Active vendor context fallback:
   // when vendorId is not explicitly present in token/cookie/header, derive it from
   // the user's ACTIVE vendor membership.
-  const userId = await getUserIdFromRequest(request);
+  const userId = signedUserId || (await getUserIdFromRequest(request));
   if (userId) {
     const activeMembership = await (prisma as any).vendorMembership.findFirst({
       where: {
         userId,
         status: "ACTIVE",
+        vendor: {
+          accountStatus: "active",
+        },
       },
       select: {
         vendorId: true,

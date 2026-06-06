@@ -2,15 +2,20 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-// TODO: Add admin authentication check
+import { requireAdmin } from "@/lib/admin-auth";
+
+function forbiddenResponse(error: any) {
+  const message = error?.message || "Forbidden";
+  return NextResponse.json({ success: false, error: message, message }, { status: 403 });
+}
 
 /**
  * POST /api/admin/notifications/read-all
  * Mark all notifications as read (admin-only)
  */
-export async function POST(): Promise<NextResponse> {
+export async function POST(request: Request): Promise<NextResponse> {
   try {
-    // TODO: Add admin authentication check
+    await requireAdmin(request);
 
     await (prisma as any).adminNotification.updateMany({
       where: { read: false },
@@ -23,6 +28,9 @@ export async function POST(): Promise<NextResponse> {
     });
   } catch (error: any) {
     console.error("[admin/notifications/read-all] POST error:", error);
+    if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
+      return forbiddenResponse(error);
+    }
     return NextResponse.json(
       { error: "Failed to mark all as read", details: error.message },
       { status: 500 }

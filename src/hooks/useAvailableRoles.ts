@@ -3,21 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
+import { OWNER_ADMIN_EMAIL, OWNER_ADMIN_PHONE } from '@/lib/internal-identities';
 
 export type AppRole = 'customer' | 'vendor' | 'admin';
-
-// Admin identity is currently hard-coded to the platform owner. Backend
-// admin routes still enforce their own role checks, so this only controls
-// whether the "Admin" toggle is visible in the UI.
-//
-// Future: replace this hard-coded identity with a secure, server-side
-// admin role assignment. Allow the owner/admin to grant admin access to
-// selected users through a dedicated backend endpoint (e.g. an admin role
-// table or a dedicated `/api/admin/grant` flow), and have this hook read
-// from the resolved server identity (e.g. `GET /api/auth/me` returning
-// `roles: ['admin']`) instead of matching on email/phone.
-const ADMIN_EMAIL = 'colivera080124@gmail.com';
-const ADMIN_PHONE = '4079148888';
 
 function normalizePhone(value: string | null | undefined): string {
   return String(value || '').replace(/\D/g, '');
@@ -26,7 +14,7 @@ function normalizePhone(value: string | null | undefined): string {
 function hasAdminIdentity(email: string | null | undefined, phone: string | null | undefined): boolean {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const normalizedPhone = normalizePhone(phone);
-  return normalizedEmail === ADMIN_EMAIL || normalizedPhone === ADMIN_PHONE;
+  return normalizedEmail === OWNER_ADMIN_EMAIL || normalizedPhone === OWNER_ADMIN_PHONE;
 }
 
 function rolesFromSession(userTypeRaw: string | null | undefined, availableProfilesRaw: string[] | undefined): Set<AppRole> {
@@ -42,6 +30,7 @@ function rolesFromSession(userTypeRaw: string | null | undefined, availableProfi
 
   if (availableProfiles.includes('customer')) roles.add('customer');
   if (availableProfiles.includes('vendor')) roles.add('vendor');
+  if (availableProfiles.includes('admin')) roles.add('admin');
 
   return roles;
 }
@@ -95,12 +84,27 @@ export function useAvailableRoles(currentRole: AppRole) {
 
     async function resolveRoles() {
       const sessionRoles = rolesFromSession(userType, availableProfiles);
+      const hasExplicitSessionRoles = sessionRoles.size > 0 || Boolean(userType) || availableProfiles.length > 0;
+      const isRegisteredAdminIdentity = hasAdminIdentity(email, phone);
+
+      if (isRegisteredAdminIdentity) {
+        // The owner/admin identity intentionally keeps customer access for
+        // platform-building flows. Add it up front so admin pages do not need
+        // to probe /api/customer/profile just to render the Customer toggle.
+        sessionRoles.add('customer');
+      }
+
       const headers = {
         'Content-Type': 'application/json',
         ...getClientSessionHeaders(userId || undefined),
       };
 
-      if (!sessionRoles.has('customer') && userId) {
+      const shouldProbeCustomer =
+        !sessionRoles.has('customer') &&
+        Boolean(userId) &&
+        (!hasExplicitSessionRoles || isRegisteredAdminIdentity);
+
+      if (shouldProbeCustomer) {
         try {
           const customerRes = await fetch('/api/customer/profile', {
             method: 'GET',
@@ -118,7 +122,12 @@ export function useAvailableRoles(currentRole: AppRole) {
         }
       }
 
-      if (!sessionRoles.has('vendor') && userId) {
+      const shouldProbeVendor =
+        !sessionRoles.has('vendor') &&
+        Boolean(userId) &&
+        (!hasExplicitSessionRoles || isRegisteredAdminIdentity);
+
+      if (shouldProbeVendor) {
         try {
           const vendorContextRes = await fetch('/api/vendor/context', {
             method: 'GET',
@@ -137,7 +146,6 @@ export function useAvailableRoles(currentRole: AppRole) {
         }
       }
 
-      const isRegisteredAdminIdentity = hasAdminIdentity(email, phone);
       if (isRegisteredAdminIdentity) {
         // Strict identity match is sufficient to show the Admin toggle.
         // The actual admin pages/APIs are protected server-side, so a UI

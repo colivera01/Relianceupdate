@@ -1,208 +1,302 @@
-'use client';
-import React, { useState, useEffect } from 'react';
+﻿'use client';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { getClientAuthHeaders } from '@/lib/client-session';
 import { 
   ChevronLeft,
   MapPin,
   Shield,
-  Eye,
-  EyeOff,
-  Heart,
   Calendar,
-  User,
-  Settings,
   LogOut,
   Home,
   Grid,
-  Star,
-  MessageCircle,
   CheckCircle,
   AlertCircle,
   Info,
   Mail,
   Phone,
   MapPin as LocationIcon,
-  Camera,
   Edit,
   Save,
-  X
+  X,
 } from 'lucide-react';
+
+type CustomerProfile = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  memberSince: string;
+};
+
+type SaveFeedback =
+  | { type: 'success'; title: string; message: string }
+  | { type: 'error'; title: string; message: string };
+
+const emptyProfile: CustomerProfile = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  address: '',
+  city: '',
+  state: '',
+  zipCode: '',
+  memberSince: 'Not available',
+};
+
+function formatProfileDate(value: unknown) {
+  if (!value) return 'Not available';
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleDateString();
+}
+
+function normalizeProfile(rawProfile: any): CustomerProfile {
+  return {
+    firstName: String(rawProfile?.firstName || ''),
+    lastName: String(rawProfile?.lastName || ''),
+    email: String(rawProfile?.email || ''),
+    phone: String(rawProfile?.phone || ''),
+    address: String(rawProfile?.address || ''),
+    city: String(rawProfile?.city || ''),
+    state: String(rawProfile?.state || ''),
+    zipCode: String(rawProfile?.zipCode || ''),
+    memberSince: formatProfileDate(rawProfile?.createdAt),
+  };
+}
+
+function mergeProfile(base: CustomerProfile, candidate: Partial<CustomerProfile> | null | undefined): CustomerProfile {
+  if (!candidate) return base;
+
+  const next = { ...base };
+  for (const [rawKey, rawValue] of Object.entries(candidate)) {
+    const key = rawKey as keyof CustomerProfile;
+    if (typeof rawValue !== 'string') continue;
+    const trimmedValue = rawValue.trim();
+    if (!trimmedValue) continue;
+    if (key === 'memberSince' && trimmedValue === 'Not available') continue;
+    next[key] = rawValue as CustomerProfile[typeof key];
+  }
+
+  return next;
+}
+
+function buildAuthProfile(name: string | null | undefined, email: string | null | undefined, phone: string | null | undefined): Partial<CustomerProfile> {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' ') || '',
+    email: String(email || ''),
+    phone: String(phone || ''),
+  };
+}
+
+function readStoredProfile(): { profile: Partial<CustomerProfile>; locationPreferenceEnabled: boolean | null } {
+  if (typeof window === 'undefined') {
+    return { profile: {}, locationPreferenceEnabled: null };
+  }
+
+  try {
+    const raw = localStorage.getItem('userData') || localStorage.getItem('user');
+    if (!raw) {
+      return { profile: {}, locationPreferenceEnabled: null };
+    }
+
+    const parsed = JSON.parse(raw);
+    const storedProfile = mergeProfile(
+      mergeProfile(emptyProfile, buildAuthProfile(parsed?.name, parsed?.email, parsed?.phone)),
+      normalizeProfile(parsed)
+    );
+    return {
+      profile: storedProfile,
+      locationPreferenceEnabled:
+        typeof parsed?.locationPreferenceEnabled === 'boolean'
+          ? parsed.locationPreferenceEnabled
+          : null,
+    };
+  } catch {
+    return { profile: {}, locationPreferenceEnabled: null };
+  }
+}
 
 export default function ProfileSettingsPage() {
   const router = useRouter();
+  const { user: authUser, isAuthenticated, isLoading: authLoading, updateUser } = useAuth();
+  const sessionHeaders = useMemo(() => getClientAuthHeaders(), []);
   const [isEditing, setIsEditing] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [locationEnabled, setLocationEnabled] = useState(false);
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  });
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [feedback, setFeedback] = useState<SaveFeedback | null>(null);
 
-  const [userProfile, setUserProfile] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    bio: '',
-    memberSince: '',
-    lastLogin: '',
-    favorites: 0,
-    totalBookings: 0,
-    averageRating: 0
-  });
+  const [userProfile, setUserProfile] = useState<CustomerProfile>(emptyProfile);
 
   const [tempProfile, setTempProfile] = useState(userProfile);
 
   // Fetch user profile data on component mount
   useEffect(() => {
     const fetchUserData = async () => {
-      try {
-        // First try to get from localStorage
-        const localUserData = localStorage.getItem('userData');
-        if (localUserData) {
-          const parsed = JSON.parse(localUserData);
-          const profileData = {
-            firstName: parsed.firstName || '',
-            lastName: parsed.lastName || '',
-            email: parsed.email || '',
-            phone: parsed.phone || '',
-            address: parsed.address || '',
-            city: parsed.city || '',
-            state: parsed.state || '',
-            zipCode: parsed.zipCode || '',
-            bio: parsed.bio || 'test test',
-            memberSince: parsed.createdAt ? new Date(parsed.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
-            lastLogin: new Date().toLocaleDateString(),
-            favorites: 23,
-            totalBookings: 8,
-            averageRating: 4.8
-          };
-          setUserProfile(profileData);
-          setTempProfile(profileData);
-        }
+      if (authLoading) {
+        return;
+      }
 
-        // Also try to fetch from API
+      const authProfile = buildAuthProfile(authUser?.name, authUser?.email, authUser?.phone);
+      const stored = readStoredProfile();
+      const seededProfile = mergeProfile(mergeProfile(emptyProfile, authProfile), stored.profile);
+      setUserProfile(seededProfile);
+      setTempProfile(seededProfile);
+      if (stored.locationPreferenceEnabled !== null) {
+        setLocationEnabled(stored.locationPreferenceEnabled);
+      }
+
+      if (!isAuthenticated) {
+        setFeedback({
+          type: 'error',
+          title: 'Sign in required',
+          message: 'Sign in to view and update your customer profile settings.',
+        });
+        setLoading(false);
+        return;
+      }
+
+      try {
+
         const response = await fetch('/api/customer/profile', {
           headers: {
-            'Authorization': 'Bearer temp-jwt-token'
-          }
+            'Content-Type': 'application/json',
+            ...sessionHeaders,
+          },
         });
 
         if (response.ok) {
           const data = await response.json();
           if (data.profile) {
-            const profileData = {
-              firstName: data.profile.firstName || '',
-              lastName: data.profile.lastName || '',
-              email: data.profile.email || '',
-              phone: data.profile.phone || '',
-              address: data.profile.address || '',
-              city: data.profile.city || '',
-              state: data.profile.state || '',
-              zipCode: data.profile.zipCode || '',
-              bio: data.profile.bio || 'test test',
-              memberSince: data.profile.createdAt ? new Date(data.profile.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
-              lastLogin: new Date().toLocaleDateString(),
-              favorites: 23,
-              totalBookings: 8,
-              averageRating: 4.8
-            };
+            const profileData = mergeProfile(seededProfile, normalizeProfile(data.profile));
             setUserProfile(profileData);
             setTempProfile(profileData);
+            setLocationEnabled(Boolean(data.profile.locationPreferenceEnabled));
           }
+        } else {
+          const payload = await response.json().catch(() => ({}));
+          setFeedback({
+            type: 'error',
+            title: 'Profile load issue',
+            message: String(payload?.error || payload?.message || 'Some profile details could not be refreshed. Saved account details are shown where available.'),
+          });
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
+        setFeedback({
+          type: 'error',
+          title: 'Profile load issue',
+          message: 'Some profile details could not be refreshed. Please try again if saved data looks out of date.',
+        });
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUserData();
-  }, []);
+    void fetchUserData();
+  }, [authLoading, authUser?.email, authUser?.name, authUser?.phone, isAuthenticated, sessionHeaders]);
 
   const handleProfileChange = (field: string, value: string) => {
     setTempProfile(prev => ({ ...prev, [field]: value }));
   };
 
+  const parseProfileSaveError = async (response: Response) => {
+    try {
+      const body = await response.json();
+      return body?.message || body?.error || 'Profile changes could not be saved.';
+    } catch {
+      return 'Profile changes could not be saved.';
+    }
+  };
+
+  const updateLocalUserData = (profile: CustomerProfile, nextLocationEnabled: boolean) => {
+    const localUserData = localStorage.getItem('userData');
+    if (!localUserData) return;
+
+    const parsed = JSON.parse(localUserData);
+    const updatedUserData = {
+      ...parsed,
+      name: [profile.firstName, profile.lastName].filter(Boolean).join(' '),
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      email: profile.email,
+      phone: profile.phone,
+      address: profile.address,
+      city: profile.city,
+      state: profile.state,
+      zipCode: profile.zipCode,
+      locationPreferenceEnabled: nextLocationEnabled,
+    };
+    localStorage.setItem('userData', JSON.stringify(updatedUserData));
+  };
+
+  const saveProfileToApi = async (profile: CustomerProfile, nextLocationEnabled: boolean) => {
+    const response = await fetch('/api/customer/profile', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...sessionHeaders,
+      },
+      body: JSON.stringify({
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        email: profile.email,
+        phone: profile.phone,
+        address: profile.address,
+        city: profile.city,
+        state: profile.state,
+        zipCode: profile.zipCode,
+        locationPreferenceEnabled: nextLocationEnabled,
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await parseProfileSaveError(response));
+    }
+
+    const data = await response.json();
+    if (data?.success === false) {
+      throw new Error(data?.message || data?.error || 'Profile changes could not be saved.');
+    }
+
+    return data.profile ? normalizeProfile(data.profile) : profile;
+  };
+
   const handleSaveProfile = async () => {
     setSaving(true);
+    setFeedback(null);
     try {
-      // Update local state immediately
-      setUserProfile(tempProfile);
+      const savedProfile = await saveProfileToApi(tempProfile, locationEnabled);
+      setUserProfile(savedProfile);
+      setTempProfile(savedProfile);
+      updateLocalUserData(savedProfile, locationEnabled);
+      updateUser({
+        name: [savedProfile.firstName, savedProfile.lastName].filter(Boolean).join(' '),
+        email: savedProfile.email,
+        phone: savedProfile.phone,
+      });
       setIsEditing(false);
-
-      // Update localStorage with new profile data
-      const localUserData = localStorage.getItem('userData');
-      if (localUserData) {
-        const parsed = JSON.parse(localUserData);
-        const updatedUserData = {
-          ...parsed,
-          firstName: tempProfile.firstName,
-          lastName: tempProfile.lastName,
-          email: tempProfile.email,
-          phone: tempProfile.phone,
-          bio: tempProfile.bio,
-          address: tempProfile.address,
-          city: tempProfile.city,
-          state: tempProfile.state,
-          zipCode: tempProfile.zipCode,
-        };
-        localStorage.setItem('userData', JSON.stringify(updatedUserData));
-      }
-
-      // Try to update via API
-      try {
-        const response = await fetch('/api/customer/profile', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer temp-jwt-token'
-          },
-          body: JSON.stringify({
-            firstName: tempProfile.firstName,
-            lastName: tempProfile.lastName,
-            email: tempProfile.email,
-            phone: tempProfile.phone,
-            bio: tempProfile.bio,
-            address: tempProfile.address,
-            city: tempProfile.city,
-            state: tempProfile.state,
-            zipCode: tempProfile.zipCode,
-          })
-        });
-
-        if (response.ok) {
-          setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 5000); // Hide after 5 seconds
-        } else {
-          setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 5000); // Hide after 5 seconds
-        }
-              } catch (apiError) {
-          console.error('API update failed:', apiError);
-          setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 5000); // Hide after 5 seconds
-        }
-
+      setFeedback({
+        type: 'success',
+        title: 'Profile updated',
+        message: 'Your saved profile details were updated successfully.',
+      });
     } catch (error) {
       console.error('Error saving profile:', error);
-      // Show error message
-      alert('Failed to save profile. Please try again.');
-      // Revert to original state on error
-      setTempProfile(userProfile);
+      setFeedback({
+        type: 'error',
+        title: 'Profile not saved',
+        message: error instanceof Error ? error.message : 'Profile changes could not be saved. Please try again.',
+      });
     } finally {
       setSaving(false);
     }
@@ -213,39 +307,38 @@ export default function ProfileSettingsPage() {
     setIsEditing(false);
   };
 
-  const handlePasswordChange = (field: string, value: string) => {
-    setPasswordData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert('New passwords do not match');
-      return;
-    }
-    // In real app, this would call API to change password
-    alert('Password updated successfully!');
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-  };
-
-  const toggleLocation = () => {
+  const toggleLocation = async () => {
+    const nextLocationEnabled = !locationEnabled;
     if (locationEnabled) {
-      if (confirm('Disable saved-address preference for future local discovery features?')) {
-        setLocationEnabled(false);
+      if (!confirm('Disable saved-address preference for future local discovery features?')) {
+        return;
       }
-    } else {
-      setLocationEnabled(true);
     }
-  };
 
-  const toggleTwoFactor = () => {
-    if (twoFactorEnabled) {
-      if (confirm('Are you sure you want to disable two-factor authentication? This will make your account less secure.')) {
-        setTwoFactorEnabled(false);
-      }
-    } else {
-      setTwoFactorEnabled(true);
-      alert('Two-factor authentication enabled! You will receive a setup code via email.');
+    setSavingLocation(true);
+    setFeedback(null);
+    try {
+      const savedProfile = await saveProfileToApi(userProfile, nextLocationEnabled);
+      setUserProfile(savedProfile);
+      setTempProfile(savedProfile);
+      setLocationEnabled(nextLocationEnabled);
+      updateLocalUserData(savedProfile, nextLocationEnabled);
+      setFeedback({
+        type: 'success',
+        title: 'Location preference updated',
+        message: nextLocationEnabled
+          ? 'Reliance can use your saved address when saved-location discovery is available.'
+          : 'Reliance will not use your saved address for saved-location discovery.',
+      });
+    } catch (error) {
+      console.error('Error saving location preference:', error);
+      setFeedback({
+        type: 'error',
+        title: 'Location preference not saved',
+        message: error instanceof Error ? error.message : 'Location preference could not be saved. Please try again.',
+      });
+    } finally {
+      setSavingLocation(false);
     }
   };
 
@@ -260,6 +353,34 @@ export default function ProfileSettingsPage() {
       </div>
     );
   }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-xl rounded-2xl border border-blue-200 bg-white p-8 shadow-sm">
+          <h1 className="text-2xl font-bold text-gray-900">Profile & Settings</h1>
+          <p className="mt-3 text-gray-700">
+            Sign in to view your profile details, update saved preferences, and manage customer account settings.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              onClick={() => router.push('/auth/login?next=%2Fprofile-settings')}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => router.push('/discover')}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Browse Services
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -309,18 +430,32 @@ export default function ProfileSettingsPage() {
         </div>
       </div>
 
-      {/* Success Message */}
-      {showSuccess && (
+      {/* Save Feedback */}
+      {feedback && (
         <div className="max-w-7xl mx-auto px-4 py-2">
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+          <div className={`border rounded-lg p-4 mb-4 ${
+            feedback.type === 'success'
+              ? 'bg-green-50 border-green-200'
+              : 'bg-red-50 border-red-200'
+          }`}>
             <div className="flex items-center gap-3">
-              <div className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-green-600 text-sm">✓</span>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                feedback.type === 'success' ? 'bg-green-100' : 'bg-red-100'
+              }`}>
+                {feedback.type === 'success' ? (
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-600" />
+                )}
               </div>
               <div>
-                <h3 className="font-medium text-green-800">Profile Updated Successfully!</h3>
-                <p className="text-sm text-green-600">
-                  Your profile changes have been saved and will be reflected across all pages.
+                <h3 className={`font-medium ${
+                  feedback.type === 'success' ? 'text-green-800' : 'text-red-800'
+                }`}>{feedback.title}</h3>
+                <p className={`text-sm ${
+                  feedback.type === 'success' ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {feedback.message}
                 </p>
               </div>
             </div>
@@ -352,14 +487,9 @@ export default function ProfileSettingsPage() {
                 <div className="relative">
                   <div className="w-24 h-24 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
                     <span className="text-white font-semibold text-2xl">
-                      {userProfile.firstName[0]}{userProfile.lastName[0]}
+                      {(userProfile.firstName[0] || '').toUpperCase()}{(userProfile.lastName[0] || '').toUpperCase()}
                     </span>
                   </div>
-                  {isEditing && (
-                    <button className="absolute -bottom-2 -right-2 w-8 h-8 bg-purple-600 text-white rounded-full flex items-center justify-center hover:bg-purple-700 transition-colors">
-                      <Camera className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -456,16 +586,6 @@ export default function ProfileSettingsPage() {
                     />
                   </div>
                 </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                  <textarea
-                    value={isEditing ? tempProfile.bio : userProfile.bio}
-                    onChange={(e) => handleProfileChange('bio', e.target.value)}
-                    disabled={!isEditing}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
-                  />
-                </div>
               </div>
 
               {/* Account Info (Read-only) */}
@@ -482,10 +602,10 @@ export default function ProfileSettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Login</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Sign-in Activity</label>
                     <input
                       type="text"
-                      value={userProfile.lastLogin}
+                      value="Not shown in this launch"
                       readOnly
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
                     />
@@ -540,14 +660,19 @@ export default function ProfileSettingsPage() {
                 </div>
                 <button
                   onClick={toggleLocation}
+                  disabled={savingLocation || saving}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     locationEnabled
                       ? 'bg-red-50 text-red-700 hover:bg-red-100'
                       : 'bg-green-50 text-green-700 hover:bg-green-100'
-                  }`}
+                  } disabled:opacity-60 disabled:cursor-not-allowed`}
                 >
                   <MapPin className="w-4 h-4" />
-                  {locationEnabled ? 'Disable Preference' : 'Enable Preference'}
+                  {savingLocation
+                    ? 'Saving...'
+                    : locationEnabled
+                    ? 'Disable Preference'
+                    : 'Enable Preference'}
                 </button>
               </div>
             </div>
@@ -560,107 +685,45 @@ export default function ProfileSettingsPage() {
               </div>
               
               <p className="text-gray-600 mb-6">
-                Manage your account security and privacy settings.
+                Security settings are shown honestly for this launch. Profile details can be updated here, password resets use account recovery, and optional passkeys live in Secure Account.
               </p>
 
               {/* Change Password */}
-              <div className="mb-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Change Password</h3>
-                <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-start justify-between gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Current Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showCurrentPassword ? 'text' : 'password'}
-                        value={passwordData.currentPassword}
-                        onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
-                        placeholder="Current Password"
-                        className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">Password Changes</h3>
+                    <p className="text-sm text-gray-600">
+                      Use the Forgot Password flow on the sign-in page any time you need to reset your password. Customer passkeys stay optional in Secure Account.
+                    </p>
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      New Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showNewPassword ? 'text' : 'password'}
-                        value={passwordData.newPassword}
-                        onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
-                        placeholder="New Password"
-                        className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Confirm Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        value={passwordData.confirmPassword}
-                        onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
-                        placeholder="Confirm Password"
-                        className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  
+                  <span className="shrink-0 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium">
+                    Recovery available
+                  </span>
+                </div>
+                <div className="mt-4">
                   <button
-                    type="submit"
-                    className="bg-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors"
+                    onClick={() => router.push('/auth/forgot-password')}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
                   >
-                    Update Password
+                    Open Password Recovery
                   </button>
-                </form>
+                </div>
               </div>
 
               {/* Two-Factor Authentication */}
               <div className="border-t border-gray-200 pt-6">
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">Two-Factor Authentication</h3>
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">Passkeys & Sign-In Protection</h3>
                     <p className="text-sm text-gray-600">
-                      Add an extra layer of security to your account
+                      Customer accounts can add a passkey from Secure Account. Email-code MFA is currently reserved
+                      for vendor and admin sign-ins.
                     </p>
                   </div>
-                  <button
-                    onClick={toggleTwoFactor}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      twoFactorEnabled
-                        ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                        : 'bg-green-50 text-green-700 hover:bg-green-100'
-                    }`}
-                  >
-                    {twoFactorEnabled ? 'Disable' : 'Enable'} 2FA
-                  </button>
+                  <span className="shrink-0 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium">
+                    Optional
+                  </span>
                 </div>
               </div>
             </div>
@@ -673,9 +736,9 @@ export default function ProfileSettingsPage() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Status</h2>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Membership</span>
-                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
-                    Premium
+                  <span className="text-gray-700">Profile Details</span>
+                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                    Editable
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -689,13 +752,9 @@ export default function ProfileSettingsPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-700">2FA</span>
-                  <span className={`px-2 py-1 rounded-full text-sm font-medium ${
-                    twoFactorEnabled 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-gray-100 text-gray-700'
-                  }`}>
-                    {twoFactorEnabled ? 'Enabled' : 'Disabled'}
+                  <span className="text-gray-700">Security Setup</span>
+                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">
+                    Limited
                   </span>
                 </div>
               </div>
@@ -717,14 +776,32 @@ export default function ProfileSettingsPage() {
                   className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <Calendar className="w-5 h-5" />
-                  <span>View My Services</span>
+                  <span>View My Bookings</span>
                 </button>
                 <button
-                  onClick={() => router.push('/search')}
+                  onClick={() => router.push('/discover')}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <Grid className="w-5 h-5" />
                   <span>Browse Services</span>
+                </button>
+                <button
+                  onClick={() => router.push('/customer/secure-account')}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <Shield className="w-5 h-5" />
+                  <span>Open Secure Account</span>
+                </button>
+                <button
+                  onClick={() =>
+                    router.push(
+                      '/help?role=customer&returnTo=%2Fprofile-settings&returnLabel=Back%20to%20Profile%20Settings'
+                    )
+                  }
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <Info className="w-5 h-5" />
+                  <span>Open Help Center</span>
                 </button>
               </div>
             </div>

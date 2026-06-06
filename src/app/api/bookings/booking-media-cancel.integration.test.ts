@@ -179,8 +179,12 @@ describe('GET /api/bookings/[id]/media', () => {
     expect(assets[0].bytes).toBe('100');
     expect(assets[0].title).toBe('Photo set');
     expect(assets[0].visibilityStatus).toBe('customer_only');
+    expect(assets[0].blobUrl).toBeNull();
+    expect(String(assets[0].downloadUrl)).toContain('/api/bookings/book-1/media/asset-img/download');
     expect(assets[1].bytes).toBe('5000');
     expect(assets[1].mimeType).toBe('video/mp4');
+    expect(assets[1].blobUrl).toBeNull();
+    expect(String(assets[1].downloadUrl)).toContain('/api/bookings/book-1/media/asset-vid/download');
     const images = j.images as unknown[];
     const videos = j.videos as unknown[];
     expect(images).toHaveLength(1);

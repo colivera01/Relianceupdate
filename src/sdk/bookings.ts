@@ -1,4 +1,4 @@
-import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import { getClientAuthHeaders } from '@/lib/client-session';
 import type {
   Booking,
   CreateBookingDTO,
@@ -18,7 +18,6 @@ async function bookingsRequestJson<T>(
   init: RequestInit = {},
   authUserIdFromCaller?: string
 ): Promise<T> {
-  const userId = resolveCustomerUserId(authUserIdFromCaller);
   const fromInit =
     typeof init.headers === 'object' && init.headers !== null && !Array.isArray(init.headers)
       ? { ...(init.headers as Record<string, string>) }
@@ -27,7 +26,7 @@ async function bookingsRequestJson<T>(
   const headers: Record<string, string> = {
     ...fromInit,
     ...(withJsonBody ? { 'Content-Type': 'application/json' } : {}),
-    ...(userId ? { 'x-user-id': userId } : {}),
+    ...getClientAuthHeaders(),
   };
 
   const response = await fetch(path, {
@@ -56,11 +55,7 @@ function buildListQuery(
   params: { userId?: string; vendorId?: string; status?: string; page?: number; limit?: number } | undefined,
   authUserIdFromCaller?: string
 ): string {
-  const resolved = resolveCustomerUserId(authUserIdFromCaller);
   const merged = { ...params };
-  if (resolved && merged.userId === undefined && merged.vendorId === undefined) {
-    merged.userId = resolved;
-  }
   const searchParams = new URLSearchParams();
   Object.entries(merged).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
@@ -105,7 +100,6 @@ export const bookingsSDK = {
     authUserIdFromCaller?: string
   ): Promise<{ success: boolean; booking: Booking }> {
     const d = bookingData as Record<string, unknown>;
-    const resolved = resolveCustomerUserId(authUserIdFromCaller);
     const body: Record<string, unknown> = {
       service_id: d.service_id ?? d.serviceId,
       vendor_id: d.vendor_id ?? d.vendorId,
@@ -118,7 +112,7 @@ export const bookingsSDK = {
       client_phone: d.client_phone ?? d.clientPhone,
       amount: d.amount,
       custom_fields: d.custom_fields ?? d.customFields,
-      user_id: d.user_id ?? d.userId ?? resolved ?? undefined,
+      user_id: d.user_id ?? d.userId ?? undefined,
     };
     const cleaned = Object.fromEntries(
       Object.entries(body).filter(([, v]) => v !== undefined)

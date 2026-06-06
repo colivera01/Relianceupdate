@@ -1,287 +1,147 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/server/db';
+import { countableReviewWhere } from '@/lib/metrics-exclusion';
 
+const MAX_LIMIT = 100;
+
+function parsePositiveInt(value: string | null, fallback: number): number {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function resolveService(review: any): { serviceId: string | null; serviceName: string | null } {
+  const bookingService = review?.booking?.service;
+  const mediaService = review?.mediaSession?.service;
+  return {
+    serviceId: bookingService?.id || mediaService?.id || null,
+    serviceName: bookingService?.name || mediaService?.name || null,
+  };
+}
+
+function resolveVendorName(vendor: { businessName?: string | null; name?: string | null } | null | undefined): string | null {
+  return vendor?.businessName || vendor?.name || null;
+}
+
+/**
+ * GET /api/reviews
+ * Generic read-only review lookup backed by persisted Review rows.
+ *
+ * Active customer-owned review UX should prefer /api/reviews/me, and public service
+ * pages should prefer /api/services/[id]/reviews/public.
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const serviceId = searchParams.get('serviceId');
-    const vendorId = searchParams.get('vendorId');
-    const userId = searchParams.get('userId');
-    const rating = searchParams.get('rating');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const sortBy = searchParams.get('sortBy') || 'created_at';
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
+    const serviceId = String(searchParams.get('serviceId') || '').trim();
+    const vendorId = String(searchParams.get('vendorId') || '').trim();
+    const userId = String(searchParams.get('userId') || '').trim();
+    const rating = parsePositiveInt(searchParams.get('rating'), 0);
+    const page = parsePositiveInt(searchParams.get('page'), 1);
+    const requestedLimit = parsePositiveInt(searchParams.get('limit'), 10);
+    const limit = Math.min(requestedLimit, MAX_LIMIT);
+    const sortBy = String(searchParams.get('sortBy') || 'createdAt');
+    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
 
-    // TODO: Replace with actual database query
-    // const reviews = await ReviewModel.findMany({
-    //   where: {
-    //     ...(serviceId && { service_id: parseInt(serviceId) }),
-    //     ...(vendorId && { vendor_id: parseInt(vendorId) }),
-    //     ...(userId && { user_id: parseInt(userId) }),
-    //     ...(rating && { rating: parseInt(rating) }),
-    //   },
-    //   include: {
-    //     user: {
-    //       select: {
-    //         id: true,
-    //         first_name: true,
-    //         last_name: true,
-    //         avatar: true,
-    //       },
-    //     },
-    //     service: {
-    //       select: {
-    //         id: true,
-    //         name: true,
-    //       },
-    //     },
-    //     vendor: {
-    //       select: {
-    //         id: true,
-    //         name: true,
-    //       },
-    //     },
-    //   },
-    //   orderBy: {
-    //     [sortBy]: sortOrder,
-    //   },
-    //   skip: (page - 1) * limit,
-    //   take: limit,
-    // });
-
-    // Mock reviews data
-    const mockReviews = [
-      {
-        id: 1,
-        user: {
-          id: 1,
-          first_name: 'Sarah',
-          last_name: 'Johnson',
-          avatar: 'https://randomuser.me/api/portraits/women/1.jpg',
-        },
-        service: {
-          id: 1,
-          name: 'Deep House Cleaning',
-        },
-        vendor: {
-          id: 1,
-          name: 'Sparkle Clean Pro',
-        },
-        rating: 5,
-        title: 'Excellent cleaning service!',
-        comment: 'The team was professional, thorough, and did an amazing job. My house has never been cleaner. Highly recommend!',
-        type: 'written',
-        media_url: null,
-        helpful_count: 12,
-        created_at: '2024-01-15T10:30:00Z',
-      },
-      {
-        id: 2,
-        user: {
-          id: 2,
-          first_name: 'Mike',
-          last_name: 'Davis',
-          avatar: 'https://randomuser.me/api/portraits/men/2.jpg',
-        },
-        service: {
-          id: 2,
-          name: 'Plumbing Repair',
-        },
-        vendor: {
-          id: 2,
-          name: 'Quick Fix Plumbing',
-        },
-        rating: 4,
-        title: 'Good plumbing work',
-        comment: 'Fixed my leaky faucet quickly and efficiently. Fair pricing and professional service.',
-        type: 'video',
-        media_url: 'https://example.com/review-video.mp4',
-        helpful_count: 8,
-        created_at: '2024-01-14T14:20:00Z',
-      },
-      {
-        id: 3,
-        user: {
-          id: 3,
-          first_name: 'Lisa',
-          last_name: 'Wilson',
-          avatar: 'https://randomuser.me/api/portraits/women/3.jpg',
-        },
-        service: {
-          id: 3,
-          name: 'Landscape Design',
-        },
-        vendor: {
-          id: 3,
-          name: 'Green Thumb Gardens',
-        },
-        rating: 5,
-        title: 'Beautiful landscape transformation',
-        comment: 'Amazing work! They transformed our backyard into a beautiful garden. Very creative and professional.',
-        type: 'photo',
-        media_url: 'https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=400&h=300&fit=crop',
-        helpful_count: 15,
-        created_at: '2024-01-13T09:15:00Z',
-      },
-    ];
-
-    // Filter mock data based on parameters
-    let filteredReviews = mockReviews;
-
-    if (serviceId) {
-      filteredReviews = filteredReviews.filter(review => review.service.id === parseInt(serviceId));
-    }
-
-    if (vendorId) {
-      filteredReviews = filteredReviews.filter(review => review.vendor.id === parseInt(vendorId));
-    }
-
-    if (rating) {
-      filteredReviews = filteredReviews.filter(review => review.rating === parseInt(rating));
-    }
-
-    // Sort reviews
-    filteredReviews.sort((a, b) => {
-      if (sortBy === 'rating') {
-        return sortOrder === 'asc' ? a.rating - b.rating : b.rating - a.rating;
-      }
-      if (sortBy === 'helpful_count') {
-        return sortOrder === 'asc' ? a.helpful_count - b.helpful_count : b.helpful_count - a.helpful_count;
-      }
-      return sortOrder === 'asc' 
-        ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        : new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    const where: Record<string, unknown> = countableReviewWhere({
+      ...(vendorId ? { vendorId } : {}),
+      ...(userId ? { userId } : {}),
+      ...(rating >= 1 && rating <= 5 ? { rating } : {}),
+      ...(serviceId
+        ? {
+            OR: [
+              { booking: { is: { serviceId } } },
+              { mediaSession: { is: { serviceId } } },
+            ],
+          }
+        : {}),
     });
 
-    // Pagination
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedReviews = filteredReviews.slice(startIndex, endIndex);
+    const orderBy =
+      sortBy === 'rating'
+        ? { rating: sortOrder }
+        : { createdAt: sortOrder };
+
+    const [total, reviews] = await Promise.all([
+      (prisma as any).review.count({ where }),
+      (prisma as any).review.findMany({
+        where,
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          userId: true,
+          vendorId: true,
+          bookingId: true,
+          mediaSessionId: true,
+          rating: true,
+          comment: true,
+          source: true,
+          submittedVia: true,
+          moderationStatus: true,
+          visibilityStatus: true,
+          date: true,
+          createdAt: true,
+          user: { select: { name: true } },
+          vendor: { select: { name: true, businessName: true } },
+          booking: { select: { serviceId: true, service: { select: { id: true, name: true } } } },
+          mediaSession: { select: { serviceId: true, service: { select: { id: true, name: true } } } },
+        },
+      }),
+    ]);
 
     return NextResponse.json({
-      reviews: paginatedReviews,
+      success: true,
+      reviews: reviews.map((review: any) => {
+        const service = resolveService(review);
+        return {
+          id: review.id,
+          reviewId: review.id,
+          userId: review.userId,
+          vendorId: review.vendorId,
+          bookingId: review.bookingId,
+          mediaSessionId: review.mediaSessionId,
+          serviceId: service.serviceId,
+          serviceName: service.serviceName,
+          vendorName: resolveVendorName(review.vendor),
+          reviewerDisplayName: review.user?.name || 'Verified Customer',
+          rating: review.rating,
+          comment: review.comment || '',
+          source: review.source,
+          submittedVia: review.submittedVia,
+          moderationStatus: review.moderationStatus,
+          visibilityStatus: review.visibilityStatus,
+          submittedAt: (review.date || review.createdAt)?.toISOString?.() || review.createdAt,
+          createdAt: review.createdAt?.toISOString?.() || review.createdAt,
+        };
+      }),
       pagination: {
         page,
         limit,
-        total: filteredReviews.length,
-        totalPages: Math.ceil(filteredReviews.length / limit),
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+      meta: {
+        routeRole:
+          'Generic persisted review lookup. Use /api/reviews/me for customer-owned review hubs and /api/services/[id]/reviews/public for public service display.',
       },
     });
-  } catch (error) {
-    console.error('Error fetching reviews:', error);
+  } catch (error: any) {
+    console.error('[reviews] GET error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch reviews' },
+      { success: false, error: 'Failed to fetch reviews', details: error?.message || 'Unknown error' },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const {
-      service_id,
-      vendor_id,
-      booking_id,
-      rating,
-      title,
-      comment,
-      type = 'written',
-      media_url,
-    } = body;
-
-    // TODO: Get current user from session/token
-    // const user = await getCurrentUser(request);
-    // if (!user) {
-    //   return NextResponse.json(
-    //     { error: 'Authentication required' },
-    //     { status: 401 }
-    //   );
-    // }
-
-    // Validate required fields
-    if (!rating || !title || !comment) {
-      return NextResponse.json(
-        { error: 'Rating, title, and comment are required' },
-        { status: 400 }
-      );
-    }
-
-    if (rating < 1 || rating > 5) {
-      return NextResponse.json(
-        { error: 'Rating must be between 1 and 5' },
-        { status: 400 }
-      );
-    }
-
-    // TODO: Validate booking exists and belongs to user
-    // if (booking_id) {
-    //   const booking = await BookingModel.findById(booking_id);
-    //   if (!booking || booking.user_id !== user.id) {
-    //     return NextResponse.json(
-    //       { error: 'Invalid booking' },
-    //       { status: 404 }
-    //     );
-    //   }
-    // }
-
-    // TODO: Check if review already exists for this booking
-    // if (booking_id) {
-    //   const existingReview = await ReviewModel.findFirst({
-    //     where: { booking_id },
-    //   });
-    //   if (existingReview) {
-    //     return NextResponse.json(
-    //       { error: 'Review already exists for this booking' },
-    //       { status: 400 }
-    //     );
-    //   }
-    // }
-
-    // TODO: Create review in database
-    // const review = await ReviewModel.create({
-    //   user_id: user.id,
-    //   service_id,
-    //   vendor_id,
-    //   booking_id,
-    //   rating,
-    //   title,
-    //   comment,
-    //   type,
-    //   media_url,
-    // });
-
-    // Mock review creation
-    const mockReview = {
-      id: Math.floor(Math.random() * 1000) + 1,
-      service_id,
-      vendor_id,
-      booking_id,
-      rating,
-      title,
-      comment,
-      type,
-      media_url,
-      helpful_count: 0,
-      created_at: new Date().toISOString(),
-    };
-
-    // TODO: Update vendor/service rating averages
-    // await updateVendorRating(vendor_id);
-    // if (service_id) {
-    //   await updateServiceRating(service_id);
-    // }
-
-    return NextResponse.json({
-      success: true,
-      review: mockReview,
-      message: 'Review submitted successfully',
-    });
-  } catch (error) {
-    console.error('Error creating review:', error);
-    return NextResponse.json(
-      { error: 'Failed to create review' },
-      { status: 500 }
-    );
-  }
-} 
+export async function POST() {
+  return NextResponse.json(
+    {
+      success: false,
+        error: 'Generic review creation is retired. Submit customer reviews through the service-video review flow.',
+      routeRole: 'Use POST /api/reviews/window/start followed by POST /api/reviews/create.',
+    },
+    { status: 410 }
+  );
+}

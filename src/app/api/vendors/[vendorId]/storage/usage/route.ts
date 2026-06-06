@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
+import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -30,10 +31,7 @@ export async function GET(
     // Optional: Get breakdown by mimeType
     const breakdown = await (prisma as any).mediaAsset.groupBy({
       by: ["mimeType"],
-      where: {
-        vendorId,
-        deletedAt: null,
-      },
+      where: countableMediaAssetWhere({ vendorId }),
       _sum: {
         bytes: true,
       },

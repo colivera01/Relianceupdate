@@ -70,6 +70,8 @@ export const useServiceCategories = () => {
     queryKey: serviceKeys.categories(),
     queryFn: servicesSDK.getCategories,
     staleTime: 30 * 60 * 1000,
+    retry: 1,
+    retryDelay: 1000,
   });
 };
 
@@ -88,5 +90,7 @@ export const useDiscoverServices = (filters?: {
     queryKey: serviceKeys.discover(filters || {}),
     queryFn: () => servicesSDK.discoverServices(filters),
     staleTime: 2 * 60 * 1000,
+    retry: 1,
+    retryDelay: 1000,
   });
 };

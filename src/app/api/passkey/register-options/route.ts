@@ -1,58 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
+import { NextRequest, NextResponse } from "next/server";
+import { getUserIdFromRequest } from "@/lib/auth";
+import { createPasskeyRegistrationOptions } from "@/lib/auth-passkeys";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { userType } = body;
-
-    console.log('Generating passkey registration options for:', userType);
-
-    // Generate a random challenge
-    const challenge = crypto.randomBytes(32);
-    
-    // Generate a random user ID
-    const userId = crypto.randomBytes(16);
-
-    const options = {
-      challenge: Array.from(challenge),
-      rp: {
-        name: 'Reliance',
-        id: 'localhost', // In production, use your actual domain
-      },
-      user: {
-        id: Array.from(userId),
-        name: `user@reliance.com`, // In production, use actual user email
-        displayName: 'Reliance User', // In production, use actual user name
-      },
-      pubKeyCredParams: [
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json(
         {
-          type: 'public-key',
-          alg: -7, // ES256
+          error: "You must be signed in to register a passkey.",
+          code: "AUTH_REQUIRED",
         },
-        {
-          type: 'public-key',
-          alg: -257, // RS256
-        },
-      ],
-      timeout: 60000, // 60 seconds
-      attestation: 'none',
-      authenticatorSelection: {
-        authenticatorAttachment: 'platform',
-        userVerification: 'preferred',
-        requireResidentKey: false,
-      },
-    };
+        { status: 401 }
+      );
+    }
 
-    console.log('Passkey registration options generated successfully');
+    const result = await createPasskeyRegistrationOptions({
+      userId,
+      request,
+    });
 
-    return NextResponse.json(options);
-
+    return NextResponse.json({
+      challengeId: result.challengeId,
+      options: result.options,
+      email: result.authCredential.email,
+    });
   } catch (error) {
-    console.error('Error generating passkey registration options:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error generating passkey registration options:", error);
     return NextResponse.json(
-      { error: 'Failed to generate registration options' },
-      { status: 500 }
+      {
+        error:
+          message === "PASSKEY_CREDENTIAL_NOT_FOUND"
+            ? "A saved sign-in credential is required before adding a passkey."
+            : "Failed to generate passkey registration options.",
+        code: message,
+      },
+      { status: message === "PASSKEY_CREDENTIAL_NOT_FOUND" ? 403 : 500 }
     );
   }
-} 
+}

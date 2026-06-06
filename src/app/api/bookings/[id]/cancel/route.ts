@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
+import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from '@/lib/account-status';
 import { mapBookingToContract } from '@/lib/booking-shape';
+import {
+  BOOKING_SERVICE_ISSUE_TYPES,
+  TRUST_OUTCOME_TYPES,
+  tryRecordBookingServiceIssue,
+  tryRecordFinalizedOperationalOutcome,
+} from '@/lib/trust-score-outcome-foundation';
+import { tryRecalculateVendorTrustScore } from '@/lib/trust-score-calculator';
 
 export async function POST(
   request: NextRequest,
@@ -25,10 +33,11 @@ export async function POST(
         { status: 401 }
       );
     }
+    await ensureUserAccountCanAct(userId);
 
     const existing = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { id: true, userId: true, status: true },
+      select: { id: true, userId: true, vendorId: true, status: true },
     });
     if (!existing) {
       return NextResponse.json(
@@ -47,6 +56,47 @@ export async function POST(
       where: { id: bookingId },
       data: { status: 'CANCELED' },
     });
+    const canceledAt = new Date();
+    if (existing.vendorId) {
+      await tryRecordFinalizedOperationalOutcome(prisma as any, {
+        vendorId: existing.vendorId,
+        bookingId,
+        outcomeType: TRUST_OUTCOME_TYPES.BOOKING_CANCELED,
+        sourceEntityType: 'booking',
+        sourceEntityId: bookingId,
+        finalizedAt: canceledAt,
+        finalizedByUserId: userId,
+        metadata: {
+          previousStatus: existing.status,
+          cancellationReason: typeof reason === 'string' ? reason : null,
+          refundRequested: Boolean(refund_requested),
+        },
+      });
+
+      if (refund_requested === true) {
+        await tryRecordBookingServiceIssue(prisma as any, {
+          bookingId,
+          vendorId: existing.vendorId,
+          issueType: BOOKING_SERVICE_ISSUE_TYPES.REFUND_REQUEST,
+          status: 'PENDING',
+          sourceEntityType: 'booking_cancellation',
+          sourceEntityId: bookingId,
+          reportedByUserId: userId,
+          metadata: {
+            cancellationReason: typeof reason === 'string' ? reason : null,
+            refundRequestedAt: canceledAt.toISOString(),
+          },
+        });
+      }
+
+      // Internal-only, non-blocking Trust Score recalculation.
+      await tryRecalculateVendorTrustScore(
+        prisma as any,
+        existing.vendorId,
+        'booking_canceled',
+        'booking_cancel'
+      );
+    }
     const hydrated = await prisma.booking.findUnique({
       where: { id: bookingId },
       select: {
@@ -77,6 +127,9 @@ export async function POST(
     });
   } catch (error) {
     console.error('Error cancelling booking:', error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     return NextResponse.json(
       { error: 'Failed to cancel booking' },
       { status: 500 }

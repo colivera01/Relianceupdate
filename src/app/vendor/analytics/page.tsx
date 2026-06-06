@@ -1,87 +1,368 @@
-'use client';
-import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+"use client";
 
-const mockEmployees = [
-  { id: 1, name: 'Maria Lopez', jobs: 8, avgScore: 4.9, reviews: [
-    { text: "Great work!", stars: 5 },
-    { text: "Very professional.", stars: 5 },
-    { text: "Good communication.", stars: 4 },
-    { text: "Could be faster.", stars: 3 }
-  ] },
-  { id: 2, name: 'James Lee', jobs: 5, avgScore: 4.7, reviews: [
-    { text: "Quick and efficient.", stars: 5 },
-    { text: "Would hire again.", stars: 5 },
-    { text: "Average experience.", stars: 3 }
-  ] },
-];
+import Link from "next/link";
+import { useMemo } from "react";
+import {
+  BarChart3,
+  CalendarDays,
+  HardDrive,
+  Medal,
+  MessageSquareText,
+  ShieldCheck,
+  Star,
+  TrendingUp,
+  Video,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { VendorTrustScoreCard } from "@/components/vendor/VendorTrustScoreCard";
+import { useVendorDashboard } from "@/hooks/useVendorDashboard";
 
-export default function TeamAnalytics() {
-  const [employees] = useState(mockEmployees);
-  const [starFilter, setStarFilter] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState(false);
+function formatPercent(value: number) {
+  return `${Math.max(0, Math.round(value))}%`;
+}
 
-  const toggleExpand = () => setExpanded(e => !e);
+function formatDecimal(value: number) {
+  return Number.isFinite(value) ? value.toFixed(1) : "0.0";
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatStorageSize(bytesString: string | undefined) {
+  const bytes = Number(bytesString || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 GB";
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+export default function VendorAnalyticsPage() {
+  const { data, loading, error, refetch, approvalPending } = useVendorDashboard();
+
+  const derived = useMemo(() => {
+    if (!data) return null;
+
+    const totalBookings = Number(data.stats?.totalBookings || 0);
+    const totalClients = Number(data.stats?.totalClients || 0);
+    const rating = Number(data.stats?.rating || 0);
+    const ratingCount = Number(data.stats?.ratingCount || 0);
+    const approvedVideos = Number(data.approvedProofs || 0);
+    const pendingVideos = Number(data.pendingModerationProofs || 0);
+    const archivedVideos = Number(data.archivedProofs || 0);
+    const totalProofAssets = Number(data.totalProofAssets || 0);
+    const storagePercent = Number(data.storagePercentUsed || 0);
+
+    const completedJobs = data.recentJobs.filter((job) => job.status === "completed").length;
+    const inProgressJobs = data.recentJobs.filter((job) => job.status === "in progress").length;
+    const scheduledJobs = data.recentJobs.filter((job) => job.status === "scheduled").length;
+    const completionRate =
+      totalBookings > 0 ? Math.round((completedJobs / totalBookings) * 100) : 0;
+    const reviewCoverage =
+      completedJobs > 0 ? Math.round((data.recentReviews.length / completedJobs) * 100) : 0;
+
+    const topPerformer =
+      [...(data.employeePerformance || [])]
+        .filter((row) => Number(row.reviewCount || 0) > 0)
+        .sort((a, b) => Number(b.averageRating || 0) - Number(a.averageRating || 0))[0] || null;
+
+    return {
+      totalBookings,
+      totalClients,
+      rating,
+      ratingCount,
+      approvedVideos,
+      pendingVideos,
+      archivedVideos,
+      totalProofAssets,
+      storagePercent,
+      completedJobs,
+      inProgressJobs,
+      scheduledJobs,
+      completionRate,
+      reviewCoverage,
+      topPerformer,
+    };
+  }, [data]);
+
+  if (approvalPending) {
+    return (
+      <div className="space-y-8 px-4 py-8 md:px-8">
+        <Card className="border-amber-200 bg-amber-50">
+          <CardHeader>
+            <CardTitle className="text-amber-900">Vendor account pending approval</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-amber-900">
+            <p>Your analytics will appear after admin approval.</p>
+            <Button asChild>
+              <Link href="/vendor/dashboard">Back to Dashboard</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-8 px-4 py-8 md:px-8">
+        <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
+          <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+            Vendor intelligence
+          </div>
+          <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
+            Trust score, service video, and launch-readiness analytics
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
+            Loading the verified service video pipeline, trust signals, and operational performance
+            snapshot for your vendor workspace.
+          </p>
+        </header>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Card key={index}>
+              <CardContent className="space-y-3 p-6">
+                <div className="h-3 w-24 animate-pulse rounded bg-slate-200" />
+                <div className="h-8 w-20 animate-pulse rounded bg-slate-200" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            Loading analytics...
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || !data || !derived) {
+    return (
+      <div className="space-y-8 px-4 py-8 md:px-8">
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-800">We could not load analytics</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-red-800">
+            <p>{error || "Please try again."}</p>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={refetch}>Try Again</Button>
+              <Button asChild variant="outline">
+                <Link href="/vendor/dashboard">Back to Dashboard</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const metricCards = [
+    {
+      label: "Total bookings",
+      value: String(derived.totalBookings),
+      helper: `${derived.totalClients} distinct clients`,
+      icon: CalendarDays,
+    },
+    {
+      label: "Completion rate",
+      value: formatPercent(derived.completionRate),
+      helper: `${derived.completedJobs} completed from recent tracked jobs`,
+      icon: TrendingUp,
+    },
+    {
+      label: "Customer rating",
+      value: `${formatDecimal(derived.rating)}★`,
+      helper: `${derived.ratingCount} public approved reviews`,
+      icon: Star,
+    },
+    {
+      label: "Service video approvals",
+      value: String(derived.approvedVideos),
+      helper: `${derived.pendingVideos} pending moderation`,
+      icon: Video,
+    },
+  ];
 
   return (
-    <div className="px-4 md:px-8 py-8 space-y-6">
-      <div className="flex items-center gap-4 mb-4">
-        <Button variant="outline" asChild>
-          <a href="/vendor">Back</a>
-        </Button>
-        <h2 className="text-2xl font-bold">Employee Analytics</h2>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Team Performance Overview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4 flex gap-2 items-center">
-            <span className="text-sm font-medium">Filter reviews by stars:</span>
-            {[5,4,3,2,1].map(star => (
-              <Button key={star} size="sm" variant={starFilter === star ? 'default' : 'outline'} onClick={() => setStarFilter(starFilter === star ? null : star)}>
-                {star} <span className="text-yellow-500">★</span>
-              </Button>
-            ))}
-            {starFilter && <Button size="sm" variant="ghost" onClick={() => setStarFilter(null)}>Clear</Button>}
-            <Button size="sm" variant="outline" onClick={toggleExpand}>
-              {expanded ? 'Show Less' : 'Show More'}
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {employees.map(emp => {
-              const filteredReviews = emp.reviews.filter(r => !starFilter || r.stars === starFilter);
-              const reviewsToShow = expanded ? filteredReviews : filteredReviews.slice(0, 3);
-              return (
-                <div key={emp.id} className="bg-gray-50 rounded p-4">
-                  <div className="font-semibold mb-1">{emp.name}</div>
-                  <div className="text-xs text-gray-600 mb-1">Jobs Completed: {emp.jobs}</div>
-                  <div className="text-xs text-gray-600 mb-1">Avg. Review Score: {emp.avgScore} <span className="text-yellow-500">★</span></div>
-                  <div className="text-xs text-gray-600 mb-1">Reviews:</div>
-                  <ul className="text-xs text-gray-700 mb-2">
-                    {filteredReviews.length === 0 && <li>No reviews for this filter.</li>}
-                    {reviewsToShow.map((r, i) => (
-                      <li key={i} className="flex items-center gap-2">• {r.text} <span className="text-yellow-500">{Array(r.stars).fill('★').join('')}</span></li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-      {/* Backend Developer Notes Section */}
-      <div className="mt-10">
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 rounded shadow-sm">
-          <h3 className="font-bold text-yellow-800 mb-2">Backend Developer Notes</h3>
-          <ul className="text-sm text-yellow-900 list-disc pl-5 space-y-1">
-            <li>Fetch employee analytics from <b>GET /api/vendor/analytics</b></li>
-            <li>Fetch reviews for each employee from <b>GET /api/vendor/employees/:employeeId/reviews</b></li>
-            <li>All actions should be authenticated as vendor</li>
-          </ul>
+    <div className="space-y-8 px-4 py-8 md:px-8">
+      <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
+        <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+          Vendor intelligence
         </div>
+        <div className="mt-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl">
+            <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
+              Trust score, service video, and launch-readiness analytics
+            </h1>
+            <p className="mt-4 text-sm leading-7 text-white/72 sm:text-base">
+              Review the live trust signals, verified service video pipeline, and operational
+              performance for {data.profile.businessName || "your business"} without changing how
+              vendor workflows already behave.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)]">
+            <div className="rounded-full bg-blue-50/90 p-3 text-blue-700">
+              <BarChart3 className="h-6 w-6" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.28em] text-white/46">
+                Marketplace signal
+              </p>
+              <p className="text-sm font-medium text-white/82">
+                Customer Reviews stay separate from the Reliance Trust Score.
+              </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {metricCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <Card key={card.label}>
+              <CardContent className="space-y-3 p-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">{card.label}</p>
+                  <Icon className="h-5 w-5 text-primary" />
+                </div>
+                <div className="text-3xl font-semibold tracking-tight">{card.value}</div>
+                <p className="text-xs text-muted-foreground">{card.helper}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <VendorTrustScoreCard dashboardData={data} />
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Operations Snapshot</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border bg-slate-50/90 p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                <MessageSquareText className="h-4 w-4 text-primary" />
+                Review coverage
+              </div>
+              <div className="mt-2 text-2xl font-semibold">{formatPercent(derived.reviewCoverage)}</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Based on recent completed jobs that already have public reviews attached.
+              </p>
+            </div>
+            <div className="rounded-2xl border bg-slate-50/90 p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                <HardDrive className="h-4 w-4 text-primary" />
+                Storage usage
+              </div>
+              <div className="mt-2 text-2xl font-semibold">{formatPercent(derived.storagePercent)}</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formatStorageSize(data.storageUsedBytes)} used of {formatStorageSize(data.storageLimitBytes)}.
+              </p>
+            </div>
+            <div className="rounded-2xl border bg-slate-50/90 p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                <Video className="h-4 w-4 text-primary" />
+                Service video pipeline
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant={derived.pendingVideos > 0 ? "warning" : "secondary"}>
+                  {derived.pendingVideos} pending
+                </Badge>
+                <Badge variant="success">{derived.approvedVideos} approved</Badge>
+                <Badge variant="outline">{derived.archivedVideos} archived</Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {derived.totalProofAssets} total service video assets currently tracked.
+              </p>
+            </div>
+            <div className="rounded-2xl border bg-slate-50/90 p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                Job status mix
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant="outline">{derived.scheduledJobs} scheduled</Badge>
+                <Badge variant="secondary">{derived.inProgressJobs} in progress</Badge>
+                <Badge variant="success">{derived.completedJobs} completed</Badge>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Based on the current recent jobs slice from the live vendor dashboard feed.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Team Highlight</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {derived.topPerformer ? (
+              <div className="rounded-2xl border bg-blue-50/90 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
+                  <Medal className="h-4 w-4" />
+                  Strongest rated team member
+                </div>
+                <div className="mt-2 text-lg font-semibold text-slate-900">
+                  {derived.topPerformer.displayName}
+                </div>
+                <p className="mt-1 text-sm text-slate-700">
+                  {formatDecimal(Number(derived.topPerformer.averageRating || 0))}★ average across{" "}
+                  {Number(derived.topPerformer.reviewCount || 0)} attributed reviews.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                No employee attribution trend is measurable yet. Team highlights will appear after more
+                approved customer reviews are tied to completed jobs.
+              </div>
+            )}
+
+            <div className="rounded-2xl border p-4">
+              <p className="text-sm font-medium text-slate-900">Most recent public review</p>
+              {data.recentReviews.length > 0 ? (
+                <>
+                  <p className="mt-2 text-sm text-slate-700">
+                    "{data.recentReviews[0]?.comment || "No comment provided."}"
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {data.recentReviews[0]?.client || "Customer"} •{" "}
+                    {formatDate(data.recentReviews[0]?.date)}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  No public reviews are available yet for this vendor.
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/vendor/dashboard">Back to Dashboard</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/vendor/reviews">Open Reviews</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/vendor/media">Open Video Library</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
-} 
+}

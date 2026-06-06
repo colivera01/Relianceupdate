@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
@@ -33,7 +34,18 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     }
 
     const previousStatus = String(booking.status || "").toUpperCase();
-    const nextStatus = previousStatus === "PENDING" ? "CONFIRMED" : booking.status;
+    if (previousStatus !== "PENDING") {
+      return NextResponse.json(
+        {
+          error: "Only pending jobs can be started.",
+          code: "INVALID_START_STATUS",
+          status: previousStatus || "UNKNOWN",
+        },
+        { status: 409 }
+      );
+    }
+
+    const nextStatus = "CONFIRMED";
     const updated = await prisma.booking.update({
       where: { id: booking.id },
       data: { status: nextStatus || "CONFIRMED" },
@@ -55,6 +67,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     return NextResponse.json({ success: true, job: updated });
   } catch (error: any) {
-    return NextResponse.json({ error: "Failed to start employee job", details: error?.message }, { status: 500 });
+    const runtimeError = getEmployeeRuntimeErrorResponse("start", error);
+    return NextResponse.json(runtimeError.body, { status: runtimeError.status });
   }
 }

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Search, Filter, Download, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, MessageSquare, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from "next/navigation";
 import { useVendorProfile } from '@/hooks/useVendorProfile';
@@ -22,6 +22,14 @@ import {
   resolveVendorJobVideoStageFromSession,
   type VendorJobVideoStage,
 } from '@/lib/vendor-job-video-stages';
+import {
+  STAGE_VIDEO_MAX_DURATION_SECONDS,
+  formatStageVideoDuration,
+  getStageVideoGuidance,
+  getStageVideoLimitCopy,
+  getVideoFileDurationSeconds,
+  isOverStageVideoLimit,
+} from '@/lib/stage-video-guidance';
 import {
   ARCHIVE_ARCHIVED,
   MODERATION_APPROVED,
@@ -107,6 +115,29 @@ const formatPhoneNumber = (value: string) => {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 };
 
+const JOB_WORKFLOW_GUIDE_DISMISSED_KEY = 'reliance.vendorJobs.workflowGuideDismissed';
+const VENDOR_JOBS_TIMEOUT_MS = 20000;
+const VENDOR_TEAM_TIMEOUT_MS = 15000;
+const VENDOR_SERVICES_TIMEOUT_MS = 15000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeoutHandle = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutHandle);
+  }
+}
+
 export default function VendorJobs() {
   const router = useRouter();
   const dashboardDebug = process.env.NODE_ENV !== 'production';
@@ -143,6 +174,138 @@ export default function VendorJobs() {
     "Unable to resolve active vendor context. Please sign in again.";
   const vendorContextUnavailable =
     !vendorProfileLoading && !approvalPending && !vendorId && !hasResolvedVendorContext;
+  const vendorContextResolving = vendorProfileLoading && !vendorId;
+
+  const getUsableCustomerEmail = (value: unknown) => {
+    const email = String(value || '').trim();
+    return email.toLowerCase().endsWith('@reliance.local') ? '' : email;
+  };
+
+  const getCustomerContactForJob = (job: any) => ({
+    email: getUsableCustomerEmail(job?.customerEmail || job?.email || ''),
+    phone: String(job?.customerPhone || job?.phone || '').trim(),
+  });
+
+  const hasCustomerContactForJob = (job: any) => {
+    const contact = getCustomerContactForJob(job);
+    return Boolean(contact.email || contact.phone);
+  };
+
+  const formatCustomerConsentRecipient = (job: any) => {
+    const contact = getCustomerContactForJob(job);
+    const parts = [contact.email, contact.phone].filter(Boolean);
+    return parts.length > 0 ? parts.join(' / ') : 'Missing customer email or phone';
+  };
+
+  const getConsentStatusForJob = (job: any, snapshot?: any) => {
+    const bookingKey = String(job?.bookingId || job?.id || '').trim();
+    const explicit = String(bookingKey ? consentStatusByBookingId[bookingKey] || '' : '').trim();
+    if (explicit) return explicit;
+    const backendStatus = String(job?.consentStatus || '').trim();
+    if (backendStatus) return backendStatus;
+    if (snapshot?.consentAccepted) return CONSENT_STATE.ACCEPTED;
+    if (String(snapshot?.consentToken || '').trim()) return CONSENT_STATE.REQUESTED;
+    return CONSENT_STATE.NOT_REQUESTED;
+  };
+
+  const getVendorWorkflowStateForJob = (job: any) => {
+    const nextStage = getNextMissingVideoStageForJob(job);
+    if (!isJobAssignedForVideoUpload(job)) {
+      return {
+        label: 'Assign employee',
+        detail: 'Assign the job before consent or staged videos.',
+        actionLabel: 'Assign Employee',
+        tone: 'amber',
+      };
+    }
+    if (!nextStage) {
+      return {
+        label: 'All videos uploaded',
+        detail: 'Intro, During Service, and Completed videos are present.',
+        actionLabel: 'View Job',
+        tone: 'green',
+      };
+    }
+
+    const stageLabel = formatVideoStageLabel(nextStage);
+    const snapshot = getSavedRecordingComplianceForJob(job);
+    const locationChoice = String(snapshot?.location || '').trim().toLowerCase();
+    const consentState = getConsentStatusForJob(job, snapshot);
+    const consentStateRequiresFollowUp =
+      consentState === CONSENT_STATE.REQUESTED ||
+      consentState === CONSENT_STATE.ACCEPTED ||
+      consentState === CONSENT_STATE.DECLINED ||
+      consentState === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE;
+    const requiresConsent =
+      locationChoice === 'residence' ||
+      locationChoice === 'customer-business' ||
+      consentStateRequiresFollowUp;
+
+    if (!locationChoice && !consentStateRequiresFollowUp) {
+      return {
+        label: 'Choose recording location',
+        detail: `Select the recording location first. Customer residence/business requires consent before ${stageLabel}.`,
+        actionLabel: 'Choose Location',
+        tone: 'amber',
+      };
+    }
+    if (locationChoice === 'business') {
+      return {
+        label: snapshot?.locationVerified
+          ? `Consent not required - start ${stageLabel} video`
+          : 'Consent not required - verify location',
+        detail: 'Business-address recordings use location verification instead of customer consent.',
+        actionLabel: snapshot?.locationVerified ? `Start ${stageLabel}` : 'Verify Location',
+        tone: snapshot?.locationVerified ? 'green' : 'blue',
+      };
+    }
+    if (requiresConsent && !hasCustomerContactForJob(job)) {
+      return {
+        label: 'Missing customer contact',
+        detail: 'Add a customer email or phone before sending consent. Employee contact is not used.',
+        actionLabel: 'Open Consent Step',
+        tone: 'red',
+      };
+    }
+    if (requiresConsent && consentState === CONSENT_STATE.ACCEPTED) {
+      return {
+        label: `Consent accepted - start ${stageLabel} video`,
+        detail: `Customer consent is accepted for ${formatCustomerConsentRecipient(job)}.`,
+        actionLabel: `Start ${stageLabel}`,
+        tone: 'green',
+      };
+    }
+    if (requiresConsent && consentState === CONSENT_STATE.REQUESTED) {
+      return {
+        label: 'Consent sent - waiting for customer',
+        detail: `Sent to ${formatCustomerConsentRecipient(job)}. Refresh status before uploading ${stageLabel}.`,
+        actionLabel: 'Check Consent',
+        tone: 'blue',
+      };
+    }
+    if (requiresConsent && consentState === CONSENT_STATE.DECLINED) {
+      return {
+        label: 'Consent declined',
+        detail: 'The customer declined consent. Recording remains blocked.',
+        actionLabel: 'View Consent Step',
+        tone: 'red',
+      };
+    }
+    if (requiresConsent && consentState === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE) {
+      return {
+        label: 'Consent expired - resend request',
+        detail: `Resend consent to ${formatCustomerConsentRecipient(job)} before uploading ${stageLabel}.`,
+        actionLabel: 'Resend Consent',
+        tone: 'amber',
+      };
+    }
+    return {
+      label: 'Send video consent',
+      detail: `Send customer consent to ${formatCustomerConsentRecipient(job)} before uploading ${stageLabel}.`,
+      actionLabel: 'Send Consent',
+      tone: 'amber',
+    };
+  };
 
   useEffect(() => {
     if (!vendorContextUnavailable) return;
@@ -196,6 +359,7 @@ export default function VendorJobs() {
     videoStage: '' | VendorJobVideoStage;
     replaceStage: boolean;
   }>({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
+  const [selectedVideoDurationSeconds, setSelectedVideoDurationSeconds] = useState<number | null>(null);
   const [preferredNextVideoStage, setPreferredNextVideoStage] = useState<'' | VendorJobVideoStage>('');
   const [preferredReplaceStage, setPreferredReplaceStage] = useState(false);
   const [videoFieldErrors, setVideoFieldErrors] = useState({
@@ -211,24 +375,42 @@ export default function VendorJobs() {
   const [search, setSearch] = useState('');
   const [isEmployeeView, setIsEmployeeView] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [showJobWorkflowGuide, setShowJobWorkflowGuide] = useState(false);
+  const [dontShowJobWorkflowGuideAgain, setDontShowJobWorkflowGuideAgain] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const dismissed = window.localStorage.getItem(JOB_WORKFLOW_GUIDE_DISMISSED_KEY) === 'true';
+      if (!dismissed) {
+        setShowJobWorkflowGuide(true);
+      }
+    } catch (error) {
+      setShowJobWorkflowGuide(true);
+    }
+  }, []);
+
+  const openJobWorkflowGuide = () => {
+    setDontShowJobWorkflowGuideAgain(false);
+    setShowJobWorkflowGuide(true);
+  };
+
+  const closeJobWorkflowGuide = () => {
+    if (dontShowJobWorkflowGuideAgain && typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(JOB_WORKFLOW_GUIDE_DISMISSED_KEY, 'true');
+      } catch (error) {
+        console.warn('[vendor/jobs] failed to persist workflow guide preference', error);
+      }
+    }
+    setShowJobWorkflowGuide(false);
+    setDontShowJobWorkflowGuideAgain(false);
+  };
   
   // Bulk selection state
   const [selectedJobIds, setSelectedJobIds] = useState<(string | number)[]>([]);
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [showBulkAssignmentModal, setShowBulkAssignmentModal] = useState(false);
-  
-  // Auto-approval system state
-  const [autoApproveEnabled, setAutoApproveEnabled] = useState(false);
-  const [showAutoApproveWarning, setShowAutoApproveWarning] = useState(false);
-  const [autoApproveSettings, setAutoApproveSettings] = useState({
-    enabled: false,
-    employeeWhitelist: [] as string[], // Specific employees who can auto-approve
-    maxDuration: 300, // Max video duration in seconds (5 minutes)
-    requireLocation: true, // Must have valid location
-    requireConsent: true, // Must have customer consent
-    notifyManager: true, // Send notification to manager after auto-approval
-    auditTrail: true // Log all auto-approvals
-  });
   
   // Legal compliance state
   const CONSENT_STATE = {
@@ -248,6 +430,7 @@ export default function VendorJobs() {
   const [locationVerified, setLocationVerified] = useState(false);
   const [customerConsentRequested, setCustomerConsentRequested] = useState(false);
   const [customerConsentReceived, setCustomerConsentReceived] = useState(false);
+  const [customerConsentSending, setCustomerConsentSending] = useState(false);
   const [activeConsentToken, setActiveConsentToken] = useState('');
   const [consentRefreshLoading, setConsentRefreshLoading] = useState(false);
   const [consentRefreshError, setConsentRefreshError] = useState('');
@@ -318,18 +501,27 @@ export default function VendorJobs() {
     setGeoInfo('');
   };
 
-  const applyConsentStatusFromBackend = (statusValue: string | null | undefined) => {
+  const applyConsentStatusFromBackend = (
+    statusValue: string | null | undefined,
+    options?: { consentToken?: string | null }
+  ) => {
     const upper = String(statusValue || '').trim().toUpperCase();
     const normalized =
       upper === 'ACCEPTED'
         ? CONSENT_STATE.ACCEPTED
-        : upper === 'REQUESTED'
+        : upper === 'REQUESTED' || upper === 'PENDING'
         ? CONSENT_STATE.REQUESTED
         : upper === 'DECLINED'
         ? CONSENT_STATE.DECLINED
       : upper === 'EXPIRED'
       ? CONSENT_STATE.EXPIRED_OR_UNAVAILABLE
         : CONSENT_STATE.NOT_REQUESTED;
+    const resolvedConsentToken = String(
+      options?.consentToken ?? activeConsentToken ?? ''
+    ).trim();
+    if (resolvedConsentToken) {
+      setActiveConsentToken(resolvedConsentToken);
+    }
     setCustomerConsentStatus(normalized);
     setConsentStatus(normalized);
     if (normalized === CONSENT_STATE.REQUESTED || normalized === CONSENT_STATE.ACCEPTED) {
@@ -355,7 +547,8 @@ export default function VendorJobs() {
       mergeRecordingComplianceForJob(selectedJob, {
         location: selectedLocation as 'business' | 'residence' | 'customer-business',
         consentAccepted: normalized === CONSENT_STATE.ACCEPTED,
-        consentToken: String(activeConsentToken || existingSnapshot?.consentToken || '').trim(),
+        consentToken:
+          resolvedConsentToken || String(existingSnapshot?.consentToken || '').trim(),
         locationVerified:
           existingSnapshot?.locationVerified !== undefined
             ? Boolean(existingSnapshot.locationVerified)
@@ -391,7 +584,27 @@ export default function VendorJobs() {
       applyConsentStatusFromBackend('EXPIRED');
       throw new Error(message);
     }
-    applyConsentStatusFromBackend(payload?.consent?.status);
+    applyConsentStatusFromBackend(payload?.consent?.status, {
+      consentToken: String(payload?.consent?.token || '').trim(),
+    });
+  };
+
+  const mapConsentStatusPayloadToUiState = (payload: any) => {
+    const normalized = String(payload?.status || '').trim().toLowerCase();
+    const latestToken = String(payload?.latestConsentToken || '').trim();
+    if (normalized === 'accepted') {
+      return { status: CONSENT_STATE.ACCEPTED, latestToken };
+    }
+    if (normalized === 'declined') {
+      return { status: CONSENT_STATE.DECLINED, latestToken };
+    }
+    if (normalized === 'expired') {
+      return { status: CONSENT_STATE.EXPIRED_OR_UNAVAILABLE, latestToken };
+    }
+    if (normalized === 'pending') {
+      return { status: CONSENT_STATE.REQUESTED, latestToken };
+    }
+    return { status: CONSENT_STATE.NOT_REQUESTED, latestToken };
   };
 
   const refreshConsentStatusForSelectedJob = async () => {
@@ -411,22 +624,8 @@ export default function VendorJobs() {
           String(payload?.error || payload?.message || `Failed to fetch consent status (${res.status})`)
         );
       }
-      const normalized = String(payload?.status || '').trim().toLowerCase();
-      if (normalized === 'accepted') {
-        applyConsentStatusFromBackend('ACCEPTED');
-      } else if (normalized === 'declined') {
-        applyConsentStatusFromBackend('DECLINED');
-      } else if (normalized === 'expired') {
-        applyConsentStatusFromBackend('EXPIRED');
-      } else if (normalized === 'pending') {
-        applyConsentStatusFromBackend('REQUESTED');
-      } else {
-        applyConsentStatusFromBackend('NOT_REQUESTED');
-      }
-      const latestToken = String(payload?.latestConsentToken || '').trim();
-      if (latestToken) {
-        setActiveConsentToken(latestToken);
-      }
+      const mapped = mapConsentStatusPayloadToUiState(payload);
+      applyConsentStatusFromBackend(mapped.status, { consentToken: mapped.latestToken });
     } catch (error) {
       setConsentRefreshError(error instanceof Error ? error.message : 'Failed to refresh consent status');
     } finally {
@@ -457,8 +656,64 @@ export default function VendorJobs() {
       })
       .filter(Boolean) as string[];
   };
-  const isJobAssignedForVideoUpload = (job: any): boolean =>
-    resolveMembershipIdsForJob(job).length > 0;
+  const isJobAssignedForVideoUpload = (job: any): boolean => {
+    const membershipIds = resolveMembershipIdsForJob(job);
+    if (membershipIds.length > 0) return true;
+    const assignedNames = Array.isArray(job?.assignedEmployees)
+      ? job.assignedEmployees.map((name: unknown) => String(name || '').trim()).filter(Boolean)
+      : [];
+    return assignedNames.length > 0;
+  };
+
+  const getPrimaryJobCtaLabel = (job: any): string => {
+    const normalizedStatus = String(job?.status || '').trim().toLowerCase();
+    if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') {
+      return 'Review & Approve';
+    }
+    if (normalizedStatus === 'completed' || normalizedStatus === 'complete') {
+      return 'View Job';
+    }
+    if (!isJobAssignedForVideoUpload(job)) {
+      return 'Assign Employee';
+    }
+    return getVendorWorkflowStateForJob(job).actionLabel;
+  };
+
+  const handlePrimaryJobAction = (job: any) => {
+    const normalizedStatus = String(job?.status || '').trim().toLowerCase();
+    if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') {
+      openJobDetails(job);
+      return;
+    }
+    if (normalizedStatus === 'completed' || normalizedStatus === 'complete') {
+      openJobDetails(job);
+      return;
+    }
+    if (!isJobAssignedForVideoUpload(job)) {
+      openAssignmentModal(job);
+      return;
+    }
+    const nextStage = getNextMissingVideoStageForJob(job);
+    if (nextStage) {
+      void openComplianceForNextStage(job);
+      return;
+    }
+    openJobDetails(job);
+  };
+
+  const persistLocationChoiceForJob = (
+    job: any,
+    locationChoice: 'business' | 'residence' | 'customer-business'
+  ) => {
+    mergeRecordingComplianceForJob(job, {
+      location: locationChoice,
+      consentAccepted: false,
+      consentToken: '',
+      locationVerified: false,
+      savedAt: new Date().toISOString(),
+    });
+  };
+
   const videoAssignmentRequiredCopy = 'Assign this job before uploading service videos.';
   const assignmentSatisfiedForCompliance = Boolean(selectedJob && isJobAssignedForVideoUpload(selectedJob));
   const consentRequiredForCompliance =
@@ -500,15 +755,60 @@ export default function VendorJobs() {
 
   useEffect(() => {
     if (!showComplianceModal) return;
-    resetComplianceState();
-    setLocation('');
-  }, [showComplianceModal]);
+    const snapshot = selectedJob ? getSavedRecordingComplianceForJob(selectedJob) : null;
+    const savedLocation = String(snapshot?.location || '').trim().toLowerCase();
+    const hasSavedLocation =
+      savedLocation === 'business' ||
+      savedLocation === 'residence' ||
+      savedLocation === 'customer-business';
+    if (!snapshot || !hasSavedLocation) {
+      resetComplianceState();
+      setLocation('');
+      return;
+    }
+
+    const consentToken = String(snapshot.consentToken || '').trim();
+    const consentAccepted = Boolean(snapshot.consentAccepted);
+    setLocation(savedLocation);
+    setLocationVerified(Boolean(snapshot.locationVerified));
+    setActiveConsentToken(consentToken);
+    setCustomerConsentReceived(consentAccepted);
+    setCustomerConsentRequested(Boolean(consentToken) || consentAccepted);
+    setCustomerConsentStatus(
+      consentAccepted
+        ? CONSENT_STATE.ACCEPTED
+        : consentToken
+        ? CONSENT_STATE.REQUESTED
+        : CONSENT_STATE.NOT_REQUESTED
+    );
+    setConsentStatus(
+      consentAccepted
+        ? CONSENT_STATE.ACCEPTED
+        : consentToken
+        ? CONSENT_STATE.REQUESTED
+        : CONSENT_STATE.NOT_REQUESTED
+    );
+    setGeoError('');
+    setGeoInfo('');
+    setConsentRefreshError('');
+  }, [showComplianceModal, selectedJob?.id, selectedJob?.bookingId, recordingComplianceByJobId]);
 
   useEffect(() => {
-    if (!showComplianceModal) return;
-    resetComplianceState();
-    setLocation('');
-  }, [showComplianceModal, selectedJob?.id]);
+    if (!showComplianceModal || !selectedJob) return;
+    const normalizedLocation = String(location || '').trim().toLowerCase();
+    const requiresConsent =
+      normalizedLocation === 'residence' || normalizedLocation === 'customer-business';
+    if (!requiresConsent) return;
+
+    const snapshot = getSavedRecordingComplianceForJob(selectedJob);
+    const hasAcceptedConsent = Boolean(snapshot?.consentAccepted);
+    const hasConsentToken = Boolean(String(snapshot?.consentToken || '').trim());
+    if (hasAcceptedConsent && hasConsentToken) return;
+
+    void refreshConsentStatusForSelectedJob().catch((error) => {
+      console.warn('[vendor/jobs] failed to hydrate consent status for compliance modal', error);
+    });
+  }, [showComplianceModal, selectedJob, location, recordingComplianceByJobId]);
 
   useEffect(() => {
     const consentPollingEligible =
@@ -550,16 +850,8 @@ export default function VendorJobs() {
   const [selectedAssignmentMembershipIds, setSelectedAssignmentMembershipIds] = useState<string[]>([]);
   const [bulkAssignmentMembershipIds, setBulkAssignmentMembershipIds] = useState<string[]>([]);
   
-  // Enhancement 3: Job Notes/Comments System
-  const [showNotesModal, setShowNotesModal] = useState(false);
-  const [newNote, setNewNote] = useState('');
-  const [editingNote, setEditingNote] = useState(null);
-  const [editingNoteText, setEditingNoteText] = useState('');
-
-  // Video approval system state
-  const [showVideoApprovalModal, setShowVideoApprovalModal] = useState(false);
-  const [selectedVideoForApproval, setSelectedVideoForApproval] = useState(null);
-  const [approvalReason, setApprovalReason] = useState('');
+  // Notes/comments and standalone media approval are intentionally not offered from this launch page.
+  // Job completion review uses the persisted manager approve/reject endpoints below.
   const [showVideoArchive, setShowVideoArchive] = useState(false);
   const [archiveFilter, setArchiveFilter] = useState('all'); // all, pending_review, approved, rejected, flagged, archived
   const [archiveDateFilter, setArchiveDateFilter] = useState('');
@@ -600,9 +892,6 @@ export default function VendorJobs() {
     linkedAssetCount: number;
     message: string;
   } | null>(null);
-  const [showCustomerApprovalWorkflow, setShowCustomerApprovalWorkflow] = useState(false);
-  const [customerApprovalJob, setCustomerApprovalJob] = useState(null);
-  
   // Video details modal state
   const [showVideoDetailsModal, setShowVideoDetailsModal] = useState(false);
   const [selectedVideoForDetails, setSelectedVideoForDetails] = useState(null);
@@ -646,6 +935,7 @@ export default function VendorJobs() {
   const hasVideoFile = Boolean(newVideo.file);
   const hasVideoStage = Boolean(normalizeVendorJobVideoStage(newVideo.videoStage));
   const hasSelectedJobAssigned = Boolean(selectedJob && isJobAssignedForVideoUpload(selectedJob));
+  const selectedStageGuidance = getStageVideoGuidance(normalizeVendorJobVideoStage(newVideo.videoStage));
   const canUploadVideo = Boolean(
     hasSelectedJob &&
     hasSelectedJobAssigned &&
@@ -667,9 +957,9 @@ export default function VendorJobs() {
       setServicesLoading(true);
       setServicesLoadError('');
       try {
-        const res = await fetch(`/api/services?vendorId=${encodeURIComponent(String(vendorId))}`, {
+        const res = await fetchWithTimeout(`/api/services?vendorId=${encodeURIComponent(String(vendorId))}`, {
           cache: 'no-store',
-        });
+        }, VENDOR_SERVICES_TIMEOUT_MS);
         const payload = await res.json().catch(() => ({}));
         const services = Array.isArray(payload?.services) ? payload.services : [];
         const normalized = services
@@ -684,7 +974,11 @@ export default function VendorJobs() {
         setServiceOptions(vendorScoped.map(({ id, name }: any) => ({ id, name })));
       } catch (error) {
         setServiceOptions([]);
-        setServicesLoadError('Could not load vendor services.');
+        setServicesLoadError(
+          error instanceof Error && error.message === 'Request timed out'
+            ? 'Vendor services took too long to load. Please retry.'
+            : 'Could not load vendor services.'
+        );
       } finally {
         setServicesLoading(false);
       }
@@ -712,7 +1006,9 @@ export default function VendorJobs() {
       setEmployeesLoading(true);
       setEmployeesLoadError('');
       try {
-        const members = await fetchVendorTeamMembers(String(vendorId), () => getRequestHeaders());
+        const members = await fetchVendorTeamMembers(String(vendorId), () => getRequestHeaders(), {
+          timeoutMs: VENDOR_TEAM_TIMEOUT_MS,
+        });
         setTeamMembers(members);
       } catch (error) {
         setTeamMembers([]);
@@ -767,7 +1063,7 @@ export default function VendorJobs() {
       const base =
         typeof window !== 'undefined' && window.location?.origin
           ? window.location.origin
-          : 'http://localhost:3000';
+          : 'https://reliance.invalid';
       const parsed = new URL(value, base);
       return { protocol: parsed.protocol, hostname: parsed.hostname, isSpecial: false };
     } catch {
@@ -862,7 +1158,7 @@ export default function VendorJobs() {
       downloadReturnedUrl: secureDownloadReturnedUrl,
       branch: 'dev-error',
     });
-    throw new Error('Video file is not available for playback in development mode because cloud storage is not configured.');
+    throw new Error('Video playback is unavailable right now because secure storage is not configured for this file.');
   };
 
   const handleWatchVideo = async (video: any) => {
@@ -919,7 +1215,7 @@ export default function VendorJobs() {
 
   const jobHasVideoForStage = (job: any, stage: VendorJobVideoStage) => {
     const videos = Array.isArray(job?.videos) ? job.videos : [];
-    return videos.some((video: any) => {
+    const hasVideoRecord = videos.some((video: any) => {
       const explicit = normalizeVendorJobVideoStage(video?.vendorJobVideoStage);
       if (explicit === stage) return true;
       const inferred = resolveVendorJobVideoStageFromSession({
@@ -928,6 +1224,11 @@ export default function VendorJobs() {
       });
       return inferred === stage;
     });
+    if (hasVideoRecord) return true;
+    const uploadedStages = Array.isArray(job?.uploadedVideoStages)
+      ? job.uploadedVideoStages.map((value: unknown) => String(value || "").trim().toUpperCase())
+      : [];
+    return uploadedStages.includes(stage);
   };
 
   const getStageVideoForJob = (job: any, stage: VendorJobVideoStage) => {
@@ -1232,6 +1533,7 @@ export default function VendorJobs() {
       videoStage: stage,
       replaceStage: Boolean(replaceExisting),
     });
+    setSelectedVideoDurationSeconds(null);
     setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
     setVideoUploadError('');
     setShowModal(true);
@@ -1362,13 +1664,18 @@ export default function VendorJobs() {
       linkedSessionCount: Number(job?.linkedSessionCount || 0),
       estimatedCompletion: null,
       completedAt: status === 'completed' ? createdAtIso : null,
-      phone: '',
-      email: '',
+      phone: String(job?.customerPhone || job?.phone || '').trim(),
+      email: String(job?.customerEmail || job?.email || '').trim(),
+      customerEmail: String(job?.customerEmail || job?.email || '').trim(),
+      customerPhone: String(job?.customerPhone || job?.phone || '').trim(),
       assignedEmployees: Array.isArray(job?.assignedEmployees) ? job.assignedEmployees : [],
       assignedMembershipIds: Array.isArray(job?.assignedMembershipIds)
         ? job.assignedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
         : [],
       source: String(job?.source || 'vendor_created_job'),
+      uploadedVideoStages: Array.isArray(job?.uploadedVideoStages)
+        ? job.uploadedVideoStages.map((value: unknown) => String(value || '').trim().toUpperCase()).filter(Boolean)
+        : [],
       videos: [],
       notes: [],
       audit: [],
@@ -1376,6 +1683,10 @@ export default function VendorJobs() {
       customerApprovalRequestedAt: null,
       customerApprovalCompletedAt: null,
       customerApprovalWorkflow: null,
+      consentStatus: String(job?.consentStatus || '').trim() || CONSENT_STATE.NOT_REQUESTED,
+      latestConsentToken: String(job?.latestConsentToken || '').trim(),
+      consentAcceptedAt: job?.consentAcceptedAt || null,
+      consentDeclinedAt: job?.consentDeclinedAt || null,
       archivedAt: status === 'archived' ? (job?.date || new Date().toISOString()) : null,
       archiveReason: status === 'archived' ? 'Archived job' : '',
     };
@@ -1499,7 +1810,13 @@ export default function VendorJobs() {
 
   const reloadJobsFromBackend = useCallback(async () => {
     if (!vendorId) {
-      setJobsLoading(true);
+      if (vendorProfileLoading) {
+        setJobsLoadError('');
+        return;
+      }
+      setJobs([]);
+      setArchivedJobs([]);
+      setJobsLoading(false);
       setJobsLoadError('');
       return;
     }
@@ -1509,7 +1826,7 @@ export default function VendorJobs() {
     try {
       const fetchDashboardOnce = async (targetVendorId: string) => {
         const headers = getRequestHeaders();
-        const fetchUrl = `/api/vendors/${targetVendorId}/dashboard`;
+        const fetchUrl = `/api/vendors/${targetVendorId}/dashboard?jobsOnly=1`;
         if (dashboardDebug) {
           console.info("[vendor/jobs] dashboard fetch", {
             vendorId: targetVendorId,
@@ -1519,11 +1836,11 @@ export default function VendorJobs() {
             vendorProfileId: vendorProfile?.id || null,
           });
         }
-        const res = await fetch(fetchUrl, {
+        const res = await fetchWithTimeout(fetchUrl, {
           method: 'GET',
           headers,
           cache: 'no-store',
-        });
+        }, VENDOR_JOBS_TIMEOUT_MS);
         const rawText = await res.text().catch(() => '');
         const parsed = parseResponsePayload(rawText);
         return { res, rawText, parsed, targetVendorId };
@@ -1564,16 +1881,21 @@ export default function VendorJobs() {
       const adaptedArchivedJobs = archivedFromApi.map(adaptRecentJobToUiJob);
       setJobs(adaptedJobs);
       setArchivedJobs(adaptedArchivedJobs);
-      await hydratePersistedVideos(adaptedJobs);
+      void hydratePersistedVideos(adaptedJobs);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to load jobs';
+      const message =
+        error instanceof Error && error.message === 'Request timed out'
+          ? 'Jobs took too long to load. Please retry.'
+          : error instanceof Error
+            ? error.message
+            : 'Failed to load jobs';
       setJobs([]);
       setArchivedJobs([]);
       setJobsLoadError(message);
     } finally {
       setJobsLoading(false);
     }
-  }, [vendorId, dashboardDebug, vendorProfile?.id]);
+  }, [vendorId, vendorProfileLoading, dashboardDebug, vendorProfile?.id]);
 
   useEffect(() => {
     reloadJobsFromBackend().catch(() => {
@@ -1581,6 +1903,56 @@ export default function VendorJobs() {
       setJobsLoadError('Failed to load jobs');
     });
   }, [reloadJobsFromBackend]);
+
+  useEffect(() => {
+    if (jobsLoading || jobs.length === 0) {
+      return;
+    }
+
+    const bookingIdsToHydrate = jobs
+      .map((job) => String(job?.bookingId || job?.id || '').trim())
+      .filter((bookingId) => bookingId && !(bookingId in consentStatusByBookingId));
+
+    if (bookingIdsToHydrate.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const resolvedEntries = await Promise.all(
+        bookingIdsToHydrate.map(async (bookingId) => {
+          try {
+            const res = await fetch(`/api/consent/status?bookingId=${encodeURIComponent(bookingId)}`, {
+              method: 'GET',
+              headers: getRequestHeaders(),
+              cache: 'no-store',
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok || payload?.success === false) {
+              return null;
+            }
+            const mapped = mapConsentStatusPayloadToUiState(payload);
+            return [bookingId, mapped.status] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const updates = Object.fromEntries(resolvedEntries.filter(Boolean) as Array<readonly [string, string]>);
+      if (Object.keys(updates).length > 0) {
+        setConsentStatusByBookingId((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jobs, jobsLoading, consentStatusByBookingId]);
 
   // Filter jobs based on view mode and search
   const filteredJobs = jobs.filter(job => {
@@ -1817,6 +2189,17 @@ export default function VendorJobs() {
     if (!file) {
       return;
     }
+    if (
+      selectedVideoDurationSeconds == null ||
+      isOverStageVideoLimit(selectedVideoDurationSeconds)
+    ) {
+      setVideoFieldErrors((prev) => ({
+        ...prev,
+        file: `Stage videos must be ${formatStageVideoDuration(STAGE_VIDEO_MAX_DURATION_SECONDS)} or less.`,
+      }));
+      setVideoUploadError(`Please choose a shorter clip. ${getStageVideoLimitCopy()}`);
+      return;
+    }
 
     activeUploadKeyRef.current = uploadKey;
     setIsUploadingVideo(true);
@@ -1842,6 +2225,7 @@ export default function VendorJobs() {
         file,
         videoStage,
         replaceExisting: Boolean(newVideo.replaceStage),
+        durationSeconds: selectedVideoDurationSeconds,
         locationContext: location || undefined,
         consentAccepted: customerConsentReceived,
         consentToken: activeConsentToken || undefined,
@@ -1873,6 +2257,7 @@ export default function VendorJobs() {
       });
 
       setNewVideo({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
+      setSelectedVideoDurationSeconds(null);
       setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
       setShowModal(false);
       setSelectedJob(null);
@@ -1911,14 +2296,36 @@ export default function VendorJobs() {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type.startsWith('video/')) {
-      setNewVideo({ ...newVideo, file });
-      setVideoFieldErrors((prev) => ({ ...prev, file: '' }));
+    setSelectedVideoDurationSeconds(null);
+    if (!file || !file.type.startsWith('video/')) {
+      setNewVideo({ ...newVideo, file: null });
       return;
     }
-    setNewVideo({ ...newVideo, file: null });
+    try {
+      const durationSeconds = await getVideoFileDurationSeconds(file);
+      if (isOverStageVideoLimit(durationSeconds)) {
+        e.currentTarget.value = '';
+        setNewVideo({ ...newVideo, file: null });
+        setVideoFieldErrors((prev) => ({
+          ...prev,
+          file: `This clip is ${formatStageVideoDuration(durationSeconds)}. Stage videos must be ${formatStageVideoDuration(STAGE_VIDEO_MAX_DURATION_SECONDS)} or less.`,
+        }));
+        return;
+      }
+      setSelectedVideoDurationSeconds(durationSeconds);
+      setNewVideo({ ...newVideo, file });
+      setVideoFieldErrors((prev) => ({ ...prev, file: '' }));
+      setVideoUploadError('');
+    } catch (error) {
+      e.currentTarget.value = '';
+      setNewVideo({ ...newVideo, file: null });
+      setVideoFieldErrors((prev) => ({
+        ...prev,
+        file: 'Could not read this video duration. Choose a short clip recorded to 30 seconds or less.',
+      }));
+    }
   };
 
   // Enhancement 1: Job Status Management Functions
@@ -1975,15 +2382,34 @@ export default function VendorJobs() {
     if (jobMutationLoadingId) return;
     setJobMutationLoadingId(`assign:${String(job?.id || '')}`);
     setJobActionFeedback(null);
+    const assignedNames = nextMembershipIds
+      .map((membershipId) => {
+        const member = teamMembers.find((row) => row.membershipId === membershipId);
+        return member?.name ? String(member.name).trim() : '';
+      })
+      .filter(Boolean);
+    const assignedJob = {
+      ...job,
+      assignedMembershipIds: nextMembershipIds,
+      assignedEmployees: assignedNames.length > 0 ? assignedNames : job?.assignedEmployees || [],
+    };
     try {
       const payload = await runPersistedJobAction(job, "ASSIGN_JOB", {
         assignedMembershipIds: nextMembershipIds,
       });
+      setJobs((prev) =>
+        prev.map((existing) =>
+          String(existing?.id || '') === String(job?.id || '') ? { ...existing, ...assignedJob } : existing
+        )
+      );
+      setSelectedJob((prev) =>
+        prev && String((prev as any)?.id || '') === String(job?.id || '') ? assignedJob : prev
+      );
       await reloadJobsFromBackend();
       setJobActionFeedback({ type: 'success', message: payload?.message || 'Job assignment updated.' });
       setShowAssignmentModal(false);
-      setSelectedJob(null);
       setSelectedAssignmentMembershipIds([]);
+      openComplianceForNextStage(assignedJob);
     } catch (error) {
       setJobActionFeedback({
         type: 'error',
@@ -2000,73 +2426,17 @@ export default function VendorJobs() {
     setShowAssignmentModal(true);
   };
 
-  // Enhancement 3: Job Notes/Comments System Functions
-  const handleAddNote = (job: any) => {
-    if (newNote.trim()) {
-      const note = {
-        id: Date.now(),
-        text: newNote,
-        author: 'You', // TODO: Replace with actual user
-        date: new Date().toLocaleDateString()
-      };
-      
-      const updatedJob = {
-        ...job,
-        notes: [...job.notes, note],
-        audit: [...job.audit, `Note added on ${new Date().toLocaleDateString()}`]
-      };
-      
-      setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
-      setNewNote('');
-    }
-  };
-
-  const handleEditNote = (job: any, noteId: number) => {
-    const note = job.notes.find((n: { id: number }) => n.id === noteId);
-    setEditingNote(note);
-    setEditingNoteText(note.text);
-  };
-
-  const handleSaveNoteEdit = (job: any, noteId: number) => {
-    const updatedJob = {
-      ...job,
-      notes: job.notes.map((note: any) => 
-        note.id === noteId 
-          ? { ...note, text: editingNoteText, date: `${new Date().toLocaleDateString()} (edited)` }
-          : note
-      ),
-      audit: [...job.audit, `Note edited on ${new Date().toLocaleDateString()}`]
-    };
-    
-    setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
-    setEditingNote(null);
-    setEditingNoteText('');
-  };
-
-  const handleDeleteNote = (job: any, noteId: number) => {
-    const updatedJob = {
-      ...job,
-      notes: job.notes.filter((note: { id: number }) => note.id !== noteId),
-      audit: [...job.audit, `Note deleted on ${new Date().toLocaleDateString()}`]
-    };
-    
-    setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
-  };
-
-  const openNotesModal = (job: any) => {
-    setSelectedJob(job);
-    setShowNotesModal(true);
-  };
-
   // Bulk selection functions
   const toggleBulkMode = () => {
-    console.log('Toggle bulk mode clicked, current state:', isBulkMode);
-    setIsBulkMode(!isBulkMode);
-    if (isBulkMode) {
+    const nextBulkMode = !isBulkMode;
+    setIsBulkMode(nextBulkMode);
+    if (!nextBulkMode) {
       setSelectedJobIds([]);
     }
-    // Show feedback
-    alert(isBulkMode ? 'Exited bulk mode' : 'Entered bulk mode - select jobs to assign');
+    setJobActionFeedback({
+      type: 'success',
+      message: nextBulkMode ? 'Bulk assignment mode enabled. Select jobs to assign.' : 'Bulk assignment mode closed.',
+    });
   };
 
   const toggleJobSelection = (jobId: string | number) => {
@@ -2109,130 +2479,6 @@ export default function VendorJobs() {
       });
     } finally {
       setJobMutationLoadingId(null);
-    }
-  };
-
-  // Auto-approval functions
-  const toggleAutoApprove = () => {
-    console.log('Toggle auto-approve clicked, current state:', autoApproveSettings.enabled);
-    if (!autoApproveSettings.enabled) {
-      setShowAutoApproveWarning(true);
-    } else {
-      setAutoApproveSettings(prev => ({ ...prev, enabled: false }));
-      alert('Auto-approve disabled');
-    }
-  };
-
-  const confirmAutoApprove = () => {
-    setAutoApproveSettings(prev => ({ ...prev, enabled: true }));
-    setShowAutoApproveWarning(false);
-    
-    // Log the auto-approval activation
-    console.log('Auto-approval enabled with settings:', autoApproveSettings);
-    alert('Auto-approve enabled! Videos will be automatically approved when criteria are met.');
-  };
-
-  const handleAutoApproveVideo = (job: any, video: any, employee: string) => {
-    // Check if auto-approval conditions are met
-    const conditions = {
-      employeeWhitelisted: autoApproveSettings.employeeWhitelist.includes(employee) || autoApproveSettings.employeeWhitelist.length === 0,
-      durationValid: video.duration <= autoApproveSettings.maxDuration,
-      locationValid: autoApproveSettings.requireLocation ? job.locationVerified : true,
-      consentValid: autoApproveSettings.requireConsent ? job.customerConsent : true
-    };
-
-    const allConditionsMet = Object.values(conditions).every(Boolean);
-
-    if (allConditionsMet) {
-      // Auto-approve the video
-      const updatedVideo = {
-        ...video,
-        status: 'approved',
-        approvedAt: new Date().toISOString(),
-        approvedBy: 'Auto-Approval System',
-        autoApproved: true
-      };
-
-      setJobs(jobs.map(j => 
-        j.id === job.id 
-          ? { 
-              ...j, 
-              videos: j.videos.map((v: any) => v.id === video.id ? updatedVideo : v),
-              audit: [...j.audit, `Video "${video.title}" auto-approved for ${employee} on ${new Date().toLocaleDateString()}`]
-            }
-          : j
-      ));
-
-      // Notify manager if enabled
-      if (autoApproveSettings.notifyManager) {
-        console.log(`Notification sent to manager: Video "${video.title}" auto-approved for ${employee}`);
-      }
-
-      return { success: true, video: updatedVideo };
-    } else {
-      // Log failed auto-approval attempt
-      console.log('Auto-approval failed - conditions not met:', conditions);
-      return { success: false, conditions };
-    }
-  };
-
-  const getPendingVideosCount = () => {
-    return jobs.reduce((count, job) => {
-      return count + job.videos.filter(video => video.status === 'pending-approval').length;
-    }, 0);
-  };
-
-  // Video approval functions
-  const openVideoApproval = (video, job) => {
-    setSelectedVideoForApproval({ video, job });
-    setShowVideoApprovalModal(true);
-    setApprovalReason('');
-  };
-
-  const handleVideoApproval = (approved) => {
-    if (!selectedVideoForApproval) return;
-
-    const { video, job } = selectedVideoForApproval;
-    const updatedVideo = {
-      ...video,
-      status: approved ? 'approved' : 'rejected',
-      reviewedAt: new Date().toISOString(),
-      reviewedBy: 'Manager', // In real app, get from auth context
-      reviewReason: approvalReason,
-      archivedDate: new Date().toISOString().split('T')[0], // Archive by date
-      approvalMethod: autoApproveSettings.enabled ? 'auto' : 'manual'
-    };
-
-    const updatedJob = {
-      ...job,
-      videos: job.videos.map(v => v.id === video.id ? updatedVideo : v),
-      audit: [...job.audit, `Video "${video.title}" ${approved ? 'approved' : 'rejected'} on ${new Date().toLocaleDateString()}`]
-    };
-
-    // If approved, trigger customer approval workflow
-    if (approved) {
-      updatedJob.customerApprovalStatus = 'pending';
-      updatedJob.customerApprovalRequestedAt = new Date().toISOString();
-      updatedJob.customerApprovalDeadline = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(); // 72 hours
-      updatedJob.customerApprovalWorkflow = {
-        status: 'initiated',
-        initiatedAt: new Date().toISOString(),
-        videoId: video.id,
-        approvalMethod: autoApproveSettings.enabled ? 'auto' : 'manual',
-        managerNotes: approvalReason
-      };
-    }
-
-    setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
-
-    setShowVideoApprovalModal(false);
-    setSelectedVideoForApproval(null);
-    setApprovalReason('');
-
-    // If approved, show customer approval workflow
-    if (approved) {
-      setCustomerApprovalJob(updatedJob);
-      setShowCustomerApprovalWorkflow(true);
     }
   };
 
@@ -2507,22 +2753,34 @@ export default function VendorJobs() {
       setGeoError('Select a valid job before requesting customer consent.');
       return;
     }
-    const bookingId = selectedJob?.bookingId ? String(selectedJob.bookingId) : String(selectedJob?.id || '');
+    const selectedJobSnapshot = selectedJob;
+    const vendorIdSnapshot = String(vendorId);
+    const selectedLocation = String(location || '').trim().toLowerCase();
+    const requestHeaders = getRequestHeaders();
+    const bookingId = selectedJobSnapshot?.bookingId
+      ? String(selectedJobSnapshot.bookingId)
+      : String(selectedJobSnapshot?.id || '');
     if (!bookingId) {
       setGeoError('This job is missing booking linkage. Reload jobs and try again.');
       return;
     }
+    if (!hasCustomerContactForJob(selectedJobSnapshot)) {
+      setGeoError(
+        'Customer email or phone is required before sending video consent. Update the job/customer contact first; assigned employee contact is not used for customer consent.'
+      );
+      return;
+    }
     setGeoError('');
-    setCustomerConsentRequested(true);
-    setCustomerConsentReceived(false);
-    setCustomerConsentStatus(CONSENT_STATE.REQUESTED);
+    setGeoInfo('');
+    setConsentRefreshError('');
+    setCustomerConsentSending(true);
     try {
-      const sessionRes = await fetch(`/api/vendors/${vendorId}/media/sessions`, {
+      const sessionRes = await fetch(`/api/vendors/${vendorIdSnapshot}/media/sessions`, {
         method: 'POST',
-        headers: getRequestHeaders(),
+        headers: requestHeaders,
         body: JSON.stringify({
           bookingId,
-          serviceId: selectedJob?.serviceId ? String(selectedJob.serviceId) : undefined,
+          serviceId: selectedJobSnapshot?.serviceId ? String(selectedJobSnapshot.serviceId) : undefined,
           sessionType: 'CONSENT_REQUEST',
           title: 'Customer consent request',
           description: `Consent request before ${location || 'service'} recording`,
@@ -2541,10 +2799,10 @@ export default function VendorJobs() {
 
       const consentRes = await fetch('/api/consent/request', {
         method: 'POST',
-        headers: getRequestHeaders(),
+        headers: requestHeaders,
         body: JSON.stringify({
           bookingId,
-          vendorId: String(vendorId),
+          vendorId: vendorIdSnapshot,
           mediaSessionId,
           consentType: 'video_access',
           origin: window.location.origin,
@@ -2557,16 +2815,17 @@ export default function VendorJobs() {
         );
       }
       const token = String(consentPayload?.consent?.token || '').trim();
+      setCustomerConsentRequested(true);
+      setCustomerConsentReceived(false);
       setActiveConsentToken(token);
-      const selectedLocation = String(location || '').trim().toLowerCase();
       if (
-        selectedJob &&
+        selectedJobSnapshot &&
         token &&
         (selectedLocation === 'business' ||
           selectedLocation === 'residence' ||
           selectedLocation === 'customer-business')
       ) {
-        mergeRecordingComplianceForJob(selectedJob, {
+        mergeRecordingComplianceForJob(selectedJobSnapshot, {
           location: selectedLocation as 'business' | 'residence' | 'customer-business',
           consentAccepted: false,
           consentToken: token,
@@ -2574,23 +2833,23 @@ export default function VendorJobs() {
           savedAt: new Date().toISOString(),
         });
       }
-      applyConsentStatusFromBackend(consentPayload?.consent?.status || 'REQUESTED');
-      const bookingKey = selectedJob?.bookingId
-        ? String(selectedJob.bookingId)
-        : String(selectedJob?.id || '');
+      applyConsentStatusFromBackend(consentPayload?.consent?.status || 'REQUESTED', {
+        consentToken: token,
+      });
+      const bookingKey = selectedJobSnapshot?.bookingId
+        ? String(selectedJobSnapshot.bookingId)
+        : String(selectedJobSnapshot?.id || '');
       if (bookingKey) {
         setConsentStatusByBookingId((prev) => ({ ...prev, [bookingKey]: CONSENT_STATE.REQUESTED }));
       }
       if (token) {
-        try {
-          await fetchConsentStatus(token);
-        } catch (statusError: any) {
+        void fetchConsentStatus(token).catch((statusError: any) => {
           setGeoInfo(
             statusError?.message
               ? `Consent request sent. Unable to refresh status right now: ${statusError.message}`
               : 'Consent request sent. Unable to refresh status right now.'
           );
-        }
+        });
       }
     } catch (error: any) {
       setCustomerConsentStatus(CONSENT_STATE.NOT_REQUESTED);
@@ -2598,6 +2857,8 @@ export default function VendorJobs() {
       setCustomerConsentReceived(false);
       setActiveConsentToken('');
       setGeoError(error?.message || 'Failed to request customer consent');
+    } finally {
+      setCustomerConsentSending(false);
     }
   };
 
@@ -2716,10 +2977,10 @@ export default function VendorJobs() {
     setPreferredNextVideoStage('');
     setPreferredReplaceStage(false);
     setShowModal(true);
-    
-    // Log successful compliance completion
-    console.log('Compliance completed successfully, opening video upload modal');
-    alert('Compliance completed! Opening video upload modal.');
+    setJobActionFeedback({
+      type: 'success',
+      message: 'Compliance completed. Upload the selected stage video to continue.',
+    });
   };
 
   const getStatusColor = (status) => {
@@ -3435,21 +3696,6 @@ export default function VendorJobs() {
     );
   }
 
-  if (vendorProfileLoading && !vendorId) {
-    return (
-      <div className="p-4 bg-gradient-to-br from-gray-50 to-blue-50">
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">Loading vendor context...</h2>
-            <p className="text-sm text-slate-700">
-              We are resolving your active vendor session before loading jobs.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (vendorContextUnavailable) {
     return (
       <div className="p-4 bg-gradient-to-br from-gray-50 to-blue-50">
@@ -3483,7 +3729,15 @@ export default function VendorJobs() {
   }
 
   return (
-    <div className="overflow-x-hidden p-4 bg-gradient-to-br from-gray-50 to-blue-50">
+    <div className="reliance-operator-shell min-h-screen overflow-x-hidden p-4">
+      {vendorContextResolving && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white/90 p-3 shadow-sm">
+          <p className="text-sm font-medium text-slate-900">Resolving vendor context...</p>
+          <p className="mt-1 text-sm text-slate-700">
+            The jobs workspace shell is ready while Reliance finishes loading your active vendor session.
+          </p>
+        </div>
+      )}
       {Boolean(vendorId && vendorContextDbFailure) && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
           <div className="flex items-start justify-between gap-3">
@@ -3502,7 +3756,7 @@ export default function VendorJobs() {
         </div>
       )}
       {/* Enhanced Welcome Banner */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl p-6 mb-6 shadow-lg">
+      <div className="reliance-operator-hero mb-6 rounded-2xl p-6 text-white shadow-lg">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-white/20 rounded-full">
             <Info className="w-6 h-6" />
@@ -3518,8 +3772,59 @@ export default function VendorJobs() {
         </div>
       </div>
 
+      <Dialog
+        open={showJobWorkflowGuide}
+        onOpenChange={(open) => {
+          if (open) {
+            setShowJobWorkflowGuide(true);
+          } else {
+            closeJobWorkflowGuide();
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>How the job workflow works</DialogTitle>
+            <DialogDescription>
+              A quick guide for moving a new vendor job from setup through service videos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-gray-700">
+              <li><strong>Create the job</strong> with the customer and service details.</li>
+              <li><strong>Assign an employee</strong> before starting consent or staged video work.</li>
+              <li>
+                <strong>Choose the recording location.</strong> Business address recordings require location
+                verification only. Customer residence recordings require customer consent. Customer business
+                recordings require both customer consent and location verification.
+              </li>
+              <li><strong>Send customer consent if required</strong> and wait for the customer to accept it.</li>
+              <li><strong>Verify location if required</strong> before the recording workflow continues.</li>
+              <li><strong>Start the Intro video</strong> once the required consent/location steps are complete.</li>
+              <li><strong>Continue with During Service and Completed videos</strong> so the job has the full video package.</li>
+            </ol>
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              Each job card shows its current <strong>Next step</strong>, including whether consent is not required,
+              waiting for customer acceptance, or ready for the next video stage.
+            </div>
+            <label className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
+              <Checkbox
+                checked={dontShowJobWorkflowGuideAgain}
+                onCheckedChange={(checked) => setDontShowJobWorkflowGuideAgain(Boolean(checked))}
+                aria-label="Do not show the job workflow guide automatically again"
+              />
+              <span>Don&apos;t show this again</span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button onClick={closeJobWorkflowGuide}>Got it</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="reliance-light-card mb-6 rounded-2xl border border-slate-200 p-5 shadow-sm">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-3xl font-bold text-gray-800">
@@ -3565,9 +3870,11 @@ export default function VendorJobs() {
           </div>
         </div>
       </div>
+      </div>
 
       {/* Action Bar */}
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
+      <div className="reliance-light-card mb-6 rounded-2xl border border-slate-200 p-4 shadow-sm">
+      <div className="flex flex-col md:flex-row gap-4">
         <div className="flex-1 min-w-0 search-input-container">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -3598,6 +3905,15 @@ export default function VendorJobs() {
           
           {!isEmployeeView && (
             <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={openJobWorkflowGuide}
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                <Info className="w-4 h-4 mr-2" />
+                How job workflow works
+              </Button>
               <Button 
                 onClick={() => {
                   setJobModalMode('create');
@@ -3616,6 +3932,7 @@ export default function VendorJobs() {
             </>
           )}
         </div>
+      </div>
       </div>
 
       {!isEmployeeView && moderationUpdateCount > 0 && (
@@ -3989,7 +4306,7 @@ export default function VendorJobs() {
               </video>
             ) : (
               <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                Video file is not available for playback in development mode because cloud storage is not configured.
+                Video preview is temporarily unavailable because a storage playback link could not be loaded.
               </div>
             )}
           </div>
@@ -4046,7 +4363,7 @@ export default function VendorJobs() {
                 <div className="aspect-video bg-gray-200 rounded-lg flex items-center justify-center">
                   <div className="text-center">
                     <Video className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600">Use the review package player to preview stage proof videos.</p>
+                    <p className="text-sm text-gray-600">Use the review package player to preview stage videos.</p>
                   </div>
                 </div>
               </div>
@@ -4125,10 +4442,9 @@ export default function VendorJobs() {
                   <div className="mt-4">
                     <p className="text-sm text-gray-600 mb-2">Review Notes</p>
                     <p className="text-sm bg-gray-50 p-3 rounded border">
-                      {selectedVideoForDetails.status === 'approved' 
-                        ? "Video quality is excellent. All safety protocols followed correctly. Work completed according to specifications."
-                        : "Video quality needs improvement. Some safety protocols not clearly visible. Please re-record with better lighting."
-                      }
+                      {selectedVideoForDetails.moderationReason ||
+                        selectedVideoForDetails.reviewReason ||
+                        "No reviewer note is available for this media item."}
                     </p>
                   </div>
                 </div>
@@ -4138,35 +4454,36 @@ export default function VendorJobs() {
               <div className="space-y-4">
                 <h4 className="font-medium text-gray-900">Audit Trail</h4>
                 <div className="space-y-2">
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-gray-600">{formatDateOnlyUtc(selectedVideoForDetails.reviewedAt)} {formatTimeUtc(selectedVideoForDetails.reviewedAt)}</span>
-                    <span className="font-medium">Video {selectedVideoForDetails.status} by {selectedVideoForDetails.reviewedBy}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="text-gray-600">
-                      {formatDateOnlyUtc(
-                        selectedVideoForDetails?.reviewedAt
-                          ? new Date(new Date(selectedVideoForDetails.reviewedAt).getTime() - 86400000)
-                          : null
-                      )}{' '}
-                      14:30:22
-                    </span>
-                    <span className="font-medium">Video uploaded by John Smith</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                    <span className="text-gray-600">
-                      {formatDateOnlyUtc(
-                        selectedVideoForDetails?.reviewedAt
-                          ? new Date(new Date(selectedVideoForDetails.reviewedAt).getTime() - 172800000)
-                          : null
-                      )}{' '}
-                      09:15:45
-                    </span>
-                    <span className="font-medium">Job assigned to John Smith</span>
-                  </div>
+                  {selectedVideoForDetails.createdAt || selectedVideoForDetails.uploadDate ? (
+                    <div className="flex items-center gap-3 text-sm">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <span className="text-gray-600">
+                        {formatDateOnlyUtc(selectedVideoForDetails.createdAt || selectedVideoForDetails.uploadDate)}{' '}
+                        {formatTimeUtc(selectedVideoForDetails.createdAt || selectedVideoForDetails.uploadDate)}
+                      </span>
+                      <span className="font-medium">
+                        Uploaded by {selectedVideoForDetails.employee || "assigned team member"}
+                      </span>
+                    </div>
+                  ) : null}
+                  {selectedVideoForDetails.moderatedAt || selectedVideoForDetails.reviewedAt ? (
+                    <div className="flex items-center gap-3 text-sm">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-gray-600">
+                        {formatDateOnlyUtc(selectedVideoForDetails.moderatedAt || selectedVideoForDetails.reviewedAt)}{' '}
+                        {formatTimeUtc(selectedVideoForDetails.moderatedAt || selectedVideoForDetails.reviewedAt)}
+                      </span>
+                      <span className="font-medium">
+                        Moderation status: {String(selectedVideoForDetails.moderationStatus || selectedVideoForDetails.status || "pending_review").replace(/_/g, " ")}
+                      </span>
+                    </div>
+                  ) : null}
+                  {!selectedVideoForDetails.createdAt &&
+                  !selectedVideoForDetails.uploadDate &&
+                  !selectedVideoForDetails.moderatedAt &&
+                  !selectedVideoForDetails.reviewedAt ? (
+                    <p className="text-sm text-gray-600">No audit timestamps are available for this media item.</p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -4174,17 +4491,10 @@ export default function VendorJobs() {
 
           {/* Action Buttons */}
           <div className="flex-shrink-0 pt-4 border-t">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm">
-                  <Download className="w-4 h-4 mr-1" />
-                  Download Video
-                </Button>
-                <Button variant="outline" size="sm">
-                  <MessageSquare className="w-4 h-4 mr-1" />
-                  Share
-                </Button>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500">
+                Download and share controls are managed from approved customer-facing video surfaces, not from this vendor jobs view.
+              </p>
               <Button onClick={() => setShowVideoDetailsModal(false)}>
                 Close
               </Button>
@@ -4377,7 +4687,7 @@ export default function VendorJobs() {
               </div>
             ) : filteredJobs.length === 0 ? (
               <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-                No jobs yet - create one to start uploading proof.
+                No jobs yet — create one to start uploading videos.
               </div>
             ) : (
               filteredJobs.map((job) => {
@@ -4467,11 +4777,20 @@ export default function VendorJobs() {
               <p className="font-medium text-indigo-950">How staged job videos work</p>
               <ul className="list-disc pl-5 space-y-1.5 leading-snug">
                 <li>
-                  <strong>Intro</strong>, <strong>In Progress</strong>, and <strong>Completed</strong> are three
+                  <strong>Before Service</strong>, <strong>During Service</strong>, and <strong>Completed</strong> are three
                   separate slots. You can have at most <strong>one active video per slot</strong> for the same job.
                 </li>
                 <li>
-                  The <strong>Completed</strong> slot is your <strong>primary proof video</strong>. When it exists,
+                  Keep each stage short and useful. Clips are limited to{" "}
+                  <strong>{formatStageVideoDuration(STAGE_VIDEO_MAX_DURATION_SECONDS)}</strong>.
+                </li>
+                <li>
+                  <strong>Intro is only available after consent is accepted</strong> for customer residence/business
+                  recordings. Business-address recordings show <strong>Consent not required</strong> and use location
+                  verification instead.
+                </li>
+                <li>
+                  The <strong>Completed</strong> slot is your <strong>primary completion video</strong>. When it exists,
                   reviewers and moderators treat it as the main evidence that the job was finished as agreed.
                 </li>
                 <li>
@@ -4508,6 +4827,15 @@ export default function VendorJobs() {
                 <p className="mt-1 text-sm text-red-600">{videoFieldErrors.videoStage}</p>
               )}
             </div>
+            {selectedStageGuidance ? (
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                <p className="font-semibold">{selectedStageGuidance.label}</p>
+                <p className="mt-1">{selectedStageGuidance.cue}</p>
+                <p className="mt-1 text-xs font-medium">
+                  Timer target: {formatStageVideoDuration(STAGE_VIDEO_MAX_DURATION_SECONDS)} max.
+                </p>
+              </div>
+            ) : null}
             {selectedJob && newVideo.videoStage && jobHasVideoForStage(selectedJob, newVideo.videoStage) ? (
               <label className="flex items-start gap-2 text-sm text-gray-800">
                 <Checkbox
@@ -4517,8 +4845,8 @@ export default function VendorJobs() {
                   }
                 />
                 <span>
-                  Replace existing <strong>{formatVideoStageLabel(newVideo.videoStage)}</strong> video (archives the
-                  current upload for this stage, then uploads the new file).
+                  Retake this stage: replace the existing <strong>{formatVideoStageLabel(newVideo.videoStage)}</strong>{" "}
+                  video. The current upload for this stage will be archived after the new file is accepted.
                 </span>
               </label>
             ) : null}
@@ -4576,6 +4904,14 @@ export default function VendorJobs() {
                 aria-invalid={Boolean(videoFieldErrors.file)}
                 onChange={handleFileChange}
               />
+              <p className="mt-1 text-xs text-gray-600">
+                Upload a short clip only. {getStageVideoLimitCopy()} Record again if the first take is not clear.
+              </p>
+              {selectedVideoDurationSeconds != null ? (
+                <p className="mt-1 text-xs font-medium text-emerald-700">
+                  Selected clip length: {formatStageVideoDuration(selectedVideoDurationSeconds)}.
+                </p>
+              ) : null}
               {videoFieldErrors.file && (
                 <p className="mt-1 text-sm text-red-600">{videoFieldErrors.file}</p>
               )}
@@ -4887,7 +5223,7 @@ export default function VendorJobs() {
           <DialogHeader>
             <DialogTitle>Approve job completion?</DialogTitle>
             <DialogDescription>
-              This will mark the booking completed and send the proof package to admin moderation.
+              This will mark the booking completed and send the video package to admin moderation.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm text-gray-700">
@@ -4943,26 +5279,6 @@ export default function VendorJobs() {
         </DialogContent>
       </Dialog>
 
-      {/* Auto-Approve Warning Modal */}
-      <Dialog open={showAutoApproveWarning} onOpenChange={setShowAutoApproveWarning}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Enable Auto-Approve?</DialogTitle>
-            <DialogDescription>
-              This will automatically approve videos that meet the criteria. Are you sure you want to enable this feature?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAutoApproveWarning(false)}>
-              Cancel
-            </Button>
-            <Button onClick={confirmAutoApprove}>
-              Enable Auto-Approve
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Compliance Modal - Legal Security Flow */}
       <Dialog
         open={showComplianceModal}
@@ -4970,8 +5286,10 @@ export default function VendorJobs() {
           if (open && !selectedJob) {
             return;
           }
-          resetComplianceState();
-          setLocation('');
+          if (!open) {
+            resetComplianceState();
+            setLocation('');
+          }
           setShowComplianceModal(open);
         }}
       >
@@ -4982,7 +5300,7 @@ export default function VendorJobs() {
               Legal Compliance & Security Verification
             </DialogTitle>
             <DialogDescription>
-              Complete the required legal compliance steps before creating a service video.
+              Assign employee, choose recording location, send customer consent if required, then start the Intro video.
             </DialogDescription>
           </DialogHeader>
 
@@ -5000,6 +5318,7 @@ export default function VendorJobs() {
                     onChange={() => {
                       setLocation('business');
                       resetComplianceState();
+                      if (selectedJob) persistLocationChoiceForJob(selectedJob, 'business');
                     }} 
                   />
                   <span>At Business Address (Location verification required)</span>
@@ -5013,6 +5332,7 @@ export default function VendorJobs() {
                     onChange={() => {
                       setLocation('residence');
                       resetComplianceState();
+                      if (selectedJob) persistLocationChoiceForJob(selectedJob, 'residence');
                     }} 
                   />
                   <span>At Customer Residence (Customer consent required)</span>
@@ -5026,6 +5346,7 @@ export default function VendorJobs() {
                     onChange={() => {
                       setLocation('customer-business');
                       resetComplianceState();
+                      if (selectedJob) persistLocationChoiceForJob(selectedJob, 'customer-business');
                     }} 
                   />
                   <span>At Customer Business (Customer consent + Location verification)</span>
@@ -5172,16 +5493,38 @@ export default function VendorJobs() {
                       </div>
                     </div>
 
+                    <div className="mb-4 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <div className="font-medium text-gray-900">Consent recipient</div>
+                      <div className={hasCustomerContactForJob(selectedJob) ? 'text-gray-700' : 'text-red-700'}>
+                        {formatCustomerConsentRecipient(selectedJob)}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        Uses the job customer/client contact only. Assigned employee contact is never used for consent.
+                      </div>
+                    </div>
+
                     <Button 
                       onClick={handleRequestCustomerConsent} 
                       disabled={
+                        !hasCustomerContactForJob(selectedJob) ||
+                        customerConsentSending ||
                         customerConsentStatus === CONSENT_STATE.REQUESTED ||
                         customerConsentStatus === CONSENT_STATE.ACCEPTED
                       }
                       className="w-full"
                     >
-                      Request Customer Consent
+                      {customerConsentSending ? 'Sending Video Consent...' : 'Send Video Consent to Customer'}
                     </Button>
+                    {!hasCustomerContactForJob(selectedJob) ? (
+                      <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        Customer email or phone is missing, so consent cannot be sent from this workflow.
+                      </div>
+                    ) : null}
+                    {customerConsentSending ? (
+                      <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                        Sending customer consent request now. This status will update only after Reliance confirms the request was created.
+                      </div>
+                    ) : null}
                     
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
@@ -5267,16 +5610,38 @@ export default function VendorJobs() {
                       </div>
                     </div>
 
+                    <div className="mb-4 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <div className="font-medium text-gray-900">Consent recipient</div>
+                      <div className={hasCustomerContactForJob(selectedJob) ? 'text-gray-700' : 'text-red-700'}>
+                        {formatCustomerConsentRecipient(selectedJob)}
+                      </div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        Uses the job customer/client contact only. Assigned employee contact is never used for consent.
+                      </div>
+                    </div>
+
                     <Button 
                       onClick={handleRequestCustomerConsent} 
                       disabled={
+                        !hasCustomerContactForJob(selectedJob) ||
+                        customerConsentSending ||
                         customerConsentStatus === CONSENT_STATE.REQUESTED ||
                         customerConsentStatus === CONSENT_STATE.ACCEPTED
                       }
                       className="w-full"
                     >
-                      Request Customer Consent
+                      {customerConsentSending ? 'Sending Video Consent...' : 'Send Video Consent to Customer'}
                     </Button>
+                    {!hasCustomerContactForJob(selectedJob) ? (
+                      <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        Customer email or phone is missing, so consent cannot be sent from this workflow.
+                      </div>
+                    ) : null}
+                    {customerConsentSending ? (
+                      <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                        Sending customer consent request now. This status will update only after Reliance confirms the request was created.
+                      </div>
+                    ) : null}
 
                     <Button
                       onClick={handleGeoLocationCheck}
@@ -5666,11 +6031,12 @@ export default function VendorJobs() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div>
-                    <CardTitle className="text-xl">{job.title}</CardTitle>
-                    <p className="text-gray-600">Client: {job.client}</p>
-                    <p className="text-xs text-gray-500">
-                      Source: {String(job.source || '').toLowerCase() === 'customer_booking' ? 'Customer Booking' : 'Vendor-Created Job'}
-                    </p>
+                     <CardTitle className="text-xl">{job.title}</CardTitle>
+                     <p className="text-gray-600">Client: {job.client}</p>
+                     <p className="text-xs text-gray-500">Reference: {String(job.id || '').trim() || 'Unavailable'}</p>
+                     <p className="text-xs text-gray-500">
+                       Source: {String(job.source || '').toLowerCase() === 'customer_booking' ? 'Customer Booking' : 'Vendor-Created Job'}
+                     </p>
                     <p className="text-gray-600">Service Type: {job.serviceName || job.serviceType || 'General Service'}</p>
                     <p className="text-gray-600">Created: {formatDateOnlyUtc(job.createdAt)}</p>
                     <p className="text-gray-600">Updated: {formatDateOnlyUtc(job.updatedAt)}</p>
@@ -5680,13 +6046,29 @@ export default function VendorJobs() {
                     <p className="text-sm text-blue-600 mt-1">
                       Assigned: {job.assignedEmployees && job.assignedEmployees.length > 0 ? job.assignedEmployees.join(', ') : 'Unassigned'}
                     </p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      Next stage: {(() => {
-                        const nextStage = getNextMissingVideoStageForJob(job);
-                        return nextStage ? formatVideoStageLabel(nextStage) : 'All stages uploaded';
-                      })()}
-                    </p>
-                    {isEmployeeView && isJobReadyToSubmitForManagerReview(job) ? (
+                    {(() => {
+                      const workflow = getVendorWorkflowStateForJob(job);
+                      const toneClasses: Record<string, string> = {
+                        green: 'border-green-200 bg-green-50 text-green-800',
+                        blue: 'border-blue-200 bg-blue-50 text-blue-800',
+                        red: 'border-red-200 bg-red-50 text-red-700',
+                        amber: 'border-amber-200 bg-amber-50 text-amber-800',
+                      };
+                      return (
+                        <div
+                          className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+                            toneClasses[workflow.tone] || toneClasses.amber
+                          }`}
+                        >
+                          <div className="font-semibold">Next step: {workflow.label}</div>
+                          <div className="mt-1 text-xs">{workflow.detail}</div>
+                          <div className="mt-1 text-xs">
+                            Consent recipient: {formatCustomerConsentRecipient(job)}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {isJobReadyToSubmitForManagerReview(job) ? (
                       <div className="mt-2">
                         <Button
                           size="sm"
@@ -5699,7 +6081,9 @@ export default function VendorJobs() {
                         >
                           {jobMutationLoadingId === `submit-review:${String(job?.id || '')}`
                             ? 'Submitting...'
-                            : 'Submit for Manager Review'}
+                            : isEmployeeView
+                              ? 'Submit for Manager Review'
+                              : 'Move to Review Queue'}
                         </Button>
                       </div>
                     ) : null}
@@ -5718,12 +6102,12 @@ export default function VendorJobs() {
                         </p>
                         <div className="mt-3 space-y-2">
                           {([
-                            { key: 'INTRO' as const, label: 'Before / Intro', actionLabel: 'Play Before Proof' },
-                            { key: 'IN_PROGRESS' as const, label: 'During / In Progress', actionLabel: 'Play During Proof' },
-                            { key: 'COMPLETED' as const, label: 'After / Completed', actionLabel: 'Play After Proof' },
+                            { key: 'INTRO' as const, label: 'Before / Intro', actionLabel: 'Play Before Video' },
+                            { key: 'IN_PROGRESS' as const, label: 'During / In Progress', actionLabel: 'Play During Video' },
+                            { key: 'COMPLETED' as const, label: 'After / Completed', actionLabel: 'Play After Video' },
                           ]).map((stage) => {
                             const stageVideo = getStageVideoForJob(job, stage.key);
-                            const stagePresent = Boolean(stageVideo);
+                            const stagePresent = jobHasVideoForStage(job, stage.key);
                             return (
                               <div
                                 key={`${job.id}-${stage.key}`}
@@ -5786,7 +6170,7 @@ export default function VendorJobs() {
                                     </Button>
                                     {!hasAllReviewStages ? (
                                       <p className="text-xs text-amber-900">
-                                        All three proof stages are required before approval.
+                                        All three video stages are required before approval.
                                       </p>
                                     ) : null}
                                   </>
@@ -5821,35 +6205,11 @@ export default function VendorJobs() {
                       data-no-card-open
                       onClick={(e) => {
                         e.stopPropagation();
-                        const normalizedStatus = String(job?.status || '').trim().toLowerCase();
-                        if (normalizedStatus === 'pending') {
-                          openAssignmentModal(job);
-                          return;
-                        }
-                        if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') {
-                          openJobDetails(job);
-                          return;
-                        }
-                        if (normalizedStatus === 'completed' || normalizedStatus === 'complete') {
-                          openJobDetails(job);
-                          return;
-                        }
-                        const nextStage = getNextMissingVideoStageForJob(job);
-                        if (nextStage && isJobAssignedForVideoUpload(job)) {
-                          openComplianceForNextStage(job);
-                          return;
-                        }
-                        openJobDetails(job);
+                        handlePrimaryJobAction(job);
                       }}
                       disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
                     >
-                      {(() => {
-                        const normalizedStatus = String(job?.status || '').trim().toLowerCase();
-                        if (normalizedStatus === 'pending') return 'Assign Employee';
-                        if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') return 'Review & Approve';
-                        if (normalizedStatus === 'completed' || normalizedStatus === 'complete') return 'View Job';
-                        return 'Continue Recording';
-                      })()}
+                      {getPrimaryJobCtaLabel(job)}
                     </Button>
                   ) : null}
                   <Badge className={getJobListBadgeColor(job)}>
@@ -5861,6 +6221,9 @@ export default function VendorJobs() {
                     ).toLowerCase();
                     if (consentState === CONSENT_STATE.ACCEPTED) {
                       return <Badge className="bg-green-100 text-green-800">Consent approved</Badge>;
+                    }
+                    if (consentState === CONSENT_STATE.REQUESTED) {
+                      return <Badge className="bg-blue-100 text-blue-800">Consent pending</Badge>;
                     }
                     if (consentState === CONSENT_STATE.DECLINED) {
                       return <Badge className="bg-red-100 text-red-800">Consent declined</Badge>;

@@ -55,40 +55,40 @@ export async function sendEmployeeInviteNotification(
     const text = [
       `Hi${inviteeName ? ` ${inviteeName}` : ''},`,
       '',
-      `${vendorName} has invited you to join their team on Reliance as an Employee.`,
+      `${vendorName} has invited you to join their team on Reliance as an employee.`,
       '',
-      'Reliance is used to manage jobs, track service progress, and capture proof of completed work.',
+      'Reliance is used to manage jobs, track service progress, and capture service videos for completed work.',
       '',
-      '👉 Accept your invite:',
+      'Accept your invite:',
       `${input.inviteLink}`,
       '',
       'Or copy and paste this link into your browser:',
       `${input.inviteLink}`,
       '',
       'What happens next:',
-      '• Create or confirm your account',
-      '• Access your assigned jobs',
-      '• Start completing and uploading service steps',
+      '- Create or confirm your account',
+      '- Access your assigned jobs',
+      '- Start completing and uploading service video stages',
       '',
       'This invite may expire, so we recommend accepting it as soon as possible.',
       '',
-      "If you weren’t expecting this, you can safely ignore this email.",
+      "If you weren't expecting this, you can safely ignore this email.",
       '',
-      '— Reliance Team',
+      '- Reliance Team',
     ].join('\n');
     const html = `
       <p>Hi${inviteeName ? ` ${inviteeName}` : ''},</p>
-      <p>${vendorName} has invited you to join their team on Reliance as an Employee.</p>
-      <p>Reliance is used to manage jobs, track service progress, and capture proof of completed work.</p>
-      <p><strong>👉 Accept your invite:</strong><br/><a href="${input.inviteLink}">${input.inviteLink}</a></p>
+      <p>${vendorName} has invited you to join their team on Reliance as an employee.</p>
+      <p>Reliance is used to manage jobs, track service progress, and capture service videos for completed work.</p>
+      <p><strong>Accept your invite:</strong><br/><a href="${input.inviteLink}">${input.inviteLink}</a></p>
       <p>Or copy and paste this link into your browser:<br/><code>${input.inviteLink}</code></p>
       <p><strong>What happens next:</strong><br/>
-      • Create or confirm your account<br/>
-      • Access your assigned jobs<br/>
-      • Start completing and uploading service steps</p>
+      - Create or confirm your account<br/>
+      - Access your assigned jobs<br/>
+      - Start completing and uploading service video stages</p>
       <p>This invite may expire, so we recommend accepting it as soon as possible.</p>
-      <p>If you weren’t expecting this, you can safely ignore this email.</p>
-      <p>— Reliance Team</p>
+      <p>If you were not expecting this, you can safely ignore this email.</p>
+      <p>- Reliance Team</p>
     `.trim();
     const r = await sendEmail({ to: email, subject, text, html });
     channels.push({
@@ -117,7 +117,7 @@ export async function sendEmployeeInviteNotification(
   }
 
   if (env.smsEnabled && phone) {
-    const body = `Reliance invite: ${vendorName} invited you to join their team. Accept: ${input.inviteLink}`;
+    const body = `Reliance invite: ${vendorName} invited you to join their team. Accept here: ${input.inviteLink}`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

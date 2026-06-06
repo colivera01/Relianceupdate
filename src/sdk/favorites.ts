@@ -1,30 +1,19 @@
 import type { FavoritesListResponse } from "../types/api";
-import { resolveCustomerUserId } from "@/lib/customer-user-id";
+import { getClientAuthHeaders } from "@/lib/client-session";
 
 type FavoritesHttpError = Error & { status?: number };
-
-/** Resolves id for favorites API: prefer `useAuth().user.id` when passed from hooks; else storage fallbacks. */
-function resolveFavoritesActorUserId(authUserIdFromCaller?: string): string | null {
-  return resolveCustomerUserId(authUserIdFromCaller);
-}
-
-function withUserId(path: string, userId: string | null): string {
-  if (!userId) return path;
-  const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}userId=${encodeURIComponent(userId)}`;
-}
 
 async function requestJson<T>(
   path: string,
   init: RequestInit = {},
   authUserIdFromCaller?: string
 ): Promise<T> {
-  const userId = resolveFavoritesActorUserId(authUserIdFromCaller);
-  const response = await fetch(withUserId(path, userId), {
+  void authUserIdFromCaller;
+  const response = await fetch(path, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(userId ? { "x-user-id": userId } : {}),
+      ...getClientAuthHeaders(),
       ...(init.headers || {}),
     },
     ...init,
@@ -69,14 +58,12 @@ export const favoritesSDK = {
     favorite: { favoriteId: string; serviceId: string; favoritedAt: string };
     message: string;
   }> {
-    const userId = resolveFavoritesActorUserId(authUserIdFromCaller);
     return requestJson(
       "/api/users/favorites",
       {
         method: "POST",
         body: JSON.stringify({
           serviceId,
-          ...(userId ? { userId } : {}),
         }),
       },
       authUserIdFromCaller

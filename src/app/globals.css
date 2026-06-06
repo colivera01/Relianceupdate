@@ -4,35 +4,47 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 216 38% 98%;
+    --foreground: 220 35% 9%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 220 35% 9%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 220 35% 9%;
 
-    --primary: 222.2 47.4% 11.2%;
+    --primary: 220 100% 56%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217 40% 96%;
+    --secondary-foreground: 220 35% 12%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 216 26% 95%;
+    --muted-foreground: 217 14% 42%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 215 56% 95%;
+    --accent-foreground: 220 35% 12%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 216 27% 88%;
+    --input: 216 27% 88%;
+    --ring: 220 100% 56%;
 
-    --radius: 0.5rem;
+    --radius: 1rem;
+
+    --reliance-midnight: #07111f;
+    --reliance-ink: #0d1829;
+    --reliance-panel: #101d31;
+    --reliance-panel-strong: #162743;
+    --reliance-blue: #246bff;
+    --reliance-blue-soft: #82a7ff;
+    --reliance-cyan: #51bfff;
+    --reliance-emerald: #35d6a5;
+    --reliance-amber: #f8b63c;
+    --reliance-paper: #04070d;
+    --reliance-border: #1c2839;
   }
 
   .dark {
@@ -76,6 +88,533 @@
     max-width: 100%;
     overflow-x: hidden;
   }
+
+  body {
+    background:
+      radial-gradient(circle at top left, rgba(36, 107, 255, 0.08), transparent 30%),
+      linear-gradient(180deg, #f7f9fc 0%, #f3f6fb 100%);
+    font-feature-settings: "ss01" 1, "cv02" 1, "cv03" 1;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .font-display {
+    font-family: var(--font-display), sans-serif;
+    letter-spacing: -0.03em;
+  }
+
+  ::selection {
+    background: rgba(36, 107, 255, 0.18);
+  }
+}
+
+.reliance-dark-shell {
+  background:
+    radial-gradient(circle at top left, rgba(81, 191, 255, 0.14), transparent 24%),
+    radial-gradient(circle at 85% 20%, rgba(36, 107, 255, 0.22), transparent 18%),
+    linear-gradient(145deg, #03060d 0%, #07111f 52%, #0d1c34 100%);
+}
+
+.reliance-glass {
+  background: rgba(8, 15, 28, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.reliance-light-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(36, 107, 255, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(10, 17, 31, 0.96), rgba(6, 11, 22, 0.98));
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: #f8fbff;
+}
+
+.reliance-light-card .text-slate-950,
+.reliance-light-card .text-slate-900,
+.reliance-light-card .text-gray-900 {
+  color: #f8fbff !important;
+}
+
+.reliance-light-card .text-slate-700,
+.reliance-light-card .text-gray-700 {
+  color: rgba(237, 243, 255, 0.82) !important;
+}
+
+.reliance-light-card .text-slate-600,
+.reliance-light-card .text-slate-500,
+.reliance-light-card .text-gray-600,
+.reliance-light-card .text-gray-500 {
+  color: rgba(229, 236, 248, 0.76) !important;
+}
+
+.reliance-light-card .bg-white,
+.reliance-light-card .bg-slate-50,
+.reliance-light-card .bg-gray-50,
+.reliance-light-card .bg-slate-100,
+.reliance-light-card .bg-gray-100 {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.reliance-light-card .border-slate-200,
+.reliance-light-card .border-slate-300,
+.reliance-light-card .border-gray-200,
+.reliance-light-card .border-gray-300 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.reliance-marketplace-shell {
+  --background: 220 30% 8%;
+  --foreground: 210 40% 98%;
+  --card: 220 30% 10%;
+  --card-foreground: 210 40% 98%;
+  --popover: 220 30% 10%;
+  --popover-foreground: 210 40% 98%;
+  --secondary: 220 24% 16%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 220 24% 16%;
+  --muted-foreground: 215 20% 72%;
+  --accent: 220 24% 16%;
+  --accent-foreground: 210 40% 98%;
+  --border: 220 22% 18%;
+  --input: 220 22% 18%;
+  background:
+    radial-gradient(circle at top left, rgba(36, 107, 255, 0.16), transparent 24%),
+    radial-gradient(circle at top right, rgba(81, 191, 255, 0.08), transparent 18%),
+    linear-gradient(180deg, #04070d 0%, #060c15 100%);
+  color: #eef4ff;
+}
+
+.reliance-marketplace-shell .text-slate-950,
+.reliance-marketplace-shell .text-slate-900,
+.reliance-marketplace-shell .text-gray-900 {
+  color: #f8fbff !important;
+}
+
+.reliance-marketplace-shell .text-slate-700,
+.reliance-marketplace-shell .text-gray-700 {
+  color: rgba(237, 243, 255, 0.82) !important;
+}
+
+.reliance-marketplace-shell .text-slate-600,
+.reliance-marketplace-shell .text-slate-500,
+.reliance-marketplace-shell .text-slate-400,
+.reliance-marketplace-shell .text-gray-600,
+.reliance-marketplace-shell .text-gray-500,
+.reliance-marketplace-shell .text-gray-400 {
+  color: rgba(229, 236, 248, 0.76) !important;
+}
+
+.reliance-marketplace-shell .bg-white,
+.reliance-marketplace-shell .bg-white\/90,
+.reliance-marketplace-shell .bg-white\/85,
+.reliance-marketplace-shell .bg-white\/80,
+.reliance-marketplace-shell .bg-slate-50,
+.reliance-marketplace-shell .bg-gray-50,
+.reliance-marketplace-shell .bg-slate-100,
+.reliance-marketplace-shell .bg-gray-100 {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.reliance-marketplace-shell .bg-blue-50 {
+  background: rgba(36, 107, 255, 0.12) !important;
+}
+
+.reliance-marketplace-shell .bg-blue-100 {
+  background: rgba(36, 107, 255, 0.18) !important;
+}
+
+.reliance-marketplace-shell .bg-blue-50\/80,
+.reliance-marketplace-shell .bg-blue-50\/70,
+.reliance-marketplace-shell .bg-blue-50\/60 {
+  background: rgba(36, 107, 255, 0.15) !important;
+}
+
+.reliance-marketplace-shell .bg-emerald-50,
+.reliance-marketplace-shell .bg-green-50 {
+  background: rgba(53, 214, 165, 0.12) !important;
+}
+
+.reliance-marketplace-shell .bg-emerald-100,
+.reliance-marketplace-shell .bg-green-100 {
+  background: rgba(53, 214, 165, 0.18) !important;
+}
+
+.reliance-marketplace-shell .bg-amber-100 {
+  background: rgba(248, 182, 60, 0.18) !important;
+}
+
+.reliance-marketplace-shell .bg-emerald-50\/70,
+.reliance-marketplace-shell .bg-emerald-50\/60,
+.reliance-marketplace-shell .bg-green-50\/60 {
+  background: rgba(53, 214, 165, 0.14) !important;
+}
+
+.reliance-marketplace-shell .bg-amber-50\/70,
+.reliance-marketplace-shell .bg-amber-50\/60 {
+  background: rgba(248, 182, 60, 0.14) !important;
+}
+
+.reliance-marketplace-shell .bg-red-50 {
+  background: rgba(239, 68, 68, 0.12) !important;
+}
+
+.reliance-marketplace-shell .text-blue-900,
+.reliance-marketplace-shell .text-blue-800 {
+  color: #deebff !important;
+}
+
+.reliance-marketplace-shell .text-blue-700,
+.reliance-marketplace-shell .text-blue-600 {
+  color: #92bcff !important;
+}
+
+.reliance-marketplace-shell .text-emerald-900,
+.reliance-marketplace-shell .text-emerald-800,
+.reliance-marketplace-shell .text-emerald-700,
+.reliance-marketplace-shell .text-green-900,
+.reliance-marketplace-shell .text-green-700,
+.reliance-marketplace-shell .text-green-600 {
+  color: #d9fff1 !important;
+}
+
+.reliance-marketplace-shell .text-amber-900,
+.reliance-marketplace-shell .text-amber-800,
+.reliance-marketplace-shell .text-amber-700 {
+  color: #ffe2ad !important;
+}
+
+.reliance-marketplace-shell .border-slate-200,
+.reliance-marketplace-shell .border-slate-300,
+.reliance-marketplace-shell .border-gray-200,
+.reliance-marketplace-shell .border-gray-300 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.reliance-marketplace-shell .shadow-sm {
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.34) !important;
+}
+
+.reliance-operator-shell {
+  --background: 220 30% 8%;
+  --foreground: 210 40% 98%;
+  --card: 220 30% 10%;
+  --card-foreground: 210 40% 98%;
+  --popover: 220 30% 10%;
+  --popover-foreground: 210 40% 98%;
+  --secondary: 220 24% 16%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 220 24% 16%;
+  --muted-foreground: 215 20% 72%;
+  --accent: 220 24% 16%;
+  --accent-foreground: 210 40% 98%;
+  --border: 220 22% 18%;
+  --input: 220 22% 18%;
+  background:
+    radial-gradient(circle at top left, rgba(36, 107, 255, 0.16), transparent 24%),
+    radial-gradient(circle at top right, rgba(81, 191, 255, 0.08), transparent 18%),
+    linear-gradient(180deg, #04070d 0%, #060c15 100%);
+  color: #eef4ff;
+}
+
+.reliance-operator-main {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%),
+    radial-gradient(circle at top right, rgba(36, 107, 255, 0.08), transparent 22%);
+}
+
+.reliance-operator-sidebar {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(5, 10, 19, 0.96), rgba(7, 17, 31, 0.98)),
+    radial-gradient(circle at top left, rgba(36, 107, 255, 0.14), transparent 24%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.reliance-operator-sidebar-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    radial-gradient(circle at top left, rgba(36, 107, 255, 0.16), transparent 36%);
+}
+
+.reliance-operator-surface {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(36, 107, 255, 0.1), transparent 24%),
+    linear-gradient(180deg, rgba(10, 17, 31, 0.96), rgba(6, 11, 22, 0.98));
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.reliance-operator-hero {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(circle at top left, rgba(81, 191, 255, 0.16), transparent 22%),
+    radial-gradient(circle at 72% 18%, rgba(36, 107, 255, 0.16), transparent 18%),
+    linear-gradient(140deg, rgba(7, 17, 31, 0.96), rgba(12, 25, 47, 0.98));
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.reliance-operator-nav-link {
+  color: rgba(237, 243, 255, 0.78);
+}
+
+.reliance-operator-nav-link:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+}
+
+.reliance-operator-nav-link-active {
+  background:
+    linear-gradient(135deg, rgba(36, 107, 255, 0.22), rgba(81, 191, 255, 0.14));
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(130, 167, 255, 0.26);
+}
+
+.reliance-operator-shell .text-slate-950,
+.reliance-operator-shell .text-slate-900,
+.reliance-operator-shell .text-gray-900,
+.reliance-operator-shell .text-black {
+  color: #f8fbff !important;
+}
+
+.reliance-operator-shell .text-slate-800,
+.reliance-operator-shell .text-slate-700,
+.reliance-operator-shell .text-gray-800,
+.reliance-operator-shell .text-gray-700 {
+  color: rgba(237, 243, 255, 0.84) !important;
+}
+
+.reliance-operator-shell .text-slate-600,
+.reliance-operator-shell .text-slate-500,
+.reliance-operator-shell .text-slate-400,
+.reliance-operator-shell .text-gray-600,
+.reliance-operator-shell .text-gray-500,
+.reliance-operator-shell .text-gray-400 {
+  color: rgba(229, 236, 248, 0.72) !important;
+}
+
+.reliance-operator-shell .bg-white,
+.reliance-operator-shell .bg-white\/90,
+.reliance-operator-shell .bg-white\/85,
+.reliance-operator-shell .bg-white\/80,
+.reliance-operator-shell .bg-slate-50,
+.reliance-operator-shell .bg-slate-50\/90,
+.reliance-operator-shell .bg-slate-50\/80,
+.reliance-operator-shell .bg-slate-50\/70,
+.reliance-operator-shell .bg-slate-100,
+.reliance-operator-shell .bg-gray-50,
+.reliance-operator-shell .bg-gray-50\/90,
+.reliance-operator-shell .bg-gray-50\/80,
+.reliance-operator-shell .bg-gray-50\/70,
+.reliance-operator-shell .bg-gray-100 {
+  background:
+    radial-gradient(circle at top left, rgba(36, 107, 255, 0.08), transparent 26%),
+    linear-gradient(180deg, rgba(10, 17, 31, 0.92), rgba(6, 11, 22, 0.96)) !important;
+}
+
+.reliance-operator-shell .bg-blue-50,
+.reliance-operator-shell .bg-blue-50\/90,
+.reliance-operator-shell .bg-blue-50\/80,
+.reliance-operator-shell .bg-blue-50\/60,
+.reliance-operator-shell .bg-blue-50\/70 {
+  background: rgba(36, 107, 255, 0.18) !important;
+}
+
+.reliance-operator-shell .bg-blue-100 {
+  background: rgba(36, 107, 255, 0.2) !important;
+}
+
+.reliance-operator-shell .bg-green-50,
+.reliance-operator-shell .bg-emerald-50,
+.reliance-operator-shell .bg-green-50\/70,
+.reliance-operator-shell .bg-emerald-50\/70,
+.reliance-operator-shell .bg-green-50\/60,
+.reliance-operator-shell .bg-emerald-50\/60 {
+  background: rgba(53, 214, 165, 0.16) !important;
+}
+
+.reliance-operator-shell .bg-green-100,
+.reliance-operator-shell .bg-emerald-100 {
+  background: rgba(53, 214, 165, 0.2) !important;
+}
+
+.reliance-operator-shell .bg-yellow-100,
+.reliance-operator-shell .bg-amber-100,
+.reliance-operator-shell .bg-amber-50,
+.reliance-operator-shell .bg-amber-50\/90,
+.reliance-operator-shell .bg-amber-50\/60,
+.reliance-operator-shell .bg-amber-50\/70 {
+  background: rgba(248, 182, 60, 0.16) !important;
+}
+
+.reliance-operator-shell .bg-red-50,
+.reliance-operator-shell .bg-red-100 {
+  background: rgba(239, 68, 68, 0.14) !important;
+}
+
+.reliance-operator-shell .bg-purple-100,
+.reliance-operator-shell .bg-violet-100,
+.reliance-operator-shell .bg-indigo-100,
+.reliance-operator-shell .bg-cyan-100,
+.reliance-operator-shell .bg-cyan-50,
+.reliance-operator-shell .bg-sky-100,
+.reliance-operator-shell .bg-sky-50,
+.reliance-operator-shell .bg-sky-50\/70,
+.reliance-operator-shell .bg-rose-100,
+.reliance-operator-shell .bg-fuchsia-100 {
+  background: rgba(130, 167, 255, 0.16) !important;
+}
+
+.reliance-operator-shell .text-blue-950,
+.reliance-operator-shell .text-blue-900,
+.reliance-operator-shell .text-blue-800,
+.reliance-operator-shell .text-blue-700,
+.reliance-operator-shell .text-blue-600,
+.reliance-operator-shell .text-cyan-950,
+.reliance-operator-shell .text-cyan-700,
+.reliance-operator-shell .text-sky-950,
+.reliance-operator-shell .text-sky-700,
+.reliance-operator-shell .text-indigo-700,
+.reliance-operator-shell .text-violet-700,
+.reliance-operator-shell .text-purple-700,
+.reliance-operator-shell .text-fuchsia-700,
+.reliance-operator-shell .text-rose-700 {
+  color: #9ac0ff !important;
+}
+
+.reliance-operator-shell .text-emerald-950,
+.reliance-operator-shell .text-emerald-900,
+.reliance-operator-shell .text-emerald-800,
+.reliance-operator-shell .text-emerald-700,
+.reliance-operator-shell .text-green-950,
+.reliance-operator-shell .text-green-900,
+.reliance-operator-shell .text-green-800,
+.reliance-operator-shell .text-green-700,
+.reliance-operator-shell .text-green-600 {
+  color: #d9fff1 !important;
+}
+
+.reliance-operator-shell .text-amber-950,
+.reliance-operator-shell .text-amber-900,
+.reliance-operator-shell .text-amber-800,
+.reliance-operator-shell .text-amber-700,
+.reliance-operator-shell .text-yellow-950,
+.reliance-operator-shell .text-yellow-800 {
+  color: #ffe2ad !important;
+}
+
+.reliance-operator-shell .text-red-950,
+.reliance-operator-shell .text-red-700,
+.reliance-operator-shell .text-red-600 {
+  color: #ffc5c5 !important;
+}
+
+.reliance-operator-shell .border-slate-200,
+.reliance-operator-shell .border-slate-300,
+.reliance-operator-shell .border-gray-200,
+.reliance-operator-shell .border-gray-300 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.reliance-operator-shell .border-blue-100,
+.reliance-operator-shell .border-blue-200,
+.reliance-operator-shell .border-blue-300 {
+  border-color: rgba(130, 167, 255, 0.22) !important;
+}
+
+.reliance-operator-shell .border-amber-200,
+.reliance-operator-shell .border-amber-300,
+.reliance-operator-shell .border-yellow-200 {
+  border-color: rgba(248, 182, 60, 0.24) !important;
+}
+
+.reliance-operator-shell .border-emerald-200,
+.reliance-operator-shell .border-emerald-300,
+.reliance-operator-shell .border-green-200 {
+  border-color: rgba(53, 214, 165, 0.22) !important;
+}
+
+.reliance-operator-shell .border-red-200 {
+  border-color: rgba(239, 68, 68, 0.22) !important;
+}
+
+.reliance-operator-shell .shadow-sm,
+.reliance-operator-shell .shadow-md,
+.reliance-operator-shell .shadow-lg {
+  box-shadow:
+    0 22px 55px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.reliance-operator-shell input,
+.reliance-operator-shell textarea,
+.reliance-operator-shell select {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #f8fbff !important;
+}
+
+.reliance-operator-shell input::placeholder,
+.reliance-operator-shell textarea::placeholder {
+  color: rgba(229, 236, 248, 0.46) !important;
+}
+
+.reliance-operator-shell select option {
+  background: #0d1829;
+  color: #eef4ff;
+}
+
+.reliance-operator-shell .reliance-operator-muted {
+  color: rgba(229, 236, 248, 0.68);
+}
+
+.reliance-operator-shell .reliance-operator-title {
+  color: #f8fbff;
+}
+
+.reliance-operator-shell .reliance-operator-accent {
+  color: var(--reliance-blue-soft);
+}
+
+.reliance-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  padding: 0.42rem 0.9rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.reliance-grid-lines {
+  position: relative;
+}
+
+.reliance-grid-lines::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.65), transparent 90%);
 }
 
 /* Custom Animations */

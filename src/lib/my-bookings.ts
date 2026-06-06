@@ -3,7 +3,9 @@
  * Contract rows use snake_case from `mapBookingToContract` / API JSON.
  */
 
-export type MyBookingsTab = 'upcoming' | 'past' | 'cancelled';
+import type { CustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
+
+export type MyBookingsTab = 'upcoming' | 'past' | 'archived' | 'needs_follow_up' | 'cancelled';
 
 /** Lowercase trimmed status; empty input becomes `unknown`. */
 export function normalizeBookingStatusKey(raw: string | null | undefined): string {
@@ -19,6 +21,23 @@ export function isTerminalCancelledStatus(key: string): boolean {
 /** Service finished successfully. */
 export function isCompletedStatus(key: string): boolean {
   return key === 'completed' || key === 'complete';
+}
+
+/** Historical record retained after normal customer flow has ended. */
+export function isArchivedStatus(key: string): boolean {
+  return key === 'archived';
+}
+
+/** Active booking flow statuses that still imply scheduled or in-progress work. */
+export function isActiveInProgressFlowStatus(key: string): boolean {
+  return (
+    key === 'pending' ||
+    key === 'confirmed' ||
+    key === 'in_progress' ||
+    key === 'in progress' ||
+    key === 'awaiting_review' ||
+    key === 'awaiting review'
+  );
 }
 
 /**
@@ -100,20 +119,18 @@ export function bookingMatchesTab(
 ): boolean {
   const terminal = isTerminalCancelledStatus(statusKey);
   const completed = isCompletedStatus(statusKey);
-  const activeInProgressFlow =
-    statusKey === 'pending' ||
-    statusKey === 'confirmed' ||
-    statusKey === 'in_progress' ||
-    statusKey === 'in progress' ||
-    statusKey === 'awaiting_review' ||
-    statusKey === 'awaiting review';
+  const archived = isArchivedStatus(statusKey);
+  const activeInProgressFlow = isActiveInProgressFlowStatus(statusKey);
   const t = scheduleInstant.getTime();
   const datePast = !Number.isNaN(t) && t < now.getTime();
-  const isPast = !activeInProgressFlow && (datePast || completed);
+  const needsFollowUp = activeInProgressFlow && datePast;
+  const isPast = !needsFollowUp && !terminal && !archived && (completed || (!activeInProgressFlow && datePast));
 
   if (activeTab === 'cancelled') return terminal;
+  if (activeTab === 'archived') return !terminal && archived;
+  if (activeTab === 'needs_follow_up') return !terminal && needsFollowUp;
   if (activeTab === 'past') return !terminal && isPast;
-  return !terminal && !isPast;
+  return !terminal && !archived && !isPast && !needsFollowUp;
 }
 
 export type MyBookingsCancelAction = 'hidden' | 'enabled' | 'disabled';
@@ -124,7 +141,7 @@ export function classifyCancelBookingAction(params: {
   now: Date;
 }): { mode: MyBookingsCancelAction; reason?: string } {
   const { statusKey, scheduleInstant, now } = params;
-  if (isTerminalCancelledStatus(statusKey) || isCompletedStatus(statusKey)) {
+  if (isTerminalCancelledStatus(statusKey) || isCompletedStatus(statusKey) || isArchivedStatus(statusKey)) {
     return { mode: 'hidden' };
   }
   if (isCancelRequestedFlowStatus(statusKey)) {
@@ -144,13 +161,26 @@ export function classifyCancelBookingAction(params: {
 }
 
 /** Human-readable status line (stable product copy for known states). */
-export function formatMyBookingsStatusDisplay(raw: string | null | undefined): string {
+export function formatMyBookingsStatusDisplay(
+  raw: string | null | undefined,
+  options?: {
+    scheduleInstant?: Date | null;
+    now?: Date;
+  }
+): string {
   const key = normalizeBookingStatusKey(raw);
   if (isTerminalCancelledStatus(key)) return 'Cancelled';
   if (isCompletedStatus(key)) return 'Completed';
   if (key === 'cancel_requested') return 'Cancellation requested';
   if (key === 'cancellation_requested') return 'Cancellation requested';
   if (key === 'cancellation_pending') return 'Cancellation pending';
+  if (options?.scheduleInstant && isActiveInProgressFlowStatus(key)) {
+    const scheduleTime = options.scheduleInstant.getTime();
+    const nowTime = (options.now ?? new Date()).getTime();
+    if (!Number.isNaN(scheduleTime) && scheduleTime < nowTime) {
+      return 'Scheduled date passed';
+    }
+  }
   if (key === 'unknown') return 'Unknown';
   return key
     .split('_')
@@ -174,6 +204,9 @@ export type MyBookingsRow = {
   total_price: number;
   created_at: string;
   updated_at: string;
+  customer_lifecycle?: (CustomerBookingLifecycle & {
+    review_submitted_at?: string | null;
+  }) | null;
 };
 
 /** Coerce API / network JSON into a safe row for rendering (never null service/vendor). */
@@ -212,6 +245,10 @@ export function sanitizeMyBookingsRow(raw: unknown): MyBookingsRow | null {
     total_price: Number(b.total_price ?? 0) || 0,
     created_at: createdOk,
     updated_at: updatedOk,
+    customer_lifecycle:
+      b.customer_lifecycle && typeof b.customer_lifecycle === 'object'
+        ? (b.customer_lifecycle as MyBookingsRow['customer_lifecycle'])
+        : null,
     service: {
       id: svc?.id != null ? String(svc.id) : '',
       name: serviceName,

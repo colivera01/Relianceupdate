@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -22,10 +23,7 @@ export async function GET(
 
     // Calculate storage usage (SUM(bytes) WHERE vendorId = X AND deletedAt IS NULL)
     const storageAggregate = await (prisma as any).mediaAsset.aggregate({
-      where: {
-        vendorId,
-        deletedAt: null,
-      },
+      where: countableMediaAssetWhere({ vendorId }),
       _sum: {
         bytes: true,
       },

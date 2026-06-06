@@ -38,13 +38,35 @@ export async function getOrCreateActiveReviewWindow(input: {
       bookingId: input.bookingId,
       vendorId: input.vendorId,
       mediaSessionId: input.mediaSessionId,
-      status: { in: ['active', 'ACTIVE'] },
     },
     orderBy: { createdAt: 'desc' },
   });
-  if (existing) return { window: existing, created: false };
 
   const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  if (existing) {
+    const normalizedStatus = String(existing.status || "").trim().toLowerCase();
+    const expiresAtMs = existing.expiresAt ? new Date(existing.expiresAt).getTime() : Number.NaN;
+    const isExpired = Number.isFinite(expiresAtMs) && expiresAtMs < Date.now();
+    const canReopen = !existing.reviewId && (normalizedStatus === "active" || normalizedStatus === "expired" || normalizedStatus === "closed");
+
+    if (normalizedStatus === "active" && !isExpired) {
+      return { window: existing, created: false };
+    }
+
+    if (canReopen) {
+      const reopened = await (prisma as any).reviewWindow.update({
+        where: { id: existing.id },
+        data: {
+          status: "active",
+          openedAt: new Date(),
+          expiresAt,
+          closedAt: null,
+        },
+      });
+      return { window: reopened, created: false };
+    }
+  }
+
   try {
     const createdRow = await (prisma as any).reviewWindow.create({
       data: {
@@ -68,7 +90,25 @@ export async function getOrCreateActiveReviewWindow(input: {
         },
         orderBy: { createdAt: 'desc' },
       });
-      if (fallback) return { window: fallback, created: false };
+      if (fallback) {
+        const normalizedStatus = String(fallback.status || "").trim().toLowerCase();
+        const fallbackExpiresAtMs = fallback.expiresAt ? new Date(fallback.expiresAt).getTime() : Number.NaN;
+        const fallbackExpired = Number.isFinite(fallbackExpiresAtMs) && fallbackExpiresAtMs < Date.now();
+        const canReopen = !fallback.reviewId && (normalizedStatus === "active" || normalizedStatus === "expired" || normalizedStatus === "closed");
+        if (canReopen && fallbackExpired) {
+          const reopened = await (prisma as any).reviewWindow.update({
+            where: { id: fallback.id },
+            data: {
+              status: "active",
+              openedAt: new Date(),
+              expiresAt,
+              closedAt: null,
+            },
+          });
+          return { window: reopened, created: false };
+        }
+        return { window: fallback, created: false };
+      }
     }
     throw error;
   }
@@ -106,4 +146,31 @@ export async function assertReviewWindowActive(reviewWindowId: string) {
     return { ok: false as const, error: 'Review window expired', status: 409 };
   }
   return { ok: true as const, window };
+}
+
+export async function assertReviewWindowActiveForUser(
+  reviewWindowId: string,
+  userId: string
+) {
+  const state = await assertReviewWindowActive(reviewWindowId);
+  if (!state.ok) return state;
+
+  const booking = await (prisma as any).booking.findUnique({
+    where: { id: String(state.window.bookingId || "") },
+    select: { userId: true },
+  });
+
+  if (!booking) {
+    return { ok: false as const, error: "Booking not found for this review window", status: 404 };
+  }
+
+  if (String(booking.userId || "") !== String(userId || "")) {
+    return {
+      ok: false as const,
+      error: "Forbidden: review window does not belong to this user",
+      status: 403,
+    };
+  }
+
+  return state;
 }

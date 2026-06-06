@@ -1,49 +1,66 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { getUserIdFromRequest } from "@/lib/auth";
+import { verifyAndStorePasskeyRegistration, shapePasskeySummary } from "@/lib/auth-passkeys";
+import type { RegistrationResponseJSON } from "@simplewebauthn/server";
 
 export async function POST(request: NextRequest) {
   try {
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json(
+        {
+          error: "You must be signed in to register a passkey.",
+          code: "AUTH_REQUIRED",
+        },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
-    const { credential, userType } = body;
+    const challengeId = String(body?.challengeId || "").trim();
+    const response = body?.response as RegistrationResponseJSON | undefined;
 
-    console.log('Registering passkey for userType:', userType);
+    if (!challengeId || !response?.id) {
+      return NextResponse.json(
+        {
+          error: "Passkey registration data was incomplete.",
+          code: "PASSKEY_REGISTRATION_PAYLOAD_INVALID",
+        },
+        { status: 400 }
+      );
+    }
 
-    // In a real implementation, you would:
-    // 1. Verify the credential data
-    // 2. Store the credential in your database
-    // 3. Associate it with the user account
-    // 4. Update the user's passkey status
-
-    // For now, we'll just log the credential data and return success
-    console.log('Credential received:', {
-      id: credential.id,
-      type: credential.type,
-      // Don't log the raw credential data for security
+    const result = await verifyAndStorePasskeyRegistration({
+      userId,
+      challengeId,
+      response,
+      request,
     });
-
-    // TODO: Implement actual credential verification and storage
-    // const verified = await verifyCredential(credential);
-    // if (!verified) {
-    //   return NextResponse.json(
-    //     { error: 'Credential verification failed' },
-    //     { status: 400 }
-    //   );
-    // }
-
-    // TODO: Store credential in database
-    // await storeCredential(userId, credential);
-
-    console.log('Passkey registered successfully');
 
     return NextResponse.json({
       success: true,
-      message: 'Passkey registered successfully',
+      message: "Passkey registered successfully.",
+      passkey: shapePasskeySummary(result.passkey),
     });
-
   } catch (error) {
-    console.error('Error registering passkey:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error registering passkey:", error);
     return NextResponse.json(
-      { error: 'Failed to register passkey' },
-      { status: 500 }
+      {
+        error:
+          message === "PASSKEY_CHALLENGE_INVALID"
+            ? "The passkey registration request expired. Start again."
+            : message === "PASSKEY_REGISTRATION_FAILED"
+              ? "Passkey registration could not be verified."
+              : "Failed to register passkey.",
+        code: message,
+      },
+      {
+        status:
+          message === "PASSKEY_CHALLENGE_INVALID" || message === "PASSKEY_REGISTRATION_FAILED"
+            ? 400
+            : 500,
+      }
     );
   }
-} 
+}

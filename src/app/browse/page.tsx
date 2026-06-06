@@ -5,9 +5,20 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
+import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
+import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
 import { Search, SlidersHorizontal, X, MapPin, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAuth } from '@/contexts/AuthContext';
+import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
+import {
+  PROMOTION_BROWSE_SECTION_EXPLAINER,
+  PROMOTION_BROWSE_SECTION_TITLE,
+  PROMOTION_PUBLIC_EXPLAINER,
+  PROMOTION_PUBLIC_LABEL,
+  resolvePromotionZoneLimits,
+} from '@/lib/promoted-listings';
 
 const DISCOVERY_PAGE_SIZE = 12;
 
@@ -19,6 +30,7 @@ const CATEGORY_DECORATION: Record<string, { icon: string; description: string }>
   beauty: { icon: '💄', description: 'Beauty and personal care services' },
   education: { icon: '📚', description: 'Learning and tutoring services' },
   uncategorized: { icon: '🧩', description: 'Services without a category label' },
+  plumbing: { icon: '•', description: 'Drain, leak, and fixture services' },
 };
 
 type BrowseSort = 'newest' | 'name' | 'distance';
@@ -67,7 +79,9 @@ export default function PublicBrowsePage() {
   const [radiusMiles, setRadiusMiles] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [hasHydratedFromUrl, setHasHydratedFromUrl] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const didHydrateFromUrl = useRef(false);
+  const didAutoApplyDistanceSort = useRef(false);
 
   useEffect(() => {
     if (didHydrateFromUrl.current || typeof window === 'undefined') return;
@@ -104,6 +118,15 @@ export default function PublicBrowsePage() {
     setHasHydratedFromUrl(true);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
   const hasCoordinateOrigin = originLat != null && originLng != null;
   const browserLocationActive = !hasCoordinateOrigin && browserLocationOrigin != null;
   const savedLocationAssistActive =
@@ -127,6 +150,19 @@ export default function PublicBrowsePage() {
     savedLocationChecked && !hasCoordinateOrigin && !browserLocationActive && !savedLocationAssistActive;
 
   useEffect(() => {
+    if (!hasHydratedFromUrl) return;
+    if (!hasEffectiveCoordinateOrigin) {
+      didAutoApplyDistanceSort.current = false;
+      return;
+    }
+    if (!didAutoApplyDistanceSort.current && sortBy === 'newest') {
+      didAutoApplyDistanceSort.current = true;
+      setSortBy('distance');
+      setPage(1);
+    }
+  }, [hasEffectiveCoordinateOrigin, hasHydratedFromUrl, sortBy]);
+
+  useEffect(() => {
     if (authLoading || !hasHydratedFromUrl) return;
     if (!isAuthenticated || !user || !hasCustomerProfileAccess(user.userType)) {
       setSavedLocationChecked(true);
@@ -137,7 +173,6 @@ export default function PublicBrowsePage() {
     setSavedLocationChecked(false);
     fetch('/api/customer/profile', {
       headers: {
-        Authorization: 'Bearer temp-jwt-token',
         'x-user-id': user.id,
       },
     })
@@ -228,6 +263,13 @@ export default function PublicBrowsePage() {
     categories.some((category) => category.label === selectedCategory);
 
   const results = data?.results || [];
+  const promotedListings = data?.promotedListings || [];
+  const hasCategoryFilter = selectedCategory !== 'all';
+  const promotedDisplayLimit = resolvePromotionZoneLimits('BROWSE_FEATURED', {
+    hasCategoryFilter,
+    viewport: isMobileViewport ? 'mobile' : 'desktop',
+  }).maxSlots;
+  const visiblePromotedListings = promotedListings.slice(0, promotedDisplayLimit);
   const pagination = data?.pagination;
   const totalPages = pagination?.totalPages || 0;
   const totalCount = pagination?.total || 0;
@@ -329,52 +371,69 @@ export default function PublicBrowsePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-white">
-      <header className="bg-white shadow-sm border-b sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-3">
-                <img src="/reliance-logo.png" alt="Reliance" className="h-8 w-8" />
-                <span className="text-xl font-bold text-gray-900">RELIANCE</span>
-              </Link>
+    <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
+      <section className="reliance-dark-shell relative overflow-hidden pb-12">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_18%,rgba(53,214,165,0.12),transparent_18%)]" />
+        <div className="relative mx-auto max-w-7xl px-4 pb-6 pt-6 sm:px-6 lg:px-8">
+          <PublicSiteHeader
+            tone="dark"
+            hideLogo
+            className="mb-10"
+            links={[
+              { href: '/', label: 'Home' },
+              { href: '/browse', label: 'Browse' },
+              { href: '/help', label: 'How It Works' },
+            ]}
+            ctaHref="/auth/register?type=user"
+            ctaLabel="Create Account"
+          />
+
+          <div className="grid gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-end">
+            <div className="max-w-2xl">
+              <div className="reliance-kicker border border-white/10 bg-white/10 text-white/76">
+                Vendor Discovery
+              </div>
+              <h1 className="mt-6 font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl">
+                Browse trusted services with a <span className="text-[var(--reliance-blue-soft)]">clearer signal stack</span>
+              </h1>
+              <p className="mt-5 max-w-xl text-lg leading-8 text-white/72">
+                Compare customer reviews, public service videos, and disclosure-friendly promoted placements without losing the organic marketplace underneath.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                {['Customer Reviews', 'Service Videos', 'Clear Promoted Labels'].map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm font-semibold text-white/82 backdrop-blur-md"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <Link href="/auth/register?type=user">
-                <Button variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-50">
-                  Sign Up
-                </Button>
-              </Link>
-              <Link href="/auth/login">
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white">Sign In</Button>
-              </Link>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Live inventory</div>
+                <div className="mt-3 text-3xl font-semibold">{isLoading ? '...' : totalCount}</div>
+                <p className="mt-2 text-sm leading-6 text-white/68">Public services currently discoverable through Reliance Browse.</p>
+              </div>
+              <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Category coverage</div>
+                <div className="mt-3 text-3xl font-semibold">{categoriesLoading ? '...' : categories.length}</div>
+                <p className="mt-2 text-sm leading-6 text-white/68">Live category groups derived from public inventory, not static marketing labels.</p>
+              </div>
+              <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Discovery mode</div>
+                <div className="mt-3 text-lg font-semibold">Trust-first</div>
+                <p className="mt-2 text-sm leading-6 text-white/68">Promoted listings stay separated and clearly labeled while organic results continue below.</p>
+              </div>
             </div>
           </div>
         </div>
-      </header>
+      </section>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center rounded-full border border-blue-200 bg-white/80 px-4 py-1 text-sm font-medium text-blue-700 shadow-sm mb-5">
-            Trusted local proof, all in one place
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-950 mb-4">Browse Local Services</h1>
-          <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-            Browse trusted local professionals backed by real reviews and proof of completed work.
-          </p>
-          <div className="mt-6 flex flex-wrap justify-center gap-3">
-            {['Real Reviews', 'Proof Available', 'Trusted Vendors'].map((label) => (
-              <span
-                key={label}
-                className="rounded-full border border-blue-100 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm"
-              >
-                {label}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white/95 rounded-2xl shadow-lg shadow-blue-100/60 border border-blue-100 p-6 mb-10">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="reliance-light-card -mt-24 rounded-[32px] p-6 sm:p-7 mb-10 relative z-10">
           <div className="grid md:grid-cols-4 gap-4">
             <div className="md:col-span-2">
               <div className="relative">
@@ -389,7 +448,7 @@ export default function PublicBrowsePage() {
                       handleSearchSubmit();
                     }
                   }}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full rounded-2xl border border-slate-300 bg-slate-50 pl-10 pr-4 py-3.5 text-slate-900 focus:border-[var(--reliance-blue)] focus:ring-2 focus:ring-[var(--reliance-blue)]/15"
                 />
               </div>
             </div>
@@ -401,9 +460,9 @@ export default function PublicBrowsePage() {
                   setSelectedCategory(e.target.value);
                   setPage(1);
                 }}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3.5 text-slate-900 focus:border-[var(--reliance-blue)] focus:ring-2 focus:ring-[var(--reliance-blue)]/15"
               >
-                <option value="all">All Categories</option>
+                <option value="all">All Services</option>
                 {!hasSelectedCategoryOption && selectedCategory !== 'all' ? (
                   <option value={selectedCategory}>{selectedCategory}</option>
                 ) : null}
@@ -417,14 +476,14 @@ export default function PublicBrowsePage() {
             <div className="flex gap-2">
               <Button
                 onClick={handleSearchSubmit}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                className="flex-1 rounded-2xl bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]"
               >
                 Search
               </Button>
               <Button
                 onClick={() => setShowFilters((prev) => !prev)}
                 aria-label="Toggle browse filters"
-                className="bg-gray-700 hover:bg-gray-800 text-white"
+                className="rounded-2xl bg-[var(--reliance-midnight)] text-white hover:bg-[#10203a]"
               >
                 <SlidersHorizontal className="h-4 w-4" />
               </Button>
@@ -483,17 +542,17 @@ export default function PublicBrowsePage() {
                     </p>
                   </div>
                 ) : null}
-                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
                   {hasEffectiveCoordinateOrigin
                     ? 'Distance uses real saved or linked coordinates when providers have them.'
-                    : 'More filters coming soon.'}
+                    : 'Distance filters unlock automatically once a browse location is set.'}
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        <div className="mb-10 rounded-2xl border border-blue-100 bg-white/90 p-5 shadow-sm">
+        <div className="reliance-light-card mb-10 rounded-[28px] p-5 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="flex gap-3">
               <div className={`mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
@@ -528,7 +587,7 @@ export default function PublicBrowsePage() {
                 <button
                   type="button"
                   onClick={stopUsingBrowserLocation}
-                  className="text-sm font-semibold text-gray-700 hover:text-gray-900"
+                  className="text-sm font-semibold text-gray-700 hover:text-white"
                 >
                   Stop using current location
                 </button>
@@ -538,7 +597,7 @@ export default function PublicBrowsePage() {
                 <button
                   type="button"
                   onClick={stopUsingSavedLocation}
-                  className="text-sm font-semibold text-gray-700 hover:text-gray-900"
+                  className="text-sm font-semibold text-gray-700 hover:text-white"
                 >
                   Stop for this session
                 </button>
@@ -568,9 +627,72 @@ export default function PublicBrowsePage() {
           </div>
         </div>
 
+        {visiblePromotedListings.length > 0 ? (
+          <div className="mb-12 rounded-2xl border border-amber-200 bg-amber-50/70 p-5 shadow-sm">
+            <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <div className="mb-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  {PROMOTION_PUBLIC_LABEL}
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900">{PROMOTION_BROWSE_SECTION_TITLE}</h2>
+                <p className="text-sm text-gray-700">
+                  {PROMOTION_BROWSE_SECTION_EXPLAINER}
+                </p>
+              </div>
+              <span className="text-xs font-medium text-amber-800">
+                {PROMOTION_PUBLIC_EXPLAINER}
+              </span>
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {visiblePromotedListings.map((item) => (
+                <Card key={item.promotion?.campaignId || item.serviceId} className="border-amber-200 bg-white shadow-sm hover:shadow-lg transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <Badge className="mb-2 bg-amber-500 text-white hover:bg-amber-500">
+                          {item.promotion?.label || PROMOTION_PUBLIC_LABEL}
+                        </Badge>
+                        <h3 className="text-lg font-semibold leading-snug text-gray-900">{item.serviceName}</h3>
+                      </div>
+                      {item.vendorCategory ? (
+                        <Badge variant="outline" className="text-xs">
+                          {item.vendorCategory}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="mb-2 line-clamp-2 text-sm text-gray-600">{cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Public service listing'}</p>
+                    <p className="mb-2 text-sm font-medium text-gray-900">Vendor: {item.vendorName}</p>
+                    {item.location ? (
+                      <div className="mb-3 flex items-center text-sm text-gray-600">
+                        <MapPin className="mr-1 h-4 w-4" />
+                        {item.location}
+                      </div>
+                    ) : null}
+                    <p className="mb-4 text-xs text-gray-600">
+                      {item.promotion?.explainer || PROMOTION_PUBLIC_EXPLAINER}
+                    </p>
+                    <div className="flex gap-2">
+                      <Link href={`/service/${item.serviceId}`} className="flex-1">
+                        <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                          View Service
+                        </Button>
+                      </Link>
+                      <Link href={`/vendors/${item.vendorId}`} className="flex-1">
+                        <Button size="sm" variant="outline" className="w-full">
+                          View Vendor
+                        </Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="mb-12">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">Popular Categories</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-3xl font-semibold text-slate-950">Popular Categories</h2>
             <span className="text-xs font-medium text-blue-700">
               Live category counts
             </span>
@@ -584,11 +706,11 @@ export default function PublicBrowsePage() {
               ))}
             </div>
           ) : categoriesError ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               We could not load category counts right now. You can still browse and search services.
             </div>
           ) : categories.length === 0 ? (
-            <div className="rounded-lg border bg-white p-4 text-sm text-gray-600">
+            <div className="rounded-2xl border bg-white p-4 text-sm text-gray-600">
               No public categories are available yet. Check back as vendors publish more approved public content.
             </div>
           ) : (
@@ -597,11 +719,16 @@ export default function PublicBrowsePage() {
                 const decoration =
                   CATEGORY_DECORATION[category.label.toLowerCase()] ||
                   CATEGORY_DECORATION[category.key] ||
-                  CATEGORY_DECORATION.uncategorized;
+                  { icon: '•', description: 'Services still waiting for a category label' };
+                const decorationDescription =
+                  category.key === 'plumbing' || category.label.toLowerCase() === 'plumbing'
+                    ? 'Drain, leak, and fixture services'
+                    : decoration.description;
+
                 return (
                   <Card
                     key={category.key}
-                    className={`text-center hover:-translate-y-1 hover:shadow-xl transition-all cursor-pointer group border-2 bg-white ${
+                    className={`text-center hover:-translate-y-1 hover:shadow-[0_22px_55px_rgba(7,16,38,0.14)] transition-all cursor-pointer group rounded-[26px] border-2 bg-white ${
                       selectedCategory === category.label
                         ? 'border-blue-500 bg-blue-50/80 shadow-md shadow-blue-100'
                         : 'border-white hover:border-blue-200'
@@ -614,7 +741,7 @@ export default function PublicBrowsePage() {
                       </div>
                       <h3 className="font-semibold text-gray-900 mb-1">{category.label}</h3>
                       <p className="text-sm text-gray-600 mb-1">{category.serviceCount} services</p>
-                      <p className="text-xs text-gray-500">{decoration.description}</p>
+                      <p className="text-xs text-gray-500">{decorationDescription}</p>
                       {selectedCategory === category.label ? (
                         <p className="text-[11px] mt-2 text-blue-700 font-medium">Selected filter</p>
                       ) : null}
@@ -627,10 +754,10 @@ export default function PublicBrowsePage() {
         </div>
 
         <div className="mb-12">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Trusted Services</h2>
-              <p className="text-sm text-gray-600">Compare vendors by reviews, proof, and service fit.</p>
+              <h2 className="font-display text-3xl font-semibold text-slate-950">Trusted Services</h2>
+              <p className="text-sm text-gray-600">Compare vendors by reviews, service videos, and service fit.</p>
             </div>
             <div className="text-sm text-gray-600">
               {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount}`}
@@ -653,12 +780,12 @@ export default function PublicBrowsePage() {
               ))}
             </div>
           ) : isError ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
               We could not load marketplace results right now.
               {error instanceof Error ? ` ${error.message}` : ''}
             </div>
           ) : results.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg border">
+            <div className="text-center py-12 bg-white rounded-[28px] border">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Search className="w-8 h-8 text-gray-400" />
               </div>
@@ -678,33 +805,26 @@ export default function PublicBrowsePage() {
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {results.map((item) => (
-                <Card key={item.serviceId} className="hover:-translate-y-1 hover:shadow-xl transition-all h-full flex flex-col border-blue-50">
+                <Card key={item.serviceId} className="h-full flex-col overflow-hidden rounded-[28px] border-slate-200 bg-white transition-all hover:-translate-y-1 hover:shadow-[0_26px_70px_rgba(7,16,38,0.14)]">
                   <div className="relative">
-                    {item.previewMediaUrl ? (
-                      <img
-                        src={item.previewMediaUrl}
-                        alt={item.serviceName}
-                        className="w-full h-48 object-cover rounded-t-lg"
-                      />
-                    ) : (
-                      <div className="w-full h-48 rounded-t-lg bg-gray-100 flex items-center justify-center">
-                        <div className="text-center text-gray-500">
-                          <ImageIcon className="h-6 w-6 mx-auto mb-1" />
-                          <span className="text-xs">No public media preview</span>
-                        </div>
-                      </div>
-                    )}
+                    <PublicMediaPreview
+                      url={item.previewMediaUrl}
+                      type={item.previewMediaType}
+                      alt={item.serviceName}
+                      className="w-full h-48 object-cover rounded-t-lg"
+                      videoLabel="Video preview available"
+                    />
                     <div className="absolute left-3 top-3">
                       {item.publicListing.hasPublicMedia ? (
-                        <Badge className="bg-blue-600 text-white hover:bg-blue-600">Proof available</Badge>
+                        <Badge className="bg-blue-600 text-white hover:bg-blue-600">Video available</Badge>
                       ) : (
                         <Badge className="bg-white/90 text-gray-700 hover:bg-white">Verified listing</Badge>
                       )}
                     </div>
                   </div>
-                  <CardContent className="p-4 flex-1 flex flex-col">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <h3 className="font-semibold text-lg text-gray-900 leading-snug">{item.serviceName}</h3>
+                  <CardContent className="flex flex-1 flex-col p-5">
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <h3 className="font-display text-xl font-semibold leading-snug text-slate-950">{item.serviceName}</h3>
                       {item.vendorCategory ? (
                         <Badge variant="outline" className="text-xs">
                           {item.vendorCategory}
@@ -712,7 +832,7 @@ export default function PublicBrowsePage() {
                       ) : null}
                     </div>
 
-                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">{item.serviceDescription || 'No description yet.'}</p>
+                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">{cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'No description yet.'}</p>
                     <p className="text-sm text-gray-900 font-medium mb-1">Vendor: {item.vendorName}</p>
 
                     {item.vendorBusinessType ? (
@@ -733,7 +853,7 @@ export default function PublicBrowsePage() {
                     ) : null}
 
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-lg bg-blue-50 px-3 py-2 text-blue-900">
+                      <div className="rounded-2xl bg-blue-50 px-3 py-2 text-blue-900">
                         <div className="font-semibold">
                           {typeof item.rating === 'number' ? `${item.rating.toFixed(1)} stars` : 'New listing'}
                         </div>
@@ -743,12 +863,14 @@ export default function PublicBrowsePage() {
                             : 'Reviews pending'}
                         </div>
                       </div>
-                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-800">
+                      <div className="rounded-2xl bg-slate-50 px-3 py-2 text-slate-800">
                         <div className="font-semibold">
-                          {item.publicListing.hasPublicMedia ? 'Proof ready' : 'Vendor details'}
+                          {item.trustScore?.scored && item.trustScore.totalScorePct !== null
+                            ? `${item.trustScore.totalScorePct}%`
+                            : 'Building'}
                         </div>
                         <div className="text-slate-600">
-                          {item.publicListing.hasPublicMedia ? 'Public media' : 'Profile available'}
+                          Reliance Trust Score
                         </div>
                       </div>
                     </div>
@@ -760,7 +882,7 @@ export default function PublicBrowsePage() {
                           : 'Public service listing'}
                       </div>
                       {item.publicListing.hasPublicMedia ? (
-                        <Badge className="bg-blue-100 text-blue-800">Public media</Badge>
+                        <Badge className="bg-blue-100 text-blue-800">Public videos</Badge>
                       ) : (
                         <Badge className="bg-gray-100 text-gray-700">No public media</Badge>
                       )}
@@ -821,7 +943,7 @@ export default function PublicBrowsePage() {
         </div>
 
         <div className="mb-8">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <div className="reliance-light-card rounded-[28px] p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-blue-900 mb-2">Ready to contact a provider?</h3>
@@ -834,6 +956,8 @@ export default function PublicBrowsePage() {
           </div>
         </div>
       </div>
+
+      <PublicSiteFooter />
     </div>
   );
 }

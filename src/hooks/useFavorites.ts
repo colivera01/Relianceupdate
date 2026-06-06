@@ -8,19 +8,32 @@ export const favoriteKeys = {
 };
 
 export const useFavorites = (params?: { page?: number; limit?: number }) => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   return useQuery({
-    queryKey: favoriteKeys.list({ ...(params || {}), _authUserId: user?.id ?? "" }),
+    queryKey: favoriteKeys.list({
+      ...(params || {}),
+      _authUserId: user?.id ?? "",
+      _authReady: !isLoading,
+      _authenticated: isAuthenticated,
+    }),
     queryFn: () => favoritesSDK.listFavorites(params, user?.id),
+    enabled: !isLoading && isAuthenticated,
     staleTime: 60 * 1000,
     retry: false,
   });
 };
 
 export const useFavoritesOptional = (params?: { page?: number; limit?: number }) => {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   return useQuery({
-    queryKey: [...favoriteKeys.list({ ...(params || {}), _authUserId: user?.id ?? "" }), "optional"] as const,
+    queryKey: [
+      ...favoriteKeys.list({
+        ...(params || {}),
+        _authUserId: user?.id ?? "",
+        _authReady: !isLoading,
+      }),
+      "optional",
+    ] as const,
     queryFn: async () => {
       try {
         return await favoritesSDK.listFavorites(params, user?.id);
@@ -36,6 +49,7 @@ export const useFavoritesOptional = (params?: { page?: number; limit?: number })
         throw error;
       }
     },
+    enabled: !isLoading,
     staleTime: 60 * 1000,
     retry: false,
   });

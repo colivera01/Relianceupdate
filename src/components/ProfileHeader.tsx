@@ -77,7 +77,7 @@ export default function ProfileHeader({
             </Badge>
             {availableProfiles.length > 1 && (
               <span className="text-sm text-gray-500">
-                • {availableProfiles.length} profiles available
+                - {availableProfiles.length} profiles available
               </span>
             )}
           </div>

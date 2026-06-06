@@ -1,5 +1,5 @@
-import UserManagement from "@/components/UserManagement";
+import { redirect } from "next/navigation";
 
-export default function UsersPage() {
-  return <UserManagement />;
-} 
+export default function LegacyAdminUsersPage() {
+  redirect("/admin/users");
+}

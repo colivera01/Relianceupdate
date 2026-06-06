@@ -1,0 +1,130 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/server/db";
+import { requireVendorMembership } from "@/lib/membership-auth";
+import { resolveOperationalClientLabel } from "@/lib/operational-client";
+
+interface RouteParams {
+  params: Promise<{ vendorId: string; jobId: string }>;
+}
+
+function parseCustomerMetadata(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function extractAssignedEmployeesFromMetadata(value: string | null | undefined): string[] {
+  const metadata = parseCustomerMetadata(value);
+  const raw = metadata.vendor_job_assigned_employees;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function resolveJobSourceFromMetadata(value: string | null | undefined): "customer_booking" | "vendor_created_job" {
+  const metadata = parseCustomerMetadata(value);
+  const claimStatus = String(metadata.claim_status || "").trim().toUpperCase();
+  const linkedFlag = metadata.customer_account_linked;
+  const explicitSource = String(metadata.booking_source || metadata.source || "").trim().toLowerCase();
+  if (explicitSource === "customer_booking") {
+    return "customer_booking";
+  }
+  if (explicitSource === "vendor_created_job") {
+    return "vendor_created_job";
+  }
+  if (claimStatus || typeof linkedFlag === "boolean") {
+    return "vendor_created_job";
+  }
+  return "customer_booking";
+}
+
+function normalizeVendorJobStatus(status: string | null | undefined): string {
+  const normalized = String(status || "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (normalized === "CONFIRMED") return "IN_PROGRESS";
+  return normalized || "UNKNOWN";
+}
+
+export async function GET(request: Request, context: RouteParams): Promise<NextResponse> {
+  try {
+    const { vendorId, jobId } = await context.params;
+    await requireVendorMembership(request, vendorId);
+
+    const booking = await prisma.booking.findFirst({
+      where: { id: jobId, vendorId },
+      select: {
+        id: true,
+        title: true,
+        clientName: true,
+        status: true,
+        date: true,
+        createdAt: true,
+        updatedAt: true,
+        customerMetadata: true,
+        rejectionReason: true,
+        rejectedAt: true,
+        service: {
+          select: {
+            name: true,
+          },
+        },
+        user: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      return NextResponse.json(
+        { error: "Job not found for this vendor." },
+        { status: 404 }
+      );
+    }
+
+    const metadata = parseCustomerMetadata(booking.customerMetadata || null);
+    const notes = String(metadata.user_notes || "").trim();
+    const client = resolveOperationalClientLabel({
+      clientName: booking.clientName,
+      userName: booking.user?.name,
+    });
+
+    return NextResponse.json({
+      job: {
+        id: booking.id,
+        title: booking.title || booking.service?.name || "Untitled Job",
+        client,
+        status: normalizeVendorJobStatus(booking.status),
+        source: resolveJobSourceFromMetadata(booking.customerMetadata),
+        date: booking.date?.toISOString() || booking.createdAt.toISOString(),
+        createdAt: booking.createdAt.toISOString(),
+        updatedAt: booking.updatedAt?.toISOString() || booking.createdAt.toISOString(),
+        assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
+        serviceName: booking.service?.name || "",
+        serviceType: booking.service?.name || "",
+        rejectionReason: booking.rejectionReason || null,
+        rejectedAt: booking.rejectedAt?.toISOString?.() || null,
+        notes: notes ? [{ text: notes }] : [],
+      },
+    });
+  } catch (error: any) {
+    if (error?.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (String(error?.message || "").includes("Forbidden")) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    return NextResponse.json(
+      {
+        error: "Failed to load vendor job detail",
+        details: error?.message || "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
+}

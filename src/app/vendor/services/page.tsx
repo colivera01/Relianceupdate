@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
+import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
 
 type ServiceRow = {
   id: string;
@@ -54,9 +55,6 @@ export default function VendorServicesPage() {
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
-
-  const publishBlockerMessage =
-    'Publish/archive actions are blocked: no vendor-scoped publish/archive service route is available yet.';
 
   const sortedServices = useMemo(
     () =>
@@ -135,7 +133,7 @@ export default function VendorServicesPage() {
     const price = Number(formData.price);
 
     if (!name || !description || !Number.isFinite(price) || price < 0) {
-      setFormError('Service name, description, and a non-negative price are required.');
+      setFormError('Service name, description, and a non-negative reference price are required.');
       return;
     }
 
@@ -206,10 +204,17 @@ export default function VendorServicesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {vendorProfile?.onboarding ? (
+          <div className="mb-6">
+            <VendorOnboardingStatusPanel profile={vendorProfile} />
+          </div>
+        ) : null}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Service Management</h1>
-            <p className="text-gray-600">Manage persisted services for your vendor profile.</p>
+            <h1 className="text-3xl font-bold text-gray-900">Service Catalog</h1>
+            <p className="text-gray-600">
+              Maintain draft service details for your vendor profile.
+            </p>
           </div>
           <button
             onClick={openCreateModal}
@@ -217,17 +222,22 @@ export default function VendorServicesPage() {
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" />
-            Create Service
+            Add Service Draft
           </button>
         </div>
 
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
-          {publishBlockerMessage}
+        <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-900">
+          <p className="font-semibold text-purple-950">Service catalog management</p>
+          <p className="mt-1">
+            Use this page to maintain your service details and pricing references. Publishing stays
+            coordinated through admin review, and billing tools will be announced separately before
+            they go live.
+          </p>
         </div>
 
         {approvalPending && (
           <div className="p-4 mb-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
-            Vendor account pending approval
+            Vendor account pending approval. Your draft services are saved for admin review, but they are not publicly visible yet.
           </div>
         )}
 
@@ -256,7 +266,7 @@ export default function VendorServicesPage() {
           </div>
         ) : sortedServices.length === 0 ? (
           <div className="p-6 bg-white rounded-2xl border border-gray-200 text-gray-600">
-            No services found for this vendor.
+            No service drafts found for this vendor.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -269,12 +279,13 @@ export default function VendorServicesPage() {
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold text-purple-600">${service.price.toFixed(2)}</div>
+                    <div className="text-xs text-gray-500">Reference estimate</div>
                     <div
                       className={`text-xs mt-1 ${
                         service.isPublished ? 'text-green-700' : 'text-amber-700'
                       }`}
                     >
-                      {service.isPublished ? 'Published' : 'Unpublished'}
+                      {service.isPublished ? 'Public listing: admin-managed' : 'Draft only'}
                     </div>
                   </div>
                 </div>
@@ -299,21 +310,8 @@ export default function VendorServicesPage() {
                     {deleteLoadingId === service.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   </button>
                 </div>
-                <div className="flex gap-2 mt-2">
-                  <button
-                    disabled
-                    title={publishBlockerMessage}
-                    className="flex-1 px-3 py-2 border border-gray-300 text-gray-400 rounded-lg cursor-not-allowed"
-                  >
-                    Publish
-                  </button>
-                  <button
-                    disabled
-                    title={publishBlockerMessage}
-                    className="flex-1 px-3 py-2 border border-gray-300 text-gray-400 rounded-lg cursor-not-allowed"
-                  >
-                    Archive
-                  </button>
+                <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+                  Publishing stays admin-managed for the current launch. Use delete only for drafts or services you no longer want to keep on file.
                 </div>
               </div>
             ))}
@@ -325,7 +323,7 @@ export default function VendorServicesPage() {
             <div className="bg-white rounded-2xl max-w-2xl w-full mx-4">
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900">
-                  {editingService ? 'Edit Service' : 'Create Service'}
+                  {editingService ? 'Edit Service Draft' : 'Add Service Draft'}
                 </h2>
                 <button
                   onClick={closeFormModal}
@@ -360,7 +358,9 @@ export default function VendorServicesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Price ($) *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reference Price ($) *
+                  </label>
                   <input
                     type="number"
                     min="0"
@@ -370,6 +370,10 @@ export default function VendorServicesPage() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     placeholder="0.00"
                   />
+                  <p className="mt-2 text-xs text-gray-500">
+                    Required for service records, but shown as a customer-facing estimate/reference
+                    until in-app billing tools are introduced.
+                  </p>
                 </div>
 
                 {formError && (
@@ -396,7 +400,7 @@ export default function VendorServicesPage() {
                   className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {formSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {editingService ? 'Update Service' : 'Create Service'}
+                  {editingService ? 'Update Draft' : 'Add Draft'}
                 </button>
               </div>
             </div>

@@ -31,7 +31,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         : {}),
     };
 
-    const [total, logs] = await Promise.all([
+    const [total, logs, distinctActionTypes, distinctEntityTypes] = await Promise.all([
       (prisma as any).adminAuditLog.count({ where }),
       (prisma as any).adminAuditLog.findMany({
         where,
@@ -50,12 +50,30 @@ export async function GET(request: Request): Promise<NextResponse> {
           createdAt: true,
         },
       }),
+      (prisma as any).adminAuditLog.findMany({
+        distinct: ["actionType"],
+        orderBy: { actionType: "asc" },
+        select: { actionType: true },
+      }),
+      (prisma as any).adminAuditLog.findMany({
+        distinct: ["entityType"],
+        orderBy: { entityType: "asc" },
+        select: { entityType: true },
+      }),
     ]);
 
     return NextResponse.json({
       success: true,
       message: "Audit logs fetched successfully",
       logs,
+      meta: {
+        actionTypes: distinctActionTypes
+          .map((row: { actionType?: string | null }) => String(row?.actionType || "").trim())
+          .filter(Boolean),
+        entityTypes: distinctEntityTypes
+          .map((row: { entityType?: string | null }) => String(row?.entityType || "").trim())
+          .filter(Boolean),
+      },
       pagination: {
         page,
         limit,

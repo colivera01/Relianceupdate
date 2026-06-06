@@ -48,7 +48,10 @@ describe("GET /api/vendors/[vendorId]/memberships", () => {
     expect(j.memberships).toEqual([]);
     expect(hoisted.vendorMembershipFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { vendorId: "v1", status: "PENDING" },
+        where: {
+          vendorId: "v1",
+          status: { in: ["PENDING", "pending", "PENDING"] },
+        },
       })
     );
   });

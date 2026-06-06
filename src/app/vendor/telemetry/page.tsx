@@ -285,7 +285,7 @@ export default function VendorTelemetryPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Device Status</CardTitle>
           <p className="text-xs text-gray-500 mt-1">
-            {statusLoading ? "Loading..." : `${deviceStatuses.length} device(s)`}
+            {statusLoading ? "Loading device status..." : `${deviceStatuses.length} device${deviceStatuses.length === 1 ? "" : "s"}` }
           </p>
         </CardHeader>
         <CardContent>
@@ -401,7 +401,7 @@ export default function VendorTelemetryPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Latest events</CardTitle>
-          <p className="text-xs text-gray-500 mt-1">{loading ? "Loading..." : `${events.length} event(s)`}</p>
+          <p className="text-xs text-gray-500 mt-1">{loading ? "Loading recent events..." : `${events.length} event${events.length === 1 ? "" : "s"}` }</p>
         </CardHeader>
         <CardContent>
           {events.length === 0 && !loading ? (

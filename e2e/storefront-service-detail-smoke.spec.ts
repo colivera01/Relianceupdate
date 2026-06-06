@@ -6,8 +6,9 @@ const FIXTURE_PATH = path.join(__dirname, 'smoke-fixture.json');
 
 type SmokeFixture = {
   serviceId: string;
+  serviceName: string;
   reviewVendorId: string;
-  publicReviewComment: string;
+  vendorName: string;
 };
 
 function readFixture(): SmokeFixture {
@@ -20,10 +21,10 @@ test('signed-out public service detail page shows trust CTAs and public review',
 
   await page.goto(`/service/${fixture.serviceId}`);
 
-  await expect(page.getByRole('heading', { level: 1, name: 'E2E Smoke Service' })).toBeVisible({
+  await expect(page.getByRole('heading', { level: 1, name: fixture.serviceName })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole('button', { name: 'Sign in to Book' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sign in to Book' })).toBeVisible();
   await expect(page.getByTestId('service-page-favorite-toggle')).toHaveAttribute(
     'aria-label',
     'Sign in to save service'
@@ -31,10 +32,13 @@ test('signed-out public service detail page shows trust CTAs and public review',
   await expect(page.locator('body')).not.toContainText(/\$\d/);
 
   await page.getByRole('button', { name: /Reviews \(\d+\)/ }).click();
-  await expect(page.getByText(fixture.publicReviewComment)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Public approved').first()).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText('Clear communication, smooth video updates, and a polished final result.')
+  ).toBeVisible({ timeout: 30_000 });
 
   await page.goto(`/vendors/${fixture.reviewVendorId}`);
-  await expect(page.getByRole('heading', { name: 'E2E Smoke Vendor' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: fixture.vendorName })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.locator(`a[href="/service/${fixture.serviceId}"]`)).toBeVisible();

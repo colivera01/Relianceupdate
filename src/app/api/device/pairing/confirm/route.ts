@@ -1,6 +1,7 @@
 // src/app/api/device/pairing/confirm/route.ts
 
 import { prisma } from "@/server/db";
+import { verifyDevicePairingInviteToken } from "@/lib/device-pairing-link";
 
 import { NextResponse } from "next/server";
 
@@ -8,8 +9,9 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { code, deviceName, deviceType, deviceUid } = await req.json();
-    const normalizedCode = String(code || '').trim();
+    const { code, inviteToken, deviceName, deviceType, deviceUid } = await req.json();
+    const claims = verifyDevicePairingInviteToken(inviteToken);
+    const normalizedCode = claims?.code || String(code || '').trim();
     const normalizedUid = String(deviceUid || '').trim();
     const normalizedName = String(deviceName || '').trim() || 'Vendor Device';
     const normalizedType = String(deviceType || 'PHONE').trim().toUpperCase();
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
             vendorId: String(pairing.vendorId),
             deviceUid: normalizedUid,
             employeeId: existing.employeeId || normalizedUid,
+            deviceName: normalizedName,
             deviceType: normalizedType,
             lastSeenAt: now,
           },
@@ -95,6 +98,7 @@ export async function POST(req: Request) {
           vendorId: String(pairing.vendorId),
           deviceUid: normalizedUid,
           employeeId: normalizedUid,
+          deviceName: normalizedName,
           deviceType: normalizedType,
           pairedAt: now,
           lastSeenAt: now,
@@ -133,5 +137,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
-

@@ -1,80 +1,177 @@
 "use client";
+import { Suspense } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  HAS_LAUNCH_SUPPORT_EMAIL,
+  LAUNCH_SUPPORT_EMAIL,
+  LAUNCH_SUPPORT_MAILTO,
+  LAUNCH_SUPPORT_RESPONSE_TIME,
+} from '@/lib/support';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
-export default function SupportPage() {
+function sanitizeReturnPath(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith('/')) return null;
+  if (value.startsWith('//')) return null;
+  return value;
+}
+
+function sanitizeReturnLabel(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function SupportPageContent() {
+  const searchParams = useSearchParams();
+  const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
+  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Vendor Dashboard';
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Support</h1>
-          <p className="text-gray-600">Get help with your account, services, and platform features</p>
-        </div>
+    <div className="space-y-8 px-4 py-8 md:px-8">
+      <div className="mx-auto max-w-5xl space-y-8">
+        <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
+          {returnTo ? (
+            <div className="mb-5">
+              <Link
+                href={returnTo}
+                className="text-sm font-medium text-[var(--reliance-blue-soft)] hover:text-white"
+              >
+                {returnLabel}
+              </Link>
+            </div>
+          ) : null}
+          <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+            Vendor support
+          </div>
+          <div className="mt-5 max-w-3xl space-y-4">
+            <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
+              Help your team manage services, jobs, and service videos without leaving the launch flow
+            </h1>
+            <p className="text-sm leading-7 text-white/72 sm:text-base">
+              Support stays inside the same premium Reliance workspace: practical launch guidance,
+              clear routes back into vendor tools, and published help channels when an operator
+              action still needs a human follow-up.
+            </p>
+          </div>
+        </header>
 
         <div className="grid gap-6">
-          {/* Quick Help Section */}
-          <Card>
+          <Card className="reliance-operator-surface rounded-[28px] border-white/10">
             <CardHeader>
-              <CardTitle>Quick Help</CardTitle>
+              <CardTitle>Current Vendor Actions</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-4">
-                <div className="p-4 border rounded-lg">
-                  <h3 className="font-semibold mb-2">Getting Started</h3>
-                  <p className="text-sm text-gray-600 mb-3">Complete your profile and start accepting jobs</p>
-                  <Link href="/vendor/profile" className="text-blue-600 text-sm hover:underline">
-                    Complete Profile →
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <h3 className="font-semibold mb-2">Profile Setup</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Keep your business details, address, reminders, and security preferences current.
+                  </p>
+                  <Link href="/vendor/profile" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
+                    Open Profile
                   </Link>
                 </div>
                 
-                <div className="p-4 border rounded-lg">
-                  <h3 className="font-semibold mb-2">Payment Setup</h3>
-                  <p className="text-sm text-gray-600 mb-3">Set up your payment methods and billing</p>
-                  <Link href="/vendor/billing" className="text-blue-600 text-sm hover:underline">
-                    Setup Payments →
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <h3 className="font-semibold mb-2">Service Catalog</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Prepare service details and reference prices while publishing remains coordinated for launch.
+                  </p>
+                  <Link href="/vendor/services" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
+                    Manage Services
                   </Link>
                 </div>
                 
-                <div className="p-4 border rounded-lg">
-                  <h3 className="font-semibold mb-2">Service Management</h3>
-                  <p className="text-sm text-gray-600 mb-3">Add and manage your services</p>
-                  <Link href="/vendor/profile" className="text-blue-600 text-sm hover:underline">
-                    Manage Services →
-                  </Link>
-                </div>
-                
-                <div className="p-4 border rounded-lg">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <h3 className="font-semibold mb-2">Job Management</h3>
-                  <p className="text-sm text-gray-600 mb-3">Learn how to manage jobs and clients</p>
-                  <Link href="/vendor/jobs" className="text-blue-600 text-sm hover:underline">
-                    View Jobs →
+                  <p className="text-sm text-gray-600 mb-3">
+                    Review active work, job details, video stages, and manager approval steps.
+                  </p>
+                  <Link href="/vendor/jobs" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
+                    View Jobs
+                  </Link>
+                </div>
+                
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <h3 className="font-semibold mb-2">Team Access</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Manage employee access and invite status for the launch workflow.
+                  </p>
+                  <Link href="/vendor/employees" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
+                    Manage Employees
                   </Link>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Contact Information */}
-          <Card>
+          <Card className="reliance-operator-surface rounded-[28px] border-white/10">
             <CardHeader>
-              <CardTitle>Contact Information</CardTitle>
+              <CardTitle>Launch Help Resources</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <h3 className="font-semibold mb-2">Frequently Asked Questions</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Short answers about profile setup, jobs, reviews, launch billing status, and available support channels.
+                  </p>
+                  <Link href="/vendor/support/faqs" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
+                    Read FAQs
+                  </Link>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <h3 className="font-semibold mb-2">Help Articles</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Browse practical guides for using the vendor pages that are active today.
+                  </p>
+                  <Link href="/vendor/support/help-articles" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
+                    Browse Articles
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="reliance-operator-surface rounded-[28px] border-white/10">
+            <CardHeader>
+              <CardTitle>Support Channels</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <h4 className="font-semibold mb-1">Email Support</h4>
-                  <p className="text-gray-600">support@reliance.com</p>
-                  <p className="text-gray-500">Response within 24 hours</p>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <h4 className="font-semibold mb-1">Launch Follow-up</h4>
+                  {HAS_LAUNCH_SUPPORT_EMAIL ? (
+                    <>
+                      <p className="text-gray-600">
+                        Email{' '}
+                        <a href={LAUNCH_SUPPORT_MAILTO} className="text-[var(--reliance-blue-soft)] hover:text-white">
+                          {LAUNCH_SUPPORT_EMAIL}
+                        </a>{' '}
+                        for account access, jobs, media, consent, or approval questions.
+                      </p>
+                      <p className="text-gray-500">Expected follow-up is {LAUNCH_SUPPORT_RESPONSE_TIME}. Use the published launch support path while the in-app ticket form remains offline.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-gray-600">
+                        A dedicated vendor launch inbox has not been published yet.
+                      </p>
+                      <p className="text-gray-500">Set a support email before wider vendor onboarding so operational questions do not route to a personal inbox.</p>
+                    </>
+                  )}
                 </div>
-                <div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <h4 className="font-semibold mb-1">Phone Support</h4>
-                  <p className="text-gray-600">1-800-RELIANCE</p>
-                  <p className="text-gray-500">Mon-Fri 9AM-6PM EST</p>
+                  <p className="text-gray-600">Not available in this launch.</p>
+                  <p className="text-gray-500">No public support line is active.</p>
                 </div>
-                <div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <h4 className="font-semibold mb-1">Live Chat</h4>
-                  <p className="text-gray-600">Available 24/7</p>
-                  <p className="text-gray-500">Instant response</p>
+                  <p className="text-gray-600">Not available in this launch.</p>
+                  <p className="text-gray-500">There is no live agent queue or simulated chat.</p>
                 </div>
               </div>
             </CardContent>
@@ -83,4 +180,29 @@ export default function SupportPage() {
       </div>
     </div>
   );
-} 
+}
+
+function SupportPageFallback() {
+  return (
+    <div className="space-y-8 px-4 py-8 md:px-8">
+      <div className="mx-auto max-w-5xl">
+        <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
+          <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+            Vendor support
+          </div>
+          <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
+            Preparing vendor help resources...
+          </h1>
+        </header>
+      </div>
+    </div>
+  );
+}
+
+export default function SupportPage() {
+  return (
+    <Suspense fallback={<SupportPageFallback />}>
+      <SupportPageContent />
+    </Suspense>
+  );
+}

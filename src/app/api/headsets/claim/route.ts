@@ -97,6 +97,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         create: {
           vendorId: membership.vendorId,
           deviceUid: headsetUid,
+          deviceName: "Reliance Headset",
           deviceType: "HEADSET",
           firmwareVersion: firmwareVersion ?? null,
           pairedAt: new Date(),
@@ -104,6 +105,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           isActive: true,
         },
         update: {
+          deviceName: "Reliance Headset",
           firmwareVersion: firmwareVersion ?? undefined,
           lastSeenAt: new Date(),
           isActive: true,

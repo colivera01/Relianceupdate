@@ -3,6 +3,7 @@ import { sendEmail } from '@/lib/email/resend';
 import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
+import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
 
 export type ReviewReminderInput = {
   reviewWindowId: string;
@@ -64,10 +65,12 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
   const channels: ChannelDelivery[] = [];
   const vendorName = String(input.vendorName || '').trim();
   const hasVendorName = Boolean(vendorName);
-  const serviceLabel =
-    String(input.serviceName || '').trim() ||
-    String(input.bookingTitle || '').trim() ||
-    'Recent service';
+  const serviceLabel = resolveCustomerFacingServiceLabel({
+    serviceName: input.serviceName,
+    bookingTitle: input.bookingTitle,
+    vendorName: input.vendorName,
+    fallback: 'Recent service visit',
+  });
   const scheduledDateLabel = formatCustomerFacingServiceDate({
     value: input.scheduledDate,
     timeZone: input.serviceTimeZone,
@@ -75,22 +78,22 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
   });
 
   const subject = hasVendorName
-    ? `How did ${vendorName} do? Your feedback helps others`
-    : 'How was your recent service? Your feedback helps others';
+    ? `How was your service with ${vendorName}?`
+    : 'How was your recent service?';
   const html = `
     <p>Hello${input.customerName ? ` ${escapeHtml(String(input.customerName))}` : ''},</p>
-    <p>How was your recent service${hasVendorName ? ` with ${escapeHtml(vendorName)}` : ''}?</p>
-    <p>Your feedback helps improve service quality and gives others confidence when choosing a provider.</p>
-    <p><strong>Service Details:</strong></p>
+    <p>We would love your feedback on your recent service${hasVendorName ? ` with ${escapeHtml(vendorName)}` : ''}.</p>
+    <p>Your feedback helps future customers choose with confidence and helps providers improve their service.</p>
+    <p><strong>Service details</strong></p>
     <ul>
       <li>Service: ${escapeHtml(serviceLabel)}</li>
       <li>Date: ${escapeHtml(scheduledDateLabel)}</li>
     </ul>
-    <p>Your review window is open for a limited time.</p>
-    <p>You can review your service proof and leave feedback in one place.</p>
+    <p>Your feedback window is open for a limited time.</p>
+    <p>You can watch your service video and leave feedback in one place.</p>
     <p>
       <a href="${escapeHtml(absoluteFallbackLink)}" style="display:inline-block;padding:10px 14px;border-radius:6px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;">
-        Leave your feedback now
+        Review your service
       </a>
     </p>
     <p>Quickly rate your experience:</p>
@@ -98,31 +101,31 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
       ${inlineRatingLinks
         .map(
           (item) =>
-            `<a href="${escapeHtml(item.url)}" aria-label="Rate ${item.rating} out of 5" style="text-decoration:none;display:inline-block;margin:0 10px 6px 0;">${'⭐'.repeat(item.rating)}</a>`
+            `<a href="${escapeHtml(item.url)}" aria-label="Rate ${item.rating} out of 5" style="text-decoration:none;display:inline-block;margin:0 10px 6px 0;">${'&#9733;'.repeat(item.rating)}</a>`
         )
         .join('')}
     </p>
-    <p>If the button does not work, copy and paste this link: <code>${escapeHtml(absoluteFallbackLink)}</code></p>
+    <p>If the button does not work, copy and paste this link into your browser: <code>${escapeHtml(absoluteFallbackLink)}</code></p>
   `.trim();
   const text = [
     `Hello${input.customerName ? ` ${String(input.customerName).trim()}` : ''},`,
     '',
-    `How was your recent service${hasVendorName ? ` with ${vendorName}` : ''}?`,
-    'Your feedback helps improve service quality and gives others confidence when choosing a provider.',
+    `We would love your feedback on your recent service${hasVendorName ? ` with ${vendorName}` : ''}.`,
+    'Your feedback helps future customers choose with confidence and helps providers improve their service.',
     '',
-    'Service Details:',
+    'Service details:',
     `- Service: ${serviceLabel}`,
     `- Date: ${scheduledDateLabel}`,
     '',
-    'Your review window is open for a limited time.',
-    'You can review your service proof and leave feedback in one place.',
+    'Your feedback window is open for a limited time.',
+    'You can watch your service video and leave feedback in one place.',
     '',
-    `Leave your feedback now: ${absoluteFallbackLink}`,
+    `Review your service: ${absoluteFallbackLink}`,
     '',
     'Quickly rate your experience:',
-    ...inlineRatingLinks.map((item) => `${item.rating} star${item.rating > 1 ? 's' : ''}: ${'⭐'.repeat(item.rating)} ${item.url}`),
+    ...inlineRatingLinks.map((item) => `${item.rating} star${item.rating > 1 ? 's' : ''}: ${item.url}`),
     '',
-    `If the button does not work, copy and paste this link: ${absoluteFallbackLink}`,
+    `If the button does not work, copy and paste this link into your browser: ${absoluteFallbackLink}`,
   ].join('\n');
 
   const email = (input.customerEmail || '').trim();
@@ -155,7 +158,7 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `Reliance: review reminder ${absoluteFallbackLink}`;
+    const body = `Reliance: your feedback window is open. Review your service here: ${absoluteFallbackLink}`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

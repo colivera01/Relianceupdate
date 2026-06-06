@@ -11,6 +11,7 @@ const futureExpires = () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 const hoisted = vi.hoisted(() => {
   const reviewWindowFindUnique = vi.fn();
   const reviewWindowUpdate = vi.fn();
+  const reviewWindowUpdateMany = vi.fn();
   const bookingFindUnique = vi.fn();
   const reviewFindFirst = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
@@ -23,6 +24,7 @@ const hoisted = vi.hoisted(() => {
     reviewWindow: {
       findUnique: reviewWindowFindUnique,
       update: reviewWindowUpdate,
+      updateMany: reviewWindowUpdateMany,
     },
     booking: { findUnique: bookingFindUnique },
     vendorMembership: { findFirst: vendorMembershipFindFirst },
@@ -35,6 +37,7 @@ const hoisted = vi.hoisted(() => {
     prisma,
     reviewWindowFindUnique,
     reviewWindowUpdate,
+    reviewWindowUpdateMany,
     bookingFindUnique,
     reviewFindFirst,
     vendorMembershipFindFirst,
@@ -67,6 +70,10 @@ vi.mock('@/lib/review-notifications', () => ({
   }),
 }));
 
+vi.mock('@/lib/email-verification-enforcement', () => ({
+  requireVerifiedEmailForAction: vi.fn().mockResolvedValue(null),
+}));
+
 function jsonRequest(url: string, body: unknown): NextRequest {
   return new NextRequest(url, {
     method: 'POST',
@@ -89,6 +96,7 @@ describe('POST /api/reviews/create', () => {
     hoisted.$transaction.mockReset();
     hoisted.reviewCreate.mockReset();
     hoisted.reviewWindowUpdate.mockReset();
+    hoisted.reviewWindowUpdateMany.mockReset();
     hoisted.reviewPromptEventCreate.mockReset();
     vi.mocked(createAdminAuditLog).mockClear();
   });
@@ -217,15 +225,21 @@ describe('POST /api/reviews/create', () => {
       vendorId: 'v1',
       bookingId: 'b1',
       rating: 5,
+      moderationStatus: 'pending_review',
+      visibilityStatus: 'private',
     };
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         review: { create: hoisted.reviewCreate },
-        reviewWindow: { update: hoisted.reviewWindowUpdate },
+        reviewWindow: {
+          update: hoisted.reviewWindowUpdate,
+          updateMany: hoisted.reviewWindowUpdateMany,
+        },
         reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
       };
       hoisted.reviewCreate.mockResolvedValue(createdReview);
       hoisted.reviewWindowUpdate.mockResolvedValue({ id: 'rw1', status: 'submitted' });
+      hoisted.reviewWindowUpdateMany.mockResolvedValue({ count: 0 });
       hoisted.reviewPromptEventCreate.mockResolvedValue({});
       return fn(tx);
     });
@@ -248,13 +262,31 @@ describe('POST /api/reviews/create', () => {
       vendorId: 'v1',
       mediaSessionId: 'ms1',
     });
-    expect(hoisted.reviewCreate).toHaveBeenCalled();
+    expect(hoisted.reviewCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          moderationStatus: 'pending_review',
+          visibilityStatus: 'private',
+        }),
+      })
+    );
     expect(vi.mocked(createAdminAuditLog)).toHaveBeenCalledWith(
       expect.objectContaining({
         actionType: 'review_capture_submitted',
         entityType: 'review',
         entityId: 'rev-new',
         actorUserId: 'customer-a',
+      })
+    );
+    expect(hoisted.reviewWindowUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          bookingId: 'b1',
+          status: 'active',
+        }),
+        data: expect.objectContaining({
+          status: 'closed',
+        }),
       })
     );
   });
@@ -287,11 +319,15 @@ describe('POST /api/reviews/create', () => {
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         review: { create: hoisted.reviewCreate },
-        reviewWindow: { update: hoisted.reviewWindowUpdate },
+        reviewWindow: {
+          update: hoisted.reviewWindowUpdate,
+          updateMany: hoisted.reviewWindowUpdateMany,
+        },
         reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
       };
       hoisted.reviewCreate.mockResolvedValue({ id: 'rev-attr' });
       hoisted.reviewWindowUpdate.mockResolvedValue({ id: 'rw1', status: 'submitted' });
+      hoisted.reviewWindowUpdateMany.mockResolvedValue({ count: 0 });
       hoisted.reviewPromptEventCreate.mockResolvedValue({});
       return fn(tx);
     });
@@ -339,11 +375,15 @@ describe('POST /api/reviews/create', () => {
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         review: { create: hoisted.reviewCreate },
-        reviewWindow: { update: hoisted.reviewWindowUpdate },
+        reviewWindow: {
+          update: hoisted.reviewWindowUpdate,
+          updateMany: hoisted.reviewWindowUpdateMany,
+        },
         reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
       };
       hoisted.reviewCreate.mockResolvedValue({ id: 'rev-no-assignee' });
       hoisted.reviewWindowUpdate.mockResolvedValue({ id: 'rw1', status: 'submitted' });
+      hoisted.reviewWindowUpdateMany.mockResolvedValue({ count: 0 });
       hoisted.reviewPromptEventCreate.mockResolvedValue({});
       return fn(tx);
     });
@@ -390,7 +430,10 @@ describe('POST /api/reviews/create', () => {
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         review: { create: hoisted.reviewCreate },
-        reviewWindow: { update: hoisted.reviewWindowUpdate },
+        reviewWindow: {
+          update: hoisted.reviewWindowUpdate,
+          updateMany: hoisted.reviewWindowUpdateMany,
+        },
         reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
       };
       hoisted.reviewCreate.mockRejectedValue({ code: 'P2002', message: 'Unique constraint failed' });

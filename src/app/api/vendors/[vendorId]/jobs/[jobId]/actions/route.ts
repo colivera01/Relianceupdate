@@ -9,6 +9,7 @@ import {
 } from "@/lib/vendor-job-operational-phase";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -163,10 +164,9 @@ async function getLinkedMediaSummary(vendorId: string, bookingId: string) {
   const sessionIds = sessions.map((s: any) => s.id);
   const linkedAssetCount = sessionIds.length
     ? await (prisma as any).mediaAsset.count({
-        where: {
+        where: countableMediaAssetWhere({
           mediaSessionId: { in: sessionIds },
-          deletedAt: null,
-        },
+        }),
       })
     : 0;
   return {

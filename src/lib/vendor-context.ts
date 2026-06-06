@@ -1,7 +1,8 @@
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { isUserAccountRestricted, isVendorAccountRestricted, normalizeAccountStatus } from "@/lib/account-status";
 
-export type VendorAccessState = "ACTIVE" | "PENDING" | "NONE";
+export type VendorAccessState = "ACTIVE" | "PENDING" | "RESTRICTED" | "NONE";
 
 export type VendorAccessContext = {
   state: VendorAccessState;
@@ -9,6 +10,8 @@ export type VendorAccessContext = {
   vendorId: string | null;
   membershipId: string | null;
   membershipStatus: string | null;
+  accountStatus: string | null;
+  restrictedAccountType: "user" | "vendor" | null;
   role: string | null;
   businessName: string | null;
 };
@@ -21,6 +24,7 @@ const MEMBERSHIP_VENDOR_SELECT = {
   id: true,
   businessName: true,
   name: true,
+  accountStatus: true,
 } as const;
 
 function toVendorAccessContext(
@@ -35,6 +39,8 @@ function toVendorAccessContext(
       vendorId: null,
       membershipId: null,
       membershipStatus: null,
+      accountStatus: null,
+      restrictedAccountType: null,
       role: null,
       businessName: null,
     };
@@ -46,6 +52,8 @@ function toVendorAccessContext(
     vendorId: membership.vendorId ? String(membership.vendorId) : null,
     membershipId: membership.id ? String(membership.id) : null,
     membershipStatus: membership.status ? String(membership.status) : null,
+    accountStatus: normalizeAccountStatus(membership.vendor?.accountStatus),
+    restrictedAccountType: isVendorAccountRestricted(membership.vendor?.accountStatus) ? "vendor" : null,
     role: membership.role ? String(membership.role) : null,
     businessName: membership.vendor?.businessName || membership.vendor?.name || null,
   };
@@ -86,6 +94,23 @@ export async function resolveVendorAccessForUser(
   options?: ResolveVendorAccessOptions
 ): Promise<VendorAccessContext> {
   const preferredVendorId = options?.preferredVendorId?.trim();
+  const user = await (prisma as any).user.findUnique({
+    where: { id: userId },
+    select: { id: true, accountStatus: true },
+  });
+  if (user && isUserAccountRestricted(user.accountStatus)) {
+    return {
+      state: "RESTRICTED",
+      userId,
+      vendorId: null,
+      membershipId: null,
+      membershipStatus: null,
+      accountStatus: normalizeAccountStatus(user.accountStatus),
+      restrictedAccountType: "user",
+      role: null,
+      businessName: null,
+    };
+  }
   const memberships = await (prisma as any).vendorMembership.findMany({
     where: {
       userId,
@@ -136,6 +161,16 @@ export async function resolveVendorAccessForUser(
 
   const membership = ranked[0];
   const status = normalizeMembershipStatus(membership.status, membership.approvedAt);
+  const vendorStatus = normalizeAccountStatus(membership.vendor?.accountStatus);
+  if (isVendorAccountRestricted(vendorStatus)) {
+    const context = toVendorAccessContext(userId, membership, "RESTRICTED");
+    return {
+      ...context,
+      state: "RESTRICTED",
+      accountStatus: vendorStatus,
+      restrictedAccountType: "vendor",
+    };
+  }
   if (status === "ACTIVE") return toVendorAccessContext(userId, membership, "ACTIVE");
   if (status === "PENDING") return toVendorAccessContext(userId, membership, "PENDING");
   return toVendorAccessContext(userId, null, "NONE");

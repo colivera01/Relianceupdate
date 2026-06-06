@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import {
+  accountStatusErrorBody,
+  AccountStatusError,
+  ensureUserAccountCanAct,
+  ensureVendorAccountCanOperate,
+} from "@/lib/account-status";
+import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, setStageProgressMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
@@ -14,6 +21,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
   try {
     const userId = await getUserIdFromRequest(request);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    await ensureUserAccountCanAct(userId);
     const { jobId } = await context.params;
     const body = await request.json().catch(() => ({}));
     const stage = String(body?.stage || "").trim().toUpperCase();
@@ -30,6 +38,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       select: { id: true, vendorId: true, customerMetadata: true },
     });
     if (!booking) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    await ensureVendorAccountCanOperate(booking.vendorId);
 
     const vendorMembershipIds = memberships.filter((m) => m.vendorId === booking.vendorId).map((m) => m.id);
     if (vendorMembershipIds.length === 0) {
@@ -55,7 +64,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     if (!matchingSession || !Array.isArray(matchingSession.mediaAssets) || matchingSession.mediaAssets.length === 0) {
       return NextResponse.json(
         {
-          error: `No uploaded ${stage.replace("_", " ")} proof video found for this job.`,
+          error: `No uploaded ${stage.replace("_", " ")} video found for this job.`,
           code: "STAGE_VIDEO_REQUIRED",
         },
         { status: 409 }
@@ -116,6 +125,10 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       job: updated,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: "Failed to mark stage complete", details: error?.message }, { status: 500 });
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
+    const runtimeError = getEmployeeRuntimeErrorResponse("stage", error);
+    return NextResponse.json(runtimeError.body, { status: runtimeError.status });
   }
 }

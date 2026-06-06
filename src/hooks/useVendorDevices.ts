@@ -5,6 +5,12 @@ import { VendorDevice, PairingRequestResponse } from "@/types/vendor";
 import { getClientSessionHeaders } from "@/lib/client-session";
 import { useAuth } from "@/contexts/AuthContext";
 
+type RequestPairingCodeInput = {
+  inviteEmail?: string;
+  invitePhone?: string;
+  baseUrlOverride?: string;
+};
+
 export function useVendorDevices() {
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const userId = user?.id || null;
@@ -43,7 +49,7 @@ export function useVendorDevices() {
     }
   }, [authLoading, isAuthenticated, userId]);
 
-  const requestPairingCode = useCallback(async () => {
+  const requestPairingCode = useCallback(async (input?: RequestPairingCodeInput) => {
     if (!isAuthenticated || !userId) {
       const noSessionError = new Error("Vendor session context unavailable. Please sign in again.");
       setError(noSessionError.message);
@@ -59,6 +65,11 @@ export function useVendorDevices() {
           "Content-Type": "application/json",
           ...getClientSessionHeaders(userId),
         },
+        body: JSON.stringify({
+          inviteEmail: input?.inviteEmail?.trim() || undefined,
+          invitePhone: input?.invitePhone?.trim() || undefined,
+          baseUrlOverride: input?.baseUrlOverride?.trim() || undefined,
+        }),
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -115,5 +126,3 @@ export function useVendorDevices() {
     setPairing,
   };
 }
-
-

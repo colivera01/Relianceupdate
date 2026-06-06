@@ -12,41 +12,52 @@ export default function LogoutPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const LOGOUT_REQUEST_TIMEOUT_MS = 8000;
+
+    const clearClientSession = () => {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('userData');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('registrationSuccess');
+      sessionStorage.removeItem('registrationUserType');
+      document.cookie.split(";").forEach(function(c) {
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+    };
+
     const performLogout = async () => {
       try {
         console.log('Starting logout process...');
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), LOGOUT_REQUEST_TIMEOUT_MS);
 
-        // Call the logout API
-        const response = await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
+        try {
+          const response = await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            signal: controller.signal,
+          });
 
-        if (!response.ok) {
-          throw new Error('Logout API call failed');
+          if (!response.ok) {
+            console.warn('Logout API returned a non-OK response; continuing with client-side cleanup.');
+          } else {
+            console.log('Logout API call successful');
+          }
+        } catch (logoutError) {
+          console.warn('Logout API did not complete cleanly; continuing with client-side cleanup.', logoutError);
+        } finally {
+          window.clearTimeout(timeout);
         }
 
-        console.log('Logout API call successful');
-
-        // Clear any client-side authentication data
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('userData');
-        sessionStorage.removeItem('registrationSuccess');
-        sessionStorage.removeItem('registrationUserType');
-
-        // Clear any cookies (if using cookies for auth)
-        document.cookie.split(";").forEach(function(c) { 
-          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
-        });
-
+        clearClientSession();
         console.log('Client-side data cleared');
 
-        // Redirect to login page after a short delay
-        setTimeout(() => {
-          router.push('/auth/login');
-        }, 1500);
+        window.setTimeout(() => {
+          window.location.replace('/auth/login');
+        }, 800);
 
       } catch (err) {
         console.error('Logout error:', err);

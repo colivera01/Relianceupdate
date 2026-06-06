@@ -92,8 +92,18 @@ export const authSDK = {
   },
 
   // Check vendor eligibility
-  async checkVendorEligibility(): Promise<{ eligible: boolean; requirements: string[] }> {
-    return api.get<{ eligible: boolean; requirements: string[] }>('/api/profile/check-vendor-eligibility');
+  async checkVendorEligibility(): Promise<{
+    success: boolean;
+    canCreateVendor: boolean;
+    canCreateVendorAfterSignIn?: boolean;
+    requirements: string[];
+    existingVendorProfile: boolean;
+    existingVendorState?: string;
+    emailVerified?: boolean;
+    signInRequired?: boolean;
+    existingUser?: boolean;
+  }> {
+    return api.get('/api/profile/check-vendor-eligibility');
   },
 
   // Logout (clear token)
@@ -119,5 +129,4 @@ export const {
   checkVendorEligibility,
   logout
 } = authSDK;
-
 

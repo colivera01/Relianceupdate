@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import { formatDisplayDate } from '@/lib/date-display';
+import { ServiceImage } from '@/components/ServiceImage';
 import { 
   ChevronLeft, 
   Calendar, 
@@ -84,9 +85,10 @@ export default function BookingPage() {
   const availableDates: DateOption[] = Array.isArray(availability?.dates)
     ? availability.dates.map((entry: { date: string; available?: boolean }) => ({
         date: String(entry.date),
-        day: new Date(String(entry.date)).toLocaleDateString("en-US", {
-          weekday: "long",
-        }),
+        day:
+          formatDisplayDate(String(entry.date), {
+            weekday: "long",
+          }) || String(entry.date),
         available: Boolean(entry.available),
       }))
     : [];
@@ -96,10 +98,25 @@ export default function BookingPage() {
     : null;
 
   const availableTimes = Array.isArray(selectedDateData?.slots)
-    ? selectedDateData.slots.map((slot: any) => ({
-        time: String(slot.time).slice(0, 5),
-        available: Boolean(slot.available),
-      }))
+    ? selectedDateData.slots.map((slot: any) => {
+        const normalizedTime = String(slot.time).slice(0, 5);
+        const now = new Date();
+        const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const isSameDaySelection = selectedDate === todayIso;
+        let isPastSameDaySlot = false;
+
+        if (isSameDaySelection) {
+          const [hourText, minuteText] = normalizedTime.split(':');
+          const slotDate = new Date(now);
+          slotDate.setHours(Number(hourText || 0), Number(minuteText || 0), 0, 0);
+          isPastSameDaySlot = slotDate.getTime() <= now.getTime();
+        }
+
+        return {
+          time: normalizedTime,
+          available: Boolean(slot.available) && !isPastSameDaySlot,
+        };
+      })
     : [];
 
   const handleDateSelect = (date: string) => {
@@ -153,8 +170,6 @@ export default function BookingPage() {
       setSubmitting(true);
       setError(null);
 
-      const userId = resolveCustomerUserId(user?.id);
-
       const slotValidation = await fetch('/api/availability/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -184,7 +199,6 @@ export default function BookingPage() {
         client_name: userDetails.name,
         client_email: userDetails.email,
         client_phone: userDetails.phone,
-        user_id: userId,
         custom_fields: {
           customer_name: userDetails.name,
           customer_email: userDetails.email,
@@ -197,7 +211,6 @@ export default function BookingPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(userId ? { 'x-user-id': userId } : {}),
         },
         body: JSON.stringify(bookingData),
       });
@@ -252,7 +265,7 @@ export default function BookingPage() {
         <div className="text-center">
           <div className="text-red-500 mb-4">⚠️</div>
           <p className="text-gray-600 mb-4">{error}</p>
-          <button 
+                    <button
             onClick={() => router.back()}
             className="bg-purple-500 text-white px-6 py-2 rounded-lg hover:bg-purple-600 transition-colors"
           >
@@ -375,10 +388,10 @@ export default function BookingPage() {
                           <div>
                             <div className="font-medium">{date.day}</div>
                             <div className="text-sm text-gray-600">
-                              {new Date(date.date).toLocaleDateString('en-US', { 
-                                month: 'short', 
-                                day: 'numeric' 
-                              })}
+                              {formatDisplayDate(date.date, {
+                                month: 'short',
+                                day: 'numeric',
+                              }) || date.date}
                             </div>
                           </div>
                           {selectedDate === date.date && (
@@ -517,10 +530,12 @@ export default function BookingPage() {
                   <div className="border border-gray-200 rounded-lg p-4">
                     <h3 className="font-semibold text-gray-900 mb-3">Service Details</h3>
                     <div className="flex items-center gap-4">
-                      <img 
-                        src={service.images?.[0] || '/placeholder-service.jpg'} 
+                      <ServiceImage
+                        src={service.images?.[0]}
                         alt={service.name}
-                        className="w-16 h-16 object-cover rounded-lg"
+                        title={service.name}
+                        className="h-16 w-16 rounded-lg object-cover"
+                        fallbackClassName="h-16 w-16 rounded-lg"
                       />
                       <div>
                         <div className="font-medium text-gray-900">{service.name}</div>
@@ -538,12 +553,14 @@ export default function BookingPage() {
                     <h3 className="font-semibold text-gray-900 mb-3">Date & Time</h3>
                     <div className="flex items-center gap-2 text-gray-700">
                       <Calendar className="w-4 h-4" />
-                      <span>{new Date(selectedDate).toLocaleDateString('en-US', { 
-                        weekday: 'long', 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      })}</span>
+                      <span>
+                        {formatDisplayDate(selectedDate, {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                        }) || selectedDate}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-700 mt-1">
                       <Clock className="w-4 h-4" />
@@ -641,10 +658,12 @@ export default function BookingPage() {
               
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <img 
-                    src={service.images?.[0] || '/placeholder-service.jpg'} 
+                  <ServiceImage
+                    src={service.images?.[0]}
                     alt={service.name}
-                    className="w-12 h-12 object-cover rounded-lg"
+                    title={service.name}
+                    className="h-12 w-12 rounded-lg object-cover"
+                    fallbackClassName="h-12 w-12 rounded-lg"
                   />
                   <div>
                     <div className="font-medium text-gray-900">{service.name}</div>
@@ -655,11 +674,13 @@ export default function BookingPage() {
                 {selectedDate && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Calendar className="w-4 h-4" />
-                    <span>{new Date(selectedDate).toLocaleDateString('en-US', { 
-                      weekday: 'short',
-                      month: 'short', 
-                      day: 'numeric' 
-                    })}</span>
+                      <span>
+                        {formatDisplayDate(selectedDate, {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                        }) || selectedDate}
+                      </span>
                     {selectedTime && (
                       <>
                         <span>•</span>

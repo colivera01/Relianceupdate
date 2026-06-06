@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addRegisteredUser } from "@/lib/dev-registered-users";
+import { hashPassword } from "@/lib/auth-password";
+import { upsertDbCredential } from "@/lib/auth-credentials";
+import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
 import { prisma } from "@/server/db";
 import { geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
 
@@ -93,16 +96,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // TODO: Hash the password before storing
-    // const hashedPassword = await bcrypt.hash(password, 10);
+    const passwordHash = hashPassword(password);
+
+    const registryFallbackId = crypto.randomUUID();
 
     // Prepare customer data for storage
     const customerData = {
+      id: registryFallbackId,
       firstName,
       lastName,
       email,
       phone,
-      password, // In production, store hashedPassword instead
+      passwordHash,
       address,
       city,
       state,
@@ -124,6 +129,11 @@ export async function POST(request: NextRequest) {
     // Store customer data for login system
     addRegisteredUser(customerData);
 
+    let persistedCustomerId = registryFallbackId;
+    let verification:
+      | Awaited<ReturnType<typeof sendOrPreviewEmailVerification>>
+      | null = null;
+
     try {
       const addressInput = {
         address: String(address || "").trim(),
@@ -143,7 +153,7 @@ export async function POST(request: NextRequest) {
             }
           : {};
       const staleCoordinateClear = { latitude: null, longitude: null, geocodedAt: null };
-      await (prisma as any).user.upsert({
+      const persistedUser = await (prisma as any).user.upsert({
         where: { email },
         create: {
           name: `${firstName} ${lastName}`.trim(),
@@ -165,6 +175,28 @@ export async function POST(request: NextRequest) {
           zipCode: addressInput.zipCode || null,
           ...(geocodeResult?.status === "success" ? coordinateData : staleCoordinateClear),
         },
+        select: {
+          id: true,
+        },
+      });
+      persistedCustomerId = String(persistedUser?.id || registryFallbackId);
+      addRegisteredUser({
+        ...customerData,
+        id: persistedCustomerId,
+      });
+      const credential = await upsertDbCredential({
+        userId: persistedCustomerId,
+        email,
+        passwordHash,
+      });
+      verification = await sendOrPreviewEmailVerification({
+        email,
+        credentialId: String(credential.id),
+        recipientName: `${firstName} ${lastName}`.trim() || null,
+        baseUrl: request.nextUrl.origin,
+      }).catch((sendError) => {
+        console.error("Customer verification email send error:", sendError);
+        return null;
       });
     } catch (dbError) {
       console.warn("Customer registration DB persistence skipped:", dbError);
@@ -177,7 +209,7 @@ export async function POST(request: NextRequest) {
     // For now, just log the data
     console.log('Customer registration data:', {
       ...customerData,
-      password: '[HIDDEN]', // Don't log actual passwords
+      passwordHash: '[HASHED]',
     });
 
     // TODO: Send welcome email
@@ -187,7 +219,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Customer registered successfully',
-      customerId: 'temp-id', // Replace with actual customer ID from database
+      customerId: persistedCustomerId,
+      emailVerificationRequired: true,
+      emailDeliveryQueued: Boolean(verification?.sendResult.ok),
+      ...(process.env.NODE_ENV !== "production" && verification
+        ? {
+            verificationLinkPreview: verification.verificationLink,
+            verificationTokenPreview: verification.verificationTokenPreview,
+          }
+        : {}),
     });
 
   } catch (error) {

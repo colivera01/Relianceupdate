@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { createAdminAuditLog } from "@/lib/admin-audit";
+import { accountStatusErrorBody, AccountStatusError, isVendorAccountRestricted } from "@/lib/account-status";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -20,13 +21,17 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 
     const existing = await prisma.vendor.findUnique({
       where: { id: vendorId },
-      select: { id: true, isPubliclyListed: true, publiclyListedAt: true },
+      select: { id: true, isPubliclyListed: true, publiclyListedAt: true, accountStatus: true },
     });
     if (!existing) {
       return NextResponse.json(
         { success: false, error: "Vendor not found", message: "Vendor not found" },
         { status: 404 }
       );
+    }
+    if (isPubliclyListed && isVendorAccountRestricted((existing as any).accountStatus)) {
+      const statusError = new AccountStatusError("vendor", (existing as any).accountStatus);
+      return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
 
     if (existing.isPubliclyListed === isPubliclyListed) {

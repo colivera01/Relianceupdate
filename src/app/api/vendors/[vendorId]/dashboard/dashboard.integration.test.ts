@@ -5,6 +5,11 @@ import {
   getVendorMembership,
   requireVendorMembership,
 } from "@/lib/membership-auth";
+import {
+  getEmployeeRatingsForVendor,
+  getVendorRatingStats,
+} from "@/lib/review-attribution-aggregates";
+import { calculateStorageUsage } from "@/lib/storage-helpers";
 
 const hoisted = vi.hoisted(() => {
   const vendorFindUnique = vi.fn();
@@ -15,8 +20,11 @@ const hoisted = vi.hoisted(() => {
   const reviewFindMany = vi.fn();
   const reviewCount = vi.fn();
   const mediaSessionFindMany = vi.fn();
-  const adminNotificationFindMany = vi.fn();
+  const consentRecordFindMany = vi.fn();
+  const mediaAssetGroupBy = vi.fn();
+  const mediaAssetCount = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
+  const vendorMembershipFindMany = vi.fn();
 
   const prisma = {
     vendor: {
@@ -35,11 +43,16 @@ const hoisted = vi.hoisted(() => {
     mediaSession: {
       findMany: mediaSessionFindMany,
     },
-    adminNotification: {
-      findMany: adminNotificationFindMany,
+    consentRecord: {
+      findMany: consentRecordFindMany,
+    },
+    mediaAsset: {
+      groupBy: mediaAssetGroupBy,
+      count: mediaAssetCount,
     },
     vendorMembership: {
       findFirst: vendorMembershipFindFirst,
+      findMany: vendorMembershipFindMany,
     },
   };
 
@@ -53,8 +66,11 @@ const hoisted = vi.hoisted(() => {
     reviewFindMany,
     reviewCount,
     mediaSessionFindMany,
-    adminNotificationFindMany,
+    consentRecordFindMany,
+    mediaAssetGroupBy,
+    mediaAssetCount,
     vendorMembershipFindFirst,
+    vendorMembershipFindMany,
   };
 });
 
@@ -66,6 +82,15 @@ vi.mock("@/lib/membership-auth", () => ({
   getUserIdFromRequest: vi.fn(),
   getVendorMembership: vi.fn(),
   requireVendorMembership: vi.fn(),
+}));
+
+vi.mock("@/lib/review-attribution-aggregates", () => ({
+  getEmployeeRatingsForVendor: vi.fn(),
+  getVendorRatingStats: vi.fn(),
+}));
+
+vi.mock("@/lib/storage-helpers", () => ({
+  calculateStorageUsage: vi.fn(),
 }));
 
 async function readJson(res: Response) {
@@ -118,8 +143,11 @@ function mockHappyPathData() {
         scheduledFor: new Date("2026-04-15T12:00:00.000Z"),
         createdAt: new Date("2026-04-15T10:00:00.000Z"),
         updatedAt: new Date("2026-04-15T11:00:00.000Z"),
-        customerMetadata: null,
-        user: { id: "user-customer", name: "Pat", email: "pat@example.com" },
+        customerMetadata: JSON.stringify({
+          client_email: "pat.client@example.com",
+          client_phone: "555-0101",
+        }),
+        user: { id: "user-customer", name: "Pat", email: "unclaimed@example.test", phone: "555-9999" },
         service: { id: "service-1", name: "Deep Cleaning" },
       },
     ])
@@ -127,13 +155,23 @@ function mockHappyPathData() {
     .mockResolvedValueOnce([{ userId: "user-customer" }])
     .mockResolvedValueOnce([{ amount: 120 }]);
   hoisted.reviewFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-  hoisted.bookingCount.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
-  hoisted.reviewCount.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
-  hoisted.bookingAggregate
-    .mockResolvedValueOnce({ _sum: { amount: 0 } })
-    .mockResolvedValueOnce({ _sum: { amount: 0 } });
+  vi.mocked(getVendorRatingStats).mockResolvedValue({
+    averageRating: 0,
+    reviewCount: 0,
+    ratingSum: 0,
+  });
+  vi.mocked(getEmployeeRatingsForVendor).mockResolvedValue([]);
   hoisted.mediaSessionFindMany.mockResolvedValue([]);
-  hoisted.adminNotificationFindMany.mockResolvedValue([]);
+  hoisted.consentRecordFindMany.mockResolvedValue([]);
+  hoisted.mediaAssetGroupBy.mockResolvedValue([]);
+  hoisted.mediaAssetCount.mockResolvedValue(0);
+  hoisted.vendorMembershipFindMany.mockResolvedValue([]);
+  vi.mocked(calculateStorageUsage).mockResolvedValue({
+    usedBytes: BigInt(0),
+    limitBytes: BigInt(0),
+    percentUsed: 0,
+    isOverLimit: false,
+  });
 }
 
 describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
@@ -149,8 +187,14 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     hoisted.reviewFindMany.mockReset();
     hoisted.reviewCount.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
-    hoisted.adminNotificationFindMany.mockReset();
+    hoisted.consentRecordFindMany.mockReset();
+    hoisted.mediaAssetGroupBy.mockReset();
+    hoisted.mediaAssetCount.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
+    hoisted.vendorMembershipFindMany.mockReset();
+    vi.mocked(getVendorRatingStats).mockReset();
+    vi.mocked(getEmployeeRatingsForVendor).mockReset();
+    vi.mocked(calculateStorageUsage).mockReset();
   });
 
   it("returns structured forbidden response with suggestedVendorId when active membership exists on different vendor", async () => {
@@ -219,13 +263,125 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(body).toMatchObject({
       recentJobs: expect.any(Array),
       archivedJobs: expect.any(Array),
+      lifecycleCounts: expect.any(Object),
       recentReviews: expect.any(Array),
       notifications: expect.any(Array),
+    });
+    const recentJobs = body.recentJobs as Array<Record<string, unknown>>;
+    expect(recentJobs[0]).toMatchObject({
+      customerEmail: "pat.client@example.com",
+      customerPhone: "555-0101",
+    });
+    expect(body.lifecycleCounts).toMatchObject({
+      scheduled: 1,
+      inProgress: 0,
+      awaitingReview: 0,
+      completed: 0,
+      canceled: 0,
+      archived: 0,
     });
     expect(body).not.toHaveProperty("code");
     expect(body).not.toHaveProperty("error");
     expect(body).not.toHaveProperty("suggestedVendorId");
     expect(vi.mocked(requireVendorMembership)).toHaveBeenCalledWith(req, "v1");
+  });
+
+  it("reports awaiting-review lifecycle counts from actual booking status instead of inferring from reviews", async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue("user-1");
+    vi.mocked(getVendorMembership).mockResolvedValue({
+      id: "membership-1",
+      role: "MANAGER",
+      status: "ACTIVE",
+      badgeId: null,
+    } as any);
+    vi.mocked(requireVendorMembership).mockResolvedValue({
+      userId: "user-1",
+      membershipId: "membership-1",
+      role: "MANAGER",
+    } as any);
+
+    hoisted.vendorFindUnique.mockResolvedValue({
+      id: "v1",
+      name: "Metro Home Care Pros",
+      businessName: "Metro Home Care Pros",
+      email: "metro@example.com",
+      phone: "555-0000",
+      city: "Orlando",
+      state: "FL",
+    });
+    hoisted.bookingGroupBy.mockResolvedValue([{ _count: { _all: 2 }, _sum: { amount: 20 } }]);
+    hoisted.bookingFindMany
+      .mockResolvedValueOnce([
+        {
+          id: "job-awaiting",
+          vendorId: "v1",
+          serviceId: "service-1",
+          title: "Staged video package",
+          clientName: "Jordan",
+          amount: 120,
+          status: "AWAITING_REVIEW",
+          date: new Date("2026-04-15T12:00:00.000Z"),
+          scheduledFor: new Date("2026-04-15T12:00:00.000Z"),
+          createdAt: new Date("2026-04-15T10:00:00.000Z"),
+          updatedAt: new Date("2026-04-15T11:00:00.000Z"),
+          customerMetadata: "{}",
+          user: { id: "user-customer", name: "Jordan", email: "jordan@example.com", phone: "555-0101" },
+          service: { id: "service-1", name: "Deep Cleaning" },
+        },
+        {
+          id: "job-complete",
+          vendorId: "v1",
+          serviceId: "service-2",
+          title: "Completed service",
+          clientName: "Pat",
+          amount: 120,
+          status: "COMPLETED",
+          date: new Date("2026-04-16T12:00:00.000Z"),
+          scheduledFor: new Date("2026-04-16T12:00:00.000Z"),
+          createdAt: new Date("2026-04-16T10:00:00.000Z"),
+          updatedAt: new Date("2026-04-16T11:00:00.000Z"),
+          customerMetadata: "{}",
+          user: { id: "user-customer-2", name: "Pat", email: "pat@example.com", phone: "555-0102" },
+          service: { id: "service-2", name: "Move-out Cleaning" },
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ userId: "user-customer" }, { userId: "user-customer-2" }])
+      .mockResolvedValueOnce([{ amount: 120 }]);
+    hoisted.reviewFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    vi.mocked(getVendorRatingStats).mockResolvedValue({
+      averageRating: 0,
+      reviewCount: 0,
+      ratingSum: 0,
+    });
+    vi.mocked(getEmployeeRatingsForVendor).mockResolvedValue([]);
+    hoisted.mediaSessionFindMany.mockResolvedValue([]);
+    hoisted.consentRecordFindMany.mockResolvedValue([]);
+    hoisted.mediaAssetGroupBy.mockResolvedValue([]);
+    hoisted.mediaAssetCount.mockResolvedValue(0);
+    hoisted.vendorMembershipFindMany.mockResolvedValue([]);
+    vi.mocked(calculateStorageUsage).mockResolvedValue({
+      usedBytes: BigInt(0),
+      limitBytes: BigInt(0),
+      percentUsed: 0,
+      isOverLimit: false,
+    });
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.lifecycleCounts).toMatchObject({
+      scheduled: 0,
+      inProgress: 0,
+      awaitingReview: 1,
+      completed: 1,
+      canceled: 0,
+      archived: 0,
+    });
   });
 });
 

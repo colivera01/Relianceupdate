@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import {
+  accountStatusErrorBody,
+  AccountStatusError,
+  ensureUserAccountCanAct,
+  isVendorAccountRestricted,
+} from "@/lib/account-status";
+import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 
 type StageKey = "INTRO" | "IN_PROGRESS" | "COMPLETED";
@@ -19,17 +26,19 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    await ensureUserAccountCanAct(userId);
 
     const memberships = await prisma.vendorMembership.findMany({
       where: { userId, status: "ACTIVE", role: "EMPLOYEE" },
-      select: { id: true, vendorId: true, vendor: { select: { name: true, businessName: true } } },
+      select: { id: true, vendorId: true, vendor: { select: { name: true, businessName: true, accountStatus: true } } },
     });
-    if (memberships.length === 0) {
+    const activeVendorMemberships = memberships.filter((m) => !isVendorAccountRestricted((m.vendor as any)?.accountStatus));
+    if (activeVendorMemberships.length === 0) {
       return NextResponse.json({ jobs: [], membership: null });
     }
 
     const byVendor = new Map<string, string[]>();
-    for (const m of memberships) {
+    for (const m of activeVendorMemberships) {
       byVendor.set(m.vendorId, [...(byVendor.get(m.vendorId) || []), m.id]);
     }
 
@@ -116,13 +125,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({
       jobs,
-      membership: memberships[0],
+      membership: activeVendorMemberships[0],
       placeholderData: false,
     });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: "Failed to fetch assigned employee jobs", details: error?.message },
-      { status: 500 }
-    );
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
+    const runtimeError = getEmployeeRuntimeErrorResponse("jobs", error);
+    return NextResponse.json(runtimeError.body, { status: runtimeError.status });
   }
 }

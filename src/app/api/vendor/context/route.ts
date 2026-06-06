@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getUserIdFromRequest, verifyJwt } from "@/lib/auth";
+import { verifyAuthBearerToken } from "@/lib/auth-session";
 import {
   isVendorContextDbTimeoutError,
   resolveVendorAccessForUser,
 } from "@/lib/vendor-context";
-
-const DEV_BEARER_TOKENS = new Set(["temp-jwt-token", "temp-token"]);
+import { getRestrictedAccountMessage } from "@/lib/account-status";
 
 function parseBearerToken(request: Request): string | null {
   const authHeader = request.headers.get("authorization");
@@ -29,17 +29,24 @@ function parseCookie(request: Request, keys: string[]): string | null {
 }
 
 async function getVendorIdHintFromRequest(request: Request): Promise<string | null> {
+  const isDev = process.env.NODE_ENV !== "production";
   const headerVendorId = request.headers.get("x-vendor-id")?.trim();
-  if (headerVendorId) return headerVendorId;
+  if (isDev && headerVendorId) return headerVendorId;
 
   const token = parseBearerToken(request);
   if (token) {
-    try {
-      const payload = await verifyJwt(token);
-      const jwtVendorId = String(payload?.vendorId || "").trim();
-      if (jwtVendorId) return jwtVendorId;
-    } catch {
-      // Ignore malformed bearer token here; user resolution handles auth outcomes.
+    const signedClaims = verifyAuthBearerToken(token);
+    if (signedClaims?.userId) {
+      return null;
+    }
+    if (isDev) {
+      try {
+        const payload = await verifyJwt(token);
+        const jwtVendorId = String(payload?.vendorId || "").trim();
+        if (jwtVendorId) return jwtVendorId;
+      } catch {
+        // Ignore malformed bearer token here; user resolution handles auth outcomes.
+      }
     }
   }
 
@@ -62,10 +69,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    let resolvedUserId = await getUserIdFromRequest(request);
-    if (!resolvedUserId && bearerToken && DEV_BEARER_TOKENS.has(bearerToken) && headerUserId) {
-      resolvedUserId = headerUserId.trim();
-    }
+    const resolvedUserId = await getUserIdFromRequest(request);
 
     const resolvedVendorId = await getVendorIdHintFromRequest(request);
 
@@ -81,7 +85,7 @@ export async function GET(request: Request) {
         {
           success: false,
           code: "VENDOR_CONTEXT_ERROR",
-          message: "Missing user identity. Provide x-user-id or a valid Authorization bearer token.",
+          message: "Missing user identity. Provide a valid signed session or Authorization bearer token.",
         },
         { status: 401 }
       );
@@ -131,6 +135,27 @@ export async function GET(request: Request) {
           message: "Vendor account pending approval",
           context: {
             state: "PENDING",
+            vendorId: context.vendorId,
+            membershipId: context.membershipId,
+            membershipStatus: context.membershipStatus,
+          },
+        },
+        { status: 403 }
+      );
+    }
+
+    if (context.state === "RESTRICTED") {
+      const accountType = context.restrictedAccountType || "vendor";
+      const message = getRestrictedAccountMessage(accountType, context.accountStatus);
+      return NextResponse.json(
+        {
+          success: false,
+          code: `${accountType.toUpperCase()}_ACCOUNT_RESTRICTED`,
+          message,
+          context: {
+            state: "RESTRICTED",
+            accountType,
+            accountStatus: context.accountStatus,
             vendorId: context.vendorId,
             membershipId: context.membershipId,
             membershipStatus: context.membershipStatus,

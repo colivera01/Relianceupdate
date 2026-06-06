@@ -67,8 +67,11 @@ export async function POST(
 
     // Update membership to ACTIVE (using transaction to ensure atomicity)
     const updatedMembership = await (prisma as any).$transaction(async (tx: any) => {
+      const derivedDeviceName =
+        String(membership.pendingDeviceModel || "").trim() || "Employee Phone";
+
       // Update membership
-      const membership = await tx.vendorMembership.update({
+      const approvedMembership = await tx.vendorMembership.update({
         where: { id: membershipId },
         data: {
           status: "ACTIVE",
@@ -85,6 +88,7 @@ export async function POST(
             vendorId,
             isActive: true,
             lastSeenAt: new Date(),
+            deviceName: derivedDeviceName,
             model: membership.pendingDeviceModel,
             os: membership.pendingDeviceOs,
             appVersion: membership.pendingAppVersion,
@@ -95,6 +99,7 @@ export async function POST(
           data: {
             vendorId,
             deviceUid: membership.pendingPhoneDeviceUid,
+            deviceName: derivedDeviceName,
             deviceType: "PHONE",
             isActive: true,
             lastSeenAt: new Date(),
@@ -105,7 +110,7 @@ export async function POST(
         });
       }
 
-      return membership;
+      return approvedMembership;
     });
 
 
@@ -128,4 +133,3 @@ export async function POST(
     );
   }
 }
-

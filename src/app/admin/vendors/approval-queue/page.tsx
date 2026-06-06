@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { getAdminRequestHeaders, getCurrentAdminActor } from '@/lib/admin-client';
 import {
   Dialog,
   DialogContent,
@@ -35,17 +36,18 @@ interface PendingVendor {
   submittedAt: string;
 }
 
-interface ApprovalQueueProps {
-  // Add any props if needed
-}
-
 export default function ApprovalQueuePage() {
   const [pendingVendors, setPendingVendors] = useState<PendingVendor[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchDraft, setSearchDraft] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryDraft, setCategoryDraft] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortDraft, setSortDraft] = useState('createdAt');
   const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrderDraft, setSortOrderDraft] = useState<'asc' | 'desc'>('desc');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [showVendorDetails, setShowVendorDetails] = useState<PendingVendor | null>(null);
@@ -53,25 +55,6 @@ export default function ApprovalQueuePage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingAction, setProcessingAction] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState('');
-
-  // Mock admin data - in real app, get from auth context
-  const adminData = {
-    id: 'admin-1',
-    email: 'admin@reliance.com',
-    name: 'Admin User',
-  };
-
-  const getAdminHeaders = () => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (process.env.NODE_ENV === 'development') {
-      headers['x-admin'] = 'true';
-      headers['x-user-role'] = 'admin';
-      headers['x-user-id'] = adminData.id;
-    }
-    return headers;
-  };
 
   useEffect(() => {
     fetchPendingVendors();
@@ -88,7 +71,7 @@ export default function ApprovalQueuePage() {
         )}&sortBy=${encodeURIComponent(sortBy)}&sortOrder=${encodeURIComponent(sortOrder)}`,
         {
           method: 'GET',
-          headers: getAdminHeaders(),
+          headers: getAdminRequestHeaders(),
           cache: 'no-store',
         }
       );
@@ -98,6 +81,11 @@ export default function ApprovalQueuePage() {
       }
       const vendors = payload?.data?.vendors;
       setPendingVendors(Array.isArray(vendors) ? vendors : []);
+      setAvailableCategories(
+        Array.isArray(payload?.data?.categories)
+          ? payload.data.categories.map((value: unknown) => String(value)).filter(Boolean)
+          : []
+      );
     } catch (error) {
       console.error('Error fetching pending vendors:', error);
       setError(error instanceof Error ? error.message : 'Failed to load pending vendors');
@@ -106,18 +94,35 @@ export default function ApprovalQueuePage() {
     }
   };
 
+  const applyFilters = () => {
+    setSearchTerm(searchDraft.trim());
+    setCategoryFilter(categoryDraft);
+    setSortBy(sortDraft);
+    setSortOrder(sortOrderDraft);
+  };
+
+  const clearFilters = () => {
+    setSearchDraft('');
+    setSearchTerm('');
+    setCategoryDraft('all');
+    setCategoryFilter('all');
+    setSortDraft('createdAt');
+    setSortBy('createdAt');
+    setSortOrderDraft('desc');
+    setSortOrder('desc');
+  };
+
   const handleApproveVendor = async (vendorId: string) => {
     setProcessingAction(`approve-${vendorId}`);
     
     try {
       const response = await fetch('/api/admin/vendors/approve', {
         method: 'POST',
-        headers: getAdminHeaders(),
+        headers: getAdminRequestHeaders(),
         body: JSON.stringify({
           vendorId,
-          adminId: adminData.id,
-          adminEmail: adminData.email,
           notes: adminNotes,
+          actor: getCurrentAdminActor(),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -131,7 +136,6 @@ export default function ApprovalQueuePage() {
       // Clear admin notes
       setAdminNotes('');
       
-      console.log(`Vendor ${vendorId} approved by ${adminData.email}`);
     } catch (error) {
       console.error('Error approving vendor:', error);
       setError('Failed to approve vendor');
@@ -151,13 +155,12 @@ export default function ApprovalQueuePage() {
     try {
       const response = await fetch('/api/admin/vendors/reject', {
         method: 'POST',
-        headers: getAdminHeaders(),
+        headers: getAdminRequestHeaders(),
         body: JSON.stringify({
           vendorId,
-          adminId: adminData.id,
-          adminEmail: adminData.email,
           rejectionReason,
           notes: adminNotes,
+          actor: getCurrentAdminActor(),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -173,7 +176,6 @@ export default function ApprovalQueuePage() {
       setAdminNotes('');
       setShowRejectDialog(false);
       
-      console.log(`Vendor ${vendorId} rejected by ${adminData.email} with reason: ${rejectionReason}`);
     } catch (error) {
       console.error('Error rejecting vendor:', error);
       setError('Failed to reject vendor');
@@ -190,12 +192,11 @@ export default function ApprovalQueuePage() {
     try {
       const response = await fetch('/api/admin/vendors/bulk-approve', {
         method: 'POST',
-        headers: getAdminHeaders(),
+        headers: getAdminRequestHeaders(),
         body: JSON.stringify({
           vendorIds: selectedVendors,
-          adminId: adminData.id,
-          adminEmail: adminData.email,
           notes: adminNotes,
+          actor: getCurrentAdminActor(),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -214,7 +215,6 @@ export default function ApprovalQueuePage() {
       setSelectedVendors(prev => prev.filter(id => !approvedIds.includes(id)));
       setAdminNotes('');
       
-      console.log(`Bulk approved ${selectedVendors.length} vendors by ${adminData.email}`);
     } catch (error) {
       console.error('Error bulk approving vendors:', error);
       setError('Failed to bulk approve vendors');
@@ -234,13 +234,12 @@ export default function ApprovalQueuePage() {
     try {
       const response = await fetch('/api/admin/vendors/bulk-reject', {
         method: 'POST',
-        headers: getAdminHeaders(),
+        headers: getAdminRequestHeaders(),
         body: JSON.stringify({
           vendorIds: selectedVendors,
-          adminId: adminData.id,
-          adminEmail: adminData.email,
           rejectionReason,
           notes: adminNotes,
+          actor: getCurrentAdminActor(),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -260,7 +259,6 @@ export default function ApprovalQueuePage() {
       setRejectionReason('');
       setAdminNotes('');
       
-      console.log(`Bulk rejected ${selectedVendors.length} vendors by ${adminData.email} with reason: ${rejectionReason}`);
     } catch (error) {
       console.error('Error bulk rejecting vendors:', error);
       setError('Failed to bulk reject vendors');
@@ -345,27 +343,26 @@ export default function ApprovalQueuePage() {
             <div className="flex-1 min-w-64">
               <Input
                 placeholder="Search vendors..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
                 className="w-full"
               />
             </div>
             <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
+              value={categoryDraft}
+              onChange={(e) => setCategoryDraft(e.target.value)}
               className="border rounded px-3 py-2"
             >
               <option value="all">All Categories</option>
-              <option value="Cleaning">Cleaning</option>
-              <option value="Plumbing">Plumbing</option>
-              <option value="Painting">Painting</option>
-              <option value="Electrical">Electrical</option>
-              <option value="HVAC">HVAC</option>
-              <option value="Landscaping">Landscaping</option>
+              {availableCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
             </select>
             <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
+              value={sortDraft}
+              onChange={(e) => setSortDraft(e.target.value)}
               className="border rounded px-3 py-2"
             >
               <option value="createdAt">Registration Date</option>
@@ -374,9 +371,13 @@ export default function ApprovalQueuePage() {
             </select>
             <Button
               variant="outline"
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              onClick={() => setSortOrderDraft(sortOrderDraft === 'asc' ? 'desc' : 'asc')}
             >
-              {sortOrder === 'asc' ? '↑' : '↓'}
+              {sortOrderDraft === 'asc' ? 'Ascending' : 'Descending'}
+            </Button>
+            <Button onClick={applyFilters}>Apply Filters</Button>
+            <Button variant="ghost" onClick={clearFilters}>
+              Clear Filters
             </Button>
           </div>
         </CardContent>

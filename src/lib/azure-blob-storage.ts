@@ -123,6 +123,49 @@ function getBlobServiceClient(): BlobServiceClient | null {
   return null;
 }
 
+type UploadBlobOptions = {
+  contentType?: string;
+  cacheControl?: string;
+  metadata?: Record<string, string>;
+};
+
+/**
+ * Upload a blob from server memory.
+ * Used for small authenticated uploads like vendor profile photos where the
+ * browser sends the file directly to the app instead of using a staged SAS URL.
+ */
+export async function uploadBlobBuffer(
+  blobKey: string,
+  data: Buffer | Uint8Array | ArrayBuffer,
+  options: UploadBlobOptions = {}
+): Promise<{ url: string }> {
+  const blobServiceClient = getBlobServiceClient();
+  if (!blobServiceClient) {
+    throw new Error("Azure Storage is not configured for blob upload");
+  }
+
+  const containerClient = blobServiceClient.getContainerClient(containerName);
+  const blockBlobClient = containerClient.getBlockBlobClient(blobKey);
+  const body =
+    data instanceof ArrayBuffer
+      ? Buffer.from(data)
+      : Buffer.isBuffer(data)
+        ? data
+        : Buffer.from(data);
+
+  await blockBlobClient.uploadData(body, {
+    blobHTTPHeaders: {
+      blobContentType: options.contentType,
+      blobCacheControl: options.cacheControl,
+    },
+    metadata: options.metadata,
+  });
+
+  return {
+    url: blockBlobClient.url,
+  };
+}
+
 /**
  * Generate SAS token for blob upload (write permission)
  * @param blobKey - The blob key/path (e.g., "vendor/{vendorId}/media/{assetId}.{ext}")
@@ -270,6 +313,37 @@ export async function getBlobProperties(blobKey: string): Promise<{
 }
 
 /**
+ * Download blob content into memory for focused server-side media validation.
+ * Stage videos are intentionally short, so completion-time probing can inspect
+ * the uploaded bytes without introducing a separate processing pipeline.
+ */
+export async function downloadBlobToBuffer(blobKey: string): Promise<Buffer> {
+  const blobServiceClient = getBlobServiceClient();
+  if (!blobServiceClient) {
+    throw new Error("Azure Storage is not configured for blob download");
+  }
+
+  const containerClient = blobServiceClient.getContainerClient(containerName);
+  const blobClient = containerClient.getBlobClient(blobKey);
+  const response = await blobClient.download();
+  return streamToBuffer(response.readableStreamBody);
+}
+
+async function streamToBuffer(
+  readableStream: NodeJS.ReadableStream | undefined
+): Promise<Buffer> {
+  if (!readableStream) {
+    throw new Error("Blob download did not return a readable stream");
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of readableStream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
  * Delete blob (for cleanup job)
  * @param blobKey - The blob key/path
  */
@@ -297,4 +371,3 @@ export async function deleteBlob(blobKey: string): Promise<boolean> {
     return false;
   }
 }
-

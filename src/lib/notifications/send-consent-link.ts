@@ -3,6 +3,7 @@ import { sendEmail } from '@/lib/email/resend';
 import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
+import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
 
 export type ConsentLinkDeliveryInput = {
   consentRecordId: string;
@@ -15,6 +16,7 @@ export type ConsentLinkDeliveryInput = {
   customerName?: string | null;
   vendorName?: string | null;
   serviceName?: string | null;
+  bookingTitle?: string | null;
   serviceDate?: Date | string | null;
   serviceTimeZone?: string | null;
   consentTypeLabel?: string;
@@ -43,6 +45,16 @@ function buildAbsoluteUrl(base: string, path: string): string {
   return `${base}${p}`;
 }
 
+function formatConsentRequestLabel(value: string | null | undefined): string {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, ' ');
+  if (!normalized || normalized === 'requested consent') return 'service video approval';
+  if (normalized === 'video access') return 'service video approval';
+  return normalized;
+}
+
 /**
  * Sends consent link via enabled channels. Always returns a manual fallback link.
  */
@@ -54,42 +66,47 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
   );
   const channels: ChannelDelivery[] = [];
 
-  const vendorName = String(input.vendorName || '').trim() || 'Your vendor';
-  const serviceName = String(input.serviceName || '').trim() || 'your service';
+  const vendorName = String(input.vendorName || '').trim() || 'Your provider';
+  const serviceName = resolveCustomerFacingServiceLabel({
+    serviceName: input.serviceName,
+    bookingTitle: input.bookingTitle,
+    vendorName: input.vendorName,
+    fallback: 'your service visit',
+  });
   const serviceDate = formatCustomerFacingServiceDate({
     value: input.serviceDate,
     timeZone: input.serviceTimeZone,
     fallback: '',
   });
-  const subject = `${vendorName} needs your approval for your service`;
-  const label = input.consentTypeLabel || 'requested consent';
+  const subject = `Review your service video request from ${vendorName}`;
+  const label = formatConsentRequestLabel(input.consentTypeLabel || 'requested consent');
   const greetingName = input.customerName ? ` ${escapeHtml(input.customerName)}` : '';
   const serviceDateLine = serviceDate ? `<p><strong>Service date:</strong> ${escapeHtml(serviceDate)}</p>` : '';
   const html = `
     <p>Hello${greetingName},</p>
-    <p><strong>${escapeHtml(vendorName)}</strong> is requesting your approval to continue documenting your service.</p>
+    <p><strong>${escapeHtml(vendorName)}</strong> is asking for your permission to record and share service videos for this appointment through Reliance.</p>
     <p><strong>Service:</strong> ${escapeHtml(serviceName)}</p>
     ${serviceDateLine}
-    <p>They use Reliance to securely document the work so you can review it afterward.</p>
-    <p>Approval type: ${escapeHtml(label)}.</p>
-    <p><a href="${escapeHtml(absoluteFallbackLink)}">Review and respond to consent request</a></p>
+    <p>If you approve, the provider can continue the Reliance service-video workflow and you will be able to review the videos afterward.</p>
+    <p><strong>Request type:</strong> ${escapeHtml(label)}.</p>
+    <p><a href="${escapeHtml(absoluteFallbackLink)}">Review video consent request</a></p>
     <p>If the link above does not work, copy and paste this URL into your browser:<br/><code>${escapeHtml(absoluteFallbackLink)}</code></p>
     <p>If you did not expect this request, you can ignore this message.</p>
-    <p>— ${escapeHtml(vendorName)} via Reliance</p>
+    <p>- ${escapeHtml(vendorName)} via Reliance</p>
   `.trim();
   const text = [
     `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
     '',
-    `${vendorName} is requesting your approval to continue documenting your service.`,
+    `${vendorName} is asking for your permission to record and share service videos for this appointment through Reliance.`,
     `Service: ${serviceName}`,
     ...(serviceDate ? [`Service date: ${serviceDate}`] : []),
-    'They use Reliance to securely document the work so you can review it afterward.',
-    `Approval type: ${label}.`,
+    'If you approve, the provider can continue the Reliance service-video workflow and you will be able to review the videos afterward.',
+    `Request type: ${label}.`,
     '',
-    `Review and respond: ${absoluteFallbackLink}`,
+    `Review video consent request: ${absoluteFallbackLink}`,
     '',
     'If you did not expect this request, you can ignore this message.',
-    `— ${vendorName} via Reliance`,
+    `- ${vendorName} via Reliance`,
   ].join('\n');
 
   const email = (input.customerEmail || '').trim();
@@ -136,7 +153,7 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `Reliance: please complete ${label}: ${absoluteFallbackLink}`;
+    const body = `Reliance: ${vendorName} sent a service video consent request. Review it here: ${absoluteFallbackLink}`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

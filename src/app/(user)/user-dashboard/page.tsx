@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 import React, { useState, useEffect } from 'react';
-import { Star, TrendingUp, Zap, Calendar, Search, Bookmark, ClipboardList, MapPin, Image as ImageIcon, CheckCircle2, Camera, MessageSquare } from 'lucide-react';
+import { Star, TrendingUp, Zap, Calendar, Search, Bookmark, ClipboardList, MapPin, Image as ImageIcon, CheckCircle2, Camera, MessageSquare, AlertTriangle, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
@@ -36,10 +36,33 @@ type DashboardService = {
   } | null;
 };
 
+function splitDisplayName(name: string | undefined) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' ') || '',
+  };
+}
+
+function buildCustomerProfileShell(authUser: NonNullable<ReturnType<typeof useAuth>['user']>): CustomerProfile {
+  const { firstName, lastName } = splitDisplayName(authUser.name);
+  return {
+    id: authUser.id,
+    userType: authUser.userType,
+    firstName,
+    lastName,
+    email: authUser.email,
+    phone: authUser.phone,
+    isActive: true,
+  };
+}
+
 export default function UserDashboardPage() {
   const { user: authUser, isLoading: authLoading, isAuthenticated } = useAuth();
   const [userData, setUserData] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [countsLoading, setCountsLoading] = useState(true);
   const [error, setError] = useState('');
   const [servicesLoading, setServicesLoading] = useState(true);
   const [services, setServices] = useState<DashboardService[]>([]);
@@ -49,7 +72,7 @@ export default function UserDashboardPage() {
     reviewsSubmitted: 0,
     vendorsFollowed: 0,
   });
-  const userType = String(userData?.userType || '').toLowerCase();
+  const userType = String(userData?.userType || authUser?.userType || '').toLowerCase();
   const hasBothProfiles = userType === 'both';
 
   // Fetch user profile data on component mount
@@ -60,8 +83,19 @@ export default function UserDashboardPage() {
     if (!isAuthenticated || !authUser?.id) {
       setError('Please sign in to view your dashboard.');
       setLoading(false);
+      setProfileLoading(false);
+      setUserData(null);
       return;
     }
+
+    setUserData((current) => {
+      if (current?.id === authUser.id) {
+        return current;
+      }
+      return buildCustomerProfileShell(authUser);
+    });
+    setLoading(false);
+    setProfileLoading(true);
 
     const fetchUserData = async () => {
       try {
@@ -74,17 +108,18 @@ export default function UserDashboardPage() {
 
         if (response.ok) {
           const data = await response.json();
-          setUserData(data.profile);
+          setUserData((current) => ({
+            ...(current || buildCustomerProfileShell(authUser)),
+            ...(data.profile || {}),
+          }));
 
         } else {
-          const payload = await response.json().catch(() => ({}));
-          setError(String(payload?.error || 'Failed to fetch user data'));
+          console.warn('Customer profile detail load failed for dashboard shell.');
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
-        setError('Failed to fetch user data');
       } finally {
-        setLoading(false);
+        setProfileLoading(false);
       }
     };
 
@@ -97,6 +132,7 @@ export default function UserDashboardPage() {
     }
 
     let cancelled = false;
+    setCountsLoading(true);
     const headers = {
       'Content-Type': 'application/json',
       ...getClientSessionHeaders(authUser.id),
@@ -105,9 +141,9 @@ export default function UserDashboardPage() {
     const loadCounts = async () => {
       try {
         const [bookingsRes, favoritesRes, reviewsRes] = await Promise.all([
-          fetch('/api/bookings?limit=100&page=1', { headers, cache: 'no-store' }),
-          fetch('/api/users/favorites?limit=100&page=1', { headers, cache: 'no-store' }),
-          fetch('/api/reviews/me', { headers, cache: 'no-store' }),
+          fetch('/api/bookings?summaryOnly=1', { headers, cache: 'no-store' }),
+          fetch('/api/users/favorites?countsOnly=1', { headers, cache: 'no-store' }),
+          fetch('/api/reviews/me?summaryOnly=1', { headers, cache: 'no-store' }),
         ]);
 
         let activeBookings = 0;
@@ -117,29 +153,18 @@ export default function UserDashboardPage() {
 
         if (bookingsRes.ok) {
           const bookingsPayload = await bookingsRes.json().catch(() => ({}));
-          const bookings = Array.isArray(bookingsPayload?.bookings) ? bookingsPayload.bookings : [];
-          activeBookings = bookings.filter((booking: any) => {
-            const status = String(booking?.status || '').trim().toLowerCase();
-            return status !== 'completed' && status !== 'canceled' && status !== 'cancelled';
-          }).length;
+          activeBookings = Number(bookingsPayload?.summary?.activeTotal || 0);
         }
 
         if (favoritesRes.ok) {
           const favoritesPayload = await favoritesRes.json().catch(() => ({}));
-          const favorites = Array.isArray(favoritesPayload?.favorites) ? favoritesPayload.favorites : [];
-          savedFavorites = favorites.length;
-          const uniqueVendors = new Set(
-            favorites
-              .map((favorite: any) => String(favorite?.vendorId || '').trim())
-              .filter(Boolean)
-          );
-          vendorsFollowed = uniqueVendors.size;
+          savedFavorites = Number(favoritesPayload?.summary?.total || 0);
+          vendorsFollowed = Number(favoritesPayload?.summary?.uniqueVendorCount || 0);
         }
 
         if (reviewsRes.ok) {
           const reviewsPayload = await reviewsRes.json().catch(() => ({}));
-          const submitted = Array.isArray(reviewsPayload?.submitted) ? reviewsPayload.submitted : [];
-          reviewsSubmitted = submitted.length;
+          reviewsSubmitted = Number(reviewsPayload?.summary?.submittedTotal || 0);
         }
 
         if (!cancelled) {
@@ -159,6 +184,10 @@ export default function UserDashboardPage() {
             vendorsFollowed: 0,
           });
         }
+      } finally {
+        if (!cancelled) {
+          setCountsLoading(false);
+        }
       }
     };
 
@@ -174,7 +203,7 @@ export default function UserDashboardPage() {
       try {
         setServicesLoading(true);
         // Pull a broader window so published/public services are not dropped by recency pagination.
-        const response = await fetch('/api/services?limit=100&sortBy=created_at&sortOrder=desc', {
+        const response = await fetch('/api/services?limit=16&sortBy=created_at&sortOrder=desc', {
           headers: {
             'Content-Type': 'application/json',
           },
@@ -211,10 +240,24 @@ export default function UserDashboardPage() {
   // Show loading state
   if (loading) {
     return (
-      <div className="rounded-2xl border border-white/50 bg-white/70 p-6 shadow-sm">
-        <div className="text-center py-6">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your dashboard...</p>
+      <div className="space-y-8">
+        <div className="rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 opacity-80" />
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold text-gray-900">Welcome back</h2>
+              <div className="h-4 w-64 rounded bg-gray-200 animate-pulse" />
+            </div>
+          </div>
+          <p className="text-sm text-gray-500">Loading your dashboard...</p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(7,16,38,0.06)]">
+              <div className="h-4 w-24 rounded bg-gray-200 animate-pulse" />
+              <div className="h-8 w-14 rounded bg-gray-200 animate-pulse" />
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -225,11 +268,11 @@ export default function UserDashboardPage() {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
         <div className="text-center py-2">
-          <div className="text-red-500 text-4xl mb-4">⚠️</div>
+          <AlertTriangle className="mx-auto mb-4 h-10 w-10 text-red-500" />
           <p className="text-gray-600">{error}</p>
           <button 
             onClick={() => window.location.reload()} 
-            className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            className="mt-4 rounded-full bg-[var(--reliance-blue)] px-4 py-2 text-white hover:bg-[#1a58db]"
           >
             Retry
           </button>
@@ -240,42 +283,51 @@ export default function UserDashboardPage() {
 
   // Display user registration data at the top
   const renderUserInfo = () => {
-    if (!userData) return null;
+    const profile = userData || (authUser ? buildCustomerProfileShell(authUser) : null);
+    if (!profile) return null;
+
+    const locationLabel =
+      profile.city || profile.state
+        ? `${profile.city || ''}${profile.city && profile.state ? ', ' : ''}${profile.state || ''}`
+        : 'Not added yet';
 
     return (
       <div className="mb-8">
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/50 shadow-sm">
+        <div className="reliance-dark-shell overflow-hidden rounded-[28px] p-6 text-white shadow-[0_30px_80px_rgba(7,16,38,0.18)]">
           <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
-              {userData.firstName?.charAt(0)}{userData.lastName?.charAt(0)}
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 text-lg font-bold text-white">
+              {profile.firstName?.charAt(0)}{profile.lastName?.charAt(0)}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">
-                Welcome back, {userData.firstName} {userData.lastName}!
+              <h2 className="font-display text-2xl font-semibold text-white">
+                Welcome back, {profile.firstName} {profile.lastName}!
               </h2>
-              <p className="text-gray-600">Ready to discover amazing services?</p>
-              <p className="text-sm text-gray-500 mt-1">Business profile options are available from Profile & Settings.</p>
+              <p className="text-white/72">Ready to discover amazing services?</p>
+              <p className="mt-1 text-sm text-white/58">Business profile options are available from Profile & Settings.</p>
+              {profileLoading ? (
+                <p className="mt-2 text-xs text-blue-200">Refreshing your saved profile details...</p>
+              ) : null}
             </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <h4 className="font-semibold text-gray-700">Contact Information</h4>
-              <p className="text-sm text-gray-600">Email: {userData.email}</p>
-              <p className="text-sm text-gray-600">Phone: {userData.phone}</p>
-              <p className="text-sm text-gray-600">Location: {userData.city}, {userData.state}</p>
+              <h4 className="font-semibold text-white">Contact Information</h4>
+              <p className="text-sm text-white/70">Email: {profile.email || 'Loading...'}</p>
+              <p className="text-sm text-white/70">Phone: {profile.phone || 'Not added yet'}</p>
+              <p className="text-sm text-white/70">Location: {locationLabel}</p>
             </div>
             <div>
-              <h4 className="font-semibold text-gray-700">Account Details</h4>
-              <p className="text-sm text-gray-600">Member since: {userData.createdAt ? new Date(userData.createdAt).toLocaleDateString() : '—'}</p>
-              <p className="text-sm text-gray-600">Status: {userData.isActive ? 'Active' : 'Inactive'}</p>
+              <h4 className="font-semibold text-white">Account Details</h4>
+              <p className="text-sm text-white/70">Member since: {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : '—'}</p>
+              <p className="text-sm text-white/70">Status: {profile.isActive ? 'Active' : 'Inactive'}</p>
             </div>
-            {userData.bio && (
+            {profile.bio ? (
               <div>
-                <h4 className="font-semibold text-gray-700">About You</h4>
-                <p className="text-sm text-gray-600">{userData.bio}</p>
+                <h4 className="font-semibold text-white">About You</h4>
+                <p className="text-sm text-white/70">{profile.bio}</p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -283,11 +335,33 @@ export default function UserDashboardPage() {
   };
 
   const quickStats = [
-    { label: 'Active Bookings', value: String(dashboardCounts.activeBookings), icon: Calendar, color: 'blue' },
-    { label: 'Saved Favorites', value: String(dashboardCounts.savedFavorites), icon: Bookmark, color: 'pink' },
-    { label: 'Reviews Submitted', value: String(dashboardCounts.reviewsSubmitted), icon: Star, color: 'yellow' },
-    { label: 'Vendors Followed', value: String(dashboardCounts.vendorsFollowed), icon: TrendingUp, color: 'green' },
+    {
+      label: 'Active Bookings',
+      value: String(dashboardCounts.activeBookings),
+      icon: Calendar,
+      badgeClassName: 'bg-blue-100 text-blue-700',
+    },
+    {
+      label: 'Saved Favorites',
+      value: String(dashboardCounts.savedFavorites),
+      icon: Bookmark,
+      badgeClassName: 'bg-rose-100 text-rose-700',
+    },
+    {
+      label: 'Reviews Submitted',
+      value: String(dashboardCounts.reviewsSubmitted),
+      icon: Star,
+      badgeClassName: 'bg-amber-100 text-amber-700',
+    },
+    {
+      label: 'Vendors Followed',
+      value: String(dashboardCounts.vendorsFollowed),
+      icon: TrendingUp,
+      badgeClassName: 'bg-emerald-100 text-emerald-700',
+    },
   ];
+
+  const shouldShowCountsSkeleton = countsLoading;
 
   const quickActions = [
     {
@@ -298,11 +372,11 @@ export default function UserDashboardPage() {
       buttonLabel: 'Open Discover',
     },
     {
-      title: 'View My Bookings',
+      title: 'View My Services',
       description: 'Track active and completed jobs in one place.',
       href: '/my-bookings',
       icon: ClipboardList,
-      buttonLabel: 'Open My Bookings',
+      buttonLabel: 'Open My Services',
     },
     {
       title: 'Saved Favorites',
@@ -318,6 +392,13 @@ export default function UserDashboardPage() {
       icon: Star,
       buttonLabel: 'Open Reviews',
     },
+    {
+      title: 'Support & Help',
+      description: 'Open customer help guidance and the published support path.',
+      href: '/help?role=customer&returnTo=%2Fuser-dashboard&returnLabel=Back%20to%20Customer%20Dashboard',
+      icon: HelpCircle,
+      buttonLabel: 'Open Help Center',
+    },
   ];
 
   const trendingServices = services.slice(0, 4);
@@ -325,7 +406,7 @@ export default function UserDashboardPage() {
     .filter((service) => String(service?.vendor?.location || '').trim())
     .slice(0, 4);
   const showNearYouWithLocation = nearYouServices.length > 0;
-  const nearYouTitle = showNearYouWithLocation ? '📍 Available Near You' : '📍 Available Services';
+  const nearYouTitle = showNearYouWithLocation ? 'Available Near You' : 'Available Services';
 
   const renderMarketplaceEmptyState = () => (
     <div className="text-center py-10 bg-white rounded-2xl border border-gray-200">
@@ -338,14 +419,23 @@ export default function UserDashboardPage() {
       </Link>
     </div>
   );
+  const dashboardReturnHref = '/user-dashboard';
+  const dashboardReturnLabel = 'Back to Customer Dashboard';
 
   return (
     <div className="space-y-10">
-      {!hasBothProfiles ? (
-        <div className="rounded-2xl border border-white/60 bg-white/80 p-4 shadow-sm mb-10">
-          <h1 className="text-2xl font-semibold text-gray-900">Home</h1>
+      <section className="reliance-operator-hero rounded-[32px] px-6 py-7">
+        <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+          Customer dashboard
         </div>
-      ) : null}
+        <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
+          Trust-first service discovery stays connected to your account
+        </h1>
+        <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
+          Follow bookings, review approved service videos, manage favorites, and move through customer flows
+          inside the same premium trust-marketplace language as the homepage.
+        </p>
+      </section>
 
       <div className="space-y-8">
         {renderUserInfo()}
@@ -356,7 +446,7 @@ export default function UserDashboardPage() {
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 max-w-md">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                  <span className="text-green-600 text-sm">✓</span>
+                  <CheckCircle2 className="w-4 h-4 text-green-600" />
                 </div>
                 <div>
                   <h3 className="font-medium text-green-800">Vendor Profile Active</h3>
@@ -370,15 +460,19 @@ export default function UserDashboardPage() {
         )}
         
         {/* Quick Stats - Instagram Story Style */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        <div className="mb-10 grid grid-cols-2 gap-4 md:grid-cols-4">
           {quickStats.map((stat, index) => (
-            <div key={index} className="bg-white/70 backdrop-blur-sm rounded-2xl p-4 border border-white/50 shadow-sm hover:shadow-md transition-all duration-200">
+            <div key={index} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(7,16,38,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(7,16,38,0.1)]">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-full bg-${stat.color}-100`}>
-                  <stat.icon className={`w-5 h-5 text-${stat.color}-600`} />
+                <div className={`rounded-full p-2 ${stat.badgeClassName}`}>
+                  <stat.icon className="h-5 w-5" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+                  {shouldShowCountsSkeleton ? (
+                    <div className="h-8 w-10 rounded bg-gray-200 animate-pulse" />
+                  ) : (
+                    <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+                  )}
                   <div className="text-sm text-gray-600">{stat.label}</div>
                 </div>
               </div>
@@ -388,18 +482,18 @@ export default function UserDashboardPage() {
 
         {/* Quick Actions */}
         <div className="mb-10">
-          <div className="flex items-center gap-2 mb-4">
-            <Zap className="w-5 h-5 text-purple-500" />
-            <h2 className="text-xl font-bold text-gray-900">Quick Actions</h2>
-            <span className="text-sm text-gray-500">• Connected to your account routes</span>
+          <div className="mb-4 flex items-center gap-2">
+            <Zap className="h-5 w-5 text-[var(--reliance-blue)]" />
+            <h2 className="font-display text-2xl font-semibold text-slate-950">Quick Actions</h2>
+            <span className="text-sm text-gray-500">Connected to your account routes</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {quickActions.map((action) => (
-              <div key={action.title} className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-white/50 shadow-sm hover:shadow-md transition-all duration-200">
+              <div key={action.title} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(7,16,38,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(7,16,38,0.1)]">
                 <div className="flex items-start gap-3 mb-3">
-                  <div className="p-2 rounded-full bg-purple-100">
-                    <action.icon className="w-5 h-5 text-purple-600" />
+                  <div className="rounded-full bg-blue-100 p-2">
+                    <action.icon className="h-5 w-5 text-blue-700" />
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-semibold text-gray-900">{action.title}</h3>
@@ -408,7 +502,7 @@ export default function UserDashboardPage() {
                 </div>
                 <Link
                   href={action.href}
-                  className="inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a58db]"
                 >
                   {action.buttonLabel}
                 </Link>
@@ -421,8 +515,8 @@ export default function UserDashboardPage() {
         <div className="mb-10">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="w-5 h-5 text-red-500" />
-            <h2 className="text-xl font-bold text-gray-900">🔥 Trending Now</h2>
-            <span className="text-sm text-gray-500">• Real published services</span>
+            <h2 className="text-xl font-bold text-gray-900">Trending Now</h2>
+            <span className="text-sm text-gray-500">Real published services</span>
           </div>
 
           {servicesLoading ? (
@@ -463,7 +557,7 @@ export default function UserDashboardPage() {
                         <span className="text-sm font-semibold text-gray-900">${Number(service.price || 0).toFixed(2)}</span>
                         <Link
                           href={`/booking/${service.id}`}
-                          className="inline-flex items-center justify-center rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-700"
+                          className="inline-flex items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-xs font-medium text-white hover:bg-[#1a58db]"
                         >
                           Book Now
                         </Link>
@@ -481,7 +575,7 @@ export default function UserDashboardPage() {
           <div className="flex items-center gap-2 mb-4">
             <MapPin className="w-5 h-5 text-blue-500" />
             <h2 className="text-xl font-bold text-gray-900">{nearYouTitle}</h2>
-            <span className="text-sm text-gray-500">• Real vendor-linked services</span>
+            <span className="text-sm text-gray-500">Real vendor-linked services</span>
           </div>
 
           {servicesLoading ? (
@@ -514,7 +608,7 @@ export default function UserDashboardPage() {
                     ) : null}
                     <div className="mt-3 text-sm text-gray-700 line-clamp-1">{service.name}</div>
                     <Link
-                      href={`/service/${service.id}`}
+                      href={`/service/${service.id}?returnTo=${encodeURIComponent(dashboardReturnHref)}&returnLabel=${encodeURIComponent(dashboardReturnLabel)}`}
                       className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                     >
                       View Details
@@ -527,22 +621,22 @@ export default function UserDashboardPage() {
         </div>
 
         {/* How Reliance Works */}
-        <div className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 border border-white/50">
-          <div className="flex items-center gap-2 mb-4">
-            <Zap className="w-5 h-5 text-purple-500" />
-            <h2 className="text-xl font-bold text-gray-900">How Reliance Works</h2>
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_18px_45px_rgba(7,16,38,0.06)]">
+          <div className="mb-4 flex items-center gap-2">
+            <Zap className="h-5 w-5 text-[var(--reliance-blue)]" />
+            <h2 className="font-display text-2xl font-semibold text-slate-950">How Reliance Works</h2>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-purple-100">
-                <Search className="w-5 h-5 text-purple-600" />
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
+                <Search className="w-5 h-5 text-blue-700" />
               </div>
               <h3 className="font-semibold text-gray-900 mb-1">Book a Service</h3>
               <p className="text-sm text-gray-600 mb-3">Find and request a trusted vendor.</p>
               <Link
                 href="/discover"
-                className="inline-flex w-full items-center justify-center rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700"
+                className="inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white hover:bg-[#1a58db]"
               >
                 Explore Services
               </Link>
@@ -566,8 +660,8 @@ export default function UserDashboardPage() {
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
                 <Camera className="w-5 h-5 text-emerald-600" />
               </div>
-              <h3 className="font-semibold text-gray-900 mb-1">View Proof</h3>
-              <p className="text-sm text-gray-600 mb-3">See approved proof after the vendor completes the job.</p>
+              <h3 className="font-semibold text-gray-900 mb-1">Watch Service Videos</h3>
+              <p className="text-sm text-gray-600 mb-3">Open approved service videos or images after the vendor completes the job.</p>
               <Link
                 href="/my-bookings"
                 className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
@@ -595,3 +689,4 @@ export default function UserDashboardPage() {
     </div>
   );
 } 
+

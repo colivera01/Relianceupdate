@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
-import { sendEmail } from "@/lib/email/resend";
-import { logNotificationAttempt } from "@/lib/notifications/notification-audit";
 import { readNotificationEnv } from "@/lib/env/notification-config";
+import { TRUST_OUTCOME_TYPES, tryRecordFinalizedOperationalOutcome } from "@/lib/trust-score-outcome-foundation";
+import { tryRecalculateVendorTrustScore } from "@/lib/trust-score-calculator";
+import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import {
   MODERATION_APPROVED,
   MODERATION_FLAGGED,
@@ -46,10 +47,10 @@ function parseMetadata(value: string | null | undefined): Record<string, unknown
   }
 }
 
-function toAbsoluteProofUrl(bookingId: string): string {
+function toAbsoluteVideoUrl(bookingId: string): string {
   const env = readNotificationEnv();
   const base = String(env.appBaseUrl || "").trim();
-  const path = `/my-bookings/${bookingId}?proofReady=1`;
+  const path = `/my-bookings/${bookingId}?videoReady=1`;
   return base ? `${base}${path}` : path;
 }
 
@@ -92,10 +93,12 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       where: { id: bookingId },
       select: {
         id: true,
+        vendorId: true,
         title: true,
         clientName: true,
         userId: true,
         customerMetadata: true,
+        vendor: { select: { businessName: true, name: true } },
         user: { select: { email: true, name: true } },
         service: { select: { name: true } },
       },
@@ -187,68 +190,60 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     });
 
     const results = await Promise.all(updates);
+    if (action === "approve" || action === "reject") {
+      await tryRecordFinalizedOperationalOutcome(prisma as any, {
+        vendorId: booking.vendorId,
+        bookingId,
+        outcomeType:
+          action === "approve"
+            ? TRUST_OUTCOME_TYPES.VIDEO_PACKAGE_APPROVED
+            : TRUST_OUTCOME_TYPES.VIDEO_PACKAGE_REJECTED,
+        sourceEntityType: "media_package",
+        sourceEntityId: bookingId,
+        finalizedAt: now,
+        finalizedByUserId: userId,
+        metadata: {
+          action,
+          visibility: action === "approve" ? visibility : null,
+          moderationReason: action === "reject" ? moderationReason : null,
+          assetIds: targetAssets.map((asset) => asset.id),
+        },
+      });
+
+      // Internal-only, non-blocking Trust Score recalculation.
+      await tryRecalculateVendorTrustScore(
+        prisma as any,
+        booking.vendorId,
+        `media_package_${action}`,
+        "package_moderate"
+      );
+    }
     if (action === "approve" && (visibility === "customer_only" || visibility === "public")) {
       const metadata = parseMetadata(booking.customerMetadata);
       const alreadyNotified = Boolean(metadata.proof_ready_notification_sent_at);
       if (!alreadyNotified) {
-        const proofUrl = toAbsoluteProofUrl(bookingId);
+        const videoUrl = toAbsoluteVideoUrl(bookingId);
         const customerEmail = String(booking.user?.email || metadata.client_email || "").trim();
         const customerName = String(booking.user?.name || booking.clientName || "").trim();
-        const serviceLabel =
-          String(booking.title || "").trim() ||
-          String(booking.service?.name || "").trim() ||
-          "your service";
-        const subject = "Your service proof is ready";
-        const message = `Your service proof for ${serviceLabel} is now available to view.`;
-        const html = `
-          <p>Hello${customerName ? ` ${customerName}` : ""},</p>
-          <p>${message}</p>
-          <p><a href="${proofUrl}">View service proof</a></p>
-          <p>If the button does not open, paste this link into your browser:</p>
-          <p><code>${proofUrl}</code></p>
-        `.trim();
-        const text = [
-          `Hello${customerName ? ` ${customerName}` : ""},`,
-          "",
-          message,
-          "",
-          `View service proof: ${proofUrl}`,
-        ].join("\n");
         let notified = false;
-        if (customerEmail) {
-          const sendResult = await sendEmail({
-            to: customerEmail,
-            subject,
-            html,
-            text,
-          });
-          notified = Boolean(sendResult.ok);
-          await logNotificationAttempt(userId, bookingId, {
-            kind: "proof_ready",
-            channel: "email",
-            recipient: customerEmail,
-            success: sendResult.ok,
-            providerMessageId: sendResult.providerMessageId,
-            fallbackLink: proofUrl,
-            errorMessage: sendResult.errorMessage,
-          });
-        } else {
-          await logNotificationAttempt(userId, bookingId, {
-            kind: "proof_ready",
-            channel: "email",
-            recipient: "not_provided",
-            success: false,
-            fallbackLink: proofUrl,
-            errorMessage: "no_customer_email",
-          });
-        }
+        const sendResult = await sendVideoReadyNotification({
+          actorUserId: userId,
+          bookingId,
+          customerEmail,
+          customerName,
+          serviceName: booking.service?.name,
+          bookingTitle: booking.title,
+          vendorName: booking.vendor?.businessName || booking.vendor?.name || null,
+          videoUrl,
+        });
+        notified = Boolean(sendResult.ok);
         // Best-effort anti-spam gate: mark attempted once so re-approve does not spam.
         const nextMetadata = {
           ...metadata,
           proof_ready_notification_sent_at: new Date().toISOString(),
           proof_ready_notification_sent_success: notified,
           proof_ready_notification_visibility: visibility,
-          proof_ready_notification_url: proofUrl,
+          proof_ready_notification_url: videoUrl,
         };
         await prisma.booking.update({
           where: { id: bookingId },

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -14,12 +14,29 @@ type ConsentData = {
   status: string;
 };
 
-export default function ConsentPage() {
+function ConsentPageContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const token = String(params?.token || '');
   const returnTo = String(searchParams?.get('returnTo') || '').trim();
   const mediaSessionId = String(searchParams?.get('mediaSessionId') || '').trim();
+  const returnLinkLabel = (() => {
+    if (!returnTo) return 'Back to service page';
+    try {
+      const parsed = new URL(returnTo, 'http://localhost');
+      return parsed.searchParams.get('returnTo') === '/reviews'
+        ? 'Back to review detail'
+        : 'Back to service page';
+    } catch {
+      return returnTo.includes('returnTo=%2Freviews') || returnTo.includes('returnTo=/reviews')
+        ? 'Back to review detail'
+        : 'Back to service page';
+    }
+  })();
+  const helpReturnLabel = returnLinkLabel;
+  const customerHelpHref = `/help?role=customer&returnTo=${encodeURIComponent(
+    returnTo || '/my-bookings'
+  )}&returnLabel=${encodeURIComponent(helpReturnLabel)}`;
 
   const [data, setData] = useState<ConsentData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,6 +53,7 @@ export default function ConsentPage() {
       setLoading(false);
       return;
     }
+
     fetch(`/api/consent/${encodeURIComponent(token)}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((res) => {
@@ -149,7 +167,6 @@ export default function ConsentPage() {
 
   return (
     <div style={{ maxWidth: 700, margin: '40px auto', fontFamily: 'sans-serif' }}>
-      {/* HEADER */}
       <div style={{ marginBottom: 20 }}>
         <h1>{data?.vendorName || 'Your vendor'} is requesting your approval</h1>
         <p style={{ color: '#555' }}>
@@ -157,56 +174,62 @@ export default function ConsentPage() {
         </p>
       </div>
 
-      {/* CONTEXT */}
       <div style={{ background: '#eef6ff', padding: 16, borderRadius: 8 }}>
         <p>
-          <strong>{data?.vendorName || 'Your vendor'}</strong> uses Reliance to securely record and share proof of completed work so you can review it afterward.
+          <strong>{data?.vendorName || 'Your vendor'}</strong> uses Reliance to securely record and share service videos so you can review them afterward.
         </p>
       </div>
 
-      {/* DETAILS */}
       <div style={{ marginTop: 20, padding: 16, border: '1px solid #ddd', borderRadius: 8 }}>
-        <p><strong>Vendor:</strong> {data?.vendorName || '—'}</p>
-        <p><strong>Service:</strong> {data?.serviceName || data?.bookingName || '—'}</p>
+        <p><strong>Vendor:</strong> {data?.vendorName || 'Unavailable'}</p>
+        <p><strong>Service:</strong> {data?.serviceName || data?.bookingName || 'Unavailable'}</p>
         <p>
           <strong>Scheduled date:</strong>{' '}
-          {data?.scheduledDate ? new Date(data.scheduledDate).toLocaleDateString() : '—'}
+          {data?.scheduledDate ? new Date(data.scheduledDate).toLocaleDateString() : 'Unavailable'}
         </p>
         {data?.customerName ? <p><strong>Customer:</strong> {data.customerName}</p> : null}
         <p><strong>Requested:</strong> {new Date(data?.createdAt || '').toLocaleString()}</p>
       </div>
 
-      {/* ACCESS INFO */}
       <div style={{ marginTop: 20, padding: 16, background: '#f0fdf4', borderRadius: 8 }}>
         <p><strong>Access after approval</strong></p>
         <ul>
           <li>If you already have a Reliance account, sign in after approving</li>
           <li>If not, you can create one when you are ready</li>
-          <li>Your service proof stays securely stored in Reliance</li>
+          <li>Your service videos stay securely stored in Reliance</li>
         </ul>
       </div>
 
-      {/* WHY THIS IS NEEDED */}
       <div style={{ marginTop: 20, padding: 16, background: '#f6f8fa', borderRadius: 8 }}>
         <p><strong>Why this is needed</strong></p>
         <p style={{ fontSize: 14, color: '#555', marginTop: 6 }}>
           {data?.vendorName || 'Your vendor'} may capture recording steps as part of documenting your service.
         </p>
-        <p>• Intro Video – before work begins (condition overview)</p>
-        <p>• In-Progress Video – during the service (work being performed)</p>
-        <p>• Completion Video – after the service (final results and proof)</p>
+        <ul style={{ marginTop: 8, paddingLeft: 20, color: '#374151' }}>
+          <li>Intro Video - before work begins (condition overview)</li>
+          <li>In-Progress Video - during the service (work being performed)</li>
+          <li>Completion Video - after the service (final results)</li>
+        </ul>
         <p style={{ marginTop: 12, fontSize: 14, color: '#374151' }}>
           Your response is securely logged with verification details for compliance, fraud prevention, and dispute protection.
         </p>
       </div>
 
-      {/* LEGAL LINKS */}
       <div style={{ marginTop: 10 }}>
         <a href="/terms" target="_blank" rel="noreferrer">Terms of Service</a> |{' '}
         <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>
       </div>
+      <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {returnTo ? (
+          <Link href={returnTo} style={{ color: '#2563eb', textDecoration: 'underline' }}>
+            {returnLinkLabel}
+          </Link>
+        ) : null}
+        <Link href={customerHelpHref} style={{ color: '#2563eb', textDecoration: 'underline' }}>
+          Open Help Center
+        </Link>
+      </div>
 
-      {/* ACTIONS */}
       {!accepted && !declined ? (
         <div style={{ marginTop: 30 }}>
           <button
@@ -218,7 +241,7 @@ export default function ConsentPage() {
               padding: '10px 20px',
               border: 'none',
               borderRadius: 6,
-              marginRight: 10
+              marginRight: 10,
             }}
           >
             {accepting ? 'Processing...' : 'Approve access'}
@@ -315,5 +338,17 @@ export default function ConsentPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ConsentPageFallback() {
+  return <div style={{ padding: 40 }}>Loading...</div>;
+}
+
+export default function ConsentPage() {
+  return (
+    <Suspense fallback={<ConsentPageFallback />}>
+      <ConsentPageContent />
+    </Suspense>
   );
 }

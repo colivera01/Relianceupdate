@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthSessionCookieName, getAuthSessionCookieOptions } from "@/lib/auth-session";
+import { getTrustedDeviceCookieName, getTrustedDeviceCookieOptions } from "@/lib/auth-mfa";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,10 +18,31 @@ export async function POST(request: NextRequest) {
 
     console.log('User logged out successfully');
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: 'Logged out successfully'
     });
+
+    response.cookies.set(getAuthSessionCookieName(), "", {
+      ...getAuthSessionCookieOptions(),
+      maxAge: 0,
+    });
+    response.cookies.set("userId", "", {
+      path: "/",
+      sameSite: "lax",
+      maxAge: 0,
+    });
+    response.cookies.set("session_user_id", "", {
+      path: "/",
+      sameSite: "lax",
+      maxAge: 0,
+    });
+    response.cookies.set(getTrustedDeviceCookieName(), "", {
+      ...getTrustedDeviceCookieOptions(),
+      maxAge: 0,
+    });
+
+    return response;
 
   } catch (error) {
     console.error('Logout error:', error);

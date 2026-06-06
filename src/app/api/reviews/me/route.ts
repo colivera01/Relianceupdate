@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from "@/lib/account-status";
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
+import { isTransientDbConnectivityError, PUBLIC_DB_UNAVAILABLE_CODE } from "@/lib/transient-db-errors";
+import { deriveCustomerBookingLifecycle } from "@/lib/customer-booking-lifecycle";
+import {
+  classifySubmittedReviewMediaState,
+  getReviewsHubUnavailableMessage,
+  isCustomerReviewEligibleMediaSession,
+} from "@/lib/reviews-hub-state";
 
 type ReviewsMePendingItem = {
   bookingId: string;
@@ -10,6 +18,7 @@ type ReviewsMePendingItem = {
   serviceName: string;
   serviceDate: string | null;
   status: string;
+  videoUrl: string | null;
   proofUrl: string | null;
 };
 
@@ -22,8 +31,24 @@ type ReviewsMeSubmittedItem = {
   rating: number;
   comment: string;
   submittedAt: string;
+  hasVideo: boolean;
+  videoUrl: string | null;
   hasProof: boolean;
   proofUrl: string | null;
+  hasLinkedMediaRecord: boolean;
+  mediaState: "customer_visible_video" | "linked_media_unavailable" | "no_linked_media";
+  statusMessage: string | null;
+};
+
+type ReviewsMeAwaitingItem = {
+  bookingId: string;
+  vendorId: string;
+  vendorName: string;
+  serviceName: string;
+  serviceDate: string | null;
+  status: string;
+  videoState: "pending_approval" | "approved_not_customer_visible" | "rejected" | "not_submitted";
+  statusMessage: string;
 };
 
 function resolveVendorName(vendor: { businessName?: string | null; name?: string | null } | null | undefined): string {
@@ -40,6 +65,9 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (!userId) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+    await ensureUserAccountCanAct(userId);
+    const { searchParams } = new URL(request.url);
+    const summaryOnly = searchParams.get("summaryOnly") === "1";
 
     // Keep customer-scoped reads sequential to avoid DB pool spikes in local dev.
     const completedBookings = await prisma.booking.findMany({
@@ -56,6 +84,23 @@ export async function GET(request: Request): Promise<NextResponse> {
         createdAt: true,
         service: { select: { name: true } },
         vendor: { select: { name: true, businessName: true } },
+        mediaSessions: {
+          where: { sessionType: 'JOB_SERVICE_VIDEO' },
+          select: {
+            vendorJobVideoStage: true,
+            mediaAssets: {
+              select: {
+                mimeType: true,
+                moderationStatus: true,
+                visibilityStatus: true,
+                archiveStatus: true,
+              },
+            },
+          },
+        },
+        reviewWindows: {
+          select: { status: true },
+        },
       },
       orderBy: { date: "desc" },
     });
@@ -90,8 +135,31 @@ export async function GET(request: Request): Promise<NextResponse> {
         .filter(Boolean)
     );
 
+    const completedBookingIds = completedBookings
+      .map((booking) => String(booking.id || "").trim())
+      .filter(Boolean);
+
+    const reviewedBookingRows = completedBookingIds.length
+      ? await prisma.review.findMany({
+          where: {
+            bookingId: { in: completedBookingIds },
+          },
+          select: {
+            bookingId: true,
+          },
+        })
+      : [];
+
+    const reviewedBookingIdSet = new Set(
+      reviewedBookingRows
+        .map((review) => String(review.bookingId || "").trim())
+        .filter(Boolean)
+    );
+
     const pendingCandidateBookings = completedBookings.filter(
-      (booking) => !submittedBookingIdSet.has(String(booking.id))
+      (booking) =>
+        !submittedBookingIdSet.has(String(booking.id)) &&
+        !reviewedBookingIdSet.has(String(booking.id))
     );
 
     const scopedBookingIds = Array.from(
@@ -129,6 +197,8 @@ export async function GET(request: Request): Promise<NextResponse> {
             mediaSession: {
               select: {
                 bookingId: true,
+                sessionType: true,
+                vendorJobVideoStage: true,
               },
             },
           },
@@ -136,10 +206,18 @@ export async function GET(request: Request): Promise<NextResponse> {
         })
       : [];
 
-    const proofAssetsByBookingId = new Map<string, { assetId: string; mediaSessionId: string | null }>();
+      const proofAssetsByBookingId = new Map<string, { assetId: string; mediaSessionId: string | null }>();
     for (const asset of proofAssets) {
       const bookingId = String(asset?.mediaSession?.bookingId || "").trim();
       if (!bookingId) continue;
+      if (
+        !isCustomerReviewEligibleMediaSession({
+          sessionType: asset?.mediaSession?.sessionType,
+          vendorJobVideoStage: asset?.mediaSession?.vendorJobVideoStage,
+        })
+      ) {
+        continue;
+      }
       if (!proofAssetsByBookingId.has(bookingId)) {
         proofAssetsByBookingId.set(bookingId, {
           assetId: String(asset.id),
@@ -152,6 +230,14 @@ export async function GET(request: Request): Promise<NextResponse> {
     for (const asset of proofAssets) {
       const mediaSessionId = String(asset.mediaSessionId || "").trim();
       if (!mediaSessionId || proofAssetsByMediaSessionId.has(mediaSessionId)) continue;
+      if (
+        !isCustomerReviewEligibleMediaSession({
+          sessionType: asset?.mediaSession?.sessionType,
+          vendorJobVideoStage: asset?.mediaSession?.vendorJobVideoStage,
+        })
+      ) {
+        continue;
+      }
       const bookingId = String(asset?.mediaSession?.bookingId || "").trim() || null;
       proofAssetsByMediaSessionId.set(mediaSessionId, {
         assetId: String(asset.id),
@@ -174,6 +260,8 @@ export async function GET(request: Request): Promise<NextResponse> {
           mediaSession: {
             select: {
               bookingId: true,
+              sessionType: true,
+              vendorJobVideoStage: true,
             },
           },
           createdAt: true,
@@ -184,6 +272,14 @@ export async function GET(request: Request): Promise<NextResponse> {
       for (const asset of directSessionAssets) {
         const mediaSessionId = String(asset.mediaSessionId || "").trim();
         if (!mediaSessionId || proofAssetsByMediaSessionId.has(mediaSessionId)) continue;
+        if (
+          !isCustomerReviewEligibleMediaSession({
+            sessionType: asset?.mediaSession?.sessionType,
+            vendorJobVideoStage: asset?.mediaSession?.vendorJobVideoStage,
+          })
+        ) {
+          continue;
+        }
         const bookingId = String(asset?.mediaSession?.bookingId || "").trim() || null;
         proofAssetsByMediaSessionId.set(mediaSessionId, {
           assetId: String(asset.id),
@@ -192,9 +288,22 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
 
-    const pending: ReviewsMePendingItem[] = pendingCandidateBookings.map((booking) => {
+    const readyForReviewBookings = pendingCandidateBookings.filter((booking) =>
+      deriveCustomerBookingLifecycle({
+        bookingStatus: booking.status,
+        mediaSessions: booking.mediaSessions || [],
+        hasSubmittedReview: false,
+        reviewWindows: booking.reviewWindows || [],
+      }).reviewEligible
+    );
+    const readyBookingIdSet = new Set(readyForReviewBookings.map((booking) => String(booking.id)));
+    const awaitingVideoBookings = pendingCandidateBookings.filter(
+      (booking) => !readyBookingIdSet.has(String(booking.id))
+    );
+
+    const pending: ReviewsMePendingItem[] = readyForReviewBookings.map((booking) => {
       const proof = proofAssetsByBookingId.get(String(booking.id));
-      const proofUrl = proof ? `/api/bookings/${booking.id}/media/${proof.assetId}/download` : null;
+      const videoUrl = proof ? `/api/bookings/${booking.id}/media/${proof.assetId}/download` : null;
 
       return {
         bookingId: String(booking.id),
@@ -203,7 +312,31 @@ export async function GET(request: Request): Promise<NextResponse> {
         serviceName: resolveServiceName(booking.service),
         serviceDate: (booking.date || booking.scheduledFor || booking.createdAt)?.toISOString?.() || null,
         status: String(booking.status || "COMPLETED"),
-        proofUrl,
+        videoUrl,
+        proofUrl: videoUrl,
+      };
+    });
+
+    const awaiting: ReviewsMeAwaitingItem[] = awaitingVideoBookings.map((booking) => {
+      const lifecycle = deriveCustomerBookingLifecycle({
+        bookingStatus: booking.status,
+        mediaSessions: booking.mediaSessions || [],
+        hasSubmittedReview: false,
+        reviewWindows: booking.reviewWindows || [],
+      });
+
+      return {
+        bookingId: String(booking.id),
+        vendorId: String(booking.vendorId),
+        vendorName: resolveVendorName(booking.vendor),
+        serviceName: resolveServiceName(booking.service),
+        serviceDate: (booking.date || booking.scheduledFor || booking.createdAt)?.toISOString?.() || null,
+        status: String(booking.status || "COMPLETED"),
+        videoState:
+          lifecycle.videoState === "available_to_customer"
+            ? "not_submitted"
+            : lifecycle.videoState,
+        statusMessage: getReviewsHubUnavailableMessage(lifecycle),
       };
     });
 
@@ -214,12 +347,16 @@ export async function GET(request: Request): Promise<NextResponse> {
       const proofFromSession = reviewMediaSessionId ? proofAssetsByMediaSessionId.get(reviewMediaSessionId) : null;
       const resolvedBookingId = bookingId || proofFromSession?.bookingId || null;
       const resolvedAssetId = proofFromSession?.assetId || proofFromBooking?.assetId || null;
-      const proofUrl =
+      const videoUrl =
         resolvedBookingId && resolvedAssetId
           ? `/api/bookings/${resolvedBookingId}/media/${resolvedAssetId}/download`
           : null;
 
-      const hasProof = Boolean(reviewMediaSessionId) || Boolean(proofFromBooking);
+      const hasVideo = Boolean(videoUrl);
+      const mediaState = classifySubmittedReviewMediaState({
+        hasCustomerVisibleVideo: hasVideo,
+        hasLinkedMediaRecord: Boolean(reviewMediaSessionId),
+      });
 
       return {
         reviewId: String(review.id),
@@ -230,20 +367,51 @@ export async function GET(request: Request): Promise<NextResponse> {
         rating: Number(review.rating),
         comment: String(review.comment || ""),
         submittedAt: (review.date || review.createdAt)?.toISOString?.() || review.createdAt.toISOString(),
-        hasProof,
-        proofUrl,
+        hasVideo,
+        videoUrl,
+        hasProof: mediaState.hasProof,
+        proofUrl: videoUrl,
+        hasLinkedMediaRecord: Boolean(reviewMediaSessionId),
+        mediaState: mediaState.state,
+        statusMessage: mediaState.message,
       };
     });
 
-    const proofBased = submitted.filter((row) => row.hasProof);
+    const videoBased = submitted.filter((row) => row.hasVideo);
+
+    if (summaryOnly) {
+      return NextResponse.json({
+        summary: {
+          pendingTotal: pending.length,
+          awaitingVideoTotal: awaiting.length,
+          submittedTotal: submitted.length,
+          videoBasedTotal: videoBased.length,
+        },
+      });
+    }
 
     return NextResponse.json({
       pending,
+      awaiting,
       submitted,
-      proofBased,
+      videoBased,
+      proofBased: videoBased,
     });
   } catch (error: any) {
     console.error("[reviews/me] GET error:", error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
+    if (isTransientDbConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: PUBLIC_DB_UNAVAILABLE_CODE,
+          error: "Your review history is temporarily unavailable because Reliance cannot reach the service database. Please try again in a moment.",
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       {
         success: false,

@@ -13,16 +13,38 @@ export type VendorTeamMember = {
 
 export async function fetchVendorTeamMembers(
   vendorId: string,
-  getHeaders: () => Record<string, string>
+  getHeaders: () => Record<string, string>,
+  options?: { timeoutMs?: number }
 ): Promise<VendorTeamMember[]> {
-  const res = await fetch(
-    `/api/vendors/${encodeURIComponent(vendorId)}/memberships?status=ACTIVE`,
-    {
-      method: "GET",
-      headers: { ...getHeaders(), "Content-Type": "application/json" },
-      cache: "no-store",
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutMs = typeof options?.timeoutMs === "number" ? options.timeoutMs : 0;
+  const timeoutHandle =
+    controller && timeoutMs > 0
+      ? window.setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+
+  let res: Response;
+  try {
+    res = await fetch(
+      `/api/vendors/${encodeURIComponent(vendorId)}/memberships?status=ACTIVE`,
+      {
+        method: "GET",
+        headers: { ...getHeaders(), "Content-Type": "application/json" },
+        cache: "no-store",
+        signal: controller?.signal,
+      }
+    );
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Employee roster took too long to load. Please retry.");
     }
-  );
+    throw error;
+  } finally {
+    if (timeoutHandle !== null) {
+      window.clearTimeout(timeoutHandle);
+    }
+  }
+
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { normalizePrismaSqlServerUrl } from '@/lib/prisma-sqlserver-url';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -10,22 +11,26 @@ function getDatabaseUrl(): string {
   const dbUrl = process.env.DATABASE_URL;
   
   if (dbUrl) {
+    const normalizedDbUrl = normalizePrismaSqlServerUrl(dbUrl) ?? dbUrl;
     // Safe diagnostics only (never log secrets)
-    const urlMatch = dbUrl.match(/^sqlserver:\/\/([^;/?]+)/i);
+    const urlMatch = normalizedDbUrl.match(/^sqlserver:\/\/([^;/?]+)/i);
     const hostPort = urlMatch?.[1] || 'unknown-host';
     const host = hostPort.split(':')[0] || hostPort;
-    const dbMatch = dbUrl.match(/(?:^|;)database=([^;]+)/i);
+    const dbMatch = normalizedDbUrl.match(/(?:^|;)database=([^;]+)/i);
     const databaseName = dbMatch?.[1] || 'unknown-db';
     console.log('[db.ts] DATABASE_URL present:', true);
     console.log('[db.ts] DATABASE_URL host:', host);
     console.log('[db.ts] DATABASE_URL database:', databaseName);
+    if (normalizedDbUrl !== dbUrl) {
+      console.warn('[db.ts] Normalized braced SQL Server password for Prisma compatibility');
+    }
     
     // Check if it contains the problematic encoding
-    if (dbUrl.includes('%2320') || dbUrl.includes('%23')) {
+    if (normalizedDbUrl.includes('%2320') || normalizedDbUrl.includes('%23')) {
       console.warn('[db.ts] WARNING: Connection string contains %23 (#) encoding - this may cause issues');
     }
     
-    return dbUrl;
+    return normalizedDbUrl;
   }
   
   // Fallback: construct from individual env vars if needed
@@ -152,5 +157,4 @@ try {
 
 export { prisma };
 export const getPrismaInitError = () => prismaInitError;
-
 

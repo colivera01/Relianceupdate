@@ -3,19 +3,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, Info, RefreshCw } from 'lucide-react';
-import { SmartVideoPlayer } from '@/components/reviews/SmartVideoPlayer';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDisplayDate, formatDisplayTime } from '@/lib/date-display';
 import {
   bookingMatchesSearch,
   bookingMatchesTab,
   classifyCancelBookingAction,
   formatMyBookingsStatusDisplay,
+  isArchivedStatus,
+  isCompletedStatus,
   normalizeBookingStatusKey,
   resolveBookingScheduleInstant,
   sanitizeMyBookingsRow,
   safeSortByCreatedAtDesc,
   shouldEnableReviewCaptureForStatus,
+  type MyBookingsTab,
   type MyBookingsRow,
 } from '@/lib/my-bookings';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
@@ -24,19 +27,21 @@ type MediaState = {
   loading: boolean;
   error: string | null;
   total: number | null;
-  /** True after a successful GET (even when total is 0). Used for truthful empty vs not-yet-loaded. */
+  /** True after a successful GET, even when total is 0. Used for truthful empty vs not-yet-loaded. */
   loaded: boolean;
-  /** Count of image assets returned (GET includes approved customer-visible images). */
+  /** Count of image assets returned. GET includes approved customer-visible images. */
   imageCount?: number;
   videos?: Array<{
     id: string;
     title: string;
-    blobUrl: string | null;
+    downloadUrl: string | null;
     mediaSessionId: string | null;
     isPrimaryProofVideo?: boolean;
     createdAt?: string | null;
   }>;
 };
+
+type BookingProofVideo = NonNullable<MediaState['videos']>[number];
 
 type ProofSignal = {
   loading: boolean;
@@ -61,13 +66,14 @@ export default function MyBookingsPage() {
   const [bookings, setBookings] = useState<MyBookingsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'past' | 'cancelled'>('upcoming');
+  const [activeTab, setActiveTab] = useState<MyBookingsTab>('upcoming');
   const [searchTerm, setSearchTerm] = useState('');
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [mediaByBooking, setMediaByBooking] = useState<Record<string, MediaState>>({});
-  const [activeVideoByBooking, setActiveVideoByBooking] = useState<Record<string, string>>({});
   const [proofSignalByBooking, setProofSignalByBooking] = useState<Record<string, ProofSignal>>({});
+  const customerHelpHref =
+    '/help?role=customer&returnTo=%2Fmy-bookings&returnLabel=Back%20to%20My%20Services';
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -80,14 +86,8 @@ export default function MyBookingsPage() {
         setLoading(false);
         return;
       }
-      const query = new URLSearchParams();
-      query.set('userId', userId);
-
-      const res = await fetch(`/api/bookings?${query.toString()}`, {
+      const res = await fetch(`/api/bookings`, {
         method: 'GET',
-        headers: {
-          'x-user-id': userId,
-        },
         cache: 'no-store',
       });
       const json = await res.json().catch(() => ({}));
@@ -128,6 +128,38 @@ export default function MyBookingsPage() {
       .sort(safeSortByCreatedAtDesc);
   }, [bookings, activeTab, searchTerm]);
 
+  const tabCounts = useMemo(() => {
+    const now = new Date();
+    return bookings.reduce(
+      (acc, booking) => {
+        const statusKey = normalizeBookingStatusKey(booking.status);
+        const { instant: scheduleInstant } = resolveBookingScheduleInstant(
+          booking.booking_date,
+          booking.booking_time,
+          booking.created_at
+        );
+        if (bookingMatchesTab('upcoming', statusKey, scheduleInstant, now)) acc.upcoming += 1;
+        if (bookingMatchesTab('past', statusKey, scheduleInstant, now)) acc.past += 1;
+        if (bookingMatchesTab('archived', statusKey, scheduleInstant, now)) acc.archived += 1;
+        if (bookingMatchesTab('needs_follow_up', statusKey, scheduleInstant, now)) acc.needs_follow_up += 1;
+        if (bookingMatchesTab('cancelled', statusKey, scheduleInstant, now)) acc.cancelled += 1;
+        return acc;
+      },
+      { upcoming: 0, past: 0, archived: 0, needs_follow_up: 0, cancelled: 0 }
+    );
+  }, [bookings]);
+
+  const proofCandidates = useMemo(() => {
+    return [...bookings]
+      .sort((a, b) => {
+        const aCompleted = isCompletedStatus(normalizeBookingStatusKey(a.status)) ? 1 : 0;
+        const bCompleted = isCompletedStatus(normalizeBookingStatusKey(b.status)) ? 1 : 0;
+        if (aCompleted !== bCompleted) return bCompleted - aCompleted;
+        return safeSortByCreatedAtDesc(a, b);
+      })
+      .slice(0, 12);
+  }, [bookings]);
+
   const cancelBooking = async (bookingId: string) => {
     if (!confirm('Cancel this booking?')) return;
     setActionMessage(null);
@@ -142,7 +174,6 @@ export default function MyBookingsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(userId ? { 'x-user-id': userId } : {}),
         },
         body: JSON.stringify({ reason: 'Customer requested cancellation', refund_requested: false }),
       });
@@ -187,9 +218,6 @@ export default function MyBookingsPage() {
     try {
       const res = await fetch(`/api/bookings/${bookingId}/media`, {
         method: 'GET',
-        headers: {
-          ...(userId ? { 'x-user-id': userId } : {}),
-        },
         cache: 'no-store',
       });
       const json = await res.json().catch(() => ({}));
@@ -198,18 +226,18 @@ export default function MyBookingsPage() {
       }
       const total = Array.isArray(json?.assets) ? json.assets.length : 0;
       const imageCount = Array.isArray(json?.images) ? json.images.length : 0;
-      const videos = Array.isArray(json?.videos)
+      const videos: BookingProofVideo[] = Array.isArray(json?.videos)
         ? json.videos.map((v: {
             id?: unknown;
             title?: unknown;
-            blobUrl?: unknown;
+            downloadUrl?: unknown;
             mediaSessionId?: unknown;
             isPrimaryProofVideo?: unknown;
             createdAt?: unknown;
           }) => ({
             id: String(v.id),
             title: String(v.title || 'Service Video'),
-            blobUrl: v.blobUrl ? String(v.blobUrl) : null,
+            downloadUrl: v.downloadUrl ? String(v.downloadUrl) : null,
             mediaSessionId: v.mediaSessionId ? String(v.mediaSessionId) : null,
             isPrimaryProofVideo: Boolean(v.isPrimaryProofVideo),
             createdAt: v.createdAt ? String(v.createdAt) : null,
@@ -236,13 +264,6 @@ export default function MyBookingsPage() {
           recentlyUpdated,
         },
       }));
-      if (videos.length > 0) {
-        const primaryProofVideo = videos.find((video) => Boolean(video.isPrimaryProofVideo));
-        setActiveVideoByBooking((prev) => ({
-          ...prev,
-          [bookingId]: prev[bookingId] || primaryProofVideo?.id || videos[0].id,
-        }));
-      }
     } catch (e) {
       setMediaByBooking((prev) => ({
         ...prev,
@@ -268,8 +289,8 @@ export default function MyBookingsPage() {
 
   useEffect(() => {
     const userId = resolveCustomerUserId(user?.id);
-    if (!userId || filtered.length === 0) return;
-    const candidates = filtered.slice(0, 8);
+    if (!userId || proofCandidates.length === 0) return;
+    const candidates = proofCandidates;
     for (const booking of candidates) {
       const bookingId = String(booking.id);
       if (proofSignalByBooking[bookingId]?.loading || proofSignalByBooking[bookingId]) continue;
@@ -284,33 +305,40 @@ export default function MyBookingsPage() {
       }));
       void loadBookingMedia(bookingId);
     }
-  }, [filtered, user?.id, proofSignalByBooking]);
+  }, [proofCandidates, user?.id, proofSignalByBooking]);
 
   const listNow = new Date();
-  const customerUserIdForReview = resolveCustomerUserId(user?.id);
   const latestProofBooking = useMemo(() => {
     const candidates = Object.entries(proofSignalByBooking)
       .filter(([, signal]) => signal?.hasSharedProof)
       .map(([bookingId, signal]) => ({
         bookingId,
         ts: signal.lastSharedAt ? new Date(signal.lastSharedAt).getTime() : 0,
+        booking: bookings.find((item) => item.id === bookingId) || null,
       }))
       .sort((a, b) => b.ts - a.ts);
-    return candidates[0]?.bookingId || null;
-  }, [proofSignalByBooking]);
+    return candidates[0] || null;
+  }, [bookings, proofSignalByBooking]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-full">
       <div className="pt-6 space-y-4">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold mb-6 text-gray-900">My Services</h1>
-            <p className="text-sm text-gray-600 mt-1 max-w-xl">
-              Your history with vendors on Reliance—scheduled visits, status, and media they share for transparency.
-              Vendors add recordings after work; you only see items that are approved for customers.
-            </p>
+        <div className="reliance-operator-hero mb-6 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="space-y-3">
+            <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+              Customer service timeline
+            </div>
+            <div>
+              <h1 className="font-display text-3xl font-semibold text-white sm:text-4xl">
+                My Services
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
+                Track scheduled services, review approved service videos or images, and follow each
+                booking inside the same premium trust-marketplace language as the homepage.
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <ButtonLike onClick={fetchBookings} disabled={loading}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
@@ -320,47 +348,39 @@ export default function MyBookingsPage() {
               title="Browse services to book (Discover)"
               className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
             >
-              Book New Service
+              Book a Service
             </Link>
           </div>
         </div>
 
-        <div className="rounded-lg border border-blue-100 bg-blue-50/90 p-4 mb-10 text-sm text-gray-800">
+        <div className="mb-10 rounded-[26px] border border-blue-500/20 bg-blue-50/90 p-5 text-sm shadow-[0_18px_55px_rgba(4,10,22,0.24)]">
           <div className="flex gap-2">
             <Info className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" aria-hidden />
-            <div className="space-y-2">
-              <p className="font-medium text-gray-900">Why a row appears here</p>
-              <ul className="list-disc pl-5 space-y-1 text-gray-700">
-                <li>Each entry links your account to a catalog service and vendor (your engagement on Reliance).</li>
-                <li>
-                  Use <strong>Show shared media</strong> to load video or images your vendor has already published for
-                  you—this list only includes media that passed review and is marked visible to customers.
-                </li>
-                <li>
-                  When playback is available and your service isn&apos;t cancelled, you may get in-player prompts to leave
-                  quick feedback after watching.
-                </li>
-              </ul>
+            <div className="space-y-1">
+              <p className="font-medium text-gray-900">Service videos and images, when available</p>
+              <p className="text-gray-700">
+                Vendors can share approved service videos or images after work is done. Open a service to view what has been published for you and leave feedback when the review flow is available.
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white border rounded-lg p-4 mb-10">
+        <div className="reliance-operator-surface mb-10 rounded-[28px] p-4">
           <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
             <div className="w-full md:w-96 space-y-1">
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search service, vendor, title, client name, or booking ID"
+                placeholder="Search service, vendor, title, or booking ID"
                 aria-describedby="my-bookings-search-hint"
                 className="border rounded px-3 py-2 text-sm w-full"
               />
               <p id="my-bookings-search-hint" className="text-xs text-gray-500">
-                Matches service name, vendor name, title, client name on the record, or your reference ID.
+                Matches the service, vendor, title, or booking ID.
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {(['upcoming', 'past', 'cancelled'] as const).map((tab) => (
+              {(['upcoming', 'past', 'archived', 'needs_follow_up', 'cancelled'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -369,7 +389,13 @@ export default function MyBookingsPage() {
                     activeTab === tab ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
                   }`}
                 >
-                  {tab[0].toUpperCase() + tab.slice(1)}
+                  {tab === 'past'
+                    ? 'Completed'
+                    : tab === 'archived'
+                      ? 'Archived'
+                    : tab === 'needs_follow_up'
+                      ? 'Needs Follow-Up'
+                      : tab[0].toUpperCase() + tab.slice(1)} ({tabCounts[tab]})
                 </button>
               ))}
             </div>
@@ -382,22 +408,32 @@ export default function MyBookingsPage() {
           </div>
         ) : null}
 
-        {latestProofBooking ? (
+        {latestProofBooking && activeTab !== 'archived' && activeTab !== 'needs_follow_up' ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 mb-10">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium text-emerald-900">New proof available for your recent service.</p>
+              <div>
+                <p className="text-sm font-medium text-emerald-900">
+                  A completed service video is ready to review for your recent service.
+                </p>
+                {latestProofBooking.booking ? (
+                  <p className="mt-1 text-xs text-emerald-800">
+                    {latestProofBooking.booking.service.name} with {latestProofBooking.booking.vendor.name}
+                    {' '}is also listed in your booking history. You may be asked to confirm consent before playback.
+                  </p>
+                ) : null}
+              </div>
               <Link
-                href={`/my-bookings/${latestProofBooking}`}
+                href={`/my-bookings/${latestProofBooking.bookingId}`}
                 className="rounded border border-emerald-300 bg-white px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100"
               >
-                View proof
+                Open service video
               </Link>
             </div>
           </div>
         ) : null}
 
         {authLoading ? (
-          <PanelText text="Checking your session…" />
+          <PanelText text="Checking your session..." />
         ) : !resolveCustomerUserId(user?.id) ? (
           <div className="rounded border border-amber-200 bg-amber-50 px-4 py-6 text-center text-sm text-amber-900 space-y-2">
             <p className="font-medium">Sign in to see your services</p>
@@ -421,15 +457,59 @@ export default function MyBookingsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <PanelText
-            text={`No ${activeTab} services found.`}
-            hint="Try another tab or book a service from Discover."
+            text={
+              activeTab === 'needs_follow_up'
+                ? 'No follow-up services found.'
+                : activeTab === 'past'
+                  ? 'No completed services found.'
+                  : activeTab === 'archived'
+                    ? 'No archived services found.'
+                  : `No ${activeTab} services found.`
+            }
+            hint={
+              activeTab === 'upcoming' && tabCounts.needs_follow_up > 0
+                ? 'Services that passed their scheduled date without a completed closeout are listed under Needs Follow-Up.'
+                : activeTab === 'upcoming' && tabCounts.past > 0
+                  ? 'Completed work is available under Completed.'
+                  : activeTab === 'upcoming' && tabCounts.archived > 0
+                    ? 'Older retained records are listed under Archived.'
+                  : activeTab === 'needs_follow_up'
+                    ? 'These are services whose scheduled date passed without a completed vendor closeout.'
+                    : activeTab === 'archived'
+                      ? 'These are older retained booking records kept for reference.'
+                    : 'Try another tab or book a service from Discover.'
+            }
           />
         ) : (
           <div className="space-y-3 mb-10">
+            {activeTab === 'archived' ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50/90 px-4 py-3 text-sm text-slate-800">
+                These are older retained booking records kept for reference.
+              </div>
+            ) : null}
+            {activeTab === 'needs_follow_up' ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
+                These services passed their scheduled date without a completed vendor closeout.
+              </div>
+            ) : null}
             {filtered.map((booking) => {
               const mediaState = mediaByBooking[booking.id];
               const proofSignal = proofSignalByBooking[booking.id];
+              const proofLikelyReady = Boolean(proofSignal?.hasSharedProof);
               const statusKey = normalizeBookingStatusKey(booking.status);
+              const archivedRecord = isArchivedStatus(statusKey);
+              const completedRecord = isCompletedStatus(statusKey);
+              const customerLifecycle = booking.customer_lifecycle || null;
+              const lifecycleVideoState = customerLifecycle?.videoState || null;
+              const reviewSubmitted = customerLifecycle?.reviewSubmitted === true;
+              const reviewEligible = customerLifecycle?.reviewEligible === true;
+              const reviewSubmittedWithoutEligibleVideo =
+                customerLifecycle?.reviewSubmittedWithoutEligibleVideo === true;
+              const customerVisibleCompletedVideo =
+                customerLifecycle?.videoAvailableToCustomer === true;
+              const completedVideoPendingApproval =
+                customerLifecycle?.videoPendingApproval === true ||
+                lifecycleVideoState === 'pending_approval';
               const { instant: scheduleInstant } = resolveBookingScheduleInstant(
                 booking.booking_date,
                 booking.booking_time,
@@ -445,24 +525,70 @@ export default function MyBookingsPage() {
               const mediaButtonTitle = !vendorIdOk
                 ? 'Vendor information is required on this record before shared media can load.'
                 : mediaState?.loading
-                  ? 'Loading shared media…'
+                  ? 'Loading shared service videos...'
                   : undefined;
               const serviceDetailHref = booking.service.id ? `/service/${booking.service.id}` : null;
               const bookingProofHref = `/my-bookings/${booking.id}`;
-              const reviewCaptureOk = shouldEnableReviewCaptureForStatus(statusKey);
+              const reviewCaptureOk = !archivedRecord && shouldEnableReviewCaptureForStatus(statusKey);
+              const activeWorkflowRecord =
+                statusKey === 'pending' ||
+                statusKey === 'confirmed' ||
+                statusKey === 'in_progress' ||
+                statusKey === 'in progress' ||
+                statusKey === 'awaiting_review' ||
+                statusKey === 'awaiting review';
               const mediaLoaded = Boolean(mediaState?.loaded);
               const mediaTotal = mediaState?.total;
+              const mediaButtonLabel = mediaState?.loading
+                ? 'Checking videos...'
+                : mediaLoaded
+                  ? typeof mediaTotal === 'number' && mediaTotal > 0
+                    ? archivedRecord
+                      ? 'Refresh retained media'
+                      : 'Refresh shared videos'
+                    : archivedRecord
+                      ? 'Check again for retained media'
+                      : 'Check again for shared videos'
+                  : archivedRecord
+                    ? 'Check for retained media'
+                    : 'Check for shared videos';
               const videoList = mediaState?.videos ?? [];
               const imageCount = mediaState?.imageCount ?? 0;
               const primaryProofVideo = videoList.find((video) => Boolean(video.isPrimaryProofVideo)) || null;
-              const hasPlayableSharedVideo =
-                mediaLoaded && videoList.some((v) => Boolean(v.blobUrl && v.mediaSessionId));
+              const scheduledDateText =
+                formatDisplayDate(booking.booking_date, {
+                  weekday: 'long',
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                }) || booking.booking_date || 'Not set';
+              const scheduledTimeText = formatDisplayTime(booking.booking_time) || booking.booking_time || 'Not set';
+              const hasSharedVideoPublished =
+                mediaLoaded && videoList.some((v) => Boolean(v.downloadUrl && v.mediaSessionId));
               const hasSharedMediaNoVideo =
                 mediaLoaded &&
                 typeof mediaTotal === 'number' &&
                 mediaTotal > 0 &&
                 videoList.length === 0;
               const mediaErrorHint = mediaState?.error ? mediaHintForError(mediaState.error) : null;
+              const shouldOpenBookingDetailFirst =
+                archivedRecord ||
+                activeTab === 'past' ||
+                activeTab === 'needs_follow_up' ||
+                hasSharedVideoPublished ||
+                hasSharedMediaNoVideo ||
+                (mediaLoaded && typeof mediaTotal === 'number' && mediaTotal === 0);
+              const primaryBookingActionLabel = archivedRecord
+                ? 'Open booking record'
+                : activeTab === 'needs_follow_up'
+                  ? 'Open booking status'
+                  : activeTab === 'past' && customerVisibleCompletedVideo
+                    ? 'Open service video'
+                  : activeTab === 'past'
+                    ? 'Open booking record'
+                    : hasSharedMediaNoVideo
+                      ? 'Open booking media status'
+                      : 'Open booking detail';
 
               return (
                 <div
@@ -475,10 +601,10 @@ export default function MyBookingsPage() {
                       <p className="font-semibold text-gray-900">{booking.service.name}</p>
                       <p className="text-sm text-gray-600">Vendor: {booking.vendor.name}</p>
                       <p className="text-sm text-gray-600">
-                        Reference ID: <span className="font-mono text-xs">{booking.id}</span>
+                        Booking ID: <span className="font-mono text-xs">{booking.id}</span>
                       </p>
                       <p className="text-xs text-gray-500">
-                        Use this ID if you contact support; it matches your booking record in Reliance.
+                        Keep this handy if you contact support.
                       </p>
                       {booking.title ? <p className="text-sm text-gray-600">Title: {booking.title}</p> : null}
                       {proofSignal?.hasSharedProof ? (
@@ -496,9 +622,33 @@ export default function MyBookingsPage() {
                           ) : null}
                         </div>
                       ) : null}
+                      {activeTab === 'past' && completedRecord && customerLifecycle ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          {customerVisibleCompletedVideo ? (
+                            <Badge className="bg-blue-100 text-blue-800">Completed video available</Badge>
+                          ) : completedVideoPendingApproval ? (
+                            <Badge className="bg-amber-100 text-amber-900">Video pending approval</Badge>
+                          ) : lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible' ? (
+                            <Badge className="bg-slate-100 text-slate-800">Completed video unavailable</Badge>
+                          ) : (
+                            <Badge className="bg-slate-100 text-slate-800">Completed video not submitted</Badge>
+                          )}
+                          {reviewSubmitted ? (
+                            <Badge variant="outline" className="border-blue-300 text-blue-700">
+                              Review on file
+                            </Badge>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="text-sm text-right">
-                      <p className="text-gray-600">Status: {formatMyBookingsStatusDisplay(booking.status)}</p>
+                      <p className="text-gray-600">
+                        Status:{' '}
+                        {formatMyBookingsStatusDisplay(booking.status, {
+                          scheduleInstant,
+                          now: listNow,
+                        })}
+                      </p>
                     </div>
                   </div>
 
@@ -507,59 +657,115 @@ export default function MyBookingsPage() {
                       <Calendar className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
                       <span>
                         <span className="text-gray-500">Scheduled date: </span>
-                        {booking.booking_date || '—'}
+                        {scheduledDateText}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4 shrink-0 text-gray-500" aria-hidden />
                       <span>
                         <span className="text-gray-500">Time: </span>
-                        {booking.booking_time || '—'}
+                        {scheduledTimeText}
                       </span>
                     </div>
                   </div>
 
                   <div className="mt-4 rounded-md border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm text-gray-800">
-                    <p className="font-medium text-gray-900 mb-1">What you can do</p>
+                    <p className="font-medium text-gray-900 mb-1">Next steps</p>
                     <ul className="list-disc pl-5 space-y-1 text-gray-700">
-                      {serviceDetailHref ? (
+                      {shouldOpenBookingDetailFirst ? (
                         <li>
-                          {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
-                            <Link href={bookingProofHref} className="text-blue-700 font-medium underline">
-                              View full proof for this booking
-                            </Link>
-                          ) : (
-                            <Link href={serviceDetailHref} className="text-blue-700 font-medium underline">
-                              View service details in the catalog
-                            </Link>
-                          )}
+                          <Link href={bookingProofHref} className="text-blue-700 font-medium underline">
+                            {primaryBookingActionLabel}
+                          </Link>
+                        </li>
+                      ) : serviceDetailHref ? (
+                        <li>
+                          <Link href={serviceDetailHref} className="text-blue-700 font-medium underline">
+                            View service details in the catalog
+                          </Link>
                         </li>
                       ) : (
-                        <li>Service details link unavailable for this row (missing catalog id).</li>
+                        <li>Service details are unavailable for this row.</li>
                       )}
                       <li>
-                        <strong>Shared media:</strong>{' '}
-                        {hasPlayableSharedVideo
+                        <strong>Shared service updates:</strong>{' '}
+                        {archivedRecord && hasSharedVideoPublished
                           ? primaryProofVideo
-                            ? 'Primary proof video is available below for this completed service.'
-                            : 'Shared media is available below. A primary proof video has not been published yet.'
+                            ? 'Retained service video is available on the booking detail page for reference.'
+                            : 'Retained media is available on the booking detail page for reference.'
+                          : archivedRecord && hasSharedMediaNoVideo
+                            ? `This archived record keeps ${mediaTotal} retained file(s)${
+                                imageCount > 0 ? ` (${imageCount} image${imageCount === 1 ? '' : 's'})` : ''
+                              } for reference.`
+                            : archivedRecord && mediaLoaded && mediaTotal === 0
+                              ? 'No retained media is attached to this archived record.'
+                              : archivedRecord && !mediaState?.error
+                                ? 'Use the booking detail page to check whether any retained media is attached to this archived record.'
+                        : hasSharedVideoPublished
+                          ? primaryProofVideo
+                            ? 'A completed service video is ready on the booking detail page. You may be asked to confirm consent before playback.'
+                          : 'Shared media is ready on the booking detail page. A completed work video has not been published yet.'
+                        : activeTab === 'past' && completedRecord && customerLifecycle
+                          ? customerVisibleCompletedVideo
+                            ? 'Service completed. An approved completed-stage service video is available on the booking record.'
+                            : completedVideoPendingApproval
+                              ? 'Service completed. Video is pending approval.'
+                              : lifecycleVideoState === 'rejected'
+                                ? 'Service completed. A completed-stage video was submitted, but it is not customer-visible right now.'
+                                : lifecycleVideoState === 'approved_not_customer_visible'
+                                ? 'Service completed. A completed-stage video exists, but it is not customer-visible right now.'
+                                  : 'Service completed. No completed-stage service video has been submitted yet.'
+                          : activeWorkflowRecord
+                            ? statusKey === 'awaiting_review' || statusKey === 'awaiting review'
+                              ? 'Service work is complete and awaiting final review. Customer-visible service videos or images appear here after review and approval.'
+                              : statusKey === 'in_progress' || statusKey === 'in progress'
+                                ? 'Service is in progress. Customer-visible service videos or images appear here after the work is completed and approved.'
+                                : 'Service is scheduled. Customer-visible service videos or images appear here after the work is completed and approved.'
                           : hasSharedMediaNoVideo
-                            ? `Your vendor shared ${mediaTotal} approved file(s) for you, but none are video this page can play${
+                            ? `Your vendor shared ${mediaTotal} approved file(s), but none are video this page can play${
                                 imageCount > 0 ? ` (${imageCount} image${imageCount === 1 ? '' : 's'})` : ''
                               }.`
+                            : mediaState?.loading
+                              ? reviewCaptureOk
+                                ? 'Checking whether approved service media is ready on the booking detail page.'
+                                : 'Checking whether approved media is ready on the booking detail page.'
+                            : !mediaLoaded && proofLikelyReady
+                              ? 'Approved service video is already attached. Open the booking detail page to continue into the service media flow.'
                             : mediaLoaded && mediaTotal === 0
-                              ? 'None loaded yet for you to view. Your vendor may still be uploading, or items may still be in review before they appear for customers.'
+                              ? reviewCaptureOk
+                                ? 'No customer-visible approved completed-service video is currently attached to this completed booking. Open the booking record to confirm the current media and review state.'
+                                : 'No approved media is available yet. Your vendor may still be uploading, or items may still be in review.'
                               : mediaState?.error
-                                ? 'Could not load the list—see the message under the button.'
-                                : 'Tap “Show shared media” to load items your vendor has published for customers (approved in Reliance).'}
+                                ? 'Could not load the list. See the message under the button.'
+                                : 'Use View service videos to load approved items your vendor has shared.'}
                       </li>
                       <li>
                         <strong>Review:</strong>{' '}
-                        {reviewCaptureOk
-                          ? hasPlayableSharedVideo
-                            ? 'After playback starts, watch for on-video prompts to leave quick feedback.'
-                            : 'When shared video is available and you play it, you may be prompted for quick feedback.'
-                          : 'Not offered for cancelled services.'}
+                        {archivedRecord
+                          ? 'This archived record is kept for reference. New review prompts are no longer active here.'
+                          : activeTab === 'past' && completedRecord && customerLifecycle
+                            ? reviewSubmittedWithoutEligibleVideo
+                              ? 'A review is already on file from an earlier workflow, but no customer-visible approved completed-stage video is currently available.'
+                              : reviewSubmitted
+                                ? 'Your review is already on file for this completed booking.'
+                                : reviewEligible
+                                  ? 'Open the approved completed-stage video to continue into the video-based review flow.'
+                                  : completedVideoPendingApproval
+                                    ? 'Review opens after the completed-stage service video is approved for customer viewing.'
+                                    : 'Review opens only after a customer-visible approved completed-stage video is available.'
+                          : activeWorkflowRecord
+                            ? statusKey === 'awaiting_review' || statusKey === 'awaiting review'
+                              ? 'Review opens after the completed-stage service video is approved for customer viewing.'
+                              : 'Review is not open yet. It becomes available only after completed-stage service video approval.'
+                          : mediaState?.loading && reviewCaptureOk
+                            ? 'We are checking whether this booking is ready for the video-based review flow.'
+                          : reviewCaptureOk
+                            ? hasSharedVideoPublished
+                              ? 'After you open the booking and playback starts, watch for prompts to leave quick feedback.'
+                            : !mediaLoaded && proofLikelyReady
+                                ? 'Open the booking detail page to continue into the service media and review flow.'
+                              : 'The video-based review flow only opens when a customer-visible completed-service video is attached. Some completed bookings may already have a review on file even if no playable video is available here.'
+                            : 'Not offered for cancelled services.'}
                       </li>
                     </ul>
                   </div>
@@ -582,6 +788,22 @@ export default function MyBookingsPage() {
                     {cancelState.mode === 'disabled' && cancelState.reason ? (
                       <span className="text-xs text-gray-600 max-w-xs">{cancelState.reason}</span>
                     ) : null}
+                    {activeTab === 'needs_follow_up' ? (
+                      <Link
+                        href={customerHelpHref}
+                        className="px-3 py-2 rounded border border-blue-300 text-blue-700 text-sm hover:bg-blue-50"
+                      >
+                        Open Help Center
+                      </Link>
+                    ) : null}
+                    {archivedRecord ? (
+                      <Link
+                        href={customerHelpHref}
+                        className="px-3 py-2 rounded border border-blue-300 text-blue-700 text-sm hover:bg-blue-50"
+                      >
+                        Open Help Center
+                      </Link>
+                    ) : null}
                     <button
                       type="button"
                       disabled={mediaButtonDisabled}
@@ -592,22 +814,26 @@ export default function MyBookingsPage() {
                       }}
                       className="px-3 py-2 rounded border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      View service proof
+                      {mediaButtonLabel}
                     </button>
-                    {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
-                      <Link
-                        href={bookingProofHref}
-                        className="px-3 py-2 rounded border border-blue-300 text-blue-700 text-sm hover:bg-blue-50"
-                      >
-                        View full proof
+                      {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
+                        <Link
+                          href={bookingProofHref}
+                          className="px-3 py-2 rounded border border-blue-300 text-blue-700 text-sm hover:bg-blue-50"
+                        >
+                        {archivedRecord
+                          ? 'Open retained media'
+                          : customerVisibleCompletedVideo
+                            ? 'Open service video'
+                            : 'Open booking media'}
                       </Link>
                     ) : null}
                     {mediaState?.loading ? (
-                      <span className="text-xs text-gray-500">Loading shared media…</span>
+                      <span className="text-xs text-gray-500">Loading shared service videos...</span>
                     ) : null}
                     {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
                       <span className="text-xs font-medium text-green-800">
-                        {mediaTotal} item{mediaTotal === 1 ? '' : 's'} from your vendor — approved for you to view
+                        {mediaTotal} item{mediaTotal === 1 ? '' : 's'} from your vendor, approved for you to view
                       </span>
                     ) : null}
                     {mediaState?.error ? (
@@ -619,77 +845,62 @@ export default function MyBookingsPage() {
                   </div>
                   {hasSharedMediaNoVideo ? (
                     <div className="mt-3 rounded-md border border-amber-100 bg-amber-50/90 px-3 py-2 text-xs text-gray-900">
-                      <p className="font-medium text-amber-950">Shared media (no video for this player)</p>
+                      <p className="font-medium text-amber-950">Shared files (no playable video here)</p>
                       <p className="mt-1 text-gray-800">
-                        Reliance only embeds video on this page. Your approved items may be images or other types—ask your
+                        Reliance only embeds video on this page. Your approved items may be images or other types. Ask your
                         vendor if you need a different format.
                       </p>
                     </div>
                   ) : null}
                   {videoList.length > 0 ? (
                     <div className="mt-3 rounded border bg-gray-50 p-3">
-                      <p className="mb-1 text-sm font-medium text-gray-900">Shared media from your vendor</p>
+                      <p className="mb-1 text-sm font-medium text-gray-900">
+                        {archivedRecord ? 'Retained service videos' : 'Shared service videos from your vendor'}
+                      </p>
                       <p className="mb-2 text-xs text-gray-600">
-                        These files are approved and customer-visible. Completed proof video is marked as Primary proof
-                        when available.
+                        {archivedRecord
+                          ? 'These files are kept with the archived record for reference. Open the booking detail page to review them in the full timeline experience.'
+                          : 'These files are approved and customer-visible. Open the booking detail page to review them in the full timeline experience and complete any consent step required before playback.'}
                       </p>
                       {primaryProofVideo ? (
                         <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-900">
-                          <strong>Primary proof available:</strong> select the Primary proof clip to review completed work.
+                          <strong>{archivedRecord ? 'Featured retained video available:' : 'Featured video available:'}</strong>{' '}
+                          {archivedRecord ? 'open this archived booking to review the retained record.' : 'open this booking to review completed work.'}
                         </div>
                       ) : (
                         <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
-                          <strong>No completed proof video yet.</strong> A primary proof clip will appear here once published.
+                          {archivedRecord
+                            ? <><strong>No retained featured video.</strong> If archived media exists, it will appear here for reference.</>
+                            : <><strong>No completed work video yet.</strong> A featured clip will appear here once published.</>}
                         </div>
                       )}
-                      <div className="mb-2 flex flex-wrap gap-2">
+                      <div className="mb-3 flex flex-wrap gap-2">
                         {videoList.map((video) => (
-                          <button
-                            type="button"
+                          <Badge
                             key={video.id}
-                            onClick={() => setActiveVideoByBooking((prev) => ({ ...prev, [booking.id]: video.id }))}
-                            className={`rounded border px-2 py-1 text-xs ${
-                              activeVideoByBooking[booking.id] === video.id
-                                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                : 'border-gray-300 bg-white text-gray-700'
-                            }`}
+                            variant="outline"
+                            className={video.isPrimaryProofVideo ? 'border-emerald-300 text-emerald-800' : 'border-gray-300 text-gray-700'}
                           >
                             {video.title}
-                            {video.isPrimaryProofVideo ? ' • Primary proof' : ''}
-                          </button>
+                            {video.isPrimaryProofVideo ? ' - Featured video' : ''}
+                          </Badge>
                         ))}
                       </div>
-                      {(() => {
-                        const activeVideoId = activeVideoByBooking[booking.id];
-                        const video = videoList.find((v) => v.id === activeVideoId) || videoList[0];
-                        if (!video || !video.blobUrl || !video.mediaSessionId) {
-                          return <p className="text-xs text-gray-500">Video playback unavailable for this media asset.</p>;
-                        }
-                        if (!vendorIdOk) {
-                          return (
-                            <p className="text-xs text-gray-500">
-                              Playback and review prompts need vendor information on this record. Shared media cannot load
-                              until that data is present.
-                            </p>
-                          );
-                        }
-                        return (
-                          <SmartVideoPlayer
-                            src={video.blobUrl}
-                            bookingId={booking.id}
-                            vendorId={booking.vendor_id}
-                            mediaSessionId={video.mediaSessionId}
-                            reviewCaptureEnabled={shouldEnableReviewCaptureForStatus(statusKey)}
-                            userId={customerUserIdForReview ?? undefined}
-                          />
-                        );
-                      })()}
+                      <Link
+                        href={bookingProofHref}
+                        className="inline-flex rounded border border-blue-300 bg-white px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
+                      >
+                        {archivedRecord ? 'Open retained media' : 'Open service videos'}
+                      </Link>
                     </div>
                   ) : null}
-                  {mediaLoaded && mediaTotal === 0 && !mediaState?.error ? (
+                  {mediaLoaded &&
+                  mediaTotal === 0 &&
+                  !mediaState?.error &&
+                  !archivedRecord &&
+                  activeTab !== 'needs_follow_up' ? (
                     <p className="mt-3 text-xs text-gray-600">
-                      No approved customer-visible media matched this engagement yet. That can change when your vendor
-                      publishes new files.
+                      No approved media matched this service yet. That can change when your vendor publishes new files.
                     </p>
                   ) : null}
                 </div>

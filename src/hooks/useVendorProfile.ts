@@ -206,6 +206,12 @@ function buildFallbackVendorProfile(vendorId: string, businessName?: string | nu
     sessionTimeout: 30,
     passwordExpiry: null,
     failedLoginLockout: null,
+    membershipStatus: "ACTIVE",
+    isPubliclyListed: false,
+    publiclyListedAt: null,
+    serviceDraftCount: 0,
+    publishedServiceCount: 0,
+    onboarding: undefined,
   };
 }
 
@@ -224,6 +230,22 @@ export function useVendorProfile() {
   const requestCounterRef = useRef(0);
 
   const fetchProfile = useCallback(async () => {
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+
+    if (!isAuthenticated || !userId) {
+      setData(null);
+      setApprovalPending(false);
+      setLastResolvedVendorId(null);
+      setHasResolvedVendorContext(false);
+      setLoading(false);
+      setError("Vendor session context unavailable. Please sign in again.");
+      setErrorCode("VENDOR_SESSION_CONTEXT_UNAVAILABLE");
+      return;
+    }
+
     if (inFlightFetchRef.current) {
       if (process.env.NODE_ENV !== "production") {
         console.info("[useVendorProfile] fetchProfile:deduped");
@@ -233,26 +255,14 @@ export function useVendorProfile() {
 
     const requestId = ++requestCounterRef.current;
     const task = (async () => {
-      if (authLoading) {
-        setLoading(true);
-        return;
-      }
-
-      if (!isAuthenticated || !userId) {
-        setData(null);
-        setApprovalPending(false);
-        setLastResolvedVendorId(null);
-        setHasResolvedVendorContext(false);
-        setLoading(false);
-        setError("Vendor session context unavailable. Please sign in again.");
-        setErrorCode("VENDOR_SESSION_CONTEXT_UNAVAILABLE");
-        return;
-      }
-
       const cachedContext = readVendorContextCache(userId);
       if (cachedContext?.vendorId) {
         setLastResolvedVendorId(cachedContext.vendorId);
         setHasResolvedVendorContext(true);
+        setData((prev) => {
+          if (prev?.id) return prev;
+          return buildFallbackVendorProfile(cachedContext.vendorId, cachedContext.businessName);
+        });
       }
 
       setLoading(true);
@@ -365,7 +375,7 @@ export function useVendorProfile() {
         }
         if (json.success && json.profile) {
           setData(json.profile);
-          setApprovalPending(false);
+          setApprovalPending(Boolean(json.approvalPending || json.profile.membershipStatus === "PENDING"));
           setErrorCode(null);
           setHasResolvedVendorContext(true);
           setLastResolvedVendorId(String(json.profile.id));
@@ -472,6 +482,4 @@ export function useVendorProfile() {
     updateProfile,
   };
 }
-
-
 

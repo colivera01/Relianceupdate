@@ -271,6 +271,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         data: {
           vendorId,
           deviceUid,
+          deviceName: "Reliance Headset Dev",
           deviceType: "HEADSET",
           isActive: true,
           firmwareVersion: "dev-1.0.0",

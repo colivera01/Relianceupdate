@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { getAdminRequestHeaders } from '@/lib/admin-client';
 import { RefreshCw } from 'lucide-react';
 
 type AuditLogRow = {
@@ -17,6 +18,47 @@ type AuditLogRow = {
   metadata: string | null;
   createdAt: string;
 };
+
+const fallbackActionTypes = [
+  'ACCOUNT_SUSPENDED',
+  'ACCOUNT_BANNED',
+  'ACCOUNT_ACTIVE',
+  'ACCOUNT_DEACTIVATED',
+  'ai_request',
+  'ai_response',
+  'ai_feedback',
+  'ai_error',
+  'consent_requested',
+  'device_error',
+  'device_paired',
+  'job_assigned',
+  'job_approved',
+  'job_rejected',
+  'job_stage_uploaded',
+  'job_started',
+  'membership_accepted',
+  'MFA_TRUSTED_DEVICE_REVOKED',
+  'notification_attempt',
+  'PROMOTION_CAMPAIGN_CREATED',
+  'PROMOTION_CAMPAIGN_UPDATED',
+  'PROMOTION_PACKAGE_UPDATED',
+  'PROMOTION_REQUEST_SUBMITTED',
+  'review_capture_submitted',
+  'SERVICE_PUBLISHED',
+  'SERVICE_UNPUBLISHED',
+  'VENDOR_LISTED_PUBLICLY',
+  'VENDOR_UNLISTED',
+];
+
+const fallbackEntityTypes = [
+  'ai_run',
+  'booking',
+  'content_report',
+  'device',
+  'review',
+  'service',
+  'vendor',
+];
 
 function prettyJson(value: string | null): string {
   if (!value) return '-';
@@ -39,24 +81,8 @@ export default function AuditLogsPage() {
   const [limit, setLimit] = useState(25);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
-
-  const adminHeaders = () => {
-    const user = (() => {
-      try {
-        const raw = localStorage.getItem('user');
-        return raw ? JSON.parse(raw) : null;
-      } catch {
-        return null;
-      }
-    })();
-    const userId = user?.id || 'D43B6BB3-1A72-45EC-A362-A6E1E0580EA0';
-    return {
-      'Content-Type': 'application/json',
-      'x-user-id': String(userId),
-      'x-user-role': 'admin',
-      'x-admin': 'true',
-    };
-  };
+  const [availableActionTypes, setAvailableActionTypes] = useState<string[]>(fallbackActionTypes);
+  const [availableEntityTypes, setAvailableEntityTypes] = useState<string[]>(fallbackEntityTypes);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -71,7 +97,7 @@ export default function AuditLogsPage() {
 
       const res = await fetch(`/api/admin/audit-logs?${params.toString()}`, {
         method: 'GET',
-        headers: adminHeaders(),
+        headers: getAdminRequestHeaders(),
         cache: 'no-store',
       });
       const json = await res.json().catch(() => ({}));
@@ -80,6 +106,14 @@ export default function AuditLogsPage() {
       setLogs(Array.isArray(json.logs) ? json.logs : []);
       setTotalPages(Number(json?.pagination?.totalPages || 0));
       setTotal(Number(json?.pagination?.total || 0));
+      const nextActionTypes = Array.isArray(json?.meta?.actionTypes)
+        ? json.meta.actionTypes.filter((item: unknown) => typeof item === 'string' && item.trim())
+        : [];
+      const nextEntityTypes = Array.isArray(json?.meta?.entityTypes)
+        ? json.meta.entityTypes.filter((item: unknown) => typeof item === 'string' && item.trim())
+        : [];
+      setAvailableActionTypes(Array.from(new Set([...fallbackActionTypes, ...nextActionTypes])).sort());
+      setAvailableEntityTypes(Array.from(new Set([...fallbackEntityTypes, ...nextEntityTypes])).sort());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load audit logs');
       setLogs([]);
@@ -95,22 +129,49 @@ export default function AuditLogsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit]);
 
-  const actionTypeOptions = useMemo(() => {
-    const values = new Set(logs.map((l) => l.actionType).filter(Boolean));
-    return Array.from(values).sort();
-  }, [logs]);
+  const actionTypeOptions = useMemo(
+    () => Array.from(new Set([...availableActionTypes, ...logs.map((l) => l.actionType).filter(Boolean)])).sort(),
+    [availableActionTypes, logs]
+  );
+
+  const entityTypeOptions = useMemo(
+    () => Array.from(new Set([...availableEntityTypes, ...logs.map((l) => l.entityType).filter(Boolean)])).sort(),
+    [availableEntityTypes, logs]
+  );
 
   const applyFilters = () => {
     setPage(1);
     fetchLogs();
   };
 
+  const hasActiveFilters = Boolean(search.trim()) || actionType !== 'all' || entityType !== 'all';
+
+  const clearFilters = () => {
+    setSearch('');
+    setActionType('all');
+    setEntityType('all');
+    setPage(1);
+    setTimeout(() => {
+      fetchLogs();
+    }, 0);
+  };
+
+  const currentFilterSummary = [
+    search.trim() ? `Search: ${search.trim()}` : null,
+    actionType !== 'all' ? `Action: ${actionType}` : null,
+    entityType !== 'all' ? `Entity: ${entityType}` : null,
+  ]
+    .filter(Boolean)
+    .join(' | ');
+
   return (
     <div className="container mx-auto p-6 max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Audit Logs</h1>
-          <p className="text-gray-600 mt-1">Admin actions captured for marketplace publish/listing controls.</p>
+          <p className="text-gray-600 mt-1">
+            Admin actions captured across vendor operations, booking workflows, moderation, device pairing, and AI assist activity.
+          </p>
         </div>
         <Button variant="outline" onClick={fetchLogs} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -124,7 +185,7 @@ export default function AuditLogsPage() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <Input
-            placeholder="Search by entityId or actorUserId"
+            placeholder="Search by entity ID or actor user ID"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -146,9 +207,11 @@ export default function AuditLogsPage() {
             className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <option value="all">All entities</option>
-            <option value="vendor">vendor</option>
-            <option value="service">service</option>
-            <option value="review">review</option>
+            {entityTypeOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
           </select>
           <select
             value={String(limit)}
@@ -166,6 +229,16 @@ export default function AuditLogsPage() {
             Apply Filters
           </Button>
         </CardContent>
+        {hasActiveFilters ? (
+          <CardContent className="pt-0 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-gray-600">
+              <span className="font-medium text-gray-900">Current filters:</span> {currentFilterSummary}
+            </div>
+            <Button variant="outline" size="sm" onClick={clearFilters} disabled={loading}>
+              Clear Filters
+            </Button>
+          </CardContent>
+        ) : null}
       </Card>
 
       {loading ? (

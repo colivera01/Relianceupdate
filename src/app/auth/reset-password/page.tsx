@@ -1,22 +1,28 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Lock, Eye, EyeOff, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { AuthExperienceShell } from '@/components/auth/AuthExperienceShell';
+import { appendAuthNext, getAuthContinuationPhrase, sanitizeAuthNextPath } from '@/lib/auth-next';
+import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 
 function ResetPasswordPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams?.get("token") ?? null;
-  
+  const token = searchParams?.get('token') ?? null;
+  const safeNextPath = sanitizeAuthNextPath(searchParams?.get('next'));
+  const loginHref = appendAuthNext('/auth/login', safeNextPath);
+  const forgotPasswordHref = appendAuthNext('/auth/forgot-password', safeNextPath);
+  const continuationPhrase = getAuthContinuationPhrase(safeNextPath);
+
   const [formData, setFormData] = useState({
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -26,9 +32,8 @@ function ResetPasswordPageInner() {
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Validate token on page load
     if (token) {
-      validateToken();
+      void validateToken();
     } else {
       setIsValidToken(false);
     }
@@ -38,23 +43,23 @@ function ResetPasswordPageInner() {
     try {
       const response = await fetch(`/api/auth/reset-password/validate?token=${token}`);
       const data = await response.json();
-      
+
       if (response.ok) {
         setIsValidToken(true);
       } else {
         setIsValidToken(false);
         setError(data.error || 'Invalid or expired reset link');
       }
-    } catch (error) {
+    } catch {
       setIsValidToken(false);
       setError('Failed to validate reset link');
     }
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
@@ -71,7 +76,6 @@ function ResetPasswordPageInner() {
     setIsLoading(true);
     setError(null);
 
-    // Validate passwords
     const passwordError = validatePassword(formData.password);
     if (passwordError) {
       setError(passwordError);
@@ -86,8 +90,6 @@ function ResetPasswordPageInner() {
     }
 
     try {
-      console.log('Resetting password with token');
-
       const response = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: {
@@ -95,245 +97,241 @@ function ResetPasswordPageInner() {
         },
         body: JSON.stringify({
           token,
-          password: formData.password
+          password: formData.password,
         }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        console.log('Password reset successful');
         setIsSuccess(true);
       } else {
-        console.log('Password reset failed:', data);
         setError(data.error || 'Failed to reset password');
       }
-    } catch (error) {
-      console.error('Password reset error:', error);
+    } catch {
       setError('Network error. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Loading state
   if (isValidToken === null) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+      <AuthExperienceShell
+        backHref={loginHref}
+        backLabel="Back to Login"
+        title="Validating Reset Link"
+        description="We're checking that your password reset link is still active and secure."
+        heroTitle="Every recovery step should feel measured and trustworthy."
+        heroDescription="Reliance treats credential recovery like the rest of the platform: clear state, clear next action, and no guesswork."
+        heroBadge="Secure validation before account changes."
+      >
+        <div className="rounded-[30px] border border-white/80 bg-white/92 px-8 py-14 text-center shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
           <p className="mt-4 text-gray-600">Validating reset link...</p>
         </div>
-      </div>
+      </AuthExperienceShell>
     );
   }
 
-  // Invalid token state
   if (isValidToken === false) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12">
-        <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8">
-            <Link href="/auth/login" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Login
-            </Link>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Invalid Reset Link
-            </h1>
-          </div>
-
-          <Card className="shadow-xl">
-            <CardHeader className="text-center">
-              <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                <XCircle className="w-6 h-6 text-red-600" />
-              </div>
-              <CardTitle className="text-xl">Link Expired or Invalid</CardTitle>
-              <CardDescription>
-                This password reset link is no longer valid
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-sm text-gray-600">
-                The reset link may have expired or already been used. Please request a new password reset.
-              </p>
-              
-              <div className="space-y-2">
-                <Button 
-                  onClick={() => router.push('/auth/forgot-password')} 
-                  className="w-full"
-                >
-                  Request New Reset Link
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => router.push('/auth/login')} 
-                  className="w-full"
-                >
-                  Back to Login
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  // Success state
-  if (isSuccess) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12">
-        <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8">
-            <Link href="/auth/login" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Login
-            </Link>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Password Reset Successfully
-            </h1>
-          </div>
-
-          <Card className="shadow-xl">
-            <CardHeader className="text-center">
-              <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                <CheckCircle className="w-6 h-6 text-green-600" />
-              </div>
-              <CardTitle className="text-xl">Password Updated</CardTitle>
-              <CardDescription>
-                Your password has been successfully reset
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-sm text-gray-600">
-                You can now sign in with your new password.
-              </p>
-              
-              <Button 
-                onClick={() => router.push('/auth/login')} 
-                className="w-full"
-              >
-                Sign In
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  // Reset password form
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12">
-      <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <Link href="/auth/login" className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Login
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Reset Your Password
-          </h1>
-          <p className="text-gray-600">
-            Enter your new password below
-          </p>
-        </div>
-
-        {/* Reset Password Form */}
-        <Card className="shadow-xl">
-          <CardHeader>
-            <CardTitle className="text-xl text-center">New Password</CardTitle>
-            <CardDescription className="text-center">
-              Choose a strong password for your account
-            </CardDescription>
+      <AuthExperienceShell
+        backHref={loginHref}
+        backLabel="Back to Login"
+        title="Invalid Reset Link"
+        description="This reset link is missing, expired, or has already been used."
+        heroTitle="Recovery links should fail clearly, not vaguely."
+        heroDescription="When a recovery link is no longer valid, Reliance points you straight to the safest next action instead of leaving you stuck in a dead end."
+        heroBadge="Honest failure states, clear next steps."
+      >
+        <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <XCircle className="h-6 w-6 text-red-600" />
+            </div>
+            <CardTitle className="font-display text-2xl">Link Expired or Invalid</CardTitle>
+            <CardDescription>This password reset link is no longer valid</CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Error Display */}
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="flex items-center">
-                    <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-                    <div>
-                      <h4 className="text-sm font-medium text-red-800">Error</h4>
-                      <p className="text-sm text-red-700 mt-1">{error}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+          <CardContent className="space-y-4 text-center">
+            <p className="text-sm text-gray-600">
+              The reset link may have expired or already been used. Please request a new password
+              reset.
+            </p>
 
-              <div>
-                <Label htmlFor="password">New Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={formData.password}
-                    onChange={(e) => handleInputChange('password', e.target.value)}
-                    className="pl-10 pr-10"
-                    placeholder="Enter your new password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Must be at least 8 characters with uppercase, lowercase, and number
-                </p>
-              </div>
-
-              <div>
-                <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={formData.confirmPassword}
-                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                    className="pl-10 pr-10"
-                    placeholder="Confirm your new password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                  >
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <Button 
-                type="submit" 
-                className="w-full" 
-                disabled={isLoading || !formData.password || !formData.confirmPassword}
+            <div className="space-y-2">
+              <Button
+                onClick={() => router.push(forgotPasswordHref)}
+                className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] text-white shadow-[0_20px_45px_rgba(36,107,255,0.28)] hover:brightness-110"
               >
-                {isLoading ? 'Resetting...' : 'Reset Password'}
+                Request New Reset Link
               </Button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-gray-600">
-                Remember your password?{' '}
-                <Link href="/auth/login" className="text-blue-600 hover:text-blue-800 font-medium">
-                  Sign in
-                </Link>
-              </p>
+              <Button
+                variant="outline"
+                onClick={() => router.push(loginHref)}
+                className="h-12 w-full rounded-2xl border-slate-200 bg-white"
+              >
+                Back to Login
+              </Button>
             </div>
           </CardContent>
         </Card>
-      </div>
-    </div>
+      </AuthExperienceShell>
+    );
+  }
+
+  if (isSuccess) {
+    return (
+      <AuthExperienceShell
+        backHref={loginHref}
+        backLabel="Back to Login"
+        title="Password Reset Successfully"
+        description={
+          continuationPhrase
+            ? `Your account is ready so you can ${continuationPhrase}.`
+            : 'Your account is ready to sign in again.'
+        }
+        heroTitle="Recovery complete. Back to a cleaner trust flow."
+        heroDescription="Once your password is updated, the path back into Reliance should feel immediate, clear, and aligned with the work you were already doing."
+        heroBadge="Updated credentials. Same destination."
+      >
+        <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+              <CheckCircle className="h-6 w-6 text-green-600" />
+            </div>
+            <CardTitle className="font-display text-2xl">Password Updated</CardTitle>
+            <CardDescription>Your password has been successfully reset</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-center">
+            <p className="text-sm text-gray-600">
+              {continuationPhrase
+                ? `You can now sign in with your new password and ${continuationPhrase}.`
+                : 'You can now sign in with your new password.'}
+            </p>
+
+            <Button
+              onClick={() => router.push(loginHref)}
+              className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] text-white shadow-[0_20px_45px_rgba(36,107,255,0.28)] hover:brightness-110"
+            >
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
+      </AuthExperienceShell>
+    );
+  }
+
+  return (
+    <AuthExperienceShell
+      backHref={loginHref}
+      backLabel="Back to Login"
+      title="Reset Your Password"
+      description={
+        continuationPhrase
+          ? `Enter a new password to ${continuationPhrase}.`
+          : 'Enter your new password below.'
+      }
+      heroTitle="Reset with confidence, then go right back to work."
+      heroDescription="Reliance keeps the recovery flow focused: secure validation, strong-password guidance, and a direct path back into the same customer or operator journey."
+      heroBadge="Security that still feels polished."
+    >
+      <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+        <CardHeader>
+          <CardTitle className="text-center font-display text-2xl">New Password</CardTitle>
+          <CardDescription className="text-center text-sm leading-6">
+            {continuationPhrase
+              ? `Choose a strong password so you can ${continuationPhrase}.`
+              : 'Choose a strong password for your account'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                <div className="flex items-center">
+                  <AlertCircle className="mr-2 h-5 w-5 text-red-500" />
+                  <div>
+                    <h4 className="text-sm font-medium text-red-800">Error</h4>
+                    <p className="mt-1 text-sm text-red-700">{error}</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div>
+              <Label htmlFor="password">New Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-4 h-4 w-4 text-gray-400" />
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={formData.password}
+                  onChange={(e) => handleInputChange('password', e.target.value)}
+                  className="h-12 rounded-2xl border-slate-200 bg-white pl-10 pr-10 shadow-sm"
+                  placeholder="Enter your new password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-4 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Must be at least 8 characters with uppercase, lowercase, and number
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="confirmPassword">Confirm New Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-4 h-4 w-4 text-gray-400" />
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={formData.confirmPassword}
+                  onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                  className="h-12 rounded-2xl border-slate-200 bg-white pl-10 pr-10 shadow-sm"
+                  placeholder="Confirm your new password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-4 text-gray-400 hover:text-gray-600"
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              className="h-12 w-full rounded-2xl bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] text-white shadow-[0_20px_45px_rgba(36,107,255,0.28)] hover:brightness-110"
+              disabled={isLoading || !formData.password || !formData.confirmPassword}
+            >
+              {isLoading ? 'Resetting...' : 'Reset Password'}
+            </Button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <p className="text-gray-600">
+              Remember your password?{' '}
+              <Link href={loginHref} className="font-medium text-blue-600 hover:text-blue-800">
+                Sign in
+              </Link>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </AuthExperienceShell>
   );
 }
 
@@ -342,7 +340,7 @@ export default function ResetPasswordPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center text-gray-500">
-          Loading…
+          Loading...
         </div>
       }
     >

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import { countableReviewWhere, countableServiceWhere } from "@/lib/metrics-exclusion";
+import { cleanPublicReviewComment } from "@/lib/launch-content-cleanup";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -23,13 +25,14 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     const serviceId = String(id || "").trim();
 
     const service = await prisma.service.findFirst({
-      where: {
+      where: countableServiceWhere({
         id: serviceId,
         isPublished: true,
         vendor: {
           isPubliclyListed: true,
+          accountStatus: "active",
         },
-      },
+      }),
       select: {
         id: true,
         vendorId: true,
@@ -41,7 +44,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     }
 
     const reviews = await prisma.review.findMany({
-      where: {
+      where: countableReviewWhere({
         vendorId: service.vendorId,
         moderationStatus: "approved",
         visibilityStatus: "public",
@@ -61,7 +64,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
             },
           },
         ],
-      },
+      }),
       orderBy: { createdAt: "desc" },
       take: 100,
       select: {
@@ -89,7 +92,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
         bookingId: review.bookingId,
         mediaSessionId: review.mediaSessionId,
         rating: review.rating,
-        comment: review.comment || "",
+        comment: cleanPublicReviewComment(review.comment),
         createdAt: review.createdAt,
         reviewerDisplayName: toPublicReviewerDisplayName(review.user?.name) || "Verified Customer",
       })),

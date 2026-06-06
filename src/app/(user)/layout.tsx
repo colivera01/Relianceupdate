@@ -1,35 +1,76 @@
 'use client';
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import UserSidebar from '@/components/UserSidebar';
 import ProfileToggle from '@/components/ProfileToggle';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
+import { getClientSessionHeaders } from '@/lib/client-session';
 import { usePathname } from 'next/navigation';
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const [restrictedMessage, setRestrictedMessage] = useState<string | null>(null);
   const pathname = usePathname() || '';
-  const userType = String(user?.userType || '').toLowerCase();
-  const currentProfile = useMemo(() => {
-    if (userType === 'vendor') return 'vendor' as const;
-    if (userType === 'admin') return 'admin' as const;
-    return 'customer' as const;
-  }, [userType]);
+  // The customer shell should identify itself as "customer" even when the
+  // signed-in identity also has admin/vendor access. Role toggles should
+  // reflect the current shell, not the highest-privilege account type.
+  const currentProfile = 'customer' as const;
   const { availableRoles, userId } = useAvailableRoles(currentProfile);
   const isPublicServiceRoute = pathname.startsWith('/service/');
 
-  if (isPublicServiceRoute && !user) {
+  useEffect(() => {
+    let cancelled = false;
+    async function checkCustomerStatus() {
+      if (!user?.id || isPublicServiceRoute) {
+        setRestrictedMessage(null);
+        return;
+      }
+      try {
+        const response = await fetch('/api/customer/profile', {
+          method: 'GET',
+          headers: getClientSessionHeaders(user.id),
+          cache: 'no-store',
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!cancelled && response.status === 403 && payload?.code === 'USER_ACCOUNT_RESTRICTED') {
+          setRestrictedMessage(
+            String(payload?.message || payload?.error || 'Customer account restricted. Contact support for help.')
+          );
+        } else if (!cancelled) {
+          setRestrictedMessage(null);
+        }
+      } catch {
+        if (!cancelled) setRestrictedMessage(null);
+      }
+    }
+    void checkCustomerStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPublicServiceRoute, user?.id]);
+
+  if (isPublicServiceRoute) {
     return <>{children}</>;
   }
+
+  const content = restrictedMessage ? (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+      <h1 className="text-2xl font-semibold text-amber-950">Account restricted</h1>
+      <p className="mt-2 text-sm">{restrictedMessage}</p>
+      <p className="mt-4 text-sm">Protected customer actions are unavailable until this account is active again.</p>
+    </div>
+  ) : (
+    children
+  );
 
   // TODO Future mobile: when the sidebar is hidden below `md`, replace it
   // with a slide-out drawer or bottom-tab nav so the customer surface feels
   // app-like on phones. Today the main column simply takes the full viewport.
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-blue-100/20">
+    <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen">
       <UserSidebar />
-      <main className="flex-1 overflow-auto">
-        <div className="w-full max-w-6xl px-4 sm:px-6 pt-10 pb-6">
+      <main className="reliance-operator-main flex-1 overflow-auto">
+        <div className="w-full max-w-6xl px-4 pt-10 pb-6 sm:px-6">
           {availableRoles.length > 1 ? (
             <div className="mb-6 flex items-center justify-end">
               <ProfileToggle
@@ -39,7 +80,7 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
               />
             </div>
           ) : null}
-          {children}
+          {content}
         </div>
       </main>
     </div>

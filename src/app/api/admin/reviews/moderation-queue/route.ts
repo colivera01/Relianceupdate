@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
+import { operationalReviewWhere } from "@/lib/metrics-exclusion";
 
 /**
  * GET /api/admin/reviews/moderation-queue
@@ -20,7 +21,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "25", 10) || 25, 1), 100);
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: any = operationalReviewWhere({
       ...(moderationStatus ? { moderationStatus } : {}),
       ...(visibilityStatus ? { visibilityStatus } : {}),
       ...(vendorId ? { vendorId } : {}),
@@ -36,7 +37,7 @@ export async function GET(request: Request): Promise<NextResponse> {
             ],
           }
         : {}),
-    };
+    });
 
     if (date) {
       const start = new Date(`${date}T00:00:00.000Z`);

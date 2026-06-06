@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   User,
   Home,
@@ -10,9 +10,11 @@ import {
   LayoutDashboard,
   Star,
   Calendar,
-  MessageSquare,
+  Shield,
+  HelpCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { RelianceLogo } from '@/components/public/RelianceLogo';
 
 // TODO Future mobile: convert this sidebar into a bottom nav or slide-out
 // drawer for an app-like experience on small screens. For now the sidebar
@@ -22,10 +24,41 @@ import { useAuth } from '@/contexts/AuthContext';
 type SidebarUser = { name: string; email: string; avatar: string | null };
 
 const defaultUser: SidebarUser = {
-  name: 'Cesar Olivera',
-  email: 'colivera080124@gmail.com',
+  name: 'Guest',
+  email: '',
   avatar: null,
 };
+
+function buildCustomerHelpHref(pathname: string, search: string): string {
+  const fullPath = `${pathname || '/user-dashboard'}${search}`;
+  const searchParams = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const nestedReturnTo = String(searchParams.get('returnTo') || '').trim();
+  const returnTo =
+    pathname.startsWith('/service/') || pathname.startsWith('/my-bookings/')
+      ? fullPath
+      : pathname || '/user-dashboard';
+  const returnLabel = pathname.startsWith('/profile-settings')
+    ? 'Back to Profile & Settings'
+    : pathname.startsWith('/customer/secure-account')
+      ? 'Back to Secure Account'
+      : pathname.startsWith('/my-bookings/')
+        ? nestedReturnTo === '/reviews'
+          ? 'Back to review detail'
+          : 'Back to Service Detail'
+        : pathname.startsWith('/my-bookings')
+          ? 'Back to My Services'
+        : pathname.startsWith('/reviews')
+          ? 'Back to My Reviews'
+        : pathname.startsWith('/favorites')
+          ? 'Back to My Favorites'
+        : pathname.startsWith('/discover')
+          ? 'Back to Discover'
+        : pathname.startsWith('/service/')
+          ? 'Back to Service Detail'
+          : 'Back to Customer Dashboard';
+
+  return `/help?role=customer&returnTo=${encodeURIComponent(returnTo)}&returnLabel=${encodeURIComponent(returnLabel)}`;
+}
 
 const navLinks = [
   { label: 'Home', icon: Home, href: '/user-dashboard' },
@@ -33,8 +66,8 @@ const navLinks = [
   { label: 'My Services', icon: Calendar, href: '/my-bookings' },
   { label: 'Favorites', icon: Heart, href: '/favorites' },
   { label: 'Reviews', icon: Star, href: '/reviews' },
-  { label: 'Messages', icon: MessageSquare, href: '/messages' },
   { label: 'Profile & Settings', icon: User, href: '/profile-settings' },
+  { label: 'Secure Account', icon: Shield, href: '/customer/secure-account' },
 ];
 
 function displayNameFromStoredUser(parsed: Record<string, unknown>): string {
@@ -47,11 +80,16 @@ function displayNameFromStoredUser(parsed: Record<string, unknown>): string {
   return defaultUser.name;
 }
 
-export default function UserSidebar() {
+function UserSidebarContent() {
   const { user, isLoading } = useAuth();
   const pathname = usePathname() || '';
+  const searchParams = useSearchParams();
+  const search = searchParams?.toString() ? `?${searchParams.toString()}` : '';
+  const customerHelpHref = React.useMemo(() => buildCustomerHelpHref(pathname, search), [pathname, search]);
   const [currentUser, setCurrentUser] = React.useState<SidebarUser>(defaultUser);
   const isSignedIn = Boolean(user);
+  const isResolvingIdentity =
+    isLoading && !user && currentUser.name === defaultUser.name && currentUser.email === defaultUser.email;
 
   React.useEffect(() => {
     if (user) {
@@ -88,23 +126,35 @@ export default function UserSidebar() {
     }
   };
 
-  const initials = currentUser.name
+  const visibleUser = isSignedIn ? currentUser : defaultUser;
+
+  const initials = visibleUser.name
     .split(' ')
     .map((part) => part[0])
     .filter(Boolean)
     .slice(0, 2)
     .join('')
     .toUpperCase() || 'U';
+  const navigationLinks = React.useMemo(
+    () => [...navLinks, { label: 'Support & Help', icon: HelpCircle, href: customerHelpHref }],
+    [customerHelpHref]
+  );
 
   return (
-    <aside className="hidden md:flex w-64 flex-col min-h-screen">
+    <aside className="reliance-operator-sidebar hidden w-72 flex-col min-h-screen md:flex">
       {/* Logo area */}
-      <div className="bg-white flex items-center px-6 py-8 border-b border-gray-200 justify-center">
-        <img src="/reliance-logo.png" alt="Reliance Logo" className="w-32 h-32 rounded" />
+      <div className="reliance-operator-sidebar-header flex items-center justify-center px-6 py-7">
+        <RelianceLogo
+          tone="light"
+          blend
+          compact
+          className="justify-center"
+          frameClassName="h-16 w-16"
+        />
       </div>
 
       {/* Navigation area */}
-      <div className="flex-1 bg-blue-800 text-white flex flex-col py-8 px-4">
+      <div className="flex flex-1 flex-col px-4 py-8 text-white">
         {/* Identity block */}
         <div className="flex flex-col items-center mb-8 px-2">
           <div className="relative mb-4">
@@ -119,20 +169,24 @@ export default function UserSidebar() {
                 {initials}
               </div>
             )}
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-white rounded-full" />
-            </div>
+            {isSignedIn ? (
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white flex items-center justify-center">
+                <div className="w-1.5 h-1.5 bg-white rounded-full" />
+              </div>
+            ) : null}
           </div>
           <div className="text-center min-w-0 w-full">
-            <div className="font-semibold text-lg mb-1 truncate">{currentUser.name}</div>
-            <div className="text-blue-100 text-sm break-all">{currentUser.email}</div>
-            {isSignedIn && (
-              <div className="mt-2">
-                <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
-                  Customer
-                </span>
-              </div>
-            )}
+            <div className="font-semibold text-lg mb-1 truncate">
+              {isResolvingIdentity ? 'Loading account...' : visibleUser.name}
+            </div>
+            {!isResolvingIdentity && visibleUser.email && !/@reliance\.test$/i.test(visibleUser.email) ? (
+              <div className="text-blue-100 text-sm break-all">{visibleUser.email}</div>
+            ) : null}
+            <div className="mt-2">
+              <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
+                {isResolvingIdentity ? 'Loading' : isSignedIn ? 'Customer' : 'Guest'}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -141,7 +195,7 @@ export default function UserSidebar() {
           <div className="text-xs font-semibold text-blue-200 uppercase tracking-wider mb-4 px-3">
             Navigation
           </div>
-          {navLinks.map((link) => {
+          {navigationLinks.map((link) => {
             const isActive =
               pathname === link.href ||
               (link.href !== '/' && pathname.startsWith(`${link.href}/`));
@@ -149,10 +203,10 @@ export default function UserSidebar() {
               <Link
                 key={link.label}
                 href={link.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-colors ${
+                className={`reliance-operator-nav-link flex items-center gap-3 rounded-2xl px-3 py-2.5 text-base font-medium transition-colors ${
                   isActive
-                    ? 'bg-white/15 text-white'
-                    : 'text-white hover:bg-blue-700'
+                    ? 'reliance-operator-nav-link-active'
+                    : ''
                 }`}
               >
                 <link.icon size={18} />
@@ -162,22 +216,59 @@ export default function UserSidebar() {
           })}
 
           <div className="mt-4 pt-4 border-t border-white/20">
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-white hover:bg-blue-700 transition-colors text-base font-medium w-full text-left"
-            >
-              <LogOut size={18} />
-              Log Out
-            </button>
+            {isResolvingIdentity ? (
+              <div className="px-3 py-2 text-sm text-blue-100">Loading account actions...</div>
+            ) : isSignedIn ? (
+              <button
+                onClick={handleLogout}
+                className="reliance-operator-nav-link flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-base font-medium transition-colors"
+              >
+                <LogOut size={18} />
+                Log Out
+              </button>
+            ) : (
+              <Link
+                href="/auth/login"
+                className="reliance-operator-nav-link flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-base font-medium transition-colors"
+              >
+                <User size={18} />
+                Sign In
+              </Link>
+            )}
           </div>
         </nav>
 
         {/* Footer */}
         <div className="pt-4 mt-4 border-t border-white/20 text-center">
           <div className="text-xs text-blue-200">Reliance</div>
-          <div className="text-xs text-blue-300">© 2024 All rights reserved</div>
+          <div className="text-xs text-blue-300">(c) 2026 All rights reserved</div>
         </div>
       </div>
     </aside>
+  );
+}
+
+export default function UserSidebar() {
+  return (
+    <React.Suspense
+      fallback={
+        <aside className="reliance-operator-sidebar hidden w-72 flex-col min-h-screen md:flex">
+          <div className="reliance-operator-sidebar-header flex items-center justify-center px-6 py-7">
+            <RelianceLogo
+              tone="light"
+              blend
+              compact
+              className="justify-center"
+              frameClassName="h-16 w-16"
+            />
+          </div>
+          <div className="reliance-operator-sidebar flex-1 text-white flex flex-col py-8 px-4">
+            <div className="px-3 py-2 text-sm text-blue-100">Loading navigation...</div>
+          </div>
+        </aside>
+      }
+    >
+      <UserSidebarContent />
+    </React.Suspense>
   );
 }

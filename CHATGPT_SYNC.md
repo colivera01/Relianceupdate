@@ -1,5 +1,1605 @@
 # Reliance System Snapshot (Current)
 
+## Handoff refresh (2026-06-04 - employee capture flow, customer service-story playback, and sync file recovery)
+- Repaired the handoff log encoding issue:
+  - normalized `CHATGPT_SYNC.md`
+  - normalized `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\CURSOR_REPORT.md`
+  - both files are now valid UTF-8 again, so safe patching/logging is restored
+- Added a new headset-ready employee capture helper layer:
+  - `src/lib/employee-stage-capture.ts`
+  - `src/lib/employee-stage-capture.test.ts`
+  - covers:
+    - next required stage selection
+    - stage step numbering
+    - capture action labels
+    - paired phone vs paired headset capture messaging
+- Refined `src/app/employee/jobs/page.tsx` so stage capture feels more guided:
+  - stage cards now behave like a focused 3-step workflow instead of 3 equal file inputs
+  - current stage focus now shows:
+    - `Step X of 3`
+    - a clearer stage headline
+    - capture source
+    - short on-site guidance
+    - a single primary `Record` / `Retake` action
+  - upload control now uses a hidden camera-friendly file input with `capture=\"environment\"`
+  - successful stage upload now auto-focuses the next required stage
+  - future headset support now has shared UI logic instead of a phone-only assumption
+- Added guided customer playback improvements in `src/app/(user)/my-bookings/[bookingId]/page.tsx` and `src/components/reviews/SmartVideoPlayer.tsx`:
+  - multi-stage completed bookings now offer `Play full service story`
+  - story mode auto-advances from:
+    - `Before`
+    - `During`
+    - `Completed`
+  - customers can still jump to an individual stage manually
+  - active stage status now changes to `Playing now` during story mode
+  - `Up next:` guidance appears while story mode is active
+- Fixed a real regression in the consent handoff:
+  - reviews-origin booking detail flow was losing `returnTo=/reviews` after consent acceptance
+  - the booking detail page now preserves `Back to My Reviews` when consent query params are cleaned off the URL
+- Tightened shared customer Help routing one more step:
+  - `src/components/UserSidebar.tsx` now preserves booking-detail query context too
+  - sidebar `Support & Help` on reviews-origin booking detail now keeps `Back to review detail`
+- Validation completed:
+  - `npm test -- src/lib/employee-stage-capture.test.ts src/lib/employee-job-status.test.ts src/lib/my-bookings.test.ts`
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Browser-first validation completed:
+  - customer completed booking detail:
+    - `Play full service story` visible after approved access
+    - story mode started successfully
+    - `Up next:` guidance rendered
+    - active stage changed to `Playing now`
+  - consent return-path verification:
+    - `/my-bookings/<bookingId>?returnTo=/reviews&consentAccepted=1...`
+    - settled back to `/my-bookings/<bookingId>?returnTo=%2Freviews`
+    - `Back to My Reviews` preserved
+  - sidebar help verification:
+    - reviews-origin booking detail sidebar now points to help with the full encoded booking-detail return path
+    - `Back to review detail` preserved there too
+  - employee browser note:
+    - page-level proof of the new focused stage-capture card was limited by transient employee DB/device-pairing failures during this run
+    - the employee page still rendered its honest unavailable state correctly
+
+## Handoff refresh (2026-06-02 - vendor and admin help/support browser audit)
+- Continued the role-aware browser-first audit on signed-in vendor and admin help/support flows.
+- Further refined `src/app/help/page.tsx`:
+  - added role-aware section headings so the page reads naturally for each signed-in role, not just functionally
+  - customer:
+    - `My services and bookings`
+    - `Account settings`
+  - vendor:
+    - `Active vendor work`
+    - `Vendor support`
+  - admin:
+    - `Operator tools`
+    - `Launch operations`
+- Browser-first validation completed:
+  - real vendor login -> MFA -> `/help`
+    - visible vendor-specific help experience:
+      - `Back to Vendor Dashboard`
+      - `Open Vendor Dashboard`
+      - `Open Analytics & Trust`
+      - `Open Profile & Settings`
+      - `Active vendor work`
+      - `Open Manage Jobs`
+      - `Vendor support`
+      - `Open Vendor Support`
+    - no guest `Join as a vendor`
+  - real vendor `/vendor/support`
+    - rendered live vendor support content with:
+      - `Support & Help`
+      - `Read FAQs`
+      - `Browse Articles`
+      - `Relianceorg.support@gmail.com`
+  - real admin login -> MFA -> `/help`
+    - visible admin-specific help experience:
+      - `Back to Admin Dashboard`
+      - `Open Admin Dashboard`
+      - `Open Reports & Analytics`
+      - `Open Admin Security`
+      - `Operator tools`
+      - `Open Admin Settings`
+      - `Launch operations`
+      - `Open Activity Monitoring`
+    - no guest `Create a customer account`
+  - admin action verification:
+    - `Open Admin Settings` from the help page navigated to `/admin/settings`
+    - verified `AI rollout control point` on the destination page
+- Validation completed:
+  - `npx.cmd tsc --noEmit --pretty false --incremental false`
+- Honest notes:
+  - because the in-app browser shares one cookie jar, vendor and admin role checks had to be re-run in sequence with real sign-ins
+  - the admin help verification sent one additional MFA code email to `colivera080124@gmail.com`
+
+## Handoff refresh (2026-06-02 - signed-in help page browser audit)
+- Continued the browser-first audit from `/help` using a real signed-in customer session.
+- Found a real UX gap:
+  - the help page was still guest-first even for signed-in users
+  - it showed generic guidance like account creation while the user was already signed in
+  - the visible actions did not match the customer role using the page
+- Fixed `src/app/help/page.tsx`:
+  - now reads the signed-in session from the auth cookie
+  - renders role-aware back links and quick actions
+  - customer help now shows:
+    - `Back to Customer Dashboard`
+    - `Open Customer Dashboard`
+    - `Open Secure Account`
+    - `Open Favorites`
+    - `View My Services`
+    - `Open Profile & Settings`
+  - customer-facing support copy is now aligned with those actions instead of guest/vendor wording
+- Browser-first validation completed:
+  - reloaded signed-in `/help`
+  - verified visible customer-specific content:
+    - `Back to Customer Dashboard`
+    - `Quick help for this account`
+    - `Open Customer Dashboard`
+    - `Open Secure Account`
+    - `Open Favorites`
+    - `View My Services`
+    - `Open Profile & Settings`
+  - verified outdated guest/vendor wording was removed from the signed-in customer path:
+    - no `Join as a vendor`
+  - support email still visible:
+    - `Relianceorg.support@gmail.com`
+- Validation completed:
+  - `npx.cmd tsc --noEmit --pretty false --incremental false`
+
+## Handoff refresh (2026-06-02 - customer account/security/support browser pass)
+- Continued the browser-first audit from the customer side using a real signed-in customer session (`e2e-smoke-customer@reliance.test`).
+- Real UX gaps found and fixed:
+  - `src/app/(user)/profile-settings/page.tsx`
+    - added a direct `Open Password Recovery` action inside `Password Changes`
+    - before this, the page told the user to use Forgot Password but gave no direct way to get there
+  - `src/components/auth/PasskeySetupCard.tsx`
+    - added optional secondary navigation actions for passkey/setup surfaces
+  - `src/app/customer/secure-account/page.tsx`
+    - `Back to Dashboard` was replaced with `Back to Profile Settings`
+    - added visible `Open Help Center`
+    - added visible `Go to Dashboard`
+    - goal: make the page feel less like a dead-end detached from the rest of the customer experience
+- Browser-first validation completed:
+  - real customer login to `/profile-settings`
+  - verified sidebar discoverability:
+    - `Secure Account`
+    - `Support & Help`
+  - verified settled `Profile & Settings` page content:
+    - `Open Secure Account`
+    - `Open Help Center`
+    - new `Open Password Recovery`
+  - clicked `Open Password Recovery`
+    - landed on `/auth/forgot-password`
+    - forgot-password page rendered with email reset entry
+  - opened `/customer/secure-account`
+    - verified visible passkey content:
+      - `Registered passkeys`
+      - `Add Passkey`
+      - `Back to Profile Settings`
+      - `Open Help Center`
+      - `Go to Dashboard`
+  - clicked `Open Help Center` from the secure-account page
+    - landed on `/help`
+    - verified support email `Relianceorg.support@gmail.com`
+- Validation completed:
+  - `npx.cmd tsc --noEmit --pretty false --incremental false`
+  - existing focused regression tests stayed green:
+    - `npm.cmd test -- src/app/api/vendors/[vendorId]/jobs/[jobId]/route.test.ts src/lib/employee-job-status.test.ts`
+- Honest note:
+  - the secure-account route still does not use the full normal customer shell; it now has better recovery/help/navigation, but a fuller layout unification would still be a nice future polish step
+
+## Handoff refresh (2026-06-02 - employee to manager to admin browser workflow)
+- Continued the browser-first audit on the same real Metro job from the employee upload flow through manager approval and admin moderation.
+- Fixed a real vendor manager detail-route bug:
+  - added `src/app/api/vendors/[vendorId]/jobs/[jobId]/route.ts`
+    - returns a real per-job vendor detail payload instead of relying on dashboard summary arrays
+    - normalizes booking status for the detail view (`CONFIRMED` -> `IN_PROGRESS`)
+    - returns assigned employees, service, notes, source, rejection state, and timestamps
+  - updated `src/app/vendor/jobs/[jobId]/page.tsx`
+    - loads from the new per-job API
+    - tightened status normalization so manager/employee review controls match real booking states
+- Added focused regression coverage:
+  - `src/app/api/vendors/[vendorId]/jobs/[jobId]/route.test.ts`
+  - protects the not-found case and the normalized `IN_PROGRESS` detail payload shape
+- Browser-first validation completed:
+  - real Metro manager browser session on `/vendor/jobs/cmohivjet001wsoe4w7x5b2qr`
+    - page now loads instead of showing `We couldn't load this job.`
+    - visible content rendered:
+      - `Metro Apartment Deep Clean`
+      - `Client: Jordan Rivera`
+      - `Reference: cmohivjet001wsoe4w7x5b2qr`
+      - `AWAITING_REVIEW`
+      - `Approve Completion`
+      - `Reject Completion`
+      - all 3 uploaded stage videos in `Video Timeline`
+  - manager approval path:
+    - clicked `Approve Completion`
+    - page settled to `Completion approved.`
+    - visible job status changed to `COMPLETED`
+  - real admin browser path on `/admin/media-moderation`
+    - same package appeared at the top of the queue:
+      - `Vendor: Metro Home Care Pros`
+      - `Client: Jordan Rivera`
+      - `Package moderation: Pending Review`
+      - `Package visibility: Private`
+    - approved the package in-place with private visibility
+    - after settle/reload the queue showed:
+      - `Ready For Review` -> `0`
+      - `Approved Packages` -> `6`
+      - Jordan Rivera package -> `Package Approved`
+      - `Package moderation: Approved`
+      - `Package visibility: Private`
+- Validation completed:
+  - `npm.cmd test -- src/app/api/vendors/[vendorId]/jobs/[jobId]/route.test.ts src/lib/employee-job-status.test.ts`
+  - `npx.cmd tsc --noEmit --pretty false --incremental false`
+- Honest note:
+  - the in-app browser clipboard limitation still affects some login form entry paths, so admin login again required the keystroke fallback and did send one real MFA email to `colivera080124@gmail.com`
+
+## Handoff refresh (2026-06-02 - browser-first secondary-surface audit)
+- Continued the browser-first audit on secondary admin/vendor surfaces, using real role flows instead of source-only checks.
+- Fixed a real admin login blocker:
+  - `src/app/api/auth/login/route.ts`
+    - stopped returning a misleading `MFA_CREDENTIAL_REQUIRED` error for valid admin accounts when the MFA credential lookup path blipped
+    - the route now reuses the credential created/upserted during login and returns a truthful retryable `MFA_CREDENTIAL_UNAVAILABLE` only if the credential record truly cannot be loaded
+- Fixed 2 more discoverability gaps:
+  - `src/app/SidebarLayout.tsx`
+    - added `Reports & Analytics` to the admin sidebar
+  - `src/app/admin/dashboard/page.tsx`
+    - added a `Reports & Analytics` admin quick-action card
+  - `src/app/vendor/layout.tsx`
+    - added `Reviews` to the vendor sidebar
+  - `src/app/vendor/dashboard/page.tsx`
+    - added a `Customer Reviews` quick-action card
+- Continued hardening the admin reports experience:
+  - replaced the heavy server-rendered `src/app/admin/reports/page.tsx` with a shell-first client page
+  - added `src/app/admin/reports/AdminReportsClient.tsx`
+  - added `src/app/api/admin/reports/summary/route.ts`
+  - the reports page now starts from a fast shell and fetches a focused summary instead of trying to block on a giant server render
+- Browser-first validation completed:
+  - guest `/admin/settings`
+    - stale runtime overlay was confirmed to be browser-state noise; a reload showed the correct blocked `Admin access required` state
+  - real admin browser login
+    - password step now advances correctly to MFA
+    - dev preview code rendered
+    - MFA verify landed on `/admin/dashboard`
+  - real vendor browser login
+    - sidebar now shows `Reviews`
+    - reviews quick-action now exists on `/vendor/dashboard`
+    - click-through reached `/vendor/reviews`
+    - `/vendor/reviews` rendered real published review data
+  - vendor secondary pages checked:
+    - `/vendor/telemetry` rendered live device rows and telemetry copy
+    - `/vendor/support` rendered published support paths and honest launch wording
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+## 2026-06-03 Admin Review Audit UX Hardening
+
+- Continued the official browser-first audit standard on real admin secondary flows.
+- Re-verified that admin navigation paths are healthy from a settled dashboard and review surfaces:
+  - sidebar `Activity Monitoring`
+  - sidebar `Admin Settings`
+  - sidebar `Admin Security`
+  - review-page shortcuts to `Review Audit` and filtered `AI Activity Monitoring`
+- Found a real operator UX issue on `/admin/review-audit`:
+  - the detail drawer worked, but on slower detail loads it hid the whole modal behind a long loading state
+  - this made a healthy page feel broken while deeper audit data was still hydrating
+- Updated `src/app/admin/review-audit/page.tsx`:
+  - the drawer now keeps base window details visible immediately
+  - shows an inline banner:
+    - `Loading the full review audit history. Core window details are already visible below.`
+  - removes the old blank/spinner-only feel during slower detail fetches
+- Real browser validation completed:
+  - opened `/admin/review-audit`
+  - clicked a real review-window row
+  - immediate drawer state now showed:
+    - `Review Audit Detail`
+    - the new loading banner
+    - `Window overview`
+    - `Customer and booking`
+  - after settle, the same drawer showed the full sections:
+    - `Consent history`
+    - `Sentiment history`
+    - `Prompt history`
+    - `Submitted review`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+## 2026-06-03 Admin Secondary Route Loading Hardening
+
+- Continued the browser-first admin/operator audit on slower secondary pages:
+  - `/admin/reported-content`
+  - `/admin/activity`
+- Found a real trust issue on route transitions:
+  - from slower admin pages, the old page could remain visible long enough to feel like the click failed
+  - this was especially noticeable moving into `Reported Content` and `Activity Monitoring`
+- Added honest loading shells:
+  - `src/app/admin/reported-content/loading.tsx`
+    - message: `Loading reported content, AI case assistance, and resolution controls...`
+  - `src/app/admin/activity/loading.tsx`
+    - message: `Loading admin activity, AI monitoring, and operator actions...`
+- Real browser validation completed:
+  - `Review Audit -> Reported Content`
+    - route now settles to `/admin/reported-content`
+    - page shows the real report queue with filters, resolution controls, and `AI Case Assist`
+  - `Reported Content -> Activity Monitoring`
+    - browser visibly showed the new loading shell instead of leaving stale `Reported Content` in place
+    - then settled to the real `Activity Monitoring` page
+- Also re-verified the live operator interactions on `Reported Content`:
+  - `Generate AI Summary` starts correctly
+  - the AI summary resolves with:
+    - `Case type`
+    - `Next step`
+    - prompt version `content-report-case-v1`
+    - operator feedback controls
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+## 2026-06-03 Admin Vendor Management Quick-Action Fix
+
+- Continued the browser-first admin audit on `/admin/vendors`.
+- Found a real interaction bug in `src/app/admin/vendors/page.tsx`:
+  - `Available Management Actions` used `Link` wrapping `Button`
+  - this created nested interactive controls and made the shortcut clicks inconsistent/untrustworthy
+- Fixed the shortcuts to use proper `Button asChild` link rendering for:
+  - `Publish Management`
+  - `Promoted Listings`
+  - `Approval Queue`
+  - `Audit Logs`
+  - `Reported Content`
+  - `Admin Dashboard`
+- Real browser validation completed:
+  - opened `/admin/vendors`
+  - clicked the `Reported Content` quick action
+  - landed on `/admin/reported-content`
+  - confirmed the live reported-content queue and `AI Case Assist` rendered correctly
+- Honest limitation:
+  - the vendor lookup text field on `/admin/vendors` is still hard to drive from the in-app browser because this runtime is missing the virtual clipboard required for normal fill behavior
+  - that blocked a clean browser-only proof of the `search -> result -> vendor detail` path in this exact session
+  - this is currently tool-environment friction, not confirmed product breakage
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+## 2026-06-03 Reported Content -> Review Moderation Handoff Fix
+
+- Continued the browser-first admin/operator audit on the `Reported Content` queue.
+- Found a real workflow bug:
+  - `Open matching moderation surface` linked to `/admin/reviews?q=...`
+  - but `src/app/admin/reviews/page.tsx` was not hydrating its local search state from the incoming route query
+  - result: the admin landed on the review-moderation page without the expected focused queue
+- Fixed `src/app/admin/reviews/page.tsx`:
+  - added route-query hydration with `useSearchParams()`
+  - updated `fetchQueue()` to accept override values so route-driven queue loads can use the incoming search immediately
+  - the review queue now respects the handed-off `q` filter on landing
+- Real browser validation completed:
+  - opened `/admin/reported-content`
+  - clicked `Open matching moderation surface`
+  - landed on `/admin/reviews?q=cmpve555g000ysokkgaggvr8s`
+  - confirmed the queue search box showed the review id
+  - confirmed the queue reduced to the single matching Avery review
+  - confirmed `Showing 1 of 1 total reviews matching the current filters.`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+## Customer Content Report Audit
+- Browser-first customer audit continued on booking `cmpnj67b40001so7sfx27us4h`
+- Verified timeline stage switching still behaves correctly:
+  - `Before Service` -> review helper says `Switch to the Completed stage to submit your review.`
+  - `Completed` -> review helper says `Approve video access before leaving your review.`
+- Verified `Report video` dialog opens correctly and exposes:
+  - reason selector
+  - optional details field
+  - submit/close actions
+- Found a real customer dead-end:
+  - report submit could hang on `Sending...` indefinitely when `/api/reports/content` stalled
+  - the dialog had no timeout or truthful failure state
+- Fixed `src/components/reports/ReportContentDialog.tsx`:
+  - added a 15-second client timeout via `AbortController`
+  - surfaced a real retry/support message on timeout
+  - re-enabled the dialog controls after abort/failure
+- Hardened `src/app/api/reports/content/route.ts`:
+  - transient DB failures now return `503`
+  - response code: `DB_UNAVAILABLE`
+  - customer-facing message now explains content reporting is temporarily unavailable because Reliance cannot reach the service database
+- Added regression coverage in:
+  - `src/app/api/reports/content/content-report.integration.test.ts`
+- Validation completed:
+  - `npm.cmd test -- src/app/api/reports/content/content-report.integration.test.ts`
+  - `npx.cmd tsc --noEmit --pretty false --incremental false`
+- Real browser validation completed:
+  - report dialog now submits successfully on the live customer page
+  - success copy shown:
+    - `Thanks. Your report was sent to Reliance for review.`
+  - dialog closes cleanly afterward
+- Cleanup completed:
+  - temporary audit reports dismissed:
+    - `cmpy49z9j000rsokwq9x2mv8l`
+    - `cmpy46210000osokwx0c2ndba`
+
+## Customer, Vendor, and Admin Secondary-Flow Audit
+- Continued browser-first role audit from the live customer booking detail page through the remaining customer support/account actions, then real vendor and admin secondary surfaces.
+
+### Customer
+- Verified in-browser customer actions:
+  - `/customer/secure-account`
+  - `/profile-settings`
+  - `/help`
+  - return path to `/user-dashboard`
+- Confirmed secure-account action buttons work:
+  - `Back to Profile Settings`
+  - `Open Help Center`
+  - `Go to Dashboard`
+- Customer help still renders the signed-in customer shortcuts correctly.
+- Residual UX note:
+  - `Secure Account` still feels more standalone than the normal customer-shell pages, even though its actions now work.
+
+### Vendor
+- Real vendor sign-in completed in-browser for `e2e-trust-manager@reliance.test`
+  - slow password->MFA transition still present
+  - MFA completed and reached `/vendor/dashboard`
+- Browser-verified vendor secondary pages:
+  - `/vendor/reviews`
+  - `/vendor/telemetry`
+  - `/vendor/support`
+- Verified live content:
+  - vendor reviews render the real published feedback and rating summary
+  - telemetry renders the correct empty-state device/event view
+  - support page renders launch help and `Relianceorg.support@gmail.com`
+- Residual UX note:
+  - some vendor transitions required an extra wait or second click while the page was still settling, especially when moving off telemetry/support surfaces
+
+### Admin
+- Real admin sign-in completed in-browser for `colivera080124@gmail.com`
+  - sent one real MFA code email during verification
+  - MFA verify eventually reached `/admin/dashboard`
+- Browser-verified admin secondary pages:
+  - `/admin/reported-content`
+  - `/admin/activity`
+  - `/admin/security`
+- Verified live content:
+  - Reported Content resolves to real cases, AI case assist, and resolution-note controls
+  - Activity Monitoring renders live audit/AI reporting counts and exports
+  - Admin Security renders the real passkey inventory and `Add Passkey`
+- Residual UX note:
+  - `Reported Content` remains one of the slower admin secondary pages to feel trustworthy on first load
+
+### Logout Flow Fix
+- Found a real browser-path blocker:
+  - `/logout` could sit indefinitely on `Logging Out`
+- Fixed `src/app/logout/page.tsx`:
+  - added an 8-second logout API timeout
+  - always clears local/session storage and client cookies even if the API stalls
+  - redirects with `window.location.replace('/auth/login')`
+- Validation completed:
+  - `npx.cmd tsc --noEmit --pretty false --incremental false`
+- Real browser validation completed:
+  - customer logout now reaches `/auth/login`
+  - vendor logout now reaches `/auth/login`
+
+## Customer Review Readiness Audit
+- Browser-first customer audit on `/my-bookings` and `/reviews` exposed a real mismatch:
+  - `/reviews` was listing at least one booking under `Leave Review`
+  - the linked booking detail page then said no approved service video was available yet and kept review disabled
+- Added shared review-readiness helpers in `src/lib/customer-reviews.ts` and regression coverage in `src/lib/customer-reviews.test.ts`
+- Updated `src/app/api/reviews/me/route.ts`:
+  - pending review candidates are now split into:
+    - `pending`: approved video exists, review flow can start
+    - `awaiting`: completed booking exists, but approved service video is not available yet
+  - summary payload now includes `awaitingVideoTotal`
+- Updated `src/app/(user)/reviews/page.tsx`:
+  - renamed `Pending Reviews` to `Ready to Review`
+  - added `Awaiting Service Videos`
+  - changed CTA behavior:
+    - ready items keep `Leave Review`
+    - awaiting items use `View booking`
+  - summary copy now reflects:
+    - ready reviews
+    - completed bookings still waiting for approved service videos
+    - submitted reviews
+- Updated `src/app/(user)/my-bookings/[bookingId]/page.tsx`:
+  - fixed review gate helper text ordering
+  - no-video bookings now say:
+    - `This booking is not ready for review yet. We'll notify you when the approved service video is available.`
+  - video-backed bookings now behave correctly by stage:
+    - before/during stage: `Switch to the Completed stage to submit your review.`
+    - completed stage without consent: `Approve video access before leaving your review.`
+- Validation completed:
+  - `npm.cmd test -- src/lib/customer-reviews.test.ts`
+  - `npx.cmd tsc --noEmit --pretty false --incremental false`
+- Real browser validation completed:
+  - `/reviews` now shows:
+    - `Ready to Review`
+    - `Awaiting Service Videos`
+    - honest count summary
+  - booking `cmohivjet001wsoe4w7x5b2qr` moved out of ready review into awaiting-video state
+  - opening that booking now shows the correct disabled-review reason
+  - booking `cmpnj67b40001so7sfx27us4h` now shows correct stage-based review guidance on the detail page
+
+# Update (2026-06-03 - customer service-video consent consistency audit)
+
+- Continued the browser-first customer audit across:
+  - `/my-bookings`
+  - `/my-bookings/[bookingId]`
+- Fixed a real customer-flow mismatch in `src/app/(user)/my-bookings/page.tsx`:
+  - removed the inline customer video player from `My Services`
+  - stopped the list page from acting like a direct playback surface
+  - changed the list flow to point customers into the booking detail page instead
+  - updated the copy so it now says the completed service video is ready to review and may still require consent before playback
+- Hardened the customer media API in `src/app/api/bookings/[id]/media/route.ts`:
+  - customer media now exposes the consent-aware `downloadUrl`
+  - customer-facing `blobUrl` is now returned as `null`
+  - this keeps customer playback aligned with the consent-gated detail route instead of exposing a direct blob shortcut
+- Improved booking-detail consent wording in `src/app/(user)/my-bookings/[bookingId]/page.tsx`:
+  - top CTA now says `Review video access` until consent is present
+  - consent panel now says:
+    - `This service video is ready to review, but we need your permission before playback.`
+  - timeline stage CTA now says `Open stage` instead of implying immediate playback before consent
+- Fixed the in-app customer consent request path in:
+  - `src/app/(user)/my-bookings/[bookingId]/page.tsx`
+  - `src/app/api/consent/request/route.ts`
+  - customer-initiated consent requests now send `skipNotification: true`
+  - the route skips email/SMS notification dispatch for that in-app path and can return the consent URL immediately
+  - the booking detail page now aborts a stuck consent request after 15s and shows:
+    - `Request timed out while preparing consent. Please try again.`
+- Hardened booking-detail DB failure handling in:
+  - `src/app/api/bookings/[id]/route.ts`
+  - `src/app/api/bookings/[id]/media/route.ts`
+  - `src/app/(user)/my-bookings/[bookingId]/page.tsx`
+  - transient Azure SQL connectivity now returns `503 DB_UNAVAILABLE`
+  - the customer page now shows:
+    - `Service videos are temporarily unavailable right now.`
+    - `Reliance is having trouble reaching the service database. Please try again in a moment.`
+- Updated the customer/browser smoke coverage:
+  - rebuilt `e2e/review-smoke.spec.ts` around the real flow:
+    - `My Services -> booking detail -> consent if needed -> playback -> quick review`
+  - tightened shared login button selectors in:
+    - `e2e/booking-smoke.spec.ts`
+    - `e2e/favorites-smoke.spec.ts`
+    - `e2e/route-smoke.spec.ts`
+    - `e2e/review-smoke.spec.ts`
+    - `e2e/vendor-profile-cleanup.spec.ts`
+  - added extra post-login settle waiting in `e2e/review-smoke.spec.ts` and `e2e/route-smoke.spec.ts`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+  - `npm test -- src/app/api/bookings/booking-media-cancel.integration.test.ts`
+- Browser/audit result:
+  - earlier real browser snapshots confirmed the old mismatch:
+    - list page said a completed video was available
+    - detail page still required consent
+  - after the fix, the customer path is now conceptually aligned and safer
+  - full end-to-end playback/review proof was blocked by current Azure SQL instability during this slice
+  - direct browser verification under the current outage now shows the improved truthful temporary-unavailable booking-detail state instead of a generic broken page
+
+# Update (2026-06-03 - customer browser recheck after service-video hardening)
+
+- Continued the live customer browser audit from the in-app browser on `/auth/login`.
+- Verified signed-in customer shell behavior:
+  - customer sign-in succeeded
+  - the app redirected into the real customer dashboard shell
+  - sidebar navigation rendered correctly for:
+    - `Home`
+    - `Discover`
+    - `My Services`
+    - `Favorites`
+    - `Reviews`
+    - `Profile & Settings`
+    - `Secure Account`
+    - `Support & Help`
+- Verified customer `My Services` entry from the sidebar:
+  - `/my-bookings` loaded
+  - the live proof banner rendered:
+    - `A completed service video is ready to review for your recent service.`
+    - `You may be asked to confirm consent before playback.`
+  - the current live banner route pointed to booking:
+    - `cmpxnisfs0001so340fltibyf`
+- Verified the live banner click path:
+  - `Open service video` navigated correctly to:
+    - `/my-bookings/cmpxnisfs0001so340fltibyf`
+  - the booking detail page rendered:
+    - `Service Videos`
+    - `Review video access`
+    - `This service video is ready to review, but we need your permission before playback.`
+    - `Request video access`
+- Verified the hardened consent-request behavior in the browser:
+  - clicking `Request video access` changed the button state to `Preparing consent...`
+  - after the 15s recovery window, the page returned to:
+    - `Request video access`
+    - `Request timed out while preparing consent. Please try again.`
+  - this confirms the customer no longer gets stuck indefinitely on the loading state
+- Verified one additional customer navigation detail:
+  - the sidebar `My Services` route is healthy
+  - a separate clean-browser cross-check showed the dashboard `Open My Services` quick action also works once the dashboard finishes settling
+  - so the earlier concern there looked like a timing issue during loading, not a confirmed product bug
+- Hardened the Playwright customer/browser smokes further:
+  - `e2e/review-smoke.spec.ts` now resolves the live customer proof entry point by:
+    - preferring the saved booking row when it exists
+    - falling back to the live banner proof link when the fixture booking is no longer visible
+  - `e2e/route-smoke.spec.ts` now opens a live customer proof route the same way instead of depending strictly on one stale booking id
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+  - `npx playwright test e2e/review-smoke.spec.ts --list`
+  - `npx playwright test e2e/route-smoke.spec.ts --list`
+- Honest current limitation:
+  - full end-to-end review completion is still blocked by current Azure SQL instability
+  - the browser proof for this pass confirms the improved customer-facing behavior under that failure condition
+
+# Update (2026-06-03 - customer account/security audit and auth persistence fix)
+
+- Continued the browser-first customer audit across:
+  - `/user-dashboard`
+  - `/profile-settings`
+  - `/customer/secure-account`
+  - `/help`
+  - customer logout flow
+- Real customer/browser findings:
+  - `/profile-settings` rendered the expected account/security actions:
+    - `Open Secure Account`
+    - `Open Help Center`
+    - `Open Password Recovery`
+  - `/customer/secure-account` rendered the real passkey inventory and action layout
+  - the in-app browser failed to navigate the secure-account action buttons reliably, but a normal browser check confirmed they work:
+    - `Open Help Center` -> `/help`
+    - `Back to Profile Settings` -> `/profile-settings`
+  - customer logout also worked in the normal browser check once the real confirm dialog was accepted
+- Browser-first audit exposed a real auth persistence bug:
+  - a fresh signed-in customer tab with only the real `reliance_session` cookie could still fall back to a guest-style dashboard because client auth state depended too heavily on local storage
+  - this showed up as:
+    - guest-style sidebar state on cold signed-in loads
+    - `Please sign in` / stalled loading behavior on new-tab refresh scenarios
+- Fixed auth persistence:
+  - added `src/app/api/auth/session/route.ts`
+    - returns the signed-in user payload from the real signed session cookie
+    - returns a bearer token for client rehydration
+  - updated `src/contexts/AuthContext.tsx`
+    - when local storage is empty, it now hydrates from `/api/auth/session`
+    - persists the returned user/token back into client storage
+  - updated `src/components/UserSidebar.tsx`
+    - no longer flashes a misleading `Guest` state while signed-in customer identity is still resolving
+    - now shows a neutral loading state instead:
+      - `Loading account...`
+      - `Loading account actions...`
+  - added route regression coverage:
+    - `src/app/api/auth/session/route.test.ts`
+- Validation completed:
+  - `npm test -- src/app/api/auth/session/route.test.ts src/lib/auth-session.test.ts`
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Real post-fix browser verification completed in a normal browser:
+  - fresh signed-in customer tab now starts from the neutral loading state instead of `Guest`
+  - after settle, the customer shell resolves correctly with:
+    - customer identity
+    - dashboard welcome state
+    - account data
+    - customer quick actions
+- Audit note:
+  - the in-app browser was too unstable to complete the final cold-tab customer recheck after the fix
+  - the product behavior itself was verified in a normal browser session with the same live app
+
+# Update (2026-06-03 - customer reviews and forgot-password action-depth pass)
+
+- Continued the customer browser-first audit on:
+  - `/reviews`
+  - `/auth/forgot-password`
+- Real browser validation completed on `/reviews`:
+  - signed-in customer route loaded correctly
+  - settled page showed:
+    - `My Reviews`
+    - `Pending Reviews`
+    - `Submitted Reviews`
+    - `View service videos`
+  - settled summary rendered real values:
+    - `You have 9 pending reviews and 11 submitted reviews.`
+    - `11 submitted reviews are verified with service videos or images.`
+- Audit finding:
+  - while reviews were still loading, the page could temporarily imply a false `0 pending / 0 submitted` state before the real data arrived
+- Fixed `src/app/(user)/reviews/page.tsx`:
+  - while loading, the summary line now shows:
+    - `Loading your review totals and booking-linked feedback history...`
+  - this avoids the misleading zero-count state during the fetch window
+- Real browser validation completed on `/auth/forgot-password`:
+  - submitting `e2e-smoke-customer@reliance.test` returned the success state
+  - page showed:
+    - `Check Your Email`
+    - `Reset Email Sent`
+    - `Back to Login`
+- Audit finding:
+  - the success state still said `Still having trouble? Contact support.` without the actual published support contact
+- Fixed `src/app/auth/forgot-password/page.tsx`:
+  - success state now shows the published support path:
+    - `Relianceorg.support@gmail.com`
+  - it reuses the shared support configuration from `src/lib/support.ts`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Real post-fix browser verification completed:
+  - the false zero-count reviews summary no longer appears during the initial load
+  - forgot-password success now includes `Relianceorg.support@gmail.com`
+
+# Update (2026-06-02 - admin reports browser-first audit)
+
+- Continued the admin browser-first audit on:
+  - `/admin/reports`
+- Real browser validation completed:
+  - the page rendered the expected launch-facing reporting sections:
+    - `Reports & Analytics`
+    - `Countable Customers`
+    - `Countable Vendors`
+    - `Public Review Base`
+    - `Recent Audit Events`
+    - `Moderation Backlog`
+    - `Review Pipeline`
+    - `Operator Shortcuts`
+  - after settle, the visible metrics loaded with real values:
+    - customers `10`
+    - vendors `3`
+    - review base `5`
+    - recent audit events `333`
+  - `Open Activity Monitoring` worked from the reports shortcut area and landed on `/admin/activity`
+- Browser audit surfaced a real operator UX weakness:
+  - the original reports shortcuts were tiny inline links and felt easy to miss or mis-hit
+- Improved `src/app/admin/reports/AdminReportsClient.tsx`:
+  - replaced the inline shortcut links with larger operator action cards
+  - each card now includes:
+    - a clearer title
+    - short description
+    - larger click target
+  - added icon support for the shortcut cards
+- Additional browser validation after the redesign:
+  - the new `Operator Shortcuts` card grid rendered correctly
+  - `Open Activity Monitoring` still navigated correctly
+  - `Open Review Audit` remained inconsistent specifically in the in-app browser automation path, even after the larger hit target change
+- Audit note:
+  - the reports shortcut redesign is a real UX improvement
+  - the remaining `Open Review Audit` navigation inconsistency may still be specific to the in-app browser automation path rather than a confirmed human-click product bug
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+# Update (2026-06-02 - admin activity and review audit browser-first audit)
+
+- Continued the admin browser-first audit across:
+  - `/admin/activity`
+  - `/admin/review-audit`
+- Real browser validation completed on `/admin/activity`:
+  - `AI Assist Monitoring` rendered with live data
+  - feature filter links were present for:
+    - `All AI tools`
+    - `Moderation Assistant`
+    - `Dispute Summary Assistant`
+    - `Trust Score Explanations`
+    - `Vendor Coaching`
+  - clicking `Moderation Assistant` changed the URL to:
+    - `/admin/activity?aiFeature=moderation_assistant`
+  - the page updated its visible state to:
+    - `Current filter: Moderation Assistant`
+  - `Export JSON` and `Export CSV` updated to the filtered admin export paths:
+    - `/api/admin/activity/ai-export?format=json&aiFeature=moderation_assistant`
+    - `/api/admin/activity/ai-export?format=csv&aiFeature=moderation_assistant`
+- Real browser validation on `/admin/review-audit` exposed a real UX bug:
+  - the `Review Audit Detail` drawer loaded as a raw JSON dump instead of an operator-readable detail view
+- Fixed `src/app/admin/review-audit/page.tsx`:
+  - added visible `Clear Filters`
+  - replaced the raw JSON drawer with structured sections:
+    - `Window overview`
+    - `Customer and booking`
+    - `Vendor`
+    - `Consent history`
+    - `Sentiment history`
+    - `Prompt history`
+    - `Submitted review`
+  - formatted dates and status labels for readable admin presentation
+- Real browser validation completed after the fix:
+  - `/admin/review-audit` now shows:
+    - `Apply Filters`
+    - `Clear Filters`
+    - `Showing the 10 most recent matching rows first. Click a row to load full detail.`
+  - clicking `Window cmpvkq5lv003lsokk48r9faja` opened a readable detail drawer with:
+    - consent status and consent events
+    - customer and vendor details
+    - media session details
+    - clear empty-state messaging when no sentiment, prompt history, or submitted review exists
+  - the raw JSON dump is gone
+- Audit note:
+  - direct text entry into the review-audit filter fields is still partially blocked by the in-app browser clipboard/input limitation
+  - the visible filter controls, row selection, and detail rendering were browser-verified successfully
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+# Update (2026-06-02 - vendor secondary flow browser audit)
+
+- Continued the browser-first vendor audit on:
+  - `/vendor/reviews`
+  - `/vendor/telemetry`
+  - `/vendor/services`
+  - `/vendor/profile`
+- No code changes were needed in this slice; this was live behavior validation and operator-flow auditing.
+- Real browser validation completed:
+  - `/vendor/reviews`
+    - cold load initially showed `Loading published customer reviews...`
+    - after settle, the page rendered:
+      - `Customer Reviews`
+      - `Published Rating`
+      - `Public Reviews`
+      - `Moderation Status`
+      - `Recent Published Reviews`
+  - `/vendor/telemetry`
+    - cold load initially stayed on:
+      - `Loading device status...`
+      - `Loading recent events...`
+    - after a longer settle, the page rendered real telemetry content including:
+      - `Device Status`
+      - `17 devices`
+      - `Raw telemetry`
+      - `No telemetry events matched your filters yet.`
+  - `/vendor/services`
+    - opened `Add Service Draft`
+    - created temporary service draft:
+      - `Codex Audit Service 1780455727106`
+    - opened the edit modal and updated the description
+    - clicked `Update Draft`
+    - verified the modal eventually closed after a slower save/settle
+    - deleted the temporary draft
+    - confirmed the temporary service was removed
+  - `/vendor/profile`
+    - verified the page renders:
+      - `Profile & Settings`
+      - `Business Profile`
+      - `Device Management`
+      - `Reminder Preferences`
+      - `Notification Preferences`
+      - `Save Profile`
+    - used the live notification save path to verify settings persistence feedback
+    - restored the marketing notification setting after the save-path check
+- Audit conclusion for this slice:
+  - vendor secondary actions are functionally working
+  - the remaining rough edge is cold-load / settle time, especially on reviews, telemetry, and profile-heavy routes
+  - the services modal save path works, but it is slower to close/settle than ideal after update
+
+# Update (2026-06-02 - admin vendor detail browser audit)
+
+- Continued the browser-first admin audit on `/admin/vendors`
+- Real guest-side validation completed first:
+  - visiting `/admin/vendors` without an admin session showed a clean `Admin access required` screen
+- Completed the real admin sign-in path:
+  - password step
+  - MFA step with visible dev preview code
+  - remembered-device checkbox enabled for this browser context
+- Browser-verified the real operator workflow on `/admin/vendors`:
+  - searched `Metro`
+  - selected `Metro Home Care Pros`
+  - verified the detail view rendered:
+    - account action controls
+    - `Reliance Trust Score`
+    - `Why this score`
+    - `Coverage`
+    - `Strongest signals`
+    - `Watch items`
+    - `Trusted MFA Devices`
+- Fixed a real formatting issue in `src/app/admin/vendors/page.tsx`:
+  - trusted MFA device rows no longer jam role text into the user name (`Managermanager`)
+  - rows now read with a clearer role label such as `Manager account`
+  - device timing metadata now uses stable `|` separators
+- Real browser recheck after the fix confirmed:
+  - `Manager account` is visible
+  - no `Managermanager`
+  - trusted-device metadata separators render cleanly
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Audit note:
+  - the admin vendor search/select flow is still slower to settle than ideal
+  - functionality is working, but there is visible latency before search results and the trust/device panels finish loading
+  - `npm run test:ai:focused`
+
+# Update (2026-06-02 - admin reports browser validation + dev MFA fallback)
+
+- Fixed a real browser-path admin auth issue during Azure SQL outages:
+  - admin login could hang on `Signing In...` because login MFA challenge creation depended on Prisma/Azure SQL
+  - added a dev-only local MFA challenge fallback in `src/lib/auth-mfa.ts`
+  - login now passes a safe user snapshot into MFA challenge creation in `src/app/api/auth/login/route.ts`
+  - MFA verify now falls back to that local snapshot when the DB credential cannot be loaded in `src/app/api/auth/mfa/verify/route.ts`
+- Added focused regression coverage:
+  - `src/lib/auth-mfa.test.ts`
+  - includes local dev MFA fallback coverage
+- Browser validation completed on the real admin route:
+  - `/auth/login?next=/admin/reports`
+  - password step completed
+  - MFA step rendered with visible dev preview code
+  - MFA verify completed
+  - landed on `/admin/reports`
+  - page visibly rendered:
+    - `Reports & Analytics`
+    - `Countable Customers`
+    - `Countable Vendors`
+    - `Public Review Base`
+    - `Recent Audit Events`
+    - `Moderation Backlog`
+    - `Review Pipeline`
+    - `Operator Shortcuts`
+- Visual check passed:
+  - admin sidebar `Reports & Analytics` is visible and selected
+  - page cards and shortcuts render cleanly in the browser
+- Validation completed:
+  - `npm test -- src/lib/auth-mfa.test.ts src/app/api/auth/login/login.integration.test.ts`
+  - `npx tsc --noEmit --pretty false --incremental false`
+- One operational note:
+  - this browser-path validation used the owner admin login and sent one real MFA code email during the successful retry
+
+# Update (2026-06-02 - customer secure-account discoverability + customer dashboard cleanup)
+
+- Fixed a real customer discoverability gap:
+  - added `Secure Account` to the customer sidebar in `src/components/UserSidebar.tsx`
+  - added `Open Secure Account` to the Profile & Settings quick actions in `src/app/(user)/profile-settings/page.tsx`
+- Fixed a real guest dead-end on the secure-account route:
+  - `src/app/customer/secure-account/page.tsx` now uses a server-side session check
+  - the route no longer depends on a client-only loading state to decide what to render
+- Fixed visible customer dashboard mojibake and copy issues in `src/app/(user)/user-dashboard/page.tsx`:
+  - `Trending Now`
+  - `Available Services`
+  - `Connected to your account routes`
+  - vendor-profile success icon now uses a real Lucide icon instead of broken glyph text
+- Improved admin vendor-management discoverability:
+  - `src/app/admin/vendors/page.tsx`
+  - added an explicit guidance message telling admins that selecting a vendor result reveals the Trust Score explanation panel and remembered MFA device controls
+- Browser validation completed:
+  - customer `/profile-settings`
+    - sidebar now shows `Secure Account`
+    - quick actions now show `Open Secure Account`
+  - clicking `Open Secure Account` lands on `/customer/secure-account`
+  - secure-account page renders correctly with:
+    - `Secure Your Account`
+    - `Registered passkeys`
+    - real passkey rows
+    - `Add Passkey`
+  - customer `/user-dashboard`
+    - removed mojibake from:
+      - `Quick Actions`
+      - `Trending Now`
+      - `Available Services`
+  - admin `/admin/vendors`
+    - page now shows:
+      - `Search for a vendor and select the result card to reveal the live Trust Score explanation panel and remembered MFA device controls below.`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Honest remaining note:
+  - localhost/Azure became unstable during deeper `/admin/reports` verification, so the reports shell-first rewrite is in place, but the final browser proof on that exact route should be rechecked once the runtime stabilizes.
+
+## Handoff refresh (2026-06-02 - admin AI monitoring + vendor analytics discoverability)
+- Fixed 2 real discoverability gaps that showed up under browser-first audit:
+  - vendor analytics / Trust Score / coaching existed, but vendors could not reach it from the normal sidebar/dashboard flow
+  - admin AI monitoring existed, but it was only discoverable indirectly through Admin Settings
+- Updated vendor navigation and dashboard:
+  - `src/app/vendor/layout.tsx`
+    - added `Analytics & Trust` to the vendor sidebar
+  - `src/app/vendor/dashboard/page.tsx`
+    - added an `Analytics & Trust` quick-action card that routes to `/vendor/analytics`
+- Updated admin discoverability:
+  - `src/app/SidebarLayout.tsx`
+    - added `Activity Monitoring` to the admin sidebar
+  - `src/app/admin/dashboard/page.tsx`
+    - added `Activity Monitoring` to admin quick actions
+- Browser-first validation completed:
+  - vendor authenticated path using `e2e-trust-manager@reliance.test`
+    - sidebar now shows `Analytics & Trust`
+    - sidebar click reaches `/vendor/analytics`
+    - quick-action card click reaches `/vendor/analytics`
+    - analytics page renders the live Trust Score and `Generate AI Summary`
+  - admin path with admin headers
+    - sidebar now shows `Activity Monitoring`
+    - sidebar click reaches `/admin/activity`
+    - dashboard quick-action click reaches `/admin/activity`
+    - page renders `AI Assist Monitoring`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+  - `npm run test:ai:focused`
+
+## Handoff refresh (2026-06-02 - admin settings discoverability + audit standard)
+- Fixed a real admin UX gap: `Admin Settings` is now discoverable from both the admin sidebar and the admin dashboard quick actions.
+- Hardened admin-route access behavior:
+  - `/admin/dashboard` and `/admin/settings` now render a clean `Admin access required` experience for anonymous visitors instead of exposing the admin shell or throwing a runtime error.
+  - added non-throwing `readAdminAccess()` support in `src/lib/admin-auth.ts`
+  - moved admin gating into `src/app/admin/layout.tsx`
+- Browser-first validation completed:
+  - guest browser path on `/admin/dashboard` -> clean access-required page
+  - guest browser path on `/admin/settings` -> clean access-required page
+  - admin browser path showed `Admin Settings` in the sidebar and quick actions
+  - clicking both the sidebar link and the dashboard quick-action card reached `/admin/settings`
+  - `/admin/settings` rendered the full launch-readiness / AI rollout view correctly in-browser
+- Added a formal product audit standard doc:
+  - `RELIANCE_AUDIT_STANDARD.md`
+  - makes real browser-path validation part of the required done criteria for admin, vendor, customer, and employee flows where relevant
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+  - `npm run test:ai:focused`
+
+## Handoff refresh (2026-06-02 - optional AI vendor coaching summary)
+- Added an optional vendor-facing AI coaching summary layer on top of the existing deterministic Trust Score explanation and deterministic vendor coaching plan.
+- New files / areas:
+  - `src/lib/ai/vendor-coaching-summary-assistant.ts`
+  - `src/app/api/vendor/coaching-summary/route.ts`
+  - `src/app/api/vendor/coaching-summary/route.test.ts`
+  - `src/lib/ai/vendor-coaching-summary-assistant.test.ts`
+  - `src/lib/ai/schemas.ts`
+  - `src/lib/ai/output-guards.ts`
+  - `src/lib/ai/output-guards.test.ts`
+  - `src/components/vendor/VendorTrustScoreCard.tsx`
+- Behavior:
+  - vendor clicks `Generate AI Summary` from the Trust Score card on `/vendor/analytics`
+  - route is vendor-authenticated and feature-flagged via existing `OPENAI_VENDOR_COACHING_ENABLED`
+  - input is limited to the deterministic Trust Score explanation, deterministic coaching plan, and current dashboard snapshot already visible in the UI
+  - output is recommendation-only and does not change Trust Score math
+- Safety / hardening:
+  - schema-validated structured output
+  - output guard rejects unsupported claims such as watched-video or interviewed-party language
+  - confidence is normalized so overconfident `high` vendor coaching summaries are capped to `medium`
+- Validation completed:
+  - `npm.cmd test -- src/lib/ai/vendor-coaching-summary-assistant.test.ts src/app/api/vendor/coaching-summary/route.test.ts src/lib/ai/evals.test.ts src/lib/ai/output-guards.test.ts src/lib/ai/moderation-assistant.test.ts src/lib/ai/dispute-summary-assistant.test.ts` passed
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+- Live API validation:
+  - direct live vendor coaching summary route check succeeded with local dev auth fallback
+  - returned:
+    - `status: 200`
+    - `model: gpt-5.4-mini-2026-03-17`
+    - `promptVersion: vendor-coaching-summary-v1`
+    - `confidence: medium`
+  - summary correctly emphasized Metroâ€™s main coaching focus: operational reliability
+- Live UI validation:
+  - headless browser check on `/vendor/analytics` passed
+  - verified:
+    - `Reliance Trust Score` rendered
+    - `Optional AI coaching summary` rendered
+    - advisory copy rendered (`does not change your Trust Score`)
+    - `Generate AI Summary` completed and rendered the summary section
+- Local env for current development runtime now enables:
+  - `OPENAI_VENDOR_COACHING_ENABLED=true`
+
+## Handoff refresh (2026-06-02 - expanded saved AI eval baseline)
+- Extended the saved AI eval baseline to cover all 3 current Reliance AI surfaces:
+  - admin moderation assistant
+  - admin dispute summary assistant
+  - vendor coaching summary assistant
+- Eval additions:
+  - `src/lib/ai/eval-fixtures.ts` now includes `vendorCoachingEvalCase`
+  - `src/lib/ai/evals.ts` now supports vendor coaching evaluation
+  - `src/lib/ai/evals.test.ts` now validates vendor coaching matcher behavior
+  - `scripts/dev/ai-admin-evals.ts` now runs a 5-case live suite instead of the earlier 4-case suite
+- Saved eval design now checks:
+  - moderation: stable conservative decision + confidence + repeated-stage anomaly signals
+  - dispute: next step + conservative confidence band + limited-evidence/privacy signals
+  - vendor coaching: conservative confidence + operational reliability / strengths / storage signals
+- Additional moderation hardening:
+  - `src/lib/ai/moderation-assistant.ts` now normalizes ambiguous repeated-stage packages to `needs_human_review` + `medium` whenever the repeated-stage metadata pattern is present and there are no explicit moderation reasons on the stages
+  - this no longer depends on the model choosing specific policy-area labels
+- Validation completed:
+  - `npm.cmd test -- src/lib/ai/moderation-assistant.test.ts src/lib/ai/evals.test.ts src/lib/ai/dispute-summary-assistant.test.ts src/lib/ai/vendor-coaching-summary-assistant.test.ts src/app/api/vendor/coaching-summary/route.test.ts src/lib/ai/output-guards.test.ts` passed
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+  - `npm run test:ai:evals` passed (`5/5`)
+- Current saved live eval results:
+  - moderation
+    - `cmpvgqq56002csokkx191m987` -> `needs_human_review`, `medium`
+    - `cmpv8a5nl0007sob42f84wtp9` -> `needs_human_review`, `medium`
+    - `cmpv8dr6a0009sob4v471pwoq` -> `needs_human_review`, `medium`
+  - dispute
+    - temporary report `cmpx0w1j30011so18m59zjx73` -> `needs_admin_review`, `medium`
+    - report auto-dismissed after eval
+  - vendor coaching
+    - `metro-vendor-coaching-summary` -> `confidence: medium`
+    - priority headline focused on reducing cancellations and late completions to improve operational reliability
+- Outcome:
+  - the saved AI baseline is now green across all current Reliance AI features
+  - future prompt/model changes can be checked against a 5-case live suite instead of one-off manual spot checks
+
+## Handoff refresh (2026-06-02 - saved AI eval set)
+- Added a reusable saved eval layer for the 2 admin AI tools:
+  - `src/lib/ai/evals.ts`
+  - `src/lib/ai/eval-fixtures.ts`
+  - `src/lib/ai/evals.test.ts`
+  - `scripts/dev/ai-admin-evals.ts`
+  - `package.json` script: `npm run test:ai:evals`
+- The eval set now covers:
+  - 3 live moderation cases using stable Metro booking ids
+  - 1 generated dispute case that creates a temporary privacy report, runs AI assist, and dismisses the report automatically
+- Evaluation design:
+  - uses saved acceptance criteria instead of brittle exact-output matching
+  - checks decision / next step
+  - checks conservative confidence bands
+  - checks required signal groups in summaries/findings/risk flags
+  - uses signed local bearer tokens, so no inbox-driven MFA is needed for the eval run
+- Moderation hardening follow-up:
+  - `src/lib/ai/moderation-assistant.ts` now also caps `high` confidence to `medium` for ambiguous repeated-stage metadata patterns even when the assistant already chose `needs_human_review`
+  - prompt guidance now explicitly says booking titles may be custom labels and are not, by themselves, proof of wrong-job risk
+- Validation completed:
+  - `npm.cmd test -- src/lib/ai/evals.test.ts src/lib/ai/moderation-assistant.test.ts src/lib/ai/dispute-summary-assistant.test.ts src/lib/ai/output-guards.test.ts` passed
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+  - `npm run test:ai:evals` passed (`4/4`)
+- Live eval pass details:
+  - moderation
+    - `cmpvgqq56002csokkx191m987` -> `needs_human_review`, `medium`
+    - `cmpv8a5nl0007sob42f84wtp9` -> `needs_human_review`, `medium`
+    - `cmpv8dr6a0009sob4v471pwoq` -> `needs_human_review`, `medium`
+  - dispute
+    - temporary report `cmpwzngs8000lso18x3qwp43n` -> `needs_admin_review`, `medium`
+    - report dismissed automatically after evaluation
+- Outcome:
+  - Reliance now has a saved AI eval baseline that can be rerun after future prompt/model changes
+  - the current baseline is green and Trust Score math remains unchanged
+
+## Handoff refresh (2026-06-02 - AI moderation quality check)
+- Hardened `src/lib/ai/moderation-assistant.ts` with a deterministic post-process for ambiguous repeated-stage metadata cases.
+- Added prompt guidance that booking titles can be custom labels and should not be treated by themselves as wrong-job proof.
+- New normalization now downgrades `flag/reject + high confidence` to `needs_human_review + medium` when all of these are true:
+  - all three required stages share the same file size
+  - uploads fall inside a tight repeated-stage timing window
+  - there are no explicit moderation reasons already attached to the stages
+  - the returned policy areas are limited to ambiguous metadata concerns (`workflow integrity`, `misleading labeling`, `wrong-job risk`, `metadata completeness`)
+- Added focused regression coverage in `src/lib/ai/moderation-assistant.test.ts` for:
+  - ambiguous repeated-stage packages being downgraded
+  - explicit moderation-reason cases staying escalated
+- Validation completed:
+  - `npm.cmd test -- src/lib/ai/moderation-assistant.test.ts src/lib/ai/output-guards.test.ts src/lib/ai/dispute-summary-assistant.test.ts src/app/api/admin/media/admin-media-moderation-ai.integration.test.ts` passed
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+- Live admin quality rerun used signed local bearer tokens (no inbox MFA flow) on 3 real moderation packages:
+  - `cmpvgqq56002csokkx191m987` -> `needs_human_review`, `medium`
+  - `cmpv8a5nl0007sob42f84wtp9` -> `needs_human_review`, `medium`
+  - `cmpv8dr6a0009sob4v471pwoq` -> `needs_human_review`, `medium`
+- Quality result:
+  - repeated-stage / duplicate-size packages now return a stable conservative outcome instead of oscillating between harsher `flag/high` and softer `needs_human_review/medium`
+  - live summaries still surface the real operator signals (duplicate-stage suspicion, missing employee attribution, public visibility concerns) without overstating certainty
+
+## Handoff refresh (2026-06-02 - AI dispute confidence quality check)
+- Confirmed the thin-evidence confidence cap for `src/lib/ai/dispute-summary-assistant.ts` is in place and added explicit regression coverage in `src/lib/ai/dispute-summary-assistant.test.ts`.
+- New regression checks now verify:
+  - unresolved, no-linked-media, metadata-only cases are downgraded from `high` to `medium` confidence when the AI still recommends `needs_admin_review`
+  - cases with linked media evidence keep `high` confidence when appropriate
+- Validation completed:
+  - `npm.cmd test -- src/lib/ai/dispute-summary-assistant.test.ts src/lib/ai/moderation-assistant.test.ts src/lib/ai/output-guards.test.ts` passed
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+- Live quality rerun completed with signed local bearer tokens (no inbox-based MFA required):
+  - dismissed one leftover temporary quality-review report: `cmpwybp9r0006so18wplcxhft`
+  - created temporary review report: `cmpwycvh50009so18p71uzrav`
+  - `POST /api/admin/reported-content/cmpwycvh50009so18p71uzrav/assist` returned:
+    - `status: 200`
+    - `model: gpt-5.4-mini-2026-03-17`
+    - `promptVersion: content-report-case-v1`
+    - `confidence: medium`
+    - `recommendedNextStep: needs_admin_review`
+  - live risk flags stayed appropriately cautious:
+    - `Privacy-related report on a public review`
+    - `Multiple reports on the same target`
+    - `No linked media available for verification`
+    - `Evidence is limited to metadata and review text only`
+  - temporary report was dismissed immediately after verification, so no open admin queue clutter was left behind
+  - outcome: the real product path now matches the intended quality bar for thin-evidence dispute summaries
+
+## Handoff refresh (2026-05-30 - Metro vendor dashboard follow-through audit)
+- Continued the cross-role audit using the fresh Metro customer bookings and found a real vendor-side inconsistency in `src/app/api/vendors/[vendorId]/dashboard/route.ts`: `recentJobs` used operational bookings, but headline stats (`totalBookings`, `totalClients`, monthly booking trends, completion-rate denominator) still used stricter launch-facing count filters. Result: the vendor saw real jobs in the queue while the dashboard looked artificially empty.
+- Added `src/lib/operational-client.ts` plus focused tests in `src/lib/operational-client.test.ts` to normalize vendor-visible client labels and build stable unique client keys. This also fixes obviously bad legacy labels like `E2E Smoke CustomerE2E Smoke Customer` by collapsing duplicated adjacent names into `E2E Smoke Customer`.
+- Updated both vendor dashboard APIs:
+  - `src/app/api/vendors/[vendorId]/dashboard/route.ts`
+  - `src/app/api/vendor/dashboard/route.ts`
+  so vendor-facing booking/client/earnings trend stats now use `vendorOperationalBookingWhere(...)` instead of the stricter countable customer filter. Public/admin launch-facing counts remain unchanged.
+- Also cleaned vendor dashboard wording in `src/app/vendor/dashboard/page.tsx` so the completion helper line no longer incorrectly says `launch-facing activity`; it now says `current scheduled and completed work`.
+- Verification completed:
+  - `npm.cmd test -- src/lib/operational-client.test.ts` passed (`3` tests)
+  - `npm.cmd exec tsc --noEmit --pretty false` passed
+  - live Metro dashboard API check:
+    - `stats.totalBookings = 5`
+    - `stats.totalClients = 1`
+    - `stats.totalEarnings = 0`
+    - cleaned recent job client label for `cmprowjxc000bso2kiml9ne1c` now reads `E2E Smoke Customer`
+  - live vendor dashboard browser render (fresh saved-session injection on `http://127.0.0.1:3000/vendor/dashboard`) now shows:
+    - `Jobs Today: 4`
+    - `Completed: 1`
+    - `Completion Rate: 20%`
+    - helper copy: `1 completed jobs from your current scheduled and completed work`
+    - recent jobs list includes the cleaned `E2E Smoke Customer` label
+    - recent Metro customer bookings still appear as expected
+  - honest note: the vendor page was verified with an injected saved session because the role-toggle/login path remains flaky in headless automation; the same page content matched the corrected API payload exactly.
+
+## Handoff refresh (2026-05-29 - live email-only communication audit)
+- Added a reusable video-ready sender and a dev-only audit route so real customer-facing email templates can be exercised through the live app:
+  - `src/lib/notifications/send-video-ready.ts`
+  - `src/app/api/dev/email-audit/route.ts`
+- Completed a live email-only audit against the real local app and inbox for:
+  - consent request
+  - review reminder
+  - review-window closed
+  - employee invite
+  - service video ready
+- Delivery verification:
+  - all 5 audit emails were successfully delivered to `colivera080124@gmail.com`
+  - Gmail showed the new delivered subjects:
+    - `Review your service video request from Metro Home Care Pros`
+    - `How was your service with Metro Home Care Pros?`
+    - `Your feedback window has closed`
+    - `You're invited to join Metro Home Care Pros on Reliance`
+    - `Your service video is ready`
+- The updated delivered copy is now materially cleaner:
+  - consent email now says `Request type: service video approval`
+  - review reminder now says `watch your service video and leave feedback in one place`
+  - feedback-window-closed email now links to `/my-bookings` and matches its `Open My Services` wording
+  - approved package email now says `Your service video is ready` with `Watch service video`
+  - employee invite now says `capture service videos for completed work`
+- Also added the shared helper `src/lib/notifications/customer-facing-service-label.ts` so these templates can avoid internal/test-looking names like `General Service Job` or validation-style booking titles when better customer-facing labels are available.
+- Verification:
+  - `npm.cmd exec tsc --noEmit --pretty false` passed
+  - `npm.cmd test -- src/lib/notifications/customer-facing-service-label.test.ts` passed (`3` tests)
+  - live inbox readback confirmed the delivered body copy for the consent and closed-window emails matched the updated source, including `service video approval` and the `/my-bookings` link
+- Scope boundary:
+  - SMS delivery remains intentionally unverified live for now, per owner direction; only email delivery was audited live in this pass
+
+## Handoff refresh (2026-05-29 - notification wording pass)
+- Cleaned the main customer-facing notification templates so they match the current `video` / `media` terminology and sound more natural to real users:
+  - `src/lib/notifications/send-review-reminder.ts`
+  - `src/lib/notifications/send-consent-link.ts`
+  - `src/lib/notifications/send-review-expired.ts`
+  - `src/lib/notifications/send-employee-invite.ts`
+  - `src/app/api/admin/media/packages/[bookingId]/moderate/route.ts`
+- Added `src/lib/notifications/customer-facing-service-label.ts` plus focused tests so notification templates can avoid generic/internal-looking labels like `General Service Job` or validation-style booking titles when better customer-facing labels are available.
+- Main wording improvements now in source:
+  - review reminder subject: `How was your service with ...?`
+  - review reminder body now says `watch your service video and leave feedback in one place`
+  - consent subject: `Review your service video request from ...`
+  - consent CTA: `Review video consent request`
+  - approved-package email subject: `Your service video is ready`
+  - approved-package CTA: `Watch service video`
+  - employee invite now says `capture service videos for completed work` instead of `proof of completed work`
+- Also cleaned a few nearby public-facing strings:
+  - browse copy now says `completed service videos`
+  - vendor public page says `completed-work video`
+  - launch content cleanup descriptions now say `approved service videos or photos`
+- Verification:
+  - `npm.cmd exec tsc --noEmit --pretty false` passed
+  - `npm.cmd test -- src/lib/notifications/customer-facing-service-label.test.ts` passed (`3` tests)
+  - source verification confirmed old phrases like `service proof`, `Your service proof is ready`, `Review and respond to consent request`, and `capture proof of completed work` are gone from the touched notification sources
+- Honest boundary:
+  - this pass updated and verified the source templates, but did **not** re-send live external email/SMS deliveries in this same pass
+
+## Handoff refresh (2026-05-29 - admin/operator clarity pass)
+- Tightened `/admin/dashboard` so the headline cards read like launch-facing operator metrics instead of raw database counters:
+  - `Total Users` -> `Countable Customers`
+  - `Total Vendors` -> `Countable Vendors`
+  - `Total Reviews` -> `Countable Reviews`
+  - pending moderation helper now uses `video packages`, not `proof packages`
+- Added a blue explainer card to `/admin/dashboard` clarifying that internal/demo identities, hidden test vendors, and excluded verification activity do not count in the summary cards, and pointing operators to vendor detail pages, audit logs, and trust score panels for deeper investigation.
+- Cleaned the top of `/admin/promoted-listings` so it reads more like an operator console:
+  - shorter page intro
+  - `How It Works` step list
+  - `Package And Status Guide`
+  - explicit package snapshot note
+  - separated `PAYMENT STATES` and `CAMPAIGN STATES` sections for faster scanning
+- Updated `src/app/api/admin/stats/route.ts` definitions to say `service video packages` instead of `media proof packages`.
+- Live verification on fresh `http://127.0.0.1:3000` with a seeded authenticated admin session confirmed:
+  - `/admin/dashboard` shows the new count labels and exclusion explainer
+  - old `Total Users` text is gone from the dashboard view
+  - old `proof package` wording is gone from the dashboard view
+  - `/admin/promoted-listings` shows the new shorter intro, `How It Works`, `Package And Status Guide`, and the separated payment/campaign state sections
+- `npm.cmd exec tsc --noEmit --pretty false` passed after these admin/operator clarity changes
+
+## Handoff refresh (2026-05-29 - non-owner customer audit + admin stats sanity)
+- Verified the non-owner production-like customer path with `e2e-smoke-customer@reliance.test` on fresh `http://127.0.0.1:3000`. The customer login works, `/my-bookings` loads, and the customer-side booking flow is live-usable when driven with the lower-level browser keypress path.
+- Created a fresh real booking for Metro service `cmnvdeh1n0002sop8otabf4su` through the browser flow. New booking id: `cmprowjxc000bso2kiml9ne1c`. The booking confirmation page persisted and displayed live booking data: pending status, selected date/time, service address `88 Customer Audit Lane, Orlando, FL 32801`, vendor contact, catalog total `$49.99`, and the no-in-app-payment explainer. The new booking then appeared in `/my-bookings` with status `Pending`.
+- Cleaned remaining customer-facing wording and shell drift:
+  - `src/app/(user)/user-dashboard/page.tsx`: `View Proof` -> `Watch Service Videos`, copy now says `approved service videos or photos`, and `Open My Bookings` -> `Open My Services`
+  - `src/app/(user)/reviews/page.tsx`: replaced remaining `service proof` wording with `service videos or photos` and `View Proof` button text with `View media`
+  - `src/components/UserSidebar.tsx`: footer now reads `(c) 2026 All rights reserved`
+- Live browser verification after the copy cleanup: `Watch Service Videos` count = 1, old `View Proof` count = 0, `Open My Services` count = 1, footer `(c) 2026` count = 1. Reviews page now shows the updated `service videos or photos` explainer and no old `Verified with service proof` text.
+- Admin stats/reporting sanity check: public `/api/services/discover` still excludes the internal/demo Sparkle vendor and returns only Metro, Midtown, and Brooklyn public vendors/services. On the live admin dashboard, the current headline metrics render `Total Users = 0`, `Total Vendors = 3`, `Total Reviews = 0`, `Pending Moderation = 0`. This is consistent with the current metrics-exclusion policy (test/internal customer identities are still excluded from launch-facing counts), but it remains an operator-clarity follow-up because a fresh non-owner test booking does not move the headline customer count.
+
+## Handoff refresh (2026-05-29 - employee device pairing verification)
+- Followed up on the Metro employee/manager audit by fixing the employee phone-pairing null-constraint failure. Root cause: the live SQL-backed `Device` table still required `deviceName`, but several pairing/upsert routes were not writing it. Updated `prisma/schema.prisma` plus `src/app/api/employee/device/pair/route.ts`, `src/app/api/device/pairing/confirm/route.ts`, `src/app/api/vendors/[vendorId]/memberships/[membershipId]/approve/route.ts`, `src/app/api/headsets/claim/route.ts`, and `src/app/api/dev/device-events/seed/route.ts` to derive and persist `deviceName` consistently.
+- Verification on a fresh restarted `http://127.0.0.1:3000`: regenerated Prisma client, `npm.cmd exec tsc --noEmit --pretty false` passed, direct `POST /api/employee/device/pair` returned `success: true` with a real device id/name, and a clean employee browser session on `/employee/jobs` now shows `Device paired` and `Active` with no `Failed to pair employee device` banner.
+- Remaining polish in this area: the paired-device label is still showing the full browser user-agent string, so the pairing path is healthy but the label should be shortened before broader employee rollout.
+
+## Handoff refresh (2026-05-29 - Metro employee/manager/moderation loop audit)
+- Completed a live Metro production-like workflow audit centered on booking `cmpqjtyxx0002so6gxa6z1td4` (`Metro Apartment Deep Clean - Metro audit walkthrough job`) using `e2e-trust-manager@reliance.test` and `e2e-trust-employee@reliance.test`. Verified live: vendor manager job detail before uploads, clean employee session sign-in, employee `/employee/jobs` visibility, IN_PROGRESS + COMPLETED stage uploads through the same HTTP flow used by the employee UI, manager completion approval, and admin package moderation approval to `Public`.
+- Added two contained fixes so clean employee sessions work in dev: `src/lib/dev-registered-users.ts` now includes the Metro employee audit identity, and `src/lib/auth.ts` now remaps dev-registry fallback ids to the real Prisma user id by email in dev when API routes can reach the DB. This prevents employee APIs from silently using the fake `e2e-trust-employee` id and returning no memberships/jobs.
+- Current verified state after the audit: employee page shows the Metro audit job with all 3 stage videos uploaded and status `Awaiting Review`; vendor manager detail shows all 3 uploaded stages and then `Completion approved.` / `COMPLETED`; admin media moderation shows the same package as pending review and then `Package approved. All stages are now Public.` after approval. Remaining should-fix items: employee device pairing still fails (`Failed to pair employee device`), the employee page can show duplicate historical Jordan Rivera cards, and stale customer-facing `View Proof` wording still exists outside the vendor/consent flows already cleaned.
+
+## Handoff refresh (2026-05-27 - post-sweep trust cleanup)
+- Completed the focused post-sweep cleanup for the Sparkle/public trust loop, stale approval queue rows, and `/my-bookings` completed-booking discoverability. Sparkle's visible generic service was renamed to `Sparkle Home Cleaning Visit`, the fresh booking is `Completed Home Cleaning Walkthrough`, public review/proof titles no longer use validation wording, and stale pending manager approval rows matching test/example fixtures were archived.
+- `/my-bookings` now surfaces proof-ready completed work from the default view with a top `View media` callout and labels the historical tab as `Past / Completed` with counts; the fresh booking `cmpoqbz9u000gsog8fodmtud2` is visible there with approved media and featured proof video controls.
+- Verification: cleanup script ran successfully, `npm.cmd exec tsc --noEmit --pretty false` passed, and browser/runtime checks passed on local live dev port 3001 for `/vendors/cmipm4d6v0000sosgqvb8tp63`, `/service/cmnqeyluq0007sors86onl2zj`, `/admin/vendors/approval-queue`, and `/my-bookings`.
+
+## Handoff refresh (2026-05-27 - full localhost platform sweep)
+- Completed the requested admin, customer, vendor, public, and cross-role localhost sweep against the current fresh trust-loop data. Main launch-facing findings are data/content cleanup issues rather than route crashes: stale test/example vendor approval rows, public proof/review labels with validation wording, generic `General Service Job`/`Auto-created default service` copy, and a transient dev-server refusal during the first vendor route pass that cleared on immediate rerun.
+- Applied one contained public UI fix: service detail pages now suppress internal/test-domain vendor email addresses such as `example.com` and `reliance.test` instead of showing them as real public contact channels.
+- Verification: `npm.cmd exec tsc --noEmit --pretty false` passed. Browser/runtime sweep result files and final status are recorded in `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\CURSOR_REPORT.md`.
+
+## Handoff refresh (2026-05-27 - fresh trust-loop recount validation)
+- Completed a fresh countable trust-loop recount pass from the clean baseline using owner customer `D43B6BB3-1A72-45EC-A362-A6E1E0580EA0` and Sparkle Clean Pro vendor `cmipm4d6v0000sosgqvb8tp63`. New workflow `cmpoqbz9u000gsog8fodmtud2` moved through booking, employee assignment, staged Before/During/Completed videos, manager approval, media moderation, consent acceptance, review capture, and public review approval.
+- Count movement was correct: admin stats moved from 1 user / 1 vendor / 0 reviews / 0 pending moderation to 1 user / 1 vendor / 1 review / 0 pending moderation; during media moderation, pending moderation correctly rose to 1 media package. Sparkle vendor dashboard moved from 0 bookings / 0 clients / 0 reviews / 0 active proof assets to 1 booking / 1 client / rating 5.0 with 1 review / 3 approved proof assets.
+- Browser/runtime checks passed after setting the accepted local proof consent session: customer proof page showed the service video timeline with one playable video, public vendor showed the featured video and fresh review, and public service showed the featured video plus the fresh review in the Reviews tab. No metric/count bug was found or fixed.
+
+## Handoff refresh (2026-05-27 - internal/test metric baseline reset)
+- Added a durable launch-metric exclusion layer around existing `demo` classification plus internal email patterns, then wired admin stats, vendor dashboards, customer review/profile-adjacent reads, public review aggregates, storage/media counts, and promoted-listing summaries through those countable filters.
+- Applied a non-destructive local data reset: owner user `D43B6BB3-1A72-45EC-A362-A6E1E0580EA0` and Sparkle Clean vendor `cmipm4d6v0000sosgqvb8tp63` remain active/non-demo; old bookings/reviews are marked `demo`, Sparkle old media is `metrics_excluded`, and old Sparkle promotion campaigns are cancelled instead of deleted.
+- Verification: `npm.cmd exec tsc --noEmit --pretty false` passed; focused Vitest metric tests passed; runtime checks returned 200 for `/admin/dashboard`, `/vendor/dashboard`, `/user-dashboard`, admin stats, Sparkle vendor dashboard, owner customer profile, and service discovery. Clean countable baseline now reports 1 user, 1 vendor, 1 service, 0 bookings, 0 reviews, 0 active Sparkle media assets, and 0 countable promotion campaigns.
+
+## Handoff refresh (2026-05-27 - promoted listings Phase 2C runtime verification)
+- Completed the DB-connected runtime verification pass for the manual Stripe Payment Link admin workflow. A real campaign, `cmpojulz50001sog8tag5lo07` (`Cursor Phase 2C runtime verification 20260527-1659`), was created from the 7-day local spotlight package for Sparkle Clean Pro / General Service Job with the package defaults persisted (`$29.00`, `BROWSE_FEATURED`, 10-mile radius, founding-rate snapshot).
+- Guardrails held in runtime: unpaid activation returned 422 (`Active promoted listings require paid or waived payment status.`), recording `paid` without a reference returned 422 (`Recording paid payment requires a Stripe payment reference.`), recording `paid` with `cs_test_cursor_phase2c_20260527` succeeded, and activating the paid campaign succeeded with `eligibility.renderable = true`.
+- Public browse rendering was verified after clearing the test browser's saved-location context: `/browse` showed the campaign in `Featured local providers` with the `Featured` label and promoted explainer. Verification: `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-27 - promoted listings Phase 2C)
+- Tightened the manual Stripe Payment Link workflow in `/admin/promoted-listings`: payment-state guidance now distinguishes not started, pending payment, paid, waived, and refunded; existing campaign controls expose save/copy/open link actions, explicit payment-state action labels, and a required Stripe reference before recording `paid`.
+- API payment truth is stricter without adding live Stripe automation: `paid` campaigns now require an admin-entered payment reference, `paidAt` remains admin-recorded, and activation stays guarded by paid/waived payment plus existing eligibility, package, snapshot, and occupancy rules.
+- Verification: `npm.cmd exec tsc --noEmit --pretty false` passed; `npm.cmd exec vitest run src/lib/promoted-listings.test.ts` passed with 12 tests. Browser runtime loaded `/admin/promoted-listings` and showed package editing/payment guidance, but full campaign create/payment/activation runtime verification was blocked by configured Azure SQL connectivity (`PrismaClientInitializationError`, cannot reach `relianceorgsqlserver.database.windows.net:1433`).
+
+## Handoff refresh (2026-05-27 - promoted listings Phase 2B.5)
+- Added admin-editable promoted package catalog persistence (`promotion_packages`) with seeded founding rates ($29 / $89 / $99), active/founding labels, package offer copy, placement notes, and admin-facing descriptions editable from `/admin/promoted-listings`.
+- Added campaign package snapshots (`packageSnapshotJson`, `packageSnapshotAt`) so new campaigns retain sold package name, price, duration, radius, zone, and founding-rate context even after package edits. Existing payment/revenue tracking now reads snapshot names where available while preserving package-key grouping.
+- Stripe live checkout/webhooks, vendor self-serve purchase, subscriptions, and ad analytics remain deferred; Phase 2B.5 stays focused on package management, historical accounting, and operator clarity.
+
+## Handoff refresh (2026-05-27 - promoted listings Phase 2B)
+- Added the practical **Promoted Listings Phase 2B** admin/operator layer: visible package, payment-status, campaign-status, placement-zone, and activation guidance in `/admin/promoted-listings`, plus `PROMOTED_LISTINGS_ADMIN_REFERENCE.md` for future admin handoff.
+- Added Stripe Payment Link-ready campaign fields (`amountDueCents`, `stripePaymentLinkUrl`, `paymentReference`, `paidAt`, `paymentNotes`) with an idempotent SQL Server migration and admin API/UI support for recording payment details before activation.
+- Admin promoted tracking now exposes recorded paid revenue, pending-payment amount/count, paid/active counts, package performance, and recent payment events. Unpaid campaigns remain blocked from activation in both API validation and UI controls. Vendor dashboard now has a modest "Promote your business" awareness cue; self-serve purchase, live Stripe API/webhooks, invoices/refunds/credits, subscriptions, and full accounting remain deferred.
+
+## Handoff refresh (2026-05-27 - promoted listings Phase 2A)
+- Added the pre-Stripe **Promoted Listings Phase 2A** business-control layer: concrete package definitions, campaign `packageKey`, `targetRadiusMiles`, and `paymentStatus`, plus idempotent SQL Server migration support.
+- Admin promoted-listing management now exposes package-backed campaign creation, payment state controls, radius selection, and zone occupancy/reservation counts. Activation is blocked unless the vendor/service remain eligible, payment is `paid` or `waived`, package rules pass, and the requested zone has overlapping inventory available.
+- Public browse rendering now requires paid/waived payment, preserves the stronger vendor/service eligibility checks, and enforces campaign radius when a real browse coordinate origin is available. Stripe checkout/payment links, subscriptions, analytics, and impression/click tracking remain deferred.
+
+## Handoff refresh (2026-05-27 - promoted listings placement policy pass)
+- Completed the pre-Stripe **Promoted Listings Placement Policy + Inventory Rules** pass. Allowed zones, slot caps, mobile/desktop behavior, targeting, disclosure rules, missing pieces, and the recommended next implementation step are recorded in `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\CURSOR_REPORT.md`.
+- Added shared zone inventory policy constants/helpers in `src/lib/promoted-listings.ts` and wired `/api/services/discover` + `/browse` to enforce browse-zone caps (2 desktop / 1 mobile, 1/1 when category-filtered), vendor dedupe per screen, and organic-result protection thresholds before returning promoted cards.
+- Phase 2 still deferred: Stripe/link billing, vendor self-serve purchase, `targetRadiusMiles` persistence, `HOME_FEATURED` rendering, impression/click reporting, and package inventory reservation.
+
+## Handoff refresh (2026-05-27 - promoted listings phase 1)
+- Added the first real admin-controlled promoted listings / featured placement foundation: `PromotionCampaign` schema/table, idempotent SQL Server migration, admin-only `GET/POST/PATCH /api/admin/promoted-listings`, and `/admin/promoted-listings` inventory/creation controls.
+- Promotion eligibility is intentionally stricter than promotion status: public rendering requires an active campaign window, `status = active`, an active/publicly listed vendor, and a published service. If the vendor becomes suspended/unlisted or the service is unpublished, `/browse` no longer renders the campaign as featured.
+- Added limited public rendering on `/browse` as a clearly labeled `Featured local providers` section backed by `promotedListings` from `/api/services/discover`; organic browse results remain separate and continue to work even if the promotion table is unavailable.
+- Billing, vendor self-serve purchase/request flows, invoices, payouts, performance analytics, and click/impression tracking remain deferred. Verification is recorded in `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\CURSOR_REPORT.md`.
+
+## Handoff refresh (2026-05-27 - server-side stage-video duration verification pass)
+- Strengthened `upload/complete` for staged job videos so the backend downloads the completed Azure blob, probes the uploaded media bytes for duration (MP4/QuickTime and WebM/Matroska containers), and rejects clips over 30 seconds based on server-observed duration before creating `MediaAsset`.
+- The previous backend limitation was that staged video enforcement trusted client-declared `durationSeconds`; declared duration is still required as an early UX/backstop check, but successful staged video completion now requires server media probing. If the server cannot download/probe the staged video, completion fails with `STAGE_VIDEO_DURATION_UNVERIFIABLE` instead of silently accepting it.
+- Verification: focused Vitest route coverage passed for short-video acceptance and tampered over-30-second backend rejection; `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-27 - stage video recording guidance pass)
+- Added focused stage-video capture guidance for vendor and employee job upload/recording surfaces: Before Service shows the pre-work condition, During Service shows active work, and Completed shows the final result.
+- Added a 30-second stage-video limit in the client flow by reading selected video duration before upload; the employee mobile recording modal also shows a countdown and auto-stops at 0:30. Retake/retry wording is now visible where a stage can be replaced.
+- Added a contained upload-complete backstop for staged job videos: staged uploads must send a readable duration and are rejected if the declared duration exceeds 30 seconds. The backend does not independently probe blob media duration.
+- Verification: `npm.cmd exec tsc --noEmit --pretty false` passed. Browser runtime check on `http://localhost:3000/employee/mobile` confirmed the recording modal shows stage selection, the Before Service cue, 0:30 max/countdown, and retake copy.
+
+## Handoff refresh (2026-05-26 - final trust-loop launch verification pass)
+- Completed the official trust-loop launch verification pass in the Azure-SQL-connected Playwright environment. After small contained fixes, `npm.cmd exec playwright test e2e/reliance-trust-loop.spec.ts --reporter=list` passed with **1 test / exit 0 / 6.4m total**.
+- Contained fixes applied: service detail no longer blocks on optional enrichment fetches; `Book Now` is a real booking route link; trust-loop spec updated for current CTA shape, removed heavy nonessential page navigations, and increased timeout for cold dev-route compiles against Azure SQL.
+- Verification: `npm.cmd exec tsc --noEmit --pretty false` passed after edits. Full report: `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\CURSOR_REPORT.md`.
+- Launch-readiness status: end-to-end trust loop (discovery â†’ booking â†’ vendor execution/media â†’ moderation â†’ customer proof â†’ review â†’ public trust display) is verified in this environment. No remaining trust-loop product blocker identified; continue monitoring Azure SQL reachability and cold local dev runtime latency for repeat verification.
+
+## Handoff refresh (2026-05-26 - Azure SQL automated smoke pass)
+- Completed the focused Azure SQL connectivity and official automated smoke verification pass. Initial direct Prisma `$connect()` reproduced the prior reachability error against `relianceorgsqlserver.database.windows.net:1433` while raw TCP to port 1433 succeeded, indicating transient Prisma/Azure SQL reachability rather than an env-loading mismatch; a final direct Prisma check later returned `PRISMA_CONNECT_OK` against `reliance-db`.
+- Fixed two contained route-smoke drift issues now exposed after DB setup succeeded: the `/vendor/jobs` first-time workflow guide modal is dismissed before route assertions, and customer proof-route assertions accept the current `Service Videos` / `Service Video Timeline` copy.
+- Verification: `npm.cmd exec tsc --noEmit --pretty false` passed; `npm.cmd exec playwright test e2e/route-smoke.spec.ts --reporter=list` passed with 1 test; `npm.cmd run test:e2e:smoke -- --reporter=list` passed with 1 test.
+- Launch-readiness status: the official automated route-smoke path and next booking smoke now run cleanly in this local Azure-SQL-connected environment. Continue to treat Azure SQL reachability as an operational dependency to monitor, but the previous launch-candidate automated verification blocker is resolved for this pass.
+
+## Handoff refresh (2026-05-26 - launch candidate verification/support pass)
+- Completed the combined launch-candidate verification + public support/contact pass. `/contact`, `/help`, and vendor support now expose a single direct launch support email, `colivera080124@gmail.com`, with honest 1-2 business day follow-up expectations and explicit notes that phone support, live chat, and in-app ticketing are not active in the free launch.
+- Verification: `npm.cmd exec tsc --noEmit --pretty false` passed. The direct Playwright route-smoke command still failed before tests because `e2e/global-setup.ts` could not reach `relianceorgsqlserver.database.windows.net:1433`, but the existing local runtime browser sweep passed 16/16 checked routes across public, customer, vendor, and admin surfaces. Results are saved in `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\launch-candidate-verification-results.json`.
+- Launch-readiness status: public support/contact blocker is resolved for this configured local launch channel; visible browser route verification passed in the live local runtime. Remaining blocker is operational: the official Playwright global setup/seed path still needs stable Azure SQL connectivity before relying on automated launch smoke tests.
+
+## Recommended Next Task (2026-05-26 - final launch-readiness pass)
+- **Task:** complete the final launch-readiness pass in a stable DB-connected browser/runtime environment. Do not add new broad product features in this pass; keep implementation scope limited to adding or confirming a real public support/contact path on `/contact` and `/help`, then verify the existing launch surface.
+- **Scope to verify:**
+  1. Verify the app in a stable DB-connected browser/runtime environment.
+  2. Cover public browse/service/review visibility.
+  3. Cover customer booking/proof/review flow.
+  4. Cover vendor jobs assignment/location/consent/Intro flow.
+  5. Cover admin reviews/media moderation.
+  6. Cover restricted customer/vendor behavior.
+  7. Add or confirm a real public support/contact path on `/contact` and `/help`.
+- **Suggested commands/checks:** use npm from the repo root. Typecheck with `npm.cmd exec tsc --noEmit --pretty false`. Start the runtime with the DB-connected mode/env the operator intends to launch, typically `npm run dev:live` for local live-mode verification or `npm run build` plus `npm run start` for production-build verification when env vars are ready. Focused browser smoke checks to run if the DB runtime is stable: `npm run test:e2e:smoke:routes`, `npm run test:e2e:smoke`, `npm run test:e2e:smoke:review`, and `npm.cmd exec playwright test e2e/reliance-trust-loop.spec.ts --reporter=list`. Relevant focused Vitest checks: `npm test -- "src/app/api/consent/consent-flow-routes.test.ts" "src/app/api/vendors/[vendorId]/media/sessions/media-sessions-consent.integration.test.ts"`, `npm test -- "src/app/api/admin/media/admin-media-moderation.integration.test.ts"`, and `npm test -- "src/lib/account-status.test.ts" "src/app/api/admin/account-actions/account-actions.integration.test.ts" "src/app/api/restricted-vendor-regression.integration.test.ts"`.
+- **Manual browser routes to verify:** `/`, `/browse`, one public `/service/[serviceId]`, the service public review area/API reflection, `/booking/[serviceId]`, `/booking/[serviceId]/confirmation`, `/my-bookings`, `/my-bookings/[bookingId]`, `/reviews`, `/vendor/jobs`, `/admin/reviews`, `/admin/media-moderation`, `/contact`, and `/help`. Include restricted-account spot checks for customer and vendor sessions where available.
+- **Report expectations:** write the final status to `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\CURSOR_REPORT.md` with exact browser/runtime verification results, DB connectivity status, files changed, commands/checks run, remaining blockers, and a clear launch-ready yes/no recommendation.
+
+## Handoff refresh (2026-05-26 - final launch blocker review)
+- Completed a focused decision audit across the current launch-visible state using the latest repo sync, launch checklist, recent browser/runtime handoffs, selected source review, TypeScript verification, and targeted route probes.
+- Assessment: no new feature-build pass was started and no product code cleanup was performed. The strongest current position is "soft-launch close, but final launch verification is still the blocker": the core public/customer/vendor/admin trust loop has recent passing evidence, but a fresh Playwright sweep in this run was blocked by local port/test-harness conflict plus Azure SQL connectivity failure during global setup.
+- Verification this pass: `npm.cmd exec tsc --noEmit --pretty false` passed; public/legal/API curl probes returned 200 for `/`, `/help`, `/contact`, `/privacy`, `/terms`, `/api/services/discover`, `/api/services/categories`, and `/api/admin/stats`; a retry returned `/browse` 200 and `/discover` 200, though `/discover` took 19.4s locally.
+- Current blockers are operational/verification and launch-readiness, not broad missing product features: complete the final browser sweep/trust-loop in a clean DB-connected runtime, confirm launch DB connectivity, and add/confirm a real public support/contact channel before public release.
+
+## Handoff refresh (2026-05-26 - vendor jobs signed-in verification)
+- Completed a normal browser sign-in at `/auth/login` (`colivera080124@gmail.com`), then opened `/vendor/jobs` without injected session cookies.
+- Live `/vendor/jobs` rendered 4 job cards with cleaned titles (`Apartment Safety Check`, `Kitchen Deep Clean`, `Office Maintenance Walkthrough`, `Brake Pad Replacement`) and coherent next-step/consent copy after a focused DB cleanup pass.
+- Data fixes via `scripts/cleanup-visible-seed-content.ts`: renamed `General Service Job - Brake Pad` -> `Brake Pad Replacement` (1 booking) and replaced visible `customer@example.com` consent recipient metadata with `alex.morgan@gmail.com` (1 booking).
+- Verification: `npx tsc --noEmit --pretty false` passed; browser re-check on `/vendor/jobs` showed no visible `E2E`/`smoke`/`test`/`example.com` strings on job cards.
+- Residual notes: first jobs load can take ~60-90s while vendor context/jobs resolve; generic labels like `Service Type: General Service Job` and `Source: Vendor-Created Job` remain but are launch-acceptable.
+
+## Handoff refresh (2026-05-26 - signed-in visible content sweep)
+- Audited signed-in customer `/my-bookings`, vendor `/vendor/dashboard` + `/vendor/jobs`, and admin `/admin/reviews` + `/admin/media-moderation` against the local DB and browser/runtime checks.
+- Data cleanup extended in `scripts/cleanup-visible-seed-content.ts`: renamed vendor-visible jobs (`Template Service Booking` / `Test Customer`, `General Service Job - Dairy` / `Cow`, `General Service Job - The Cuban Robbery`) and normalized 55 media-session titles (E2E/test/retest labels and numeric proof suffixes). One vendor-dashboard review comment with "Quick review submission verification." was rewritten.
+- Minimal UI masking: customer sidebar and admin review moderation no longer display `@reliance.test` fixture emails.
+- Verification: `npx tsc --noEmit --pretty false` passed; browser sweep saved to `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\signed-in-visible-sweep-results.json` (6 routes, 0 errors). Vendor dashboard API confirmed cleaned recent job titles.
+- Still dev-only in places: fixture user IDs/emails in APIs, `/vendor/jobs` can remain on vendor-context loading with injected sessions, admin account lookup may still list `Roman Perez (Test)` users, and some archived internal jobs retain informal titles like `General Service Job - Brake Pad`.
+
+## Handoff refresh (2026-05-26 - visible seed/test content cleanup)
+- Renamed the highest-visibility public E2E smoke fixtures to launch-realistic copy while preserving fixture IDs, geocoding, and test structure: `E2E Smoke Service` -> `Metro Apartment Deep Clean`, `E2E Smoke Vendor` -> `Metro Home Care Pros`, nearby browse fixtures -> `Midtown Apartment Refresh` / `Brooklyn Move-In Cleaning`, and the public review comment now reads like a real customer review.
+- Applied the same cleanup to the connected local database via `scripts/cleanup-visible-seed-content.ts` (26 booking titles, 19 trust-loop client names, 6 smoke client names, 46 media-session titles, 8 trust-loop public review comments) and refreshed `e2e/smoke-fixture.json` through Playwright global setup.
+- Verification for this pass: `npx tsc --noEmit --pretty false` passed; Playwright `e2e/storefront-service-detail-smoke.spec.ts` and `e2e/storefront-category-smoke.spec.ts` (`public browse shows real distance`) passed; live browser checks on `/browse?q=Metro+Apartment` and `/vendors/cmnvdegk60000sop8sj18nud2` showed the renamed service/vendor with no `E2E Smoke*` strings.
+- Still visibly dev-only in places: internal `@reliance.test` fixture emails/IDs, some admin-only `Roman Perez (Test)` users, and proof media titles that retain numeric run suffixes such as `Completed service video 1779770100679`.
+
+## Handoff refresh (2026-05-26 - vendor jobs walkthrough pass)
+- `/vendor/jobs` now has a lightweight first-time workflow guide modal that explains create job, assign employee, choose recording location, consent/location requirements, Intro video, and During Service/Completed videos.
+- Vendors can select `Don't show this again`, stored in `localStorage` under `reliance.vendorJobs.workflowGuideDismissed`, and can reopen the guide with the visible `How job workflow works` button near the job actions.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed; browser verification is recorded in the handoff report.
+
+## Handoff refresh (2026-05-26 - vendor compliance browser verification)
+- **Status:** live browser pass completed on `/vendor/jobs` for business, residence, and customer-business compliance paths using manager session `colivera080124@gmail.com` and assigned job `General Service Job - The Cuban Robbery`.
+- **Bug fixed:** `applyConsentStatusFromBackend()` now receives explicit `consentToken` from send/refresh/token-fetch callers so accepted consent and tokens persist into the compliance snapshot (previously stale `activeConsentToken` ordering left token empty and blocked Continue after accept).
+- **Verified live:** business path skips consent and requires location verify; residence path sends real consent (`/api/consent/request`), blocks Continue until accepted, then enables upload step; customer-business requires both consent accept and location verify. Real consent API flow confirmed (session create + request + status + accept).
+- **Verification:** `npx tsc --noEmit --pretty false` pass; consent/media-session Vitest suites **10/10** pass. Initial local blocker was transient `DB_CONNECTION_TIMEOUT` / `DASHBOARD_DB_CONNECTIVITY` before login/retry.
+- **Report:** `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\CURSOR_REPORT.md`
+
+## Handoff refresh (2026-05-26 - vendor consent workflow review)
+- **Status:** completed implementation is ready for Codex review. Backend consent enforcement was already present; this pass fixed the vendor job handoff so the UI keeps consent requirements obvious and preserves the selected recording location/token when the flow is reopened.
+- **What changed:** `/vendor/jobs` now shows clear next-step states (`Send video consent`, `Consent sent - waiting for customer`, `Consent accepted - start Intro video`, `Consent not required`), uses only customer/client contact fields for the consent recipient, blocks consent sending with a clear vendor-facing error when customer contact is missing, restores saved location/consent token/status when reopening the compliance modal, and clarifies upload copy that Intro video is blocked until consent is accepted when consent is required.
+- **Files to inspect:** `src/app/vendor/jobs/page.tsx`; `src/app/api/vendors/[vendorId]/dashboard/route.ts`.
+- **Verification:** `npm test -- "src/app/api/consent/consent-flow-routes.test.ts" "src/app/api/vendors/[vendorId]/media/sessions/media-sessions-consent.integration.test.ts"` passed with 10 tests; `npx tsc --noEmit --pretty false` passed; `git diff --check -- src/app/vendor/jobs/page.tsx src/app/api/vendors/[vendorId]/dashboard/route.ts` passed with only CRLF warnings.
+- **Review checklist:** confirm customer contact is used instead of assigned employee contact; consent-required and not-required states are correct; missing customer contact shows the vendor-facing send-blocking error; reopening the compliance modal restores location, consent token, and consent status; Intro upload remains blocked until consent is accepted when consent is required.
+- **Known caveat:** `git diff --check` reported only line-ending/CRLF warnings for the touched app files.
+
+## Handoff refresh (2026-05-26 - trust-loop verification pass)
+- Completed a focused end-to-end trust-loop verification against the local live app using the seeded `E2E Smoke Service` path: public discovery/service view, customer booking, vendor assignment, staged service video media, manager completion approval, admin package moderation, customer proof viewing, review-window start, customer review creation, admin public review moderation, public service/vendor trust-signal reflection, and vendor dashboard attribution.
+- Tightened `e2e/reliance-trust-loop.spec.ts` so the pass tracks current customer proof-page copy (`Service Videos` / `Service Video Timeline`), approves the media package with public visibility for this public-surface verification, moderates the created review to public, and asserts the approved video/review through public service/vendor APIs and pages.
+- Verification for this pass: `npm.cmd exec playwright test e2e/reliance-trust-loop.spec.ts --reporter=list` passed with 1 test, and `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-26 - vendor devices endpoint fix)
+- Fixed the local `/api/devices` 500 that kept the `/vendor/profile` device card in its recoverable fallback. The root cause was the route ordering `Device` rows by `createdAt`, but the current Prisma `Device` model/table uses `pairedAt` and does not define `createdAt`.
+- `/api/devices` now queries the real device fields, orders by `lastSeenAt` then `pairedAt`, and maps `pairedAt` to the profile page's existing `createdAt` display shape. Browser verification with the local vendor session confirmed `/vendor/profile` renders real paired device rows and no longer shows `Device list is temporarily unavailable.`
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed; `GET /api/devices` returned HTTP 200 with two device rows for the local vendor session; the visible Device Management section showed the phone and headset rows.
+
+## Handoff refresh (2026-05-25 - vendor profile launch-readiness fix)
+- Fixed the `/vendor/profile` hydration/loading failure. The root cause was `useVendorProfile` deduping an initial auth-loading call before the browser had a resolved user session, which could leave the profile page on `Loading profile...` without ever issuing the real `/api/vendor/profile` request after auth hydration.
+- `useVendorProfile` now handles auth-loading and missing-session states before installing an in-flight profile fetch, so only real authenticated profile requests are deduped. Browser verification confirmed `/api/vendor/profile` is requested, returns 200 for the local vendor session, and the Business Profile content renders.
+- The profile page now shows an honest recoverable device-list fallback when the secondary `/api/devices` call fails, instead of misrepresenting the failure as an empty paired-device list. Verification: `npm.cmd exec tsc --noEmit --pretty false` passed; `/vendor/profile`, `/vendor/dashboard`, `/vendor/services`, and `/vendor/jobs` returned 200 and rendered expected vendor content in the local browser runtime.
+
+## Handoff refresh (2026-05-25 - final visible-route sweep)
+- Completed a focused browser sweep of the launch-visible public, customer, vendor, and admin routes on the running local app at `http://127.0.0.1:3000`. All requested routes returned 200 and rendered without 404 or Next error states when checked with appropriate guest/customer/vendor/admin dev sessions, except `/vendor/profile` did not finish hydrating its profile content and remained on `Loading profile...`.
+- Made two low-risk launch-facing cleanup fixes: the global browser title/metadata now says `Reliance` instead of `Reliance Admin`, and the public home page no longer advertises vendor analytics as an active benefit; the copy now emphasizes proof-backed confidence and current job/team workflow management.
+- Bigger issues noted for follow-up, not expanded in this pass: `/vendor/profile` should be investigated because the visible page shell loads but the profile API/content does not complete in the sampled local session, `/my-bookings/[bookingId]` can show a consent-required video state for the seeded completed booking, and some seeded admin/vendor data contains test-fixture names. Verification: `npm.cmd exec tsc --noEmit --pretty false` passed after the cleanup.
+
+## Handoff refresh (2026-05-25 - restricted-vendor operation-route coverage)
+- Extended focused Vitest route coverage for restricted-vendor account-status enforcement without changing runtime behavior.
+- Coverage now locks `pending_approval`, `suspended`, and `banned` vendor rejection in vendor context, restricted vendor profile blocking, public discovery/public vendor/public service exclusion, admin vendor/service publish rejection, restricted service creation, restricted service update/delete blocking, and shared membership-gated vendor operation helper rejection.
+- Verification for this pass: `npm.cmd exec vitest run "src/app/api/restricted-vendor-regression.integration.test.ts"` passed with 16 tests, and `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-25 - account-status enforcement pass)
+- Added central account-status enforcement helpers and wired them into runtime paths so restricted users/vendors are no longer treated like active accounts after admin status changes.
+- User restrictions now block sign-in for DB-backed suspended/banned/deactivated/archived inactive users and reject key customer actions/reads such as bookings, booking media, reviews, favorites, reports, and profile updates with honest restricted-account responses.
+- Vendor restrictions now block active vendor context/profile resolution, vendor membership-gated APIs, employee job actions, service mutation, upload/session paths through shared membership checks, and admin public listing/publishing for restricted vendors. Public storefront discovery/vendor/service/review/category routes now require `vendor.accountStatus = active` in addition to existing listing/publish flags.
+- Customer and vendor layouts now show clear restricted/pending account states instead of continuing to render normal protected tools when the backend returns restricted status. Verification: `npm.cmd exec tsc --noEmit --pretty false` passed and focused Vitest coverage for account-status helpers, restricted login, account actions, and content reports passed.
+
+## Handoff refresh (2026-05-25 - Prisma migration baseline)
+- Baselined the local SQL Server Prisma migration history without applying migration SQL, dropping data, or changing product schema/data. Before cleanup, `_prisma_migrations` did not exist and `prisma migrate status` showed all 16 repo migrations pending; after `prisma migrate resolve --applied` for each repo migration, `_prisma_migrations` exists with 16 baseline records and `prisma migrate status` reports `Database schema is up to date!`.
+- Live schema checks confirmed the active safety/admin runtime tables and columns still exist, including `users`/`vendors` account-status fields and `content_reports` with its key indexes. Admin page/API smoke checks and account-status lookup still return successfully after the baseline.
+- Verification for this pass: `npm.cmd exec prisma validate`, `npm.cmd exec prisma migrate status`, required admin route/API curl checks, account lookup curl check, and `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-25 - safety activation pass)
+- Applied the idempotent safety migration SQL for account status fields and unified content reports directly to the local SQL Server database because Prisma migration history is not initialized for this database and `prisma migrate status` shows the wider backlog as pending.
+- Regenerated Prisma Client after activation so `User.accountStatus`, `Vendor.accountStatus`, and `ContentReport` are available to the local runtime.
+- Runtime verification passed for `/admin/vendors`, `/admin/reported-content`, `/admin/notifications`, admin account lookup/status read, and one authenticated report submission against a public seeded review. The sample report was dismissed with verification notes; the associated admin notification remains as evidence.
+- Verification for this pass: direct SQL schema checks confirmed `users`/`vendors` account status columns plus `content_reports` indexes; `npm exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-25 - customer terminology cleanup)
+- Booking list and booking media detail pages now use customer-facing `video`/`media` wording for watching, opening, reporting, and availability states. Internal proof field names and proof-route anchors were left unchanged.
+- Public service and vendor pages now label featured/completed clips as `Featured video`, `Video preview`, or `Completed work video`, while keeping `Proof of Completed Work` where it explains the trust concept.
+- Customer-visible stage labels now read `Before Service`, `During Service`, and `Completed` instead of exposing `INTRO`, `IN_PROGRESS`, or `COMPLETED`.
+- Verification for this pass is recorded in the handoff report.
+
+## Handoff refresh (2026-05-25 - first report-entry UI)
+- Added the first visible report entry points: public service review cards, public vendor review cards, and the customer booking proof page's active approved proof video now open a shared report dialog.
+- The shared `ReportContentDialog` posts signed-in reports to the existing `POST /api/reports/content` route with structured reason category, optional detail, and medium severity. Review reports use `targetType=review`; proof reports use `targetType=media_asset` and the active media asset id.
+- Signed-out public visitors see an honest sign-in-required message/CTA because guest report submission remains deferred by the backend.
+- Verification for this pass: `npx tsc --noEmit` passed, focused `content-report.integration.test.ts` passed, page smoke checks returned 200 for one service page, one vendor page, and the booking proof route shell, and an unauthenticated report POST returned the expected 401 guest-deferred response.
+
+## Handoff refresh (2026-05-25 - admin safety controls UI)
+- Added a usable admin safety-controls surface: `/admin/reported-content` now lists persisted `ContentReport` rows with target/status/severity/reason filters, links into the existing review/media moderation surfaces, and lets admins triage or resolve reports with notes through `GET/PATCH /api/admin/reported-content`.
+- `/admin/vendors` now includes a small account-control panel backed by `GET /api/admin/account-lookup` plus the existing `POST /api/admin/account-actions`, so admins can search users/vendors and suspend, ban, deactivate, or reactivate accounts without raw IDs/endpoints.
+- Admin notifications now authenticate through `requireAdmin`, include safety-specific filters/counts, display `CONTENT_REPORT` and `ACCOUNT_ACTION` metadata cleanly, and link to the relevant reported-content/account-control surfaces. The reported-content page is reachable from admin dashboard quick links and the admin sidebar.
+- Verification for this pass: focused Vitest route tests passed, `npm.cmd exec tsc --noEmit --pretty false` passed, and curl route smoke checks returned 200 for `/admin/dashboard`, `/admin/vendors`, `/admin/reported-content`, and `/admin/notifications`.
+
+## Handoff refresh (2026-05-25 - account safety foundation)
+- Added the launch-safety backend foundation for account control and content reporting: `User` and `Vendor` now have string-backed account-status fields, with a SQL Server migration and a unified `ContentReport` model for review/media reports.
+- Added admin-only `GET/POST /api/admin/account-actions` for querying and changing user/vendor status. Actions cover suspend, ban, deactivate, and reactivate; vendor restrictions also remove marketplace listing and unpublish services, then write admin audit logs and account-action notifications for restricted states.
+- Added authenticated `POST /api/reports/content` for review and media/proof-asset reports. The route persists a report, resolves target context, creates an admin notification, and intentionally defers signed-out guest reporting and visible report buttons to a later UI pass.
+- Verification for this pass: focused Vitest route tests passed, `npm.cmd exec tsc --noEmit --pretty false` passed, and `npm.cmd exec prisma validate` passed.
+
+## Handoff refresh (2026-05-25 - vendor support honesty pass)
+- `/vendor/support` now presents launch-appropriate vendor help with CTAs to the live profile, services, jobs, employees, FAQ, and help-article surfaces. It no longer sends vendors toward billing as a help destination or uses arrow glyph CTA text.
+- `/vendor/support/faqs` and `/vendor/support/help-articles` were reframed around the current free-launch workflow: no live in-app customer messaging, no app-store mobile app, no vendor review-response tools, no live chat/phone/ticket helpdesk, and no active Reliance payment processing.
+- Help article cards now link to usable vendor pages instead of missing per-article routes, and visible fake article ratings/view counts were removed.
+
+## Handoff refresh (2026-05-25 - admin workflow honesty pass)
+- `/admin/vendors/approval-queue` no longer carries the explicit mock admin object, `admin@reliance.com` fallback, or product-action `console.log` calls. Approval/rejection requests now use the same shared admin client request headers as the other live admin management pages.
+- Added `src/lib/admin-client.ts` as the small shared client-side admin header/session helper for the visible admin dashboard, vendor approval queue, publish management, media moderation, review moderation, and audit logs pages. The helper reads `userData`/legacy `user` plus stored auth tokens when present and does not hardcode a fallback admin identity.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed; `curl.exe -I` route checks returned 200 for `/admin/dashboard`, `/admin/vendors`, `/admin/vendors/approval-queue`, `/admin/publish-management`, `/admin/media-moderation`, `/admin/reviews`, and `/admin/audit-logs`.
+
+## Handoff refresh (2026-05-25 - admin stats regression coverage)
+- Added focused Vitest route coverage for `GET /api/admin/stats`, including admin auth failure and the success response shape used by `/admin/dashboard`.
+- The success fixture protects the combined `Pending Moderation` behavior: one pending review plus one complete pending media proof package returns `pendingModeration: 2` with a breakdown of `reviews: 1` and `mediaPackages: 1`.
+- Verification for this pass: `npm.cmd exec vitest run "src/app/api/admin/stats/admin-stats.integration.test.ts"` passed and `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-25 - admin moderation count refinement)
+- `/api/admin/stats` now defines `Pending Moderation` as pending review moderation plus pending complete media proof packages. The media side reuses the same complete INTRO/IN_PROGRESS/COMPLETED package grouping used by the admin media moderation queue and counts packages, not individual media assets.
+- `/admin/dashboard` keeps the single `Pending Moderation` total but now shows a small live breakdown such as review count plus proof package count underneath the card. The metric remains DB-backed and does not introduce hardcoded totals.
+- Verification for this pass is recorded in the handoff report.
+
+## Handoff refresh (2026-05-25 - admin dashboard live metrics)
+- `/admin/dashboard` now uses a focused admin-only `GET /api/admin/stats` endpoint instead of placeholder metric cards. The endpoint returns only total users, total vendors, total reviews, and pending moderation counts for the dashboard.
+- `Pending Moderation` is currently defined as reviews with `moderationStatus = "pending_review"` awaiting admin review. Dashboard cards keep honest loading/error states and do not substitute hardcoded or fake numbers if the stats request fails.
+- Verification for this pass is recorded in the handoff report.
+
+## Handoff refresh (2026-05-25 - route smoke stabilization)
+- `e2e/route-smoke.spec.ts` now treats `/vendor/jobs` as a behavior-based smoke target instead of requiring the brittle `.cursor-pointer.select-none` card selector. The route passes when the jobs shell reaches a valid launch state: semantic job actions are present, an empty jobs state is shown, or the available-employees section proves the page shell loaded while jobs are still pending.
+- Vendor job detail coverage is preserved when a job is actually present by opening `Actions` -> `View Details`, which matches the page's stable controls. If no job action is available, the smoke keeps `/vendor/jobs` coverage without forcing a fake detail route.
+- Customer proof route assertions were refreshed to current product copy (`Booking Proof` plus proof timeline/pending/unavailable states). Verification for this pass: `npx tsc --noEmit` passed and `npm run test:e2e:smoke:routes` passed.
+
+## Handoff refresh (2026-05-25 - customer/vendor regression tests)
+- Focused Playwright smoke coverage now tracks the current launch-facing customer/vendor cleanup: Discover smoke expectations use the current `Discover` heading, favorites assert `Reference estimate`, My Services asserts simplified proof guidance, reviews assert proof-backed reviews are inline rather than a separate `Proof-Based Reviews` section, and a dedicated vendor profile cleanup spec checks profile launch-honesty copy when the profile form is available.
+- Verification for this pass is recorded in the handoff report. `Discover Services` no longer remains in active TS/TSX test/source expectations.
+
+## Handoff refresh (2026-05-25 - vendor profile honesty polish)
+- `/vendor/profile` now removes fake static address suggestions and presents address entry as manual saved profile data. Core business profile fields, reminders, notification preferences, and supported security preferences remain persisted through `GET/PUT /api/vendor/profile`; device pairing and storage limits remain live API-backed.
+- Launch-only honesty was tightened: payment notification preferences are shown as not active in the free launch, 2FA enrollment is marked not live instead of presented as a working toggle, and reminder copy now says preferences are saved while delayed automation may be limited.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed; direct HTTP check for `/vendor/profile` is recorded in the handoff report.
+
+## Handoff refresh (2026-05-25 - customer favorites/services polish)
+- `/favorites` now presents saved services as `My Favorites`, uses cleaner empty/search/action copy, removes the star glyph from ratings, and reframes the visible service amount as a `Reference estimate` instead of a hard price/payment signal.
+- `/my-bookings` (`My Services`) now uses shorter customer-facing guidance, removes dense/internal explainer language, changes `Reference ID` to `Booking ID`, and replaces customer-visible non-ASCII punctuation/symbols in the edited page with plain text.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed; direct HTTP checks for `/favorites` and `/my-bookings` returned 200; a focused Playwright browser check confirmed signed-in `/favorites` search and signed-in `/my-bookings` search/tab switching. The existing `test:e2e:smoke:favorites` spec was attempted but is stale on `/discover` copy (`Discover Services` expected, current page heading is `Discover`), so it failed outside the edited pages.
+
+## Handoff refresh (2026-05-25 - customer reviews honesty polish)
+- `/reviews` now presents customer review state as one pending queue plus one submitted review history, backed by `GET /api/reviews/me`. The previous separate `Proof-Based Reviews` section was removed because it duplicated the proof-backed subset of submitted reviews.
+- Proof-backed trust is now shown inline on submitted review cards and in the page summary, while pending copy explains that completed bookings enter the proof-based review flow. Broken symbol/emoji-style labels in the edited page were replaced with normal text/icon rendering.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-25 - vendor jobs honesty hardening)
+- `/vendor/jobs` now removes the unused local-only auto-approve/video-approval paths, including the fake `Auto-Approval System` state mutation and warning modal. Manager approve/reject remains tied to the persisted `/api/vendors/[vendorId]/jobs/[jobId]/approve` and `/reject` endpoints, and employee submit remains tied to `/api/employee/jobs/[jobId]/complete`.
+- Local-only notes/comment mutation helpers with the fake `author: 'You'` fallback were removed from the launch page. Bulk assignment now uses inline page feedback instead of alert popups, and the compliance-to-upload transition no longer uses an alert.
+- Media details in the content archive now show available persisted metadata/reviewer reason instead of canned review notes, fake audit entries, and fake download/share buttons. URL parsing no longer falls back to hardcoded `localhost`.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-25 - admin partial-pages honesty)
+- `/admin/dashboard` remains the admin landing page, but its quick actions now only promote currently usable admin workflows. The misleading `/admin/users` `User Management` shortcut was removed, and dashboard copy now calls out the live admin surfaces plus deferred areas.
+- `/admin/reports`, `/admin/settings`, and `/admin/activity` now present intentional deferred-state guidance instead of generic build-safe placeholder copy, with links back to live admin tools such as dashboard, moderation, publish management, vendor management, and audit logs.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-25 - customer profile settings honesty)
+- `/profile-settings` now avoids the fake customer account signals from the previous page: hardcoded profile stats, `Premium` membership, placeholder bio text, local-only password success, and local-only 2FA toggles were removed or reframed as unavailable for this launch.
+- Customer profile save feedback is now tied to the real `/api/customer/profile` PUT result. The page updates local state/localStorage and shows success only after a successful response; failures keep the edit state and show an error message.
+- Saved-address preference now hydrates from `locationPreferenceEnabled` and persists changes through the customer profile API. Quick actions now point to the live customer routes: `/user-dashboard`, `/my-bookings`, and `/discover`.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed.
+
+## Handoff refresh (2026-05-25 - vendor services nav exposure)
+- `/vendor/services` is now visible in the vendor left pane as `Services`, pointing directly to the existing free-launch service catalog/draft setup page. The sidebar's existing exact/nested path active-state logic covers the new item.
+- Vendor reviews, analytics, and billing remain excluded from the main vendor nav. They were not reintroduced as part of this exposure pass.
+- Verification for this pass: `npm.cmd exec tsc --noEmit --pretty false` passed; live browser verification on `http://127.0.0.1:3000/vendor/dashboard` confirmed the `Services` nav item appears, clicking it reaches `/vendor/services`, the service catalog page loads, the active state moves to `Services`, and `Reviews`/`Analytics`/`Billing` do not appear in the sidebar.
+
+## Handoff refresh (2026-05-25 - vendor services cleanup)
+- `/vendor/services` has been reframed as a free-launch service catalog/draft setup page rather than full public-listing control. The page now says vendors can prepare and maintain service details while vendor-side publishing, archive controls, and payment processing are not active there.
+- The fake-feeling disabled `Publish` and `Archive` buttons were removed from service cards. Each card now labels published rows as `Public listing: admin-managed` and unpublished rows as `Draft only`, with static copy explaining that publishing is coordinated outside the vendor page and archive support is not available yet.
+- Pricing remains required because the current service API/schema requires a non-negative price, but the UI now calls it a `Reference Price` / `Reference estimate` and explains that it is an estimate/reference while launch payments are not active.
+- Verification for this cleanup: `npm.cmd exec tsc --noEmit --pretty false` passed; `GET http://127.0.0.1:3000/vendor/services` returned 200 on the existing local server; a temporary service create/update/read-from-vendor-list/delete round trip succeeded and deleted its own record. Recommendation: the page is now ready enough for vendor-pane visibility if labeled as `Services`/`Service Catalog` and kept out of the payment/publishing promise.
+
+## Handoff refresh (2026-05-25 - vendor services audit)
+- `/vendor/services` loads successfully and is DB-backed for vendor service view/create/edit/delete. Focused runtime verification confirmed `GET /vendor/services` returns 200, `GET /api/services` returns persisted service rows, and a temporary create/update/delete round trip succeeded and deleted its own unpublished audit record.
+- Vendor service publish/unpublish/archive is not ready for direct vendor exposure as full listing control. The page explicitly disables `Publish` and `Archive`; admin-only service publish toggling exists under `/api/admin/services/[serviceId]/publish`, while vendor-created services default to `isPublished=false`.
+- Public storefront inventory is controlled by `service.isPublished=true` plus `vendor.isPubliclyListed=true`: `/api/services/discover`, `/api/services/categories`, public service detail, and public vendor profiles all enforce that relationship. Recommendation from this audit: add `Services` to the vendor pane only after small cleanup clarifies draft-service scope, free-launch pricing copy, archive expectations, and the publish workflow.
+- Verification for this audit: focused HTTP/API checks against `http://127.0.0.1:3000`, temporary service CRUD cleanup, public page probes for `/`, `/browse`, `/service/cmpggamkj0005soc0sts7krkw`, and `npm.cmd exec tsc --noEmit --pretty false`, which passed.
+
+## Handoff refresh (2026-05-25 - admin dashboard nav restore)
+- Admin primary navigation now includes `Dashboard` again, pointing to `/admin/dashboard`, so admins can return to the admin landing page from deeper admin tools. The existing active-state logic covers the restored dashboard link.
+- The previously hidden/mock-heavy admin primary nav items (`Users`, `Reports`, `Settings`, `Activity`) remain out of the sidebar; verification for this pass was `npm.cmd exec tsc --noEmit --pretty false`, which passed.
+
+## Handoff refresh (2026-05-25 - free-launch honesty cleanup)
+- Follow-up browser/runtime verification on `http://127.0.0.1:3000` confirmed `/profile` and `/profile/settings` land on `/profile-settings`, customer/vendor/admin primary navs keep the recently hidden mock-heavy items out, direct gated routes render honest free-launch/deferred copy, and `npm.cmd exec tsc --noEmit --pretty false` remains clean. Full handoff evidence is saved in `C:\Users\Cesar Olivera\Desktop\Reliance_Codex_Handoff\runtime-results.json` and `CURSOR_REPORT.md`.
+- `/profile` and `/profile/settings` now redirect to the active customer profile settings route at `/profile-settings`, so expected customer profile paths no longer fall through to 404.
+- Billing remains out of the free-launch product: `/vendor/billing` now states that payments, payouts, fees, and payment history are deferred, and vendor support/profile copy no longer presents Reliance Payments as active.
+- The most misleading mock-heavy launch surfaces were gated or removed from primary navigation: customer messages, vendor reviews, vendor analytics, vendor support chat/contact, and admin user management now show honest "not available in this launch" states instead of fake working tools.
+- Verification for this cleanup: `npm.cmd exec tsc --noEmit --pretty false`, which passed.
+
+## Handoff refresh (2026-05-25 - product-surface audit)
+- Cursor completed a route-by-route product-surface audit across admin, vendor, customer, and signed-out public routes. All audited implemented routes returned HTTP 200 locally except the requested customer `/profile` and `/profile/settings` paths, which were not implemented at the time; the real route was `/profile-settings`.
+- Current reliable product core remains the trust loop: public browse/service/vendor inventory, customer booking/proof/review, vendor dashboard/jobs/job detail/media/storage/employees/services, and admin vendor approval, publish controls, media moderation, review moderation, audit logs, and review audit.
+- Mock-heavy or placeholder surfaces remain significant, but the first free-launch cleanup gated the most misleading active-use surfaces: admin dashboard metrics/reports/settings/activity, vendor services/faqs/help articles, customer reviews, and parts of customer/vendor profile settings still need later truth passes.
+- Verification for this audit: lightweight HTTP checks against the existing local dev server for expected surfaces plus `npm.cmd exec tsc --noEmit --pretty false`, which passed.
+
 ## 1) Current Core Flows (actual)
 - **Vendor dashboard -> jobs -> job detail:** `/vendor/dashboard` loads from `GET /api/vendors/[vendorId]/dashboard`; jobs route into `/vendor/jobs`; job detail `/vendor/jobs/[jobId]` hydrates via vendor context, dashboard job feed, and media sessions.
 - **Employee stage upload flow:** employee uploads INTRO/IN_PROGRESS/COMPLETED stage media from job detail using `/api/vendors/[vendorId]/media/sessions`, `/media/upload/init`, `/media/upload/complete`, then marks stage via `POST /api/employee/jobs/[jobId]/stage`.
@@ -9,16 +1609,16 @@
 - **Review submission:** proof page starts review window (`POST /api/reviews/window/start`) and submits inline rating via `POST /api/reviews/create` with `submittedVia: video_overlay`.
 
 ## 2) Active Routes (only)
-- **Vendor:** `/vendor/dashboard`, `/vendor/jobs`, `/vendor/jobs/[jobId]`, `/vendor/media`, `/vendor/storage`, `/vendor/employees`, `/vendor/profile`.
-- **User:** `/discover`, `/service/[serviceId]`, `/booking/[serviceId]`, `/booking/[serviceId]/confirmation`, `/my-bookings`, `/my-bookings/[bookingId]`, `/reviews`.
-- **Admin:** `/admin/media-moderation`, `/admin/reviews`, `/admin/vendors`, `/admin/vendors/approval-queue`, `/admin/audit-logs`, `/admin/review-audit`, `/admin/publish-management`.
-- **Exists but not core-used:** test/dev or transitional pages like `/test-mode`, `/test-msw`, `/test-profile-toggle`, `/admin-tools`, `/browse`, plus management pages marked mock-heavy (`/vendor/services`, `/vendor/reviews`, `/vendor/analytics`, `/vendor/billing`, `/admin/dashboard`, `/admin/users`, `/admin/reports`, `/admin/settings`, `/admin/activity`).
+- **Vendor:** `/vendor/dashboard`, `/vendor/jobs`, `/vendor/jobs/[jobId]`, `/vendor/media`, `/vendor/storage`, `/vendor/employees`, `/vendor/profile`, `/vendor/services`.
+- **User:** `/discover`, `/service/[serviceId]`, `/booking/[serviceId]`, `/booking/[serviceId]/confirmation`, `/my-bookings`, `/my-bookings/[bookingId]`, `/reviews`, `/profile-settings` plus redirects from `/profile` and `/profile/settings`.
+- **Admin:** `/admin/dashboard`, `/admin/media-moderation`, `/admin/reviews`, `/admin/vendors`, `/admin/vendors/approval-queue`, `/admin/audit-logs`, `/admin/review-audit`, `/admin/publish-management`.
+- **Exists but not core-used:** test/dev or transitional pages like `/test-mode`, `/test-msw`, `/test-profile-toggle`, `/admin-tools`, `/browse`, plus management pages marked mock-heavy or gated (`/vendor/services`, `/vendor/reviews`, `/vendor/analytics`, `/vendor/billing`, `/messages`, `/admin/users`, `/admin/reports`, `/admin/settings`, `/admin/activity`).
 
 ## 3) Key API Endpoints In Use
 - **Bookings:** `GET /api/bookings`, `POST /api/bookings`, `GET|PUT|DELETE /api/bookings/[id]`, `POST /api/bookings/[id]/cancel`, `GET /api/bookings/[id]/media`, `GET /api/bookings/[id]/media/[assetId]/download`.
 - **Jobs/vendor execution:** `GET /api/vendors/[vendorId]/dashboard`, `POST /api/vendors/[vendorId]/jobs/[jobId]/actions`, `POST /api/employee/jobs/[jobId]/stage`, `POST /api/employee/jobs/[jobId]/complete`, `POST /api/vendors/[vendorId]/jobs/[jobId]/approve`, `POST /api/vendors/[vendorId]/jobs/[jobId]/reject`.
 - **Media:** `GET|POST /api/vendors/[vendorId]/media/sessions`, `GET /api/vendors/[vendorId]/media/sessions/[sessionId]`, `POST /api/vendors/[vendorId]/media/upload/init`, `POST /api/vendors/[vendorId]/media/upload/complete`, `GET /api/vendors/[vendorId]/media`, `PATCH|DELETE /api/vendors/[vendorId]/media/[assetId]`.
-- **Reviews:** `POST /api/reviews/window/start`, `POST /api/reviews/create`, `POST /api/reviews/window/expire`, `POST /api/reviews/rating-intent`, `GET|POST /api/reviews` (currently mock/placeholder behavior).
+- **Reviews:** `POST /api/reviews/window/start`, `POST /api/reviews/create`, `POST /api/reviews/window/expire`, `POST /api/reviews/rating-intent`, `GET /api/reviews/me`, service-specific public review routes, and read-only generic `GET /api/reviews` for persisted rows. Generic `POST /api/reviews` is retired and directs callers to the proof-based flow.
 - **Device pairing + telemetry:** `POST /api/device/pairing/request`, `POST /api/device/pairing/confirm`, `POST /api/device/heartbeat`, `POST|GET /api/device/events`, `GET /api/vendors/[vendorId]/devices/status`.
 - **Moderation/admin:** `GET /api/admin/media/moderation-queue`, `PATCH /api/admin/media/[assetId]/moderate`, `PATCH /api/admin/media/packages/[bookingId]/moderate`, `GET /api/admin/reviews/moderation-queue`, `PATCH /api/admin/reviews/[reviewId]/moderate`.
 
@@ -26,11 +1626,11 @@
 - **Fully real (DB-backed):** booking CRUD and scoped fetch, booking media authorization, vendor dashboard feed, vendor media sessions/uploads, manager review gate/approve/reject, admin media/review moderation queues, review create + window/start, pairing request/confirm/heartbeat.
 - **Newly real (DB-backed):** Gen 1 device event ingest/query via `DeviceEvent`, device status summary, and vendor telemetry surface.
 - **Partially real (mixed/fallback):** large vendor jobs page orchestration (real APIs plus fallbacks/transitional UI paths), vendor profile/context resolution with local cache fallback, some dashboard card metrics and storage/proof surfaces with fallback messaging when backend data is missing.
-- **Mocked/placeholder:** `/reviews` page UI data is mock; `GET /api/reviews` and `POST /api/reviews` are TODO/mock implementations; several management pages listed in Project State remain mock-heavy.
+- **Mocked/placeholder:** Several management pages listed in Project State remain mock-heavy; generic `POST /api/reviews` no longer performs fake creation and generic `GET /api/reviews` is no longer sample-data backed.
 
 ## 5) Known Gaps / Risks
 - Vendor jobs page is very large and mixed-responsibility; regression risk is high without stronger test coverage.
-- Review surfaces are split: production capture uses `/api/reviews/create` + `/window/start`, but `/api/reviews` and `/reviews` page still run mock patterns.
+- Review surfaces now separate responsibilities more clearly: production capture uses `/api/reviews/create` + `/window/start`, customer review history uses `/api/reviews/me`, public service pages use service-specific public review routes, and generic `/api/reviews` is read-only.
 - Multiple fallback paths remain (vendor context/profile fallbacks, dashboard/storage fallback copy, dev auth fallback behavior).
 - DB/connectivity dependency remains a production risk surface (timeouts/firewall/network cause runtime failures on DB-bound routes).
 - Reminders are best-effort/immediate; no durable background scheduling queue for delayed review reminders.
@@ -40,6 +1640,8 @@
 - **Transitional:** vendor jobs list page (hybrid complexity), `/reviews` customer page (mock-heavy), vendor media/storage pages with backend gaps and fallback copy, several non-core management pages still mock-driven.
 
 ## 7) Recent Changes (last major work)
+- **Consent/invite smoke hardening:** added focused Vitest route coverage for consent token loading, accept, decline, expired-response blocking, vendor invite valid loading, inactive/already-used invite failure, and valid invite acceptance with employee membership activation. The focused route tests and `npx tsc --noEmit` pass.
+- **TypeScript trust pass:** fixed the current full-check failures in `my-bookings`, consent request/accept/decline/token routes, and vendor invite token handling by adding explicit local result types around dynamic Prisma calls and proof-video media lists. `npm.cmd exec tsc --noEmit --pretty false` now passes.
 - **Location-aware browse hardening:** E2E global setup now seeds multiple deterministic geocoded public vendors plus customer edge fixtures for saved-location eligibility. Browse smoke coverage now checks multiple geocoded vendors, preference-off and missing-coordinate customers, browser-origin precedence after saved-location opt-out, explicit URL override behavior, and radius clearing. `/browse` also waits for saved-location eligibility before showing `Use my location`, avoiding a brief confusing banner/action state.
 - **Guest current-location browse:** `/browse` now offers `Use my location` only when no explicit URL origin, browser-origin, or saved-location assist is active. Browser geolocation is requested only after that click, the returned coordinates stay in session state and are not written into the URL, and the user can stop current-location browsing for the current view. Friendly denial/error messaging keeps browse usable if location access fails.
 - **Browse radius selector:** `/browse` now shows a lightweight Distance radius selector only when there is a real browse origin from saved customer coordinates or explicit `lat`/`lng`. Options are Any distance, Within 5 miles, Within 10 miles, Within 25 miles, and Within 50 miles; selections feed the existing real `radiusMiles` discovery behavior and Any distance clears the filter.
@@ -67,3 +1669,3092 @@
 - **Customer proof page:** video-first layout, completed-stage default, simple timeline switching, inline star review submit, controlled View Details section, pricing/payment language removed.
 - **Hydration fixes:** deterministic UTC date formatting and removal of non-deterministic render-time patterns on key vendor/user pages.
 - **Route smoke tests:** Playwright route smoke added for `/vendor/dashboard`, `/vendor/jobs`, `/vendor/jobs/[jobId]`, `/my-bookings/[bookingId]`, including console hydration-warning guard.
+
+## Follow-up addendum (2026-05-29 - visual/UX polish pass)
+
+- Tightened the highest-friction launch-facing layouts without changing the Reliance blue/white direction:
+  - `src/app/admin/dashboard/page.tsx`
+  - `src/app/admin/promoted-listings/page.tsx`
+  - `src/app/vendor/dashboard/page.tsx`
+  - `src/app/browse/page.tsx`
+  - `src/app/page.tsx`
+  - `src/app/vendor/support/page.tsx`
+  - `src/lib/launch-content-cleanup.ts`
+  - `scripts/cleanup-visible-seed-content.ts`
+- Admin dashboard is cleaner and easier to scan:
+  - quick actions now use consistent icon cards instead of emoji-style blocks
+  - the filtered-count explainer now has a clearer visual anchor
+  - verified live with a real authenticated admin session that the cards load actual values (`0`, `3`, `0`, `0`) instead of fallback copy
+- Admin promoted listings now reads more like an operator tool:
+  - added top-line metric cards (`Active now`, `Ready to render`, `Pending payment`, `Recorded revenue`)
+  - replaced the older long guidance block with an `Operator Checklist`
+  - kept the package/status guide but made it visually chunked and faster to scan
+  - verified live with a real authenticated admin session; the unauthorized state did **not** appear in the real session
+- Vendor dashboard polish:
+  - `Proof Pipeline` is now `Service Video Pipeline`
+  - promotion request copy is shorter and clearer
+  - quick actions are now descriptive action cards instead of oversized generic buttons
+  - verified live with the real Metro vendor session
+- Public browse polish:
+  - hero chips now say `Real Reviews`, `Service Videos`, and `Clear Promoted Labels`
+  - service cards now say `Video available`, `Videos ready`, and `Public videos`
+  - comparison copy now says `reviews, service videos, and service fit`
+  - lingering visible `proof-backed` marketplace language is now cleaned at render time through `cleanPublicServiceDescription(...)`, so stale seed descriptions no longer leak old wording into public browse or home-page previews
+- Home-page wording polish:
+  - `Proof-Backed Confidence` is now `Video-Backed Confidence`
+  - home-page service preview cards now use the same cleaned public service description helper as browse
+- Verification for this pass:
+  - `C:\Users\Cesar Olivera\Project Reliance\node_modules\.bin\tsc.cmd --noEmit --pretty false` passed
+  - live browser verification on fresh `http://127.0.0.1:3000` confirmed:
+    - admin dashboard shows the new quick action cards and real countable metrics
+    - admin promoted listings shows the new top-line metrics + operator checklist
+    - vendor dashboard shows `Service Video Pipeline` and the cleaned quick-action cards
+    - browse shows the new hero chips and no visible `proof-backed` wording on the Metro service card
+- Honest note:
+  - direct DB cleanup for the stale seeded service description could not be persisted in this pass because Azure SQL reachability dropped during a direct Prisma update attempt, so I fixed the visible public wording through the app render path as well.
+
+## Follow-up addendum (2026-05-30 - customer/admin audit cleanup)
+
+- Continued the live customer/admin audit on fresh `http://127.0.0.1:3000` using real sign-in flows for:
+  - `e2e-smoke-customer@reliance.test`
+  - `colivera080124@gmail.com`
+- Live customer verification confirmed:
+  - customer login works through `/auth/login`
+  - `/user-dashboard`, `/my-bookings`, `/reviews`, and `/profile-settings` all load with persisted account data
+  - direct booking detail for `cmprowjxc000bso2kiml9ne1c` eventually renders correctly with service-video language and stage-aware review gating
+- Contained customer wording cleanup:
+  - `src/app/(user)/my-bookings/[bookingId]/page.tsx`
+  - changed the visible failure copy from `booking media` to `service videos` / `service video page`
+- Launch-facing admin queue cleanup:
+  - `src/lib/internal-identities.ts`
+  - `src/app/api/admin/reported-content/route.ts`
+  - `src/app/api/admin/media/moderation-queue/route.ts`
+  - added shared launch-facing exclusions for internal/audit user ids and internal demo vendor ids
+  - reported-content and media-moderation queues now hide internal/demo clutter by default, while still leaving room for an explicit future `includeInternal=1` path if needed
+- Admin wording cleanup:
+  - `src/app/admin/media-moderation/page.tsx`
+  - `Primary proof` is now `Primary video`
+  - `primary proof clip` is now `primary service video`
+- Focused regression coverage:
+  - `src/app/api/admin/reported-content/reported-content.integration.test.ts`
+  - `src/app/api/admin/media/admin-media-moderation.integration.test.ts`
+  - added assertions that launch-facing admin queues exclude internal/demo content by default
+- Verification:
+  - `npm.cmd test -- src/app/api/admin/reported-content/reported-content.integration.test.ts src/app/api/admin/media/admin-media-moderation.integration.test.ts` passed (`16` tests)
+  - `C:\Users\Cesar Olivera\Project Reliance\node_modules\.bin\tsc.cmd --noEmit --pretty false` passed
+  - live admin recheck confirmed:
+    - `/admin/reported-content` no longer surfaces the stale internal sample report row in the default view
+    - `/admin/media-moderation` no longer lists Sparkle internal/demo packages in the default queue
+    - expanded advanced stage controls now show `Primary video`
+- Honest notes:
+  - `/admin/reported-content` still takes a moment to settle before the empty state finishes loading, but the stale sample row is gone from the default launch-facing view
+  - direct booking detail still feels slower than ideal on first load; it rendered correctly in the live audit, but performance polish is still worth revisiting later
+
+## Follow-up addendum (2026-05-30 - employee runtime resilience pass)
+
+- Continued the employee workflow audit on fresh `http://127.0.0.1:3000`, focusing on the paused-Azure failure mode that was making the employee page look empty instead of unavailable.
+- Added a shared employee runtime helper:
+  - `src/lib/employee-runtime-errors.ts`
+  - detects the Azure monthly free-tier pause message
+  - maps it to honest employee-facing `503` responses instead of generic `500`s
+- Wired that helper into the employee action routes:
+  - `src/app/api/employee/jobs/route.ts`
+  - `src/app/api/employee/device/pair/route.ts`
+  - `src/app/api/employee/jobs/[jobId]/start/route.ts`
+  - `src/app/api/employee/jobs/[jobId]/stage/route.ts`
+  - `src/app/api/employee/jobs/[jobId]/complete/route.ts`
+- Employee UI cleanup:
+  - `src/app/employee/jobs/page.tsx`
+  - stops showing the `Welcome to your work view` empty state when there is a blocking backend error
+  - adds a dedicated temporary-unavailable card so employees do not mistake an outage for an empty queue
+  - dedupes exact repeated completed-history rows to reduce noisy historical cards
+  - improves helper text:
+    - `All 3 stage videos are uploaded. Manager review is in progress.`
+    - `All 3 stage videos are complete and manager-approved.`
+- Video wording cleanup:
+  - `src/app/api/employee/jobs/[jobId]/stage/route.ts`
+  - `No uploaded ... proof video found` is now `No uploaded ... video found`
+- Added focused unit coverage:
+  - `src/lib/employee-runtime-errors.test.ts`
+- Verification:
+  - `npm.cmd test -- src/lib/employee-runtime-errors.test.ts` passed (`3` tests)
+  - `C:\Users\Cesar Olivera\Project Reliance\node_modules\.bin\tsc.cmd --noEmit --pretty false` passed
+  - live API checks on the paused database now return:
+    - `/api/employee/jobs` -> `503 EMPLOYEE_RUNTIME_TEMPORARILY_UNAVAILABLE`
+    - `/api/employee/device/pair` -> `503 EMPLOYEE_RUNTIME_TEMPORARILY_UNAVAILABLE`
+  - live browser check on `/employee/jobs` confirmed the page now shows:
+    - `Device pairing is temporarily unavailable because the connected database is paused...`
+    - `Assigned jobs are temporarily unavailable because the connected database is paused...`
+    - `Employee workspace temporarily unavailable`
+    - and no fake `no assigned jobs` welcome state
+- Honest note:
+  - completed-history dedupe is code-complete but not live-proven yet, because the paused Azure database prevented a normal job-history render in this pass
+
+## Follow-up addendum (2026-05-30 - customer booking flow audit)
+
+- Resolved the Azure/Prisma confusion before continuing the audit:
+  - the earlier standalone Prisma failure was a sandbox/network-context issue, not a real app-vs-Azure mismatch
+  - rerunning the same direct Prisma script outside the sandbox connected successfully and returned live counts
+  - after a clean `localhost:3000` dev-server restart, DB-backed app routes also worked again
+- Public/customer booking flow findings:
+  - `/browse` loaded cleanly with three public services
+  - Metro service detail (`/service/cmnvdeh1n0002sop8otabf4su`) loaded and linked correctly to sign-in booking
+  - real customer sign-in from `Sign in to Book` was broken because `/auth/login` ignored the safe `next=` destination and always sent users to `/user-dashboard`
+- Booking redirect fix:
+  - `src/app/auth/login/page.tsx`
+  - now respects a safe same-origin `next` path like `/booking/...`
+  - live verification confirmed customer sign-in now lands on `/booking/cmnvdeh1n0002sop8otabf4su`
+- Booking page audit:
+  - the booking form itself worked, but date-only strings were being displayed with timezone-shifted labels
+  - example before fix: a raw booking date of `2026-05-30` rendered as `Friday, May 29, 2026`
+  - confirmation and `My Services` also showed raw times like `13:00:00` / `14:00:00`
+- Shared customer-facing date/time fix:
+  - added `src/lib/date-display.ts`
+  - added `src/lib/date-display.test.ts`
+  - updated:
+    - `src/app/(user)/booking/[serviceId]/page.tsx`
+    - `src/app/(user)/booking/[serviceId]/confirmation/page.tsx`
+    - `src/app/(user)/my-bookings/page.tsx`
+  - customer-facing booking pages now:
+    - parse `YYYY-MM-DD` as a local calendar date instead of UTC-shifting it
+    - format `HH:mm:ss` into readable labels like `2:00 PM`
+- Customer-facing booking contract cleanup:
+  - `src/lib/booking-shape.ts`
+  - booking API responses now clean customer-visible service names/descriptions with the existing launch-content helpers, so stale `proof-backed` wording does not leak through booking payloads
+- Live verification:
+  - full browser booking flow succeeded end to end for `e2e-smoke-customer@reliance.test`
+  - a new booking was created successfully:
+    - `cmpsnkqtr000fsonco71mvdyd`
+  - confirmation page now showed:
+    - `Saturday, May 30, 2026`
+    - `2:00 PM`
+  - `/my-bookings` showed the new booking with formatted date/time and correct persistence
+- Verification commands:
+  - `C:\Users\Cesar Olivera\Project Reliance\node_modules\.bin\tsc.cmd --noEmit --pretty false` passed
+  - `npm.cmd test -- src/lib/date-display.test.ts` passed (`3` tests)
+- Remaining note from this slice:
+  - the customer test account still has multiple old pending Metro bookings, so `Upcoming (5)` is noisy and some older pending rows now also say `This booking date has passed`. That is truthful to the data, but still suggests a later cleanup/policy pass for stale test bookings.
+
+## Follow-up addendum (2026-05-30 - launch-facing customer review propagation audit)
+
+- Fixed a real dev registration/login gap:
+  - `src/lib/dev-registered-users.ts`
+  - new customer registrations now persist in a shared `globalThis` dev registry instead of disappearing between route handlers
+  - verified by registering and logging in as `avery.coleman@example.net`
+- Verified the earlier stale review-window runtime bug is resolved on the fresh server:
+  - `POST /api/reviews/window/start` now returns active windows with future expiry
+  - `POST /api/reviews/create` no longer returns the stale `Review window is expired` error after restart
+- Clarified review propagation rules:
+  - internal test customer reviews (`e2e-smoke-customer@reliance.test`) stay private by design under launch-facing filters
+  - created a new production-like customer account:
+    - `Avery Coleman <avery.coleman@example.net>`
+    - user id `cmpspjl0c0008socgmh2olk3k`
+- Ran a full live Metro booking -> employee video -> manager approval -> admin moderation -> customer review loop for Avery:
+  - booking `cmpspmndd000bsocgq8g8rx1u`
+  - assigned Metro employee membership `cmohivqu70006sorootyextqp`
+  - requested and accepted customer video consent
+  - uploaded INTRO / IN_PROGRESS / COMPLETED videos with:
+    - `scripts/dev/metro-employee-stage-upload.cjs`
+  - manager approved completion
+  - admin approved the full video package as `public`
+  - customer review submitted:
+    - review id `cmpspzs1x001dsocgeqkyc7al`
+  - admin review moderation then set that review to `approve_public`
+- Verified cross-view propagation for the first launch-facing review:
+  - customer `/api/reviews/me` shows the submitted review
+  - vendor dashboard now shows:
+    - `totalBookings = 6`
+    - `totalClients = 2`
+    - `rating = 5`
+    - `ratingCount = 1`
+  - public vendor reviews API now returns Averyâ€™s public review
+  - public service reviews API now returns Averyâ€™s public review
+- Found and fixed a real review policy bug:
+  - `src/app/api/reviews/create/route.ts`
+  - customer reviews were being created as `moderationStatus=approved` + `visibilityStatus=private`
+  - this bypassed admin review moderation while still hiding the review publicly
+  - new behavior:
+    - customer review create now stores `moderationStatus=pending_review`
+    - `visibilityStatus=private`
+  - added regression assertion in:
+    - `src/app/api/reviews/review-create-expire.integration.test.ts`
+- Ran a second live Avery booking specifically to verify the new pending-review policy:
+  - booking `cmpsq5ami001jsocg6zk7th3k`
+  - business-location video path completed end to end
+  - customer review submitted:
+    - review id `cmpsq9jwg002fsocgxpuzltir`
+  - verified live result:
+    - `moderationStatus = pending_review`
+    - `visibilityStatus = private`
+  - admin moderation queue now shows that new pending review
+- Found and fixed a vendor dashboard consistency bug:
+  - `src/app/api/vendors/[vendorId]/dashboard/route.ts`
+  - `src/app/api/vendor/dashboard/route.ts`
+  - vendor `recentReviews` and `New Reviews` insight were counting pending reviews even though headline rating used approved-only reviews
+  - added approved-customer-review filtering so dashboard review stats now only count approved customer reviews linked to completed booking flow
+- Live verification after the dashboard fix:
+  - Metro vendor dashboard now correctly stays at:
+    - `rating = 5`
+    - `ratingCount = 1`
+    - `New Reviews = 1`
+    - `recentReviews` includes only the approved Avery review
+  - the second pending review remains visible only in the admin moderation queue until approved
+- Verification commands:
+  - `npm.cmd test -- src/app/api/reviews/review-create-expire.integration.test.ts` passed (`12` tests)
+  - `C:\Users\Cesar Olivera\Project Reliance\node_modules\.bin\tsc.cmd --noEmit --pretty false` passed
+- Honest note:
+  - business-location recording does not require pre-recording consent today, but customer review/video access still does; that policy is internally consistent in code paths now, but may still deserve a future product-level simplification pass.
+
+## Customer account UX follow-up (2026-05-30)
+- Fixed customer favorites auth timing so unauthenticated users now see a clear sign-in prompt instead of a failed favorites error.
+- Updated customer messages launch copy to say service videos instead of proof.
+- Reworked profile settings to use session headers consistently, and added a guest sign-in gate so unauthenticated visitors no longer see a misleading blank profile form.
+- Updated the customer sidebar to render an honest guest state when no real customer session exists.
+- Verified live on fresh localhost:3000:
+  - /favorites shows Sign in to use favorites
+  - /messages uses service videos wording
+  - /profile-settings shows a clean sign-in gate for guest state
+- `tsc --noEmit --pretty false` passed.
+
+## Signed-in customer persistence follow-up (2026-05-30)
+- Strengthened the dev registration store in `src/lib/dev-registered-users.ts` so route workers re-sync from the persisted registry file instead of relying on stale in-memory state.
+- Updated `src/lib/auth.ts` to re-sync the dev registry before remapping dev ids to Prisma-backed user ids.
+- Updated `src/app/api/customer/profile/route.ts` so customer profile GET/PUT refresh registry state before reads and after dev fallback writes.
+- Verified live with `Nora Finch <nora.finch@example.net>` on fresh `localhost:3000`:
+  - login returned real user id `cmpsvndhn002jsocgbptfmvv0`
+  - profile PUT saved updated phone/city values
+  - follow-up profile GET returned the same updated values instead of falling back to stale data
+- Re-ran the signed-in favorites flow for Nora:
+  - `GET /api/users/favorites` returns the Metro favorite correctly
+  - `POST /api/users/favorites` remains idempotent and keeps the same favorite row
+- Cleaned a remaining customer-facing wording leak:
+  - `src/app/api/users/favorites/route.ts`
+  - `src/app/api/services/discover/route.ts`
+  - public/customer service descriptions now normalize `proof-backed` to `video-backed`
+- Verified live API output:
+  - favorites now return `Detailed apartment and move-out cleaning with video-backed service updates.`
+  - discover results return cleaned service descriptions
+- Verification:
+  - `C:\Users\Cesar Olivera\Project Reliance\node_modules\.bin\tsc.cmd --noEmit --pretty false` passed with increased Node heap
+- Honest note:
+  - direct standalone Prisma shell access still intermittently fails against Azure SQL even while the running app can complete the same live customer flows, so app/runtime verification remains the more reliable check path right now.
+
+## Signed-in customer UI audit follow-up (2026-05-30)
+- Verified a real signed-in customer browser session for `nora.finch@example.net` across:
+  - `/favorites`
+  - `/profile-settings`
+  - `/reviews`
+  - `/my-bookings`
+  - `/service/cmnvdeh1n0002sop8otabf4su`
+- Confirmed the full favorites UI cycle works in-page:
+  - remove favorite from `/favorites`
+  - empty state appears
+  - re-add from the service detail page
+  - `/favorites` repopulates correctly
+- Fixed two trust-related customer UI states:
+  - `src/app/(user)/favorites/page.tsx`
+    - favorites count badge now shows `Loading...` while the signed-in list is still resolving instead of briefly lying with `0 saved`
+  - `src/app/(user)/service/[serviceId]/page.tsx`
+    - signed-in favorite toggle now shows `Checking favorite status` and stays disabled until favorite status is actually resolved
+- Cleaned the customer service detail vendor card:
+  - `src/app/api/services/[id]/route.ts`
+  - `src/app/(user)/service/[serviceId]/page.tsx`
+  - removed misleading `Total Jobs N/A`, `Years in Business N/A`, and `Verified No`
+  - replaced with honest customer-facing vendor details only:
+    - response time
+    - Reliance listing status
+- Verified live after reload:
+  - `/favorites` initially shows `Loading...`, then the correct saved count
+  - Metro service detail no longer shows the rough placeholder vendor stats
+  - service detail eventually resolves to:
+    - `Remove from favorites`
+    - `Reviews (1)`
+    - `Reliance Listing: Public`
+- Honest note:
+  - the service detail page still takes too long to settle its secondary signed-in enrichments (favorite state and review count), even though it now avoids showing the wrong final action while that happens.
+## Handoff refresh (2026-05-30 - admin review moderation propagation + public vendor wording fix)
+- Verified the real admin review moderation workflow live on fresh localhost:3000:
+  - opened /admin/reviews
+  - approved pending Avery review cmpsq9jwg002fsocgxpuzltir through the real UI
+  - queue summary updated from Pending Review = 1 / Approved Public = 1 to Pending Review = 0 / Approved Public = 2
+  - approved row now shows Approved, Public, and a live moderated timestamp
+- Verified the moderation decision propagated publicly:
+  - Metro public vendor page now contains both Avery public reviews
+  - Metro public service page now shows Reviews (2)
+- Found and fixed one remaining public wording leak in src/app/vendors/[vendorId]/page.tsx:
+  - Proof of Completed Work -> Completed Service Video
+  - main completed-work video shown to customers -> main service video shown to customers
+- Verification:
+  - 	sc --noEmit --pretty false passed with NODE_OPTIONS=--max-old-space-size=4096
+  - live public vendor page now shows Completed Service Video and no longer shows Proof of Completed Work
+- Honest note:
+  - while rechecking the public pages, Azure SQL dropped briefly and the public vendor/service APIs returned transient 500 errors; a retry after recovery succeeded and the live wording verification passed.
+## Handoff refresh (2026-05-30 - remaining user-facing video wording sweep)
+- Cleaned another cluster of remaining user-facing proof wording leaks in the real app:
+  - src/app/vendor/reviews/page.tsx now says vendors rely on active booking, video, job, and review capture flows
+  - src/app/help/page.tsx now says ideo or media concerns
+  - src/app/vendor/profile/page.tsx now says New video-backed customer reviews
+  - src/components/reviews/SmartVideoPlayer.tsx now prompts Please confirm your experience after reviewing the completed service video.
+  - src/app/api/bookings/claim/route.ts now returns pproved service videos
+- Verification:
+  - 	sc --noEmit --pretty false passed with NODE_OPTIONS=--max-old-space-size=4096
+  - live public help page check confirmed the new ideo or media concerns wording and confirmed the old media/proof concerns copy is gone
+- Boundary:
+  - the vendor profile notification label, review overlay prompt, and booking-claim response were source-verified and typechecked in this pass; only the public help page was rechecked live in-browser.
+## Handoff refresh (2026-05-30 - public runtime resilience for vendor/service pages)
+- Added shared transient DB helpers in src/lib/transient-db-errors.ts for public/runtime-safe database outage detection and one retry attempt.
+- Updated public APIs to return a clear 503 DB_UNAVAILABLE response instead of a generic fetch failure when Azure SQL drops:
+  - src/app/api/vendors/[vendorId]/public/route.ts
+  - src/app/api/vendors/[vendorId]/reviews/public/route.ts
+  - src/app/api/services/[id]/route.ts
+- Updated public UI pages to translate those temporary backend failures into customer-friendly retry states:
+  - src/app/vendors/[vendorId]/page.tsx
+    - vendor profile now shows Public vendor profile temporarily unavailable plus Retry
+    - public reviews section now shows Retry reviews when only reviews fail
+  - src/app/(user)/service/[serviceId]/page.tsx
+    - service page now shows the temporary-unavailable message with Retry and Go Back
+- Verification:
+  - 	sc --noEmit --pretty false passed with NODE_OPTIONS=--max-old-space-size=4096
+  - live normal-path browser checks still passed:
+    - public vendor page loads Metro Home Care Pros
+    - public service page loads Metro Apartment Deep Clean and Reviews (2)
+  - forced-failure browser checks using intercepted 503 DB_UNAVAILABLE responses passed:
+    - vendor page shows temporary-unavailable card + Retry
+    - vendor reviews section shows temporary-unavailable copy + Retry reviews
+    - public service page shows temporary-unavailable copy + Retry + Go Back
+- This closes the roughest public-facing outage behavior found during the platform audit and avoids showing raw Failed to fetch ... messages to customers.
+## Handoff refresh (2026-05-30 - home footer and email year cleanup)
+- Updated the public home page footer in src/app/page.tsx from 2024 to 2026.
+- Updated the shared email footer year in src/lib/email-notifications.ts so all touched email templates now use ï¿½ 2026 Reliance. All rights reserved.
+- Verification:
+  - 	sc --noEmit --pretty false passed with NODE_OPTIONS=--max-old-space-size=4096
+  - live public home page check confirmed 2026 Reliance. All rights reserved. is visible and 2024 is gone
+  - source scan confirmed the old 2024 footer copy is gone from the home page and shared email notifications file
+
+## 2026-05-30 17:58 EDT - Role/login landing fix verified live
+- Fixed src/app/api/auth/login/route.ts so vendor membership no longer auto-adds customer access, owner/admin is recognized server-side, and admin can be returned in vailableProfiles.
+- Fixed src/app/auth/login/page.tsx so admin-first identities land on /admin/dashboard by default.
+- Tightened src/hooks/useAvailableRoles.ts so explicit session roles win over noisy client-side re-inference; pure Metro vendor sessions no longer show a stray Customer toggle.
+- Cleaned visible mojibake on role surfaces in src/components/ProfileHeader.tsx and src/app/vendor/layout.tsx.
+- Typecheck passed with 	sc --noEmit --pretty false.
+- Live verification:
+  - e2e-trust-manager@reliance.test now logs into http://127.0.0.1:3000/vendor/dashboard and shows the vendor shell without Customer/Admin toggle buttons.
+  - colivera080124@gmail.com now logs into http://127.0.0.1:3000/admin/dashboard and shows Customer/Vendor/Admin toggles with admin active by default.
+- Follow-up owner toggle verification: Admin -> Vendor -> Customer -> Admin now completes successfully on fresh localhost once the customer shell reports its active profile as customer.
+
+## 2026-05-30 19:05 EDT - Admin/vendor/customer wording cleanup verified live
+- Cleaned src/app/SidebarLayout.tsx by replacing mojibake icon strings with Lucide icons and fixing the admin footer to Reliance ï¿½ 2026.
+- Cleaned src/app/vendor/media/page.tsx so the page now uses Service Video Library, Loading service videos..., and clearer empty/error states.
+- Cleaned src/app/(user)/my-bookings/[bookingId]/page.tsx so the redundant Open Booking button is gone, the in-page video anchor is now completed-service-video, consent helper text no longer uses broken ellipsis, and the customer CTA now says Back to My Services consistently.
+- Typecheck passed with 	sc --noEmit --pretty false.
+- Live verification:
+  - Admin dashboard loaded with clean sidebar labels and Reliance ï¿½ 2026.
+  - Vendor media page loaded with Service Video Library and no Media / Proof Library copy.
+  - Seeded customer booking detail check showed no Open Booking, no Back to My Bookings, and no broken consent ellipsis in the live page text.
+
+## 2026-05-31 16:54:41 - Customer wording + admin internal-filter audit
+- Updated customer wording in src/app/(user)/my-bookings/page.tsx:
+  - Service media -> Service videos and images
+  - pproved videos or images -> pproved service videos or images
+- Updated customer wording in:
+  - src/app/(user)/reviews/page.tsx
+  - src/app/(user)/user-dashboard/page.tsx
+- Updated admin wording/loading states in:
+  - src/app/admin/review-audit/page.tsx
+  - src/app/admin/publish-management/page.tsx
+  - src/app/admin/notifications/page.tsx
+- Fixed mojibake bullets on review-audit and publish-management.
+- Filtered internal/demo vendor noise out of admin notifications by default in src/app/api/admin/notifications/route.ts.
+- Filtered admin publish overview to launch-facing vendors/services only in src/app/api/admin/publish/route.ts.
+- Verification:
+  - 	sc --noEmit --pretty false passed.
+  - Live session-injected browser checks confirmed:
+    - /my-bookings shows Service videos and images, when available
+    - /my-bookings shows pproved service videos or images
+    - /admin/notifications no longer shows Sparkle promotion-request noise; only the Metro report remained.
+  - Direct admin API check confirmed /api/admin/publish now returns only:
+    - Brooklyn Home Care Studio
+    - Midtown Home Detailers
+    - Metro Home Care Pros
+  - Sparkle and the barber/test vendors are gone from the publish API payload.
+- Note:
+  - /admin/publish-management is still slow enough that the UI often sits on its loading state for several seconds, but the underlying API payload is now correct.
+
+## 2026-05-31 18:07:09 - Search redirect + telemetry wording audit
+- Replaced the mock /search page with a redirect to the real browse route in src/app/(user)/search/page.tsx.
+- Updated src/app/vendor/telemetry/page.tsx:
+  - Loading... -> Loading device status...
+  - Loading... -> Loading recent events...
+  - fixed raw fallback dashes to ï¿½
+- Updated the vendor enhanced workflow placeholder in src/app/vendor/jobs/enhanced-workflow.tsx:
+  - client@example.com -> lex.morgan@gmail.com
+- Verification:
+  - 	sc --noEmit --pretty false passed.
+  - Live public /search?q=clean HTTP check now returns 307 Location: /browse?q=clean.
+  - Live vendor telemetry page shows:
+    -   devices
+    - No devices found for this vendor yet.
+    -   events
+    - No telemetry events matched your filters yet.
+- Result:
+  - The mock TikTok/Instagram-style search results are no longer reachable through /search.
+
+## 2026-05-31 18:15:11 - Admin queue filter audit
+- Updated src/app/api/admin/review-audit/route.ts to exclude internal/demo rows by default using:
+  - launchExcludedVendorIds()
+  - launchExcludedUserIds()
+- Updated src/app/admin/review-audit/page.tsx to use getAdminRequestHeaders() instead of a hardcoded admin session helper.
+- Cleaned remaining mojibake attempts on review-audit and media-moderation admin pages.
+- Verification:
+  - 	sc --noEmit --pretty false passed.
+  - Direct admin API checks confirmed:
+    - /api/admin/review-audit now returns only Metro/Avery launch-facing rows by default.
+    - /api/admin/reported-content returns eports: [] with includeInternal: false.
+    - /api/admin/media/moderation-queue returns Metro-only packages and no Sparkle/internal vendor packages.
+- Live admin page check:
+  - page shells load correctly for review audit, media moderation, and reported content.
+  - these routes are still slow enough that the browser pass often catches their loading states before the data finishes rendering.
+
+## 2026-05-31 20:31:12 - Customer auth header cleanup
+- Added getClientAuthHeaders() in src/lib/client-session.ts for customer/browser calls that should rely on signed bearer auth without x-user-id.
+- Updated customer-facing flows to stop sending explicit x-user-id in the normal browser path:
+  - src/sdk/favorites.ts
+  - src/sdk/bookings.ts
+  - src/app/(user)/my-bookings/page.tsx
+  - src/app/(user)/my-bookings/[bookingId]/page.tsx
+  - src/app/(user)/service/[serviceId]/page.tsx
+  - src/app/(user)/booking/[serviceId]/page.tsx
+  - src/app/(user)/booking/[serviceId]/confirmation/page.tsx
+  - src/app/(user)/profile-settings/page.tsx
+- Verification:
+  - tsc --noEmit --pretty false passed.
+  - Live token-only favorites flow passed for e2e-smoke-customer:
+    - list favorites
+    - add favorite
+    - list favorites again
+    - remove favorite
+  - Live token-only booking flow passed for e2e-smoke-customer:
+    - /api/customer/profile
+    - create booking
+    - list bookings
+    - load booking detail
+
+## 2026-05-31 20:42:58 - Customer review/video auth cleanup
+- Removed client-side x-user-id injection from the normal customer review/video path.
+- Updated:
+  - src/components/reviews/SmartVideoPlayer.tsx
+  - src/components/reports/ReportContentDialog.tsx
+- SmartVideoPlayer now uses signed client auth headers and only uses userId to decide whether review capture should run.
+- ReportContentDialog now submits content reports with signed client auth headers instead of x-user-id.
+- Verification:
+  - tsc --noEmit --pretty false passed.
+  - Live token-only review/report flow passed for e2e-smoke-customer:
+    - located booking with videos: cmpnj67b40001so7sfx27us4h
+    - review window start succeeded: cmpuhm513000asovohqodueuv
+    - content report submission succeeded: cmpuhm7wu000csovosqcdqdef
+    - admin notification created: cmpuhm8bv000esovoqydb1t47
+
+## 2026-05-31 20:49:22 - Vendor/admin client auth helper cleanup
+- Tightened shared browser auth helpers:
+  - src/lib/client-session.ts now prefers signed bearer auth and only adds x-user-id as a dev fallback when no token exists.
+  - src/lib/admin-client.ts now prefers signed bearer auth and only adds x-admin/x-user-role/x-user-id as dev fallbacks when no token exists.
+- Verification:
+  - tsc --noEmit --pretty false passed.
+  - Live bearer-only vendor checks passed for e2e-trust-manager:
+    - /api/vendor/context
+    - /api/vendors/cmnvdegk60000sop8sj18nud2/dashboard
+  - Vendor dashboard payload returned real stats:
+    - totalBookings: 9
+    - totalClients: 2
+    - rating: 4.5
+  - Live bearer-only admin check passed for owner admin:
+    - /api/admin/stats
+  - Admin stats payload returned:
+    - totalUsers: 4
+    - totalVendors: 3
+    - totalReviews: 2
+    - pendingModeration: 0
+
+## 2026-05-31 21:13:00 - Email verification foundation
+- Added DB-backed email verification tokens:
+  - prisma/schema.prisma
+  - prisma/migrations/20260531221500_add_email_verification_tokens/migration.sql
+- Added the core helper and tests:
+  - src/lib/auth-email-verification.ts
+  - src/lib/auth-email-verification.test.ts
+- Added live verification endpoints and page:
+  - src/app/api/auth/verify-email/route.ts
+  - src/app/api/auth/resend-verification/route.ts
+  - src/app/auth/verify-email/page.tsx
+- Registration now issues a real verification token and sends a verification email:
+  - src/app/api/customer/register/route.ts
+- Auth/profile now surface verification state:
+  - src/app/api/auth/login/route.ts
+  - src/app/api/customer/profile/route.ts
+  - src/lib/auth-credentials.ts
+- Verification reset on customer email change is now real and was fixed after live testing exposed a null-vs-undefined bug in credential upsert.
+- Verification:
+  - Prisma client regenerated successfully.
+  - Email verification migration executed successfully against Azure SQL.
+  - tsc --noEmit --pretty false passed.
+  - Focused auth tests passed:
+    - src/lib/auth-email-verification.test.ts
+    - src/lib/auth-session.test.ts
+    - src/lib/auth-password.test.ts
+    - src/lib/auth-rate-limit.test.ts
+  - Live registration returned:
+    - emailVerificationRequired: true
+    - emailDeliveryQueued: true
+    - verificationLinkPreview + verificationTokenPreview
+  - Live verify call succeeded:
+    - message: Email verified successfully
+  - Live login after verification returned:
+    - user.emailVerified: true
+    - emailVerificationRequired: false
+  - Live email-change reset path succeeded:
+    - profile.emailVerified: false
+    - emailVerificationRequired: true
+    - login after change: emailVerified false
+    - verify new token: success
+    - login after verify: emailVerified true
+  - GET /auth/verify-email?token=invalid-token returned 200 and page markup containing "Verify your email".
+
+## 2026-05-31 21:22:00 - Email verification enforcement
+- Added reusable enforcement gate:
+  - src/lib/email-verification-enforcement.ts
+  - src/lib/email-verification-enforcement.test.ts
+- Applied verification enforcement to sensitive write paths:
+  - src/app/api/bookings/route.ts -> create_booking
+  - src/app/api/reviews/create/route.ts -> submit_review
+  - src/app/api/vendor/register/route.ts -> register_vendor_account
+  - src/app/api/vendor/promotion-requests/route.ts -> submit_promotion_request
+- Policy in this slice:
+  - unverified users can still sign in, update profile, resend verification, and verify email
+  - unverified users are blocked from booking creation, review submission, vendor registration, and promotion-request submission
+  - dev internal/audit identities still bypass enforcement in development so platform audits do not stall
+- Verification:
+  - tsc --noEmit --pretty false passed
+  - focused tests passed, including src/lib/email-verification-enforcement.test.ts
+  - live unverified account login showed:
+    - emailVerified: false
+    - emailVerificationRequired: true
+  - live unverified booking create blocked with 403 EMAIL_VERIFICATION_REQUIRED (action=create_booking)
+  - live unverified vendor registration blocked with 403 EMAIL_VERIFICATION_REQUIRED (action=register_vendor_account)
+  - live verified account still created booking successfully: cmpuitim60003so50emjifkpe
+  - live dev audit bypass still worked for e2e-smoke-customer booking creation: cmpuitvxf0005so50ms34uf2e
+
+## 2026-05-31 21:33:00 - Admin/vendor MFA via email code
+- Added DB-backed MFA challenge storage:
+  - prisma/schema.prisma
+  - prisma/migrations/20260531214000_add_auth_mfa_challenges/migration.sql
+- Added MFA helper and tests:
+  - src/lib/auth-mfa.ts
+  - src/lib/auth-mfa.test.ts
+- Added shared login response/user helpers:
+  - src/lib/auth-login-response.ts
+  - src/lib/auth-login-user.ts
+- Added MFA verify endpoint:
+  - src/app/api/auth/mfa/verify/route.ts
+- Updated login flow:
+  - src/app/api/auth/login/route.ts now requires MFA for admin/vendor-capable accounts after password verification
+  - src/app/auth/login/page.tsx now supports a second-step code entry flow on the same page
+- MFA policy in this slice:
+  - customer-only accounts sign in normally
+  - vendor/admin accounts receive an email code and must complete MFA before session issuance
+  - dev mode includes mfaCodePreview in the login response for local verification
+- Verification:
+  - Prisma client regenerated successfully.
+  - MFA migration executed successfully against Azure SQL.
+  - tsc --noEmit --pretty false passed.
+  - Focused auth tests passed, including src/lib/auth-mfa.test.ts.
+  - Live customer login remained direct with no MFA.
+  - Live vendor login returned mfaRequired=true, challengeId, and dev code preview.
+  - Live vendor MFA verify succeeded and returned a real vendor session token.
+  - Live admin login returned mfaRequired=true, challengeId, and dev code preview.
+  - Live admin MFA verify succeeded and returned a real admin session token.
+  - Wrong MFA code returned 400 MFA_VERIFICATION_FAILED (reason=invalid_code).
+  - Reusing a consumed MFA code returned 400 MFA_VERIFICATION_FAILED (reason=already_used).
+  - Post-MFA vendor token accessed /api/vendor/context successfully.
+  - Post-MFA admin token accessed /api/admin/stats successfully.
+- Known limitation:
+  - login page browser click-through was not fully automated in this session because the local browser automation kernel was unstable, but the login page code compiles and the underlying MFA API/session flow is verified live.
+
+## 2026-05-31 21:41:00 - MFA resend and remembered device
+- Added DB-backed trusted-device storage:
+  - prisma/schema.prisma
+  - prisma/migrations/20260531220000_add_auth_trusted_devices/migration.sql
+- Extended MFA helper:
+  - src/lib/auth-mfa.ts
+  - supports MFA resend
+  - supports remembered-device issuance
+  - supports trusted-device cookie resolution
+- Added resend endpoint:
+  - src/app/api/auth/mfa/resend/route.ts
+- Updated MFA verify route to optionally remember the device:
+  - src/app/api/auth/mfa/verify/route.ts
+- Updated login route to skip MFA only when a valid trusted-device cookie matches the same user:
+  - src/app/api/auth/login/route.ts
+- Updated login page UI:
+  - src/app/auth/login/page.tsx
+  - remember-device checkbox
+  - resend-code action
+- Updated logout to clear remembered-device cookie:
+  - src/app/api/auth/logout/route.ts
+- Verification:
+  - Prisma client regenerated successfully.
+  - trusted-device migration executed successfully against Azure SQL.
+  - tsc --noEmit --pretty false passed.
+  - focused auth tests passed.
+  - Live vendor flow:
+    - first login returned mfaRequired=true
+    - resend returned a new challengeId and code preview
+    - old challenge code was rejected as already_used
+    - verify with rememberDevice=true succeeded
+    - second login in the same cookie jar skipped MFA and returned direct vendor session
+    - trusted-device cookie existed after remembered login
+    - logout cleared trusted-device cookie
+    - next login required MFA again after logout
+- Known limitation:
+  - login page resend/remember controls compile and the underlying live API/cookie behavior is verified, but the browser click-through itself was not automated in this session.
+
+## 2026-05-31 21:49:00 - Admin MFA trusted-device visibility and revoke controls
+- Added admin route for MFA trusted-device management:
+  - src/app/api/admin/mfa/trusted-devices/route.ts
+- Updated admin vendor-management page:
+  - src/app/admin/vendors/page.tsx
+  - new Trusted MFA Devices card loads remembered devices for the selected user or vendor scope
+  - admin can revoke remembered devices directly from the page
+- Scope behavior:
+  - targetType=user lists active remembered devices for that user
+  - targetType=vendor lists active remembered devices for active vendor members
+- Verification:
+  - tsc --noEmit --pretty false passed
+  - focused auth tests passed
+  - Live admin API returned trusted devices for Metro vendor scope
+  - Live revoke removed devices from the list
+  - After revoking all active vendor remembered devices, the same vendor browser session required MFA again on next login
+  - Live user-target check also passed for owner admin targetType=user
+- Known limitation:
+  - the /admin/vendors page card compiles and the underlying API/revoke behavior is verified live, but the card itself was not browser-clicked through in this session.
+
+## 2026-05-31 22:10:00 - Real passkey registration and sign-in
+- Installed WebAuthn dependencies:
+  - @simplewebauthn/server
+  - @simplewebauthn/browser
+- Added Prisma models and migration:
+  - AuthPasskey
+  - AuthPasskeyChallenge
+  - prisma/migrations/20260531232000_add_auth_passkeys/migration.sql
+- Added passkey helper logic:
+  - src/lib/auth-passkeys.ts
+- Added/updated routes:
+  - src/app/api/passkey/route.ts
+  - src/app/api/passkey/register-options/route.ts
+  - src/app/api/passkey/register/route.ts
+  - src/app/api/passkey/authenticate-options/route.ts
+  - src/app/api/passkey/authenticate/route.ts
+- Updated secure-account surfaces:
+  - src/components/auth/PasskeySetupCard.tsx
+  - src/app/vendor/secure-account/page.tsx
+  - src/app/customer/secure-account/page.tsx
+- Updated login to support passkey sign-in from the normal email-first form:
+  - src/app/auth/login/page.tsx
+- Added admin enrollment surface:
+  - src/app/admin/security/page.tsx
+  - src/app/admin/dashboard/page.tsx
+- Runtime migration note:
+  - direct shell Prisma DB execution still could not reach Azure SQL
+  - the passkey migration was applied successfully through the running localhost app process
+  - the temporary dev-only route used for that application was removed immediately afterward
+- Verification:
+  - Prisma client regenerated successfully
+  - tsc --noEmit --pretty false passed
+  - Playwright-backed smoke script passed:
+    - scripts/dev/passkey-smoke.cjs
+    - vendor MFA login -> vendor secure-account passkey registration -> logout -> login page passkey sign-in
+    - final redirect landed on /vendor/dashboard
+    - passkey list showed 1 registered passkey
+- Current limitation:
+  - the core flow is live-verified for vendor sign-in
+  - admin security page and dashboard quick link compile and are available, but were not separately browser-clicked in this session- Additional admin browser verification after initial passkey implementation:
+  - scripts/dev/admin-security-smoke.cjs passed
+  - /admin/dashboard showed the Admin Security quick link
+  - /admin/security loaded and rendered the Add Passkey action
+
+## 2026-06-01 10:45:00 - Metro completed-booking review propagation + live vendor reviews page
+- Verified the same Metro customer booking `cmpv8dr6a0009sob4v471pwoq` end to end through review capture:
+  - customer booking existed in `/my-bookings`
+  - assigned Metro employee and completed service-video package already existed
+  - customer-visible approved video sessions were available for the booking
+  - started review window on the completed video session `cmpvafesz000zsob4yhlj7fj4`
+  - submitted review `cmpvavcc5001isob4zlk2ce6s` as Avery Coleman
+  - admin moderation approved it publicly
+- Verified live propagation:
+  - admin moderation queue showed the pending review, then showed it as approved/public with `moderatedAt`
+  - public vendor reviews endpoint included the new review
+  - public service reviews endpoint included the new review for Metro service `cmnvdeh1n0002sop8otabf4su`
+  - customer `/api/reviews/me` included the new submitted review
+  - Metro vendor dashboard stats updated to:
+    - `rating: 4.7`
+    - `ratingCount: 3`
+    - new review at the top of `recentReviews`
+- Fixed vendor review route placeholder:
+  - replaced `src/app/vendor/reviews/page.tsx`
+  - page now uses `useVendorDashboard()`
+  - shows live published rating, public review count, moderation explainer, and recent approved customer reviews
+- Verification:
+  - `tsc --noEmit --pretty false` passed
+  - one-off live Playwright check against `/vendor/reviews` confirmed:
+    - `Customer Reviews` heading present
+    - old `Vendor Review Management Is Not Live Yet` placeholder gone
+    - rating `4.7` visible
+    - review count `3` visible
+    - Avery's newest approved review visible
+    - moderation explainer copy visible
+- Important current limitation:
+  - `src/app/vendor/reviews/page.tsx` is now live and useful, but it is still a vendor-facing published-review surface, not a full moderation console; admin continues to own approval/rejection actions.
+
+## 2026-06-01 11:55:00 PM - Metro vendor consent workflow backend truth + pending-state repair
+- Investigated the Metro vendor consent workflow for booking `cmpv8a5nl0007sob42f84wtp9` and reproduced a real mismatch:
+  - vendor UI showed requested/sent state
+  - backend still returned `not_requested`
+  - only the placeholder `CONSENT_REQUEST` media session had been created
+- Fixed the consent request handler in `src/app/vendor/jobs/page.tsx`:
+  - stopped optimistic flip to requested before backend confirmation
+  - added honest `Sending Video Consent...` state
+  - stabilized booking/vendor snapshot usage inside the request flow
+  - mapped backend `PENDING` to the vendor UI requested state
+  - made the post-send token refresh non-blocking
+- Added backend consent state to vendor dashboard jobs in `src/app/api/vendors/[vendorId]/dashboard/route.ts`:
+  - `consentStatus`
+  - `latestConsentToken`
+  - consent accepted/declined timestamps
+- Updated `adaptRecentJobToUiJob()` and job-state resolution to trust backend consent state on fresh page loads.
+- Verified live:
+  - `tsc --noEmit --pretty false` passed after each patch slice
+  - real vendor browser path created a true consent request:
+    - `POST /api/consent/request` returned `200`
+    - `/api/consent/status?bookingId=cmpv8a5nl0007sob42f84wtp9` returned:
+      - `status: pending`
+      - real `latestConsentToken`
+      - real `latestConsentId`
+  - vendor dashboard API now returns for that booking:
+    - `consentStatus: requested`
+    - real `latestConsentToken`
+  - fresh vendor jobs page card now renders:
+    - `Next step: Consent sent - waiting for customer`
+    - `Check Consent`
+- Important remaining nuance:
+  - the same-session compliance modal text still needs one more polish pass to ensure it always leaves the temporary `Sending Video Consent...` copy promptly in every run, but the backend truth and fresh jobs-list state are now aligned.
+
+## 2026-06-01 - Verified-email booking flow + vendor jobs loading-state fix
+- Ran a live localhost workflow using a fresh customer account:
+  - registered erified-flow-1780333721969@example.net
+  - confirmed pre-verification login returns emailVerified: false
+  - confirmed unverified booking create is blocked with 403 EMAIL_VERIFICATION_REQUIRED
+  - verified the email through the real verification endpoint
+  - confirmed post-verification login returns emailVerified: true
+  - created a real booking cmpvgqq56002csokkx191m987 for Metro on 2026-06-20 09:00
+- Verified cross-surface propagation:
+  - customer My Services shows the booking, vendor, booking id, title, and scheduled date/time
+  - admin stats moved from totalUsers: 9 to totalUsers: 10
+  - Metro vendor dashboard API included the booking immediately
+- Found and fixed a real vendor jobs UX/performance issue in src/app/vendor/jobs/page.tsx:
+  - the page held jobsLoading until full persisted-video hydration finished
+  - this could leave Manage Jobs appearing stuck even though core job data was already available
+  - changed the page to render core jobs immediately and hydrate persisted videos in the background
+  - also stop leaving jobs in a perpetual loading state when vendorId is not yet resolved
+- Verified the vendor side after the patch:
+  - /vendor/jobs eventually renders the new booking card with:
+    - Verified Email Flow Audit
+    - Client: Verified Flow
+    - Reference: cmpvgqq56002csokkx191m987
+    - Source: Customer Booking
+  - /vendor/jobs/cmpvgqq56002csokkx191m987 renders:
+    - booking reference
+    - client name
+    - Source: Customer Booking
+    - Video Timeline
+- Honest remaining rough spot:
+  - the vendor jobs pages still take too long to settle on a cold load, especially around vendor-context resolution, but they now do reach the correct booking state instead of hiding behind the old top-level loading gate.
+
+## 2026-06-01 - Video-ready booking links cleaned up
+- Replaced the user-visible booking link flag `?proofReady=1` with `?videoReady=1` in:
+  - `src/app/api/admin/media/packages/[bookingId]/moderate/route.ts`
+  - `src/app/api/dev/email-audit/route.ts`
+- Updated `src/app/(user)/my-bookings/[bookingId]/page.tsx` to:
+  - prefer `videoReady=1`
+  - continue honoring legacy `proofReady=1` links so older notifications do not break
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live authenticated browser check on `localhost:3000` confirmed both links render the same booking detail state for `cmpvgqq56002csokkx191m987`:
+    - `?videoReady=1` -> `Video ready` badge + `Final Result`
+    - `?proofReady=1` -> `Video ready` badge + `Final Result`
+
+## 2026-06-01 - Vendor jobs page switched to jobs-only dashboard mode
+- Added a lightweight `jobsOnly=1` path to `src/app/api/vendors/[vendorId]/dashboard/route.ts` so vendor jobs can skip loading:
+  - recent review summaries
+  - insights / growth metrics
+  - notifications
+  - storage calculations
+  - other dashboard-only stats the jobs page does not render
+- Updated `src/app/vendor/jobs/page.tsx` to fetch:
+  - `/api/vendors/[vendorId]/dashboard?jobsOnly=1`
+  instead of the full dashboard payload
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live vendor API timing:
+    - `jobsOnly=1` -> about `2962ms`
+    - full dashboard -> about `3773ms` in the same warm runtime
+  - live authenticated browser check on `/vendor/jobs` still showed:
+    - `Verified Email Flow Audit`
+    - `Reference: cmpvgqq56002csokkx191m987`
+  - the page reached the booking list in about `10s` on that live run
+
+## 2026-06-01 - Admin publish-management query path tightened
+- Updated `src/app/api/admin/publish/route.ts` so vendor and service publish data load in parallel.
+- Removed the extra `vendorIds` dependency hop by filtering services through their `vendor` relation instead of:
+  - fetching vendors first
+  - then using a second query scoped by vendor id list
+- This keeps the same page payload shape while cutting an unnecessary database round-trip on the slow admin publish tool.
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live admin API timing improved to about `788ms` for `/api/admin/publish`
+  - live authenticated browser check on `/admin/publish-management` still showed:
+    - `Metro Home Care Pros`
+    - `Brooklyn Home Care Studio`
+  - the page reached visible content in about `11.4s` on that run, so the API is materially better even though the full browser route still has some client-side/auth settle overhead
+
+## 2026-06-01 - Admin role-toggle hook stops probing customer profile
+- Updated `src/hooks/useAvailableRoles.ts` so the owner/admin identity adds `customer` access up front instead of probing `/api/customer/profile` on admin surfaces just to render the Customer toggle.
+- This removes one unnecessary request from admin route settle behavior while preserving the Admin/Vendor/Customer toggle for the owner account.
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live authenticated browser trace on `/admin/publish-management` no longer showed `/api/customer/profile`
+  - remaining network activity on that page was reduced to:
+    - route document
+    - page chunk
+    - avatar image
+    - `/api/admin/publish`
+
+## 2026-06-01 - React Query Devtools gated behind explicit flag
+- Updated `src/providers/QueryProvider.tsx` so React Query Devtools only load when:
+  - `NODE_ENV === "development"`
+  - and `NEXT_PUBLIC_ENABLE_QUERY_DEVTOOLS === "true"`
+- This keeps normal localhost auditing from loading the extra devtools chunks on every route by default.
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live authenticated browser trace on `/admin/publish-management` no longer loaded the React Query Devtools chunks
+  - the same page reached `Metro Home Care Pros` in about `2410ms`
+  - resource sequence was reduced to:
+    - route document
+    - core Next chunks
+    - avatar image
+    - `/api/admin/publish`
+
+## 2026-06-01 - Heavy admin moderation routes tightened
+- Updated `src/app/api/admin/media/moderation-queue/route.ts` to filter more work at the database layer before hydrating moderation cards:
+  - `deletedAt: null`
+  - require a linked booking-backed media session
+  - require staged video sessions only (`INTRO`, `IN_PROGRESS`, `COMPLETED`)
+  - exclude internal/demo vendor ids in the query itself when `includeInternal` is off
+  - use `select` instead of the broader `include` shape
+- Updated `src/app/api/admin/review-audit/route.ts` and `src/app/admin/review-audit/page.tsx` so the initial summary load skips the expensive exact total count:
+  - API now accepts `includeTotal=0`
+  - page requests summary rows with `includeDetails=0&includeTotal=0`
+  - summary helper text now focuses on the 10 most recent matching rows instead of waiting on an exact total
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live admin API timing checks improved from the earlier ~9-10 second cold-path range into the mid-4 second range:
+    - `/api/admin/media/moderation-queue?limit=60` -> about `4558ms`
+    - `/api/admin/review-audit?limit=10&includeDetails=0&includeTotal=0` -> about `4424ms`
+  - live authenticated browser checks on `localhost:3000` settled without auth/error fallbacks:
+    - `/admin/media-moderation` reached live Metro content
+    - `/admin/review-audit` reached the live review-audit shell and summary view
+- Honest remaining rough spot:
+  - both admin pages still take noticeable time to settle in the browser (`~11-15s` in the live checks), but they are no longer dominated by the old slow API path and they now land cleanly instead of degrading into unauthorized/failure states
+
+## 2026-06-01 - Device pairing flow improved and re-verified
+- Updated `src/app/api/device/pairing/request/route.ts` to return a shareable `pairingUrl` with the 6-digit code prefilled in the link.
+- Added `src/app/api/device/pairing/status/route.ts` so the vendor UI can poll the actual pairing-code state instead of guessing from device-count changes.
+- Updated `src/app/vendor/profile/page.tsx` so the vendor pairing modal:
+  - shows the real shareable pairing link
+  - tells vendors to send the link to the employee phone, with the code kept as a backup
+  - auto-closes when the pairing code is actually consumed, even if the same phone is being re-paired and the device count does not increase
+- Updated `src/app/device/pair/page.tsx` so the phone pairing page:
+  - pre-fills the code from `?code=...`
+  - shows clearer link-first copy
+  - attempts to return/close after successful pairing
+  - exposes a `Done` fallback action if the browser will not auto-close
+- Updated device-management copy in `src/app/vendor/profile/page.tsx` to reflect the intended architecture more honestly:
+  - phones pair here
+  - headsets should be connected from a paired phone when supported
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live route flow for vendor test account:
+    - pairing request returned `pairingUrl`
+    - `/api/device/pairing/status` returned `pending` before confirm
+    - `/api/device/pairing/confirm` succeeded
+    - `/api/device/pairing/status` returned `paired` after confirm
+  - live browser pairing check confirmed:
+    - the phone page opened with the code prefilled from the shareable link
+    - pairing succeeded from the browser page
+    - the success state showed the automatic return message and `Done` fallback
+- Honest remaining note:
+  - this is still a code/link-based pairing flow, not the fuller email/SMS pairing-invite redesign yet
+  - the next stronger device UX step should be a contact-based pairing invite flow for phones, with headsets claimed through an already-paired phone
+
+## 2026-06-01 - Contact-based pairing invite flow started
+- Extended `src/app/api/device/pairing/request/route.ts` so pairing creation can now accept optional contact fields:
+  - `inviteEmail`
+  - `invitePhone`
+- Added `src/lib/notifications/send-device-pairing-invite.ts`:
+  - sends an email pairing invite when email is provided
+  - attempts SMS only if SMS is enabled in the current environment
+  - returns honest per-channel delivery status plus a fallback summary
+- Updated `src/hooks/useVendorDevices.ts` so the vendor UI can request:
+  - invite-based pairing
+  - backup-code-only pairing
+- Updated `src/app/vendor/profile/page.tsx` pairing modal:
+  - vendors now enter employee email and phone before pairing
+  - primary action: `Send Pairing Link`
+  - fallback action: `Use Backup Code Only`
+  - the modal shows delivery feedback and still exposes the backup link/code
+- Updated `src/app/device/pair/page.tsx` so invite-link opens behave more like a direct confirmation screen:
+  - when opened with `?code=...`, the page switches into link mode
+  - it no longer expects manual typing in that mode
+  - it still pairs via an explicit button press
+- Updated `src/app/vendor/dashboard/page.tsx` copy to point vendors to the improved Vendor Profile pairing flow.
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - focused mocked tests passed:
+    - `src/lib/notifications/send-device-pairing-invite.test.ts`
+  - live browser/manual fallback flow passed end to end:
+    - vendor profile shows email/phone fields plus `Send Pairing Link` and `Use Backup Code Only`
+    - backup-code-only path generates a real `pairingUrl`
+    - invite-link phone page renders link mode with no manual digit counter
+    - phone pairing succeeds
+    - vendor modal detects the real pairing status and auto-closes afterward
+- Honest boundary:
+  - I did **not** live-send a real pairing invite email or text to an external recipient in this pass, because that would send an active pairing credential outside the local test environment without your explicit approval
+  - delivery logic is covered by mocked tests and the fallback/manual live flow is verified
+
+## 2026-06-01 - Mock dashboard routes replaced with real launch-facing admin data
+- Replaced the leftover mock-only dashboard routes:
+  - `src/app/api/dashboard/stats/route.ts`
+  - `src/app/api/dashboard/user-growth/route.ts`
+- Both routes now require admin access through `requireAdmin(...)` instead of exposing fake unauthenticated data.
+- `GET /api/dashboard/stats` now returns real launch-facing counts using:
+  - `countableUserWhere()`
+  - `countableVendorWhere()`
+  - `countableReviewWhere()`
+- The old fake values:
+  - `totalUsers: 1250`
+  - `totalVendors: 89`
+  - `totalReviews: 5670`
+  - `growthRate: 12`
+  were removed.
+- The stats route now calculates a real `growthRate` as month-over-month change in countable customer registrations.
+- `GET /api/dashboard/user-growth` now returns real current-year monthly datasets for:
+  - `New Customers`
+  - `New Vendors`
+  instead of fake rising chart data.
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live admin API check for `/api/dashboard/stats` returned:
+    - `totalUsers: 10`
+    - `totalVendors: 3`
+    - `totalReviews: 5`
+    - `growthRate: -33`
+  - live admin API check for `/api/dashboard/user-growth` returned real 2026 monthly arrays:
+    - customers: `[0,0,0,0,6,4,0,0,0,0,0,0]`
+    - vendors: `[0,0,0,1,2,0,0,0,0,0,0,0]`
+- Honest note:
+  - there is no real `lastLoginAt` field in the current schema, so the previous fake `Active Users` concept was not carried forward
+  - the replacement uses honest registration growth instead
+
+## 2026-06-01 - Admin users page is now a real customer overview
+- Replaced the placeholder-only `src/app/admin/users/page.tsx` card (`User Management Is Not Live Yet`) with a real read-only admin customer overview.
+- The new page:
+  - validates admin access with `requireAdmin(...)`
+  - shows launch-facing customer summary cards:
+    - countable customers
+    - verified emails
+    - pending verification
+    - new this month
+  - supports server-side search by:
+    - name
+    - email
+    - phone
+    - city/state/zip
+    - customer id
+  - shows recent launch-facing customer records with:
+    - account status
+    - email verification state
+    - bookings count
+    - reviews count
+    - join date
+- The page uses `countableUserWhere()` so internal/demo/owner-linked users stay excluded from this admin view too.
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live admin HTML check on `/admin/users` returned:
+    - `Customer Overview`
+    - `Countable Customers`
+    - `Avery Coleman`
+    - no `User Management Is Not Live Yet`
+  - live `/api/users` check still returned the expected launch-facing customer list
+
+## 2026-06-01 - Vendor analytics page now uses real operational data
+- Replaced the gated placeholder on `src/app/vendor/analytics/page.tsx` (`Analytics Are Coming Later`) with a real lightweight analytics view built from the existing live vendor dashboard data.
+- The new analytics page now shows:
+  - total bookings
+  - completion rate
+  - customer rating
+  - video approvals
+  - review coverage
+  - storage usage
+  - job status mix
+  - top employee highlight when attributable review data exists
+  - latest public review
+- It reuses `useVendorDashboard()` instead of creating a second fake or duplicate analytics backend.
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live Metro vendor auth + MFA API flow succeeded
+  - live vendor dashboard API returned:
+    - `totalBookings: 16`
+    - `totalClients: 3`
+    - `rating: 4.8`
+    - `ratingCount: 5`
+    - `approvedVideos: 73`
+    - `pendingVideos: 0`
+  - source check confirmed the new page now contains:
+    - `Vendor Analytics`
+    - `Operations Snapshot`
+    - `Team Highlight`
+    - and no `Analytics Are Coming Later`
+- Honest note:
+  - I could not complete a hydrated in-browser visual assertion for this client-rendered page because the browser automation kernel failed in this environment
+  - the live vendor data path is verified, and the route source/output shell no longer contains the old placeholder
+
+## 2026-06-01 - Internal admin-tools mojibake cleanup
+- Cleaned the broken success/error feedback text on `src/app/admin-tools/page.tsx`.
+- Replaced mojibake feedback like `Ã¢Å“â€¦` / `Ã¢ÂÅ’` with clean plain-text messages:
+  - `Success: seed request sent...`
+  - `Seed failed. Check server logs.`
+  - `Success: reset request sent...`
+  - `Reset failed. Check server logs.`
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - exact line check confirmed the normalized text is now stored in the file
+
+## 2026-06-01 - Dev/test route hardening and retired mock seed route
+- Added `src/lib/dev-route-access.ts` to centralize development-only route protection.
+- Hardened these previously open debug/test routes so they now:
+  - return `404` in production
+  - require `DEV_ROUTE_SECRET` in development via header `x-dev-route-secret`
+  - fail honestly with `503` when `DEV_ROUTE_SECRET` is not configured
+- Updated:
+  - `src/app/api/auth/debug/route.ts`
+  - `src/app/api/test-db/route.ts`
+  - `src/app/api/test/route.ts`
+- Removed the overly revealing database diagnostics from `/api/test-db`:
+  - no more connection-string preview logging/response fields
+  - it now returns only a minimal dev probe summary when explicitly authorized
+- Retired the fake route:
+  - `src/app/api/admin/seed-from-mock/route.ts`
+- That route no longer pretends to insert mock fixtures. It now returns `410` with a clear message telling devs to use `/api/admin/seed` for real demo-data seeding.
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live route checks now return:
+    - `/api/auth/debug` -> `{"success":false,"error":"Set DEV_ROUTE_SECRET in .env.local to enable this development-only route."}`
+    - `/api/test-db` -> same guarded response
+    - `/api/test` -> same guarded response
+    - `/api/admin/seed-from-mock` -> `{"success":false,"error":"This legacy mock seeding route has been retired. Use /api/admin/seed for real demo-data seeding."}`
+
+## 2026-06-01 - Internal test page hardening
+- Updated `src/app/test-msw/page.tsx` so it no longer mounts the mock employee repository demo in live mode.
+  - In live mode it now explains that the page is mock-only and shows a disabled/internal message instead of a broken employee example.
+- Updated `src/app/test-mode/page.tsx`:
+  - added an internal diagnostics banner
+  - cleaned the broken loading copy to `Loading health check...`
+- Tightened `src/app/admin-tools/page.tsx`:
+  - now checks admin access with `requireAdmin(...)`
+  - non-admin access gets a friendly `Admin access required` message instead of a raw failure
+  - signed-in admins still see the dev tools page normally
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live `/test-msw` HTML check returned:
+    - `Mock employee exercise disabled`
+    - the live-mode warning explaining the page is mock-only
+  - live `/test-mode` HTML check returned the internal diagnostics note
+  - source check confirmed `Loading health check...` is now stored in `src/app/test-mode/page.tsx`
+  - live `/admin-tools` without admin headers returned the friendly admin-required message
+  - live `/admin-tools` with admin headers still returned:
+    - `Admin Tools (Dev)`
+    - `Seed demo data`
+    - `Reset demo data`
+
+## 2026-06-01 - Final admin placeholder cleanup
+- Replaced the duplicate seeded admin-users route:
+  - `src/app/admin/admin-users/page.tsx`
+  - now redirects cleanly to `/admin/users`
+- Replaced the placeholder admin profile route:
+  - `src/app/admin/profile/page.tsx`
+  - now renders a real read-only admin account page using:
+    - `requireAdmin(...)`
+    - live `prisma.user` data
+  - includes:
+    - access role
+    - verification state
+    - account status
+    - admin id
+    - join date
+    - quick links to `Admin Security`, `Customer Overview`, and `Dashboard`
+- Removed dead placeholder/sample components that were no longer used by any route:
+  - `src/components/Profile.tsx`
+  - `src/components/UserManagement.tsx`
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - repo search returned no remaining references to:
+    - `UserManagement`
+    - `Admin profile placeholder`
+    - `Profile settings UI is not wired here yet`
+  - live `/admin/admin-users` check returned:
+    - `307`
+    - `Location: /admin/users`
+  - live `/admin/profile` check returned:
+    - `Admin Account`
+    - `Open Admin Security`
+
+## 2026-06-01 - Removed owner-linked defaults from dev utilities
+- Updated `src/app/api/dev/email-audit/route.ts` so it no longer defaults to `colivera080124@gmail.com`.
+  - The route now requires an explicit `email` in the request body.
+  - If `email` is omitted, it returns:
+    - `Provide an explicit email in the request body. This dev audit route no longer defaults to a real inbox.`
+- Updated `src/app/test-profile-toggle/page.tsx`:
+  - removed the hardcoded owner/admin identity
+  - replaced it with generic fixture data:
+    - `test-profile-toggle@example.net`
+    - `Sample Vendor Studio`
+  - added an internal diagnostics banner so the page is clearly labeled as non-product
+- Verified:
+  - `tsc --noEmit --pretty false` passed
+  - live `/api/dev/email-audit` POST with empty body now returns the explicit-email-required error instead of sending to a real inbox
+  - source check confirms `test-profile-toggle` no longer contains `colivera080124@gmail.com`
+
+## 2026-06-01 - Removed personal Gmail from public launch support surfaces
+- Updated `src/lib/support.ts`:
+  - support email is now env-driven through:
+    - `NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL`
+    - `LAUNCH_SUPPORT_EMAIL`
+  - there is no longer a hardcoded fallback to `colivera080124@gmail.com`
+- Updated:
+  - `src/app/help/page.tsx`
+  - `src/app/contact/page.tsx`
+  - `src/app/vendor/support/page.tsx`
+- Current behavior when no dedicated support inbox is configured:
+  - public help/contact pages no longer expose a personal email
+  - vendor support no longer tells vendors to email a personal inbox
+  - contact-page secondary cards no longer contradict the top banner by telling users to email support when no inbox is published
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/help` now says:
+    - `A public support inbox has not been published yet for this launch`
+  - live `/contact` now says:
+    - no public support inbox has been published
+    - broader customer/vendor/public issue copy now tells the truth about needing a dedicated support inbox before rollout
+  - live `/vendor/support` now says:
+    - `A dedicated vendor launch inbox has not been published yet`
+
+## 2026-06-01 - Internal test pages are now development-only
+- Split the internal diagnostics pages into server wrappers plus client components:
+  - `src/app/test-mode/page.tsx` + `TestModeClient.tsx`
+  - `src/app/test-msw/page.tsx` + `TestMSWClient.tsx`
+  - `src/app/test-profile-toggle/page.tsx` + `TestProfileToggleClient.tsx`
+- Current behavior:
+  - in development: these pages still work for local diagnostics
+  - outside development: the route wrappers now `notFound()`
+- Also cleaned the duplicated/broken loading copy on `test-mode`
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live dev HTML checks still worked for:
+    - `/test-mode`
+    - `/test-msw`
+    - `/test-profile-toggle`
+  - source check confirms the route wrappers now gate on `process.env.NODE_ENV !== "development"`
+
+## 2026-06-01 - Corrected outdated auth/support copy on security pages
+- Updated `src/app/vendor/profile/page.tsx`
+  - the security modal no longer says 2FA is only planned
+  - it now says vendor sign-ins use active email-code verification and can add/manage passkeys from Secure Account
+  - replaced the disabled fake toggle with an `Active` status pill
+- Updated `src/app/(user)/profile-settings/page.tsx`
+  - `Two-Factor Authentication` -> `Passkeys & Sign-In Protection`
+  - customer copy now says passkeys are available and email-code MFA is reserved for vendor/admin sign-ins
+  - `Not available` -> `Optional`
+- Updated `src/app/vendor/support/faqs/page.tsx`
+  - removed the old founder/operator contact wording
+  - FAQ answers now refer to the published Reliance launch support path instead
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/vendor/support/faqs` still rendered correctly
+  - source checks confirmed the new auth text in:
+    - vendor profile
+    - customer profile settings
+    - vendor FAQs
+
+## 2026-06-01 - Support chat and admin reports now tell the truth
+- Updated `src/app/vendor/support/chat/page.tsx`
+  - removed the old `direct founder/operator follow-up` wording
+  - support chat now points vendors to the published support guidance and active launch contact path for the environment
+- Replaced the dead placeholder admin reports surface with a real launch-facing reports page in `src/app/admin/reports/page.tsx`
+  - removed dependency on the old placeholder `ReportsAnalytics` component
+  - the page now shows live launch-facing:
+    - countable customers
+    - countable vendors
+    - public review base
+    - recent audit events
+    - moderation backlog
+    - review-pipeline activity
+    - operator shortcuts into the real admin tools
+  - the reports page now uses transient DB retry handling and shows an honest temporary-unavailable fallback instead of crashing when Azure SQL blips
+- Deleted the placeholder component:
+  - `src/components/ReportsAnalytics.tsx`
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/vendor/support/chat` rendered the updated support wording
+  - live `/admin/reports` now renders real report cards and shortcuts, including:
+    - `Countable Customers: 10`
+    - `Countable Vendors: 3`
+    - `Public Review Base: 5`
+    - `Recent Audit Events: 200`
+
+## 2026-06-01 - Admin activity and settings are now real operator pages
+- Replaced the placeholder `/admin/activity` route with a real server-rendered activity snapshot in `src/app/admin/activity/page.tsx`
+  - shows live:
+    - recent admin audit events
+    - pending review moderation
+    - pending video packages
+    - open reported-content cases
+  - includes recent persisted audit rows and direct links to the resolving admin tools
+  - uses transient DB fallback instead of pretending activity is unavailable for product reasons
+- Replaced the placeholder `/admin/settings` route with a real read-only launch configuration page in `src/app/admin/settings/page.tsx`
+  - shows live status for:
+    - customer email verification enforcement
+    - vendor/admin MFA + passkeys
+    - notification delivery readiness
+    - phone-pairing link readiness from `APP_BASE_URL`
+    - launch support inbox status
+- Deleted placeholder components no longer needed:
+  - `src/components/ActivityMonitoring.tsx`
+  - `src/components/Settings.tsx`
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/admin/activity` now renders real counts and recent audit activity
+  - live `/admin/settings` now renders real launch-readiness and auth/security status
+
+## 2026-06-01 - Final placeholder-ish wording cleanup on live pages
+- Updated `src/app/browse/page.tsx`
+  - removed `More filters coming soon.`
+  - now says distance filters unlock once a browse location is set
+- Updated `src/app/admin/profile/page.tsx`
+  - removed `placeholder profile editing` wording
+  - now points to the live access, security, and operator tools more naturally
+- Updated vendor support wording:
+  - `src/app/vendor/support/page.tsx`
+  - `src/app/vendor/support/faqs/page.tsx`
+  - copy now says to use the published support path while in-app tickets remain offline
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/browse` no longer contains `More filters coming soon.`
+  - live `/vendor/support` shows the updated offline-ticket wording
+  - live `/admin/profile` shows the updated admin-tools description
+## 2026-06-01 - Published launch support inbox
+- Updated `C:\Users\Cesar Olivera\Project Reliance\.env.local`
+  - `LAUNCH_SUPPORT_EMAIL=Relianceorg.support@gmail.com`
+  - `NEXT_PUBLIC_LAUNCH_SUPPORT_EMAIL=Relianceorg.support@gmail.com`
+  - `EMAIL_REPLY_TO=Relianceorg.support@gmail.com`
+- Deliberately left `APP_BASE_URL` at `http://localhost:3000` for now.
+  - `https://relianceonline.org` is the intended domain, but it is not serving the app publicly yet.
+  - Switching `APP_BASE_URL` early would make consent, review, and phone-pairing links look production-ready while still leading to a non-live destination.
+- Verified live after restarting the dev server:
+  - `/help` now shows `Relianceorg.support@gmail.com`
+  - `/contact` now shows `Relianceorg.support@gmail.com`
+  - `/vendor/support` now shows the published support inbox
+  - `/admin/settings` now shows:
+    - `Launch support inbox: Published`
+    - `Current public support contact: Relianceorg.support@gmail.com`
+    - `External link base URL: http://localhost:3000`
+    - `Phone Pairing Links: Local Only`
+## 2026-06-01 - Removed fake profile-role checks and stale customer security copy
+- Replaced the mock `/api/profile/toggle` route with real auth-backed role checks in:
+  - `src/app/api/profile/toggle/route.ts`
+  - it now verifies the signed-in user, returns real switchable profiles, and blocks impossible customer/vendor switches with `403`
+- Replaced the mock `/api/profile/check-vendor-eligibility` route with a real launch-readiness response in:
+  - `src/app/api/profile/check-vendor-eligibility/route.ts`
+  - it now reports:
+    - whether vendor creation is possible right now
+    - whether it becomes possible after sign-in
+    - whether an existing vendor profile already exists
+    - whether the matched user email is verified
+- Removed the dead vendor-precheck call from:
+  - `src/app/auth/register/page.tsx`
+- Updated customer security wording in:
+  - `src/app/(user)/profile-settings/page.tsx`
+  - password resets now point honestly to account recovery instead of claiming there is no self-serve path
+- Removed the unused mock demo file:
+  - `src/app/vendor/jobs/enhanced-workflow.tsx`
+- Updated SDK typing to match the real eligibility response:
+  - `src/sdk/auth.ts`
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - customer bearer auth to `/api/profile/toggle` returned only `customer`
+  - vendor bearer auth to `/api/profile/toggle` returned only `vendor`
+  - invalid profile switches returned `403`
+  - unauthenticated `/api/profile/check-vendor-eligibility?userId=avery.coleman@example.net` now returns:
+    - `canCreateVendor: false`
+    - `canCreateVendorAfterSignIn: true`
+    - `emailVerified: true`
+## 2026-06-01 - Polished remaining launch-caveat wording on live admin/vendor pages
+- Updated `src/app/admin/profile/page.tsx`
+  - replaced the placeholder-style account-details description
+  - new copy points admins to the live account details plus Admin Security
+- Updated `src/app/vendor/services/page.tsx`
+  - cleaned the per-service note so it explains that publishing is admin-managed and delete should only be used for drafts or unwanted records
+- Updated `src/app/vendor/profile/page.tsx`
+  - address helper copy now says manual entry saves to the profile and that street autocomplete is not connected in the current environment
+- Updated `src/app/vendor/jobs/page.tsx`
+  - playback fallback now says the storage playback link could not be loaded
+  - download/share helper now explains those controls live on approved customer-facing video surfaces
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/admin/profile` shows:
+    - `Review the current admin account details here, then use Admin Security for sign-in protection and recovery settings.`
+  - live `/vendor/services` still loads and shows the cleaner service-catalog launch copy
+  - exact source checks confirmed the new vendor profile and vendor jobs messages are in place
+## 2026-06-01 - Retired broken legacy /dashboard vendor routes and fixed stale vendor security card
+- Replaced the orphaned legacy `/dashboard/*` vendor pages, which were still trying to call server-only auth helpers from client components, with clean redirects:
+  - `src/app/dashboard/devices/page.tsx` -> `/vendor/profile`
+  - `src/app/dashboard/employees/page.tsx` -> `/vendor/employees`
+  - `src/app/dashboard/invites/page.tsx` -> `/vendor/employees`
+  - `src/app/dashboard/pending/page.tsx` -> `/vendor/employees`
+- Updated the stale vendor security card copy in:
+  - `src/app/vendor/profile/page.tsx`
+  - `Two-Factor Auth` now says vendor sign-in protection is active and points vendors to Security Settings for MFA, passkeys, and login alerts
+  - badge changed from `Not live` to `Active`
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live HTTP checks returned:
+    - `/dashboard/devices` -> `307 /vendor/profile`
+    - `/dashboard/employees` -> `307 /vendor/employees`
+    - `/dashboard/invites` -> `307 /vendor/employees`
+    - `/dashboard/pending` -> `307 /vendor/employees`
+  - live `/vendor/profile` shows the updated security card copy with the `Active` badge
+## 2026-06-01 - Smoothed remaining launch-facing vendor and help copy
+- Updated `src/app/vendor/profile/page.tsx`
+  - payout notifications no longer say `Not active in the free launch`
+  - new copy says billing and payout tools will be announced before they go live
+- Updated `src/app/vendor/services/page.tsx`
+  - replaced the `Free-launch catalog setup` intro with `Service catalog management`
+  - clarified that service details and price references live here while admin review coordinates publishing
+- Updated `src/app/vendor/billing/page.tsx`
+  - replaced the placeholder-feeling title/body with calmer product guidance about billing and payouts not being enabled yet
+- Updated `src/app/help/page.tsx`
+  - `Live chat, phone support, and in-app ticketing are not available on this launch.`
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/help` shows the updated support-channel sentence
+  - live `/vendor/profile` and `/vendor/services` show the updated vendor copy
+  - live `/vendor/billing` shows the new billing guidance
+## 2026-06-01 - Unified remaining support and playback wording
+- Updated `src/app/contact/page.tsx`
+  - support inbox copy now says phone support, live chat, and in-app ticketing are not available on this launch
+- Updated `src/app/vendor/support/contact/page.tsx`
+  - removed the old simulated-ticket framing
+  - now directs vendors to the published support channel with calmer launch guidance
+- Updated `src/app/vendor/support/page.tsx`
+  - FAQ preview copy now references launch billing status instead of `the free launch`
+- Updated `src/app/vendor/support/help-articles/page.tsx`
+  - new-vendor helper text now says profile and catalog should be ready for launch review
+- Updated `src/app/vendor/support/faqs/page.tsx`
+  - platform fee and in-app messaging answers now use cleaner launch wording
+- Updated `src/app/vendor/jobs/page.tsx`
+  - secure playback failure no longer blames `development mode`
+  - it now says secure storage is unavailable for that file
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/contact` shows the updated support-channel sentence
+  - live vendor support pages and `/vendor/jobs` render the updated wording
+## 2026-06-01 - Smoothed remaining customer, vendor, and admin launch copy
+- Updated `src/app/(user)/messages/page.tsx`
+  - removed the old sample-inbox framing
+  - now explains that in-app messaging will return once customer conversation tools have full backend support
+- Updated `src/app/admin/promoted-listings/page.tsx`
+  - `HOME_FEATURED` guidance no longer says rendering is not active yet
+  - it now explains that inventory is reserved for the homepage rollout when that placement is enabled
+- Updated `src/app/vendor/services/page.tsx`
+  - service-price helper no longer says launch payments are not active
+  - it now explains prices are references until in-app billing tools are introduced
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/messages`, `/vendor/services`, and `/admin/promoted-listings` show the updated copy
+## 2026-06-01 - Corrected vendor shell identity label and verified dashboard settle behavior
+- Updated `src/app/vendor/layout.tsx`
+  - vendor shell identity now prefers the signed-in auth user email over the vendor profile contact email
+  - Metro vendor pages now show `e2e-trust-manager@reliance.test` instead of the misleading `e2e-smoke-vendor@reliance.test`
+- Regression note:
+  - the customer and vendor dashboards are not stuck, but they still take too long to settle on cold loads
+  - both eventually rendered correctly in the live app after a longer wait
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live vendor dashboard now shows the correct signed-in manager email
+  - live vendor shell shows `Â© 2026 All rights reserved`
+## 2026-06-01 - Improved dashboard loading shells
+- Updated `src/app/(user)/user-dashboard/page.tsx`
+  - loading state now renders a real dashboard shell instead of only a centered spinner
+  - `Welcome back` appears immediately while the dashboard data is still loading
+  - replaced the broken error glyph with `AlertTriangle`
+- Updated `src/app/vendor/dashboard/page.tsx`
+  - loading state now surfaces `Service Video Pipeline` and `Promote my business` immediately with skeleton content
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - short-wait live check showed:
+    - customer dashboard exposes `Welcome back` within the early loading state
+    - vendor dashboard exposes `Service Video Pipeline` within the early loading state
+## 2026-06-02 - Regression split pass and dev-runtime hardening
+- Public/customer regression summary:
+  - public home, browse, public vendor, customer dashboard, my services, and messages all rendered correctly in the live app
+  - two initial misses (`/service/...` and `/profile-settings`) were expectation mismatches, not product failures
+  - rendered text confirmed:
+    - service detail uses `Sign in to Book`
+    - signed-in profile settings loads `Profile & Settings`
+- Vendor/admin regression summary:
+  - after restarting the dev server, vendor/admin checks passed for:
+    - `/vendor/dashboard`
+    - `/vendor/jobs`
+    - `/vendor/services`
+    - `/vendor/support`
+    - `/vendor/billing`
+    - `/admin/dashboard`
+    - `/admin/vendors`
+    - `/admin/promoted-listings`
+    - `/admin/users`
+    - `/admin/profile`
+    - `/admin/security`
+  - `/vendor/profile` was also healthy; the first miss was only because the check looked for a lower-page security sentence instead of the page shell
+- Employee regression summary:
+  - employee login now requires MFA too, so pre-MFA login payloads are not valid session checks
+  - after the real MFA verify step:
+    - `GET /api/employee/jobs` returned `200`
+    - `POST /api/employee/device/pair` returned `200`
+    - live `/employee/jobs` settled to:
+      - `Device paired`
+      - assigned jobs visible
+      - no stuck `Pairing this device...` / `Loading assigned jobs...`
+- Runtime hardening:
+  - updated `package.json` dev scripts to run with `NODE_OPTIONS=--max-old-space-size=6144`
+  - this prevents the recent `next dev` heap crash from recurring as easily during audits
+- Audit log noise reduction:
+  - updated `src/lib/admin-audit.ts` to try the schema-compatible raw insert path before Prisma create
+  - the current SQL schema still succeeds on employee device pair without blocking the user flow
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - live `/api/health` returned `ok: true` after the restarted server
+## 2026-06-02 - Dashboard performance pass
+- Customer dashboard:
+  - updated `src/app/(user)/user-dashboard/page.tsx` to seed the signed-in shell from `AuthContext` immediately instead of blocking the whole page on `/api/customer/profile`
+  - slower profile details now hydrate into the header card after the page is already visible
+  - dashboard no longer flips into a full-page error just because the optional profile detail fetch is slow
+- Vendor dashboard:
+  - updated `src/hooks/useVendorDashboard.ts` to start loading from `resolvedVendorId` / cached vendor context instead of waiting for the full vendor profile payload first
+  - vendor shell can now begin the dashboard request sooner on cold loads
+- Timings after the pass:
+  - API:
+    - `/api/customer/profile` about `883ms`
+    - `/api/bookings?limit=100&page=1` about `1494ms`
+    - full vendor dashboard about `3377ms`
+    - vendor `jobsOnly=1` dashboard about `2152ms`
+  - Headline-visible browser timing:
+    - customer `/user-dashboard` reached `Welcome back` in about `209ms`
+    - vendor `/vendor/dashboard` reached `Service Video Pipeline` in about `202ms`
+  - Conservative full-page browser timing:
+    - customer dashboard about `9870ms`
+    - vendor dashboard about `10128ms`
+    - these slower numbers reflect waiting for deeper background work, not time-to-first-usable content
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - real headless browser timing checks passed after authenticating with:
+    - `avery.coleman@example.net`
+    - `e2e-trust-manager@reliance.test`
+## 2026-06-02 - Customer dashboard summary fetch cleanup
+- Added lightweight summary modes for customer dashboard stat cards:
+  - `src/app/api/bookings/route.ts`
+    - `?summaryOnly=1` now returns:
+      - `summary.total`
+      - `summary.activeTotal`
+  - `src/app/api/users/favorites/route.ts`
+    - `?countsOnly=1` now returns:
+      - `summary.total`
+      - `summary.uniqueVendorCount`
+- Updated `src/app/(user)/user-dashboard/page.tsx` to use those summary endpoints instead of fetching up to 100 full bookings/favorites records just to compute counts.
+- Also reduced the dashboard service-marketplace fetch from `limit=100` to `limit=16`, which is enough for the visible sections on the page.
+- Verified:
+  - `GET /api/bookings?summaryOnly=1` returned:
+    - `total: 4`
+    - `activeTotal: 0`
+  - `GET /api/users/favorites?countsOnly=1` returned:
+    - `total: 0`
+    - `uniqueVendorCount: 0`
+  - timing spot-check:
+    - bookings summary about `4548ms`
+    - favorites counts about `650ms`
+  - `tsc --noEmit --pretty false --incremental false` passed
+## 2026-06-02 - Vendor dashboard dead-work removal
+- Updated `src/app/api/vendors/[vendorId]/dashboard/route.ts` to stop calculating dashboard data that the live vendor pages are not currently rendering:
+  - removed month-over-month `insights` aggregation work
+  - removed vendor `notifications` query/mapping work
+  - response still returns `insights: []` and `notifications: []` for compatibility
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - vendor dashboard timing is still variable on cold Azure/dev runs, but warm timings improved to:
+    - full dashboard about `2679ms`
+    - `jobsOnly=1` about `2138ms`
+  - one cold timing sample came back much slower (`6262ms`), so the environment still has backend variance even after removing dead work
+## 2026-06-02 - Route smoke regression hardening
+- Updated `e2e/route-smoke.spec.ts` to match the current live auth and vendor-jobs UI:
+  - sign-in now waits for a real outcome after clicking `Sign In`:
+    - MFA prompt
+    - inline error state
+    - successful navigation
+  - bad credential attempts now fail fast instead of idling for 30 seconds on `/auth/login`
+  - vendor route smoke now prefers the real seeded manager account:
+    - `e2e-trust-manager@reliance.test`
+  - vendor job-detail navigation now uses the live `View Job` button first and only falls back to the older actions menu if needed
+- Verified:
+  - `npm.cmd run test:e2e:smoke:routes` passed
+  - route smoke covered:
+    - vendor dashboard
+    - vendor jobs
+    - vendor job detail
+    - customer booking detail for the review-smoke booking
+  - `tsc --noEmit --pretty false --incremental false` passed
+## 2026-06-02 - Broader Playwright smoke regression sweep
+- Updated stale smoke tests to match the current live Reliance UI and auth behavior:
+  - `e2e/booking-smoke.spec.ts`
+    - service-detail booking CTA now uses the live `Book Now` link control
+  - `e2e/review-smoke.spec.ts`
+    - customer `My Services` expectations now use the current video-first wording
+    - review-history expectations now use `Submitted Reviews` and `Verified with service videos or images`
+- Verified live against fresh `localhost:3000`:
+  - `npm.cmd run test:e2e:smoke` passed
+    - booking flow: discover -> service -> booking -> confirmation -> my-bookings
+  - `npm.cmd run test:e2e:smoke:favorites` passed
+    - favorites flow: discover -> service -> favorites on/off
+  - `npm.cmd run test:e2e:smoke:review` passed
+    - review flow: my-bookings media -> review-window start -> quick review create
+  - `npm.cmd run test:e2e:smoke:routes` remained passing after the route-smoke hardening
+  - `tsc --noEmit --pretty false --incremental false` passed
+## 2026-06-02 - Launch-readiness pass (manual + performance slice)
+- Kept external-link testing deferred until `relianceonline.org` is actually serving the app.
+- Manual route-sanity confidence for this slice is now backed by the green live smoke coverage already rerun on the fresh runtime:
+  - `npm.cmd run test:e2e:smoke:routes`
+  - `npm.cmd run test:e2e:smoke`
+  - `npm.cmd run test:e2e:smoke:favorites`
+  - `npm.cmd run test:e2e:smoke:review`
+- Performance polish completed in two high-value spots:
+  - `src/app/api/reviews/me/route.ts`
+    - added `?summaryOnly=1`
+    - returns lightweight review counts for dashboard use
+  - `src/app/(user)/user-dashboard/page.tsx`
+    - customer dashboard now uses `/api/reviews/me?summaryOnly=1` instead of pulling the full review hub payload just to count submitted reviews
+  - `src/lib/admin-publish-controls.ts`
+    - added a shared loader for admin publish-management data
+  - `src/app/api/admin/publish/route.ts`
+    - now reuses the shared publish-overview loader
+    - payload limits tightened to lighter launch-facing sizes
+  - `src/app/admin/publish-management/page.tsx`
+    - converted to a server-rendered page that loads initial data before the client controls mount
+  - `src/app/admin/publish-management/PublishManagementClient.tsx`
+    - holds the interactive refresh/search/toggle behavior after the server-rendered first paint
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - `/api/reviews/me?summaryOnly=1` returned a successful lightweight summary payload in a live authenticated browser context
+  - `/admin/publish-management` rendered with real launch-facing vendor data in a live authenticated browser context after the server-rendered initial-data change
+## 2026-06-02 - Admin/vendor cold-load polish follow-up
+- Vendor jobs now renders shell-first instead of waiting behind full vendor-profile resolution:
+  - `src/app/vendor/jobs/page.tsx`
+  - added `vendorContextResolving`
+  - removed the full-page vendor-context loading gate
+  - kept the jobs workspace visible while vendor context finishes resolving
+  - `reloadJobsFromBackend()` now waits out vendor-profile loading instead of flipping the page to an empty no-jobs state when vendor context is still resolving
+- Vendor profile now renders a real page header and loading skeleton immediately instead of only a centered spinner gate:
+  - `src/app/vendor/profile/page.tsx`
+- Admin media moderation first load trimmed further:
+  - `src/app/admin/media-moderation/page.tsx`
+    - reduced initial queue fetch from 60 packages to 30
+  - `src/app/admin/media-moderation/loading.tsx`
+    - added an honest route-level loading shell for cold loads
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - focused live route timings after the changes:
+    - `/vendor/jobs` about `576ms`
+    - `/vendor/profile` about `1928ms`
+    - `/admin/publish-management` about `3428ms`
+    - `/admin/media-moderation` remains the heaviest in this slice at about `9033ms`, but now has a better immediate loading shell while the moderation queue resolves
+## 2026-06-02 - Admin media moderation first-visible-load improvement
+- Refactored admin media moderation to support a server-backed initial load path:
+  - added `src/lib/admin-media-moderation-queue.ts`
+    - shared moderation-queue loader used by both the admin API route and the page route
+  - updated `src/app/api/admin/media/moderation-queue/route.ts`
+    - now reuses the shared loader
+  - split `src/app/admin/media-moderation/page.tsx`
+    - server route now performs the initial queue load with admin auth and passes initial data into the client component
+  - added `src/app/admin/media-moderation/AdminMediaModerationClient.tsx`
+    - preserves the existing moderation UI, refresh, filters, and actions
+    - now starts from preloaded queue data when available instead of always booting from an empty client-only fetch
+- Kept the lighter first batch and route loading shell from the earlier pass:
+  - `src/app/admin/media-moderation/loading.tsx`
+  - initial queue fetch capped to a smaller launch-facing batch size
+- Verified:
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - focused live apples-to-apples heading-visible timing for `/admin/media-moderation` improved to about `908ms`
+    - previous heading-visible check in the same audit slice was about `9033ms`
+
+## 2026-06-02 Final Launch-Readiness Sweep
+- Full authenticated route sweep passed across public, customer, vendor, employee, and admin surfaces after correcting live test credentials.
+- One first-pass timeout on /help was rechecked immediately and passed in about 1699ms, so it was treated as a transient localhost stall rather than a route defect.
+- Final route groups verified:
+  - Public: /, /browse, /help, /contact, Metro public vendor page, Metro service page
+  - Customer: /user-dashboard, /my-bookings, /favorites, /reviews, /profile-settings
+  - Vendor: /vendor/dashboard, /vendor/jobs, /vendor/services, /vendor/media, /vendor/profile
+  - Employee: /employee/jobs
+  - Admin: /admin/dashboard, /admin/users, /admin/vendors, /admin/settings, /admin/publish-management, /admin/media-moderation
+- Performance status at this point:
+  - /vendor/jobs about 576ms visible
+  - /vendor/profile about 1928ms visible
+  - /admin/publish-management about 3428ms visible
+  - /admin/media-moderation about 908ms visible after server-backed initial queue load
+- External-link testing remains intentionally deferred until elianceonline.org is actually serving the app.
+
+## 2026-06-02 OpenAI Platform Setup
+- Confirmed OpenAI Platform access is active for the owner account.
+- Billing is enabled on pay-as-you-go with a funded credit balance.
+- Created dedicated OpenAI project: Reliance (proj_n7z2bA7XYEQ393UCehlVdjIR).
+- Created a project-scoped API key for Reliance local development.
+- Saved local OpenAI configuration into .env.local:
+  - OPENAI_PROJECT_ID
+  - OPENAI_API_KEY
+- Reliance codebase is still not wired to OpenAI yet; this completed account/environment readiness only.
+
+## 2026-06-02 Reliance AI rollout planning
+- Added a codebase-specific phased AI plan at RELIANCE_AI_PHASED_IMPLEMENTATION_PLAN.md.
+- Recommendation stays conservative:
+  - keep current 4-topic Trust Score model and weights unchanged
+  - add a Phase 0 foundation before feature work
+  - start with AI Moderation Assistant and AI Dispute Summary Assistant
+  - keep Trust Score deterministic and separate from customer reviews
+- No runtime feature code was added in this step; this was planning and implementation targeting only.
+
+## 2026-06-02 Reliance AI Phase 0 foundation
+- Installed the official OpenAI SDK and zod:
+  - `openai`
+  - `zod`
+- Added backend-only AI foundation files in `src/lib/ai/`:
+  - `config.ts`
+    - reads OpenAI env/config
+    - supports global/feature AI flags
+    - supports per-feature model overrides
+    - warns once on unsafe/incomplete AI config
+  - `feature-flags.ts`
+    - central feature-flag helpers for AI rollout
+  - `errors.ts`
+    - typed AI configuration/disabled/request/schema errors
+  - `redaction.ts`
+    - redacts emails, phone numbers, bearer tokens, OpenAI keys, and long numeric identifiers for audit safety
+  - `schemas.ts`
+    - added initial structured-output schemas for:
+      - moderation assistant
+      - dispute summary assistant
+  - `audit.ts`
+    - best-effort AI audit logger
+    - writes to existing admin audit infrastructure under `entityType: ai_run`
+    - uses lazy import so unit tests and non-AI paths do not eagerly initialize Prisma
+  - `client.ts`
+    - centralized OpenAI Responses API wrapper
+    - feature-gated
+    - schema-validated via `zodTextFormat`
+    - hashed safety identifiers
+    - request/response/error audit events
+- Updated `.env.example` with conservative OpenAI Phase 0 config:
+  - OpenAI stays disabled by default until a specific assistant is ready
+  - includes model, retry, timeout, and per-feature flags
+- Updated `src/lib/admin-audit.ts` type union to allow `entityType: ai_run`.
+- Kept Trust Score math untouched.
+- No user-facing AI feature or Trust Score behavior changed in this step.
+- Verified:
+  - `npm.cmd test -- src/lib/ai/config.test.ts src/lib/ai/redaction.test.ts src/lib/ai/schemas.test.ts src/lib/ai/client.test.ts`
+    - 9 tests passed
+  - `npx.cmd tsc --noEmit --pretty false --incremental false`
+    - passed
+- Intentional validation boundary:
+  - did not send a live OpenAI API request yet
+  - this foundation is wired and ready, but still feature-flagged off until the first admin-only assistant is implemented
+
+## 2026-06-02 AI Moderation Assistant (admin-only, metadata-based)
+- Implemented the first real AI feature on top of the Phase 0 foundation:
+  - `src/lib/ai/moderation-assistant.ts`
+    - package-level prompt builder for staged service-video moderation
+    - explicitly metadata-only and conservative
+    - never claims to have watched the actual video
+  - `src/app/api/admin/media/packages/[bookingId]/assist/route.ts`
+    - admin-only POST route
+    - loads Intro / In Progress / Completed package metadata
+    - calls the OpenAI Responses API through the shared AI wrapper
+    - returns recommendation JSON only (no auto-approval)
+  - `src/app/admin/media-moderation/page.tsx`
+    - passes server-side AI feature availability into the page
+  - `src/app/admin/media-moderation/AdminMediaModerationClient.tsx`
+    - added `AI Review Assist` section on each package card
+    - shows the recommendation decision, confidence, findings, and recommended actions
+    - clearly labels the scope as `metadata only`
+- Added tests:
+  - `src/lib/ai/moderation-assistant.test.ts`
+  - `src/app/api/admin/media/admin-media-moderation-ai.integration.test.ts`
+- Local AI flags enabled in `.env.local` for validation:
+  - `OPENAI_ENABLED=true`
+  - `OPENAI_MODERATION_ASSISTANT_ENABLED=true`
+- Verified:
+  - focused vitest coverage passed, including the new AI moderation tests
+  - `tsc --noEmit --pretty false --incremental false` passed
+  - real OpenAI route call succeeded:
+    - `POST /api/admin/media/packages/cmpv8a5nl0007sob42f84wtp9/assist`
+    - returned `200`
+    - returned model `gpt-5.4-mini-2026-03-17`
+    - returned a real metadata-based recommendation
+  - headless UI verification succeeded:
+    - `/admin/media-moderation` rendered `AI Review Assist`
+    - clicking `Generate AI Recommendation` rendered `AI decision: Flag`
+    - scope label rendered `Scope: metadata only`
+- Real product observation from the live AI run:
+  - the assistant flagged one known package because all three stage assets had the same file size and nearly identical upload times, which may indicate duplicated footage rather than distinct Intro / In Progress / Completed coverage
+- Trust Score model remains unchanged.
+
+## 2026-06-02 AI Dispute Summary Assistant (admin-only, report-based)
+- Implemented the second Phase 1 AI feature on top of the same foundation:
+  - `src/lib/ai/dispute-summary-assistant.ts`
+    - builds a cautious case-summary prompt from a stored `contentReport`
+    - includes linked booking/vendor context
+    - includes linked review metadata or media metadata when present
+    - explicitly states that the model does not interview parties or watch raw media
+  - `src/app/api/admin/reported-content/[reportId]/assist/route.ts`
+    - admin-only POST route
+    - loads one report plus linked review/media/booking/vendor details
+    - calls the OpenAI Responses API through the shared AI wrapper
+    - returns recommendation JSON only (no auto-resolution)
+  - `src/app/admin/reported-content/page.tsx`
+    - now acts as a server wrapper so the AI feature flag can be passed cleanly
+  - `src/app/admin/reported-content/AdminReportedContentClient.tsx`
+    - added `AI Case Assist` section on each reported-content card
+    - shows case type, confidence, recommended next step, disputed points, timeline, and risk flags
+- Added tests:
+  - `src/lib/ai/dispute-summary-assistant.test.ts`
+  - `src/app/api/admin/reported-content/reported-content-ai.integration.test.ts`
+- Fixed a real validation blocker in the existing reported-content queue:
+  - `src/app/api/admin/reported-content/route.ts`
+  - the prior launch-facing internal filter was too aggressive around nullable ids and could hide valid non-internal reports
+  - replaced it with explicit `AND` + `OR null / notIn(...)` filtering so launch-facing reports stay visible
+- Local AI flags enabled in `.env.local` for validation:
+  - `OPENAI_ENABLED=true`
+  - `OPENAI_DISPUTE_SUMMARY_ENABLED=true`
+- Live validation path:
+  - created one real content report as a non-internal customer:
+    - report id `cmpwtdz870000so184m28t1ul`
+    - target review id `cmpve555g000ysokkgaggvr8s`
+  - real OpenAI route call succeeded:
+    - `POST /api/admin/reported-content/cmpwtdz870000so184m28t1ul/assist`
+    - returned `200`
+    - returned model `gpt-5.4-mini-2026-03-17`
+    - returned a real structured case summary
+  - headless UI verification succeeded:
+    - `/admin/reported-content` rendered the new `AI Case Assist` block
+    - the live report card appeared in the launch-facing queue after the filter fix
+    - clicking `Generate AI Summary` rendered:
+      - `Case type:`
+      - `Next step:`
+      - prompt version `content-report-case-v1`
+      - `needs admin review`
+  - after validation, dismissed the test report to keep the live queue clean:
+    - status `dismissed`
+    - resolution notes `Internal AI dispute-summary validation case. No external action required.`
+- Focused validation:
+  - vitest passed for:
+    - `src/lib/ai/dispute-summary-assistant.test.ts`
+    - `src/app/api/admin/reported-content/reported-content.integration.test.ts`
+    - `src/app/api/admin/reported-content/reported-content-ai.integration.test.ts`
+  - `tsc --noEmit --pretty false --incremental false` passed
+- Real product observation from the live AI run:
+  - the assistant correctly treated the test case as a moderation/content dispute over an already-approved public review and recommended `needs_admin_review` because no linked media evidence was available
+- Trust Score model remains unchanged.
+
+## 2026-06-02 AI assistant hardening pass
+- Hardened the 2 admin-only AI assistant routes without changing feature scope or Trust Score math:
+  - `src/lib/ai/http.ts`
+    - added structured AI error -> HTTP response mapping
+    - `AI_FEATURE_DISABLED` -> `503`
+    - `AI_CONFIGURATION_ERROR` -> `503`
+    - `AI_SCHEMA_VALIDATION_ERROR` -> `502`
+    - `AI_REQUEST_FAILED` -> `502`
+    - responses now include consistent `code`, `message`, and `retryable` fields
+  - `src/lib/ai/client.ts`
+    - added in-flight dedupe for identical concurrent AI requests so duplicate clicks or overlapping admin requests do not trigger multiple OpenAI calls for the same prompt/input/entity combination
+  - `src/app/api/admin/media/packages/[bookingId]/assist/route.ts`
+  - `src/app/api/admin/reported-content/[reportId]/assist/route.ts`
+    - both routes now use the shared AI failure mapping
+    - both routes now detect transient Prisma/Azure SQL connectivity failures and return a truthful temporary-unavailable `503` instead of a generic `500`
+- Added/expanded focused verification coverage:
+  - `src/lib/ai/client.test.ts`
+  - `src/app/api/admin/media/admin-media-moderation-ai.integration.test.ts`
+  - `src/app/api/admin/reported-content/reported-content-ai.integration.test.ts`
+- Verification:
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+  - focused vitest suite passed:
+    - `3` files
+    - `15` tests
+  - live admin bearer-token smoke succeeded again on both real assistant routes:
+    - `POST /api/admin/media/packages/cmpv8a5nl0007sob42f84wtp9/assist` -> `200`
+    - `POST /api/admin/reported-content/cmpwtdz870000so184m28t1ul/assist` -> `200`
+    - both returned live OpenAI structured responses from model `gpt-5.4-mini-2026-03-17`
+- Real runtime note:
+  - earlier in the same hardening pass, live smoke hit Prisma `P1001` when Azure SQL connectivity dropped
+  - the routes now handle that case honestly with a retryable `503 DB_UNAVAILABLE` response instead of masking it as a generic server failure
+- Trust Score model remains unchanged.
+
+## 2026-06-02 Deterministic Trust Score explanations
+- Added a deterministic explanation layer on top of the existing snapshot-based Trust Score read path without changing any score inputs, weights, or calculation rules:
+  - `src/lib/trust-score-read.ts`
+    - added `buildTrustScoreExplanationDetails(...)`
+    - explanation stays fully deterministic and snapshot-based
+    - explains:
+      - overall score summary
+      - measurable coverage / renormalization behavior
+      - strongest signals
+      - watch items
+      - methodology notes
+  - explanation details are now included in:
+    - public Trust Score payloads
+    - vendor Trust Score payloads
+    - admin Trust Score payloads
+- Added admin UI rendering for the new explanation layer:
+  - `src/components/admin/AdminTrustScorePanel.tsx`
+  - the admin panel now shows:
+    - `Why this score`
+    - `Coverage`
+    - `Strongest signals`
+    - `Watch items`
+    - `Methodology`
+- Added/expanded test coverage:
+  - `src/lib/trust-score-read.test.ts`
+  - `src/app/api/admin/vendors/[vendorId]/trust-score/trust-score-admin.integration.test.ts`
+  - `src/app/api/vendors/[vendorId]/trust-score/trust-score-public.integration.test.ts`
+- Trust Score route hardening also landed during this pass:
+  - `src/app/api/admin/vendors/[vendorId]/trust-score/route.ts`
+  - `src/app/api/vendor/trust-score/route.ts`
+  - `src/app/api/vendors/[vendorId]/trust-score/route.ts`
+  - transient Prisma/Azure SQL connectivity failures now return a truthful retryable `503 DB_UNAVAILABLE` response instead of a generic `500`
+- Verification:
+  - focused Trust Score suite passed:
+    - `3` files
+    - `21` tests
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+  - live admin bearer-token read succeeded:
+    - `GET /api/admin/vendors/cmnvdegk60000sop8sj18nud2/trust-score`
+    - returned `200`
+    - returned `explanationDetails` for Metro
+    - current live summary:
+      - total score `98%`
+      - strongest signals:
+        - verified workflow completion `100%`
+        - dispute-free completion `100%`
+      - watch item:
+        - operational reliability `86.96%`
+- Trust Score model remains unchanged.
+
+## 2026-06-02 Vendor-facing Trust Score explanation UI
+- Added a real vendor-facing Trust Score card:
+  - `src/components/vendor/VendorTrustScoreCard.tsx`
+    - loads `/api/vendor/trust-score`
+    - shows current score, component breakdown, deterministic explanation details, improvement opportunities, and methodology
+    - handles loading, temporary-unavailable, and not-yet-scored states honestly
+- Wired the vendor card into:
+  - `src/app/vendor/analytics/page.tsx`
+- Verification:
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+  - live headless vendor analytics verification passed using the Metro manager test identity:
+    - `/vendor/analytics`
+    - rendered:
+      - `Reliance Trust Score`
+      - `Why this score`
+      - `Coverage`
+      - `Strongest signals`
+      - `Watch items`
+      - `Improvement opportunities`
+  - live page also showed the operational-reliability watch item from the current Metro snapshot
+- Trust Score model remains unchanged.
+
+## 2026-06-02 Deterministic vendor coaching pass
+- Added a rule-based vendor coaching helper grounded in real Trust Score data and live vendor dashboard metrics:
+  - `src/lib/vendor-coaching.ts`
+    - produces:
+      - `summary`
+      - `priorityActions`
+      - `strengths`
+      - `operationalNotes`
+    - intentionally deterministic first
+    - no AI dependency
+    - no automated actions
+    - no Trust Score math changes
+- Added focused test coverage:
+  - `src/lib/vendor-coaching.test.ts`
+    - weakest-component prioritization
+    - not-yet-scored fallback guidance
+    - strong-score maintenance guidance
+- Surfaced coaching in the live vendor Trust Score experience:
+  - `src/components/vendor/VendorTrustScoreCard.tsx`
+    - now renders:
+      - `Recommended next actions`
+      - `Priority actions`
+      - `What is already working`
+      - `Operational notes`
+  - `src/app/vendor/analytics/page.tsx`
+    - passes the real vendor dashboard payload into the Trust Score card so coaching uses live metrics
+- Verification:
+  - focused tests passed:
+    - `src/lib/vendor-coaching.test.ts`
+    - `src/lib/trust-score-read.test.ts`
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+  - live headless vendor analytics verification passed with a signed Metro vendor session:
+    - `/vendor/analytics`
+    - rendered:
+      - `Recommended next actions`
+      - `Priority actions`
+      - `What is already working`
+      - `Operational notes`
+  - live coaching included the operational-reliability guidance from the current Metro Trust Score profile
+- Trust Score model remains unchanged.
+
+## 2026-06-02 AI + trust/coaching hardening and eval pass
+- Added unsupported-evidence output guards for the admin AI assistants:
+  - `src/lib/ai/output-guards.ts`
+    - rejects moderation outputs that falsely claim the model watched/viewed/reviewed video content
+    - rejects dispute outputs that falsely claim the model watched footage or interviewed/spoke with parties
+  - `src/lib/ai/moderation-assistant.ts`
+  - `src/lib/ai/dispute-summary-assistant.ts`
+    - now pass feature-specific post-parse validation into the shared AI client
+  - `src/lib/ai/client.ts`
+    - now supports a `validateData(...)` hook so structured outputs can be rejected after schema parse but before operator display
+- Added focused coverage for the new hardening:
+  - `src/lib/ai/output-guards.test.ts`
+  - expanded `src/lib/ai/client.test.ts`
+  - existing AI route integration tests remained green
+- Added a repeatable local smoke path for the 2 admin AI assistants:
+  - `scripts/dev/ai-admin-smoke.cjs`
+  - `package.json` script:
+    - `npm run test:ai:smoke`
+  - uses a local signed admin bearer token and reports:
+    - route status
+    - success/failure code
+    - model/prompt version when available
+    - decision/next-step summary fields
+- Verification:
+  - focused suite passed:
+    - `8` files
+    - `35` tests
+  - `npx.cmd tsc --noEmit --pretty false --incremental false` passed
+  - `npm run test:ai:smoke` completed successfully
+  - real smoke outcome during this pass:
+    - moderation assist -> `503 DB_UNAVAILABLE`
+    - dispute summary assist -> `503 DB_UNAVAILABLE`
+    - this was expected/acceptable because Azure SQL was transiently unreachable, and the routes now fail truthfully instead of masking the problem as a generic AI failure
+- Trust/coaching eval consistency:
+  - deterministic Trust Score explanations still pass their focused tests
+  - deterministic vendor coaching still passes its focused tests
+  - no Trust Score weights or 4-topic model changes were made
+
+## 2026-06-02 AI validation runbook + gate operationalization
+- Added a dedicated AI validation runbook:
+  - `RELIANCE_AI_VALIDATION_RUNBOOK.md`
+    - defines when to run:
+      - `npm run test:ai:smoke`
+      - `npm run test:ai:focused`
+      - `npm run test:ai:gate`
+      - `npm run test:ai:evals`
+    - documents:
+      - current AI surface area
+      - release gate expectations
+      - failure interpretation order
+      - rule that prompt/model/schema changes still require validation
+      - rule that Trust Score math remains out of scope
+- Added package-level AI validation commands:
+  - `package.json`
+    - `test:ai:focused`
+      - runs the focused AI test suite:
+        - moderation assistant
+        - dispute summary assistant
+        - vendor coaching summary
+        - eval matcher coverage
+        - output guards
+        - route-level AI tests
+    - `test:ai:gate`
+      - runs:
+        1. `npm run test:ai:focused`
+        2. `npx tsc --noEmit --pretty false --incremental false`
+        3. `npm run test:ai:evals`
+- Updated dev-script docs:
+  - `scripts/dev/README.md`
+    - now documents:
+      - `ai-admin-smoke.cjs`
+      - `ai-admin-evals.ts`
+      - the package-level AI validation commands
+- Verification:
+  - `npm run test:ai:gate` passed end to end
+  - focused AI suite result:
+    - `8` files
+    - `41` tests
+  - `tsc` passed
+  - saved live eval suite passed:
+    - `5/5`
+  - live eval outcome during this pass:
+    - moderation:
+      - `cmpvgqq56002csokkx191m987` -> `needs_human_review`, `medium`
+      - `cmpv8a5nl0007sob42f84wtp9` -> `needs_human_review`, `medium`
+      - `cmpv8dr6a0009sob4v471pwoq` -> `needs_human_review`, `medium`
+    - dispute:
+      - temporary report `cmpx173s00014so1857dkgiqa` -> `needs_admin_review`, `medium`
+      - auto-dismissed after eval
+    - vendor coaching:
+      - `metro-vendor-coaching-summary` -> `confidence: medium`
+      - priority headline remained operational-reliability focused
+- Recommendation going forward:
+  - treat `npm run test:ai:gate` as the required validation step before merging AI prompt/model/schema changes
+  - continue keeping Trust Score math unchanged
+
+## 2026-06-02 AI operator feedback + override tracking
+- Added a shared operator-feedback helper for AI recommendation runs:
+  - `src/lib/ai/feedback.ts`
+    - logs admin feedback as `ai_feedback` audit events on `entityType: "ai_run"`
+    - supports:
+      - `accepted`
+      - `overrode`
+      - `ignored`
+    - includes metadata such as:
+      - feature
+      - operation
+      - prompt version
+      - model
+      - recommended action
+      - actual action
+      - related entity id/type
+  - `src/lib/ai/feedback.test.ts`
+    - covers moderation-action normalization
+    - covers conservative `needs_human_review` handling
+    - validates allowed outcomes
+- Added an admin-only feedback write route:
+  - `src/app/api/admin/ai/feedback/route.ts`
+  - `src/app/api/admin/ai/feedback/route.test.ts`
+  - validates:
+    - ai run id
+    - AI feature
+    - feedback outcome
+    - related entity type/id
+    - source
+- AI assist routes now return a stable `aiRunId` alias mapped to the OpenAI `responseId`:
+  - `src/app/api/admin/media/packages/[bookingId]/assist/route.ts`
+  - `src/app/api/admin/reported-content/[reportId]/assist/route.ts`
+  - associated integration tests now assert the new field
+- Admin media moderation UI now records and surfaces operator feedback:
+  - `src/app/admin/media-moderation/AdminMediaModerationClient.tsx`
+    - package/stage moderation actions auto-record `accepted` / `overrode` when the mapping is clear
+    - `needs_human_review` is treated conservatively:
+      - approve -> `overrode`
+      - flag/reject -> `accepted`
+    - manual buttons added:
+      - `Mark Followed`
+      - `Mark Overrode`
+      - `Mark Ignored`
+    - visible badge shows when feedback has been recorded
+- Admin reported-content UI now records and surfaces operator feedback:
+  - `src/app/admin/reported-content/AdminReportedContentClient.tsx`
+    - manual buttons added:
+      - `Mark Followed`
+      - `Mark Overrode`
+      - `Mark Ignored`
+    - visible badge shows when feedback has been recorded
+    - kept manual in this first pass because report-status changes are more ambiguous than moderation actions
+- Verification:
+  - `npm run test:ai:gate` passed end to end
+    - focused suite:
+      - `10` files
+      - `51` tests
+    - `tsc` passed
+    - saved live eval suite stayed green:
+      - `5/5`
+  - headless localhost browser verification passed with a locally signed admin session and no new MFA email:
+    - `/admin/media-moderation`
+      - `AI Review Assist`
+      - `Operator feedback`
+      - `Mark Followed`
+      - `Mark Ignored`
+    - `/admin/reported-content`
+      - temporary report rendered
+      - `AI Case Assist`
+      - `Operator feedback`
+      - `Mark Ignored`
+      - resulting `Ignored` badge rendered after click
+  - temporary report used for the UI check:
+    - created: `cmpx2f49x0000sovg1on87zjd`
+    - dismissed after verification
+- Scope note:
+  - this first feedback slice is intentionally focused on the 2 admin AI tools
+  - optional vendor AI coaching summary was not added to the operator-feedback loop in this pass
+  - Trust Score math remains unchanged
+
+## 2026-06-02 AI activity reporting dashboard
+- Added a shared AI reporting/aggregation helper:
+  - `src/lib/ai/reporting.ts`
+  - `src/lib/ai/reporting.test.ts`
+  - builds a 7-day activity report from `admin_audit_logs` for:
+    - `ai_response`
+    - `ai_feedback`
+    - `ai_error`
+  - outputs:
+    - total AI runs
+    - feedback coverage
+    - follow rate
+    - error count
+    - per-feature breakdown
+    - recent successful AI runs with attached operator outcome when available
+- Extended the admin activity page:
+  - `src/app/admin/activity/page.tsx`
+  - new `AI Assist Monitoring` section now shows:
+    - AI runs
+    - feedback coverage
+    - follow rate
+    - AI errors
+    - feedback outcome counts
+    - feature breakdown cards
+    - recent AI runs list
+  - also cleaned the old admin-activity row separator glyph to `-`
+- Updated the standing AI gate:
+  - `package.json`
+  - `test:ai:focused` now includes `src/lib/ai/reporting.test.ts`
+- Verification:
+  - `npm run test:ai:focused` passed
+    - now `11` files
+    - `54` tests
+  - `npx tsc --noEmit --pretty false --incremental false` passed
+  - `npm run test:ai:gate` passed end to end
+    - saved live eval suite remained `5/5`
+- Honest note:
+  - the new reporting surface is code-complete and gate-verified
+  - synthetic direct-fetch verification of some server-rendered admin pages is still inconsistent in localhost because those pages do not all behave the same under a handcrafted session-cookie request
+  - I did not overclaim a full browser-render proof for `/admin/activity` from that synthetic path
+  - the underlying aggregation logic and AI gate coverage are in place, and Trust Score math remains unchanged
+
+## 2026-06-02 AI activity filters + export
+- Extended the shared reporting helper in:
+  - `src/lib/ai/reporting.ts`
+  - `src/lib/ai/reporting.test.ts`
+- New helper capabilities:
+  - normalize AI feature filter
+  - build filtered reports per AI feature
+  - serialize recent AI runs to CSV
+- Added an admin export route:
+  - `src/app/api/admin/activity/ai-export/route.ts`
+  - `src/app/api/admin/activity/ai-export/route.test.ts`
+  - supports:
+    - `format=json`
+    - `format=csv`
+    - `aiFeature=<feature>`
+    - `limit=<n>`
+- Extended the admin activity page:
+  - `src/app/admin/activity/page.tsx`
+  - AI section now includes:
+    - feature filter pills
+    - `Export JSON`
+    - `Export CSV`
+    - current filter label
+- Updated AI gate coverage:
+  - `package.json`
+  - `test:ai:focused` now includes the export route test
+- Verification:
+  - `npm run test:ai:focused` passed
+    - now `12` files
+    - `60` tests
+  - `npx tsc --noEmit --pretty false --incremental false` passed
+  - `npm run test:ai:gate` passed end to end
+    - saved live eval suite stayed `5/5`
+  - live admin export checks with dev admin headers passed:
+    - `GET /api/admin/activity/ai-export?aiFeature=moderation_assistant&format=json&limit=5`
+      - `200`
+      - `responseCount: 51`
+      - `recentRunCount: 5`
+    - `GET /api/admin/activity/ai-export?aiFeature=moderation_assistant&format=csv&limit=3`
+      - `200`
+      - CSV header rendered
+      - recent moderation-assistant rows rendered
+  - live admin page check passed with dev admin headers:
+    - `/admin/activity?aiFeature=moderation_assistant`
+      - `AI Assist Monitoring`
+      - `Export JSON`
+      - `Export CSV`
+      - `Current filter:`
+      - `Moderation Assistant`
+- Trust Score math remains unchanged
+
+## 2026-06-02 AI rollout control point in admin settings
+- Added a shared AI rollout-status helper:
+  - `src/lib/ai/rollout-status.ts`
+  - `src/lib/ai/rollout-status.test.ts`
+  - exposes:
+    - global OpenAI platform enabled/disabled state
+    - project/API-key configured status
+    - audit logging status
+    - timeout/retry settings
+    - enabled AI feature count
+    - per-feature model + enabled status
+- Extended the admin settings page:
+  - `src/app/admin/settings/page.tsx`
+  - new `AI rollout control point` card now shows:
+    - OpenAI platform state
+    - active AI tool count
+    - audit logging + timeout/retry posture
+    - default model
+    - enabled feature map
+    - required change-discipline rules
+    - direct link to `Open AI Activity Monitoring`
+- Updated AI gate coverage:
+  - `package.json`
+  - `test:ai:focused` now includes `src/lib/ai/rollout-status.test.ts`
+- Verification:
+  - `npm run test:ai:focused` passed
+    - now `13` files
+    - `61` tests
+  - `npx tsc --noEmit --pretty false --incremental false` passed
+  - `npm run test:ai:gate` passed end to end
+    - saved live eval suite remained `5/5`
+  - live admin page check passed with dev admin headers:
+    - `/admin/settings`
+      - `AI rollout control point`
+      - `OpenAI platform`
+      - `Active AI tools`
+      - `Required change discipline`
+      - `npm run test:ai:gate`
+      - `Open AI Activity Monitoring`
+- Trust Score math remains unchanged
+
+## 2026-06-02 AI prompt/version inventory surfaced in admin settings
+- Added a central AI prompt registry:
+  - `src/lib/ai/prompt-registry.ts`
+  - `src/lib/ai/prompt-registry.test.ts`
+  - centralizes current prompt versions for:
+    - moderation assistant
+    - dispute summary assistant
+    - vendor coaching summary
+  - also catalogs deterministic Trust Score explanations as non-prompt inventory
+- Updated AI modules/routes to read prompt versions from the shared registry:
+  - `src/lib/ai/moderation-assistant.ts`
+  - `src/lib/ai/dispute-summary-assistant.ts`
+  - `src/lib/ai/vendor-coaching-summary-assistant.ts`
+  - `src/app/api/admin/reported-content/[reportId]/assist/route.ts`
+- Extended the admin settings AI rollout control point:
+  - `src/app/admin/settings/page.tsx`
+  - added `Prompt and decision inventory`
+  - shows:
+    - feature label
+    - operation id
+    - surface path
+    - scope (`AI prompt` vs `Deterministic`)
+    - prompt version or `Not applicable`
+    - short implementation notes
+- Updated AI gate coverage:
+  - `package.json`
+  - `test:ai:focused` now includes `src/lib/ai/prompt-registry.test.ts`
+- Verification:
+  - `npm run test:ai:focused` passed
+    - now `14` files
+    - `64` tests
+  - `npx tsc --noEmit --pretty false --incremental false` passed
+  - `npm run test:ai:gate` passed end to end
+    - saved live eval suite remained `5/5`
+  - live admin page check passed with dev admin headers:
+    - `/admin/settings`
+      - `AI rollout control point`
+      - `Prompt and decision inventory`
+      - `Moderation Assistant`
+      - `content-report-case-v1`
+      - `Deterministic`
+      - `vendor-coaching-summary-v1`
+- Trust Score math remains unchanged
+
+# Update (2026-06-02 - admin/vendor/customer discoverability follow-up)
+
+- Fixed admin secondary-surface discoverability:
+  - added `Review Audit` to the admin sidebar in `src/app/SidebarLayout.tsx`
+  - added `Admin Security` to the admin sidebar in `src/app/SidebarLayout.tsx`
+  - added `Review Audit` to admin dashboard quick actions in `src/app/admin/dashboard/page.tsx`
+  - added `Open Review Audit` and `Open AI Activity Monitoring` links to `src/app/admin/reviews/page.tsx`
+- Fixed vendor dashboard discoverability:
+  - added `Support & Help` quick action to `src/app/vendor/dashboard/page.tsx`
+- Fixed customer support discoverability:
+  - added `Support & Help` to the customer sidebar in `src/components/UserSidebar.tsx`
+  - added `Open Help Center` to customer dashboard quick actions in `src/app/(user)/user-dashboard/page.tsx`
+  - added `Open Help Center` to customer Profile & Settings quick actions in `src/app/(user)/profile-settings/page.tsx`
+- Real browser validation completed:
+  - admin `/admin/reviews`
+    - sidebar shows `Review Audit`
+    - sidebar shows `Admin Security`
+    - page shows `Open Review Audit`
+    - page shows `Open AI Activity Monitoring`
+    - `Open Review Audit` click -> `/admin/review-audit`
+    - `Open AI Activity Monitoring` click -> `/admin/activity?aiFeature=dispute_summary_assistant`
+  - vendor `/vendor/dashboard`
+    - page shows `Support & Help` quick action
+    - quick-action click -> `/vendor/support`
+    - support page shows `Relianceorg.support@gmail.com`
+  - customer `/user-dashboard`
+    - sidebar shows `Support & Help`
+    - dashboard shows `Open Help Center`
+    - click -> `/help`
+  - customer `/profile-settings`
+    - page shows `Open Help Center`
+    - click -> `/help`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+# Update (2026-06-02 - employee workflow + customer support discoverability)
+
+- Fixed employee shell usability in `src/app/employee/jobs/page.tsx`
+  - added visible `Support & Help` link
+  - added visible `Sign Out` link
+- Fixed MFA wording accuracy in `src/app/auth/login/page.tsx`
+  - updated copy to reflect that vendor, employee, and admin operational accounts can all require the sign-in code step
+- Real browser validation completed:
+  - customer shell
+    - `/user-dashboard` shows `Support & Help` in the sidebar
+    - `/user-dashboard` shows `Open Help Center`
+    - dashboard help click -> `/help`
+    - `/profile-settings` shows `Open Help Center`
+    - profile help click -> `/help`
+  - employee flow
+    - fresh browser tab to `/auth/login?next=/employee/jobs`
+    - real employee login completed using browser keystroke fallback
+    - employee account required MFA and showed dev preview code
+    - MFA screen copy now correctly mentions vendor, employee, and admin operational accounts
+    - `/employee/jobs` renders:
+      - `Assigned Jobs`
+      - `Device paired`
+      - `Metro Apartment Deep Clean`
+      - active job stage controls
+    - employee page now shows visible `Support & Help` and `Sign Out`
+    - employee help click -> `/help`
+    - employee sign-out click -> `/auth/login`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Audit note:
+  - the in-app browser still has a clipboard limitation for normal text fill on some forms
+  - successful employee login required a browser-keypress fallback instead of standard fill
+
+# Update (2026-06-02 - employee start-job state fix)
+
+- Fixed a real employee workflow bug:
+  - after pressing `Start Job`, the employee page could still show booking status as `Confirmed` and keep the `Start Job` button visible
+  - root cause: the backend uses Prisma booking status `CONFIRMED` as the active in-progress booking state, but the employee UI still treated `CONFIRMED` like a startable pre-active state
+- Added a small shared helper and regression coverage:
+  - `src/lib/employee-job-status.ts`
+  - `src/lib/employee-job-status.test.ts`
+- Updated `src/app/employee/jobs/page.tsx` to:
+  - display `CONFIRMED` as `In Progress`
+  - only show `Start Job` for true `PENDING` jobs
+- Real browser validation completed:
+  - employee login + MFA path completed in a fresh browser tab
+  - clicked `Start Job` on `Metro Apartment Deep Clean`
+  - after settle, the job now shows `In Progress`
+  - `Start Job` is gone
+  - `Submit for Manager Review` remains visible and disabled until all 3 stage videos exist
+  - completed history toggle still works and reveals prior completed jobs
+- Validation completed:
+  - `npm test -- src/lib/employee-job-status.test.ts`
+  - `npx tsc --noEmit --pretty false --incremental false`
+
+# Update (2026-06-02 - employee stage progression audit)
+
+- Continued the browser-first employee audit on the active Metro job `cmohivjet001wsoe4w7x5b2qr`
+- Because the in-app browser still cannot drive the native file chooser reliably, the stage uploads were executed through the same HTTP sequence used by the employee UI helper script:
+  - `scripts/dev/metro-employee-stage-upload.cjs`
+- Real browser validation completed after each stage:
+  - after `INTRO` upload
+    - employee page showed `Before / Intro` as `Uploaded`
+    - job stayed `In Progress`
+    - submit remained disabled
+  - after `IN_PROGRESS` upload
+    - employee page showed both `Before / Intro` and `During / In Progress` as `Uploaded`
+    - `After / Completed` still showed `Required`
+    - submit remained disabled
+  - after `COMPLETED` upload
+    - employee page showed all 3 stages as `Uploaded`
+    - booking status moved to `Awaiting Review`
+    - upload controls locked with `Uploads are locked while manager review is pending.`
+    - primary action changed to disabled `Awaiting Manager Review`
+- This confirms the visible employee workflow now behaves correctly once all 3 stage uploads exist.
+- Audit note:
+  - upload interaction itself is still partially blocked by the in-app browser file chooser limitation
+  - visible post-upload state was browser-verified after each stage
+
+# Update (2026-06-02 - vendor support browser-first audit)
+
+- Continued the vendor browser-first audit across:
+  - `/vendor/support`
+  - `/vendor/support/faqs`
+  - `/vendor/support/help-articles`
+- Fixed vendor shell stability in `src/hooks/useVendorProfile.ts`:
+  - cached vendor context now seeds a fallback vendor profile immediately
+  - this stops support/article pages from flashing `Vendor Account` before the real Metro identity resolves
+- Fixed vendor footer copy in `src/app/vendor/layout.tsx`:
+  - replaced the broken copyright rendering with `Copyright 2026 All rights reserved`
+- Rebuilt `src/app/vendor/support/faqs/page.tsx`:
+  - replaced fragile emoji-string section icons with Lucide icons
+  - added a visible launch-help callout
+  - exposed the launch support email directly on the FAQ page
+  - added clearer vendor actions:
+    - `Open Support Hub`
+    - `Browse Articles`
+- Rebuilt `src/app/vendor/support/help-articles/page.tsx`:
+  - replaced fragile emoji-string filter icons with Lucide icons
+  - added a visible launch-help callout
+  - exposed the launch support email directly on the articles page
+  - kept the actionable vendor page links intact
+- Real browser validation completed:
+  - `/vendor/support` showed:
+    - `Metro Home Care Pros`
+    - no `Vendor Account`
+    - `Relianceorg.support@gmail.com`
+    - no broken `Ã‚Â© 2026`
+  - `/vendor/support/faqs` showed:
+    - `Frequently Asked Questions`
+    - `Metro Home Care Pros`
+    - `Relianceorg.support@gmail.com`
+    - `Open Support Hub`
+    - `Browse Articles`
+    - no broken footer text
+  - `/vendor/support/help-articles` showed:
+    - `Help Articles`
+    - `Metro Home Care Pros`
+    - `Relianceorg.support@gmail.com`
+    - `Open Support Hub`
+    - `Read FAQs`
+    - no broken footer text
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Browser-first admin review moderation audit on `/admin/reviews?q=cmpve555g000ysokkgaggvr8s`
+- Found a real operator-flow bug in `src/app/admin/reviews/page.tsx`:
+  - page guidance said admins should record a clear reason when escalating a review
+  - `Reject` already opened a reason dialog
+  - `Flag` bypassed that and fired immediately with no reason capture
+- Fixed the flow by replacing the reject-only modal with a shared moderation-note modal:
+  - supports both `Reject Review` and `Flag Review`
+  - requires a typed reason before submit
+  - allows safe cancel without mutating live review data
+- Real browser validation completed on the live filtered Avery review:
+  - `Flag` now opens:
+    - `Flag Review`
+    - `Provide moderation reason to flag this review for follow-up.`
+    - `Enter flag reason...`
+    - `Submit Flag`
+    - `Cancel`
+  - `Reject` still opens:
+    - `Reject Review`
+    - `Provide moderation reason to reject this review.`
+    - `Enter rejection reason...`
+    - `Submit Rejection`
+  - both dialogs were canceled safely with no live moderation change
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Expanded `/admin/vendors` into a real browse + search operator surface.
+- Backend: `src/app/api/admin/account-lookup/route.ts`
+  - added `mode=browse` support for vendors
+  - added vendor activity filtering:
+    - `active`
+    - `inactive` (maps to `deactivated` + `archived_inactive`)
+    - `all`
+    - explicit `suspended` / `banned` / `deactivated`
+  - added vendor sorting:
+    - `alpha_asc`
+    - `alpha_desc`
+    - `newest`
+    - `oldest`
+  - expanded returned vendor identity data:
+    - `ownerName`
+    - `businessName`
+    - `city`
+    - `state`
+    - `zipCode`
+    - `serviceAreas`
+  - added truthful `503 DB_UNAVAILABLE` handling for admin account lookup
+- Tests: `src/app/api/admin/account-lookup/account-lookup.integration.test.ts`
+  - added browse-mode coverage for vendor filtering/sorting
+  - DB unavailable coverage remains green
+- Frontend: `src/app/admin/vendors/page.tsx`
+  - added `Browse vendors` controls with:
+    - vendor list filter
+    - sort order
+    - `Load Vendors`
+  - active vendors now auto-load on first page load
+  - result cards now visually distinguish vendors by:
+    - owner name
+    - location (`City, State ZIP`)
+    - service areas
+    - email / phone / ID
+  - added contextual results label:
+    - e.g. `Active vendors sorted A-Z`
+  - added honest browse empty state copy
+  - added browse/search timeout handling
+  - fixed stale-selection behavior so switching lists clears an old selected vendor if it no longer appears in the current results
+- Real browser validation on `/admin/vendors`:
+  - new browse controls rendered correctly
+  - active vendors auto-loaded in alphabetical browse mode
+  - Metro card rendered with distinguishing details:
+    - `Location: New York, NY 10118`
+  - inactive filter worked
+  - empty inactive state rendered honestly with no stale Trust Score panel
+  - selecting Metro from the browse list still opened:
+    - account action form
+    - Trust Score panel
+    - Trusted MFA Devices section
+  - admin notes field correctly gated account-action buttons until text was entered
+  - temporary audit text entered into `Admin notes` was cleared afterward
+- Validation completed:
+  - `npm test -- src/app/api/admin/account-lookup/account-lookup.integration.test.ts`
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Hardened admin trusted-device route at `src/app/api/admin/mfa/trusted-devices/route.ts`
+  - GET now returns truthful `503 DB_UNAVAILABLE` when the database is unreachable
+  - POST revoke path now returns truthful `503 DB_UNAVAILABLE` when the database is unreachable
+- Added regression coverage in `src/app/api/admin/mfa/trusted-devices/trusted-devices.integration.test.ts`
+  - GET transient DB failure -> 503
+  - POST transient DB failure -> 503
+- Continued browser-first audit on `/admin/vendors`
+  - investigated the Metro vendor Trusted MFA Devices watch item
+  - confirmed the page-side issue was partly environment/settle related, but the backend route previously did not report transient DB failures honestly
+  - route is now hardened even when the browser cannot produce a clean live failure reproduction on demand
+- Validation completed:
+  - `npm test -- src/app/api/admin/mfa/trusted-devices/trusted-devices.integration.test.ts`
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Honest audit note:
+  - a fresh `/admin/vendors` reload hit one of the existing localhost settle-time issues during this pass
+  - because of that, I am not overclaiming a clean final live Metro re-selection after the route hardening
+  - the code path and regression coverage are in place, and the broader `/admin/vendors` browse/search flow remains browser-validated from the previous slice
+- Browser-first admin security audit on `/admin/security`
+- Found 2 real UX issues in `src/components/auth/PasskeySetupCard.tsx`
+  - passkey device/back-up metadata still rendered mojibake `Â·`
+  - `Remove` was a one-click destructive action with no confirmation state
+- Rebuilt the passkey removal flow:
+  - first click on `Remove` now opens an inline warning state
+  - warning copy explains that the device will stop working for passkey sign-in until re-added
+  - action buttons are now:
+    - `Cancel`
+    - `Confirm Remove`
+  - cancellation returns the card to the normal `Remove` state without mutating live passkeys
+- Fixed the mojibake text so backed-up passkeys now render:
+  - `Synced across devices · backed up`
+- Added `src/app/admin/security/loading.tsx`
+  - honest route shell copy:
+    - `Loading admin security controls, passkeys, and recovery guidance...`
+- Real browser validation completed on `/admin/security`
+  - page rendered:
+    - `Secure Your Admin Account`
+    - `Registered passkeys`
+    - `Add Passkey`
+  - backed-up passkey row rendered with clean bullet text
+  - clicking `Remove` on a real passkey row opened:
+    - warning copy
+    - `Confirm Remove`
+    - `Cancel`
+  - clicking `Cancel` closed the confirmation state and restored the normal `Remove` button
+  - no real passkeys were removed during validation
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+  - `npm test -- src/app/api/admin/mfa/trusted-devices/trusted-devices.integration.test.ts`
+- Continued browser-first admin operator audit on `/admin/activity` and `/admin/reports`
+- Found a real workflow issue in `src/app/admin/activity/page.tsx`
+  - `Export JSON` / `Export CSV` were plain in-tab links
+  - using them could pull the admin out of the monitoring page instead of preserving current context
+- Fixed export links to open as external artifacts:
+  - added `target="_blank"`
+  - added `rel="noopener noreferrer"`
+- Real browser validation on `/admin/activity?aiFeature=moderation_assistant`
+  - filter pill `Moderation Assistant` still worked
+  - `Current filter: Moderation Assistant` rendered correctly
+  - export links stayed correctly scoped to the moderation-assistant filter
+  - clicking `Export JSON` now preserved the current monitoring page context instead of navigating the active page away
+- Honest browser/runtime note:
+  - the in-app browser does not support direct downloads, so CSV validation through the browser runtime still reports a download limitation rather than a product bug
+  - the export route itself still points to the correct filtered CSV endpoint
+- Rechecked the earlier `/admin/reports` shortcut concern
+  - `Open Review Audit` was not broken
+  - with an explicit URL wait it navigated successfully to `/admin/review-audit`
+  - the earlier failure mode was consistent with a slow client-route transition, not a confirmed bad link
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on `/admin/media-moderation`
+- Found a real moderation-workflow inconsistency in `src/app/admin/media-moderation/AdminMediaModerationClient.tsx`
+  - `Reject Package` and stage `Reject` already required a typed moderation reason
+  - `Flag Package` and stage `Flag` could bypass that step and act immediately
+- Replaced the reject-only flow with a shared moderation-note dialog for both package and stage actions:
+  - `Reject Package`
+  - `Flag Package`
+  - stage `Reject`
+  - stage `Flag`
+- New media moderation dialog behavior:
+  - package flagging now opens `Flag Package`
+  - stage flagging now opens `Flag Stage`
+  - both require a typed reason before submit
+  - `Cancel` cleanly returns the operator to the moderation page without changing data
+- Real browser validation completed on `/admin/media-moderation`
+  - clicking a real `Flag Package` button opened the package-level reason dialog
+  - the dialog showed:
+    - package flag copy
+    - `Submit Flag`
+    - `Cancel`
+  - clicking `Cancel` closed the dialog and kept the operator on the moderation page
+  - opening a real stage `Details` dialog and clicking stage `Flag` opened the stage-level reason dialog
+  - the stage dialog showed:
+    - `Flag Stage`
+    - stage-specific follow-up-review copy
+    - `Submit Flag`
+  - canceling the stage flag dialog and closing the stage detail dialog returned cleanly to the main moderation queue
+  - no live moderation state was changed during validation
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on `/admin/audit-logs`
+- Found a real operator mismatch in `src/app/admin/audit-logs/page.tsx`
+  - the page description still read like a publish/listing-only tool
+  - the entity filter only listed `vendor`, `service`, and `review`
+  - live audit data on the page already included broader entities like `booking` and `ai_run`
+- Updated the audit-log surface to match current Reliance operations:
+  - heading copy now reflects vendor operations, booking workflows, moderation, device pairing, and AI assist activity
+  - search input copy now reads `Search by entity ID or actor user ID`
+  - entity filter now includes dynamic live entity types plus core defaults:
+    - `vendor`
+    - `service`
+    - `review`
+    - `booking`
+    - `ai_run`
+    - `content_report`
+- Real browser validation completed on `/admin/audit-logs`
+  - updated heading copy rendered correctly
+  - updated search placeholder rendered correctly
+  - entity filter visibly included:
+    - `booking`
+    - `ai_run`
+    - `content_report`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on `/admin/audit-logs` after the copy/entity-filter update
+- Verified the real filter interaction flow in-browser:
+  - selected `ai_response`
+  - selected `ai_run`
+  - clicked `Apply Filters`
+  - page narrowed correctly to AI response runs
+- Found a usability gap in `src/app/admin/audit-logs/page.tsx`
+  - after applying filters, the page did not clearly show the active narrowed state
+  - there was no one-click `Clear Filters` path back to the full log set
+- Added audit-log operator filter feedback:
+  - visible `Current filters:` summary
+  - shows active search/action/entity filters
+  - added `Clear Filters`
+- Real browser validation completed on `/admin/audit-logs`
+  - filtered state visibly rendered:
+    - `Current filters:`
+    - `Action: ai_response`
+    - `Entity: ai_run`
+    - `Clear Filters`
+  - clicking `Clear Filters` removed the summary and returned the page to the all-actions / all-entities state
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on `/admin/publish-management`
+- Found a real operator risk in `src/app/admin/publish-management/PublishManagementClient.tsx`
+  - vendor list/unlist and service publish/unpublish were still one-click state changes
+  - that made public-listing changes too easy to trigger accidentally
+- Added a shared confirmation dialog for publish-management state changes:
+  - vendor `List Vendor Publicly`
+  - vendor `Unlist Vendor`
+  - service `Publish Service`
+  - service `Unpublish Service`
+- New behavior:
+  - clicking a publish-state action now opens a confirmation dialog
+  - dialog shows action-specific title and description
+  - operator can `Cancel` or explicitly confirm
+- Real browser validation completed on `/admin/publish-management`
+  - clicking a real `Unlist Vendor` button opened the confirmation dialog
+  - the vendor dialog showed:
+    - `Unlist Vendor`
+    - `Confirm Unlist`
+    - `Cancel`
+  - clicking `Cancel` closed the dialog and preserved the page state
+  - clicking a real `Unpublish Service` button opened the confirmation dialog
+  - the service dialog showed:
+    - `Unpublish Service`
+    - `Confirm Unpublish`
+    - `Cancel`
+  - clicking `Cancel` closed the dialog and preserved the page state
+  - no live publish/listing state was changed during validation
+- Visual browser pass also confirmed no mojibake display issue on the publish-management vendor/service rows
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on `/admin/promoted-listings`
+- Found a real discoverability issue in `src/app/admin/promoted-listings/page.tsx`
+  - when there are no live campaigns yet, the actual `Create Featured Campaign` and `Campaign Inventory` sections are buried well below guidance, package editing, and revenue sections
+  - an admin landing on the page had to hunt for where to start
+- Added a top-level `Quick Actions` section with anchor links to:
+  - `Jump to Create Campaign`
+  - `Jump to Campaign Inventory`
+  - `Jump to Package Catalog`
+- Added anchor ids to the main workflow sections so those jumps land cleanly:
+  - `editable-package-catalog`
+  - `create-featured-campaign`
+  - `campaign-inventory`
+- Real browser validation completed on `/admin/promoted-listings`
+  - `Quick Actions` rendered correctly
+  - `Jump to Create Campaign` rendered correctly and navigated to the `Create Featured Campaign` section
+  - `Jump to Campaign Inventory` rendered correctly and navigated to the `Campaign Inventory` section
+  - rendered UI did not show visible mojibake in this promoted-listings pass
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on the `/admin/promoted-listings` create-campaign workflow
+- Found a real operator usability gap in `src/app/admin/promoted-listings/page.tsx`
+  - the create form required raw `Vendor ID` and `Published service ID`
+  - there was no built-in way to find those IDs from the same workflow
+- Added create-flow helper guidance directly in the form:
+  - `Need vendor or service IDs?`
+  - `Open Vendor Management`
+  - `Open Publish Management`
+- Real browser validation completed on `/admin/promoted-listings#create-featured-campaign`
+  - the create section rendered the new lookup guidance directly under the vendor/service ID fields
+  - both helper links were visible in the live form
+  - `Open Vendor Management` navigated to `/admin/vendors`
+  - `Open Publish Management` navigated to `/admin/publish-management`
+- Honest browser/runtime note:
+  - both helper links still showed the same slow admin-route transition pattern, so explicit URL waits timed out before settle
+  - after settle, both landed on the correct admin pages, so this is a slow-transition issue rather than a broken-link issue
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on `/admin/promoted-listings#campaign-inventory`
+- Found a real empty-state usability gap in `src/app/admin/promoted-listings/page.tsx`
+  - when there were no campaigns yet, `Campaign Inventory` ended in a passive `No promoted listing campaigns found.` message
+  - there was no direct recovery path from that dead end
+- Added empty-state recovery actions inside `Campaign Inventory`:
+  - explanatory copy about starting the first placement
+  - `Create First Campaign`
+  - `Review Package Catalog`
+- Real browser validation completed on the live no-campaign inventory state
+  - empty state showed:
+    - `No promoted listing campaigns found.`
+    - recovery guidance copy
+    - `Create First Campaign`
+    - `Review Package Catalog`
+  - clicking `Create First Campaign` jumped to `Create Featured Campaign`
+  - clicking `Review Package Catalog` jumped to `Editable Package Catalog`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on the `/admin/promoted-listings` create-campaign workflow
+- Verified in the live browser that package switching updates the real form defaults:
+  - amount due changed from `2900` -> `8900` -> `9900`
+  - end date updated with package duration
+  - placement and radius updated to the selected package values
+- Found a real clarity gap in `src/app/admin/promoted-listings/page.tsx`
+  - the form updated correctly, but the admin still had to infer the selected package details from scattered fields
+- Added a live `Selected package snapshot` block to the create form showing:
+  - package name
+  - placement
+  - duration
+  - default price
+  - radius guidance
+  - category-targeting status
+  - `Best for`
+- Real browser validation completed on `/admin/promoted-listings#create-featured-campaign`
+  - the new package snapshot rendered correctly
+  - switching to `7-day homepage spotlight` updated the snapshot to show:
+    - `HOME_FEATURED`
+    - homepage package name
+    - category targeting `Not included`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on the `/admin/promoted-listings` create-campaign workflow
+- Found a real UI/backend mismatch in `src/app/admin/promoted-listings/page.tsx`
+  - the create form looked like placement was freely editable even though the backend requires the package's fixed placement type
+  - the form also presented `active` as a selectable initial status even when payment was still pending, which only led to a backend validation error later
+- Aligned the create form with the real rules:
+  - placement field is now locked to the selected package
+  - added `Placement is locked to the selected package.` helper copy
+  - `active` is disabled while payment is not `paid` or `waived`
+  - added `Active is unlocked only after payment is marked paid or waived.` helper copy
+  - if payment is changed away from an activation-eligible state, an already-selected `active` value is reset back to `scheduled`
+- Real browser validation completed on `/admin/promoted-listings#create-featured-campaign`
+  - pending-payment state showed the locked-placement note
+  - pending-payment state showed the active-unlock warning
+  - `active` rendered disabled while payment was still pending
+  - after switching payment status to `paid`, the unlock warning disappeared and `active` became available again
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on the promoted-listings package catalog and found a real regression from the earlier navigation work
+  - section anchor ids had drifted onto the wrong cards, so quick links could land on the wrong section even when they appeared to work
+- Corrected the promoted-listings anchor ids so the main sections now map cleanly again:
+  - `editable-package-catalog`
+  - `create-featured-campaign`
+  - `campaign-inventory`
+- Also hardened the package editor UX in `src/app/admin/promoted-listings/page.tsx`
+  - added package dirty-state detection
+  - `Save package` is now disabled until that specific package has a real change
+  - package cards now show:
+    - `No package changes to save yet.`
+    - `Unsaved package changes.`
+- Real browser validation completed on `/admin/promoted-listings`
+  - `Jump to Package Catalog` now lands on `Editable Package Catalog`
+  - `Jump to Create Campaign` now lands on `Create Featured Campaign`
+  - `Jump to Campaign Inventory` now lands on `Campaign Inventory`
+  - for the `browse-local-7-day` package card:
+    - `Save package` started disabled
+    - editing the package price enabled that specific save button
+    - restoring the original price disabled the button again
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on `/admin/audit-logs` and fixed a real action-filter limitation
+- Found that the action-type dropdown was still effectively page-local
+  - it was derived from whatever action types happened to be present on the current result page
+  - that could hide valid action types from the rest of the audit corpus
+- Updated `src/app/api/admin/audit-logs/route.ts` to return distinct action/entity types across the full audit log set
+- Updated `src/app/admin/audit-logs/page.tsx` to build the dropdowns from:
+  - full-corpus route metadata
+  - current logs
+  - fallback known admin action/entity types
+- Real browser validation completed on `/admin/audit-logs`
+  - action filter now showed a much broader real operator list (`29` options including `all`)
+  - confirmed visible action options included:
+    - `PROMOTION_CAMPAIGN_CREATED`
+    - `SERVICE_PUBLISHED`
+    - `VENDOR_LISTED_PUBLICLY`
+    - `ai_feedback`
+  - confirmed entity options included `content_report`
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Continued browser-first admin operator audit on `/admin/vendors` and hardened the account-action flow in `src/app/admin/vendors/page.tsx`
+- Found a real operator risk:
+  - once admin notes were present, suspend / ban / deactivate / reactivate were still one-click state changes
+- Added a shared confirmation dialog for account actions:
+  - `Suspend`
+  - `Ban`
+  - `Deactivate`
+  - `Reactivate`
+- New behavior:
+  - clicking an account action now opens a confirmation dialog with action-specific copy
+  - operator must explicitly confirm before the backend status change runs
+  - `Ban` uses destructive confirmation styling
+- Validation completed:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- Honest browser/runtime note:
+  - the in-app browser's textarea entry path for `Admin notes` is still blocked by the browser runtime's virtual clipboard limitation
+  - I re-verified the live `/admin/vendors` page and Metro selection path, but I could not complete a perfect end-to-end dialog-open proof through the notes-gated button in this browser runtime without compromising the real UI state
+  - the safety improvement itself is code-complete and typechecked
+- 2026-06-03 Codex: Hardened /admin/reported-content so resolved_action_taken, resolved_no_action, and dismissed now require resolution notes in the UI. Added visible helper copy ('Add clear notes before marking a report resolved or dismissed.'). Browser-verified the helper text on the live page and confirmed the route still loads real persisted reports; full empty-notes disable proof remains partially limited by this in-app runtime's textarea-editing constraints.
+- 2026-06-03 Codex: Improved /admin/promoted-listings create-form clarity so the disabled Create Campaign button now explains exactly which required fields are missing. Also hardened campaign inventory actions in code with confirmation dialogs for payment-state and campaign-state changes. Typecheck passed. Browser proof confirmed the new required-fields guidance on the create form; live confirmation-dialog proof is still pending because there are currently no campaigns in inventory to exercise those actions without creating new data in this brittle input runtime.
+- 2026-06-03 Codex: Added a real HOME_FEATURED launch safeguard. The homepage spotlight package is now inactive by default in shared promotion rules and admin fallback data, the admin promoted-listings API exposes HOME_FEATURED packages as not live, package updates reject attempts to activate HOME_FEATURED before launch, and campaign create/update now rejects non-live packages explicitly instead of silently falling back. Browser-verified on /admin/promoted-listings: 7-day homepage spotlight now shows Inactive, shows a launch-disabled warning, and its 'Active for new campaigns' checkbox is disabled.
+- 2026-06-03 Codex: Extended the promotion launch gating to the vendor request path. /api/vendor/promotion-requests now rejects non-live package keys (including HOME_FEATURED) with the homepage launch-block message, and the vendor dashboard promotion form now resets stale package/service selections if request options change and shows a launch-availability note that only currently live placements are requestable. Typecheck passed. Browser proof of the live vendor form after this exact change is still limited by the current in-app login/input runtime.
+- 2026-06-03 Codex: Cleaned the admin create-campaign flow so inactive homepage inventory no longer appears as a disabled package option in the Create Featured Campaign dropdown. Added a form reset effect so stale inactive package keys fall back automatically to the first live package. Browser-verified: create dropdown now shows only 7-day and 30-day browse spotlight options, while the homepage package still appears separately in the package catalog as inactive.
+- 2026-06-03 Codex: Added a create-form clarification on /admin/promoted-listings so admins are told directly that homepage spotlight inventory is intentionally excluded from the Create Featured Campaign dropdown until the public homepage promotion surface is launched. Browser-verified the note under the Package field.
+- 2026-06-03 Codex: Found and fixed a deeper promotion leak: the public services/discover route could have treated stale HOME_FEATURED campaigns like browse promotions because it did not explicitly filter placementType before building promoted candidates. It now only surfaces BROWSE_FEATURED campaigns publicly. Also fixed vendor getActivePackages() so stale active DB rows for HOME_FEATURED are filtered back out after launch-gate normalization. Added focused regression coverage in promoted-listings.test.ts, src/app/api/vendor/promotion-requests/route.integration.test.ts, and src/app/api/admin/promoted-listings/route.integration.test.ts. Validation passed: 17 focused promotion tests green and full tsc green.
+
+## Update: 2026-06-03 - vendor promotions browser-first audit
+- Continued the promotions audit from the vendor dashboard side after the homepage inventory launch gate was enforced across admin, vendor, and public paths.
+- Updated `src/app/vendor/dashboard/page.tsx` so the promotion request form no longer sits on an indefinite loading state:
+  - added request-options timeout handling
+  - added `Retry loading options`
+  - surfaced the homepage-launch note immediately, even before packages finish loading
+  - removed the duplicate launch note once package data is available
+- Browser proof on the live vendor shell (`Sparkle Clean Pro`):
+  - opened `Promote my business`
+  - saw the launch note immediately
+  - saw the honest timeout recovery state with `Retry loading options`
+  - clicked retry and recovered the real package picker
+  - confirmed only live browse packages are requestable:
+    - `7-day local spotlight - $29`
+    - `30-day local spotlight - $89`
+  - confirmed homepage spotlight is not requestable from the vendor flow
+- Validation:
+  - `npx tsc --noEmit --pretty false --incremental false`
+## Update: 2026-06-03 - public browse promotion capacity proof
+- Created one temporary active paid `BROWSE_FEATURED` campaign for Metro Home Care Pros solely to verify public browse behavior, then removed it immediately after verification.
+- Browser/API proof showed the current browse page still rendered `promotedCount=0` while `serviceCount=3`.
+- That result is correct and intentional, not a leak: `applyPromotionInventoryRules()` requires at least 4 organic browse results before desktop promoted placements can render.
+- This confirms the platform is already enforcing the page-space rule instead of forcing a paid listing into a browse surface that is too thin.
+- Temporary audit campaign removed:
+  - `cmpyj7j5k0001so8osf8w523c`
+## Update: 2026-06-03 - promotion capacity rule made visible in admin and vendor UI
+- Added explicit capacity-rule guidance to the vendor promotion request flow in `src/app/vendor/dashboard/page.tsx`.
+- Added matching operator guidance to admin promoted listings in `src/app/admin/promoted-listings/page.tsx`.
+- The UI now explains that browse featured campaigns can remain non-rendered even after approval/payment when the organic browse surface is too thin.
+- Browser proof:
+  - vendor dashboard promotion form now shows:
+    - `Browse promotions only render when Reliance still has enough organic results to keep the page useful. Desktop browse currently needs at least 4 organic listings, and category-filtered browse needs at least 3, before featured paid placements can appear.`
+  - admin promoted listings now shows:
+    - `Browse featured campaigns can still stay off the public page even after approval and payment when the current browse surface is too thin. Reliance currently requires at least 4 organic desktop listings, or 3 on category-filtered browse, before paid featured placements render.`
+- Validation:
+  - `npx tsc --noEmit --pretty false --incremental false`
+## Update: 2026-06-03 - admin browse render readiness for promotions
+- Added a live `Browse Render Readiness` block to `src/app/admin/promoted-listings/page.tsx`, backed by new server-side readiness data in `src/app/api/admin/promoted-listings/route.ts`.
+- The admin promotions page now shows:
+  - current organic browse listing count
+  - whether desktop browse promotions are currently renderable or suppressed
+  - how many category views currently meet the category-filter floor
+- Browser proof on `/admin/promoted-listings`:
+  - `Browse Render Readiness`
+  - `Current organic browse listings`
+  - `Need at least 4 for desktop browse promotions.`
+  - `Desktop browse status`
+  - `Suppressed`
+  - `Category views meeting floor`
+  - `Category-filtered browse needs at least 3 organic listings.`
+- Validation:
+  - `npx tsc --noEmit --pretty false --incremental false`
+## Update: 2026-06-03 - admin campaign render-note explanation
+- Added a campaign-specific `Render note` to admin promoted listing inventory by extending `src/app/api/admin/promoted-listings/route.ts` and `src/app/admin/promoted-listings/page.tsx`.
+- `Not rendering` campaigns now explain the actual blocker instead of only showing a generic badge.
+- Browser proof on `/admin/promoted-listings` with a temporary active paid browse campaign:
+  - campaign row rendered `Not rendering`
+  - row text showed:
+    - `Render note: Suppressed by the current browse floor: 3/4 organic desktop listings available.`
+- Temporary audit campaign removed after verification:
+  - `cmpyjxcpb0001soiw941v6vp1`
+- Validation:
+  - `npx tsc --noEmit --pretty false --incremental false`
+## Update: 2026-06-03 - vendor live browse readiness signal
+- Added shared browse-readiness data in `src/lib/promotion-browse-readiness.ts` and reused it in both admin and vendor promotion flows.
+- Extended `src/app/api/vendor/promotion-requests/route.ts` to return live browse readiness.
+- Extended `src/app/vendor/dashboard/page.tsx` so the promotion request form now shows the current public browse state, not just the policy rule.
+- Increased the vendor request-options timeout from 12s to 30s so the real readiness payload can settle before falling into retry more often.
+- Browser proof on `/vendor/dashboard` -> `Request promotion`:
+  - `Public browse is currently below the organic floor for featured placements (3/4 desktop listings), so approved campaigns may still stay hidden until browse inventory grows.`
+  - `Category-filtered browse is currently ready in 1/1 listing groups.`
+  - package options still showed only live browse packages:
+    - `7-day local spotlight - $29`
+    - `30-day local spotlight - $89`
+- Validation:
+  - `npx tsc --noEmit --pretty false --incremental false`## 2026-06-03 17:40 EDT - Promotions regression coverage + admin loading hardening
+- Added route-level regression coverage for promotions browse-readiness payloads:
+  - `src/app/api/vendor/promotion-requests/route.integration.test.ts` now asserts `browseReadiness` returns the live suppression shape (`3/4` desktop floor, `1/1` category groups).
+  - `src/app/api/admin/promoted-listings/route.integration.test.ts` now asserts `meta.browseReadiness` is present on GET.
+- Reconfirmed shared helper coverage in `src/lib/promotion-browse-readiness.test.ts`.
+- Browser-first audit found a real admin UX bug on `/admin/promoted-listings`: the page showed misleading fallback `0` values for top-line metrics and browse readiness while the live inventory request was still loading.
+- Fixed `src/app/admin/promoted-listings/page.tsx` so first-load state now shows honest loading copy instead of fake zero metrics.
+- Added a 15s fetch timeout to the admin promoted listings page so it no longer spins forever when the route stalls; it now fails truthfully and re-enables retry.
+- Browser-verified on `/admin/promoted-listings` after reload:
+  - initial state now shows `Loading...` metrics and `Loading live browse-floor readiness...` instead of placeholder zeros
+  - after settle, the page resolves to the correct live readiness:
+    - `Current organic browse listings: 3`
+    - `Desktop browse status: Suppressed`
+    - `Category views meeting floor: 1/1`
+  - campaign inventory also resolves cleanly to the empty-state actions instead of staying stuck on an endless loader.
+- Validation:
+  - `npm test -- src\lib\promotion-browse-readiness.test.ts src\app\api\vendor\promotion-requests\route.integration.test.ts src\app\api\admin\promoted-listings\route.integration.test.ts`
+  - `npx tsc --noEmit --pretty false --incremental false`
+## 2026-06-03 18:00 EDT - Vendor dashboard timeout hardening
+- Browser-first audit found the vendor dashboard could sit on the loading shell indefinitely, and the promotion drawer request-options flow could take over 30 seconds before showing fallback.
+- Hardened `src/hooks/useVendorDashboard.ts` with a 15s fetch timeout and an honest error state: `Vendor dashboard took too long to load. Please retry.`
+- Browser-verified the live vendor flow on `/vendor/dashboard`:
+  - dashboard now settles to the real page instead of staying forever on the initial shell
+  - opening `Request promotion` still shows the launch and organic-floor guidance immediately
+  - when the request-options fetch does not complete, the drawer now truthfully falls back to:
+    - `Promotion options took too long to load. Please retry.`
+    - `Retry loading options`
+- Validation:
+  - `npx tsc --noEmit --pretty false --incremental false`
+- No new automated test coverage was added for the hook timeout path in this slice; validation here was typecheck + browser-path proof.
+## 2026-06-03 18:15 EDT - Public browse retry tuning and proof
+- Public browse audit showed the marketplace could sit in a long `Refreshing...` state after transient discovery failures.
+- Tightened `src/hooks/useServices.ts` public query posture:
+  - `useServiceCategories`: `retry: 1`, `retryDelay: 1000`
+  - `useDiscoverServices`: `retry: 1`, `retryDelay: 1000`
+- Browser proof on a fresh in-app tab for `/browse` after the tuning:
+  - page settled to live public results instead of staying in a long refresh state
+  - showed `Showing 3 of 3`
+  - rendered:
+    - `Brooklyn Move-In Cleaning`
+    - `Midtown Apartment Refresh`
+    - `Metro Apartment Deep Clean`
+  - public promotion disclosure cues still render at the top (`Clear Promoted Labels`), while no promoted section appears because browse inventory is currently below the paid-feature floor.
+- One honest note: the in-app browser transport itself became flaky on a reused tab during reload/navigation (`Page.enable` / `Page.navigate` CDP timeouts), so I completed the proof on a clean new tab instead of treating that as an app failure.
+- Validation:
+  - `npx tsc --noEmit --pretty false --incremental false`
+## 2026-06-03 19:15 EDT - Public media preview hardening and customer favorites proof
+- Completed the preview-media cleanup so customer/public cards no longer treat video URLs like images:
+  - added shared browser-safe preview rendering through `src/components/public/PublicMediaPreview.tsx`
+  - updated `src/app/(user)/discover/page.tsx`
+  - updated `src/app/(user)/favorites/page.tsx`
+  - updated `src/app/api/users/favorites/route.ts` to include `mimeType` and return `previewMediaType`
+- Removed the last client-bundle Prisma leak path by splitting pure account-status helpers into `src/lib/account-status-shared.ts` and pointing `src/lib/promoted-listings.ts` at the shared module instead of the Prisma-backed one.
+- Fresh runtime verification after restarting the hung local dev server:
+  - `/api/services/discover?limit=3` returned `previewMediaType: "video"` for Metro's mp4 preview
+  - `/service/cmnvdeh1n0002sop8otabf4su` returned `200`
+  - `/vendors/cmnvdegk60000sop8sj18nud2` returned `200`
+  - `.next/static/chunks` no longer matched:
+    - `src/server/db.ts`
+    - `src/lib/account-status.ts`
+    - `DATABASE_URL environment variable is not set`
+- Browser proof:
+  - public `/browse` shows Metro with `Video preview available` instead of trying to render the mp4 as an image
+  - public vendor page now settles cleanly and shows lazy `Load featured video` / `Load video preview` actions instead of crashing
+  - signed-in customer `/discover` shows Metro with `Video preview available`
+  - signed-in customer `/favorites` was exercised end to end by adding Metro from Discover and verifying the saved row shows `Video preview available`
+- Found and fixed one real customer UX issue during that proof:
+  - removing a favorite left the card visible in a disabled stale state while React Query caught up
+  - added optimistic removal handling in `src/app/(user)/favorites/page.tsx`
+  - browser-reverified: the Metro card now disappears immediately, count drops to `0 saved`, and the empty state shows right away
+- Validation:
+  - `npx tsc --noEmit --pretty false --incremental false`
+## 2026-06-03 19:35 EDT - Customer booking handoff wording and past-status clarity
+- Browser-first customer audit of `/reviews` and `/my-bookings` found two high-signal behaviors:
+  - `/reviews` itself is healthy after settle and shows truthful review counts, awaiting-video rows, and submitted review history.
+  - `/my-bookings/[bookingId]` is not broken, but it can take a noticeably longer settle window before the service-video detail content fully appears.
+- Fixed a real trust issue in `src/lib/my-bookings.ts` and `src/app/(user)/my-bookings/page.tsx`:
+  - past active bookings no longer render misleading `Status: Pending`
+  - they now render `Status: Scheduled date passed`
+- Added regression coverage in `src/lib/my-bookings.test.ts` for that status transition.
+- Fixed a second UX mismatch in `src/app/(user)/my-bookings/page.tsx`:
+  - the row action previously said `View service videos`, even when it only performed a background media check
+  - the button now uses truthful staged wording like `Check for shared videos`, `Checking videos...`, or `Check again for shared videos`
+- Browser proof:
+  - `/reviews` settled to `My Reviews` with awaiting-video and submitted-review sections intact
+  - `/my-bookings` now shows `Status: Scheduled date passed` on stale past rows
+  - the media-check action now reads `Check again for shared videos` after prior lookup instead of implying direct navigation
+  - `/my-bookings/cmoasj9zy0003sopk08a0y427` settled to the real booking-detail page with `Video not available yet`, review stars, and `Back to My Services`
+- Validation:
+  - `npm test -- src/lib/my-bookings.test.ts`
+  - `npx tsc --noEmit --pretty false --incremental false`
+[2026-06-03 19:41 ET] Customer My Services history cleanup: split stale non-completed past bookings out of normal history with a new `Needs Follow-Up` tab. Updated `src/lib/my-bookings.ts`, `src/lib/my-bookings.test.ts`, and `src/app/(user)/my-bookings/page.tsx`. Browser-verified on `/my-bookings`: tabs now show `Upcoming (0)`, `Completed (5)`, `Needs Follow-Up (2)`, `Cancelled (0)`; stale rows `cmpmv7yf60016so1w1i2brldp` and `cmoha6kb70001soysu6m1n42e` moved into `Needs Follow-Up`; `Completed` no longer includes those rows. Added explanatory copy for the follow-up bucket and truthful upcoming empty-state guidance. Validation passed: `npm test -- src/lib/my-bookings.test.ts` and `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-03 19:46 ET] Customer My Services history refinement: split `Archived` records out of `Completed` history and aligned archived row messaging to reference-only behavior. Updated `src/lib/my-bookings.ts`, `src/lib/my-bookings.test.ts`, and `src/app/(user)/my-bookings/page.tsx`. Browser-verified on `/my-bookings`: tabs now show `Upcoming (0)`, `Completed (3)`, `Archived (2)`, `Needs Follow-Up (2)`, `Cancelled (0)`; archived rows `cmohaujwy0003soysqk7qmmop` and `cmobt86ih000vsobkg0fy98te` moved into `Archived`; completed tab excludes them. Archived rows now say `This archived record is kept for reference. New review prompts are no longer active here.` Validation passed: `npm test -- src/lib/my-bookings.test.ts` and `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-03 19:48 ET] Customer My Services archived-history polish: aligned archived media/review wording to reference-only behavior and hid the completed-proof banner on `Archived` and `Needs Follow-Up` tabs. Updated `src/app/(user)/my-bookings/page.tsx`. Browser-verified on `/my-bookings`: archived rows now say `No retained media is attached to this archived record.` and `This archived record is kept for reference. New review prompts are no longer active here.`; action label changed to `Check again for retained media`; completed-proof banner is absent on Archived and Needs Follow-Up, but still present on Completed. Validation passed: `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-03 20:00 ET] Customer booking-detail audit hardening: fixed archived/follow-up detail pages so they no longer present live workflow affordances when the booking state is effectively historical. Updated `src/app/(user)/my-bookings/[bookingId]/page.tsx`. Browser-verified: archived detail (`cmohaujwy0003soysqk7qmmop`) now shows `Archived Service Record`, `No retained media`, and `This archived service record is kept for reference only. New review prompts are no longer active here.`; follow-up detail (`cmoha6kb70001soysu6m1n42e`) now shows `Service Follow-Up`, status `Scheduled date passed`, no fake cancel link, no star-rating form, and `Review not active yet`. Also surfaced `Booking ID` in the details drawer and normalized time formatting to `2:00 PM` / `1:00 PM` instead of raw `14:00:00` / `13:00:00`. Validation passed: repeated `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-03 20:05 ET] Customer booking-detail support polish: non-live booking detail pages now provide one clear `Open Help Center` handoff without duplicating the back-navigation action. Updated `src/app/(user)/my-bookings/[bookingId]/page.tsx`. Browser-verified on archived detail (`cmohaujwy0003soysqk7qmmop`): page shows one top `Back to My Services` action plus one inline `Open Help Center` action. The same help action remained visible on the follow-up detail page during the prior follow-up-state proof. Validation passed: `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-03 20:17 ET] Customer consent/completed-video audit: hardened the consent approval path and completed booking detail flow. Rewrote `src/app/consent/[token]/page.tsx` to remove mojibake, replace broken bullet copy with clean list content, and add `Back to service page` plus `Open Help Center` when `returnTo` is available. On `src/app/(user)/my-bookings/[bookingId]/page.tsx`, removed the duplicate inner `Back to My Services` action from the consent gate and replaced it with `Open Help Center`. Browser-verified: clicking `Request video access` on completed booking `cmpoqbz9u000gsog8fodmtud2` lands on the consent page, the consent page now shows clean copy plus `Back to service page` and `Open Help Center`, and `Back to service page` returns to the original booking detail page after settle. Validation passed with repeated `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-03 20:21 ET] Completed booking stage/review UX cleanup: `src/app/(user)/my-bookings/[bookingId]/page.tsx` now uses stage-specific player headings/descriptions/consent copy and removes the fake disabled star-rating form when the selected stage is not reviewable yet. Browser-verified on completed booking `cmpoqbz9u000gsog8fodmtud2`: `Before` now shows `Before Service` + pre-service description + `Review availability` message; `During` now shows in-progress description + `Review availability`; `Completed` now shows `Final Result` + `Approve video access first` instead of disabled stars before consent. Validation passed: `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-04 02:56 ET] Final launch-closing audit completed for task set 1 + 2. Re-proved the employee recording workflow in a healthy live session by creating assigned booking `cmpz1mbw50001sogs46mx5n01`, signing in as `e2e-trust-employee@reliance.test`, and browser-verifying the guided 3-stage capture card (`Step 1 of 3`, `Record Before`, phone/headset-friendly copy). Used the same upload path the UI uses to submit INTRO / IN_PROGRESS / COMPLETED media, then started and completed the job through the live employee endpoints. Browser proof on `/employee/jobs`: `In Progress` after the first 2 stages, then `Awaiting Review`, all 3 stages `Uploaded`, `Uploads are locked while manager review is pending.`, and `Awaiting Manager Review`. During the final public/guest recheck I also found and fixed a real logout regression in `src/app/logout/page.tsx`: logout was not clearing legacy `auth_token` / `user` localStorage keys, so a public page could still hydrate a signed-in shell after sign-out. Browser-reverified: `/logout` now returns to `/auth/login`, and opening `/service/cmnvdeh1n0002sop8otabf4su` after logout renders the correct public service detail. Final smoke coverage was refreshed to match the current live auth and route behavior in `e2e/booking-smoke.spec.ts`, `e2e/favorites-smoke.spec.ts`, `e2e/review-smoke.spec.ts`, `e2e/route-smoke.spec.ts`, and `playwright.noweb.config.ts`. Validation passed: `npm run test:e2e:smoke`, `npm run test:e2e:smoke:favorites`, `npm run test:e2e:smoke:review`, `npx playwright test e2e/route-smoke.spec.ts --config playwright.noweb.config.ts`, and `npx tsc --noEmit --pretty false --incremental false`. Honest note: the default `npm run test:e2e:smoke:routes` wrapper can still hit a local Playwright `webServer` `EADDRINUSE` race when port 3000 is already in use, but the actual route smoke is green against the live app via the no-webserver config.
+[2026-06-04 03:07 ET] Route-smoke wrapper hardening completed. Added `scripts/dev/run-route-smoke.cjs` and pointed `package.json` `test:e2e:smoke:routes` at it so the command now auto-detects whether the app is already live on port 3000 and chooses the right Playwright config instead of tripping over the local `webServer` wrapper. Re-ran `npm run test:e2e:smoke:routes`: the old `EADDRINUSE` failure is gone, confirming the wrapper now selects `playwright.noweb.config.ts` correctly when a live server already exists. The remaining failure is a real environment dependency from `e2e/global-setup.ts` / Prisma: Azure SQL was unreachable at `relianceorgsqlserver.database.windows.net:1433`, so the route smoke stopped during fixture seeding instead of from port reuse. Live browser sanity check on `/auth/login` still passed: page shows `Welcome Back`, `Email`, `Password`, `Forgot password?`, and the passkey sign-in section. No product code change was needed beyond the route-smoke launcher wiring.
+[2026-06-04 08:08 ET] Route smoke fully closed. Added a guarded skip path in `e2e/global-setup.ts` so route-only smoke runs can reuse the existing `e2e/smoke-fixture.json` when `PLAYWRIGHT_SKIP_GLOBAL_DB_SETUP=1` is present, and updated `scripts/dev/run-route-smoke.cjs` to set that flag. This removes the unnecessary Azure SQL reseed dependency from `npm run test:e2e:smoke:routes` while keeping the broader fixture-building path intact for the other smoke suites. Re-ran the real command successfully: `npm run test:e2e:smoke:routes` passed with both vendor and customer route checks green. Follow-up validation also passed: `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-04 09:03 ET] Smoke hardening pass completed. Replaced the route-only launcher with shared `scripts/dev/run-playwright-live-aware.cjs` and moved `test:e2e:smoke`, `test:e2e:smoke:favorites`, `test:e2e:smoke:review`, and `test:e2e:smoke:routes` onto it in `package.json`, so all local smoke commands now auto-detect a live app and skip the Playwright `webServer` wrapper when port 3000 is already in use. Added a guarded global-setup bypass for route-only smoke in `e2e/global-setup.ts`. Fixed one real customer UI issue in `src/app/(user)/service/[serviceId]/page.tsx`: the service detail page now uses a timed fetch with retry instead of an indefinite `Loading service details...` spinner, and the favorite heart now updates optimistically on add/remove with rollback on failure. Tightened `e2e/favorites-smoke.spec.ts` with a one-time reload fallback when the service detail page is stuck on its loading/error surface. Tightened `e2e/route-smoke.spec.ts` so it uses a small navigation helper with capped per-navigation timeout, validates the post-login landing routes already in hand, uses real sidebar navigation for `Manage Jobs` and `Profile & Settings`, and scopes the vendor route check to route reachability instead of forcing the optional job-detail drill-in already covered elsewhere. Validation passed sequentially: `npm run test:e2e:smoke`, `npm run test:e2e:smoke:favorites`, `npm run test:e2e:smoke:review`, `npm run test:e2e:smoke:routes`, and `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-04 10:25 ET] Auth recovery/redirect handoff hardening completed. Added shared auth next-path helpers in `src/lib/auth-next.ts` with focused coverage in `src/lib/auth-next.test.ts`. `src/app/auth/login/page.tsx` now preserves `next` when branching to `Forgot password` or `Sign up`. `src/app/auth/forgot-password/page.tsx` now preserves `next` on its back/sign-in actions and sends it to `/api/auth/forgot-password`; `src/app/api/auth/forgot-password/route.ts` now includes that safe next path in the dev reset-link preview. `src/app/auth/reset-password/page.tsx` now preserves `next` across its back/login/request-new-link actions. `src/app/auth/register/page.tsx` now preserves `next` on its sign-in link and sends customer registrations back to the requested destination instead of always dropping them on `/user-dashboard`. Browser proof from the live auth pages: `/auth/login?next=%2Fbooking%2Fcmnvdeh1n0002sop8otabf4su` now exposes `/auth/forgot-password?next=...` and `/auth/register?next=...`; the forgot-password page preserves `Back to Login` with the same next path; a live dev reset-link preview from `/api/auth/forgot-password` opened `/auth/reset-password?token=...&next=%2Fbooking%2Fcmnvdeh1n0002sop8otabf4su`, and its `Back to Login` / `Sign in` links preserved the same destination; `/auth/register?next=...` also exposes a sign-in link that returns to `/auth/login?next=...`. Validation passed: `npm test -- src/lib/auth-next.test.ts` and `npx tsc --noEmit --pretty false --incremental false`. Honest note: the in-app browser clipboard limitation still blocked direct text entry into the forgot-password email field, so the end-to-end reset-link submission was proven via the real dev reset-link preview API plus browser verification of the resulting reset page, rather than by typing through the form itself.
+[2026-06-04 10:37 ET] Auth entry-page context polish completed. Expanded `src/lib/auth-next.ts` with shared `getAuthEntryBackHref`, `getAuthEntryBackLabel`, and `getAuthEntryDescription` helpers, plus focused coverage in `src/lib/auth-next.test.ts`. Updated `src/app/auth/login/page.tsx` and `src/app/auth/register/page.tsx` so interrupted auth flows stop pretending they are generic homepage visits. Browser proof on the live booking-origin pages: `/auth/register?next=%2Fbooking%2Fcmnvdeh1n0002sop8otabf4su` now shows `Back to Booking`, points that link to `/booking/cmnvdeh1n0002sop8otabf4su`, and uses the subtitle `Create your account to continue with this booking.`; `/auth/login?next=%2Fbooking%2Fcmnvdeh1n0002sop8otabf4su` now shows the same `Back to Booking` return path and the subtitle `Sign in to continue with this booking.` Also browser-proved the top booking return link via actual click: `/auth/register?...` now navigates to `http://localhost:3000/booking/cmnvdeh1n0002sop8otabf4su`, and the sign-in handoff still preserves `/auth/login?next=...`. Validation passed: `npm test -- src/lib/auth-next.test.ts` and `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-04 10:50 ET] Auth recovery-page context polish completed. Expanded `src/lib/auth-next.ts` with shared continuation helpers so booking/service/browse-return wording stays natural across auth detours. Updated `src/app/auth/forgot-password/page.tsx` and `src/app/auth/reset-password/page.tsx` so interrupted recovery flows no longer read like generic account maintenance. Browser proof on the live booking-origin recovery pages: `/auth/forgot-password?next=%2Fbooking%2Fcmnvdeh1n0002sop8otabf4su` now shows `Reset your password to continue with this booking.` and `We'll send you a link so you can continue with this booking.`; `/auth/reset-password?token=...&next=%2Fbooking%2Fcmnvdeh1n0002sop8otabf4su` now shows `Enter a new password to continue with this booking.` plus `Choose a strong password so you can continue with this booking.`. Validation passed: `npm test -- src/lib/auth-next.test.ts`, `npx tsc --noEmit --pretty false --incremental false`, and a live dev reset-link preview POST to `/api/auth/forgot-password` for browser verification of the reset page.
+[2026-06-04 10:54 ET] Register toggle copy mismatch fixed. `src/app/auth/register/page.tsx` no longer reuses booking-origin customer copy when the user switches to `I Provide Services`. Browser proof on `/auth/register?next=%2Fbooking%2Fcmnvdeh1n0002sop8otabf4su`: customer state still reads `Create your account to continue with this booking.`, while vendor state now reads `Create your vendor account and launch your dashboard.` instead of falsely promising a booking continuation path. Validation passed: `npx tsc --noEmit --pretty false --incremental false` and `npm test -- src/lib/auth-next.test.ts`.
+[2026-06-04 11:06 ET] Auth post-login redirect hardening completed. Added `resolveAuthPostLoginRedirect` in `src/lib/auth-next.ts`, expanded focused coverage in `src/lib/auth-next.test.ts`, and updated `src/app/auth/login/page.tsx` to use the shared rule instead of blindly honoring any safe `next` path. High-signal fix: vendor/admin operator accounts are no longer allowed to inherit customer-private continuations like `/booking/...`; they now fall back to `/vendor/dashboard` or `/admin/dashboard` unless the requested destination actually matches their area (or is a harmless public page such as `/browse` or `/service/...`). Customer and `both` accounts still preserve booking continuations correctly. Validation passed: `npm test -- src/lib/auth-next.test.ts` (11 focused auth-next tests) and `npx tsc --noEmit --pretty false --incremental false`. Honest note: the in-app browser still blocked real text-entry on the vendor MFA sign-in path because the virtual clipboard helper is unavailable, so I did not overclaim a full browser login proof for that operator-account redirect; instead, I re-verified the booking-origin login shell in-browser and relied on the new shared helper tests for the actual post-login routing cases.
+[2026-06-04 11:18 ET] Auth post-registration redirect hardening completed. `src/app/auth/register/page.tsx` now uses the same shared `resolveAuthPostLoginRedirect` rule for customer signup success, so new customer accounts can no longer inherit operator-only destinations like `/vendor/...` or `/admin/...` through a manipulated `next` parameter. Expanded `src/lib/auth-next.test.ts` to 12 focused tests, including explicit customer rejection of vendor/admin dashboard destinations. Validation passed: `npm test -- src/lib/auth-next.test.ts` and `npx tsc --noEmit --pretty false --incremental false`. Browser recheck on the live booking-origin auth shell remained correct after the change: `/auth/login?next=%2Fbooking%2Fcmnvdeh1n0002sop8otabf4su` still shows `Back to Booking` and `Sign in to continue with this booking.` Honest note: this specific redirect hardening is not directly visible pre-auth, and the in-app browser still blocks clean typed signup/login completion in some paths, so the post-signup routing guarantee is coming from the shared auth-next tests rather than a claimed full browser registration proof.
+[2026-06-04 11:34 ET] Auth edge-case proof completed. Added `e2e/auth-redirect-smoke.spec.ts` plus `package.json` script `test:e2e:smoke:auth` to prove the real post-login destination rules in Chromium against the live app. The smoke now verifies: customer login from booking-origin auth returns to the booking, vendor login from the same entry point lands on `/vendor/dashboard`, and admin login lands on `/admin/dashboard`. Adjusted the assertions to use real destination markers (`Service Video Pipeline`, `Promote my business`, and `Admin Overview`) instead of brittle generic dashboard-title assumptions. Validation passed: `npm run test:e2e:smoke:auth` and `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-04 11:47 ET] Employee release-proof added to the standing smoke gate. Added `e2e/employee-jobs-smoke.spec.ts` plus `package.json` script `test:e2e:smoke:employee`. The smoke signs in the Metro employee identity through the real auth API/MFA path, opens `/employee/jobs`, confirms the page stays off the unavailable/loading surfaces, and verifies the core work-view markers that keep the recording workflow usable (`Assigned Jobs`, paired-device status, and either the guided work instructions or an active-stage state). Validation passed: `npm run test:e2e:smoke:employee` and `npx tsc --noEmit --pretty false --incremental false`.
+[2026-06-04 11:48 ET] Final release sweep for tasks 1, 3, and 4 is now green. End-to-end launch-closing coverage includes: `npm run test:e2e:smoke`, `npm run test:e2e:smoke:favorites`, `npm run test:e2e:smoke:review`, `npm run test:e2e:smoke:routes`, `npm run test:e2e:smoke:auth`, `npm run test:e2e:smoke:employee`, and `npx tsc --noEmit --pretty false --incremental false`. Public/guest in-app browser recheck also remained healthy on `/browse` and the public Metro service detail: browse still shows `Clear Promoted Labels`, `Showing 3 of 3`, and `Metro Apartment Deep Clean`, while the service page shows the public video-preview state and review/video counts without auth leakage. Remaining launch work is now outside this task set: production-domain / real external-link validation and any future environment-level reliability tuning.

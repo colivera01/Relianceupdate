@@ -3,26 +3,40 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, Building2, Image as ImageIcon, ArrowLeft, Video } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { LazyVideoFrame } from '@/components/public/LazyVideoFrame';
+import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
+import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
+import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
+import { PublicTrustScorePanel } from '@/components/public/PublicTrustScorePanel';
+import { useAuth } from '@/contexts/AuthContext';
+import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import { PUBLIC_DB_UNAVAILABLE_CODE, PUBLIC_DB_UNAVAILABLE_MESSAGE } from '@/lib/transient-db-errors';
+import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
+import { ArrowLeft, Building2, MapPin, ShieldCheck, Star, Video } from 'lucide-react';
 
 interface PublicService {
   serviceId: string;
   serviceName: string;
   serviceDescription: string;
-  price: number;
+  price: number | null;
   previewMediaUrl: string | null;
+  previewMediaType: 'image' | 'video' | null;
 }
 
 interface PublicMediaItem {
   mediaId: string;
   serviceId: string | null;
+  serviceName?: string | null;
   title: string;
   mimeType: string;
   url: string;
   createdAt: string;
+  stageKey?: string | null;
+  stageLabel?: string | null;
+  isPrimaryServiceVideo?: boolean;
   isPrimaryProofVideo?: boolean;
 }
 
@@ -61,6 +75,9 @@ interface PublicVendorReview {
 export default function PublicVendorProfilePage() {
   const params = useParams();
   const vendorId = String(params?.vendorId || '');
+  const { user } = useAuth();
+  const userId = resolveCustomerUserId(user?.id);
+  const isSignedIn = Boolean(userId);
 
   const [payload, setPayload] = useState<PublicVendorPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,290 +86,412 @@ export default function PublicVendorProfilePage() {
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      if (!vendorId) return;
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/vendors/${vendorId}/public`, { cache: 'no-store' });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json?.success === false) {
-          throw new Error(json?.error || `Failed to load vendor (${res.status})`);
+  const loadVendorProfile = async () => {
+    if (!vendorId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/vendors/${vendorId}/public`, { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        if (res.status === 503 || json?.code === PUBLIC_DB_UNAVAILABLE_CODE) {
+          throw new Error(PUBLIC_DB_UNAVAILABLE_MESSAGE);
         }
-        setPayload(json);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load vendor profile');
-      } finally {
-        setLoading(false);
+        throw new Error(json?.error || `Failed to load vendor (${res.status})`);
       }
-    };
-    load();
+      setPayload(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load vendor profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadPublicReviews = async () => {
+    if (!vendorId) return;
+    setReviewsLoading(true);
+    setReviewsError(null);
+    try {
+      const res = await fetch(`/api/vendors/${vendorId}/reviews/public`, { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) {
+        if (res.status === 503 || json?.code === PUBLIC_DB_UNAVAILABLE_CODE) {
+          throw new Error('Public reviews are temporarily unavailable. Please try again in a moment.');
+        }
+        throw new Error(json?.error || `Failed to load reviews (${res.status})`);
+      }
+      setReviews(Array.isArray(json?.reviews) ? json.reviews : []);
+    } catch (err) {
+      setReviewsError(err instanceof Error ? err.message : 'Failed to load public reviews');
+      setReviews([]);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadVendorProfile();
   }, [vendorId]);
 
   useEffect(() => {
-    const loadReviews = async () => {
-      if (!vendorId) return;
-      setReviewsLoading(true);
-      setReviewsError(null);
-      try {
-        const res = await fetch(`/api/vendors/${vendorId}/reviews/public`, { cache: 'no-store' });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json?.success === false) {
-          throw new Error(json?.error || `Failed to load reviews (${res.status})`);
-        }
-        setReviews(Array.isArray(json?.reviews) ? json.reviews : []);
-      } catch (err) {
-        setReviewsError(err instanceof Error ? err.message : 'Failed to load public reviews');
-        setReviews([]);
-      } finally {
-        setReviewsLoading(false);
-      }
-    };
-    loadReviews();
+    void loadPublicReviews();
   }, [vendorId]);
 
   const vendor = payload?.vendor || null;
   const services = payload?.publicServices || [];
   const media = payload?.publicMedia || [];
-  const primaryProofVideo = useMemo(
+  const primaryServiceVideo = useMemo(
     () =>
       media.find(
         (item) =>
-          Boolean(item?.isPrimaryProofVideo) &&
+          Boolean(item?.isPrimaryServiceVideo || item?.isPrimaryProofVideo) &&
           String(item?.mimeType || '').toLowerCase().startsWith('video/') &&
           Boolean(String(item?.url || '').trim())
       ) || null,
     [media]
   );
-
-  const mediaByService = useMemo(() => {
-    const map = new Map<string, PublicMediaItem[]>();
-    for (const item of media) {
-      if (!item.serviceId) continue;
-      if (!map.has(item.serviceId)) map.set(item.serviceId, []);
-      map.get(item.serviceId)!.push(item);
-    }
-    return map;
-  }, [media]);
+  const galleryMedia = useMemo(
+    () => media.filter((item) => item.mediaId !== primaryServiceVideo?.mediaId),
+    [media, primaryServiceVideo]
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <Link href="/browse">
-            <Button variant="outline">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Browse
-            </Button>
-          </Link>
-        </div>
+    <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
+      <section className="reliance-dark-shell relative overflow-hidden pb-12">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_18%,rgba(53,214,165,0.12),transparent_18%)]" />
+        <div className="relative mx-auto max-w-7xl px-4 pb-8 pt-6 sm:px-6 lg:px-8">
+          <PublicSiteHeader
+            tone="dark"
+            className="mb-10"
+            links={[
+              { href: '/', label: 'Home' },
+              { href: '/browse', label: 'Browse' },
+              { href: '/help', label: 'Help' },
+            ]}
+            ctaHref="/browse"
+            ctaLabel="Explore Services"
+          />
 
-        {loading ? (
-          <div className="space-y-4">
-            <Card className="animate-pulse"><CardContent className="h-28" /></Card>
-            <Card className="animate-pulse"><CardContent className="h-44" /></Card>
+          <div className="mb-8">
+            <Link href="/browse">
+              <Button
+                variant="outline"
+                className="rounded-full border-white/12 bg-white/8 text-white hover:bg-white/12 hover:text-white"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Browse
+              </Button>
+            </Link>
           </div>
-        ) : error ? (
-          <Card>
-            <CardContent className="p-6 text-red-700">
-              {error}
-            </CardContent>
-          </Card>
-        ) : !vendor ? (
-          <Card>
-            <CardContent className="p-6 text-gray-700">
-              Public vendor profile not found.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-2xl">{vendor.vendorName}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  {vendor.category ? <Badge variant="outline">{vendor.category}</Badge> : null}
-                  {vendor.businessType ? <Badge variant="outline">{vendor.businessType}</Badge> : null}
-                </div>
-                {vendor.location ? (
-                  <p className="text-sm text-gray-700 flex items-center">
-                    <MapPin className="w-4 h-4 mr-1" />
-                    {vendor.location}
-                  </p>
-                ) : null}
-                {vendor.bio ? <p className="text-sm text-gray-700">{vendor.bio}</p> : null}
-                {typeof vendor.rating === 'number' && typeof vendor.reviewCount === 'number' ? (
-                  <p className="text-sm text-gray-700">
-                    <span className="font-semibold">{vendor.rating.toFixed(1)}★</span>{' '}
-                    <span className="text-gray-500">
-                      ({vendor.reviewCount} public aggregate review{vendor.reviewCount === 1 ? '' : 's'})
-                    </span>
-                  </p>
-                ) : null}
-                {vendor.serviceAreas?.length ? (
-                  <p className="text-sm text-gray-600">
-                    Service Areas: {vendor.serviceAreas.join(', ')}
-                  </p>
-                ) : null}
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Public Services</CardTitle>
-              </CardHeader>
-              <CardContent>
+          {loading ? (
+            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="h-72 animate-pulse rounded-[32px] bg-white/10" />
+              <div className="h-72 animate-pulse rounded-[32px] bg-white/10" />
+            </div>
+          ) : error ? (
+            <div className="rounded-[28px] border border-amber-200 bg-amber-50 px-6 py-6 text-amber-900">
+              <p className="text-sm font-semibold">Public vendor profile temporarily unavailable</p>
+              <p className="mt-2 text-sm">{error}</p>
+              <Button variant="outline" className="mt-4 rounded-full" onClick={() => void loadVendorProfile()}>
+                Try Again
+              </Button>
+            </div>
+          ) : !vendor ? (
+            <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-6 text-slate-700">
+              Public vendor profile not found.
+            </div>
+          ) : (
+            <div className="grid gap-8 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
+              <div>
+                <div className="reliance-kicker border border-white/10 bg-white/10 text-white/76">
+                  Verified vendor presentation
+                </div>
+                <h1 className="mt-6 max-w-3xl font-display text-5xl font-semibold leading-[0.98] text-white sm:text-6xl">
+                  {vendor.vendorName}
+                </h1>
+                <p className="mt-5 max-w-2xl text-lg leading-8 text-white/74">
+                  Public profile, service videos, reviews, and trust explanation presented in one place.
+                </p>
+
+                <div className="mt-8 flex flex-wrap gap-3">
+                  {vendor.category ? (
+                    <Badge className="rounded-full bg-white/10 px-4 py-2 text-white hover:bg-white/10">{vendor.category}</Badge>
+                  ) : null}
+                  {vendor.businessType ? (
+                    <Badge className="rounded-full bg-white/10 px-4 py-2 text-white hover:bg-white/10">{vendor.businessType}</Badge>
+                  ) : null}
+                  {vendor.location ? (
+                    <Badge className="rounded-full bg-white/10 px-4 py-2 text-white hover:bg-white/10">
+                      <MapPin className="mr-1 h-3.5 w-3.5" />
+                      {vendor.location}
+                    </Badge>
+                  ) : null}
+                </div>
+
+                <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Customer rating</div>
+                    <div className="mt-3 text-3xl font-semibold">
+                      {typeof vendor.rating === 'number' ? vendor.rating.toFixed(1) : 'New'}
+                    </div>
+                    <div className="mt-1 text-sm text-white/66">
+                      {typeof vendor.reviewCount === 'number'
+                        ? `${vendor.reviewCount} public review${vendor.reviewCount === 1 ? '' : 's'}`
+                        : 'Reviews are still building'}
+                    </div>
+                  </div>
+                  <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Public services</div>
+                    <div className="mt-3 text-3xl font-semibold">{services.length}</div>
+                    <div className="mt-1 text-sm text-white/66">Approved listings currently shown to customers</div>
+                  </div>
+                  <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Service videos</div>
+                    <div className="mt-3 text-3xl font-semibold">{media.length}</div>
+                    <div className="mt-1 text-sm text-white/66">Public-safe photos and videos in this profile</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/8 p-5 shadow-[0_30px_80px_rgba(4,9,20,0.38)] backdrop-blur-xl">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/58">
+                      Featured Service Video
+                    </div>
+                    <div className="mt-2 font-display text-2xl text-white">
+                      {primaryServiceVideo?.title || 'Completed service highlight'}
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-500 text-white hover:bg-emerald-500">
+                    Verified Service Video
+                  </Badge>
+                </div>
+
+                {primaryServiceVideo ? (
+                  <LazyVideoFrame
+                    src={primaryServiceVideo.url}
+                    title={primaryServiceVideo.title || 'Completed service video'}
+                    buttonLabel="Load featured video"
+                    className="h-[320px] w-full rounded-[24px] border border-white/10 bg-black"
+                  />
+                ) : (
+                  <div className="flex h-[320px] items-center justify-center rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#10203a,#1b355f)] px-8 text-center text-sm text-white/72">
+                    No completed work video is available yet for this vendor.
+                  </div>
+                )}
+
+                <p className="mt-4 text-sm leading-6 text-white/70">
+                  {vendor.bio || 'This vendor profile is publicly listed and ready for customer review.'}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {!loading && !error && vendor ? (
+        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="grid gap-8 xl:grid-cols-[0.92fr_1.08fr]">
+            <div className="space-y-8">
+              <PublicTrustScorePanel
+                vendorId={vendor.vendorId}
+                customerRating={vendor.rating ?? null}
+                customerReviewCount={vendor.reviewCount ?? null}
+              />
+
+              <section className="reliance-light-card rounded-[32px] px-6 py-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Service Footprint
+                    </div>
+                    <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Where this vendor works</h2>
+                  </div>
+                </div>
+
+                {vendor.serviceAreas?.length ? (
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    {vendor.serviceAreas.map((area) => (
+                      <span
+                        key={area}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700"
+                      >
+                        {area}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                    Public service areas are not listed yet.
+                  </div>
+                )}
+              </section>
+
+              <section className="reliance-light-card rounded-[32px] px-6 py-6">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                  Public Reviews
+                </div>
+                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Customer feedback</h2>
+
+                {reviewsLoading ? (
+                  <div className="mt-6 space-y-3">
+                    <div className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+                    <div className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+                  </div>
+                ) : reviewsError ? (
+                  <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                    {reviewsError}
+                  </div>
+                ) : reviews.length === 0 ? (
+                  <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                    No public reviews are available yet.
+                  </div>
+                ) : (
+                  <div className="mt-6 space-y-4">
+                    {reviews.map((review) => (
+                      <div key={review.reviewId} className="rounded-[24px] border border-slate-200 bg-white px-5 py-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="font-semibold text-slate-950">{review.reviewerDisplayName}</div>
+                            <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
+                                <Star className="h-3.5 w-3.5 fill-current" />
+                                {review.rating}/5
+                              </span>
+                              <span>{new Date(review.createdAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                          <ReportContentDialog
+                            targetType="review"
+                            targetId={review.reviewId}
+                            isSignedIn={isSignedIn}
+                            userId={userId}
+                            triggerLabel={isSignedIn ? 'Report' : 'Sign in to report'}
+                            title="Report this review"
+                            description="Tell us if this review seems inappropriate, unsafe, or misleading."
+                            signInHref={`/auth/login?next=${encodeURIComponent(`/vendors/${vendorId}`)}`}
+                            className="text-xs font-medium text-slate-500 underline-offset-4 hover:text-red-700 hover:underline"
+                          />
+                        </div>
+                        <p className="mt-4 text-sm leading-7 text-slate-700">{review.comment || '-'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <div className="space-y-8">
+              <section className="reliance-light-card rounded-[32px] px-6 py-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Public Services
+                    </div>
+                    <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Available service lineup</h2>
+                  </div>
+                  <Badge className="rounded-full bg-slate-100 text-slate-700 hover:bg-slate-100">
+                    {services.length} live
+                  </Badge>
+                </div>
+
                 {services.length === 0 ? (
-                  <div className="text-sm text-gray-600">
+                  <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                     No publicly listed services are available for this vendor yet.
                   </div>
                 ) : (
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <div className="mt-6 grid gap-5 md:grid-cols-2">
                     {services.map((service) => (
-                      <div key={service.serviceId} className="border rounded-lg p-4 bg-white">
-                        {service.previewMediaUrl ? (
-                          <img
-                            src={service.previewMediaUrl}
-                            alt={service.serviceName}
-                            className="w-full h-32 object-cover rounded mb-3"
+                      <Card key={service.serviceId} className="overflow-hidden rounded-[28px] border-slate-200 shadow-none">
+                        <PublicMediaPreview
+                          url={service.previewMediaUrl}
+                          type={service.previewMediaType}
+                          alt={service.serviceName}
+                          className="h-40 w-full object-cover"
+                          videoLabel="Service video available"
+                        />
+                        <CardContent className="space-y-3 p-5">
+                          <div className="font-display text-xl font-semibold text-slate-950">{service.serviceName}</div>
+                          <p className="line-clamp-2 text-sm leading-6 text-slate-600">
+                            {service.serviceDescription || 'No description available.'}
+                          </p>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-slate-900">
+                              {service.previewMediaUrl ? 'Public preview available' : 'Public service listing'}
+                            </div>
+                            <Link href={`/service/${service.serviceId}`}>
+                              <Button size="sm" className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
+                                View Service
+                              </Button>
+                            </Link>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="reliance-light-card rounded-[32px] px-6 py-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Service Timeline
+                    </div>
+                    <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Recent public service videos</h2>
+                  </div>
+                  <Badge className="rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                    Verified Service Videos
+                  </Badge>
+                </div>
+
+                {galleryMedia.length === 0 ? (
+                  <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                    No additional public service videos are available yet.
+                  </div>
+                ) : (
+                  <div className="mt-6 grid gap-5 sm:grid-cols-2">
+                    {galleryMedia.map((item) => (
+                      <div key={item.mediaId} className="overflow-hidden rounded-[26px] border border-slate-200 bg-white">
+                        {String(item.mimeType || '').startsWith('video/') ? (
+                          <LazyVideoFrame
+                            src={item.url}
+                            title={item.title}
+                            buttonLabel="Load video preview"
+                            controls={false}
+                            muted
+                            className="h-40 w-full object-cover"
                           />
                         ) : (
-                          <div className="w-full h-32 rounded mb-3 bg-gray-100 flex items-center justify-center text-gray-500 text-sm">
-                            <ImageIcon className="w-4 h-4 mr-1" />
-                            No public preview
-                          </div>
+                          <img src={item.url} alt={item.title} className="h-40 w-full object-cover" />
                         )}
-                        <div className="font-semibold text-gray-900">{service.serviceName}</div>
-                        <p className="text-sm text-gray-600 mt-1 line-clamp-2">{service.serviceDescription || 'No description available.'}</p>
-                        <div className="mt-3 flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-gray-900">
-                            {service.previewMediaUrl ? 'Public proof preview' : 'Public service listing'}
+                        <div className="space-y-2 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="font-semibold text-slate-950">{item.serviceName || item.title}</div>
+                            {item.stageLabel ? (
+                              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                {item.stageLabel}
+                              </span>
+                            ) : null}
                           </div>
-                          <Link href={`/service/${service.serviceId}`}>
-                            <Button size="sm">View Service</Button>
-                          </Link>
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <Building2 className="h-3.5 w-3.5" />
+                            {item.title}
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Proof of Completed Work</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {primaryProofVideo ? (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">Primary proof</Badge>
-                      <span className="text-sm text-gray-700">
-                        This completed service video is the main proof clip shown to customers.
-                      </span>
-                    </div>
-                    <video
-                      src={primaryProofVideo.url}
-                      className="w-full max-h-[360px] rounded border bg-black"
-                      controls
-                      preload="metadata"
-                    />
-                    <p className="text-sm text-gray-700">{primaryProofVideo.title || 'Completed service proof'}</p>
-                  </div>
-                ) : (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    No completed proof video is available yet for this vendor.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Public Media Gallery</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {media.length === 0 ? (
-                  <div className="text-sm text-gray-600">No public media available.</div>
-                ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {media.map((item) => (
-                      <div key={item.mediaId} className="border rounded-lg overflow-hidden bg-white">
-                        {String(item.mimeType || '').startsWith('video/') ? (
-                          <video src={item.url} className="w-full h-28 object-cover" muted playsInline preload="metadata" />
-                        ) : (
-                          <img src={item.url} alt={item.title} className="w-full h-28 object-cover" />
-                        )}
-                        <div className="p-2 text-xs text-gray-700">
-                          <div className="font-medium line-clamp-1">{item.title}</div>
-                          {item.isPrimaryProofVideo ? (
-                            <div className="mt-1 inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
-                              <Video className="h-3 w-3" />
-                              Primary proof
-                            </div>
-                          ) : null}
-                          {item.serviceId ? (
-                            <div className="text-gray-500 mt-1 flex items-center">
-                              <Building2 className="w-3 h-3 mr-1" />
-                              {mediaByService.get(item.serviceId)?.length || 0} item(s) in service
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Public Reviews</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {reviewsLoading ? (
-                  <div className="text-sm text-gray-600">Loading public reviews...</div>
-                ) : reviewsError ? (
-                  <div className="text-sm text-red-700">{reviewsError}</div>
-                ) : reviews.length === 0 ? (
-                  <div className="text-sm text-gray-600">No public reviews are available yet.</div>
-                ) : (
-                  <div className="space-y-3">
-                    {reviews.map((review) => (
-                      <div key={review.reviewId} className="rounded-lg border p-3 bg-white">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {review.rating}/5
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(review.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{review.comment || '-'}</p>
-                        <p className="text-xs text-gray-500 mt-2">
-                          Reviewer: {review.reviewerDisplayName}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {payload?.meta?.serviceEligibilityRule ? (
-              <div className="text-xs text-gray-500 space-y-1">
-                <p>Note: {payload.meta.serviceEligibilityRule}</p>
-                {payload?.meta?.reviewEligibilityRule ? (
-                  <p>Reviews: {payload.meta.reviewEligibilityRule}</p>
-                ) : null}
-              </div>
-            ) : null}
+              </section>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      ) : null}
+
+      <PublicSiteFooter />
     </div>
   );
 }

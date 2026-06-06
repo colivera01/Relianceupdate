@@ -1,21 +1,37 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import {
+  enforceDevRouteAccess,
+  getDevRouteSecretHeaderName,
+} from "@/lib/dev-route-access";
 
 export async function GET(request: NextRequest) {
-  console.log('Test API called');
+  const denied = enforceDevRouteAccess(request);
+  if (denied) return denied;
+
   return NextResponse.json({
-    message: 'Test API is working',
-    timestamp: new Date().toISOString()
+    success: true,
+    message: "Development test route is working",
+    requiredHeader: getDevRouteSecretHeaderName(),
+    timestamp: new Date().toISOString(),
   });
 }
 
 export async function POST(request: NextRequest) {
-  console.log('Test POST API called');
-  const body = await request.json();
-  console.log('Test POST body:', body);
-  
+  const denied = enforceDevRouteAccess(request);
+  if (denied) return denied;
+
+  let body: unknown = null;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+
   return NextResponse.json({
-    message: 'Test POST API is working',
+    success: true,
+    message: "Development test POST route is working",
+    requiredHeader: getDevRouteSecretHeaderName(),
     receivedData: body,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
-} 
+}

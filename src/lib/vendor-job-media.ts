@@ -29,6 +29,7 @@ type UploadParams = {
   videoStage: VendorJobVideoStage;
   /** When true, an existing session+assets for the same stage are archived before creating the new session. */
   replaceExisting?: boolean;
+  durationSeconds: number;
   locationContext?: string;
   consentAccepted?: boolean;
   consentToken?: string;
@@ -195,6 +196,7 @@ export async function runVendorJobMediaUpload({
   onLifecycleState,
   videoStage,
   replaceExisting,
+  durationSeconds,
   locationContext,
   consentAccepted,
   consentToken,
@@ -476,6 +478,7 @@ export async function runVendorJobMediaUpload({
         bytes: file.size,
         mimeType: file.type,
         mediaSessionId,
+        durationSeconds,
       }),
       },
       {

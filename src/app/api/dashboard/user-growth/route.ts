@@ -1,105 +1,117 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
+import { prisma } from "@/server/db";
+import {
+  countableUserWhere,
+  countableVendorWhere,
+} from "@/lib/metrics-exclusion";
 
-// TODO: BACKEND DEVELOPER - Replace this mock implementation with actual database queries
-// This endpoint provides monthly user growth data for the dashboard charts
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
-export async function GET() {
+function buildMonthlyCounts(dates: Date[], year: number) {
+  const counts = new Array(12).fill(0);
+
+  for (const date of dates) {
+    const normalizedDate = new Date(date);
+    if (normalizedDate.getFullYear() !== year) continue;
+    counts[normalizedDate.getMonth()] += 1;
+  }
+
+  return counts;
+}
+
+export async function GET(request: Request) {
   try {
-    // TODO: Replace with actual database queries
-    // Example queries your backend should implement:
-    
-    // const monthlyData = await db.users.groupBy({
-    //   by: ['createdAt'],
-    //   _count: {
-    //     id: true
-    //   },
-    //   where: {
-    //     createdAt: {
-    //       gte: new Date(new Date().getFullYear(), 0, 1) // Start of current year
-    //     }
-    //   }
-    // });
-    
-    // const activeUsersData = await db.users.groupBy({
-    //   by: ['lastLoginAt'],
-    //   _count: {
-    //     id: true
-    //   },
-    //   where: {
-    //     lastLoginAt: {
-    //       gte: new Date(new Date().getFullYear(), 0, 1)
-    //     },
-    //     status: 'active'
-    //   }
-    // });
+    await requireAdmin(request);
 
-    // Mock data showing realistic user growth patterns
-    const mockData = {
-      labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    const currentYear = new Date().getFullYear();
+    const startOfYear = new Date(currentYear, 0, 1);
+    const startOfNextYear = new Date(currentYear + 1, 0, 1);
+
+    const [users, vendors] = await Promise.all([
+      prisma.user.findMany({
+        where: countableUserWhere({
+          createdAt: {
+            gte: startOfYear,
+            lt: startOfNextYear,
+          },
+        }),
+        select: {
+          createdAt: true,
+        },
+      }),
+      prisma.vendor.findMany({
+        where: countableVendorWhere({
+          createdAt: {
+            gte: startOfYear,
+            lt: startOfNextYear,
+          },
+        }),
+        select: {
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    return NextResponse.json({
+      labels: MONTH_LABELS,
       datasets: [
         {
-          label: 'New Users',
-          data: [120, 145, 180, 220, 280, 320, 380, 420, 480, 520, 580, 650],
-          borderColor: '#3B82F6',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          label: "New Customers",
+          data: buildMonthlyCounts(
+            users.map((user) => user.createdAt),
+            currentYear
+          ),
+          borderColor: "#1D4ED8",
+          backgroundColor: "rgba(29, 78, 216, 0.12)",
         },
         {
-          label: 'Active Users',
-          data: [800, 850, 920, 1050, 1180, 1320, 1480, 1650, 1820, 2000, 2180, 2350],
-          borderColor: '#10B981',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        }
-      ]
-    };
+          label: "New Vendors",
+          data: buildMonthlyCounts(
+            vendors.map((vendor) => vendor.createdAt),
+            currentYear
+          ),
+          borderColor: "#0F766E",
+          backgroundColor: "rgba(15, 118, 110, 0.12)",
+        },
+      ],
+      definitions: {
+        newCustomers:
+          "Countable customer registrations created in each month of the current year.",
+        newVendors:
+          "Countable vendor accounts created in each month of the current year.",
+      },
+      year: currentYear,
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("User growth data error:", error);
+    if (
+      error.message === "Unauthorized" ||
+      String(error.message).includes("Forbidden")
+    ) {
+      return NextResponse.json(
+        { error: error.message || "Forbidden" },
+        { status: 403 }
+      );
+    }
 
-    return NextResponse.json(mockData);
-  } catch (error) {
-    console.error('User growth data error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch user growth data' },
+      { error: "Failed to fetch user growth data" },
       { status: 500 }
     );
   }
 }
-
-// TODO: BACKEND DEVELOPER - Helper functions you might need
-
-// Example function to aggregate monthly data
-// async function aggregateMonthlyData(data: any[], dateField: string) {
-//   const monthlyCounts = new Array(12).fill(0);
-//   
-//   data.forEach(item => {
-//     const date = new Date(item[dateField]);
-//     const month = date.getMonth();
-//     monthlyCounts[month]++;
-//   });
-//   
-//   return monthlyCounts;
-// }
-
-// Example function to get user growth metrics
-// async function getUserGrowthMetrics() {
-//   const currentYear = new Date().getFullYear();
-//   
-//   // New user registrations by month
-//   const newUsers = await db.users.count({
-//     where: {
-//       createdAt: {
-//         gte: new Date(currentYear, 0, 1),
-//         lt: new Date(currentYear + 1, 0, 1)
-//       }
-//     }
-//   });
-//   
-//   // Active users (logged in within last 30 days)
-//   const activeUsers = await db.users.count({
-//     where: {
-//       lastLoginAt: {
-//         gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-//       },
-//       status: 'active'
-//     }
-//   });
-//   
-//   return { newUsers, activeUsers };
-// } 

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
+import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from '@/lib/account-status';
 import { mapBookingToContract } from '@/lib/booking-shape';
+import { deriveCustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
+import {
+  PUBLIC_DB_UNAVAILABLE_CODE,
+  PUBLIC_DB_UNAVAILABLE_MESSAGE,
+  isTransientDbConnectivityError,
+} from '@/lib/transient-db-errors';
 
 // TODO: Import your database models
 // import { BookingModel } from '@/lib/models/Booking';
@@ -26,6 +33,7 @@ export async function GET(
         { status: 401 }
       );
     }
+    await ensureUserAccountCanAct(userId);
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -62,6 +70,23 @@ export async function GET(
             price: true,
           },
         },
+        mediaSessions: {
+          where: { sessionType: 'JOB_SERVICE_VIDEO' },
+          select: {
+            vendorJobVideoStage: true,
+            mediaAssets: {
+              select: {
+                mimeType: true,
+                moderationStatus: true,
+                visibilityStatus: true,
+                archiveStatus: true,
+              },
+            },
+          },
+        },
+        reviewWindows: {
+          select: { status: true },
+        },
       },
     });
 
@@ -79,11 +104,57 @@ export async function GET(
       );
     }
 
+    const customerReview = await prisma.review.findFirst({
+      where: {
+        bookingId,
+        userId: String(userId),
+      },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        date: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const lifecycle = deriveCustomerBookingLifecycle({
+      bookingStatus: booking.status,
+      mediaSessions: (booking as any).mediaSessions || [],
+      hasSubmittedReview: Boolean(customerReview),
+      reviewWindows: (booking as any).reviewWindows || [],
+    });
+
     return NextResponse.json({
       booking: mapBookingToContract(booking as any),
+      customerReview: customerReview
+        ? {
+            id: String(customerReview.id),
+            rating: Number(customerReview.rating),
+            comment: String(customerReview.comment || ''),
+            submittedAt:
+              (customerReview.date || customerReview.createdAt)?.toISOString?.() ||
+              customerReview.createdAt.toISOString(),
+          }
+        : null,
+      customerLifecycle: {
+        ...lifecycle,
+        reviewSubmittedAt:
+          (customerReview?.date || customerReview?.createdAt)?.toISOString?.() || null,
+      },
     });
   } catch (error) {
     console.error('Error fetching booking:', error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
+    if (isTransientDbConnectivityError(error)) {
+      return NextResponse.json(
+        { error: PUBLIC_DB_UNAVAILABLE_MESSAGE, code: PUBLIC_DB_UNAVAILABLE_CODE },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { error: 'Failed to fetch booking' },
       { status: 500 }
@@ -114,6 +185,7 @@ export async function PUT(
         { status: 401 }
       );
     }
+    await ensureUserAccountCanAct(userId);
 
     const existing = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -178,6 +250,9 @@ export async function PUT(
     });
   } catch (error) {
     console.error('Error updating booking:', error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     return NextResponse.json(
       { error: 'Failed to update booking' },
       { status: 500 }
@@ -206,6 +281,7 @@ export async function DELETE(
         { status: 401 }
       );
     }
+    await ensureUserAccountCanAct(userId);
 
     const existing = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -232,6 +308,9 @@ export async function DELETE(
     });
   } catch (error) {
     console.error('Error cancelling booking:', error);
+    if (error instanceof AccountStatusError) {
+      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
     return NextResponse.json(
       { error: 'Failed to cancel booking' },
       { status: 500 }

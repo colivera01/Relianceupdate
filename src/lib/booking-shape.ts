@@ -1,3 +1,9 @@
+import {
+  cleanPublicServiceDescription,
+  cleanPublicServiceName,
+  cleanPublicServicePrice,
+} from '@/lib/launch-content-cleanup';
+
 type BookingLike = {
   id: string;
   userId: string;
@@ -56,6 +62,7 @@ export function mapBookingToContract(booking: BookingLike) {
       ? Number(amountRaw)
       : NaN;
   const total = Number.isFinite(amountNum) ? amountNum : Number(servicePrice);
+  const vendorDisplayName = booking.vendor?.businessName || booking.vendor?.name || '';
 
   return {
     id: booking.id,
@@ -73,9 +80,17 @@ export function mapBookingToContract(booking: BookingLike) {
     service: booking.service
       ? {
           id: booking.service.id,
-          name: booking.service.name,
-          description: booking.service.description || '',
-          price: Number(booking.service.price),
+          name: cleanPublicServiceName(booking.service.name, vendorDisplayName),
+          description: cleanPublicServiceDescription(
+            booking.service.description || '',
+            vendorDisplayName
+          ),
+          price:
+            cleanPublicServicePrice(
+              booking.service.price,
+              booking.service.name,
+              booking.service.description || ''
+            ) ?? Number(booking.service.price),
         }
       : null,
     vendor: booking.vendor

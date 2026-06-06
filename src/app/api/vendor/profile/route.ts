@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { getRestrictedAccountMessage } from "@/lib/account-status";
 import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 import { isVendorContextDbTimeoutError, resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { getVendorRatingStats } from "@/lib/review-attribution-aggregates";
+import { buildVendorOnboardingState } from "@/lib/vendor-onboarding-state";
 import { VendorProfileResponse, VendorProfileUpdateRequest } from "@/types/vendor";
 
 const VENDOR_PROFILE_SELECT = {
@@ -34,6 +36,8 @@ const VENDOR_PROFILE_SELECT = {
   emergencyContact: true,
   responseTimeSettings: true,
   profilePhoto: true,
+  isPubliclyListed: true,
+  publiclyListedAt: true,
   serviceTypes: true,
   specializations: true,
   serviceAreas: true,
@@ -82,21 +86,22 @@ export async function GET(request: Request) {
       );
     }
     const vendorContext = await resolveVendorAccessForUser(resolvedUserId);
-    if (vendorContext.state === "PENDING") {
+    if (vendorContext.state === "RESTRICTED") {
+      const accountType = vendorContext.restrictedAccountType || "vendor";
       return NextResponse.json(
         {
-          code: "MEMBERSHIP_PENDING_APPROVAL",
-          error: "Your vendor membership is pending approval",
-          details: {
-            membershipStatus: vendorContext.membershipStatus,
-            vendorId: vendorContext.vendorId,
-            membershipId: vendorContext.membershipId,
-          },
+          code: `${accountType.toUpperCase()}_ACCOUNT_RESTRICTED`,
+          error: getRestrictedAccountMessage(accountType, vendorContext.accountStatus),
+          accountType,
+          accountStatus: vendorContext.accountStatus,
         },
         { status: 403 }
       );
     }
-    if (vendorContext.state !== "ACTIVE" || !vendorContext.vendorId) {
+    const membershipStatus = (
+      vendorContext.state === "PENDING" ? "PENDING" : vendorContext.state === "ACTIVE" ? "ACTIVE" : null
+    ) as "PENDING" | "ACTIVE" | null;
+    if (!membershipStatus || !vendorContext.vendorId) {
       return NextResponse.json(
         {
           code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE",
@@ -108,10 +113,18 @@ export async function GET(request: Request) {
     const vendorId = vendorContext.vendorId;
 
     // Fetch vendor from Prisma
-    const vendor = await prisma.vendor.findUnique({
-      where: { id: vendorId },
-      select: VENDOR_PROFILE_SELECT,
-    });
+    const [vendor, serviceDraftCount, publishedServiceCount] = await Promise.all([
+      prisma.vendor.findUnique({
+        where: { id: vendorId },
+        select: VENDOR_PROFILE_SELECT,
+      }),
+      prisma.service.count({
+        where: { vendorId },
+      }),
+      prisma.service.count({
+        where: { vendorId, isPublished: true },
+      }),
+    ]);
 
     if (!vendor) {
       return NextResponse.json(
@@ -126,6 +139,23 @@ export async function GET(request: Request) {
       ? new Date().getFullYear() - vendor.foundedYear
       : null;
     const vendorRatingStats = await getVendorRatingStats(vendorId);
+    const onboarding = buildVendorOnboardingState({
+      membershipStatus,
+      isPubliclyListed: Boolean((vendor as any).isPubliclyListed),
+      publiclyListedAt: (vendor as any).publiclyListedAt?.toISOString?.() ?? null,
+      serviceDraftCount,
+      publishedServiceCount,
+      businessName: vendor.businessName ?? vendor.name,
+      businessType: vendor.businessType,
+      category: vendor.category,
+      bio: vendor.bio,
+      address: vendor.address,
+      city: vendor.city,
+      state: vendor.state,
+      zipCode: vendor.zipCode,
+      phone: vendor.phone,
+      email: vendor.email,
+    });
 
     // Map Prisma data to VendorProfile
     const profile = {
@@ -156,6 +186,9 @@ export async function GET(request: Request) {
       emergencyContact: vendor.emergencyContact ?? null,
       responseTimeSettings: vendor.responseTimeSettings ?? null,
       profilePhoto: vendor.profilePhoto ?? null,
+      membershipStatus,
+      isPubliclyListed: Boolean((vendor as any).isPubliclyListed),
+      publiclyListedAt: (vendor as any).publiclyListedAt?.toISOString?.() ?? null,
       // Convert comma-separated strings to arrays
       serviceTypes: vendor.serviceTypes ? vendor.serviceTypes.split(',').map(s => s.trim()).filter(Boolean) : [],
       specializations: vendor.specializations ? vendor.specializations.split(',').map(s => s.trim()).filter(Boolean) : [],
@@ -163,6 +196,9 @@ export async function GET(request: Request) {
       // Calculated fields
       totalEmployees,
       yearsInBusiness,
+      serviceDraftCount,
+      publishedServiceCount,
+      onboarding,
       ratingAverage: vendorRatingStats.averageRating,
       ratingCount: vendorRatingStats.reviewCount,
       // Payments (use optional chaining in case Prisma client hasn't been regenerated)
@@ -194,6 +230,7 @@ export async function GET(request: Request) {
     const response: VendorProfileResponse = {
       success: true,
       profile,
+      approvalPending: membershipStatus === "PENDING",
     };
 
     return NextResponse.json(response);
@@ -235,21 +272,22 @@ export async function PUT(request: Request) {
       );
     }
     const vendorContext = await resolveVendorAccessForUser(resolvedUserId);
-    if (vendorContext.state === "PENDING") {
+    if (vendorContext.state === "RESTRICTED") {
+      const accountType = vendorContext.restrictedAccountType || "vendor";
       return NextResponse.json(
         {
-          code: "MEMBERSHIP_PENDING_APPROVAL",
-          error: "Your vendor membership is pending approval",
-          details: {
-            membershipStatus: vendorContext.membershipStatus,
-            vendorId: vendorContext.vendorId,
-            membershipId: vendorContext.membershipId,
-          },
+          code: `${accountType.toUpperCase()}_ACCOUNT_RESTRICTED`,
+          error: getRestrictedAccountMessage(accountType, vendorContext.accountStatus),
+          accountType,
+          accountStatus: vendorContext.accountStatus,
         },
         { status: 403 }
       );
     }
-    if (vendorContext.state !== "ACTIVE" || !vendorContext.vendorId) {
+    const membershipStatus = (
+      vendorContext.state === "PENDING" ? "PENDING" : vendorContext.state === "ACTIVE" ? "ACTIVE" : null
+    ) as "PENDING" | "ACTIVE" | null;
+    if (!membershipStatus || !vendorContext.vendorId) {
       return NextResponse.json(
         {
           code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE",
@@ -354,12 +392,33 @@ export async function PUT(request: Request) {
       data: updateData,
       select: VENDOR_PROFILE_SELECT,
     });
+    const [serviceDraftCount, publishedServiceCount] = await Promise.all([
+      prisma.service.count({ where: { vendorId } }),
+      prisma.service.count({ where: { vendorId, isPublished: true } }),
+    ]);
 
     // Map back to VendorProfile format
     const totalEmployees = Number((updatedVendor as any)?._count?.employees || 0);
     const yearsInBusiness = updatedVendor.foundedYear
       ? new Date().getFullYear() - updatedVendor.foundedYear
       : null;
+    const onboarding = buildVendorOnboardingState({
+      membershipStatus,
+      isPubliclyListed: Boolean((updatedVendor as any).isPubliclyListed),
+      publiclyListedAt: (updatedVendor as any).publiclyListedAt?.toISOString?.() ?? null,
+      serviceDraftCount,
+      publishedServiceCount,
+      businessName: updatedVendor.businessName ?? updatedVendor.name,
+      businessType: updatedVendor.businessType,
+      category: updatedVendor.category,
+      bio: updatedVendor.bio,
+      address: updatedVendor.address,
+      city: updatedVendor.city,
+      state: updatedVendor.state,
+      zipCode: updatedVendor.zipCode,
+      phone: updatedVendor.phone,
+      email: updatedVendor.email,
+    });
 
     const profile = {
       id: updatedVendor.id,
@@ -389,11 +448,17 @@ export async function PUT(request: Request) {
       emergencyContact: updatedVendor.emergencyContact ?? null,
       responseTimeSettings: updatedVendor.responseTimeSettings ?? null,
       profilePhoto: updatedVendor.profilePhoto ?? null,
+      membershipStatus,
+      isPubliclyListed: Boolean((updatedVendor as any).isPubliclyListed),
+      publiclyListedAt: (updatedVendor as any).publiclyListedAt?.toISOString?.() ?? null,
       serviceTypes: updatedVendor.serviceTypes ? updatedVendor.serviceTypes.split(',').map(s => s.trim()).filter(Boolean) : [],
       specializations: updatedVendor.specializations ? updatedVendor.specializations.split(',').map(s => s.trim()).filter(Boolean) : [],
       serviceAreas: updatedVendor.serviceAreas ? updatedVendor.serviceAreas.split(',').map(s => s.trim()).filter(Boolean) : [],
       totalEmployees,
       yearsInBusiness,
+      serviceDraftCount,
+      publishedServiceCount,
+      onboarding,
       // Payments (use optional chaining in case Prisma client hasn't been regenerated)
       paymentsEnabled: (updatedVendor as any).paymentsEnabled ?? false,
       // Reminders
@@ -423,6 +488,7 @@ export async function PUT(request: Request) {
     const response: VendorProfileResponse = {
       success: true,
       profile,
+      approvalPending: membershipStatus === "PENDING",
     };
 
     return NextResponse.json(response);

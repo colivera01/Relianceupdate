@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { registeredUsers } from "@/lib/dev-registered-users";
+import { addRegisteredUser, registeredUsers, syncRegisteredUsersFromDisk } from "@/lib/dev-registered-users";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "@/lib/auth-session";
+import { accountStatusErrorBody, AccountStatusError, isUserAccountRestricted } from "@/lib/account-status";
 import { addressChanged, geocodeAddress } from "@/lib/geocoding";
-
-/** Dev / interim login tokens accepted by customer profile routes. */
-const DEV_BEARER_TOKENS = new Set(["temp-jwt-token", "temp-token"]);
+import { findDbCredentialByUserId, upsertDbCredential } from "@/lib/auth-credentials";
+import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -38,6 +39,16 @@ function parseBearer(request: NextRequest): string | null {
   return authHeader.replace("Bearer ", "").trim();
 }
 
+function hasAcceptedSession(request: NextRequest): boolean {
+  const signedSession = getAuthSessionClaimsFromRequest(request);
+  if (signedSession?.userId) return true;
+
+  const token = parseBearer(request);
+  if (!token) return false;
+  if (verifyAuthBearerToken(token)?.userId) return true;
+  return process.env.NODE_ENV !== "production" && Boolean(request.headers.get("x-user-id")?.trim());
+}
+
 function splitDisplayName(name: string | null | undefined) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   const firstName = parts[0] || "";
@@ -48,19 +59,18 @@ function splitDisplayName(name: string | null | undefined) {
 export async function GET(request: NextRequest) {
   let resolvedUserId: string | null = null;
   try {
-    const token = parseBearer(request);
-    if (!token) {
-      return NextResponse.json({ error: "Authorization header required" }, { status: 401 });
-    }
-
-    if (!DEV_BEARER_TOKENS.has(token)) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    syncRegisteredUsersFromDisk();
+    if (!hasAcceptedSession(request)) {
+      return NextResponse.json(
+        { error: "Unauthorized: sign in required" },
+        { status: 401 }
+      );
     }
 
     resolvedUserId = await getUserIdFromRequest(request);
     if (!resolvedUserId) {
       return NextResponse.json(
-        { error: "Unauthorized: missing user context (cookie or x-user-id)" },
+        { error: "Unauthorized: missing authenticated user context" },
         { status: 401 }
       );
     }
@@ -81,10 +91,12 @@ export async function GET(request: NextRequest) {
           longitude: true,
           geocodedAt: true,
           locationPreferenceEnabled: true,
+          accountStatus: true,
           createdAt: true,
         },
       })
     );
+    const dbCredential = dbUser ? await findDbCredentialByUserId(dbUser.id).catch(() => null) : null;
 
     const devRow =
       registeredUsers.find((u) => String(u.id) === String(resolvedUserId)) ||
@@ -97,6 +109,10 @@ export async function GET(request: NextRequest) {
 
     if (!dbUser && !devRow) {
       return NextResponse.json({ error: "Customer profile not found" }, { status: 404 });
+    }
+    if (dbUser && isUserAccountRestricted((dbUser as any).accountStatus)) {
+      const statusError = new AccountStatusError("user", (dbUser as any).accountStatus);
+      return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
 
     const canonicalId = dbUser?.id ?? devRow?.id ?? resolvedUserId;
@@ -132,6 +148,8 @@ export async function GET(request: NextRequest) {
       favorites: devRow?.favorites || [],
       bookingHistory: devRow?.bookingHistory || [],
       reviews: devRow?.reviews || [],
+      emailVerified: Boolean(dbCredential?.emailVerifiedAt),
+      emailVerifiedAt: dbCredential?.emailVerifiedAt?.toISOString?.() ?? null,
     };
 
     return NextResponse.json({
@@ -142,6 +160,7 @@ export async function GET(request: NextRequest) {
     const err = error as any;
     console.error("[PROFILE_API_ERROR]", err);
     if (isTransientDbConnectivityError(err)) {
+      syncRegisteredUsersFromDisk();
       const fallbackRow =
         resolvedUserId != null
           ? registeredUsers.find((u) => String(u.id) === String(resolvedUserId))
@@ -159,6 +178,7 @@ export async function GET(request: NextRequest) {
             city: fallbackRow.city || "",
             state: fallbackRow.state || "",
             zipCode: fallbackRow.zipCode || "",
+            locationPreferenceEnabled: Boolean((fallbackRow as any).locationPreferenceEnabled),
             bio: fallbackRow.bio || "",
             userType: fallbackRow.userType || "customer",
             createdAt: fallbackRow.createdAt || new Date().toISOString(),
@@ -195,13 +215,12 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const token = parseBearer(request);
-    if (!token) {
-      return NextResponse.json({ error: "Authorization header required" }, { status: 401 });
-    }
-
-    if (!DEV_BEARER_TOKENS.has(token)) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    syncRegisteredUsersFromDisk();
+    if (!hasAcceptedSession(request)) {
+      return NextResponse.json(
+        { error: "Unauthorized: sign in required" },
+        { status: 401 }
+      );
     }
 
     const userId = await getUserIdFromRequest(request);
@@ -218,8 +237,13 @@ export async function PUT(request: NextRequest) {
         city: true,
         state: true,
         zipCode: true,
+        accountStatus: true,
       },
     });
+    if (dbUser && isUserAccountRestricted((dbUser as any).accountStatus)) {
+      const statusError = new AccountStatusError("user", (dbUser as any).accountStatus);
+      return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
+    }
 
     const customerIndex = registeredUsers.findIndex(
       (u) =>
@@ -302,15 +326,76 @@ export async function PUT(request: NextRequest) {
         })
       : null;
 
+    const nextEmail = String(
+      body?.email !== undefined ? body.email || "" : updatedDbUser?.email || dbUser?.email || ""
+    ).trim();
+    const previousEmail = String(dbUser?.email || "").trim();
+    const emailChanged = Boolean(nextEmail) && nextEmail.toLowerCase() !== previousEmail.toLowerCase();
+
+    let updatedCredential = dbUser ? await findDbCredentialByUserId(dbUser.id).catch(() => null) : null;
+    let verificationLinkPreview: string | undefined;
+    let verificationTokenPreview: string | undefined;
+    let emailDeliveryQueued: boolean | undefined;
+
+    if (updatedCredential && nextEmail) {
+      updatedCredential = await upsertDbCredential({
+        userId: dbUser!.id,
+        email: nextEmail,
+        passwordHash: updatedCredential.passwordHash,
+        emailVerifiedAt: emailChanged ? null : updatedCredential.emailVerifiedAt,
+      });
+      const refreshedCredential = updatedCredential!;
+
+      if (emailChanged) {
+        const credentialId = String(refreshedCredential.id);
+        const verification = await sendOrPreviewEmailVerification({
+          email: nextEmail,
+          credentialId,
+          recipientName: nextName || updatedDbUser?.name || null,
+          baseUrl: request.nextUrl.origin,
+        }).catch((error) => {
+          console.error("Customer profile verification email send error:", error);
+          return null;
+        });
+        emailDeliveryQueued = Boolean(verification?.sendResult.ok);
+        if (process.env.NODE_ENV !== "production") {
+          verificationLinkPreview = verification?.verificationLink;
+          verificationTokenPreview = verification?.verificationTokenPreview;
+        }
+      }
+    }
+
     if (customerIndex !== -1) {
-      registeredUsers[customerIndex] = {
+      addRegisteredUser({
         ...registeredUsers[customerIndex],
         ...body,
-      };
+        id: dbUser?.id || registeredUsers[customerIndex]?.id || userId,
+        email: body?.email !== undefined ? String(body.email || "").trim() : dbUser?.email || registeredUsers[customerIndex]?.email || "",
+        firstName,
+        lastName,
+        phone: body?.phone !== undefined ? String(body.phone || "").trim() : registeredUsers[customerIndex]?.phone || "",
+        address: body?.address !== undefined ? String(body.address || "").trim() : registeredUsers[customerIndex]?.address || "",
+        city: body?.city !== undefined ? String(body.city || "").trim() : registeredUsers[customerIndex]?.city || "",
+        state: body?.state !== undefined ? String(body.state || "").trim() : registeredUsers[customerIndex]?.state || "",
+        zipCode: body?.zipCode !== undefined ? String(body.zipCode || "").trim() : registeredUsers[customerIndex]?.zipCode || "",
+        locationPreferenceEnabled:
+          body?.locationPreferenceEnabled !== undefined
+            ? Boolean(body.locationPreferenceEnabled)
+            : Boolean(registeredUsers[customerIndex]?.locationPreferenceEnabled),
+      });
+      syncRegisteredUsersFromDisk();
     }
 
     const splitName = splitDisplayName(updatedDbUser?.name);
-    const fallbackProfile = customerIndex !== -1 ? registeredUsers[customerIndex] : {};
+    const fallbackProfile =
+      customerIndex !== -1
+        ? registeredUsers.find(
+            (candidate) =>
+              String(candidate?.id || "") === String(dbUser?.id || userId) ||
+              (candidate?.email &&
+                String(candidate.email).toLowerCase() === String(body?.email || dbUser?.email || "").toLowerCase())
+          ) || registeredUsers[customerIndex]
+        : {};
     const profile = updatedDbUser
       ? {
           id: updatedDbUser.id,
@@ -326,6 +411,8 @@ export async function PUT(request: NextRequest) {
           longitude: updatedDbUser.longitude ?? null,
           geocodedAt: updatedDbUser.geocodedAt?.toISOString() ?? null,
           locationPreferenceEnabled: updatedDbUser.locationPreferenceEnabled ?? false,
+          emailVerified: Boolean(updatedCredential?.emailVerifiedAt),
+          emailVerifiedAt: updatedCredential?.emailVerifiedAt?.toISOString?.() ?? null,
           bio: (fallbackProfile as any)?.bio || body?.bio || "",
           createdAt: updatedDbUser.createdAt?.toISOString?.() ?? new Date().toISOString(),
         }
@@ -335,6 +422,15 @@ export async function PUT(request: NextRequest) {
       success: true,
       message: "Profile updated successfully",
       profile,
+      ...(emailChanged
+        ? {
+            emailVerificationRequired: true,
+            emailDeliveryQueued: Boolean(emailDeliveryQueued),
+            ...(process.env.NODE_ENV !== "production" && verificationLinkPreview
+              ? { verificationLinkPreview, verificationTokenPreview }
+              : {}),
+          }
+        : {}),
     });
   } catch (error) {
     console.error("Error updating customer profile:", error);

@@ -187,7 +187,11 @@ describe('POST /api/users/favorites', () => {
 
   it('resolves user from x-user-id when auth cookie is absent', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue(null);
-    hoisted.serviceFindUnique.mockResolvedValue({ id: 'svc-1', vendor: { id: 'v1' } });
+    hoisted.serviceFindUnique.mockResolvedValue({
+      id: 'svc-1',
+      isPublished: true,
+      vendor: { id: 'v1', isPubliclyListed: true, accountStatus: 'active' },
+    });
     hoisted.userUpsert.mockResolvedValue({ id: 'header-user' });
     hoisted.favoriteUpsert.mockResolvedValue({
       id: 'f-new',
@@ -244,7 +248,11 @@ describe('POST /api/users/favorites', () => {
 
   it('returns 200 on upsert (idempotent / duplicate-friendly)', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
-    hoisted.serviceFindUnique.mockResolvedValue({ id: 'svc-1', vendor: { id: 'ven-1' } });
+    hoisted.serviceFindUnique.mockResolvedValue({
+      id: 'svc-1',
+      isPublished: true,
+      vendor: { id: 'ven-1', isPubliclyListed: true, accountStatus: 'active' },
+    });
     hoisted.userUpsert.mockResolvedValue({ id: 'u1' });
     hoisted.favoriteUpsert.mockResolvedValue({
       id: 'existing-fav',
@@ -266,7 +274,11 @@ describe('POST /api/users/favorites', () => {
 
   it('accepts service_id alias in JSON body', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
-    hoisted.serviceFindUnique.mockResolvedValue({ id: 'svc-2', vendor: { id: 'v1' } });
+    hoisted.serviceFindUnique.mockResolvedValue({
+      id: 'svc-2',
+      isPublished: true,
+      vendor: { id: 'v1', isPubliclyListed: true, accountStatus: 'active' },
+    });
     hoisted.userUpsert.mockResolvedValue({ id: 'u1' });
     hoisted.favoriteUpsert.mockResolvedValue({
       id: 'f2',

@@ -4,22 +4,18 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings, CheckCircle, XCircle, Info, User, Shield, Bell, QrCode, Smartphone as DeviceIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Settings, CheckCircle, XCircle, Info, User, Shield, Bell, Smartphone as DeviceIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorDevices } from '@/hooks/useVendorDevices';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
+import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
 
 // BACKEND DEVELOPER NOTES:
-// - GET /api/vendor/profile: Fetch vendor profile and settings (including Reliance Payments status)
-// - POST /api/vendor/payments/enable: Enable Reliance Payments for the vendor
-// - POST /api/vendor/payments/disable: Disable Reliance Payments for the vendor
-// - Reliance Payments status should be stored in the vendor profile and reflected in both profile and billing pages
-// - All endpoints should be authenticated and scoped to the current vendor
-// - This file currently uses local state for demonstration purposes
-//
-// See also: billing page for payment history and payouts
+// - GET /api/vendor/profile: Fetch vendor profile and settings.
+// - All endpoints should be authenticated and scoped to the current vendor.
+// - Profile, device, and storage interactions below should stay tied to real APIs.
 
 // DEVELOPER NOTES (Backend API Requirements)
 //
@@ -40,6 +36,34 @@ import { VendorProfileUpdateRequest } from '@/types/vendor';
 // All endpoints require authentication and should validate employee/vendor relationship.
 //
 // End DEVELOPER NOTES
+
+const notificationPreferenceCopy: Record<string, { label: string; description: string; disabled?: boolean }> = {
+  job: {
+    label: 'Job requests',
+    description: 'New job requests and booking updates',
+  },
+  review: {
+    label: 'Customer reviews',
+    description: 'New video-backed customer reviews',
+  },
+  payout: {
+    label: 'Payment updates',
+    description: 'Billing and payout tools will be announced before they go live',
+    disabled: true,
+  },
+  support: {
+    label: 'Support messages',
+    description: 'Important support conversations',
+  },
+  marketing: {
+    label: 'Marketing updates',
+    description: 'Optional product and promotional updates',
+  },
+  updates: {
+    label: 'System updates',
+    description: 'Reliance platform announcements',
+  },
+};
 
 export default function VendorProfilePage() {
   const { data: profile, loading, error, saving, approvalPending, updateProfile, refetch } = useVendorProfile();
@@ -71,10 +95,11 @@ export default function VendorProfilePage() {
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [pairingSuccess, setPairingSuccess] = useState(false);
-  const [initialDeviceCount, setInitialDeviceCount] = useState(0);
+  const [pairingInviteEmail, setPairingInviteEmail] = useState('');
+  const [pairingInvitePhone, setPairingInvitePhone] = useState('');
+  const [pairingBaseUrlOverride, setPairingBaseUrlOverride] = useState('');
+  const [pairingInviteFeedback, setPairingInviteFeedback] = useState<string | null>(null);
   
-  const [addressQuery, setAddressQuery] = useState('');
-  const [addressSuggestions, setAddressSuggestions] = useState<string[]>([]);
   const [reminders, setReminders] = useState({ review: true, invoice: false, maintenance: true, followUp: true });
   const [showReminderToast, setShowReminderToast] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState({ job: true, review: true, payout: false, support: true, marketing: false, updates: true });
@@ -86,16 +111,6 @@ export default function VendorProfilePage() {
     passwordExpiry: 90,
     failedLoginLockout: 5
   });
-
-
-
-  // Mock address suggestions
-  const mockAddresses = [
-    '123 Main St, Springfield, IL',
-    '456 Oak Ave, Springfield, IL',
-    '789 Pine Rd, Springfield, IL',
-    '321 Elm St, Springfield, IL'
-  ];
 
   // Service type options
   const serviceTypeOptions = [
@@ -216,31 +231,12 @@ export default function VendorProfilePage() {
 
   const handleAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setAddressQuery(value);
     setLocalFormData(prev => ({ ...prev, address: value }));
-    if (value.length > 2) {
-      setAddressSuggestions(mockAddresses.filter(addr => addr.toLowerCase().includes(value.toLowerCase())));
-    } else {
-      setAddressSuggestions([]);
-    }
-  };
-
-  const handleSelectSuggestion = (suggestion: string) => {
-    setLocalFormData(prev => ({ ...prev, address: suggestion }));
-    setAddressQuery(suggestion);
-    setAddressSuggestions([]);
   };
 
   const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Check storage limit before uploading
-    if (storage?.isOverLimit) {
-      alert('Storage limit reached. Please delete existing media before uploading new files.');
-      e.target.value = ''; // Reset file input
-      return;
-    }
 
     try {
       setUploadingPhoto(true);
@@ -253,29 +249,23 @@ export default function VendorProfilePage() {
         body: formData,
       });
 
+      const payload = await res.json().catch(() => ({} as Record<string, unknown>));
       if (!res.ok) {
-        throw new Error(`Upload failed with status ${res.status}`);
+        const message =
+          typeof payload?.error === 'string'
+            ? payload.error
+            : `Upload failed with status ${res.status}`;
+        throw new Error(message);
       }
 
-      const { url } = await res.json() as { url: string };
-
-      // Persist on vendor profile
-      await updateProfile({ profilePhoto: url });
+      const { url } = payload as { url: string };
 
       // Update local form state so the preview updates immediately
       setLocalFormData(prev => ({ ...prev, profilePhoto: url }));
-      
-      // Refresh storage usage after successful upload
-      if (vendorId) {
-        setTimeout(() => fetchStorage(), 1000);
-      }
+      await refetch();
     } catch (err) {
       console.error('Error uploading photo', err);
-      // Check if error is storage limit related
-      if (err instanceof Error && err.message.includes('STORAGE_LIMIT_REACHED')) {
-        alert('Storage limit reached. Please delete existing media before uploading new files.');
-      }
-      // you can show a toast here if you want
+      alert(err instanceof Error ? err.message : 'Profile photo upload failed.');
     } finally {
       setUploadingPhoto(false);
       // Reset the input so the same file can be selected again
@@ -335,11 +325,8 @@ export default function VendorProfilePage() {
   const handleSaveSecuritySettings = async () => {
     try {
       await updateProfile({
-        twoFactorEnabled: securitySettings.twoFactorEnabled,
         loginNotifications: securitySettings.loginNotifications,
         sessionTimeout: securitySettings.sessionTimeout,
-        passwordExpiry: securitySettings.passwordExpiry,
-        failedLoginLockout: securitySettings.failedLoginLockout,
       });
       // Close modal after save
       setShowSecurityModal(false);
@@ -349,42 +336,110 @@ export default function VendorProfilePage() {
   };
 
   const handleOpenPairModal = async () => {
+    setPairingSuccess(false);
+    setPairingInviteFeedback(null);
+    setPairing(null);
+    setCountdown(null);
+    setShowPairModal(true);
+  };
+
+  const handleStartPairing = async (sendInvite: boolean) => {
     try {
-      // Store initial device count before opening modal
-      setInitialDeviceCount(devices.length);
       setPairingSuccess(false);
-      await requestPairingCode();
-      setShowPairModal(true);
+      setPairingInviteFeedback(null);
+      const result = await requestPairingCode({
+        inviteEmail: sendInvite ? pairingInviteEmail : undefined,
+        invitePhone: sendInvite ? pairingInvitePhone : undefined,
+        baseUrlOverride: pairingBaseUrlOverride,
+      });
+
+      const feedback = sendInvite
+        ? result.inviteDelivery?.summaryMessage ||
+          (result.inviteDelivery?.email?.attempted || result.inviteDelivery?.sms?.attempted
+            ? "Invite sending was attempted. If it did not arrive, use the backup link and code below."
+            : "No invite channel was available. Use the backup link and code below.")
+        : "Backup link and pairing code ready to share manually.";
+      setPairingInviteFeedback(feedback);
     } catch (err) {
       console.error('Error requesting pairing code:', err);
+      setPairingInviteFeedback(err instanceof Error ? err.message : 'Failed to create pairing invite.');
     }
   };
 
-  // Auto-refresh device list when pairing modal is open (poll every 2 seconds)
-  // Also detect when a new device is paired
-  useEffect(() => {
-    if (showPairModal && pairing) {
-      const interval = setInterval(() => {
-        fetchDevices();
-      }, 2000); // Poll every 2 seconds
-      return () => clearInterval(interval);
-    }
-  }, [showPairModal, pairing, fetchDevices]);
+  const runtimeIsLocalOnly =
+    typeof window !== 'undefined' &&
+    /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
 
-  // Detect successful pairing (device count increased)
   useEffect(() => {
-    if (showPairModal && pairing && devices.length > initialDeviceCount) {
-      setPairingSuccess(true);
-      // Auto-close modal after 3 seconds
-      const timer = setTimeout(() => {
-        setShowPairModal(false);
-        setPairing(null);
-        setCountdown(null);
-        setPairingSuccess(false);
-      }, 3000);
-      return () => clearTimeout(timer);
+    if (typeof window === 'undefined') return;
+    const saved = String(window.localStorage.getItem('reliance_pairing_base_url_override') || '').trim();
+    if (saved) {
+      setPairingBaseUrlOverride(saved);
     }
-  }, [devices.length, initialDeviceCount, showPairModal, pairing]);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const normalized = pairingBaseUrlOverride.trim();
+    if (normalized) {
+      window.localStorage.setItem('reliance_pairing_base_url_override', normalized);
+    } else {
+      window.localStorage.removeItem('reliance_pairing_base_url_override');
+    }
+  }, [pairingBaseUrlOverride]);
+
+  // Refresh device list and pairing status while pairing modal is open.
+  useEffect(() => {
+    if (!showPairModal || !pairing?.code || pairingSuccess) {
+      return;
+    }
+
+    let isCancelled = false;
+    const poll = async () => {
+      try {
+        const [statusRes] = await Promise.all([
+          fetch(`/api/device/pairing/status?code=${encodeURIComponent(pairing.code)}`, {
+            cache: 'no-store',
+          }),
+          fetchDevices(),
+        ]);
+        const statusJson = await statusRes.json().catch(() => ({}));
+        if (isCancelled) return;
+
+        if (statusRes.ok && statusJson?.status === 'paired') {
+          setPairingSuccess(true);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Error polling pairing status:', error);
+        }
+      }
+    };
+
+    void poll();
+    const interval = setInterval(() => {
+      void poll();
+    }, 2000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [fetchDevices, pairing?.code, pairingSuccess, showPairModal]);
+
+  // Auto-close vendor pairing modal after success, even when an existing device was re-paired.
+  useEffect(() => {
+    if (!showPairModal || !pairingSuccess) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setShowPairModal(false);
+      setPairing(null);
+      setCountdown(null);
+      setPairingSuccess(false);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [pairingSuccess, setPairing, showPairModal]);
 
   // Refresh device list when pairing modal closes
   useEffect(() => {
@@ -396,27 +451,27 @@ export default function VendorProfilePage() {
   return (
     <div className="bg-gradient-to-br from-slate-50 to-blue-50">
       <div className="w-full">
+      <div className="mb-6 rounded-2xl border border-white/60 bg-white/85 p-5 shadow-sm">
+        <h1 className="text-3xl font-semibold text-gray-900">Profile &amp; Settings</h1>
+        <p className="mt-1 text-sm text-gray-600">
+          Manage your business profile, paired devices, storage, and vendor account protections.
+        </p>
+      </div>
+
       {loading && (
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading profile...</p>
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-white/60 bg-white/80 p-6 shadow-sm">
+            <div className="mb-4 h-6 w-52 animate-pulse rounded bg-slate-200" />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
+              <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
+            </div>
+            <p className="mt-4 text-sm text-gray-600">Loading your vendor profile...</p>
           </div>
         </div>
       )}
 
-      {approvalPending && !loading && (
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="max-w-md w-full rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
-            <h2 className="text-xl font-semibold text-amber-900 mb-2">Vendor account pending approval</h2>
-            <p className="text-sm text-amber-800">
-              You can access profile settings after admin approval.
-            </p>
-          </div>
-        </div>
-      )}
-      
-      {error && !loading && !approvalPending && (
+      {error && !loading && !profile && (
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="text-red-600 mb-4">
@@ -430,10 +485,11 @@ export default function VendorProfilePage() {
         </div>
       )}
       
-      {!loading && !error && !approvalPending && profile && (
+      {!loading && !error && profile && (
         <main className="flex flex-col xl:flex-row gap-8">
         {/* Profile Form */}
         <section className="flex-1 max-w-2xl space-y-6">
+          {profile.onboarding ? <VendorOnboardingStatusPanel profile={profile} /> : null}
           {/* Enhanced Profile Information Card */}
           <Card className="bg-gradient-to-br from-white to-blue-50 border-blue-200 shadow-lg">
             <CardHeader className="pb-4">
@@ -443,11 +499,14 @@ export default function VendorProfilePage() {
                 </div>
                 <div>
                   <CardTitle className="text-xl text-gray-800">Business Profile</CardTitle>
-                  <p className="text-sm text-gray-600">Manage your business information and settings</p>
+                  <p className="text-sm text-gray-600">Manage saved business information customers and staff rely on</p>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
+              <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                Profile fields on this page save to your vendor profile. Device pairing and storage limits use live vendor APIs; future-only launch features are marked where they appear.
+              </div>
               <form className="space-y-6">
                 {/* Profile Photo Section */}
                 <div className="mb-6">
@@ -582,29 +641,17 @@ export default function VendorProfilePage() {
 
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700">Business Address</label>
-                  <div className="relative">
-                    <Input
-                      name="address"
-                      value={addressQuery || localFormData.address || ''}
-                      onChange={handleAddressInput}
-                      autoComplete="off"
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="Enter your business address"
-                    />
-                    {addressSuggestions.length > 0 && (
-                      <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-auto">
-                        {addressSuggestions.map((suggestion, idx) => (
-                          <li
-                            key={idx}
-                            className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                            onClick={() => handleSelectSuggestion(suggestion)}
-                          >
-                            {suggestion}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  <Input
+                    name="address"
+                    value={localFormData.address || ''}
+                    onChange={handleAddressInput}
+                    autoComplete="street-address"
+                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    placeholder="Enter your business street address"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enter the address manually and save it to your profile. Street autocomplete is not connected in this environment yet.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -825,7 +872,9 @@ export default function VendorProfilePage() {
                   </div>
                   <div>
                     <CardTitle className="text-xl text-gray-800">Device Management</CardTitle>
-                    <p className="text-sm text-gray-600">Manage paired employee devices</p>
+                    <p className="text-sm text-gray-600">
+                      Pair employee phones for stage video capture. Headsets should be connected from a paired phone when supported—this page does not handle Bluetooth pairing directly.
+                    </p>
                   </div>
                 </div>
                 <Button
@@ -841,7 +890,29 @@ export default function VendorProfilePage() {
               </div>
             </CardHeader>
             <CardContent>
-              {devicesLoading ? (
+              {devicesError ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium">Device list is temporarily unavailable.</p>
+                      <p className="mt-1 text-amber-800">
+                        Your profile is still usable. Refresh devices or try again after the connection recovers.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchDevices()}
+                        disabled={devicesLoading}
+                        className="mt-3 bg-white hover:bg-amber-50"
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${devicesLoading ? 'animate-spin' : ''}`} />
+                        Retry Devices
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : devicesLoading ? (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
                   <p className="text-gray-500">Loading devices...</p>
@@ -918,14 +989,16 @@ export default function VendorProfilePage() {
                   <Bell className="w-6 h-6 text-purple-600" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl text-gray-800">Automated Reminders & Follow-Ups</CardTitle>
-                  <p className="text-sm text-gray-600">Configure automated customer communication</p>
+                  <CardTitle className="text-xl text-gray-800">Reminder Preferences</CardTitle>
+                  <p className="text-sm text-gray-600">Save communication preferences for supported launch workflows</p>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <p className="text-sm text-gray-600 mb-4">These messages are only sent for completed jobs.</p>
+                <p className="text-sm text-gray-600 mb-4">
+                  These preferences are saved to your profile. Reliance only sends supported launch communications; delayed automation may be limited.
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors cursor-pointer">
                     <input 
@@ -936,7 +1009,7 @@ export default function VendorProfilePage() {
                     />
                     <div>
                       <div className="font-medium text-gray-800">Review Requests</div>
-                      <div className="text-sm text-gray-600">Auto-send email/SMS after job completion (e.g., 24 hours later).</div>
+                      <div className="text-sm text-gray-600">Request reviews after eligible completed jobs.</div>
                     </div>
                     <Info className="w-4 h-4 text-purple-500 ml-auto" />
                   </label>
@@ -948,8 +1021,8 @@ export default function VendorProfilePage() {
                       className="w-4 h-4 text-purple-600"
                     />
                     <div>
-                      <div className="font-medium text-gray-800">Invoice Reminders</div>
-                      <div className="text-sm text-gray-600">Auto-remind for unpaid invoices</div>
+                      <div className="font-medium text-gray-800">Follow-up Reminders</div>
+                      <div className="text-sm text-gray-600">Save your preference for future post-service follow-up reminders.</div>
                     </div>
                     <Info className="w-4 h-4 text-purple-500 ml-auto" />
                   </label>
@@ -962,7 +1035,7 @@ export default function VendorProfilePage() {
                     />
                     <div>
                       <div className="font-medium text-gray-800">Maintenance Alerts</div>
-                      <div className="text-sm text-gray-600">Schedule follow-up maintenance</div>
+                      <div className="text-sm text-gray-600">Save your preference for future maintenance follow-up prompts.</div>
                     </div>
                     <Info className="w-4 h-4 text-purple-500 ml-auto" />
                   </label>
@@ -975,7 +1048,7 @@ export default function VendorProfilePage() {
                     />
                     <div>
                       <div className="font-medium text-gray-800">Follow-up Calls</div>
-                      <div className="text-sm text-gray-600">Schedule post-service calls</div>
+                      <div className="text-sm text-gray-600">Save your preference for post-service call reminders.</div>
                     </div>
                     <Info className="w-4 h-4 text-purple-500 ml-auto" />
                   </label>
@@ -1004,33 +1077,38 @@ export default function VendorProfilePage() {
                 </div>
                 <div>
                   <CardTitle className="text-xl text-gray-800">Notification Preferences</CardTitle>
-                  <p className="text-sm text-gray-600">Manage your notification settings</p>
+                  <p className="text-sm text-gray-600">Manage saved notification settings for active launch features</p>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(notificationSettings).map(([key, value]) => (
-                  <label key={key} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-orange-200 hover:bg-orange-50 transition-colors cursor-pointer">
+                {Object.entries(notificationSettings).map(([key, value]) => {
+                  const copy = notificationPreferenceCopy[key] ?? {
+                    label: key.replace(/([A-Z])/g, ' $1').trim(),
+                    description: 'Notification preference',
+                  };
+                  return (
+                  <label
+                    key={key}
+                    className={`flex items-center gap-3 p-3 bg-white rounded-lg border border-orange-200 transition-colors ${
+                      copy.disabled ? 'opacity-75 cursor-not-allowed' : 'hover:bg-orange-50 cursor-pointer'
+                    }`}
+                  >
                     <input 
                       type="checkbox" 
                       checked={value} 
                       onChange={e => setNotificationSettings(s => ({ ...s, [key]: e.target.checked }))}
+                      disabled={copy.disabled}
                       className="w-4 h-4 text-orange-600"
                     />
                     <div>
-                      <div className="font-medium text-gray-800 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</div>
-                      <div className="text-sm text-gray-600">
-                        {key === 'job' && 'New job requests'}
-                        {key === 'review' && 'New customer reviews'}
-                        {key === 'payout' && 'Payment processing'}
-                        {key === 'support' && 'Support messages'}
-                        {key === 'marketing' && 'Marketing updates'}
-                        {key === 'updates' && 'System updates'}
-                      </div>
+                      <div className="font-medium text-gray-800">{copy.label}</div>
+                      <div className="text-sm text-gray-600">{copy.description}</div>
                     </div>
                   </label>
-                ))}
+                  );
+                })}
               </div>
               <Button 
                 onClick={handleSaveNotifications} 
@@ -1065,10 +1143,10 @@ export default function VendorProfilePage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-sm text-gray-600">Two-Factor Auth</span>
-                    <p className="text-xs text-gray-500">Protect your account with two-factor authentication.</p>
+                    <p className="text-xs text-gray-500">Vendor sign-in protection is active. Review MFA, passkeys, and login alerts in Security Settings.</p>
                   </div>
-                  <Badge className={(profile?.twoFactorEnabled ?? securitySettings.twoFactorEnabled) ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
-                    {(profile?.twoFactorEnabled ?? securitySettings.twoFactorEnabled) ? 'Enabled' : 'Disabled'}
+                  <Badge className="bg-green-100 text-green-700">
+                    Active
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1106,7 +1184,9 @@ export default function VendorProfilePage() {
             setPairing(null);
             setCountdown(null);
             setPairingSuccess(false);
-            setInitialDeviceCount(0);
+            setPairingInviteFeedback(null);
+            setPairingInviteEmail('');
+            setPairingInvitePhone('');
           }
         }}
       >
@@ -1127,36 +1207,42 @@ export default function VendorProfilePage() {
                 <p className="text-gray-600 mb-4">The device has been added to your account.</p>
                 <p className="text-sm text-gray-500">This window will close automatically...</p>
               </div>
-            ) : pairing && (
+            ) : pairing ? (
               <>
+                {pairingInviteFeedback ? (
+                  <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                    {pairingInviteFeedback}
+                  </div>
+                ) : null}
+                <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  Reliance is waiting for the employee phone to open the link and confirm pairing. The backup code stays available if the employee needs to enter it manually.
+                </div>
                 <div className="text-3xl font-mono tracking-widest bg-gradient-to-r from-blue-100 to-blue-200 px-6 py-3 rounded-lg border-2 border-blue-300" aria-label="Pairing Code">
                   {pairing.code}
                 </div>
-                <div className="my-2" aria-label="QR Code Placeholder">
-                  <div className="w-32 h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-300">
-                    <QrCode className="w-16 h-16" />
-                  </div>
-                </div>
                 <div className="text-gray-700 text-center text-sm mb-4">
-                  Ask your employee to enter this code in their mobile app within 5 minutes to pair their device with your business.
+                  Send this link to the employee phone you want to pair. The link already includes the code, and the 6-digit code stays available as a backup.
                 </div>
+                {pairing.linkAccessMode === 'local_only' ? (
+                  <div className="w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    This pairing link uses a local-only Reliance address for this environment. It can open on this machine, but it is not ready as a true phone email/text link until <code className="font-mono">APP_BASE_URL</code> points to a public or phone-reachable URL.
+                  </div>
+                ) : null}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                  <div className="text-xs text-blue-800 font-medium mb-2">Pairing URL:</div>
+                  <div className="text-xs text-blue-800 font-medium mb-2">Shareable pairing link:</div>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 text-xs bg-white px-2 py-1 rounded border border-blue-200 text-blue-900 break-all">
-                      {typeof window !== 'undefined' ? `${window.location.origin}/device/pair` : '/device/pair'}
+                      {pairing.pairingUrl}
                     </code>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        const url = typeof window !== 'undefined' ? `${window.location.origin}/device/pair` : '/device/pair';
-                        navigator.clipboard.writeText(url);
-                        // You could add a toast here
+                        navigator.clipboard.writeText(pairing.pairingUrl);
                       }}
                       className="text-xs"
                     >
-                      Copy
+                      Copy link
                     </Button>
                   </div>
                 </div>
@@ -1168,10 +1254,10 @@ export default function VendorProfilePage() {
                     : "00:00"}
                 </div>
                 <div className="text-green-700 font-medium text-sm" aria-live="polite">
-                  {pairingLoading ? "Generating code..." : "Waiting for device to pair..."}
+                  {pairingLoading ? "Generating code..." : "Waiting for the phone to confirm pairing..."}
                 </div>
               </>
-            )}
+            ) : null}
             {!pairing && pairingLoading && (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -1179,8 +1265,78 @@ export default function VendorProfilePage() {
               </div>
             )}
             {!pairing && !pairingLoading && (
-              <div className="text-center py-8">
-                <p className="text-gray-600">Failed to generate pairing code. Please try again.</p>
+              <div className="w-full space-y-4">
+                {pairingInviteFeedback ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {pairingInviteFeedback}
+                  </div>
+                ) : null}
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  Enter the employee contact details below. Reliance will try to send a pairing link first, and you can still use the backup link and code if needed.
+                </div>
+                {runtimeIsLocalOnly ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    This vendor session is running on a local-only Reliance address. Email or text pairing invites from this screen are useful for copy review, but they will not open on another phone until you set <code className="font-mono">APP_BASE_URL</code> or enter a phone-reachable pairing URL below.
+                  </div>
+                ) : null}
+                {runtimeIsLocalOnly ? (
+                  <div className="space-y-2">
+                    <label htmlFor="pairing-base-url" className="text-sm font-medium text-gray-700">
+                      Phone-reachable pairing URL
+                    </label>
+                    <Input
+                      id="pairing-base-url"
+                      type="url"
+                      placeholder="https://your-staging-or-tunnel-url.com"
+                      value={pairingBaseUrlOverride}
+                      onChange={(e) => setPairingBaseUrlOverride(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Optional in local development. Reliance will use this exact base URL in the invite link, so make sure the employee phone can actually open it.
+                    </p>
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <label htmlFor="pairing-invite-email" className="text-sm font-medium text-gray-700">
+                    Employee email
+                  </label>
+                  <Input
+                    id="pairing-invite-email"
+                    type="email"
+                    placeholder="employee@example.com"
+                    value={pairingInviteEmail}
+                    onChange={(e) => setPairingInviteEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="pairing-invite-phone" className="text-sm font-medium text-gray-700">
+                    Employee phone
+                  </label>
+                  <Input
+                    id="pairing-invite-phone"
+                    type="tel"
+                    placeholder="(407) 555-1234"
+                    value={pairingInvitePhone}
+                    onChange={(e) => setPairingInvitePhone(e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500">
+                    Email sending is supported now. Text delivery will only send if SMS is configured for this environment.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Button
+                    onClick={() => handleStartPairing(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Send Pairing Link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleStartPairing(false)}
+                  >
+                    Use Backup Code Only
+                  </Button>
+                </div>
               </div>
             )}
             {!pairingSuccess && (
@@ -1203,13 +1359,15 @@ export default function VendorProfilePage() {
           </DialogHeader>
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Two-Factor Authentication</span>
-              <input 
-                type="checkbox" 
-                checked={securitySettings.twoFactorEnabled}
-                onChange={(e) => setSecuritySettings(s => ({ ...s, twoFactorEnabled: e.target.checked }))}
-                className="w-4 h-4 text-red-600"
-              />
+              <div>
+                <span className="text-sm font-medium">Vendor Sign-In Protection</span>
+                <p className="text-xs text-gray-500">
+                  Email-code verification is active for vendor sign-ins. Add or manage passkeys from Secure Account.
+                </p>
+              </div>
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
+                Active
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Login Notifications</span>

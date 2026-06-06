@@ -29,7 +29,7 @@ export type ReviewExpiredResult = {
 };
 
 function reviewsPath(bookingId: string): string {
-  return `/reviews?bookingId=${encodeURIComponent(bookingId)}`;
+  return `/my-bookings`;
 }
 
 function buildAbsoluteUrl(base: string, path: string): string {
@@ -47,14 +47,14 @@ export async function sendReviewExpiredNotification(input: ReviewExpiredInput): 
   const absoluteFallbackLink = buildAbsoluteUrl(env.appBaseUrl, path);
   const channels: ChannelDelivery[] = [];
 
-  const subject = 'Your Reliance review window has closed';
+  const subject = 'Your feedback window has closed';
   const html = `
     <p>Hello${input.customerName ? ` ${escapeHtml(String(input.customerName))}` : ''},</p>
-    <p>Your review window for this booking has ended without a submitted review.</p>
-    <p>If you still need help, open your bookings or contact support from the app.</p>
-    <p><a href="${escapeHtml(absoluteFallbackLink)}">Open reviews</a></p>
+    <p>Your feedback window for this service has ended without a submitted review.</p>
+    <p>If you still need help, open My Services in Reliance or contact support from the app.</p>
+    <p><a href="${escapeHtml(absoluteFallbackLink)}">Open My Services</a></p>
   `.trim();
-  const text = `Reliance: your review window has closed. ${absoluteFallbackLink}`;
+  const text = `Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink}`;
 
   const email = (input.customerEmail || '').trim();
   if (env.emailEnabled && email) {
@@ -86,7 +86,7 @@ export async function sendReviewExpiredNotification(input: ReviewExpiredInput): 
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `Reliance: your review window has closed. ${absoluteFallbackLink}`;
+    const body = `Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink}`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

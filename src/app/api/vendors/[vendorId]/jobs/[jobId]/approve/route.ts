@@ -4,6 +4,8 @@ import { requireVendorManager } from "@/lib/membership-auth";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { TRUST_OUTCOME_TYPES, tryRecordFinalizedOperationalOutcome } from "@/lib/trust-score-outcome-foundation";
+import { tryRecalculateVendorTrustScore } from "@/lib/trust-score-calculator";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -20,7 +22,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     const booking = await prisma.booking.findFirst({
       where: { id: jobId, vendorId },
-      select: { id: true, status: true, customerMetadata: true },
+      select: { id: true, status: true, customerMetadata: true, scheduledFor: true, date: true },
     });
     if (!booking) {
       return NextResponse.json({ error: "Job not found for this vendor." }, { status: 404 });
@@ -115,6 +117,44 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         moderationQueuedAssets: updated.moderationUpdateCount,
       },
     });
+
+    await tryRecordFinalizedOperationalOutcome(prisma as any, {
+      vendorId,
+      bookingId: booking.id,
+      outcomeType: TRUST_OUTCOME_TYPES.WORKFLOW_COMPLETED,
+      sourceEntityType: "booking",
+      sourceEntityId: booking.id,
+      finalizedAt: completedAt,
+      finalizedByUserId: manager.userId || null,
+      metadata: {
+        previousStatus: currentStatus,
+        moderationQueuedAssets: updated.moderationUpdateCount,
+      },
+    });
+
+    // Phase 1C: late-completion is a genuinely finalized signal (the job was approved
+    // AFTER its scheduled date). Emit it as a separate operational-reliability ding;
+    // the workflow still counts as completed above. Best-effort / non-blocking.
+    const scheduledTime = booking.scheduledFor ? new Date(booking.scheduledFor).getTime() : NaN;
+    if (Number.isFinite(scheduledTime) && completedAt.getTime() > scheduledTime) {
+      await tryRecordFinalizedOperationalOutcome(prisma as any, {
+        vendorId,
+        bookingId: booking.id,
+        outcomeType: TRUST_OUTCOME_TYPES.LATE_COMPLETION,
+        sourceEntityType: "booking",
+        sourceEntityId: booking.id,
+        finalizedAt: completedAt,
+        finalizedByUserId: manager.userId || null,
+        metadata: {
+          scheduledFor: new Date(scheduledTime).toISOString(),
+          completedAt: completedAt.toISOString(),
+          lateByMs: completedAt.getTime() - scheduledTime,
+        },
+      });
+    }
+
+    // Internal-only, non-blocking Trust Score recalculation.
+    await tryRecalculateVendorTrustScore(prisma as any, vendorId, "job_approved", "job_approve");
 
     return NextResponse.json({
       success: true,

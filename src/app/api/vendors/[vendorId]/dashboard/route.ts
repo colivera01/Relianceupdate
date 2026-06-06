@@ -7,6 +7,15 @@ import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { getEmployeeRatingsForVendor, getVendorRatingStats } from "@/lib/review-attribution-aggregates";
 import { calculateStorageUsage } from "@/lib/storage-helpers";
+import {
+  resolveOperationalClientKey,
+  resolveOperationalClientLabel,
+} from "@/lib/operational-client";
+import {
+  countableMediaAssetWhere,
+  countableReviewWhere,
+  vendorOperationalBookingWhere,
+} from "@/lib/metrics-exclusion";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -15,9 +24,23 @@ interface RouteParams {
 // Simple in-memory cache (60 seconds TTL per vendor)
 const cache = new Map<string, { data: any; expiresAt: number }>();
 const CACHE_TTL_MS = 60 * 1000; // 60 seconds
-const USE_DASHBOARD_CACHE = process.env.NODE_ENV !== "development";
+const USE_DASHBOARD_CACHE =
+  process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test";
 const DASHBOARD_DEBUG_LOG = process.env.NODE_ENV !== "production";
 const APPROVED_STATUS = "APPROVED";
+
+function approvedCustomerReviewWhereForVendor(
+  vendorId: string,
+  extra: Record<string, unknown> = {}
+) {
+  return countableReviewWhere({
+    vendorId,
+    source: "customer",
+    moderationStatus: "approved",
+    bookingId: { not: null },
+    ...extra,
+  });
+}
 
 function errorResponse(
   code: string,
@@ -62,6 +85,16 @@ function extractAssignedMembershipIdsFromMetadata(value: string | null | undefin
   return raw.map((item) => String(item || "").trim()).filter(Boolean);
 }
 
+function extractUploadedVideoStagesFromMetadata(value: string | null | undefined): string[] {
+  const metadata = parseCustomerMetadata(value);
+  const raw = metadata.vendor_job_stage_progress;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  return Object.entries(raw)
+    .filter(([, stageValue]) => Boolean(stageValue))
+    .map(([stageKey]) => String(stageKey || "").trim().toUpperCase())
+    .filter((stageKey) => ["INTRO", "IN_PROGRESS", "COMPLETED"].includes(stageKey));
+}
+
 function resolveJobSourceFromMetadata(value: string | null | undefined): "customer_booking" | "vendor_created_job" {
   const metadata = parseCustomerMetadata(value);
   const claimStatus = String(metadata.claim_status || "").trim().toUpperCase();
@@ -71,6 +104,22 @@ function resolveJobSourceFromMetadata(value: string | null | undefined): "custom
     return "vendor_created_job";
   }
   return "customer_booking";
+}
+
+function usableCustomerEmail(value: unknown): string {
+  const email = String(value || "").trim();
+  return email.toLowerCase().endsWith("@reliance.local") ? "" : email;
+}
+
+function resolveCustomerContactForBooking(booking: any): { email: string; phone: string } {
+  const metadata = parseCustomerMetadata(booking?.customerMetadata);
+  return {
+    email:
+      usableCustomerEmail(metadata.client_email) ||
+      usableCustomerEmail(metadata.claim_contact_email) ||
+      usableCustomerEmail(booking?.user?.email),
+    phone: String(metadata.client_phone || "").trim() || String(booking?.user?.phone || "").trim(),
+  };
 }
 
 function formatAssignedEmployeesForHistory(
@@ -100,6 +149,22 @@ function isTransientDbConnectivityError(error: any): boolean {
 
 function normalizeKey(value: unknown): string {
   return String(value || "").trim().toUpperCase();
+}
+
+function mapConsentRecordToVendorUiState(
+  record: any
+): "accepted" | "declined" | "expired_or_unavailable" | "not_requested" | "requested" {
+  if (!record) return "not_requested";
+  const now = new Date();
+  const raw = String(record.status || "").trim().toUpperCase();
+  if (raw === "ACCEPTED") return "accepted";
+  if (raw === "DECLINED") return "declined";
+  if (raw === "EXPIRED") return "expired_or_unavailable";
+  if (raw === "REQUESTED" || raw === "PENDING") {
+    if (record.expiresAt && new Date(record.expiresAt) < now) return "expired_or_unavailable";
+    return "requested";
+  }
+  return "not_requested";
 }
 
 async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
@@ -201,23 +266,15 @@ export async function GET(
     // Preserve legacy helper validation path for behavioral consistency.
     await withTransientDbRetry(() => requireVendorMembership(request, vendorId));
 
+    const { searchParams } = new URL(request.url);
+    const jobsOnly = searchParams.get("jobsOnly") === "1";
+
     // Check cache
-    const cacheKey = `dashboard:${vendorId}`;
+    const cacheKey = `dashboard:${vendorId}:${jobsOnly ? "jobsOnly" : "full"}`;
     const cached = USE_DASHBOARD_CACHE ? cache.get(cacheKey) : null;
     if (USE_DASHBOARD_CACHE && cached && cached.expiresAt > Date.now()) {
       return NextResponse.json(cached.data);
     }
-
-    // Calculate UTC date ranges for insights (consistent timezone handling)
-    const now = new Date();
-    const nowUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    
-    // Last month start (UTC)
-    const lastMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-    // This month start (UTC)
-    const thisMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    // Next month start (UTC) for upper bound
-    const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
     // Fetch vendor profile and related data in parallel
     const [
@@ -228,12 +285,6 @@ export async function GET(
       recentReviews,
       confirmedOrCompletedBookings, // For client count (CONFIRMED + COMPLETED only)
       completedBookings,
-      bookingsLastMonth,
-      bookingsThisMonth,
-      reviewsLastMonth,
-      reviewsThisMonth,
-      earningsLastMonth,
-      earningsThisMonth,
       proofModerationGroups,
       totalProofAssets,
       archivedProofs,
@@ -244,23 +295,24 @@ export async function GET(
         where: { id: vendorId },
       }),
 
-      // Booking stats aggregation
+      // Booking stats aggregation (vendor-facing operational truth)
       prisma.booking.groupBy({
         by: ["vendorId"],
-        where: { vendorId },
+        where: vendorOperationalBookingWhere({ vendorId }),
         _count: { _all: true },
         _sum: { amount: true },
       }),
 
-      // Recent bookings (last 5)
+      // Recent bookings (vendor portal — include test-client jobs; stats stay countable)
       prisma.booking.findMany({
-        where: { vendorId },
+        where: vendorOperationalBookingWhere({ vendorId }),
         include: {
           user: {
             select: {
               id: true,
               name: true,
               email: true,
+              phone: true,
             },
           },
           service: true,
@@ -270,16 +322,17 @@ export async function GET(
       }),
       // Archived bookings for archived-jobs view
       prisma.booking.findMany({
-        where: {
+        where: vendorOperationalBookingWhere({
           vendorId,
           status: "ARCHIVED",
-        },
+        }),
         include: {
           user: {
             select: {
               id: true,
               name: true,
               email: true,
+              phone: true,
             },
           },
           service: {
@@ -294,8 +347,10 @@ export async function GET(
       }),
 
       // Recent reviews (last 5)
-      prisma.review.findMany({
-        where: { vendorId },
+      jobsOnly
+        ? Promise.resolve([])
+        : prisma.review.findMany({
+        where: approvedCustomerReviewWhereForVendor(vendorId),
         select: {
           id: true,
           clientName: true,
@@ -317,105 +372,59 @@ export async function GET(
       }),
 
       // Confirmed or Completed bookings for client count (exclude CANCELED and PENDING)
-      prisma.booking.findMany({
-        where: {
+      jobsOnly
+        ? Promise.resolve([])
+        : prisma.booking.findMany({
+        where: vendorOperationalBookingWhere({
           vendorId,
           status: {
             in: ["CONFIRMED", "COMPLETED"],
           },
+        }),
+        select: {
+          userId: true,
+          clientName: true,
+          customerMetadata: true,
+          user: {
+            select: {
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
         },
-        select: { userId: true },
-        distinct: ["userId"],
       }),
 
       // Completed bookings for earnings
-      prisma.booking.findMany({
-        where: {
+      jobsOnly
+        ? Promise.resolve([])
+        : prisma.booking.findMany({
+        where: vendorOperationalBookingWhere({
           vendorId,
           status: "COMPLETED",
-        },
+        }),
         select: { amount: true },
       }),
 
-      // Bookings last month (UTC)
-      prisma.booking.count({
-        where: {
-          vendorId,
-          createdAt: {
-            gte: lastMonthStart,
-            lt: thisMonthStart,
-          },
-        },
-      }),
-      // Bookings this month (UTC)
-      prisma.booking.count({
-        where: {
-          vendorId,
-          createdAt: {
-            gte: thisMonthStart,
-            lt: nextMonthStart,
-          },
-        },
-      }),
-      // Reviews last month (UTC)
-      prisma.review.count({
-        where: {
-          vendorId,
-          createdAt: {
-            gte: lastMonthStart,
-            lt: thisMonthStart,
-          },
-        },
-      }),
-      // Reviews this month (UTC)
-      prisma.review.count({
-        where: {
-          vendorId,
-          createdAt: {
-            gte: thisMonthStart,
-            lt: nextMonthStart,
-          },
-        },
-      }),
-      // Earnings last month (UTC) - COMPLETED only
-      prisma.booking.aggregate({
-        where: {
-          vendorId,
-          status: "COMPLETED",
-          createdAt: {
-            gte: lastMonthStart,
-            lt: thisMonthStart,
-          },
-        },
-        _sum: { amount: true },
-      }),
-      // Earnings this month (UTC) - COMPLETED only
-      prisma.booking.aggregate({
-        where: {
-          vendorId,
-          status: "COMPLETED",
-          createdAt: {
-            gte: thisMonthStart,
-            lt: nextMonthStart,
-          },
-        },
-        _sum: { amount: true },
-      }),
-      (prisma as any).mediaAsset.groupBy({
+      jobsOnly
+        ? Promise.resolve([])
+        : (prisma as any).mediaAsset.groupBy({
         by: ["moderationStatus"],
-        where: {
+        where: countableMediaAssetWhere({
           vendorId,
-          deletedAt: null,
-        },
+        }),
         _count: { id: true },
       }),
-      (prisma as any).mediaAsset.count({
-        where: {
+      jobsOnly
+        ? Promise.resolve(0)
+        : (prisma as any).mediaAsset.count({
+        where: countableMediaAssetWhere({
           vendorId,
-          deletedAt: null,
-        },
+        }),
       }),
-      (prisma as any).mediaAsset.count({
+      jobsOnly
+        ? Promise.resolve(0)
+        : (prisma as any).mediaAsset.count({
         where: {
           vendorId,
           OR: [{ deletedAt: { not: null } }, { archiveStatus: { in: ["ARCHIVED", "archived"] } }],
@@ -456,7 +465,20 @@ export async function GET(
     );
     
     // Total Clients: Unique clients from CONFIRMED + COMPLETED bookings only (exclude CANCELED)
-    const totalClients = confirmedOrCompletedBookings.length;
+    const totalClients = new Set(
+      confirmedOrCompletedBookings
+        .map((booking: any) => {
+          const contact = resolveCustomerContactForBooking(booking);
+          return resolveOperationalClientKey({
+            userId: booking.userId,
+            clientName: booking.clientName,
+            userName: booking.user?.name,
+            email: contact.email,
+            phone: contact.phone,
+          });
+        })
+        .filter(Boolean)
+    ).size;
     let vendorRatingStats = { averageRating: 0, reviewCount: 0, ratingSum: 0 };
     try {
       vendorRatingStats = await getVendorRatingStats(vendorId);
@@ -493,8 +515,27 @@ export async function GET(
           })
         )
       : [];
+    const latestConsentRecords = bookingIds.length
+      ? await withTransientDbRetry(() =>
+          (prisma as any).consentRecord.findMany({
+            where: { bookingId: { in: bookingIds } },
+            select: {
+              id: true,
+              bookingId: true,
+              token: true,
+              status: true,
+              acceptedAt: true,
+              declinedAt: true,
+              requestedAt: true,
+              expiresAt: true,
+            },
+            orderBy: [{ bookingId: "asc" }, { requestedAt: "desc" }],
+          })
+        )
+      : [];
     const mediaSummaryByBookingId = new Map<string, { linkedSessionCount: number; linkedMediaCount: number }>();
     const sessionsForPhaseByBookingId = new Map<string, any[]>();
+    const latestConsentByBookingId = new Map<string, any>();
     for (const session of sessionsByBooking as any[]) {
       const key = String(session.bookingId || "");
       if (!key) continue;
@@ -506,6 +547,11 @@ export async function GET(
       const existingSessions = sessionsForPhaseByBookingId.get(key) || [];
       existingSessions.push(session);
       sessionsForPhaseByBookingId.set(key, existingSessions);
+    }
+    for (const consentRecord of latestConsentRecords as any[]) {
+      const key = String(consentRecord?.bookingId || "");
+      if (!key || latestConsentByBookingId.has(key)) continue;
+      latestConsentByBookingId.set(key, consentRecord);
     }
 
     const recentJobs = recentBookings
@@ -530,6 +576,7 @@ export async function GET(
         linkedSessionCount: 0,
         linkedMediaCount: 0,
       };
+      const latestConsentRecord = latestConsentByBookingId.get(String(booking.id)) || null;
       const packageState = evaluateVendorJobPackageState(
         sessionsForPhaseByBookingId.get(String(booking.id)) || []
       );
@@ -552,18 +599,31 @@ export async function GET(
 
       const assignedEmployeesRaw = extractAssignedEmployeesFromMetadata(booking.customerMetadata);
       const assignedMembershipIds = extractAssignedMembershipIdsFromMetadata(booking.customerMetadata);
+      const uploadedVideoStages = extractUploadedVideoStagesFromMetadata(booking.customerMetadata);
+      const customerContact = resolveCustomerContactForBooking(booking);
+      const clientLabel = resolveOperationalClientLabel({
+        clientName: booking.clientName,
+        userName: booking.user?.name,
+      });
       return {
         id: booking.id,
         serviceId: booking.serviceId,
         serviceName: booking.service?.name || "",
         serviceType: booking.service?.name || "",
         title: booking.title || booking.service?.name || "Untitled Job",
-        client: booking.clientName || booking.user?.name || "Unknown Client",
+        client: clientLabel,
+        customerEmail: customerContact.email,
+        customerPhone: customerContact.phone,
         amount: amountValue,
         status: mappedStatus,
         operationalPhase,
         assignedEmployees: assignedEmployeesRaw,
         assignedMembershipIds,
+        uploadedVideoStages,
+        consentStatus: mapConsentRecordToVendorUiState(latestConsentRecord),
+        latestConsentToken: latestConsentRecord?.token || null,
+        consentAcceptedAt: latestConsentRecord?.acceptedAt?.toISOString?.() || null,
+        consentDeclinedAt: latestConsentRecord?.declinedAt?.toISOString?.() || null,
         source: resolveJobSourceFromMetadata(booking.customerMetadata),
         createdAt: booking.createdAt?.toISOString() || null,
         updatedAt: booking.updatedAt?.toISOString() || booking.createdAt?.toISOString() || null,
@@ -589,18 +649,27 @@ export async function GET(
       });
       const assignedEmployeesRaw = extractAssignedEmployeesFromMetadata(booking.customerMetadata);
       const assignedMembershipIds = extractAssignedMembershipIdsFromMetadata(booking.customerMetadata);
+      const uploadedVideoStages = extractUploadedVideoStagesFromMetadata(booking.customerMetadata);
+      const customerContact = resolveCustomerContactForBooking(booking);
+      const clientLabel = resolveOperationalClientLabel({
+        clientName: booking.clientName,
+        userName: booking.user?.name,
+      });
       return {
       id: booking.id,
       serviceId: booking.serviceId,
       serviceName: booking.service?.name || "",
       serviceType: booking.service?.name || "",
       title: booking.title || booking.service?.name || "Untitled Job",
-      client: booking.clientName || booking.user?.name || "Unknown Client",
+      client: clientLabel,
+      customerEmail: customerContact.email,
+      customerPhone: customerContact.phone,
       amount: booking.amount ? Number(booking.amount) : 0,
       status: "archived",
       operationalPhase: operationalPhaseArchived,
       assignedEmployees: assignedEmployeesRaw,
       assignedMembershipIds,
+      uploadedVideoStages,
       createdAt: booking.createdAt?.toISOString() || null,
       updatedAt: booking.updatedAt?.toISOString() || booking.createdAt?.toISOString() || null,
       date:
@@ -648,10 +717,50 @@ export async function GET(
       );
     }
 
+    const lifecycleCounts = recentJobs.reduce(
+      (counts, job: any) => {
+        const normalized = String(job?.status || "").trim().toLowerCase();
+        if (normalized === "completed") counts.completed += 1;
+        else if (normalized === "in progress") counts.inProgress += 1;
+        else if (normalized === "awaiting_review") counts.awaitingReview += 1;
+        else if (normalized === "canceled") counts.canceled += 1;
+        else counts.scheduled += 1;
+        return counts;
+      },
+      {
+        scheduled: 0,
+        inProgress: 0,
+        awaitingReview: 0,
+        completed: 0,
+        canceled: 0,
+        archived: archivedJobs.length,
+      }
+    );
+
+    if (jobsOnly) {
+      const response = {
+        recentJobs,
+        archivedJobs,
+        lifecycleCounts,
+      };
+
+      if (USE_DASHBOARD_CACHE) {
+        cache.set(cacheKey, {
+          data: response,
+          expiresAt: Date.now() + CACHE_TTL_MS,
+        });
+      }
+
+      return NextResponse.json({ success: true, ...response });
+    }
+
     // Map reviews to VendorReview format
     const recentReviewsMapped = recentReviews.map((review: any) => ({
       id: review.id,
-      client: review.clientName || review.user?.name || "Unknown Client",
+      client: resolveOperationalClientLabel({
+        clientName: review.clientName,
+        userName: review.user?.name,
+      }),
       rating: review.rating,
       comment: review.comment || "",
       date: review.date?.toISOString() || review.createdAt.toISOString(),
@@ -787,108 +896,6 @@ export async function GET(
       ...jobOnlyMembershipIds.map((id) => buildEmployeeEntry(id)),
     ];
 
-    // Calculate insights with Decimal handling
-    const bookingsChange = bookingsLastMonth > 0
-      ? ((bookingsThisMonth - bookingsLastMonth) / bookingsLastMonth) * 100
-      : bookingsThisMonth > 0 ? 100 : 0;
-    
-    const reviewsChange = reviewsLastMonth > 0
-      ? ((reviewsThisMonth - reviewsLastMonth) / reviewsLastMonth) * 100
-      : reviewsThisMonth > 0 ? 100 : 0;
-    
-    // Handle Decimal earnings
-    const earningsLastMonthValue = earningsLastMonth._sum.amount
-      ? (earningsLastMonth._sum.amount && typeof earningsLastMonth._sum.amount === 'object' && 'toNumber' in earningsLastMonth._sum.amount
-          ? (earningsLastMonth._sum.amount as { toNumber: () => number }).toNumber()
-          : typeof earningsLastMonth._sum.amount === 'number'
-          ? earningsLastMonth._sum.amount
-          : parseFloat(String(earningsLastMonth._sum.amount)) || 0)
-      : 0;
-    
-    const earningsThisMonthValue = earningsThisMonth._sum.amount
-      ? (earningsThisMonth._sum.amount && typeof earningsThisMonth._sum.amount === 'object' && 'toNumber' in earningsThisMonth._sum.amount
-          ? (earningsThisMonth._sum.amount as { toNumber: () => number }).toNumber()
-          : typeof earningsThisMonth._sum.amount === 'number'
-          ? earningsThisMonth._sum.amount
-          : parseFloat(String(earningsThisMonth._sum.amount)) || 0)
-      : 0;
-    
-    const earningsChange = earningsLastMonthValue > 0
-      ? ((earningsThisMonthValue - earningsLastMonthValue) / earningsLastMonthValue) * 100
-      : earningsThisMonthValue > 0 ? 100 : 0;
-
-    const insights = [
-      {
-        id: "bookings-growth",
-        title: "Bookings This Month",
-        value: bookingsThisMonth.toString(),
-        change: `${bookingsChange >= 0 ? "+" : ""}${bookingsChange.toFixed(1)}%`,
-        trend: bookingsChange >= 0 ? ("up" as const) : ("down" as const),
-      },
-      {
-        id: "reviews-growth",
-        title: "New Reviews",
-        value: reviewsThisMonth.toString(),
-        change: `${reviewsChange >= 0 ? "+" : ""}${reviewsChange.toFixed(1)}%`,
-        trend: reviewsChange >= 0 ? ("up" as const) : ("down" as const),
-      },
-      {
-        id: "earnings-growth",
-        title: "Monthly Earnings",
-        value: `$${earningsThisMonthValue.toFixed(2)}`, // Currency formatting with 2 decimals
-        change: `${earningsChange >= 0 ? "+" : ""}${earningsChange.toFixed(1)}%`,
-        trend: earningsChange >= 0 ? ("up" as const) : ("down" as const),
-      },
-      {
-        id: "completion-rate",
-        title: "Completion Rate",
-        value: totalBookings > 0
-          ? `${Math.round((completedBookings.length / totalBookings) * 100)}%`
-          : "0%",
-        change: "vs last month",
-        trend: "up" as const,
-      },
-    ];
-
-    // Fetch vendor-specific notifications (from AdminNotification filtered by vendorId)
-    // Note: Model name in Prisma client is camelCase based on @@map
-    const vendorNotifications = await withTransientDbRetry(() =>
-      (prisma as any).adminNotification.findMany({
-        where: {
-          vendorId,
-          read: false,
-        },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      })
-    );
-
-    const notifications = (vendorNotifications as any[]).map((notif: any) => ({
-      id: notif.id,
-      type: notif.type.toLowerCase().includes("job")
-        ? ("job" as const)
-        : notif.type.toLowerCase().includes("review")
-        ? ("review" as const)
-        : notif.type.toLowerCase().includes("payment") || notif.type.toLowerCase().includes("payout")
-        ? ("payment" as const)
-        : ("reminder" as const),
-      title: notif.title,
-      message: notif.message,
-      time: new Date(notif.createdAt).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }),
-      read: notif.read,
-      priority:
-        notif.type === "STORAGE_LIMIT_REACHED"
-          ? ("high" as const)
-          : notif.type === "STORAGE_ALERT"
-          ? ("medium" as const)
-          : ("low" as const),
-    }));
-
     let pendingModerationProofs = 0;
     let approvedProofs = 0;
     for (const row of proofModerationGroups as any[]) {
@@ -946,10 +953,11 @@ export async function GET(
       },
       recentJobs,
       archivedJobs,
+      lifecycleCounts,
       recentReviews: recentReviewsMapped,
       employeePerformance,
-      insights,
-      notifications,
+      insights: [],
+      notifications: [],
       pendingModerationProofs,
       approvedProofs,
       archivedProofs: Number(archivedProofs || 0),
