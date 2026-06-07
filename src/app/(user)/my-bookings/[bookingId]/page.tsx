@@ -4,6 +4,8 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, Clock, RefreshCw, Star } from 'lucide-react';
+import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { SmartVideoPlayer } from '@/components/reviews/SmartVideoPlayer';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
@@ -17,6 +19,7 @@ import {
   normalizeBookingStatusKey,
   resolveBookingScheduleInstant,
 } from '@/lib/my-bookings';
+import { tutorialGuides } from '@/lib/user-guidance';
 import { Badge } from '@/components/ui/badge';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 
@@ -435,6 +438,56 @@ function BookingMediaDetailPageContent() {
           },
         ]
       : [];
+  const lifecycleGuidance =
+    reviewSubmittedWithoutEligibleVideo || (reviewSubmitted && completedWithoutCustomerVisibleVideo)
+      ? {
+          title: 'Why this booking shows a submitted review without a playable video',
+          description:
+            'This booking has a real submitted review on file, but a customer-visible approved completed-stage service video is not attached right now.',
+          bullets: [
+            'Completed work, video availability, and review history are tracked separately.',
+            'Your earlier review remains on file even though this booking does not currently expose a customer-visible completed-stage video.',
+            'If you expected a playable service video here, use the Help Center with the booking ID below.',
+          ],
+          tone: 'slate' as const,
+        }
+      : completedVideoPendingApproval
+        ? {
+            title: 'Why the service video is not open yet',
+            description:
+              'The vendor completed the work and submitted the completed-stage service video, but Reliance still has to finish approval before customer playback can open here.',
+            bullets: [
+              'Work completion does not automatically make the service video customer-visible.',
+              'Review eligibility opens only after an approved completed-stage customer-visible video is available.',
+              "You'll be able to watch the video from this page once approval is complete.",
+            ],
+            tone: 'amber' as const,
+          }
+        : awaitingApprovedReviewVideo
+          ? {
+              title: 'Why the review window is not open yet',
+              description:
+                'Reviews unlock only after an approved completed-stage customer-visible service video exists for this booking.',
+              bullets: [
+                'A completed booking can still be waiting on moderation or customer visibility.',
+                'If a video was rejected or kept non-customer-visible, the review flow stays closed.',
+                'Open Help if you expected a playable completed-stage service video already.',
+              ],
+              tone: 'amber' as const,
+            }
+          : completedWithoutCustomerVisibleVideo
+            ? {
+                title: 'Why this completed booking does not show a customer-visible video',
+                description:
+                  'The booking is marked completed, but no approved completed-stage service video is customer-visible right now.',
+                bullets: [
+                  'Completed work, approved video, customer access, and review timing are separate lifecycle steps.',
+                  'This can happen when a video was not submitted, is private, or is not customer-visible.',
+                  'The page will open playback and review tools only when the correct approved customer-visible video exists.',
+                ],
+                tone: 'slate' as const,
+              }
+            : null;
 
   const startFullStoryPlayback = () => {
     if (orderedStageVideos.length === 0) return;
@@ -773,6 +826,7 @@ function BookingMediaDetailPageContent() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <TutorialEntryPoint guide={tutorialGuides.bookingDetail} surface="light" />
             {activeVideo && activeVideo.downloadUrl ? (
               <a
                 href="#completed-service-video"
@@ -830,6 +884,15 @@ function BookingMediaDetailPageContent() {
             {videoReadyFromLink ? <Badge className="bg-emerald-100 text-emerald-800">Video ready</Badge> : null}
           </div>
         </div>
+
+        {lifecycleGuidance ? (
+          <GuidanceCallout
+            title={lifecycleGuidance.title}
+            description={lifecycleGuidance.description}
+            bullets={lifecycleGuidance.bullets}
+            tone={lifecycleGuidance.tone}
+          />
+        ) : null}
 
         {lifecycleRows.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 space-y-3">

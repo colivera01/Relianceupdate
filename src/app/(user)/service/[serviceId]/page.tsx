@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import { PUBLIC_DB_UNAVAILABLE_CODE, PUBLIC_DB_UNAVAILABLE_MESSAGE } from '@/lib/transient-db-errors';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
+import { TrustScoreEducationCard } from '@/components/guidance/TrustScoreEducationCard';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { ServiceImage } from '@/components/ServiceImage';
 import { LazyVideoFrame } from '@/components/public/LazyVideoFrame';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { RelianceLogo } from '@/components/public/RelianceLogo';
 import { PublicTrustScorePanel } from '@/components/public/PublicTrustScorePanel';
+import { tutorialGuides } from '@/lib/user-guidance';
 import { 
   MapPin, 
   Star, 
@@ -618,6 +621,10 @@ function ServiceDetailPageContent() {
 
             {/* Service Information */}
             <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+              <div className="mb-5 flex justify-end">
+                <TutorialEntryPoint guide={tutorialGuides.serviceDetail} surface="light" />
+              </div>
+
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">{service.name}</h1>
@@ -1057,6 +1064,7 @@ function ServiceDetailPageContent() {
 
             {service.vendor?.id ? (
               <div className="mb-6">
+                <TrustScoreEducationCard className="mb-4" />
                 <PublicTrustScorePanel
                   vendorId={service.vendor.id}
                   customerRating={vendorRating}

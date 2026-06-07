@@ -218,7 +218,7 @@ export default async function PublicHelpPage({
               Help Center
             </div>
             <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-              Clear support paths without breaking the dark marketplace feel
+              Clear support paths without breaking the Reliance experience
             </h1>
             <p className="mt-5 max-w-3xl text-base leading-8 text-white/72">
               {helpContext.intro}

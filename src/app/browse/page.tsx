@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
+import { TrustScoreEducationCard } from '@/components/guidance/TrustScoreEducationCard';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
@@ -12,6 +14,7 @@ import { Search, SlidersHorizontal, X, MapPin, Image as ImageIcon, ChevronLeft, 
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAuth } from '@/contexts/AuthContext';
 import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
+import { tutorialGuides } from '@/lib/user-guidance';
 import {
   PROMOTION_BROWSE_SECTION_EXPLAINER,
   PROMOTION_BROWSE_SECTION_TITLE,
@@ -754,15 +757,20 @@ export default function PublicBrowsePage() {
         </div>
 
         <div className="mb-12">
-          <div className="mb-6 flex items-center justify-between">
+          <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h2 className="font-display text-3xl font-semibold text-slate-950">Trusted Services</h2>
               <p className="text-sm text-gray-600">Compare vendors by reviews, service videos, and service fit.</p>
             </div>
-            <div className="text-sm text-gray-600">
-              {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount}`}
+            <div className="flex flex-wrap items-center gap-3">
+              <TutorialEntryPoint guide={tutorialGuides.browseMarketplace} surface="light" />
+              <div className="text-sm text-gray-600">
+                {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount}`}
+              </div>
             </div>
           </div>
+
+          <TrustScoreEducationCard className="mb-6" />
 
           {isLoading ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">

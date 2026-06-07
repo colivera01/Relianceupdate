@@ -4,6 +4,7 @@ import { POST } from "./route";
 const hoisted = vi.hoisted(() => {
   const userFindUnique = vi.fn();
   const userCreate = vi.fn();
+  const vendorFindUnique = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
   const serviceFindMany = vi.fn();
   const serviceCreateMany = vi.fn();
@@ -14,6 +15,9 @@ const hoisted = vi.hoisted(() => {
     user: {
       findUnique: userFindUnique,
       create: userCreate,
+    },
+    vendor: {
+      findUnique: vendorFindUnique,
     },
     vendorMembership: {
       findFirst: vendorMembershipFindFirst,
@@ -34,6 +38,7 @@ const hoisted = vi.hoisted(() => {
     prisma,
     userFindUnique,
     userCreate,
+    vendorFindUnique,
     vendorMembershipFindFirst,
     serviceFindMany,
     serviceCreateMany,
@@ -133,6 +138,7 @@ describe("POST /api/vendor/register", () => {
     hoisted.userFindUnique.mockReset();
     hoisted.userCreate.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
+    hoisted.vendorFindUnique.mockReset();
     hoisted.serviceFindMany.mockReset();
     hoisted.serviceCreateMany.mockReset();
     hoisted.vendorCreate.mockReset();
@@ -160,6 +166,7 @@ describe("POST /api/vendor/register", () => {
     hoisted.vendorCreate.mockResolvedValue({
       id: "vendor-1",
     });
+    hoisted.vendorFindUnique.mockResolvedValue(null);
     hoisted.vendorMembershipCreate.mockResolvedValue({
       id: "membership-1",
     });
@@ -266,5 +273,58 @@ describe("POST /api/vendor/register", () => {
     expect(json.code).toBe("ACCOUNT_ALREADY_EXISTS");
     expect(hoisted.userCreate).not.toHaveBeenCalled();
     expect(hoisted.vendorCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects vendor registration when a vendor profile already uses the email", async () => {
+    hoisted.vendorFindUnique.mockResolvedValueOnce({ id: "vendor-existing" });
+
+    const response = await POST(
+      createVendorRegisterRequest({
+        firstName: "Rosa",
+        lastName: "Vendor",
+        email: "rosa.vendor@reliance.test",
+        phone: "407-555-1212",
+        password: "VendorTest1!",
+        businessName: "Rosa Plumbing Co",
+        businessType: "Plumbing",
+        address: "123 Main St",
+        city: "Orlando",
+        state: "Florida",
+        zipCode: "32801",
+      })
+    );
+
+    expect(response.status).toBe(409);
+    const json = await readJson(response);
+    expect(json.code).toBe("ACCOUNT_ALREADY_EXISTS");
+    expect(hoisted.userCreate).not.toHaveBeenCalled();
+    expect(hoisted.vendorCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns a truthful temporary-service message when the database is unreachable", async () => {
+    hoisted.vendorFindUnique.mockRejectedValueOnce(
+      Object.assign(new Error("db down"), { code: "P1001" })
+    );
+
+    const response = await POST(
+      createVendorRegisterRequest({
+        firstName: "Rosa",
+        lastName: "Vendor",
+        email: "rosa.vendor@reliance.test",
+        phone: "407-555-1212",
+        password: "VendorTest1!",
+        businessName: "Rosa Plumbing Co",
+        businessType: "Plumbing",
+        address: "123 Main St",
+        city: "Orlando",
+        state: "Florida",
+        zipCode: "32801",
+      })
+    );
+
+    expect(response.status).toBe(503);
+    const json = await readJson(response);
+    expect(json.code).toBe("REGISTRATION_SERVICE_UNAVAILABLE");
+    expect(String(json.error)).toContain("could not reach");
   });
 });

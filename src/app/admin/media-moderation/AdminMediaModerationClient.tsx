@@ -6,17 +6,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getAdminRequestHeaders } from '@/lib/admin-client';
 import { RefreshCw, Video, ShieldAlert, Sparkles } from 'lucide-react';
+import { tutorialGuides } from '@/lib/user-guidance';
 
 type StageKey = 'INTRO' | 'IN_PROGRESS' | 'COMPLETED';
 
 const STAGE_ORDER: StageKey[] = ['INTRO', 'IN_PROGRESS', 'COMPLETED'];
 const STAGE_LABELS: Record<StageKey, string> = {
-  INTRO: 'Intro',
-  IN_PROGRESS: 'In Progress',
-  COMPLETED: 'Completed',
+  INTRO: 'Before Service',
+  IN_PROGRESS: 'During Service',
+  COMPLETED: 'Completed Service',
 };
 
 type QueueVideo = {
@@ -925,14 +928,28 @@ export default function AdminMediaModerationClient({
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Media Moderation</h1>
           <p className="text-gray-600 mt-1">
-            Only complete 3-stage job packages appear here. Review Intro, In Progress, and Completed videos together.
+            Only complete 3-stage job packages appear here. Review Before, During, and Completed service videos together.
           </p>
         </div>
-        <Button variant="outline" onClick={fetchQueue} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <TutorialEntryPoint guide={tutorialGuides.adminMediaModeration} surface="light" />
+          <Button variant="outline" onClick={fetchQueue} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      <GuidanceCallout
+        title="What an approval changes"
+        description="Approving a package confirms the moderation decision and the visibility tier you chose. It does not mean every approved package becomes public."
+        bullets={[
+          'Use customer-only when the service video should stay off public discovery but remain available to the booking customer.',
+          'Use private or vendor archive states when the package should not be customer-visible.',
+          'AI Review Assist is metadata-only in this version and should support, not replace, the admin decision.',
+        ]}
+        tone="blue"
+      />
 
       <Card>
         <CardContent className="pt-6">
@@ -961,7 +978,7 @@ export default function AdminMediaModerationClient({
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="text-sm font-semibold text-slate-900">Operator flow</div>
             <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
-              <p>1. Confirm the Intro, In Progress, and Completed videos belong to the same finished job.</p>
+              <p>1. Confirm the Before, During, and Completed service videos belong to the same finished job.</p>
               <p>2. Choose the package visibility before approving the full package.</p>
               <p>3. Use advanced stage controls only when a single stage needs different handling.</p>
             </div>
@@ -1135,7 +1152,7 @@ export default function AdminMediaModerationClient({
                     <div className="rounded-md border bg-white p-3 space-y-3">
                       <div className="text-sm font-medium text-gray-900">Package review actions</div>
                       <p className="text-xs text-gray-600">
-                        Normal workflow: choose package visibility, then approve, reject, or flag the full Intro + In Progress + Completed package.
+                        Normal workflow: choose package visibility, then approve, reject, or flag the full Before + During + Completed service package.
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                         <div className="space-y-1 md:col-span-2">

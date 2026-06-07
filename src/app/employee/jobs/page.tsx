@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { GuidanceCallout } from "@/components/guidance/GuidanceCallout";
+import { TutorialEntryPoint } from "@/components/guidance/TutorialEntryPoint";
 import { useAuth } from "@/contexts/AuthContext";
 import { getClientSessionHeaders } from "@/lib/client-session";
 import { normalizeEmployeeJobStatusLabel, shouldShowEmployeeStartButton } from "@/lib/employee-job-status";
@@ -21,6 +23,7 @@ import {
   getVideoFileDurationSeconds,
   isOverStageVideoLimit,
 } from "@/lib/stage-video-guidance";
+import { tutorialGuides } from "@/lib/user-guidance";
 
 type EmployeeJob = {
   id: string;
@@ -57,9 +60,9 @@ type PairedDeviceState = {
 };
 
 const STAGES = [
-  { key: "INTRO", label: "Before / Intro", cue: "Show the area or condition before work begins." },
-  { key: "IN_PROGRESS", label: "During / In Progress", cue: "Show active progress or work being performed." },
-  { key: "COMPLETED", label: "After / Completed", cue: "Show the final result clearly." },
+  { key: "INTRO", label: "Before Service", cue: "Show the area or condition before work begins." },
+  { key: "IN_PROGRESS", label: "During Service", cue: "Show active progress or work being performed." },
+  { key: "COMPLETED", label: "Completed Service", cue: "Show the final result clearly." },
 ] as const;
 
 const EMPLOYEE_JOBS_TIMEOUT_MS = 20000;
@@ -749,10 +752,11 @@ export default function EmployeeJobsPage() {
               </div>
               <h1 className="mt-4 text-2xl font-bold text-gray-900">Assigned Jobs</h1>
               <p className="mt-2 text-sm text-gray-600">
-                Mobile-friendly employee workflow for Before, In Progress, and Completed stage videos.
+                Mobile-friendly employee workflow for Before, During, and Completed service videos.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <TutorialEntryPoint guide={tutorialGuides.employeeJobs} surface="dark" />
               <Link
                 href="/help"
                 className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
@@ -788,10 +792,29 @@ export default function EmployeeJobsPage() {
                 </p>
               </div>
             ) : (
-              <p className="text-gray-600">Pairing this device...</p>
+              <div>
+                <p className="text-gray-600">Connecting this device to your employee workspace...</p>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  If this takes longer than a few seconds, reload and confirm your manager assigned work to this account.
+                </p>
+              </div>
             )}
           </div>
         </div>
+
+        <GuidanceCallout
+          title="How the stage-video workflow progresses"
+          description="Employees capture Before, During, and Completed service videos in order, then submit the full package for manager review."
+          bullets={[
+            'Before Service Video shows the starting condition before work begins.',
+            'During Service Video shows active work or progress while the service is happening.',
+            'Completed Service Video shows the final result customers will later understand.',
+            'Awaiting Manager Review means all stages are uploaded but the package is not approved yet.',
+            'Rejected states mean the package needs corrections before it can move forward again.',
+            'Completed means the full package has already been manager-approved and moved past employee action.',
+          ]}
+          tone="blue"
+        />
 
         {error ? (
           <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>
@@ -802,7 +825,11 @@ export default function EmployeeJobsPage() {
           </p>
         ) : null}
 
-        {loading ? <p className="text-sm text-gray-600">Loading assigned jobs...</p> : null}
+        {loading ? (
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Loading assigned jobs. If nothing appears after a moment, reload or ask your manager to confirm a job is assigned to this account.
+          </div>
+        ) : null}
 
         {!loading && error && jobs.length === 0 ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">

@@ -144,7 +144,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 
     if (!REQUIRED_STAGES.every((stage) => latestByStage.has(stage))) {
       return NextResponse.json(
-        { success: false, error: "Incomplete package", message: "Package must have Intro, In Progress, and Completed stages" },
+        { success: false, error: "Incomplete package", message: "Package must have Before Service, During Service, and Completed Service stages" },
         { status: 422 }
       );
     }

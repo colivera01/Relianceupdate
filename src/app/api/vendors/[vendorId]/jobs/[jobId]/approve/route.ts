@@ -58,7 +58,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     if (!packageState.hasAllRequiredStages) {
       return NextResponse.json(
         {
-          error: "Approval requires Intro, In Progress, and Completed videos.",
+          error: "Approval requires Before Service, During Service, and Completed Service videos.",
           code: "COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE",
         },
         { status: 409 }

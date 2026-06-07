@@ -105,7 +105,7 @@ export async function POST(
           {
             success: false,
             code: "VENDOR_JOB_VIDEO_STAGE_REQUIRED",
-            message: "Video stage is required (Intro, In Progress, or Completed).",
+            message: "Video stage is required (Before Service, During Service, or Completed Service).",
           },
           { status: 422 }
         );
@@ -366,4 +366,3 @@ export async function GET(
     );
   }
 }
-

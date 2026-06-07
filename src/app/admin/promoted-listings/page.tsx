@@ -5,6 +5,7 @@ import { CircleDollarSign, Copy, ExternalLink, RefreshCw, Search, ShieldCheck, S
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { getAdminRequestHeaders } from '@/lib/admin-client';
+import { tutorialGuides } from '@/lib/user-guidance';
 
 type PromotionCampaignRow = {
   id: string;
@@ -874,10 +876,13 @@ export default function AdminPromotedListingsPage() {
               Admin-controlled promoted placement for eligible public vendors. Use this page to manage packages, reserve inventory, track payment, and activate campaigns after payment is confirmed.
             </p>
           </div>
-          <Button variant="outline" onClick={fetchCampaigns} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <TutorialEntryPoint guide={tutorialGuides.adminPromotedListings} surface="light" />
+            <Button variant="outline" onClick={fetchCampaigns} disabled={loading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </header>
 

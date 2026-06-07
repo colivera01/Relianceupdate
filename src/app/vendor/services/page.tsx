@@ -2,8 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
+import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
+import { tutorialGuides } from '@/lib/user-guidance';
 
 type ServiceRow = {
   id: string;
@@ -216,14 +219,17 @@ export default function VendorServicesPage() {
               Maintain draft service details for your vendor profile.
             </p>
           </div>
-          <button
-            onClick={openCreateModal}
-            disabled={!vendorId || vendorLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="w-4 h-4" />
-            Add Service Draft
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <TutorialEntryPoint guide={tutorialGuides.vendorServices} surface="light" />
+            <button
+              onClick={openCreateModal}
+              disabled={!vendorId || vendorLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="w-4 h-4" />
+              Add Service Draft
+            </button>
+          </div>
         </div>
 
         <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-900">
@@ -234,6 +240,18 @@ export default function VendorServicesPage() {
             they go live.
           </p>
         </div>
+
+        <GuidanceCallout
+          title="Why your services may still not be public"
+          description="Saving a draft prepares the service for review, but public visibility still depends on vendor approval, public vendor listing, and admin publishing."
+          bullets={[
+            'Draft saved: the service is stored internally for review.',
+            'Vendor approved and listed: customers can find the business.',
+            'Service published: the service becomes publicly bookable.',
+          ]}
+          tone="blue"
+          className="mb-4"
+        />
 
         {approvalPending && (
           <div className="p-4 mb-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">

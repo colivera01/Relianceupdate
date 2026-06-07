@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
 import Link from 'next/link';
@@ -41,6 +42,7 @@ import {
 } from '@/lib/media-visibility';
 import { getClientSessionHeaders } from '@/lib/client-session';
 import { useAuth } from '@/contexts/AuthContext';
+import { tutorialGuides } from '@/lib/user-guidance';
 import {
   fetchVendorTeamMembers,
   avatarUrlForName,
@@ -221,7 +223,7 @@ export default function VendorJobs() {
     if (!nextStage) {
       return {
         label: 'All videos uploaded',
-        detail: 'Intro, During Service, and Completed videos are present.',
+        detail: 'Before, During Service, and Completed Service videos are present.',
         actionLabel: 'View Job',
         tone: 'green',
       };
@@ -3766,7 +3768,8 @@ export default function VendorJobs() {
             <p className="text-blue-100 text-sm leading-relaxed">
               Manage all your jobs efficiently. Click <strong>Create Job</strong> to add a new job and use the
               <strong> Next Step</strong> button on each card to move work forward.
-              Hover over any <Info className="inline w-4 h-4 align-text-bottom" /> for detailed help.
+              Hover over any <span className="inline-flex align-text-bottom"><Info className="inline w-4 h-4" /></span>{' '}
+              info icon for detailed help.
             </p>
           </div>
         </div>
@@ -3800,8 +3803,8 @@ export default function VendorJobs() {
               </li>
               <li><strong>Send customer consent if required</strong> and wait for the customer to accept it.</li>
               <li><strong>Verify location if required</strong> before the recording workflow continues.</li>
-              <li><strong>Start the Intro video</strong> once the required consent/location steps are complete.</li>
-              <li><strong>Continue with During Service and Completed videos</strong> so the job has the full video package.</li>
+              <li><strong>Start the Before Service Video</strong> once the required consent/location steps are complete.</li>
+              <li><strong>Continue with During Service and Completed Service videos</strong> so the job has the full video package.</li>
             </ol>
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
               Each job card shows its current <strong>Next step</strong>, including whether consent is not required,
@@ -3837,7 +3840,8 @@ export default function VendorJobs() {
         </div>
         
         {/* View Toggle */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <TutorialEntryPoint guide={tutorialGuides.vendorJobs} surface="light" />
           <span className="text-sm font-medium text-gray-700">View Mode:</span>
           <div className="flex flex-col items-end gap-1">
             <div className="flex bg-gray-100 rounded-lg p-1">
@@ -5240,9 +5244,9 @@ export default function VendorJobs() {
             </p>
             <div className="rounded border bg-gray-50 p-3 space-y-1">
               {([
-                { key: 'INTRO' as const, label: 'Before / Intro' },
-                { key: 'IN_PROGRESS' as const, label: 'During / In Progress' },
-                { key: 'COMPLETED' as const, label: 'After / Completed' },
+                { key: 'INTRO' as const, label: 'Before Service' },
+                { key: 'IN_PROGRESS' as const, label: 'During Service' },
+                { key: 'COMPLETED' as const, label: 'Completed Service' },
               ]).map((stage) => {
                 const present = Boolean(approveJobTarget && jobHasVideoForStage(approveJobTarget, stage.key));
                 return (
@@ -5300,7 +5304,7 @@ export default function VendorJobs() {
               Legal Compliance & Security Verification
             </DialogTitle>
             <DialogDescription>
-              Assign employee, choose recording location, send customer consent if required, then start the Intro video.
+              Assign employee, choose recording location, send customer consent if required, then start the Before Service Video.
             </DialogDescription>
           </DialogHeader>
 
@@ -6102,9 +6106,9 @@ export default function VendorJobs() {
                         </p>
                         <div className="mt-3 space-y-2">
                           {([
-                            { key: 'INTRO' as const, label: 'Before / Intro', actionLabel: 'Play Before Video' },
-                            { key: 'IN_PROGRESS' as const, label: 'During / In Progress', actionLabel: 'Play During Video' },
-                            { key: 'COMPLETED' as const, label: 'After / Completed', actionLabel: 'Play After Video' },
+                            { key: 'INTRO' as const, label: 'Before Service', actionLabel: 'Play Before Video' },
+                            { key: 'IN_PROGRESS' as const, label: 'During Service', actionLabel: 'Play During Video' },
+                            { key: 'COMPLETED' as const, label: 'Completed Service', actionLabel: 'Play Completed Video' },
                           ]).map((stage) => {
                             const stageVideo = getStageVideoForJob(job, stage.key);
                             const stagePresent = jobHasVideoForStage(job, stage.key);

@@ -132,15 +132,19 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const [existingCredential, existingUser, existingRegistryUser] = await Promise.all([
+      const [existingCredential, existingUser, existingVendor, existingRegistryUser] = await Promise.all([
         findDbCredentialByEmail(email).catch(() => null),
         prisma.user.findUnique({
           where: { email },
           select: { id: true },
         }),
+        (prisma as any).vendor.findUnique({
+          where: { email },
+          select: { id: true },
+        }),
         Promise.resolve(findRegisteredUserByEmail(email)),
       ]);
-      if (existingCredential || existingUser || existingRegistryUser) {
+      if (existingCredential || existingUser || existingVendor || existingRegistryUser) {
         return NextResponse.json(
           {
             error:
@@ -240,9 +244,27 @@ export async function POST(request: NextRequest) {
         message: "Vendor registration already approved.",
         vendorId: String(existingManagerMembership.vendorId),
         membershipId: String(existingManagerMembership.id),
-        requiresApproval: false,
-        approved: true,
+      requiresApproval: false,
+      approved: true,
       });
+    }
+
+    if (!existingManagerMembership && user.email) {
+      const existingVendor = await (prisma as any).vendor.findUnique({
+        where: { email: user.email },
+        select: { id: true },
+      });
+
+      if (existingVendor) {
+        return NextResponse.json(
+          {
+            error:
+              "A vendor profile with this email already exists. Sign in first or contact Reliance support to recover access.",
+            code: "VENDOR_EMAIL_ALREADY_EXISTS",
+          },
+          { status: 409 }
+        );
+      }
     }
 
     let vendorId: string;
@@ -358,6 +380,34 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Vendor registration error:", error);
+    const prismaCode = typeof error === "object" && error && "code" in error ? String((error as any).code) : "";
+    const prismaTarget =
+      typeof error === "object" && error && "meta" in error
+        ? String((error as any).meta?.target || "")
+        : "";
+
+    if (prismaCode === "P2002" && prismaTarget.toLowerCase().includes("email")) {
+      return NextResponse.json(
+        {
+          error:
+            "A vendor profile with this email already exists. Sign in first or contact Reliance support to recover access.",
+          code: "VENDOR_EMAIL_ALREADY_EXISTS",
+        },
+        { status: 409 }
+      );
+    }
+
+    if (prismaCode === "P1001") {
+      return NextResponse.json(
+        {
+          error:
+            "Reliance could not reach the vendor registration service right now. Please try again in a moment.",
+          code: "REGISTRATION_SERVICE_UNAVAILABLE",
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Registration failed. Please try again." },
       { status: 500 }

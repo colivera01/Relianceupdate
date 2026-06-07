@@ -3,9 +3,9 @@ export const VENDOR_JOB_VIDEO_STAGES = ["INTRO", "IN_PROGRESS", "COMPLETED"] as 
 export type VendorJobVideoStage = (typeof VENDOR_JOB_VIDEO_STAGES)[number];
 
 export const VENDOR_JOB_VIDEO_STAGE_LABELS: Record<VendorJobVideoStage, string> = {
-  INTRO: "Intro",
-  IN_PROGRESS: "In Progress",
-  COMPLETED: "Completed",
+  INTRO: "Before Service",
+  IN_PROGRESS: "During Service",
+  COMPLETED: "Completed Service",
 };
 
 export function isVendorJobVideoStage(value: string | null | undefined): value is VendorJobVideoStage {

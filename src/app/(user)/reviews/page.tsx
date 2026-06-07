@@ -4,9 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
+import { TrustScoreEducationCard } from '@/components/guidance/TrustScoreEducationCard';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import { getClientSessionHeaders } from '@/lib/client-session';
+import { tutorialGuides } from '@/lib/user-guidance';
 
 type PendingReviewItem = {
   bookingId: string;
@@ -266,6 +270,13 @@ export default function ReviewsPage() {
         </div>
       </header>
 
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="flex-1">
+          <TrustScoreEducationCard surface="dark" />
+        </div>
+        <TutorialEntryPoint guide={tutorialGuides.reviewHub} surface="dark" className="self-start" />
+      </div>
+
       <div className="flex items-center justify-end">
         <Button variant="outline" onClick={() => void loadReviews()} disabled={loading || authLoading}>
           Refresh
@@ -338,6 +349,17 @@ export default function ReviewsPage() {
                   the service video is pending approval, not customer-visible, or still unavailable.
                 </p>
               </div>
+              <GuidanceCallout
+                title="Why some completed bookings still are not reviewable"
+                description="Reliance opens the review flow only after an approved completed-stage customer-visible service video exists for that booking."
+                bullets={[
+                  'Completed work can still be waiting on service-video approval.',
+                  'A video can exist without being customer-visible yet.',
+                  'Once the approved completed-stage video is available, this section moves the booking into Ready to Review.',
+                ]}
+                tone="amber"
+                className="mb-4"
+              />
               {data.awaiting.map((item) => (
                 <div
                   key={item.bookingId}

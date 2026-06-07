@@ -4,10 +4,30 @@ export type ServiceTemplate = {
 };
 
 export const SERVICE_TEMPLATES: Record<string, ServiceTemplate[]> = {
+  Adjuster: [
+    { name: 'Property Damage Inspection', defaultDuration: 90 },
+    { name: 'Claim Documentation Review', defaultDuration: 75 },
+    { name: 'Settlement Support Consultation', defaultDuration: 60 },
+  ],
+  'Body Shop': [
+    { name: 'Collision Repair Estimate', defaultDuration: 60 },
+    { name: 'Paint Repair', defaultDuration: 120 },
+    { name: 'Dent Removal', defaultDuration: 90 },
+  ],
   Cleaning: [
     { name: 'Deep Cleaning', defaultDuration: 180 },
     { name: 'Standard Cleaning', defaultDuration: 120 },
     { name: 'Move-in/Move-out Cleaning', defaultDuration: 240 },
+  ],
+  'Car Wash': [
+    { name: 'Exterior Wash', defaultDuration: 30 },
+    { name: 'Full Interior Cleaning', defaultDuration: 45 },
+    { name: 'Wax and Protect', defaultDuration: 60 },
+  ],
+  Dealership: [
+    { name: 'Vehicle Purchase Consultation', defaultDuration: 60 },
+    { name: 'Trade-In Appraisal', defaultDuration: 45 },
+    { name: 'Finance Application Support', defaultDuration: 50 },
   ],
   Barber: [
     { name: 'Haircut', defaultDuration: 30 },
@@ -23,6 +43,11 @@ export const SERVICE_TEMPLATES: Record<string, ServiceTemplate[]> = {
     { name: 'Outlet Installation', defaultDuration: 60 },
     { name: 'Panel Inspection', defaultDuration: 90 },
     { name: 'Lighting Installation', defaultDuration: 75 },
+  ],
+  'Electronic Device Repair': [
+    { name: 'Screen Replacement', defaultDuration: 60 },
+    { name: 'Battery Replacement', defaultDuration: 45 },
+    { name: 'Diagnostic Service', defaultDuration: 30 },
   ],
   Landscaping: [
     { name: 'Lawn Maintenance', defaultDuration: 60 },

@@ -7,11 +7,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { getServiceTemplatesForCategory, SERVICE_TEMPLATES } from '@/config/service-templates';
+import { getServiceTemplatesForCategory } from '@/config/service-templates';
 import { useAuth } from '@/contexts/AuthContext';
+import { tutorialGuides } from '@/lib/user-guidance';
+import { getTemplateServiceDefaultDetail } from '@/lib/register-flow';
 
 const serviceCatalog = [
   'Automotive Repair',
@@ -62,7 +65,7 @@ export default function VendorRegisterPage() {
   const [zipCode, setZipCode] = useState('');
   const [primaryServiceCategory, setPrimaryServiceCategory] = useState('');
   const [selectedTemplateServices, setSelectedTemplateServices] = useState<
-    Array<{ templateKey: string; name: string; defaultDuration: number; price?: number; description?: string; source?: string }>
+    Array<{ templateKey: string; name: string; defaultDuration?: number; price?: number; description?: string; source?: string }>
   >([]);
   const [customServices, setCustomServices] = useState<CustomServiceDraft[]>([]);
   const [customServiceError, setCustomServiceError] = useState('');
@@ -195,6 +198,9 @@ export default function VendorRegisterPage() {
             <CardTitle className="text-3xl">Start vendor onboarding</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-white/72">
+            <div className="flex justify-end">
+              <TutorialEntryPoint guide={tutorialGuides.vendorProfileSetup} surface="dark" />
+            </div>
             <p>
               This page is for signed-in users who are adding a vendor profile to an existing Reliance account.
               If you are brand new to Reliance, create your vendor account first.
@@ -227,6 +233,9 @@ export default function VendorRegisterPage() {
             <CardTitle className="text-3xl">Vendor access already exists</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-white/72">
+            <div className="flex justify-end">
+              <TutorialEntryPoint guide={tutorialGuides.vendorProfileSetup} surface="dark" />
+            </div>
             <p>
               This account already has vendor access or a vendor application in progress. Continue in the vendor dashboard instead of starting a duplicate request.
             </p>
@@ -246,6 +255,9 @@ export default function VendorRegisterPage() {
           <CardTitle className="text-3xl">Continue vendor setup</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex justify-end">
+            <TutorialEntryPoint guide={tutorialGuides.vendorProfileSetup} surface="dark" />
+          </div>
           {error && (
             <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
               {error}
@@ -324,7 +336,7 @@ export default function VendorRegisterPage() {
                   }}
                 >
                   <option value="">Select a primary service category</option>
-                  {Object.keys(SERVICE_TEMPLATES).map((category) => (
+                  {serviceCatalog.map((category) => (
                     <option key={category} value={category}>{category}</option>
                   ))}
                 </select>
@@ -359,26 +371,82 @@ export default function VendorRegisterPage() {
                             {template.name} ({template.defaultDuration} min)
                           </label>
                           {selected ? (
-                            <Input
-                              value={selectedService?.name || template.name}
-                              onChange={(e) => {
-                                const nextName = e.target.value;
-                                setSelectedTemplateServices((prev) =>
-                                  prev.map((item) =>
-                                    item.templateKey === templateKey
-                                      ? { ...item, name: nextName }
-                                      : item
-                                  )
-                                );
-                              }}
-                              placeholder="Edit service name"
-                              className="mt-2 border-white/12 bg-slate-950/60 text-white"
-                            />
+                            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                              <Input
+                                value={selectedService?.name || template.name}
+                                onChange={(e) => {
+                                  const nextName = e.target.value;
+                                  setSelectedTemplateServices((prev) =>
+                                    prev.map((item) =>
+                                      item.templateKey === templateKey
+                                        ? { ...item, name: nextName }
+                                        : item
+                                    )
+                                  );
+                                }}
+                                placeholder="Edit service name"
+                                className="border-white/12 bg-slate-950/60 text-white"
+                              />
+                              <Input
+                                type="number"
+                                min="1"
+                                value={selectedService?.defaultDuration ?? getTemplateServiceDefaultDetail(primaryServiceCategory, template.name).defaultDuration}
+                                onChange={(e) => {
+                                  const nextDuration = e.target.value ? Number(e.target.value) : undefined;
+                                  setSelectedTemplateServices((prev) =>
+                                    prev.map((item) =>
+                                      item.templateKey === templateKey
+                                        ? { ...item, defaultDuration: nextDuration }
+                                        : item
+                                    )
+                                  );
+                                }}
+                                placeholder="Duration (minutes)"
+                                className="border-white/12 bg-slate-950/60 text-white"
+                              />
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={selectedService?.price ?? ''}
+                                onChange={(e) => {
+                                  const nextPrice = e.target.value ? Number(e.target.value) : undefined;
+                                  setSelectedTemplateServices((prev) =>
+                                    prev.map((item) =>
+                                      item.templateKey === templateKey
+                                        ? { ...item, price: nextPrice }
+                                        : item
+                                    )
+                                  );
+                                }}
+                                placeholder="Price"
+                                className="border-white/12 bg-slate-950/60 text-white"
+                              />
+                              <Input
+                                value={selectedService?.description || ''}
+                                onChange={(e) => {
+                                  const nextDescription = e.target.value;
+                                  setSelectedTemplateServices((prev) =>
+                                    prev.map((item) =>
+                                      item.templateKey === templateKey
+                                        ? { ...item, description: nextDescription }
+                                        : item
+                                    )
+                                  );
+                                }}
+                                placeholder="Customer-facing description"
+                                className="border-white/12 bg-slate-950/60 text-white"
+                              />
+                            </div>
                           ) : null}
                         </div>
                       );
                     })}
                   </div>
+                ) : primaryServiceCategory ? (
+                  <p className="text-xs text-amber-200">
+                    Starter templates are not configured for this category yet. Add your services below so onboarding can still continue.
+                  </p>
                 ) : (
                   <p className="text-xs text-white/48">Select a primary service category to load templates.</p>
                 )}

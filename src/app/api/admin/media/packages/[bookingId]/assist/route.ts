@@ -135,7 +135,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         {
           success: false,
           error: "Incomplete package",
-          message: "Package must have Intro, In Progress, and Completed stages",
+          message: "Package must have Before Service, During Service, and Completed Service stages",
         },
         { status: 422 }
       );

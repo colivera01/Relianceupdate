@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { getAdminRequestHeaders, getCurrentAdminActor } from '@/lib/admin-client';
 import {
   Dialog,
@@ -15,6 +17,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { CheckCircle, XCircle, Eye, Clock, AlertCircle, Building, Phone, Mail, MapPin, Calendar, Users, Award } from 'lucide-react';
+import { tutorialGuides } from '@/lib/user-guidance';
 
 interface PendingVendor {
   id: string;
@@ -327,6 +330,7 @@ export default function ApprovalQueuePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <TutorialEntryPoint guide={tutorialGuides.adminVendorApproval} surface="light" />
           <Badge variant="outline" className="text-sm">
             {pendingVendors.length} Pending
           </Badge>
@@ -335,6 +339,17 @@ export default function ApprovalQueuePage() {
           </Badge>
         </div>
       </div>
+
+      <GuidanceCallout
+        title="What approval does and does not do"
+        description="Approving the vendor account unlocks vendor access, but it does not automatically publish the vendor listing or any service drafts."
+        bullets={[
+          'Approve when the vendor application is valid and complete enough for access.',
+          'Reject when the vendor needs to correct the application before access should be granted.',
+          'Use Publish Management later to control public vendor listing and service visibility.',
+        ]}
+        tone="blue"
+      />
 
       {/* Filters and Search */}
       <Card>

@@ -244,8 +244,8 @@ export default function AdminDashboardPage() {
         </h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
           Launch-facing control surface for vendor approvals, promoted listings, moderation,
-          AI activity, trust review, and audit visibility. The workflows stay the same, but the
-          presentation now matches the premium trust-marketplace language on the public side.
+          AI activity, trust review, and audit visibility. The workflows stay the same, while this
+          overview keeps public trust signals and internal launch controls in one place.
         </p>
       </header>
 

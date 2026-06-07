@@ -9,6 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
+import {
+  buildSelectedTemplateServices,
+  createInitialRegisterFormData,
+  getRegisterFormDataForRoleSwitch,
+  getTemplateServiceDefaultDetail,
+  type TemplateServiceDetailDraft,
+} from '@/lib/register-flow';
 import {
   appendAuthNext,
   getAuthEntryBackHref,
@@ -16,7 +24,8 @@ import {
   getAuthEntryDescription,
   sanitizeAuthNextPath,
 } from '@/lib/auth-next';
-import { 
+import { tutorialGuides } from '@/lib/user-guidance';
+import {
   User, 
   Shield, 
   ArrowLeft, 
@@ -33,7 +42,7 @@ import {
   Info,
   X
 } from 'lucide-react';
-import { getServiceTemplatesForCategory as getConfiguredTemplates } from '@/config/service-templates';
+import { getServiceTemplatesForCategory } from '@/config/service-templates';
 
 // reCAPTCHA Configuration - Update this single location if site key changes
 const RECAPTCHA_SITE_KEY = '6LdAapYrAAAAAACfyJlrW40cSZBS7mm_W8r3Mjkiw';
@@ -812,11 +821,16 @@ const serviceTypesByCategory: { [key: string]: string[] } = {
 
 // Specializations by category
 const specializationsByCategory: { [key: string]: string[] } = {
+  'Adjuster': ['Property Claims', 'Auto Claims', 'Liability Claims', 'Public Adjusting', 'Catastrophe Response', 'Appraisal Support'],
   'Automotive Repair': ['German Cars', 'Japanese Cars', 'American Cars', 'Hybrid/Electric', 'Classic Cars', 'Performance Tuning', 'Diesel Engines'],
   'Automotive Detailing': ['Luxury Vehicles', 'Classic Cars', 'Motorcycles', 'Boats', 'RVs', 'Commercial Vehicles'],
   'Barber': ['Classic Cuts', 'Modern Styles', 'Beard Specialist', 'Hair Color Specialist', 'Kids Cuts', 'Senior Cuts'],
+  'Body Shop': ['Collision Repair', 'Paint Matching', 'Dent Removal', 'Frame Straightening', 'Insurance Repair', 'Bumper Repair'],
+  'Car Wash': ['Exterior Wash', 'Interior Cleaning', 'Mobile Service', 'Fleet Service', 'Wax and Protect', 'Ceramic Coating'],
   'Contractors': ['Kitchen Specialist', 'Bathroom Specialist', 'Outdoor Living', 'Historic Restoration', 'Green Building', 'Accessibility'],
+  'Dealership': ['New Vehicles', 'Used Vehicles', 'Trade-In Appraisals', 'Finance Support', 'Commercial Sales', 'Service Department'],
   'Electrician': ['Residential', 'Commercial', 'Industrial', 'Emergency Services', 'Smart Home', 'Solar Installation'],
+  'Electronic Device Repair': ['Phone Repair', 'Tablet Repair', 'Laptop Repair', 'Screen Replacement', 'Battery Service', 'Data Recovery'],
   'HVAC Heating and Air Conditioning': ['Residential', 'Commercial', 'Industrial', 'Heat Pumps', 'Geothermal', 'Ductless Systems'],
   'Home cleaners': ['Residential', 'Commercial', 'Eco-friendly', 'Post-construction', 'Move-in/Move-out', 'Regular Maintenance'],
   'Hair/Nail Salon': ['Hair Color', 'Hair Extensions', 'Nail Art', 'Gel Manicures', 'Acrylic Nails', 'Hair Treatments'],
@@ -837,7 +851,7 @@ const specializationsByCategory: { [key: string]: string[] } = {
 
 // Helper functions
 const getServiceTypesForCategory = (category: string) => {
-  const configured = getConfiguredTemplates(category).map((t) => t.name);
+  const configured = getServiceTemplatesForCategory(category).map((template) => template.name);
   if (configured.length > 0) return configured;
   return serviceTypesByCategory[category] || [];
 };
@@ -912,6 +926,7 @@ function RegisterPageInner() {
   const [recaptchaToken, setRecaptchaToken] = useState('');
   const [otherBusinessType, setOtherBusinessType] = useState('');
   const [serviceTypeCustomNames, setServiceTypeCustomNames] = useState<Record<string, string>>({});
+  const [serviceTypeDetails, setServiceTypeDetails] = useState<Record<string, TemplateServiceDetailDraft>>({});
   const [customServices, setCustomServices] = useState<CustomServiceDraft[]>([]);
   const [customServicesError, setCustomServicesError] = useState('');
   const registerIntroCopy =
@@ -925,40 +940,7 @@ function RegisterPageInner() {
   const [selectedCityIndex, setSelectedCityIndex] = useState(-1);
 
   // Form data state
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    bio: '',
-    password: '',
-    confirmPassword: '',
-    // Vendor-specific fields
-    businessName: '',
-    businessType: '',
-    category: '',
-    businessBio: '',
-    foundedYear: '',
-    totalEmployees: '',
-    yearsInBusiness: '',
-    responseTime: '',
-    serviceDescription: '',
-    serviceTypes: [] as string[],
-    specializations: [] as string[],
-    serviceAreas: [] as string[],
-    profilePhoto: '',
-    insuranceProvider: '',
-    insuranceExpiry: '',
-    licenseNumber: '',
-    insuranceStatus: false,
-    bondingStatus: false,
-    website: '',
-    emergencyContact: ''
-  });
+  const [formData, setFormData] = useState(createInitialRegisterFormData);
   const yearsInBusinessPreview = useMemo(() => {
     const foundedYear = Number.parseInt(String(formData.foundedYear || '').trim(), 10);
     const currentYear = new Date().getFullYear();
@@ -967,6 +949,14 @@ function RegisterPageInner() {
     }
     return String(Math.max(0, currentYear - foundedYear));
   }, [formData.foundedYear]);
+  const availableServiceTypes = useMemo(
+    () => (formData.category ? getServiceTypesForCategory(formData.category) : []),
+    [formData.category]
+  );
+  const availableSpecializations = useMemo(
+    () => (formData.category ? getSpecializationsForCategory(formData.category) : []),
+    [formData.category]
+  );
 
   // Error state
   const [errors, setErrors] = useState<{[key: string]: string}>({});
@@ -993,6 +983,30 @@ function RegisterPageInner() {
       setUserType(type);
     }
   }, [type]);
+
+  const switchUserType = (nextUserType: 'user' | 'vendor') => {
+    if (nextUserType === userType) return;
+
+    setUserType(nextUserType);
+    setStep(1);
+    setSubmitError('');
+    setSubmitSuccess('');
+    setErrors({});
+    setRecaptchaToken('');
+    setOtherBusinessType('');
+    setServiceTypeCustomNames({});
+    setServiceTypeDetails({});
+    setCustomServices([]);
+    setCustomServicesError('');
+    setCitySuggestions([]);
+    setShowCitySuggestions(false);
+    setSelectedCityIndex(-1);
+    setFormData((current) => getRegisterFormDataForRoleSwitch(current, nextUserType));
+
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    params.set('type', nextUserType);
+    router.replace(`/auth/register?${params.toString()}`, { scroll: false });
+  };
 
   // Password strength calculation
   useEffect(() => {
@@ -1194,14 +1208,12 @@ function RegisterPageInner() {
       }
 
       // Prepare registration data with proper type conversions
-      const selectedTemplateServices = Array.isArray(formData.serviceTypes)
-        ? formData.serviceTypes
-            .map((serviceType) => {
-              const name = String(serviceTypeCustomNames[serviceType] || serviceType).trim();
-              return name ? { name, source: 'template' } : null;
-            })
-            .filter(Boolean)
-        : [];
+      const selectedTemplateServices = buildSelectedTemplateServices({
+        category: formData.category,
+        serviceTypes: Array.isArray(formData.serviceTypes) ? formData.serviceTypes : [],
+        nameOverrides: serviceTypeCustomNames,
+        detailDrafts: serviceTypeDetails,
+      });
       const selectedCustomServices = customServices
         .map((service) => ({
           name: service.name.trim(),
@@ -1305,8 +1317,6 @@ function RegisterPageInner() {
           }
         } else if (response.status === 429) {
           setSubmitError('Too many registration attempts. Please wait a moment and try again.');
-        } else if (response.status === 500) {
-          setSubmitError('Server error. Please try again later.');
         } else {
           setSubmitError(data.error || 'Registration failed. Please try again.');
         }
@@ -1616,42 +1626,42 @@ function RegisterPageInner() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] py-12">
+      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="text-center mb-8">
-          <Link href={entryBackHref} className="inline-flex items-center text-blue-600 hover:text-blue-800 mb-4">
+        <div className="mb-8 rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.24),transparent_34%),linear-gradient(135deg,rgba(2,6,23,0.98),rgba(17,24,39,0.94))] px-8 py-9 text-center text-white shadow-[0_32px_90px_rgba(2,6,23,0.36)]">
+          <Link href={entryBackHref} className="mb-4 inline-flex items-center text-blue-200 transition hover:text-white">
             <ArrowLeft className="h-4 w-4 mr-2" />
             {entryBackLabel}
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="mb-2 text-3xl font-bold text-white sm:text-4xl">
             Join Reliance
           </h1>
-          <p className="text-gray-600">
+          <p className="mx-auto max-w-2xl text-sm text-blue-100/86 sm:text-base">
             {registerIntroCopy}
           </p>
         </div>
 
         {/* User Type Toggle */}
         <div className="flex justify-center mb-8">
-          <div className="bg-white rounded-lg p-1 shadow-lg">
+          <div className="rounded-full border border-white/10 bg-slate-950/80 p-1 shadow-[0_18px_45px_rgba(2,6,23,0.32)] backdrop-blur">
             <button
-              onClick={() => setUserType('user')}
-              className={`px-6 py-3 rounded-md font-medium transition-all ${
+              onClick={() => switchUserType('user')}
+              className={`rounded-full px-6 py-3 font-medium transition-all ${
                 userType === 'user'
-                  ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[linear-gradient(135deg,#2563eb,#1d4ed8)] text-white shadow-lg'
+                  : 'text-slate-300 hover:text-white'
               }`}
             >
               <UserIcon className="inline h-4 w-4 mr-2" />
               I Need Services
             </button>
             <button
-              onClick={() => setUserType('vendor')}
-              className={`px-6 py-3 rounded-md font-medium transition-all ${
+              onClick={() => switchUserType('vendor')}
+              className={`rounded-full px-6 py-3 font-medium transition-all ${
                 userType === 'vendor'
-                  ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[linear-gradient(135deg,#2563eb,#1d4ed8)] text-white shadow-lg'
+                  : 'text-slate-300 hover:text-white'
               }`}
             >
               <Shield className="inline h-4 w-4 mr-2" />
@@ -1662,7 +1672,7 @@ function RegisterPageInner() {
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Registration Form */}
-          <Card className="shadow-xl">
+          <Card className="reliance-light-card rounded-[30px] border border-slate-200 shadow-xl">
             <CardHeader>
               <div className="flex items-center space-x-3">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -1685,6 +1695,12 @@ function RegisterPageInner() {
               </div>
             </CardHeader>
             <CardContent>
+              <div className="mb-5 flex justify-end">
+                <TutorialEntryPoint
+                  guide={userType === 'vendor' ? tutorialGuides.vendorRegistration : tutorialGuides.customerRegistration}
+                  surface="light"
+                />
+              </div>
                              <form onSubmit={handleSubmit} className="space-y-4">
                  {/* Hidden reCAPTCHA token field */}
                  <input 
@@ -2222,7 +2238,9 @@ function RegisterPageInner() {
                           onValueChange={(value) => {
                             handleInputChange('category', value);
                             handleInputChange('serviceTypes', []);
+                            handleInputChange('specializations', []);
                             setServiceTypeCustomNames({});
+                            setServiceTypeDetails({});
                             setCustomServices([]);
                             setCustomServicesError('');
                           }}
@@ -2257,29 +2275,50 @@ function RegisterPageInner() {
                         }
                       </p>
                       {formData.category ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
-                          {getServiceTypesForCategory(formData.category).map((serviceType: string) => (
-                            <div key={serviceType} className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                id={serviceType}
-                                checked={Array.isArray(formData.serviceTypes) ? formData.serviceTypes.includes(serviceType) : false}
-                                onChange={(e) => {
-                                  const currentTypes = Array.isArray(formData.serviceTypes) ? formData.serviceTypes : [];
-                                  if (e.target.checked) {
-                                    handleInputChange('serviceTypes', [...currentTypes, serviceType]);
-                                  } else {
-                                    handleInputChange('serviceTypes', currentTypes.filter(type => type !== serviceType));
-                                  }
-                                }}
-                                className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
-                              <label htmlFor={serviceType} className="text-sm text-gray-700 cursor-pointer">
-                                {serviceTypeCustomNames[serviceType] || serviceType}
-                              </label>
-                            </div>
-                          ))}
-                        </div>
+                        availableServiceTypes.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                            {availableServiceTypes.map((serviceType: string) => (
+                              <div key={serviceType} className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={serviceType}
+                                  checked={Array.isArray(formData.serviceTypes) ? formData.serviceTypes.includes(serviceType) : false}
+                                  onChange={(e) => {
+                                    const currentTypes = Array.isArray(formData.serviceTypes) ? formData.serviceTypes : [];
+                                    if (e.target.checked) {
+                                      handleInputChange('serviceTypes', [...currentTypes, serviceType]);
+                                      setServiceTypeDetails((prev) =>
+                                        prev[serviceType]
+                                          ? prev
+                                          : {
+                                              ...prev,
+                                              [serviceType]: getTemplateServiceDefaultDetail(formData.category, serviceType),
+                                            }
+                                      );
+                                    } else {
+                                      handleInputChange('serviceTypes', currentTypes.filter(type => type !== serviceType));
+                                      setServiceTypeDetails((prev) => {
+                                        const next = { ...prev };
+                                        delete next[serviceType];
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <label htmlFor={serviceType} className="text-sm text-gray-700 cursor-pointer">
+                                  {serviceTypeCustomNames[serviceType] || serviceType}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                            <p className="text-amber-800 text-sm">
+                              Starter service types are not configured yet for this category. You can still add your own services below.
+                            </p>
+                          </div>
+                        )
                       ) : (
                         <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
                           <p className="text-gray-500 text-sm">Please select a service category above to see available service types</p>
@@ -2288,20 +2327,67 @@ function RegisterPageInner() {
                       {Array.isArray(formData.serviceTypes) && formData.serviceTypes.length > 0 ? (
                         <div className="mt-3 space-y-2 rounded-lg border border-gray-200 p-3">
                           <p className="text-xs text-gray-600">
-                            Optional: rename selected templates before saving.
+                            Optional: rename selected templates and add estimated duration, pricing, or a customer-facing description before saving.
                           </p>
                           {formData.serviceTypes.map((serviceType) => (
-                            <div key={`rename-${serviceType}`} className="grid gap-1">
+                            <div key={`rename-${serviceType}`} className="rounded-lg border border-gray-200 p-3">
                               <Label className="text-xs text-gray-500">{serviceType}</Label>
-                              <Input
-                                value={serviceTypeCustomNames[serviceType] || serviceType}
-                                onChange={(e) =>
-                                  setServiceTypeCustomNames((prev) => ({
-                                    ...prev,
-                                    [serviceType]: e.target.value,
-                                  }))
-                                }
-                              />
+                              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                <Input
+                                  value={serviceTypeCustomNames[serviceType] || serviceType}
+                                  onChange={(e) =>
+                                    setServiceTypeCustomNames((prev) => ({
+                                      ...prev,
+                                      [serviceType]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Display name"
+                                />
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={serviceTypeDetails[serviceType]?.defaultDuration || ''}
+                                  onChange={(e) =>
+                                    setServiceTypeDetails((prev) => ({
+                                      ...prev,
+                                      [serviceType]: {
+                                        ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
+                                        defaultDuration: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Duration (minutes)"
+                                />
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={serviceTypeDetails[serviceType]?.price || ''}
+                                  onChange={(e) =>
+                                    setServiceTypeDetails((prev) => ({
+                                      ...prev,
+                                      [serviceType]: {
+                                        ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
+                                        price: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Price"
+                                />
+                                <Input
+                                  value={serviceTypeDetails[serviceType]?.description || ''}
+                                  onChange={(e) =>
+                                    setServiceTypeDetails((prev) => ({
+                                      ...prev,
+                                      [serviceType]: {
+                                        ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
+                                        description: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder="Customer-facing description"
+                                />
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -2516,6 +2602,55 @@ function RegisterPageInner() {
                       </div>
                     </div>
 
+                    {/* Specializations */}
+                    <div>
+                      <Label>Specializations</Label>
+                      <p className="text-sm text-gray-600 mb-3">
+                        {formData.category ? 
+                          `Select your ${formData.category.toLowerCase()} business specializations` : 
+                          'Select your primary service category first to see relevant specializations'
+                        }
+                      </p>
+                      {formData.category ? (
+                        availableSpecializations.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                            {availableSpecializations.map((specialization: string) => (
+                              <div key={specialization} className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id={specialization}
+                                  checked={Array.isArray(formData.specializations) ? formData.specializations.includes(specialization) : false}
+                                  onChange={(e) => {
+                                    const currentSpecs = Array.isArray(formData.specializations) ? formData.specializations : [];
+                                    if (e.target.checked) {
+                                      handleInputChange('specializations', [...currentSpecs, specialization]);
+                                    } else {
+                                      handleInputChange('specializations', currentSpecs.filter(spec => spec !== specialization));
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <label htmlFor={specialization} className="text-sm text-gray-700 cursor-pointer">
+                                  {specialization}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                            <p className="text-amber-800 text-sm">
+                              Starter specializations are not configured yet for this category. You can keep onboarding moving without selecting any here.
+                            </p>
+                          </div>
+                        )
+                      ) : (
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                          <p className="text-gray-500 text-sm">Please select a service category above to see available specializations</p>
+                        </div>
+                      )}
+                      <p className="text-sm text-gray-500 mt-2">Selected: {Array.isArray(formData.specializations) ? formData.specializations.length : 0} specializations</p>
+                    </div>
+
                     {/* Business Bio */}
                     <div>
                       <Label htmlFor="businessBio">Business Description *</Label>
@@ -2529,47 +2664,6 @@ function RegisterPageInner() {
                         required
                       />
                       <p className="text-sm text-gray-500 mt-1">This will be displayed on your service listings and profile page</p>
-                    </div>
-
-                    {/* Specializations */}
-                    <div>
-                      <Label>Specializations</Label>
-                      <p className="text-sm text-gray-600 mb-3">
-                        {formData.category ? 
-                          `Select your ${formData.category.toLowerCase()} business specializations` : 
-                          'Select your primary service category first to see relevant specializations'
-                        }
-                      </p>
-                      {formData.category ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
-                          {getSpecializationsForCategory(formData.category).map((specialization: string) => (
-                            <div key={specialization} className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                id={specialization}
-                                checked={Array.isArray(formData.specializations) ? formData.specializations.includes(specialization) : false}
-                                onChange={(e) => {
-                                  const currentSpecs = Array.isArray(formData.specializations) ? formData.specializations : [];
-                                  if (e.target.checked) {
-                                    handleInputChange('specializations', [...currentSpecs, specialization]);
-                                  } else {
-                                    handleInputChange('specializations', currentSpecs.filter(spec => spec !== specialization));
-                                  }
-                                }}
-                                className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
-                              <label htmlFor={specialization} className="text-sm text-gray-700 cursor-pointer">
-                                {specialization}
-                              </label>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                          <p className="text-gray-500 text-sm">Please select a service category above to see available specializations</p>
-                        </div>
-                      )}
-                      <p className="text-sm text-gray-500 mt-2">Selected: {Array.isArray(formData.specializations) ? formData.specializations.length : 0} specializations</p>
                     </div>
 
                     {/* Service Areas */}
@@ -2651,6 +2745,9 @@ function RegisterPageInner() {
                       <div>
                         <Label>Service Availability</Label>
                         <p className="text-sm text-gray-600 mb-3">Select when you're available to provide services</p>
+                        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                          Reliance currently records service days, emergency coverage, and 24/7 availability here. Daily operating hours are not part of the live booking model yet.
+                        </div>
                         
                         {/* Days of the Week */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -2771,7 +2868,7 @@ function RegisterPageInner() {
           </Card>
 
           {/* Benefits Card */}
-          <Card className="shadow-xl">
+          <Card className="reliance-light-card rounded-[30px] border border-slate-200 shadow-xl">
             <CardHeader>
               <CardTitle className="text-xl">
                 Why Join Reliance?

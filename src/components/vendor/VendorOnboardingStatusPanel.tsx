@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { getVendorNextRecommendedAction } from '@/lib/user-guidance';
 import type { VendorProfile } from '@/types/vendor';
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
 export default function VendorOnboardingStatusPanel({ profile, showActions = false }: Props) {
   const onboarding = profile.onboarding;
   if (!onboarding) return null;
+  const recommendedAction = getVendorNextRecommendedAction(onboarding);
 
   return (
     <section className="rounded-3xl border border-white/10 bg-slate-950/75 p-6 text-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
@@ -45,6 +47,26 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
           </Badge>
         </div>
       </div>
+
+      {recommendedAction ? (
+        <div className="mt-5 rounded-2xl border border-blue-400/25 bg-blue-500/10 p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-100/78">
+                Next recommended action
+              </p>
+              <p className="text-base font-semibold text-white">{recommendedAction.label}</p>
+              <p className="text-sm leading-6 text-white/72">{recommendedAction.detail}</p>
+            </div>
+            <Link
+              href={recommendedAction.href}
+              className="inline-flex items-center justify-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
+            >
+              Open next step
+            </Link>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {onboarding.checklist.map((item) => (

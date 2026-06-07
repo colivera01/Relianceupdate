@@ -2,6 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle, Calendar, Star, TrendingUp, Smartphone, Activity, Megaphone, BarChart3, HelpCircle } from 'lucide-react';
@@ -10,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
+import { tutorialGuides } from '@/lib/user-guidance';
 
 type PromotionPackageOption = {
   packageKey: string;
@@ -187,6 +189,9 @@ export default function VendorDashboard() {
     return (
       <div className={pageShellClass}>
         <div className={pageContentClass}>
+          <div className="flex justify-end">
+            <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="light" />
+          </div>
           {vendorProfile ? <VendorOnboardingStatusPanel profile={vendorProfile} showActions /> : null}
           <Card className="bg-white">
             <CardHeader>
@@ -455,16 +460,21 @@ export default function VendorDashboard() {
       <div className={pageContentClass}>
         {vendorProfile?.onboarding ? <VendorOnboardingStatusPanel profile={vendorProfile} /> : null}
         <section className="reliance-operator-hero mb-8 rounded-[32px] px-6 py-7">
-          <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-            Vendor command center
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+                Vendor command center
+              </div>
+              <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
+                Present verified work like a premium trust brand
+              </h1>
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
+                Track service videos, review customer ratings, monitor operational health, and request promoted
+                placement without changing how vendor workflows already behave.
+              </p>
+            </div>
+            <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="dark" className="self-start" />
           </div>
-          <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-            Present verified work like a premium trust brand
-          </h1>
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
-            Track service videos, review customer ratings, monitor operational health, and request promoted
-            placement without changing how vendor workflows already behave.
-          </p>
         </section>
 
         {/* 1) Command Bar */}

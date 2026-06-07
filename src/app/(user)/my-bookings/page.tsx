@@ -150,7 +150,21 @@ export default function MyBookingsPage() {
   }, [bookings]);
 
   const proofCandidates = useMemo(() => {
+    const now = new Date();
     return [...bookings]
+      .filter((booking) => {
+        const statusKey = normalizeBookingStatusKey(booking.status);
+        const { instant: scheduleInstant } = resolveBookingScheduleInstant(
+          booking.booking_date,
+          booking.booking_time,
+          booking.created_at
+        );
+        return (
+          isCompletedStatus(statusKey) ||
+          isArchivedStatus(statusKey) ||
+          bookingMatchesTab('needs_follow_up', statusKey, scheduleInstant, now)
+        );
+      })
       .sort((a, b) => {
         const aCompleted = isCompletedStatus(normalizeBookingStatusKey(a.status)) ? 1 : 0;
         const bCompleted = isCompletedStatus(normalizeBookingStatusKey(b.status)) ? 1 : 0;
@@ -334,7 +348,7 @@ export default function MyBookingsPage() {
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
                 Track scheduled services, review approved service videos or images, and follow each
-                booking inside the same premium trust-marketplace language as the homepage.
+                booking in one clear Reliance timeline.
               </p>
             </div>
           </div>
@@ -525,7 +539,7 @@ export default function MyBookingsPage() {
               const mediaButtonTitle = !vendorIdOk
                 ? 'Vendor information is required on this record before shared media can load.'
                 : mediaState?.loading
-                  ? 'Loading shared service videos...'
+                  ? 'Loading service videos...'
                   : undefined;
               const serviceDetailHref = booking.service.id ? `/service/${booking.service.id}` : null;
               const bookingProofHref = `/my-bookings/${booking.id}`;
@@ -538,6 +552,13 @@ export default function MyBookingsPage() {
                 statusKey === 'awaiting_review' ||
                 statusKey === 'awaiting review';
               const mediaLoaded = Boolean(mediaState?.loaded);
+              const showMediaCheckButton =
+                archivedRecord ||
+                completedRecord ||
+                activeTab === 'needs_follow_up' ||
+                proofLikelyReady ||
+                mediaLoaded ||
+                Boolean(mediaState?.error);
               const mediaTotal = mediaState?.total;
               const mediaButtonLabel = mediaState?.loading
                 ? 'Checking videos...'
@@ -804,18 +825,20 @@ export default function MyBookingsPage() {
                         Open Help Center
                       </Link>
                     ) : null}
-                    <button
-                      type="button"
-                      disabled={mediaButtonDisabled}
-                      title={mediaButtonTitle}
-                      onClick={() => {
-                        if (mediaButtonDisabled) return;
-                        void loadBookingMedia(booking.id);
-                      }}
-                      className="px-3 py-2 rounded border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {mediaButtonLabel}
-                    </button>
+                    {showMediaCheckButton ? (
+                      <button
+                        type="button"
+                        disabled={mediaButtonDisabled}
+                        title={mediaButtonTitle}
+                        onClick={() => {
+                          if (mediaButtonDisabled) return;
+                          void loadBookingMedia(booking.id);
+                        }}
+                        className="px-3 py-2 rounded border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {mediaButtonLabel}
+                      </button>
+                    ) : null}
                       {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
                         <Link
                           href={bookingProofHref}
@@ -828,8 +851,8 @@ export default function MyBookingsPage() {
                             : 'Open booking media'}
                       </Link>
                     ) : null}
-                    {mediaState?.loading ? (
-                      <span className="text-xs text-gray-500">Loading shared service videos...</span>
+                    {showMediaCheckButton && mediaState?.loading ? (
+                      <span className="text-xs text-gray-500">Loading service videos...</span>
                     ) : null}
                     {mediaLoaded && typeof mediaTotal === 'number' && mediaTotal > 0 ? (
                       <span className="text-xs font-medium text-green-800">

@@ -303,9 +303,9 @@ export default function UserDashboardPage() {
                 Welcome back, {profile.firstName} {profile.lastName}!
               </h2>
               <p className="text-white/72">Ready to discover amazing services?</p>
-              <p className="mt-1 text-sm text-white/58">Business profile options are available from Profile & Settings.</p>
+              <p className="mt-1 text-sm text-white/58">You can update your contact details anytime from Profile &amp; Settings.</p>
               {profileLoading ? (
-                <p className="mt-2 text-xs text-blue-200">Refreshing your saved profile details...</p>
+                <p className="mt-2 text-xs text-blue-200">Updating your saved profile details...</p>
               ) : null}
             </div>
           </div>
@@ -429,11 +429,11 @@ export default function UserDashboardPage() {
           Customer dashboard
         </div>
         <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-          Trust-first service discovery stays connected to your account
+          Your trusted service dashboard
         </h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
-          Follow bookings, review approved service videos, manage favorites, and move through customer flows
-          inside the same premium trust-marketplace language as the homepage.
+          Follow bookings, review approved service videos, manage favorites, and keep every customer step
+          in one clear Reliance experience.
         </p>
       </section>
 

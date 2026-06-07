@@ -470,7 +470,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           apiResponse(
             false,
             "COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE",
-            "Approve completion only after Intro, In Progress, and Completed videos are uploaded."
+            "Approve completion only after Before Service, During Service, and Completed Service videos are uploaded."
           ),
           { status: 409 }
         );
