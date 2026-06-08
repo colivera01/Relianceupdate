@@ -74,6 +74,17 @@ describe("trust-score-read shaping (public vs vendor vs admin separation)", () =
     expect(out.explanationDetails.overview).toContain("88%");
     expect(out.explanationDetails.coverageSummary).toContain("100%");
     expect(out.computedAt).toBe("2026-05-28T10:00:00.000Z");
+    expect(out.evidence).toMatchObject({
+      verifiedBookings: 10,
+      approvedServiceVideos: 8,
+      validatedDisputes: 1,
+    });
+    expect(out.presentation).toMatchObject({
+      maturityState: "established",
+      maturityLabel: "Established",
+      title: "Reliance Trust Score",
+      scoreDisplay: "88%",
+    });
 
     const c = out.components!;
     expect(c.workflowCompletion).toMatchObject({ pct: 100, numerator: 10, denominator: 10, weightPct: 30 });
@@ -95,6 +106,7 @@ describe("trust-score-read shaping (public vs vendor vs admin separation)", () =
     expect(out.computedAt).toBeNull();
     expect(out.explanation).toBe(TRUST_SCORE_PUBLIC_EXPLAINER);
     expect(out.explanationDetails.overview).toContain("has not recorded a current Trust Score snapshot");
+    expect(out.presentation.summary).toContain("More verified completed work is needed");
   });
 
   it("vendor payload adds improvement hints but still excludes admin internals", () => {

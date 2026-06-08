@@ -3766,13 +3766,22 @@ export default function VendorJobs() {
           <div>
             <h3 className="text-lg font-semibold mb-1">Welcome to Job Management</h3>
             <p className="text-blue-100 text-sm leading-relaxed">
-              Manage all your jobs efficiently. Click <strong>Create Job</strong> to add a new job and use the
-              <strong> Next Step</strong> button on each card to move work forward.
+              Completed jobs do more than close work orders. They power approved service videos,
+              future customer reviews, and the public proof that helps new customers trust your business.
+              Click <strong>Create Job</strong> to add a new job and use the <strong>Next Step</strong> button on each card to move work forward.
               Hover over any <span className="inline-flex align-text-bottom"><Info className="inline w-4 h-4" /></span>{' '}
               info icon for detailed help.
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm">
+        <p className="font-semibold text-blue-950">Why this page matters for growth</p>
+        <p className="mt-1 leading-6">
+          Finished jobs, approved Before Service, During Service, and Completed Service videos, and
+          review-ready bookings all strengthen the public trust signals customers see later.
+        </p>
       </div>
 
       <Dialog

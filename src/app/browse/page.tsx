@@ -8,11 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { TrustScoreEducationCard } from '@/components/guidance/TrustScoreEducationCard';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
+import { CustomerTrustSignalCard } from '@/components/public/CustomerTrustSignalCard';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
 import { Search, SlidersHorizontal, X, MapPin, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAuth } from '@/contexts/AuthContext';
+import { getCustomerReviewCopy } from '@/lib/customer-review-copy';
+import { getCustomerTrustScoreCopy } from '@/lib/customer-trust-score-copy';
 import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
 import { tutorialGuides } from '@/lib/user-guidance';
 import {
@@ -276,6 +279,8 @@ export default function PublicBrowsePage() {
   const pagination = data?.pagination;
   const totalPages = pagination?.totalPages || 0;
   const totalCount = pagination?.total || 0;
+  const categoryCardsLoading = categoriesLoading && categories.length === 0;
+  const browseResultsLoading = isLoading && results.length === 0;
 
   const handleSearchSubmit = () => {
     setPage(1);
@@ -394,13 +399,13 @@ export default function PublicBrowsePage() {
           <div className="grid gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-end">
             <div className="max-w-2xl">
               <div className="reliance-kicker border border-white/10 bg-white/10 text-white/76">
-                Vendor Discovery
+                Browse Services
               </div>
               <h1 className="mt-6 font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl">
-                Browse trusted services with a <span className="text-[var(--reliance-blue-soft)]">clearer signal stack</span>
+                Browse services with reviews, videos, and <span className="text-[var(--reliance-blue-soft)]">clear provider details</span>
               </h1>
               <p className="mt-5 max-w-xl text-lg leading-8 text-white/72">
-                Compare customer reviews, public service videos, and disclosure-friendly promoted placements without losing the organic marketplace underneath.
+                Search public services, compare providers, and see available trust signals before you decide who to contact or book.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 {['Customer Reviews', 'Service Videos', 'Clear Promoted Labels'].map((label) => (
@@ -416,19 +421,19 @@ export default function PublicBrowsePage() {
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Live inventory</div>
-                <div className="mt-3 text-3xl font-semibold">{isLoading ? '...' : totalCount}</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Public services currently discoverable through Reliance Browse.</p>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Available now</div>
+                <div className="mt-3 text-3xl font-semibold">{browseResultsLoading ? 'Loading' : totalCount}</div>
+                <p className="mt-2 text-sm leading-6 text-white/68">Public services customers can browse right now.</p>
               </div>
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Category coverage</div>
-                <div className="mt-3 text-3xl font-semibold">{categoriesLoading ? '...' : categories.length}</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Live category groups derived from public inventory, not static marketing labels.</p>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Categories</div>
+                <div className="mt-3 text-3xl font-semibold">{categoryCardsLoading ? 'Loading' : categories.length}</div>
+                <p className="mt-2 text-sm leading-6 text-white/68">Service groups with live public listings.</p>
               </div>
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Discovery mode</div>
-                <div className="mt-3 text-lg font-semibold">Trust-first</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Promoted listings stay separated and clearly labeled while organic results continue below.</p>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">What you can compare</div>
+                <div className="mt-3 text-lg font-semibold">Reviews, videos, and provider details</div>
+                <p className="mt-2 text-sm leading-6 text-white/68">Promoted listings stay clearly labeled while regular results continue below.</p>
               </div>
             </div>
           </div>
@@ -569,16 +574,16 @@ export default function PublicBrowsePage() {
                     ? 'Showing providers near your current location'
                     : savedLocationAssistActive
                     ? 'Showing results near your saved address'
-                    : 'Location-aware browsing is available when ready'}
+                    : 'See nearby services when location is available'}
                 </h2>
                 <p className="mt-1 text-sm text-gray-600">
                   {browserLocationActive
                     ? 'Reliance is using your current location for this browse session only.'
                     : savedLocationAssistActive
-                    ? 'Reliance is using your saved service area preference to calculate real nearby distances for vendors with stored coordinates.'
+                    ? 'Reliance is using your saved address to calculate nearby distances for providers with stored coordinates.'
                     : savedLocationChecked
-                    ? 'You can browse everything today. Save an address and enable your saved-address preference to see real nearby distances when providers have coordinates.'
-                    : 'Checking whether saved-location assistance is available for this session.'}
+                    ? 'You can browse everything today. Add your address or use your current location to see real nearby distances when providers have coordinates.'
+                    : 'Checking whether a saved address is available for this session.'}
                 </p>
                 {browserLocationMessage ? (
                   <p className="mt-2 text-sm font-medium text-amber-700">{browserLocationMessage}</p>
@@ -619,7 +624,7 @@ export default function PublicBrowsePage() {
                   {browserLocationLoading ? 'Checking location...' : 'Use my location'}
                 </Button>
                 <Link href={isAuthenticated ? "/profile-settings" : "/auth/register?type=user"} className="text-sm font-semibold text-blue-700 hover:text-blue-800">
-                  {isAuthenticated ? 'Manage saved address' : 'Save an address later'}
+                  {isAuthenticated ? 'Manage saved address' : 'Add an address later'}
                 </Link>
               </div>
             ) : (
@@ -700,11 +705,16 @@ export default function PublicBrowsePage() {
               Live category counts
             </span>
           </div>
-          {categoriesLoading ? (
+          {categoryCardsLoading ? (
             <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-4 h-24" />
+                <Card key={i} className="rounded-[26px] border-slate-200 bg-white">
+                  <CardContent className="p-4 h-24 flex flex-col justify-center">
+                    <div className="text-sm font-semibold text-slate-900">Loading live category counts</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-600">
+                      Reliance is checking which public services are live in each category.
+                    </div>
+                  </CardContent>
                 </Card>
               ))}
             </div>
@@ -722,7 +732,7 @@ export default function PublicBrowsePage() {
                 const decoration =
                   CATEGORY_DECORATION[category.label.toLowerCase()] ||
                   CATEGORY_DECORATION[category.key] ||
-                  { icon: '•', description: 'Services still waiting for a category label' };
+                  { icon: '*', description: 'More services are still being grouped here' };
                 const decorationDescription =
                   category.key === 'plumbing' || category.label.toLowerCase() === 'plumbing'
                     ? 'Drain, leak, and fixture services'
@@ -760,7 +770,7 @@ export default function PublicBrowsePage() {
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <h2 className="font-display text-3xl font-semibold text-slate-950">Trusted Services</h2>
-              <p className="text-sm text-gray-600">Compare vendors by reviews, service videos, and service fit.</p>
+              <p className="text-sm text-gray-600">Compare services by reviews, public service videos, and fit.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <TutorialEntryPoint guide={tutorialGuides.browseMarketplace} surface="light" />
@@ -772,17 +782,19 @@ export default function PublicBrowsePage() {
 
           <TrustScoreEducationCard className="mb-6" />
 
-          {isLoading ? (
+          {browseResultsLoading ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Card key={i} className="animate-pulse">
-                  <div className="h-48 bg-gray-200 rounded-t-lg" />
+                <Card key={i} className="rounded-[28px] border-slate-200 bg-white">
+                  <div className="h-48 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)] rounded-t-[28px]" />
                   <CardContent className="p-4">
-                    <div className="h-4 bg-gray-200 rounded mb-3" />
-                    <div className="h-3 bg-gray-200 rounded mb-2" />
-                    <div className="h-3 bg-gray-200 rounded mb-4 w-4/5" />
-                    <div className="h-3 bg-gray-200 rounded mb-2 w-1/2" />
-                    <div className="h-9 bg-gray-200 rounded mt-4" />
+                    <div className="text-sm font-semibold text-slate-900">Loading public services</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-600">
+                      Reliance is refreshing live service cards, customer reviews, and public service video availability.
+                    </div>
+                    <div className="mt-3 text-xs font-medium text-blue-700">
+                      The marketplace is active. Results are still loading.
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -812,7 +824,18 @@ export default function PublicBrowsePage() {
             </div>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {results.map((item) => (
+              {results.map((item) => {
+                const trustCopy = getCustomerTrustScoreCopy({
+                  hasPublicMedia: item.publicListing.hasPublicMedia,
+                  reviewCount: item.reviewCount,
+                  trustScore: item.trustScore,
+                });
+                const reviewCopy = getCustomerReviewCopy({
+                  rating: item.rating,
+                  reviewCount: item.reviewCount,
+                });
+
+                return (
                 <Card key={item.serviceId} className="h-full flex-col overflow-hidden rounded-[28px] border-slate-200 bg-white transition-all hover:-translate-y-1 hover:shadow-[0_26px_70px_rgba(7,16,38,0.14)]">
                   <div className="relative">
                     <PublicMediaPreview
@@ -820,13 +843,14 @@ export default function PublicBrowsePage() {
                       type={item.previewMediaType}
                       alt={item.serviceName}
                       className="w-full h-48 object-cover rounded-t-lg"
-                      videoLabel="Video preview available"
+                      emptyLabel="No public service video yet"
+                      videoLabel="Service video available"
                     />
                     <div className="absolute left-3 top-3">
                       {item.publicListing.hasPublicMedia ? (
-                        <Badge className="bg-blue-600 text-white hover:bg-blue-600">Video available</Badge>
+                        <Badge className="bg-blue-600 text-white hover:bg-blue-600">Public service video</Badge>
                       ) : (
-                        <Badge className="bg-white/90 text-gray-700 hover:bg-white">Verified listing</Badge>
+                        <Badge className="bg-white/90 text-gray-700 hover:bg-white">Public listing</Badge>
                       )}
                     </div>
                   </div>
@@ -862,37 +886,20 @@ export default function PublicBrowsePage() {
 
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <div className="rounded-2xl bg-blue-50 px-3 py-2 text-blue-900">
-                        <div className="font-semibold">
-                          {typeof item.rating === 'number' ? `${item.rating.toFixed(1)} stars` : 'New listing'}
-                        </div>
-                        <div className="text-blue-700">
-                          {typeof item.reviewCount === 'number'
-                            ? `${item.reviewCount} review${item.reviewCount === 1 ? '' : 's'}`
-                            : 'Reviews pending'}
-                        </div>
+                        <div className="font-semibold">{reviewCopy.headline}</div>
+                        <div className="text-blue-700">{reviewCopy.detail}</div>
                       </div>
-                      <div className="rounded-2xl bg-slate-50 px-3 py-2 text-slate-800">
-                        <div className="font-semibold">
-                          {item.trustScore?.scored && item.trustScore.totalScorePct !== null
-                            ? `${item.trustScore.totalScorePct}%`
-                            : 'Building'}
-                        </div>
-                        <div className="text-slate-600">
-                          Reliance Trust Score
-                        </div>
-                      </div>
+                      <CustomerTrustSignalCard copy={trustCopy} />
                     </div>
 
                     <div className="flex items-center justify-between mt-3">
                       <div className="text-sm font-semibold text-gray-900">
-                        {typeof item.reviewCount === 'number'
-                          ? `${item.reviewCount} public review${item.reviewCount === 1 ? '' : 's'}`
-                          : 'Public service listing'}
+                        {item.publicListing.hasPublicMedia ? 'Public service video available' : 'No public service video yet'}
                       </div>
                       {item.publicListing.hasPublicMedia ? (
-                        <Badge className="bg-blue-100 text-blue-800">Public videos</Badge>
+                        <Badge className="bg-blue-100 text-blue-800">Video available</Badge>
                       ) : (
-                        <Badge className="bg-gray-100 text-gray-700">No public media</Badge>
+                        <Badge className="bg-gray-100 text-gray-700">No public video yet</Badge>
                       )}
                     </div>
 
@@ -919,7 +926,8 @@ export default function PublicBrowsePage() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           )}
 

@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { User, Briefcase } from 'lucide-react';
+import { sanitizeCustomerFacingAvatar } from '@/lib/avatar-display';
 
 interface ProfileHeaderUserData {
   id?: string;
@@ -51,6 +52,7 @@ export default function ProfileHeader({
   if (!userData) {
     return null;
   }
+  const displayAvatar = sanitizeCustomerFacingAvatar(userData.avatar || userData.profilePhoto);
 
   // Right-side controls (Settings dropdown, Logout) were removed because they
   // only duplicated sidebar entries (Profile & Settings, Logout). The header
@@ -60,7 +62,7 @@ export default function ProfileHeader({
     <div className={`flex items-center justify-between p-4 bg-white border-b border-gray-200 ${className}`}>
       <div className="flex items-center gap-4">
         <Avatar className="w-10 h-10">
-          <AvatarImage src={userData.avatar || userData.profilePhoto} alt={userData.firstName} />
+          <AvatarImage src={displayAvatar || undefined} alt={userData.firstName} />
           <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
             {userData.firstName?.charAt(0)}{userData.lastName?.charAt(0)}
           </AvatarFallback>

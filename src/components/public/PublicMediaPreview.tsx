@@ -16,10 +16,10 @@ export function PublicMediaPreview({
   alt,
   autoPlayVideo = false,
   className,
-  emptyLabel = "No public preview",
+  emptyLabel = "No public service video yet",
   type = null,
   url,
-  videoLabel = "Video preview available",
+  videoLabel = "Service video available",
 }: PublicMediaPreviewProps) {
   if (url && type === "image") {
     return <img src={url} alt={alt} className={className} />;
@@ -47,10 +47,15 @@ export function PublicMediaPreview({
   }
 
   return (
-    <div className={`${className} bg-gray-100 flex items-center justify-center`}>
-      <div className="text-center text-gray-500 px-3">
-        <ImageIcon className="h-5 w-5 mx-auto mb-1" />
-        <span className="text-xs">{emptyLabel}</span>
+    <div
+      className={`${className} flex items-center justify-center bg-[radial-gradient(circle_at_top_left,rgba(36,107,255,0.25),transparent_38%),linear-gradient(180deg,#0b1322_0%,#111d33_100%)]`}
+    >
+      <div className="rounded-[22px] border border-white/10 bg-white/6 px-5 py-5 text-center text-white/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-white/10 text-white">
+          <ImageIcon className="h-5 w-5" />
+        </div>
+        <p className="text-sm font-semibold text-white">Public service video</p>
+        <p className="mt-1 max-w-[11rem] text-xs leading-5 text-white/64">{emptyLabel}</p>
       </div>
     </div>
   );

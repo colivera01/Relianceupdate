@@ -4,7 +4,7 @@ type PublicHeroArtworkProps = {
 };
 
 export function PublicHeroArtwork({
-  serviceName = 'Verified service story',
+  serviceName = 'Public service video',
   vendorName = 'Reliance marketplace',
 }: PublicHeroArtworkProps) {
   return (
@@ -73,29 +73,29 @@ export function PublicHeroArtwork({
       </svg>
 
       <div className="absolute left-5 top-5 flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-white/72 backdrop-blur-md">
-        Service Story
+        Public Service Video
       </div>
 
       <div className="absolute right-5 top-5 rounded-full border border-white/10 bg-[rgba(6,12,23,0.72)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70 backdrop-blur-md">
-        Before • During • Complete
+        Before / During / Complete
       </div>
 
       <div className="absolute bottom-5 left-5 max-w-[50%]">
         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/52">
-          Trust Beyond Reviews
+          See what&apos;s available
         </div>
         <div className="mt-3 font-display text-[1.9rem] font-semibold leading-tight text-white">
-          Watch the job story unfold before you book.
+          Know when a public service video is available.
         </div>
         <p className="mt-3 text-sm leading-6 text-white/68">
-          A cinematic service timeline makes customer reviews, verified service videos, and
-          platform trust feel like one premium discovery experience.
+          Some providers share approved public service videos after completed work. When no video is
+          available yet, you can still compare reviews, provider details, and service information.
         </p>
       </div>
 
       <div className="absolute bottom-5 right-5 w-[220px] rounded-[22px] border border-white/10 bg-[rgba(6,11,21,0.78)] p-4 text-white backdrop-blur-xl">
         <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/54">
-          Featured Layout
+          Featured preview
         </div>
         <div className="mt-2 text-base font-semibold leading-tight">{serviceName}</div>
         <div className="mt-1 text-sm text-white/60">{vendorName}</div>

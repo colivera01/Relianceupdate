@@ -5,10 +5,12 @@ import ProfileToggle from '@/components/ProfileToggle';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { getClientSessionHeaders } from '@/lib/client-session';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { AlertTriangle, LogIn } from 'lucide-react';
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [restrictedMessage, setRestrictedMessage] = useState<string | null>(null);
   const pathname = usePathname() || '';
   // The customer shell should identify itself as "customer" even when the
@@ -17,11 +19,13 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
   const currentProfile = 'customer' as const;
   const { availableRoles, userId } = useAvailableRoles(currentProfile);
   const isPublicServiceRoute = pathname.startsWith('/service/');
+  const returnPath = pathname || '/user-dashboard';
+  const signInHref = `/auth/login?next=${encodeURIComponent(returnPath || '/user-dashboard')}`;
 
   useEffect(() => {
     let cancelled = false;
     async function checkCustomerStatus() {
-      if (!user?.id || isPublicServiceRoute) {
+      if (!user?.id || isPublicServiceRoute || !isAuthenticated) {
         setRestrictedMessage(null);
         return;
       }
@@ -47,14 +51,74 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
     return () => {
       cancelled = true;
     };
-  }, [isPublicServiceRoute, user?.id]);
+  }, [isAuthenticated, isPublicServiceRoute, user?.id]);
 
   if (isPublicServiceRoute) {
     return <>{children}</>;
   }
 
+  if (authLoading) {
+    return (
+      <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] px-4 py-12">
+        <div className="mx-auto flex min-h-[60vh] w-full max-w-3xl items-center justify-center">
+          <div className="w-full rounded-[32px] border border-slate-200 bg-white p-8 text-center shadow-[0_24px_80px_rgba(7,16,38,0.08)]">
+            <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--reliance-blue)]" />
+            <h1 className="font-display text-3xl font-semibold text-slate-950">Checking your customer account</h1>
+            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+              Reliance is confirming your sign-in so your bookings, reviews, and saved details load in the right account.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] px-4 py-12">
+        <div className="mx-auto flex min-h-[60vh] w-full max-w-3xl items-center justify-center">
+          <div className="w-full rounded-[32px] border border-slate-200 bg-white p-8 shadow-[0_24px_80px_rgba(7,16,38,0.08)]">
+            <div className="inline-flex rounded-full bg-blue-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-blue-700">
+              Customer account
+            </div>
+            <h1 className="mt-5 font-display text-3xl font-semibold text-slate-950">Sign in to open your customer account</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
+              Your bookings, reviews, saved items, and profile settings only appear after you sign in with the customer account that created them.
+            </p>
+            <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-700">
+              <p className="font-medium text-slate-900">What you can do next</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-600">
+                <li>Sign in to see your active and completed services.</li>
+                <li>Open approved service videos and leave reviews from the right booking.</li>
+                <li>Update your saved profile details and customer preferences.</li>
+              </ul>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href={signInHref}
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--reliance-blue)] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#1a58db]"
+              >
+                <LogIn className="h-4 w-4" />
+                Sign In
+              </Link>
+              <Link
+                href="/browse"
+                className="inline-flex items-center rounded-full border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Browse Public Services
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const content = restrictedMessage ? (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+      <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+        <AlertTriangle className="h-5 w-5" />
+      </div>
       <h1 className="text-2xl font-semibold text-amber-950">Account restricted</h1>
       <p className="mt-2 text-sm">{restrictedMessage}</p>
       <p className="mt-4 text-sm">Protected customer actions are unavailable until this account is active again.</p>

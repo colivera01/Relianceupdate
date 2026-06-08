@@ -17,26 +17,26 @@ const HOME_MARKETPLACE_PREVIEW_LIMIT = 4;
 const trustPillars = [
   {
     title: 'Customer Reviews',
-    description: 'Public customer feedback remains visible as its own signal.',
+    description: 'See what past customers chose to say about completed work.',
     icon: Star,
   },
   {
-    title: 'Verified Service Videos',
-    description: 'Approved public service videos add visual accountability.',
+    title: 'Public Service Videos',
+    description: 'Watch approved service videos when vendors choose to share them publicly.',
     icon: Video,
   },
   {
     title: 'Reliance Trust Score',
-    description: 'Platform-generated performance scoring stays separate from reviews.',
+    description: 'See a separate platform signal based on verified completed work.',
     icon: ShieldCheck,
   },
 ];
 
 const trustMetrics = [
-  { label: 'Workflow completion', value: 'Measured' },
-  { label: 'Video verification', value: 'Verified' },
-  { label: 'Dispute-free completion', value: 'Tracked' },
-  { label: 'Operational reliability', value: 'Weighted' },
+  { label: 'Customer reviews', value: 'Public' },
+  { label: 'Service videos', value: 'Approved' },
+  { label: 'Provider details', value: 'Visible' },
+  { label: 'Trust Score', value: 'Separate' },
 ];
 
 function isPlaceholderMarketplacePreview(url: string | null | undefined) {
@@ -76,6 +76,8 @@ export default function HomePage() {
     !isPlaceholderMarketplacePreview(featuredService?.previewMediaUrl);
   const heroServiceName = featuredService?.serviceName || 'See trusted work before you book';
   const heroVendorName = featuredService?.vendorName || 'Reliance marketplace';
+  const categoryPreviewLoading = categoriesLoading && categoryPreview.length === 0;
+  const publicServicesLoading = marketplaceLoading && marketplaceResults.length === 0;
 
   return (
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] text-white">
@@ -111,15 +113,15 @@ export default function HomePage() {
                   </div>
                 </div>
                 <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.32em] text-white/48">
-                  Customer Reviews + Verified Service Videos + Trust Score
+                  Reviews + Service Videos + Trust Score
                 </div>
               </div>
               <h1 className="max-w-3xl font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl lg:text-7xl">
-                Trust Beyond <span className="text-[var(--reliance-blue-soft)]">Reviews</span>
+                Find local services you can <span className="text-[var(--reliance-blue-soft)]">trust</span>
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-white/76 sm:text-xl">
-                Reliance helps customers compare real public reviews, verified service videos,
-                and the Reliance Trust Score without changing how the underlying platform works.
+                Compare customer reviews, public service videos, and provider details before you
+                decide who to book.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -135,7 +137,7 @@ export default function HomePage() {
                     className="h-12 rounded-full border-white/16 bg-white/6 px-6 text-white backdrop-blur-md hover:bg-white/10 hover:text-white"
                   >
                     <Play className="mr-2 h-4 w-4" />
-                    Join Reliance
+                    Create Account
                   </Button>
                 </Link>
               </div>
@@ -159,7 +161,7 @@ export default function HomePage() {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/62">
-                      Featured Service Story
+                      See a real service listing
                     </div>
                     <div className="mt-2 font-display text-2xl text-white">
                       {heroServiceName}
@@ -193,7 +195,7 @@ export default function HomePage() {
                     <p className="mt-1 max-w-xl text-sm leading-6 text-white/64">
                       {featuredService
                         ? cleanPublicServiceDescription(featuredService.serviceDescription, featuredService.vendorName) ||
-                          'Public-safe service listing'
+                          'Public service listing'
                         : 'Browse local services backed by public videos, reviews, and platform trust signals.'}
                     </p>
                   </div>
@@ -211,11 +213,11 @@ export default function HomePage() {
               <div className="grid gap-4 sm:grid-cols-[1.15fr_0.85fr]">
                 <div className="reliance-light-card rounded-[28px] px-5 py-5 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                    Dual-Layer Trust
+                    What you can compare
                   </div>
                     <p className="mt-3 text-sm leading-6 text-slate-700">
-                      Customer Ratings stay visible. Reliance Trust Score stays independent. Verified Service Videos
-                      connect the two with real completed-service visibility.
+                      Customer reviews, public service videos, and the Reliance Trust Score each
+                      tell you something different about a provider.
                     </p>
                   <div className="mt-5 space-y-3">
                     {trustMetrics.map((item) => (
@@ -230,15 +232,15 @@ export default function HomePage() {
                 </div>
 
                 <div className="reliance-light-card rounded-[28px] px-5 py-5 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                    Marketplace Signal
-                  </div>
-                  <div className="mt-3 text-3xl font-semibold text-slate-950">
-                    {marketplaceLoading ? '...' : totalPublicServices}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Publicly listed services are discoverable as soon as the approved vendor, videos, and listing state are ready.
-                  </p>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
+                  What&apos;s live today
+                </div>
+                <div className="mt-3 text-3xl font-semibold text-slate-950">
+                  {marketplaceLoading ? 'Loading' : totalPublicServices}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Public services appear here when their listing and customer-facing details are ready.
+                </p>
                   <div className="mt-6 space-y-3">
                     {secondaryServices.length > 0 ? (
                       secondaryServices.map((item) => (
@@ -256,7 +258,9 @@ export default function HomePage() {
                       ))
                     ) : (
                       <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                        Public categories and vendors appear here as listings load.
+                        {marketplaceLoading
+                          ? 'Loading live public services for this preview now.'
+                          : 'Public categories and vendors appear here as listings load.'}
                       </div>
                     )}
                   </div>
@@ -271,10 +275,10 @@ export default function HomePage() {
         <div className="mb-8 flex items-end justify-between gap-4">
           <div>
             <div className="reliance-kicker border border-[var(--reliance-border)] bg-white/5 text-white/62">
-              Trust System
+              Why customers use Reliance
             </div>
             <h2 className="mt-4 font-display text-3xl font-semibold text-slate-950 sm:text-4xl">
-              Three signals, one clearer hiring decision
+              See what matters before you book
             </h2>
           </div>
           <Link href="/browse" className="text-sm font-semibold text-[var(--reliance-blue)]">
@@ -306,7 +310,7 @@ export default function HomePage() {
                 <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
                   Browse by Category
                 </div>
-                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Public inventory, grouped cleanly</h2>
+                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Start with the service you need</h2>
               </div>
               <Link href="/browse">
                 <Button variant="outline" className="rounded-full border-slate-300 bg-white">
@@ -316,9 +320,15 @@ export default function HomePage() {
             </div>
 
             <div className="mt-6 space-y-3">
-              {categoriesLoading ? (
+              {categoryPreviewLoading ? (
                 Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+                  <div
+                    key={index}
+                    className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600"
+                  >
+                    <div className="font-semibold text-slate-900">Loading live categories</div>
+                    <div className="mt-1">Reliance is pulling the latest public category counts now.</div>
+                  </div>
                 ))
               ) : categoriesError ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
@@ -352,9 +362,9 @@ export default function HomePage() {
             <div className="flex items-end justify-between gap-4">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                  Newest Public Services
+                  Public Services
                 </div>
-                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Scroll the live marketplace like a premium catalog</h2>
+                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">See what customers can book right now</h2>
               </div>
               <span className="text-sm text-slate-500">
                 {marketplaceLoading ? 'Loading...' : `${totalPublicServices} total public services`}
@@ -362,14 +372,18 @@ export default function HomePage() {
             </div>
 
             <div className="mt-6 grid gap-5 md:grid-cols-2">
-              {marketplaceLoading ? (
+              {publicServicesLoading ? (
                 Array.from({ length: 4 }).map((_, index) => (
                   <Card key={index} className="overflow-hidden rounded-[26px] border-slate-200">
-                    <div className="h-44 animate-pulse bg-slate-100" />
+                    <div className="h-44 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)]" />
                     <CardContent className="space-y-3 p-5">
-                      <div className="h-4 w-32 animate-pulse rounded bg-slate-100" />
-                      <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
-                      <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
+                      <div className="text-sm font-semibold text-slate-900">Loading live public services</div>
+                      <div className="text-sm leading-6 text-slate-600">
+                        Reliance is confirming which services are public and ready for customers to browse right now.
+                      </div>
+                      <div className="text-xs font-medium text-blue-700">
+                        Reviews, service videos, and provider details are loading.
+                      </div>
                     </CardContent>
                   </Card>
                 ))
@@ -409,7 +423,7 @@ export default function HomePage() {
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex flex-wrap gap-2 text-xs font-semibold">
                           <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
-                            {item.publicListing.hasPublicMedia ? 'Service videos' : 'Verified listing'}
+                            {item.publicListing.hasPublicMedia ? 'Public service video' : 'Public listing'}
                           </span>
                           {typeof item.rating === 'number' && typeof item.reviewCount === 'number' ? (
                             <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
@@ -437,13 +451,13 @@ export default function HomePage() {
               For Customers
             </div>
             <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">
-              Find verified local work with less guesswork
+              Find local services with less guesswork
             </h3>
             <ul className="mt-5 space-y-3 text-sm text-slate-600">
               {[
-                'Compare public reviews, service videos, and platform trust separately.',
-                'Browse vendor and service pages that feel curated instead of crowded.',
-                'Keep the same booking logic and support flows you already built.',
+                'Compare customer reviews, public service videos, and provider details in one place.',
+                'Browse vendor and service pages before you decide who to book.',
+                'Track bookings, approved service videos, and reviews from one customer account.',
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-emerald)]" />
@@ -465,13 +479,13 @@ export default function HomePage() {
               For Vendors
             </div>
             <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">
-              Present your business like a premium trust brand
+              Show your business clearly to new customers
             </h3>
             <ul className="mt-5 space-y-3 text-sm text-slate-600">
               {[
-                'Showcase verified service videos instead of relying on text alone.',
-                'Benefit from stronger trust-score presentation without altering the score itself.',
-                'Keep your vendor, employee, moderation, and review workflows exactly as they are.',
+                'Share public service videos instead of relying on text alone.',
+                'Let customer reviews and the Reliance Trust Score stay separate and clear.',
+                'Keep your vendor, employee, moderation, and review workflows intact.',
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-blue)]" />

@@ -239,8 +239,8 @@ export function VendorTrustScoreCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-xs text-muted-foreground">
-          This score is generated from finalized Reliance workflow outcomes. It is separate from
-          customer star ratings and review sentiment.
+          This score helps customers understand your reliability from verified Reliance activity.
+          It stays separate from star ratings and review sentiment.
         </p>
 
         {loading ? (
@@ -255,11 +255,11 @@ export function VendorTrustScoreCard({
             <p className="mt-1">{error}</p>
           </div>
         ) : !trustScore?.scored ? (
-          <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-            <p className="font-medium text-slate-900">Not yet scored</p>
+            <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+            <p className="font-medium text-slate-900">Public Trust Score not ready yet</p>
             <p className="mt-1">
-              There is not enough finalized Reliance activity yet to produce a meaningful Trust
-              Score explanation for this account.
+              More verified completed work is needed before this page can show a meaningful public
+              Trust Score explanation for your business.
             </p>
             {trustScore?.explanationDetails?.coverageSummary ? (
               <p className="mt-2 text-xs text-slate-500">
@@ -273,7 +273,15 @@ export function VendorTrustScoreCard({
               <div className="text-4xl font-bold text-blue-800">
                 {trustScore.totalScorePct === null ? 'N/A' : `${trustScore.totalScorePct}%`}
               </div>
-              <div className="pb-1 text-sm text-muted-foreground">Current Reliance Trust Score</div>
+              <div className="pb-1 text-sm text-muted-foreground">Current customer-facing Trust Score</div>
+            </div>
+
+            <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-4 text-sm text-slate-700">
+              <p className="font-medium text-slate-900">Why this matters to customers</p>
+              <p className="mt-1">
+                Customers use this score as a quick read on how reliably your business completes verified work,
+                gets service videos approved, and avoids problems that damage trust.
+              </p>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -283,10 +291,10 @@ export function VendorTrustScoreCard({
                     return (
                       <div key={key} className="rounded-lg border bg-slate-50 p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <div>
+                        <div>
                             <p className="text-sm font-medium text-slate-900">{label}</p>
                             <p className="text-xs text-muted-foreground">
-                              Weight {component.weightPct}%
+                              Weight {component.weightPct}% of the score customers see
                             </p>
                           </div>
                           <div className="text-right">
@@ -304,18 +312,18 @@ export function VendorTrustScoreCard({
 
             <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/70 p-4 text-sm text-slate-700">
               <div>
-                <p className="font-medium text-slate-900">Why this score</p>
+                <p className="font-medium text-slate-900">How this score builds customer confidence</p>
                 <p className="mt-1">{trustScore.explanationDetails.overview}</p>
               </div>
 
               <div>
-                <p className="font-medium text-slate-900">Coverage</p>
+                <p className="font-medium text-slate-900">Current confidence context</p>
                 <p className="mt-1">{trustScore.explanationDetails.coverageSummary}</p>
               </div>
 
               {trustScore.explanationDetails.strongestSignals.length > 0 ? (
                 <div>
-                  <p className="font-medium text-slate-900">Strongest signals</p>
+                  <p className="font-medium text-slate-900">Signals that help customers trust you most</p>
                   <ul className="mt-1 list-disc space-y-1 pl-4">
                     {trustScore.explanationDetails.strongestSignals.map((item, index) => (
                       <li key={`strong-${index}`}>{item}</li>
@@ -326,7 +334,7 @@ export function VendorTrustScoreCard({
 
               {trustScore.explanationDetails.watchItems.length > 0 ? (
                 <div>
-                  <p className="font-medium text-slate-900">Watch items</p>
+                  <p className="font-medium text-slate-900">Signals that still limit customer confidence</p>
                   <ul className="mt-1 list-disc space-y-1 pl-4">
                     {trustScore.explanationDetails.watchItems.map((item, index) => (
                       <li key={`watch-${index}`}>{item}</li>
@@ -337,7 +345,7 @@ export function VendorTrustScoreCard({
 
               {Array.isArray(trustScore.improvementHints) && trustScore.improvementHints.length > 0 ? (
                 <div>
-                  <p className="font-medium text-slate-900">Improvement opportunities</p>
+                  <p className="font-medium text-slate-900">How to strengthen public trust next</p>
                   <ul className="mt-1 list-disc space-y-1 pl-4">
                     {trustScore.improvementHints.map((item, index) => (
                       <li key={`hint-${index}`}>{item}</li>
@@ -347,7 +355,7 @@ export function VendorTrustScoreCard({
               ) : null}
 
               <div>
-                <p className="font-medium text-slate-900">Methodology</p>
+                <p className="font-medium text-slate-900">How Reliance interprets the score</p>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
                   {trustScore.explanationDetails.methodology.map((item, index) => (
                     <li key={`method-${index}`}>{item}</li>
@@ -364,7 +372,7 @@ export function VendorTrustScoreCard({
 
               {coachingPlan.priorityActions.length > 0 ? (
                 <div>
-                  <p className="font-medium text-slate-900">Priority actions</p>
+                  <p className="font-medium text-slate-900">Actions that can improve customer confidence fastest</p>
                   <ul className="mt-1 list-disc space-y-1 pl-4">
                     {coachingPlan.priorityActions.map((item, index) => (
                       <li key={`priority-${index}`}>{item}</li>
@@ -375,7 +383,7 @@ export function VendorTrustScoreCard({
 
               {coachingPlan.strengths.length > 0 ? (
                 <div>
-                  <p className="font-medium text-slate-900">What is already working</p>
+                  <p className="font-medium text-slate-900">What is already helping your business look credible</p>
                   <ul className="mt-1 list-disc space-y-1 pl-4">
                     {coachingPlan.strengths.map((item, index) => (
                       <li key={`strength-${index}`}>{item}</li>
@@ -386,7 +394,7 @@ export function VendorTrustScoreCard({
 
               {coachingPlan.operationalNotes.length > 0 ? (
                 <div>
-                  <p className="font-medium text-slate-900">Operational notes</p>
+                  <p className="font-medium text-slate-900">Operational notes that affect public confidence</p>
                   <ul className="mt-1 list-disc space-y-1 pl-4">
                     {coachingPlan.operationalNotes.map((item, index) => (
                       <li key={`note-${index}`}>{item}</li>

@@ -34,8 +34,8 @@ export function PublicSiteFooter() {
               frameClassName="h-[5.8rem] w-[5.8rem]"
             />
             <p className="mt-5 max-w-sm text-sm leading-7 text-white/64">
-              Reliance keeps customer reviews, verified service videos, and the
-              Reliance Trust Score visible in one darker, clearer discovery experience.
+              Reliance helps customers compare reviews, public service videos, and provider details
+              before they book.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {["Customer Reviews", "Verified Service Videos", "Reliance Trust Score"].map((item) => (
@@ -84,7 +84,7 @@ export function PublicSiteFooter() {
             <div className="mt-4 rounded-[24px] border border-white/10 bg-white/6 px-5 py-5">
               {HAS_LAUNCH_SUPPORT_EMAIL ? (
                 <>
-                  <p className="text-sm font-semibold text-white">Public launch support</p>
+                  <p className="text-sm font-semibold text-white">Support email</p>
                   <a
                     href={LAUNCH_SUPPORT_MAILTO}
                     className="mt-2 block text-sm font-medium text-[var(--reliance-blue-soft)] transition hover:text-white"
@@ -92,7 +92,7 @@ export function PublicSiteFooter() {
                     {LAUNCH_SUPPORT_EMAIL}
                   </a>
                   <p className="mt-3 text-sm leading-6 text-white/62">
-                    Reliance aims to respond {LAUNCH_SUPPORT_RESPONSE_TIME}. Email is the official launch support channel.
+                    Reliance aims to respond {LAUNCH_SUPPORT_RESPONSE_TIME}. Email is the current support channel.
                   </p>
                 </>
               ) : (
@@ -105,8 +105,8 @@ export function PublicSiteFooter() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-white/8 pt-6 text-sm text-white/44 sm:flex-row sm:items-center sm:justify-between">
-          <p>Reliance keeps public discovery polished while preserving your existing booking, review, moderation, and trust workflows.</p>
-          <p>&copy; {new Date().getFullYear()} Reliance. Public discovery experience.</p>
+          <p>Reliance keeps reviews, public service videos, and Trust Score separate so customers can compare them clearly.</p>
+          <p>&copy; {new Date().getFullYear()} Reliance. Public marketplace.</p>
         </div>
       </div>
     </footer>

@@ -1,4 +1,5 @@
 import { isOwnerAdminEmail, isOwnerAdminPhone, isOwnerAdminUserId } from "@/lib/internal-identities";
+import { sanitizeCustomerFacingAvatar } from "@/lib/avatar-display";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { prisma } from "@/server/db";
 
@@ -72,8 +73,6 @@ export async function buildAuthLoginUserPayload(params: {
     availableProfiles,
     emailVerified: Boolean(params.emailVerifiedAt),
     emailVerifiedAt: params.emailVerifiedAt?.toISOString?.() ?? null,
-    avatar:
-      params.avatar ||
-      `https://randomuser.me/api/portraits/${userType === "vendor" ? "men" : "women"}/44.jpg`,
+    avatar: sanitizeCustomerFacingAvatar(params.avatar) || undefined,
   };
 }

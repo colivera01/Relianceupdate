@@ -41,12 +41,12 @@ const defaultSignals: SignalCard[] = [
 export function AuthExperienceShell({
   backHref,
   backLabel,
-  eyebrow = "Trust Beyond Reviews",
+  eyebrow = "Know what you are comparing",
   title,
   description,
-  heroTitle = "A premium service marketplace built around transparency.",
-  heroDescription = "Customer Reviews, Verified Service Videos, and the Reliance Trust Score stay distinct so every decision feels clear, measured, and professional.",
-  heroBadge = "Separate trust signals. Clearer decisions.",
+  heroTitle = "See reviews, service videos, and Trust Score in plain language.",
+  heroDescription = "Reliance keeps customer reviews, public service videos, and the Reliance Trust Score separate so first-time customers can understand what they are seeing.",
+  heroBadge = "Reviews, service videos, and Trust Score each tell a different part of the story.",
   heroSignals = defaultSignals,
   contentWidthClassName,
   children,
@@ -82,9 +82,9 @@ export function AuthExperienceShell({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.26em] text-white/58">
-                  Marketplace Snapshot
+                  What you can compare
                 </p>
-                <h3 className="mt-3 font-display text-4xl font-semibold text-white">97%</h3>
+                <h3 className="mt-3 font-display text-4xl font-semibold text-white">3 trust signals</h3>
                 <p className="mt-1 text-sm text-white/64">{heroBadge}</p>
               </div>
               <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/12 p-3 text-emerald-100">
@@ -119,8 +119,8 @@ export function AuthExperienceShell({
               Why this matters
             </p>
             <p className="mt-3 text-sm leading-7 text-white/72">
-              Reliance is designed to help customers, vendors, and operators see the same verified
-              reality without collapsing reviews, videos, and measured trust into one vague number.
+              Reliance is designed to help customers understand what is public, what is verified,
+              and what they can do next without guessing.
             </p>
           </div>
         </section>

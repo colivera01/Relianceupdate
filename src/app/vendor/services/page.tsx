@@ -7,6 +7,7 @@ import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
 import { tutorialGuides } from '@/lib/user-guidance';
+import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
 
 type ServiceRow = {
   id: string;
@@ -67,6 +68,17 @@ export default function VendorServicesPage() {
         return bTime - aTime;
       }),
     [services]
+  );
+  const growthSummary = useMemo(
+    () =>
+      buildVendorGrowthSummary({
+        vendorId,
+        businessName: vendorProfile?.businessName || null,
+        onboarding: vendorProfile?.onboarding || null,
+        publishedReviewCount: Number(vendorProfile?.ratingCount || 0),
+        approvedServiceVideoCount: 0,
+      }),
+    [vendorId, vendorProfile]
   );
 
   const reloadServices = useCallback(async () => {
@@ -214,9 +226,9 @@ export default function VendorServicesPage() {
         ) : null}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Service Catalog</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Service Discovery</h1>
             <p className="text-gray-600">
-              Maintain draft service details for your vendor profile.
+              Create and refine the services customers can discover once Reliance publishes them.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -233,21 +245,32 @@ export default function VendorServicesPage() {
         </div>
 
         <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-900">
-          <p className="font-semibold text-purple-950">Service catalog management</p>
+          <p className="font-semibold text-purple-950">Why this page helps you grow</p>
           <p className="mt-1">
-            Use this page to maintain your service details and pricing references. Publishing stays
-            coordinated through admin review, and billing tools will be announced separately before
-            they go live.
+            Each published service gives customers another path to find your business. Clear service
+            names, useful descriptions, and honest pricing make your public profile easier to trust.
           </p>
         </div>
 
         <GuidanceCallout
-          title="Why your services may still not be public"
-          description="Saving a draft prepares the service for review, but public visibility still depends on vendor approval, public vendor listing, and admin publishing."
+          title="What customers can and cannot see"
+          description="Drafts help you prepare new offers, but only published services can appear in public browse, vendor pages, and booking flows."
           bullets={[
-            'Draft saved: the service is stored internally for review.',
-            'Vendor approved and listed: customers can find the business.',
-            'Service published: the service becomes publicly bookable.',
+            `${growthSummary.metrics[1].value} published service${growthSummary.metrics[1].value === '1' ? '' : 's'} currently help customers find the business.`,
+            'Draft services stay internal until Reliance finishes the publishing step.',
+            'Stronger service copy improves discovery and helps customers understand what to book.',
+          ]}
+          tone="slate"
+          className="mb-4"
+        />
+
+        <GuidanceCallout
+          title="Why your services may still not be public"
+          description="Saving a draft prepares the service for review, but customer discovery still depends on vendor approval, public vendor listing, and admin publishing."
+          bullets={[
+            'Draft saved: Reliance stores the service internally for review.',
+            'Vendor approved and listed: customers can find the business profile.',
+            'Service published: the service becomes publicly discoverable and bookable.',
           ]}
           tone="blue"
           className="mb-4"

@@ -39,16 +39,16 @@ export function ServiceImage({
     return (
       <div
         aria-label={alt}
-        className={`relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-sky-100 via-white to-blue-200 text-slate-700 ${className} ${fallbackClassName}`}
+        className={`relative flex items-center justify-center overflow-hidden bg-[linear-gradient(145deg,#08111f,#10203a_55%,#17335f)] text-white ${className} ${fallbackClassName}`}
       >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(59,130,246,0.18),_transparent_45%),radial-gradient(circle_at_bottom_left,_rgba(14,165,233,0.2),_transparent_40%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(45,170,251,0.18),_transparent_40%),radial-gradient(circle_at_bottom_left,_rgba(36,107,255,0.22),_transparent_44%)]" />
         <div className="relative flex flex-col items-center gap-2 px-3 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/80 text-sm font-semibold shadow-sm ring-1 ring-white/70">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/12 text-sm font-semibold shadow-sm ring-1 ring-white/20">
             {monogram}
           </div>
-          <div className="flex items-center gap-1 text-xs font-medium text-slate-600">
+          <div className="flex items-center gap-1 text-xs font-medium text-white/76">
             <ImageIcon className="h-3.5 w-3.5" />
-            <span>Service preview</span>
+            <span>Public service image</span>
           </div>
         </div>
       </div>

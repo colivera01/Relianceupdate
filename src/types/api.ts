@@ -172,6 +172,13 @@ export interface DiscoverServiceResult {
   trustScore: {
     scored: boolean;
     totalScorePct: number | null;
+    maturityState?: 'not_ready' | 'early_stage' | 'emerging' | 'established';
+    maturityLabel?: string;
+    evidence?: {
+      verifiedBookings: number;
+      approvedServiceVideos: number;
+      validatedDisputes: number;
+    };
   };
   badges: {
     verified: boolean | null;

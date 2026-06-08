@@ -347,8 +347,7 @@ export default function MyBookingsPage() {
                 My Services
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
-                Track scheduled services, review approved service videos or images, and follow each
-                booking in one clear Reliance timeline.
+                Track scheduled services, open approved service videos, and follow each booking in one clear timeline.
               </p>
             </div>
           </div>
@@ -371,7 +370,7 @@ export default function MyBookingsPage() {
           <div className="flex gap-2">
             <Info className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" aria-hidden />
             <div className="space-y-1">
-              <p className="font-medium text-gray-900">Service videos and images, when available</p>
+              <p className="font-medium text-gray-900">Service updates appear here</p>
               <p className="text-gray-700">
                 Vendors can share approved service videos or images after work is done. Open a service to view what has been published for you and leave feedback when the review flow is available.
               </p>

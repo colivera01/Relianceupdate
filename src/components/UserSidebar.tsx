@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { RelianceLogo } from '@/components/public/RelianceLogo';
+import { initialsFromDisplayName, sanitizeCustomerFacingAvatar } from '@/lib/avatar-display';
 
 // TODO Future mobile: convert this sidebar into a bottom nav or slide-out
 // drawer for an app-like experience on small screens. For now the sidebar
@@ -88,16 +89,21 @@ function UserSidebarContent() {
   const customerHelpHref = React.useMemo(() => buildCustomerHelpHref(pathname, search), [pathname, search]);
   const [currentUser, setCurrentUser] = React.useState<SidebarUser>(defaultUser);
   const isSignedIn = Boolean(user);
+  const signedInUser: SidebarUser | null = React.useMemo(() => {
+    if (!user) return null;
+    return {
+      name: user.name || user.email || defaultUser.name,
+      email: user.email || defaultUser.email,
+      avatar: sanitizeCustomerFacingAvatar(user.avatar) || null,
+    };
+  }, [user]);
+  const visibleUser = signedInUser || currentUser;
   const isResolvingIdentity =
-    isLoading && !user && currentUser.name === defaultUser.name && currentUser.email === defaultUser.email;
+    isLoading && !signedInUser && visibleUser.name === defaultUser.name && visibleUser.email === defaultUser.email;
 
   React.useEffect(() => {
-    if (user) {
-      setCurrentUser({
-        name: user.name || user.email || defaultUser.name,
-        email: user.email || defaultUser.email,
-        avatar: user.avatar || null,
-      });
+    if (signedInUser) {
+      setCurrentUser(signedInUser);
       return;
     }
     const userData = localStorage.getItem('userData');
@@ -108,8 +114,8 @@ function UserSidebarContent() {
           name: displayNameFromStoredUser(parsed),
           email: typeof parsed.email === 'string' ? parsed.email : defaultUser.email,
           avatar:
-            (typeof parsed.avatar === 'string' && parsed.avatar) ||
-            (typeof parsed.profilePhoto === 'string' && parsed.profilePhoto) ||
+            sanitizeCustomerFacingAvatar(parsed.avatar) ||
+            sanitizeCustomerFacingAvatar(parsed.profilePhoto) ||
             null,
         });
       } catch (error) {
@@ -126,15 +132,7 @@ function UserSidebarContent() {
     }
   };
 
-  const visibleUser = isSignedIn ? currentUser : defaultUser;
-
-  const initials = visibleUser.name
-    .split(' ')
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase() || 'U';
+  const initials = initialsFromDisplayName(visibleUser.name);
   const navigationLinks = React.useMemo(
     () => [...navLinks, { label: 'Support & Help', icon: HelpCircle, href: customerHelpHref }],
     [customerHelpHref]

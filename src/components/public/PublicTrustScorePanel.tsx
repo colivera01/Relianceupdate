@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ShieldCheck, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type {
+  PublicTrustEvidenceSummary,
+  PublicTrustPresentationSummary,
+} from "@/lib/public-trust-score-presentation";
 
 type PublicTrustComponent = {
   pct: number | null;
@@ -16,6 +20,8 @@ type PublicTrustScorePayload = {
   totalScorePct: number | null;
   explanation?: string;
   separation?: string;
+  evidence?: PublicTrustEvidenceSummary;
+  presentation?: PublicTrustPresentationSummary;
   components?: Record<string, PublicTrustComponent> | null;
   explanationDetails?: {
     overview: string;
@@ -39,6 +45,41 @@ const componentLabels: Record<string, string> = {
   videoVerification: "Video verification",
   disputeFree: "Dispute-free completion",
   operationalReliability: "Operational reliability",
+};
+
+const toneClasses: Record<
+  NonNullable<PublicTrustScorePayload["presentation"]>["tone"],
+  {
+    scoreCard: string;
+    scoreValue: string;
+    maturityBadge: string;
+    evidenceCard: string;
+  }
+> = {
+  muted: {
+    scoreCard: "border-white/10 bg-white/8",
+    scoreValue: "text-white/78",
+    maturityBadge: "border-white/12 bg-white/8 text-white/72",
+    evidenceCard: "border-slate-200 bg-slate-50",
+  },
+  calm: {
+    scoreCard: "border-blue-200/30 bg-blue-400/12",
+    scoreValue: "text-blue-100",
+    maturityBadge: "border-blue-200/40 bg-blue-400/12 text-blue-100",
+    evidenceCard: "border-blue-100 bg-blue-50",
+  },
+  balanced: {
+    scoreCard: "border-cyan-200/30 bg-cyan-400/12",
+    scoreValue: "text-cyan-100",
+    maturityBadge: "border-cyan-200/40 bg-cyan-400/12 text-cyan-100",
+    evidenceCard: "border-cyan-100 bg-cyan-50",
+  },
+  strong: {
+    scoreCard: "border-emerald-200/30 bg-emerald-400/12",
+    scoreValue: "text-emerald-300",
+    maturityBadge: "border-emerald-200/40 bg-emerald-400/12 text-emerald-100",
+    evidenceCard: "border-emerald-100 bg-emerald-50",
+  },
 };
 
 export function PublicTrustScorePanel({
@@ -91,6 +132,26 @@ export function PublicTrustScorePanel({
     return Object.entries(components).filter(([, value]) => value && value.pct !== null);
   }, [trustScore?.components]);
 
+  const presentation: PublicTrustPresentationSummary = trustScore?.presentation || {
+    maturityState: "not_ready",
+    maturityLabel: "Building",
+    title: "Trust Score building",
+    scoreDisplay: null,
+    summary: "More verified completed work is needed before a public Trust Score appears.",
+    tone: "muted",
+    scoreEmphasis: "subtle",
+  };
+  const evidence = trustScore?.evidence || {
+    verifiedBookings: 0,
+    approvedServiceVideos: 0,
+    validatedDisputes: 0,
+  };
+  const publicReviewCountValue =
+    typeof customerReviewCount === "number" && Number.isFinite(customerReviewCount)
+      ? customerReviewCount
+      : 0;
+  const visualTone = toneClasses[presentation.tone];
+
   return (
     <section
       className={cn(
@@ -103,14 +164,32 @@ export function PublicTrustScorePanel({
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em] text-white/78">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Trust Snapshot
+              Provider trust
             </div>
-            <h3 className="mt-3 font-display text-xl font-semibold">Trust Beyond Reviews</h3>
+            <h3 className="mt-3 font-display text-xl font-semibold">{presentation.title}</h3>
+            <p className="mt-2 max-w-lg text-sm leading-6 text-white/74">
+              {loading
+                ? "Loading the latest Trust Score context for this provider."
+                : presentation.summary}
+            </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-white/70">Reliance Trust Score</div>
-            <div className="mt-1 text-3xl font-semibold text-emerald-300">
-              {loading ? "..." : trustScore?.scored && trustScore?.totalScorePct !== null ? `${trustScore.totalScorePct}%` : "N/A"}
+          <div className={cn("rounded-2xl border px-4 py-3 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]", visualTone.scoreCard)}>
+            <div className={cn("inline-flex rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em]", visualTone.maturityBadge)}>
+              {loading ? "Loading" : presentation.maturityLabel}
+            </div>
+            <div className="mt-3 text-[11px] uppercase tracking-[0.24em] text-white/70">Trust Score</div>
+            <div
+              className={cn(
+                "mt-1 font-semibold",
+                presentation.scoreEmphasis === "subtle"
+                  ? "text-2xl"
+                  : presentation.scoreEmphasis === "standard"
+                  ? "text-[2rem]"
+                  : "text-3xl",
+                visualTone.scoreValue
+              )}
+            >
+              {loading ? "..." : presentation.scoreDisplay || "Building"}
             </div>
           </div>
         </div>
@@ -136,7 +215,7 @@ export function PublicTrustScorePanel({
               Separate Systems
             </div>
             <p className="mt-2 text-sm leading-6 text-white/82">
-              Customer Ratings capture opinion. The Reliance Trust Score measures verified platform performance.
+              Customer Rating comes from public reviews. The Reliance Trust Score reflects verified completed work and platform performance.
             </p>
           </div>
         </div>
@@ -158,15 +237,34 @@ export function PublicTrustScorePanel({
           </div>
         ) : !trustScore?.scored ? (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-            {trustScore?.explanationDetails?.coverageSummary || "Reliance has not recorded enough finalized activity to publish this Trust Score yet."}
+            More verified completed work is needed before a public Trust Score appears.
           </div>
         ) : (
           <>
-            {trustScore?.explanationDetails?.overview ? (
-              <p className="text-sm leading-6 text-slate-700">
-                {trustScore.explanationDetails.overview}
+            <div className={cn("rounded-2xl border px-4 py-4", visualTone.evidenceCard)}>
+              <div className="text-sm font-semibold text-slate-950">What this trust view is based on</div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Verified bookings</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-950">{evidence.verifiedBookings}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Approved service videos</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-950">{evidence.approvedServiceVideos}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Public reviews</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-950">{publicReviewCountValue}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Validated disputes</div>
+                  <div className="mt-1 text-2xl font-semibold text-slate-950">{evidence.validatedDisputes}</div>
+                </div>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-slate-600">
+                Public reviews help customers compare feedback, but they do not change the Reliance Trust Score.
               </p>
-            ) : null}
+            </div>
 
             {componentEntries.length > 0 ? (
               <div className={cn("grid gap-3", compact ? "grid-cols-1" : "sm:grid-cols-2")}>
@@ -182,7 +280,7 @@ export function PublicTrustScorePanel({
                         </div>
                       </div>
                       <div className="text-lg font-semibold text-slate-950">
-                        {component.pct ?? "N/A"}%
+                        {component.pct ?? "Pending"}%
                       </div>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">

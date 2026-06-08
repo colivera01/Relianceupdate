@@ -21,6 +21,10 @@ import {
   countableServiceWhere,
   countableVendorWhere,
 } from "@/lib/metrics-exclusion";
+import {
+  buildPublicTrustEvidenceSummary,
+  buildPublicTrustPresentationSummary,
+} from "@/lib/public-trust-score-presentation";
 import { cleanPublicServiceDescription } from "@/lib/launch-content-cleanup";
 
 const DEFAULT_PAGE = 1;
@@ -315,7 +319,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const vendorIds = Array.from(new Set([...services, ...promotedServices].map((s) => s.vendorId)));
     const vendorReviewAggregates = await getVendorReviewAggregatesForPublic(vendorIds);
-    const vendorTrustScores = new Map<string, number | null>();
+    const vendorTrustScores = new Map<
+      string,
+      {
+        scored: boolean;
+        totalScorePct: number | null;
+        maturityState: "not_ready" | "early_stage" | "emerging" | "established";
+        maturityLabel: string;
+        evidence: {
+          verifiedBookings: number;
+          approvedServiceVideos: number;
+          validatedDisputes: number;
+        };
+      }
+    >();
     try {
       const trustScoreDelegate = (prisma as any).vendorTrustScoreSnapshot;
       if (trustScoreDelegate?.findMany && vendorIds.length > 0) {
@@ -327,19 +344,37 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           select: {
             vendorId: true,
             totalScorePct: true,
+            workflowCompletionNumerator: true,
+            videoVerificationNumerator: true,
+            disputeFreeNumerator: true,
+            disputeFreeDenominator: true,
             computedAt: true,
           },
           orderBy: [{ vendorId: "asc" }, { computedAt: "desc" }],
         });
-        for (const row of trustScoreRows as Array<{ vendorId?: string; totalScorePct?: number | null }>) {
+        for (const row of trustScoreRows as Array<{
+          vendorId?: string;
+          totalScorePct?: number | null;
+          workflowCompletionNumerator?: number | null;
+          videoVerificationNumerator?: number | null;
+          disputeFreeNumerator?: number | null;
+          disputeFreeDenominator?: number | null;
+        }>) {
           const rowVendorId = String(row?.vendorId || "").trim();
           if (!rowVendorId || vendorTrustScores.has(rowVendorId)) continue;
-          vendorTrustScores.set(
-            rowVendorId,
-            typeof row?.totalScorePct === "number" && Number.isFinite(row.totalScorePct)
-              ? Math.round(row.totalScorePct)
-              : null
-          );
+          const evidence = buildPublicTrustEvidenceSummary(row);
+          const presentation = buildPublicTrustPresentationSummary(row);
+          vendorTrustScores.set(rowVendorId, {
+            scored:
+              typeof row?.totalScorePct === "number" && Number.isFinite(row.totalScorePct),
+            totalScorePct:
+              typeof row?.totalScorePct === "number" && Number.isFinite(row.totalScorePct)
+                ? Math.round(row.totalScorePct)
+                : null,
+            maturityState: presentation.maturityState,
+            maturityLabel: presentation.maturityLabel,
+            evidence,
+          });
         }
       }
     } catch (trustScoreReadError) {
@@ -384,10 +419,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         price: Number(service.price),
         rating: vendorReviewAggregates.get(service.vendorId)?.rating ?? null,
         reviewCount: vendorReviewAggregates.get(service.vendorId)?.reviewCount ?? null,
-        trustScore: {
-          scored: vendorTrustScores.has(service.vendorId) && vendorTrustScores.get(service.vendorId) !== null,
-          totalScorePct: vendorTrustScores.get(service.vendorId) ?? null,
-        },
+        trustScore:
+          vendorTrustScores.get(service.vendorId) || {
+            scored: false,
+            totalScorePct: null,
+            maturityState: "not_ready" as const,
+            maturityLabel: "Building",
+            evidence: {
+              verifiedBookings: 0,
+              approvedServiceVideos: 0,
+              validatedDisputes: 0,
+            },
+          },
         badges: {
           verified: null,
           featured: null,

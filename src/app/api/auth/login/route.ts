@@ -13,6 +13,7 @@ import { findDbCredentialByEmail, upsertDbCredential } from "@/lib/auth-credenti
 import { issueLoginMfaChallenge, requiresLoginMfa, resolveTrustedDeviceUserIdFromRequest } from "@/lib/auth-mfa";
 import { buildSuccessfulLoginResponse } from "@/lib/auth-login-response";
 import type { AuthLoginUserPayload } from "@/lib/auth-login-response";
+import { sanitizeCustomerFacingAvatar } from "@/lib/avatar-display";
 import { prisma } from "@/server/db";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
@@ -241,9 +242,7 @@ export async function POST(request: NextRequest) {
       availableProfiles,
       emailVerified: Boolean(dbCredential?.emailVerifiedAt),
       emailVerifiedAt: dbCredential?.emailVerifiedAt?.toISOString?.() ?? null,
-      avatar:
-        user?.avatar ||
-        `https://randomuser.me/api/portraits/${sessionUserType === "vendor" ? "men" : "women"}/44.jpg`,
+      avatar: sanitizeCustomerFacingAvatar(user?.avatar) || undefined,
     };
 
     let resolvedCredentialForMfa = dbCredential;

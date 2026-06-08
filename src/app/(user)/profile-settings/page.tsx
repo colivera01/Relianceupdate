@@ -96,6 +96,11 @@ function buildAuthProfile(name: string | null | undefined, email: string | null 
   };
 }
 
+function profileInitials(profile: CustomerProfile): string {
+  const initials = `${profile.firstName?.[0] || ''}${profile.lastName?.[0] || ''}`.trim().toUpperCase();
+  return initials || 'U';
+}
+
 function readStoredProfile(): { profile: Partial<CustomerProfile>; locationPreferenceEnabled: boolean | null } {
   if (typeof window === 'undefined') {
     return { profile: {}, locationPreferenceEnabled: null };
@@ -138,6 +143,7 @@ export default function ProfileSettingsPage() {
   const [userProfile, setUserProfile] = useState<CustomerProfile>(emptyProfile);
 
   const [tempProfile, setTempProfile] = useState(userProfile);
+  const customerInitials = useMemo(() => profileInitials(tempProfile), [tempProfile]);
 
   // Fetch user profile data on component mount
   useEffect(() => {
@@ -310,7 +316,7 @@ export default function ProfileSettingsPage() {
   const toggleLocation = async () => {
     const nextLocationEnabled = !locationEnabled;
     if (locationEnabled) {
-      if (!confirm('Disable saved-address preference for future local discovery features?')) {
+      if (!confirm('Turn off your saved address for nearby-service suggestions?')) {
         return;
       }
     }
@@ -327,8 +333,8 @@ export default function ProfileSettingsPage() {
         type: 'success',
         title: 'Location preference updated',
         message: nextLocationEnabled
-          ? 'Reliance can use your saved address when saved-location discovery is available.'
-          : 'Reliance will not use your saved address for saved-location discovery.',
+          ? 'Reliance can use your saved address when nearby-service suggestions are available.'
+          : 'Reliance will not use your saved address for nearby-service suggestions.',
       });
     } catch (error) {
       console.error('Error saving location preference:', error);
@@ -347,7 +353,7 @@ export default function ProfileSettingsPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading your profile...</p>
         </div>
       </div>
@@ -410,7 +416,7 @@ export default function ProfileSettingsPage() {
                 <button
                   onClick={handleSaveProfile}
                   disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-400 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
                 >
                   {saving ? (
                     <>
@@ -474,7 +480,7 @@ export default function ProfileSettingsPage() {
                 {!isEditing && (
                   <button
                     onClick={() => setIsEditing(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-purple-600 hover:text-purple-700 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:text-blue-700 transition-colors"
                   >
                     <Edit className="w-4 h-4" />
                     Edit Profile
@@ -485,7 +491,7 @@ export default function ProfileSettingsPage() {
               <div className="flex items-start gap-6 mb-6">
                 {/* Profile Picture */}
                 <div className="relative">
-                  <div className="w-24 h-24 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center">
+                  <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full flex items-center justify-center">
                     <span className="text-white font-semibold text-2xl">
                       {(userProfile.firstName[0] || '').toUpperCase()}{(userProfile.lastName[0] || '').toUpperCase()}
                     </span>
@@ -502,7 +508,7 @@ export default function ProfileSettingsPage() {
                     value={isEditing ? tempProfile.firstName : userProfile.firstName}
                     onChange={(e) => handleProfileChange('firstName', e.target.value)}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                   />
                 </div>
                 <div>
@@ -512,7 +518,7 @@ export default function ProfileSettingsPage() {
                     value={isEditing ? tempProfile.lastName : userProfile.lastName}
                     onChange={(e) => handleProfileChange('lastName', e.target.value)}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                   />
                 </div>
                 <div>
@@ -523,7 +529,7 @@ export default function ProfileSettingsPage() {
                       value={isEditing ? tempProfile.email : userProfile.email}
                       onChange={(e) => handleProfileChange('email', e.target.value)}
                       disabled={!isEditing}
-                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
                     <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                   </div>
@@ -536,7 +542,7 @@ export default function ProfileSettingsPage() {
                       value={isEditing ? tempProfile.phone : userProfile.phone}
                       onChange={(e) => handleProfileChange('phone', e.target.value)}
                       disabled={!isEditing}
-                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
                     <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                   </div>
@@ -549,7 +555,7 @@ export default function ProfileSettingsPage() {
                       value={isEditing ? tempProfile.address : userProfile.address}
                       onChange={(e) => handleProfileChange('address', e.target.value)}
                       disabled={!isEditing}
-                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
                     <LocationIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                   </div>
@@ -561,7 +567,7 @@ export default function ProfileSettingsPage() {
                     value={isEditing ? tempProfile.city : userProfile.city}
                     onChange={(e) => handleProfileChange('city', e.target.value)}
                     disabled={!isEditing}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -572,7 +578,7 @@ export default function ProfileSettingsPage() {
                       value={isEditing ? tempProfile.state : userProfile.state}
                       onChange={(e) => handleProfileChange('state', e.target.value)}
                       disabled={!isEditing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
                   </div>
                   <div>
@@ -582,7 +588,7 @@ export default function ProfileSettingsPage() {
                       value={isEditing ? tempProfile.zipCode : userProfile.zipCode}
                       onChange={(e) => handleProfileChange('zipCode', e.target.value)}
                       disabled={!isEditing}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
                   </div>
                 </div>
@@ -605,7 +611,7 @@ export default function ProfileSettingsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Sign-in Activity</label>
                     <input
                       type="text"
-                      value="Not shown in this launch"
+                      value="Recent sign-in history is not shown here yet"
                       readOnly
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
                     />
@@ -619,19 +625,19 @@ export default function ProfileSettingsPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <MapPin className="w-6 h-6 text-green-600" />
-                  <h2 className="text-xl font-semibold text-gray-900">Location Settings</h2>
+                  <h2 className="text-xl font-semibold text-gray-900">Address for Nearby Services</h2>
                 </div>
                 <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                   locationEnabled 
                     ? 'bg-blue-100 text-blue-700' 
                     : 'bg-gray-100 text-gray-700'
                 }`}>
-                  {locationEnabled ? 'Saved-address preference on' : 'Preference off'}
+                  {locationEnabled ? 'Saved address on' : 'Saved address off'}
                 </div>
               </div>
               
               <p className="text-gray-600 mb-4">
-                Control whether Reliance should use your saved profile address for future local discovery features.
+                Control whether Reliance should use your saved profile address when nearby services are available.
               </p>
 
               {/* Info Box */}
@@ -639,9 +645,9 @@ export default function ProfileSettingsPage() {
                 <div className="flex items-start gap-3">
                   <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                   <div>
-                    <h3 className="font-medium text-blue-900 mb-1">What this setting does today</h3>
+                    <h3 className="font-medium text-blue-900 mb-1">How this works</h3>
                     <p className="text-blue-800 text-sm">
-                      This is an app preference for your saved address. Live browser location and exact distance-based recommendations are not active yet.
+                      If browser location is unavailable, Reliance can use your saved address on supported customer marketplace views to calculate nearby services when providers have usable coordinates.
                     </p>
                   </div>
                 </div>
@@ -652,10 +658,10 @@ export default function ProfileSettingsPage() {
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-3 rounded-full ${locationEnabled ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                   <span className="text-gray-900">
-                    Saved-address preference - {locationEnabled ? 'Enabled' : 'Disabled'}
+                    Use saved address for nearby services - {locationEnabled ? 'Enabled' : 'Disabled'}
                   </span>
                   {locationEnabled && (
-                    <span className="text-sm text-gray-600">Used only when location-aware discovery is available</span>
+                    <span className="text-sm text-gray-600">Used on supported nearby-service views when a saved address is available</span>
                   )}
                 </div>
                 <button
@@ -671,8 +677,8 @@ export default function ProfileSettingsPage() {
                   {savingLocation
                     ? 'Saving...'
                     : locationEnabled
-                    ? 'Disable Preference'
-                    : 'Enable Preference'}
+                    ? 'Turn Off'
+                    : 'Turn On'}
                 </button>
               </div>
             </div>
@@ -680,12 +686,12 @@ export default function ProfileSettingsPage() {
             {/* Privacy & Security */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
               <div className="flex items-center gap-3 mb-4">
-                <Shield className="w-6 h-6 text-purple-600" />
+                <Shield className="w-6 h-6 text-blue-600" />
                 <h2 className="text-xl font-semibold text-gray-900">Privacy & Security</h2>
               </div>
               
               <p className="text-gray-600 mb-6">
-                Security settings are shown honestly for this launch. Profile details can be updated here, password resets use account recovery, and optional passkeys live in Secure Account.
+                Keep your account details current, use account recovery when needed, and manage optional passkeys from Secure Account.
               </p>
 
               {/* Change Password */}
@@ -731,6 +737,23 @@ export default function ProfileSettingsPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Image</h2>
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-xl font-bold text-white shadow-sm">
+                  {customerInitials}
+                </div>
+                <div>
+                  <div className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    Initials only during beta
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-gray-600">
+                    Reliance uses your initials for customer profiles right now. Customer photo upload, edit, and remove controls are not live yet, so you will not see a random stock avatar on customer pages.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Account Status */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Status</h2>
@@ -752,9 +775,9 @@ export default function ProfileSettingsPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Security Setup</span>
+                  <span className="text-gray-700">Security</span>
                   <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">
-                    Limited
+                    Basic protection active
                   </span>
                 </div>
               </div>

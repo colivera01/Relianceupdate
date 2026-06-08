@@ -13,6 +13,10 @@
  */
 
 import { TRUST_SCORE_VERSION, TRUST_SCORE_WEIGHTS } from "@/lib/trust-score-calculator";
+import {
+  buildPublicTrustEvidenceSummary,
+  buildPublicTrustPresentationSummary,
+} from "@/lib/public-trust-score-presentation";
 
 export const TRUST_SCORE_PUBLIC_EXPLAINER =
   "The Reliance Trust Score is a platform-generated reliability score based on verified, " +
@@ -248,6 +252,8 @@ export function toPublicTrustScore(snapshot: SnapshotRow | null | undefined) {
       computedAt: null,
       explanation: TRUST_SCORE_PUBLIC_EXPLAINER,
       explanationDetails: buildTrustScoreExplanationDetails(snapshot),
+      evidence: buildPublicTrustEvidenceSummary(snapshot),
+      presentation: buildPublicTrustPresentationSummary(snapshot),
       separation:
         "Reliance Trust Score is separate from Customer Ratings; it does not use reviews.",
     };
@@ -260,6 +266,8 @@ export function toPublicTrustScore(snapshot: SnapshotRow | null | undefined) {
     computedAt: iso(snapshot.computedAt),
     explanation: TRUST_SCORE_PUBLIC_EXPLAINER,
     explanationDetails: buildTrustScoreExplanationDetails(snapshot),
+    evidence: buildPublicTrustEvidenceSummary(snapshot),
+    presentation: buildPublicTrustPresentationSummary(snapshot),
     separation:
       "Reliance Trust Score is separate from Customer Ratings; it does not use reviews.",
   };

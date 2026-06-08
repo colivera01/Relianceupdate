@@ -25,6 +25,19 @@ const surfaceClasses = {
   },
 } as const;
 
+const reviewBullets = [
+  "Based on customer-submitted ratings and reviews.",
+  "Helps you understand public customer sentiment.",
+  "Appears publicly only after moderation when required.",
+];
+
+const trustBullets = [
+  "Based on verified completed work and finalized platform outcomes.",
+  "Uses service-video and operational signals, not review sentiment.",
+  "Can appear as early-stage, emerging, or established depending on verified activity depth.",
+  "Stays separate from Customer Rating by design.",
+];
+
 export function TrustScoreEducationCard({
   surface = "light",
   className = "",
@@ -41,7 +54,10 @@ export function TrustScoreEducationCard({
             What is Reliance Trust Score?
           </div>
           <p className={`text-sm leading-6 ${styles.summary}`}>
-            Customer Rating reflects public opinion. The Reliance Trust Score is a platform-generated reliability signal based on verified finalized activity.
+            Customer Rating shows what people said. The Reliance Trust Score shows what Reliance has verified about completed work.
+          </p>
+          <p className={`text-xs leading-5 ${styles.helper}`}>
+            New providers can show an early-stage Trust Score before public reviews are available.
           </p>
         </div>
         <button
@@ -59,17 +75,23 @@ export function TrustScoreEducationCard({
           <div className="rounded-2xl border border-inherit bg-white/5 p-4">
             <p className="text-sm font-semibold">Customer Rating</p>
             <ul className="mt-2 space-y-1.5 text-sm leading-6">
-              <li>• Based on customer-submitted ratings and reviews.</li>
-              <li>• Helps customers understand public sentiment.</li>
-              <li>• Can appear publicly only after moderation when required.</li>
+              {reviewBullets.map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                  <span>{item}</span>
+                </li>
+              ))}
             </ul>
           </div>
           <div className="rounded-2xl border border-inherit bg-white/5 p-4">
             <p className="text-sm font-semibold">Reliance Trust Score</p>
             <ul className="mt-2 space-y-1.5 text-sm leading-6">
-              <li>• Based on verified finalized platform outcomes and workflow quality.</li>
-              <li>• Uses service-video and operational signals, not review sentiment.</li>
-              <li>• Stays separate from Customer Rating by design.</li>
+              {trustBullets.map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                  <span>{item}</span>
+                </li>
+              ))}
             </ul>
           </div>
         </div>

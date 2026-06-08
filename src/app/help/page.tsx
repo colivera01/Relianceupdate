@@ -228,7 +228,7 @@ export default async function PublicHelpPage({
               <h2 className="text-lg font-semibold text-white">Need help from Reliance?</h2>
               {HAS_LAUNCH_SUPPORT_EMAIL ? (
                 <p className="mt-3 text-sm leading-7 text-[#dbe7ff]">
-                  For launch support, email{' '}
+                  For customer and account support, email{' '}
                   <a href={LAUNCH_SUPPORT_MAILTO} className="font-semibold text-white underline underline-offset-4">
                     {LAUNCH_SUPPORT_EMAIL}
                   </a>
@@ -244,7 +244,7 @@ export default async function PublicHelpPage({
                 </p>
               )}
               <p className="mt-3 text-sm leading-7 text-[#dbe7ff]">
-                Live chat, phone support, and in-app ticketing are not available on this launch.
+                Live chat, phone support, and in-app ticketing are not available yet.
               </p>
             </div>
 

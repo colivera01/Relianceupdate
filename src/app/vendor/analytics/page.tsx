@@ -115,14 +115,14 @@ export default function VendorAnalyticsPage() {
       <div className="space-y-8 px-4 py-8 md:px-8">
         <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
           <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-            Vendor intelligence
+            Customer confidence
           </div>
           <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-            Trust score, service video, and launch-readiness analytics
+            See which signals help customers trust and choose your business
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
-            Loading the verified service video pipeline, trust signals, and operational performance
-            snapshot for your vendor workspace.
+            Loading the trust, review, service video, and business-performance signals that shape how
+            customers experience your public profile.
           </p>
         </header>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -196,17 +196,16 @@ export default function VendorAnalyticsPage() {
     <div className="space-y-8 px-4 py-8 md:px-8">
       <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
         <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-          Vendor intelligence
+          Customer confidence
         </div>
         <div className="mt-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
-              Trust score, service video, and launch-readiness analytics
+              Understand what makes customers trust and book your business
             </h1>
             <p className="mt-4 text-sm leading-7 text-white/72 sm:text-base">
-              Review the live trust signals, verified service video pipeline, and operational
-              performance for {data.profile.businessName || "your business"} without changing how
-              vendor workflows already behave.
+              Review the public trust signals, approved service videos, review strength, and
+              completed-work patterns that shape customer confidence in {data.profile.businessName || "your business"}.
             </p>
           </div>
           <div className="flex items-center gap-3 rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)]">
@@ -215,10 +214,10 @@ export default function VendorAnalyticsPage() {
             </div>
             <div className="space-y-1">
               <p className="text-xs uppercase tracking-[0.28em] text-white/46">
-                Marketplace signal
+                Important distinction
               </p>
               <p className="text-sm font-medium text-white/82">
-                Customer Reviews stay separate from the Reliance Trust Score.
+                Customer Reviews and Reliance Trust Score help confidence in different ways.
               </p>
             </div>
           </div>
@@ -246,9 +245,9 @@ export default function VendorAnalyticsPage() {
       <VendorTrustScoreCard dashboardData={data} />
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
-        <Card>
+          <Card>
           <CardHeader>
-            <CardTitle>Operations Snapshot</CardTitle>
+            <CardTitle>What customers can feel from your recent activity</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border bg-slate-50/90 p-4">
@@ -258,7 +257,7 @@ export default function VendorAnalyticsPage() {
               </div>
               <div className="mt-2 text-2xl font-semibold">{formatPercent(derived.reviewCoverage)}</div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Based on recent completed jobs that already have public reviews attached.
+                This shows how much completed work is already turning into public customer proof.
               </p>
             </div>
             <div className="rounded-2xl border bg-slate-50/90 p-4">
@@ -284,7 +283,7 @@ export default function VendorAnalyticsPage() {
                 <Badge variant="outline">{derived.archivedVideos} archived</Badge>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                {derived.totalProofAssets} total service video assets currently tracked.
+                Approved service videos help first-time customers trust what your business actually delivers.
               </p>
             </div>
             <div className="rounded-2xl border bg-slate-50/90 p-4">
@@ -298,7 +297,7 @@ export default function VendorAnalyticsPage() {
                 <Badge variant="success">{derived.completedJobs} completed</Badge>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Based on the current recent jobs slice from the live vendor dashboard feed.
+                Consistent completion keeps future reviews, service videos, and trust signals moving.
               </p>
             </div>
           </CardContent>
@@ -306,7 +305,7 @@ export default function VendorAnalyticsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Team Highlight</CardTitle>
+            <CardTitle>Public proof highlights</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {derived.topPerformer ? (

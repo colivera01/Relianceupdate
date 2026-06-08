@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { useVendorDevices } from '@/hooks/useVendorDevices';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
 import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
+import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
 
 // BACKEND DEVELOPER NOTES:
 // - GET /api/vendor/profile: Fetch vendor profile and settings.
@@ -448,13 +450,30 @@ export default function VendorProfilePage() {
     }
   }, [showPairModal, fetchDevices]);
 
+  const businessDisplayName =
+    String(localFormData.businessName || profile?.businessName || profile?.name || 'Your business').trim() ||
+    'Your business';
+  const businessInitials = businessDisplayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || 'RB';
+  const growthSummary = buildVendorGrowthSummary({
+    vendorId: profile?.id || null,
+    businessName: profile?.businessName || null,
+    onboarding: profile?.onboarding || null,
+    publishedReviewCount: Number(profile?.ratingCount || 0),
+    approvedServiceVideoCount: 0,
+  });
+
   return (
     <div className="bg-gradient-to-br from-slate-50 to-blue-50">
       <div className="w-full">
       <div className="mb-6 rounded-2xl border border-white/60 bg-white/85 p-5 shadow-sm">
-        <h1 className="text-3xl font-semibold text-gray-900">Profile &amp; Settings</h1>
+        <h1 className="text-3xl font-semibold text-gray-900">Public Credibility Center</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Manage your business profile, paired devices, storage, and vendor account protections.
+          Manage the business details, public signals, and account settings that shape how customers experience your business.
         </p>
       </div>
 
@@ -490,6 +509,40 @@ export default function VendorProfilePage() {
         {/* Profile Form */}
         <section className="flex-1 max-w-2xl space-y-6">
           {profile.onboarding ? <VendorOnboardingStatusPanel profile={profile} /> : null}
+          <Card className="border-blue-200 bg-blue-50 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-xl text-blue-950">What customers see</CardTitle>
+              <p className="text-sm text-blue-900">
+                Use this summary to understand whether customers can find your business and which public signals are helping them trust you.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                {growthSummary.metrics.slice(0, 4).map((metric) => (
+                  <div key={metric.label} className="rounded-xl border border-blue-100 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{metric.label}</p>
+                    <p className="mt-2 text-lg font-semibold text-slate-950">{metric.value}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{metric.detail}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-xl border border-blue-100 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Public profile status</p>
+                <p className="mt-2 text-lg font-semibold text-slate-950">{growthSummary.visibilityTitle}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{growthSummary.visibilityDetail}</p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {growthSummary.publicProfileHref ? (
+                    <Button asChild size="sm" className="bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
+                      <Link href={growthSummary.publicProfileHref}>Open Public Profile</Link>
+                    </Button>
+                  ) : null}
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/vendor/services">Manage public services</Link>
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           {/* Enhanced Profile Information Card */}
           <Card className="bg-gradient-to-br from-white to-blue-50 border-blue-200 shadow-lg">
             <CardHeader className="pb-4">
@@ -513,11 +566,17 @@ export default function VendorProfilePage() {
                   <label className="block text-sm font-medium mb-2 text-gray-700">Business Profile Photo</label>
                   <div className="flex items-center gap-4">
                     <div className="relative">
-                      <img 
-                        src={localFormData.profilePhoto || profile.profilePhoto || 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&crop=center'} 
-                        alt="Business Profile" 
-                        className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200"
-                      />
+                      {localFormData.profilePhoto || profile.profilePhoto ? (
+                        <img 
+                          src={localFormData.profilePhoto || profile.profilePhoto || ''} 
+                          alt="Business Profile" 
+                          className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200"
+                        />
+                      ) : (
+                        <div className="flex h-24 w-24 items-center justify-center rounded-lg border-2 border-gray-200 bg-gradient-to-br from-slate-100 to-blue-100 text-2xl font-semibold text-slate-700">
+                          {businessInitials}
+                        </div>
+                      )}
 
                       {/* Hidden file input */}
                       <input
@@ -539,7 +598,7 @@ export default function VendorProfilePage() {
                       </button>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm text-gray-600 mb-2">Upload a professional photo of your business, team, or workspace</p>
+                      <p className="text-sm text-gray-600 mb-2">Upload a professional photo of your business, team, or workspace. Customers will use it as a first impression when your public profile is live.</p>
                       <button
                         type="button"
                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"

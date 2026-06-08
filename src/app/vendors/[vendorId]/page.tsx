@@ -185,14 +185,23 @@ export default function PublicVendorProfilePage() {
           </div>
 
           {loading ? (
-            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="h-72 animate-pulse rounded-[32px] bg-white/10" />
-              <div className="h-72 animate-pulse rounded-[32px] bg-white/10" />
+            <div className="space-y-4">
+              <div className="rounded-[28px] border border-white/12 bg-white/8 px-6 py-5 text-sm text-white/82 backdrop-blur-xl">
+                Reliance is loading this public vendor profile now. Public services, reviews, and any approved
+                service videos will appear as soon as the listing is ready.
+              </div>
+              <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="h-72 animate-pulse rounded-[32px] bg-white/10" />
+                <div className="h-72 animate-pulse rounded-[32px] bg-white/10" />
+              </div>
             </div>
           ) : error ? (
             <div className="rounded-[28px] border border-amber-200 bg-amber-50 px-6 py-6 text-amber-900">
               <p className="text-sm font-semibold">Public vendor profile temporarily unavailable</p>
               <p className="mt-2 text-sm">{error}</p>
+              <p className="mt-2 text-sm text-amber-800">
+                This usually means the public page is having trouble loading right now, not that the vendor profile was removed.
+              </p>
               <Button variant="outline" className="mt-4 rounded-full" onClick={() => void loadVendorProfile()}>
                 Try Again
               </Button>
@@ -205,13 +214,13 @@ export default function PublicVendorProfilePage() {
             <div className="grid gap-8 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
               <div>
                 <div className="reliance-kicker border border-white/10 bg-white/10 text-white/76">
-                  Verified vendor presentation
+                  About this provider
                 </div>
                 <h1 className="mt-6 max-w-3xl font-display text-5xl font-semibold leading-[0.98] text-white sm:text-6xl">
                   {vendor.vendorName}
                 </h1>
                 <p className="mt-5 max-w-2xl text-lg leading-8 text-white/74">
-                  Public profile, service videos, reviews, and trust explanation presented in one place.
+                  See service details, public reviews, and any available public service videos in one place.
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-3">
@@ -258,14 +267,20 @@ export default function PublicVendorProfilePage() {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/58">
-                      Featured Service Video
+                      Public service video
                     </div>
                     <div className="mt-2 font-display text-2xl text-white">
-                      {primaryServiceVideo?.title || 'Completed service highlight'}
+                      {primaryServiceVideo?.title || 'Public service video'}
                     </div>
                   </div>
-                  <Badge className="bg-emerald-500 text-white hover:bg-emerald-500">
-                    Verified Service Video
+                  <Badge
+                    className={
+                      primaryServiceVideo
+                        ? 'bg-emerald-500 text-white hover:bg-emerald-500'
+                        : 'bg-white/10 text-white/72 hover:bg-white/10'
+                    }
+                  >
+                    {primaryServiceVideo ? 'Verified Service Video' : 'No public video yet'}
                   </Badge>
                 </div>
 
@@ -278,7 +293,7 @@ export default function PublicVendorProfilePage() {
                   />
                 ) : (
                   <div className="flex h-[320px] items-center justify-center rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#10203a,#1b355f)] px-8 text-center text-sm text-white/72">
-                    No completed work video is available yet for this vendor.
+                    No public service video is available yet for this vendor.
                   </div>
                 )}
 

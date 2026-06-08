@@ -9,6 +9,9 @@ import { Search, MapPin, SlidersHorizontal, X, ChevronLeft, ChevronRight, Heart 
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAddFavorite, useFavoritesOptional, useRemoveFavorite } from '@/hooks/useFavorites';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
+import { CustomerTrustSignalCard } from '@/components/public/CustomerTrustSignalCard';
+import { getCustomerReviewCopy } from '@/lib/customer-review-copy';
+import { getCustomerTrustScoreCopy } from '@/lib/customer-trust-score-copy';
 
 export default function UserDiscoverPage() {
   const [searchInput, setSearchInput] = useState('');
@@ -83,8 +86,8 @@ export default function UserDiscoverPage() {
     <div className="pt-6">
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold mb-6 text-gray-900">Discover</h1>
-          <p className="text-gray-600">Find trusted local services.</p>
+          <h1 className="text-2xl font-semibold mb-6 text-gray-900">Browse Services</h1>
+          <p className="text-gray-600">Compare services, public reviews, and service videos in one place.</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
@@ -160,7 +163,7 @@ export default function UserDiscoverPage() {
           </div>
 
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            Distance, availability, and verified-only filters are deferred until backend truth exists for customer discover.
+            Search, category, and price filters are available here. Add location-aware browsing from the public marketplace if you want distance-based results.
           </div>
         </div>
       )}
@@ -204,7 +207,18 @@ export default function UserDiscoverPage() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-          {results.map((item) => (
+          {results.map((item) => {
+            const trustCopy = getCustomerTrustScoreCopy({
+              hasPublicMedia: item.publicListing.hasPublicMedia,
+              reviewCount: item.reviewCount,
+              trustScore: item.trustScore,
+            });
+            const reviewCopy = getCustomerReviewCopy({
+              rating: item.rating,
+              reviewCount: item.reviewCount,
+            });
+
+            return (
             <Card key={item.serviceId} className="hover:shadow-lg transition-shadow mb-4">
               <div className="relative">
                 <PublicMediaPreview
@@ -212,6 +226,8 @@ export default function UserDiscoverPage() {
                   type={item.previewMediaType}
                   alt={item.serviceName}
                   className="w-full h-48 object-cover rounded-t-lg"
+                  emptyLabel="No public service video yet"
+                  videoLabel="Service video available"
                 />
               </div>
 
@@ -234,33 +250,25 @@ export default function UserDiscoverPage() {
                     {item.location}
                   </div>
                 ) : null}
+                {typeof item.distanceMiles === 'number' ? (
+                  <div className="mb-2 inline-flex w-fit items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    {item.distanceMiles.toFixed(1)} mi away
+                  </div>
+                ) : null}
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-2xl bg-blue-50 px-3 py-2 text-blue-900">
-                    <div className="font-semibold">
-                      {typeof item.rating === 'number' ? `${item.rating.toFixed(1)} stars` : 'New listing'}
-                    </div>
-                    <div className="text-blue-700">
-                      {typeof item.reviewCount === 'number'
-                        ? `${item.reviewCount} review${item.reviewCount === 1 ? '' : 's'}`
-                        : 'Reviews pending'}
-                    </div>
+                    <div className="font-semibold">{reviewCopy.headline}</div>
+                    <div className="text-blue-700">{reviewCopy.detail}</div>
                   </div>
-                  <div className="rounded-2xl bg-slate-50 px-3 py-2 text-slate-800">
-                    <div className="font-semibold">
-                      {item.trustScore?.scored && item.trustScore.totalScorePct !== null
-                        ? `${item.trustScore.totalScorePct}%`
-                        : 'Building'}
-                    </div>
-                    <div className="text-slate-600">Reliance Trust Score</div>
-                  </div>
+                  <CustomerTrustSignalCard copy={trustCopy} />
                 </div>
 
                 <div className="flex items-center justify-between mt-3">
                   <div className="text-base font-bold text-gray-900">${item.price.toFixed(2)}</div>
                   {item.publicListing.hasPublicMedia ? (
-                    <Badge className="bg-blue-100 text-blue-800">Public media</Badge>
+                    <Badge className="bg-blue-100 text-blue-800">Public service video</Badge>
                   ) : (
-                    <Badge className="bg-gray-100 text-gray-700">No public media</Badge>
+                    <Badge className="bg-gray-100 text-gray-700">No public video yet</Badge>
                   )}
                 </div>
 
@@ -297,7 +305,8 @@ export default function UserDiscoverPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 

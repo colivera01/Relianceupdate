@@ -226,29 +226,29 @@ export default function ReviewsPage() {
     <div className="w-full max-w-5xl space-y-8">
       <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
         <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-          Customer review hub
+          Your reviews
         </div>
         <div className="mt-5 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl space-y-4">
             <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
-              Customer reviews stay separate from the Reliance Trust Score
+              Review completed services
             </h1>
             <p className="max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
-              Review completed services with approved service videos, keep submitted feedback tied
-              to real bookings, and follow exactly where each service still needs customer action.
+              When a completed booking has an approved customer-visible service video, you can leave
+              a review here and keep your submitted feedback tied to the right booking.
             </p>
             <p className="text-sm leading-7 text-white/68">
               {loading || authLoading
                 ? 'Loading your review totals and booking-linked feedback history...'
-                : `You have ${data.pending.length} ${data.pending.length === 1 ? 'review' : 'reviews'} ready to submit${
+                : `You have ${data.pending.length} ${data.pending.length === 1 ? 'service' : 'services'} ready for a review${
                     awaitingVideoCount > 0
-                      ? `, ${awaitingVideoCount} completed ${awaitingVideoCount === 1 ? 'booking is' : 'bookings are'} not ready for review yet,`
+                      ? `, ${awaitingVideoCount} completed ${awaitingVideoCount === 1 ? 'service is' : 'services are'} still waiting on review access,`
                       : ''
                   } and ${data.submitted.length} submitted ${data.submitted.length === 1 ? 'review' : 'reviews'}.${
                     proofBackedSubmittedCount > 0
                       ? ` ${proofBackedSubmittedCount} submitted ${
                           proofBackedSubmittedCount === 1 ? 'review is' : 'reviews are'
-                        } verified with service videos or images.`
+                        } tied to customer-visible service videos or images.`
                       : ''
                   }`}
             </p>
@@ -311,8 +311,7 @@ export default function ReviewsPage() {
             <div className="space-y-1 mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Ready to Review</h2>
               <p className="text-sm text-gray-600">
-                These completed bookings have approved service videos and are ready for the
-                video-based review flow.
+                These completed services have approved customer-visible service videos and are ready for a review.
               </p>
             </div>
             {data.pending.length === 0
@@ -345,7 +344,7 @@ export default function ReviewsPage() {
               <div className="space-y-1 mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">Review Not Open Yet</h2>
                 <p className="text-sm text-gray-600">
-                  These completed bookings are not reviewable yet. Open the booking to see whether
+                  These completed services are not reviewable yet. Open the booking to see whether
                   the service video is pending approval, not customer-visible, or still unavailable.
                 </p>
               </div>
@@ -383,7 +382,7 @@ export default function ReviewsPage() {
             <div className="space-y-1 mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Submitted Reviews</h2>
               <p className="text-sm text-gray-600">
-                Your persisted review history. Reviews connected to customer-visible approved
+                Your saved review history. Reviews connected to customer-visible approved
                 completed-service videos are marked below.
               </p>
             </div>

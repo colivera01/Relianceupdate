@@ -73,6 +73,69 @@ function formatMediaTimestamp(value: string | null | undefined): string | null {
   });
 }
 
+function ServiceDetailLoadingState() {
+  return (
+    <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
+      <div className="sticky top-0 z-10 border-b border-white/8 bg-[rgba(4,9,18,0.88)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-4">
+          <RelianceLogo
+            href="/"
+            tone="light"
+            compact
+            blend
+            frameClassName="h-[4.8rem] w-[4.8rem]"
+          />
+          <div className="flex items-center gap-2 text-white/72">
+            <ChevronLeft className="h-5 w-5" />
+            <span>Back to services</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl px-4 py-6">
+        <div className="mb-6 rounded-[28px] border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-blue-900 shadow-sm">
+          Reliance is loading this public service listing now. Provider details, reviews, and any public service video will appear as soon as the page is ready.
+        </div>
+
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="h-96 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)]" />
+              <div className="space-y-4 p-6">
+                <div className="h-8 w-3/4 rounded bg-slate-100" />
+                <div className="h-4 w-1/2 rounded bg-slate-100" />
+                <div className="h-4 w-full rounded bg-slate-100" />
+                <div className="h-4 w-5/6 rounded bg-slate-100" />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="h-6 w-40 rounded bg-slate-100" />
+              <div className="mt-4 h-4 w-full rounded bg-slate-100" />
+              <div className="mt-3 h-4 w-4/5 rounded bg-slate-100" />
+              <div className="mt-3 h-4 w-3/5 rounded bg-slate-100" />
+            </div>
+          </div>
+
+          <div className="space-y-6 lg:col-span-1">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="h-7 w-32 rounded bg-slate-100" />
+              <div className="mt-3 h-4 w-full rounded bg-slate-100" />
+              <div className="mt-3 h-11 w-full rounded-full bg-slate-100" />
+              <div className="mt-3 h-11 w-full rounded-xl bg-slate-100" />
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="h-6 w-36 rounded bg-slate-100" />
+              <div className="mt-4 h-4 w-5/6 rounded bg-slate-100" />
+              <div className="mt-3 h-4 w-3/4 rounded bg-slate-100" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ServiceDetailPageContent() {
   const params = useParams();
   const router = useRouter();
@@ -316,23 +379,22 @@ function ServiceDetailPageContent() {
   };
 
   if (loading) {
-    return (
-      <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--reliance-blue)] mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading service details...</p>
-        </div>
-      </div>
-    );
+    return <ServiceDetailLoadingState />;
   }
 
   if (error) {
     return (
-      <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red-500 mb-4">Warning</div>
-          <p className="text-gray-600 mb-4 max-w-md">{error}</p>
-          <div className="flex items-center justify-center gap-3">
+      <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] flex items-center justify-center px-4">
+        <div className="w-full max-w-xl rounded-[28px] border border-slate-200 bg-white p-8 text-center shadow-[0_24px_80px_rgba(7,16,38,0.08)]">
+          <div className="mb-4 inline-flex rounded-full bg-amber-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">
+            Service page unavailable
+          </div>
+          <h1 className="font-display text-3xl font-semibold text-slate-950">This service page is not ready yet</h1>
+          <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">{error}</p>
+          <p className="mt-2 text-sm text-slate-500">
+            This usually means the public listing is having trouble loading right now, not that the service was removed. You can retry in a moment or go back to the service catalog.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-3">
             <button
               onClick={() => void loadServiceData(() => true)}
               className="rounded-full bg-[var(--reliance-blue)] px-6 py-2 text-white transition-colors hover:bg-[#1a58db]"
@@ -341,7 +403,7 @@ function ServiceDetailPageContent() {
             </button>
             <button
               onClick={handleBack}
-              className="bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+              className="rounded-full border border-gray-300 bg-white px-6 py-2 text-gray-700 transition-colors hover:bg-gray-50"
             >
               {resolvedBackLabel}
             </button>
@@ -665,7 +727,7 @@ function ServiceDetailPageContent() {
                   </div>
                 ) : (
                   <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-right">
-                    <div className="text-sm font-semibold text-blue-900">Review-first listing</div>
+                    <div className="text-sm font-semibold text-blue-900">Public service listing</div>
                     <div className="text-xs text-blue-700">
                       {vendorReviewCount} public review{vendorReviewCount === 1 ? '' : 's'} available
                     </div>
@@ -932,7 +994,7 @@ function ServiceDetailPageContent() {
                   </>
                 ) : (
                   <>
-                    <div className="text-xl font-bold text-gray-900 mb-2">Ready to learn more?</div>
+                    <div className="text-xl font-bold text-gray-900 mb-2">Review this service before you book</div>
                     <p className="text-sm text-gray-600">
                       Review completed work, public feedback, and vendor details before signing in to book.
                     </p>
@@ -943,11 +1005,11 @@ function ServiceDetailPageContent() {
               <div className="space-y-4 mb-6">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Calendar className="w-4 h-4" />
-                  <span>Next available: {availability?.next_available ? new Date(availability.next_available).toLocaleDateString() : 'Check availability'}</span>
+                  <span>Availability: {availability?.next_available ? new Date(availability.next_available).toLocaleDateString() : 'Check with vendor'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <TimeIcon className="w-4 h-4" />
-                  <span>{availability?.schedule ? 'Check schedule for details' : 'Contact vendor for hours'}</span>
+                  <span>{availability?.schedule ? 'Check the schedule for details' : 'Ask the vendor about hours'}</span>
                 </div>
               </div>
 
@@ -1101,14 +1163,7 @@ function ServiceDetailPageContent() {
 }
 
 function ServiceDetailPageFallback() {
-  return (
-    <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--reliance-blue)] mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading service details...</p>
-      </div>
-    </div>
-  );
+  return <ServiceDetailLoadingState />;
 }
 
 export default function ServiceDetailPage() {

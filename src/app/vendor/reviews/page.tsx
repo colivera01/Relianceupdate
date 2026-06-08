@@ -103,13 +103,14 @@ export default function VendorReviewsPage() {
                 <div>
                   <h1 className="text-2xl font-semibold text-blue-950">Customer Reviews</h1>
                   <p className="text-sm text-blue-900">
-                    Published feedback for {data.profile.businessName || "your business"}.
+                    Published feedback that customers can already see for {data.profile.businessName || "your business"}.
                   </p>
                 </div>
               </div>
               <p className="max-w-3xl text-sm text-blue-900">
-                Reliance admin still approves whether a review becomes public, but this page now shows the live customer
-                feedback that has already been approved for your business.
+                Published reviews help customers feel safer choosing your business. Reliance admin still
+                approves whether a review becomes public, and this page shows the approved feedback that
+                is already strengthening your credibility.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -141,7 +142,7 @@ export default function VendorReviewsPage() {
             <CardContent>
               <p className="text-3xl font-bold text-gray-900">{reviewCount}</p>
               <p className="mt-2 text-sm text-gray-600">
-                Approved reviews currently contributing to your public reputation.
+                Approved reviews currently improving customer confidence in your public reputation.
               </p>
             </CardContent>
           </Card>
@@ -156,8 +157,8 @@ export default function VendorReviewsPage() {
                 <p>Reliance admin approves public review visibility before feedback appears here.</p>
               </div>
               <p className="text-sm text-gray-600">
-                New customer reviews will show up after approval. Use completed jobs to follow the service-video and
-                review workflow end to end.
+                New customer reviews show up here after approval. Keep completed jobs moving through the
+                approved service-video workflow so more trustworthy customer feedback can publish.
               </p>
             </CardContent>
           </Card>
@@ -168,7 +169,7 @@ export default function VendorReviewsPage() {
             <div>
               <CardTitle>Recent Published Reviews</CardTitle>
               <p className="mt-1 text-sm text-gray-600">
-                These are the most recent customer reviews currently visible to the public.
+                These are the customer reviews currently shaping how new customers judge your business.
               </p>
             </div>
             {latestReview ? (
@@ -180,8 +181,8 @@ export default function VendorReviewsPage() {
               <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-gray-500">
                 <p className="font-medium text-gray-700">No published reviews yet.</p>
                 <p className="mt-2 text-sm">
-                  Customer feedback will appear here after a completed job, review submission, and Reliance admin
-                  approval.
+                  Customer feedback appears here after a completed job, review submission, and Reliance
+                  admin approval. Published reviews are one of the clearest public trust signals for new customers.
                 </p>
               </div>
             ) : (

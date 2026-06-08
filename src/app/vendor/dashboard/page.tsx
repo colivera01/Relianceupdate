@@ -12,6 +12,8 @@ import { getClientSessionHeaders } from '@/lib/client-session';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
 import { tutorialGuides } from '@/lib/user-guidance';
+import VendorBusinessVisibilitySection from '@/components/vendor/VendorBusinessVisibilitySection';
+import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
 
 type PromotionPackageOption = {
   packageKey: string;
@@ -88,7 +90,7 @@ export default function VendorDashboard() {
   const vendorIdForPromotion = data?.profile?.id || null;
 
   useEffect(() => {
-    if (!promotionOpen || !vendorIdForPromotion) return;
+    if (!vendorIdForPromotion) return;
     let cancelled = false;
     const controller = new AbortController();
     const timeoutHandle = window.setTimeout(() => controller.abort(), PROMOTION_REQUEST_OPTIONS_TIMEOUT_MS);
@@ -155,7 +157,7 @@ export default function VendorDashboard() {
       window.clearTimeout(timeoutHandle);
       controller.abort();
     };
-  }, [promotionOpen, promotionRequestOptionsReloadKey, user?.id, vendorIdForPromotion]);
+  }, [promotionRequestOptionsReloadKey, user?.id, vendorIdForPromotion]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -378,6 +380,16 @@ export default function VendorDashboard() {
       selectedPromotionService?.isPublished &&
       !promotionSubmitting
   );
+  const growthSummary = buildVendorGrowthSummary({
+    vendorId: data?.profile?.id || vendorProfile?.id || null,
+    businessName: data?.profile?.businessName || vendorProfile?.businessName || null,
+    onboarding: vendorProfile?.onboarding || null,
+    publishedReviewCount: ratingCount,
+    approvedServiceVideoCount: approvedProofs,
+    promotionBrowseReadiness,
+    promotionServices,
+    promotionRecentRequests,
+  });
 
   const requestPairingCode = async () => {
     setPairingLoading(true);
@@ -463,19 +475,21 @@ export default function VendorDashboard() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-                Vendor command center
+                Business growth center
               </div>
               <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-                Present verified work like a premium trust brand
+                Grow visibility, trust, and customer confidence
               </h1>
               <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
-                Track service videos, review customer ratings, monitor operational health, and request promoted
-                placement without changing how vendor workflows already behave.
+                See what customers can find today, what public proof is already helping your business,
+                and which next steps will make Reliance work harder for growth.
               </p>
             </div>
             <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="dark" className="self-start" />
           </div>
         </section>
+
+        <VendorBusinessVisibilitySection summary={growthSummary} />
 
         {/* 1) Command Bar */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -551,7 +565,7 @@ export default function VendorDashboard() {
                 <div>
                   <h2 className="font-semibold text-blue-950">Promote my business</h2>
                   <p className="text-sm text-blue-900">
-                    Request extra visibility in local browse while Reliance keeps approval, payment tracking, and activation under admin control.
+                    Promotions help your business earn extra marketplace visibility once your public profile, published services, and trust signals are ready.
                   </p>
                 </div>
               </div>
@@ -565,15 +579,15 @@ export default function VendorDashboard() {
                 <div className="mb-4 grid gap-3 md:grid-cols-3">
                   <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
                     <p className="font-semibold">1. Pick a package</p>
-                    <p className="mt-1 text-xs text-blue-800">Choose the placement and service you want reviewed for promotion.</p>
+                    <p className="mt-1 text-xs text-blue-800">Choose the placement and published service you want Reliance to review for extra visibility.</p>
                   </div>
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     <p className="font-semibold">2. Wait for admin review</p>
-                    <p className="mt-1 text-xs text-amber-800">Reliance checks eligibility, timing, and package fit before payment is requested.</p>
+                    <p className="mt-1 text-xs text-amber-800">Reliance checks public readiness, package fit, and timing before payment is requested.</p>
                   </div>
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                     <p className="font-semibold">3. Go live after payment</p>
-                    <p className="mt-1 text-xs text-emerald-800">Approved campaigns go live only after payment is recorded or waived by admin.</p>
+                    <p className="mt-1 text-xs text-emerald-800">Approved campaigns can increase visibility in browse after payment is recorded or waived by admin.</p>
                   </div>
                 </div>
 
@@ -581,7 +595,7 @@ export default function VendorDashboard() {
                   {effectivePromotionLaunchAvailabilityNote}
                 </div>
                 <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                  Browse promotions only render when Reliance still has enough organic results to keep the page useful.
+                  Browse promotions matter because they can put your business in front of more customers, but they only render when Reliance still has enough organic results to keep browse trustworthy.
                   Desktop browse currently needs at least 4 organic listings, and category-filtered browse needs at least 3,
                   before featured paid placements can appear.
                 </div>
@@ -660,7 +674,7 @@ export default function VendorDashboard() {
                     {selectedPromotionPackage ? (
                       <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold">{selectedPromotionPackage.publicSummary}</p>
+                      <p className="font-semibold">{selectedPromotionPackage.publicSummary}</p>
                           {selectedPromotionPackage.isFoundingRate ? (
                             <Badge variant="outline" className="border-blue-200 bg-white text-blue-800">
                               {selectedPromotionPackage.pricingLabel}
@@ -673,6 +687,9 @@ export default function VendorDashboard() {
                           <span className="rounded-full bg-white px-3 py-1">${(selectedPromotionPackage.defaultPriceCents / 100).toFixed(0)}</span>
                         </div>
                         <p className="mt-2">{selectedPromotionPackage.bestFor}</p>
+                        <p className="mt-2 text-xs text-blue-800">
+                          Use promotions after your profile already gives customers a strong reason to click, trust, and book.
+                        </p>
                       </div>
                     ) : null}
 
@@ -727,7 +744,7 @@ export default function VendorDashboard() {
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <p className="text-xs text-gray-600">
                         This form creates a request only. Payment and activation still happen later through Reliance admin,
-                        and live browse placement still depends on available inventory plus the organic-results minimums above.
+                        and live browse placement still depends on available inventory, public readiness, and the organic-results minimums above.
                       </p>
                       <Button
                         type="button"
