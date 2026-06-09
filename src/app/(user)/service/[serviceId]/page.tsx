@@ -52,6 +52,7 @@ function sanitizeReturnLabel(value: string | null): string | null {
 
 const SERVICE_DETAIL_TIMEOUT_MS = 30_000;
 const SERVICE_DETAIL_RETRY_ATTEMPTS = 3;
+const PUBLIC_DB_RETRY_DELAY_MS = 1_200;
 
 type ServiceVideoItem = {
   id: string;
@@ -74,21 +75,31 @@ function formatMediaTimestamp(value: string | null | undefined): string | null {
 }
 
 function ServiceDetailLoadingState() {
+  const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
+  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null);
+  const resolvedBackHref = returnTo || (user?.id ? '/discover' : '/');
+  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Discover' : 'Back to Home Page');
+
   return (
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
       <div className="sticky top-0 z-10 border-b border-white/8 bg-[rgba(4,9,18,0.88)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-4">
           <RelianceLogo
-            href="/"
+            href={resolvedBackHref}
             tone="light"
             compact
             blend
             frameClassName="h-[4.8rem] w-[4.8rem]"
           />
-          <div className="flex items-center gap-2 text-white/72">
+          <Link
+            href={resolvedBackHref}
+            className="inline-flex items-center gap-2 rounded-full border border-white/12 px-4 py-2 text-sm font-medium text-white/72 transition hover:border-white/18 hover:bg-white/6 hover:text-white"
+          >
             <ChevronLeft className="h-5 w-5" />
-            <span>Back to services</span>
-          </div>
+            <span>{resolvedBackLabel}</span>
+          </Link>
         </div>
       </div>
 
@@ -167,13 +178,21 @@ function ServiceDetailPageContent() {
         const timeoutId = window.setTimeout(() => controller.abort(), SERVICE_DETAIL_TIMEOUT_MS);
 
         try {
-          return await fetch(`/api/services/${serviceId}`, {
+          const response = await fetch(`/api/services/${serviceId}`, {
             signal: controller.signal,
           });
+          if (response.status === 503 && attempt < SERVICE_DETAIL_RETRY_ATTEMPTS - 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, PUBLIC_DB_RETRY_DELAY_MS));
+            continue;
+          }
+          return response;
         } catch (error) {
           lastError = error;
           if ((error as { name?: string })?.name !== 'AbortError') {
             throw error;
+          }
+          if (attempt < SERVICE_DETAIL_RETRY_ATTEMPTS - 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, PUBLIC_DB_RETRY_DELAY_MS));
           }
         } finally {
           window.clearTimeout(timeoutId);
@@ -292,12 +311,6 @@ function ServiceDetailPageContent() {
     };
   }, [serviceId, user?.id]);
 
-  const handleContactVendor = () => {
-    if (service?.vendor?.phone) {
-      window.open(`tel:${service.vendor.phone}`, '_blank');
-    }
-  };
-
   const handleToggleFavorite = async () => {
     if (!service) return;
     if (!isSignedIn) {
@@ -369,13 +382,10 @@ function ServiceDetailPageContent() {
       // You could show a toast notification here
     }
   };
-  const resolvedBackLabel = returnLabel || 'Back to Discover';
+  const resolvedBackHref = returnTo || (isSignedIn ? '/discover' : '/');
+  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Discover' : 'Back to Home Page');
   const handleBack = () => {
-    if (returnTo) {
-      router.push(returnTo);
-      return;
-    }
-    router.back();
+    router.push(resolvedBackHref);
   };
 
   if (loading) {
@@ -443,6 +453,16 @@ function ServiceDetailPageContent() {
   const headerReviewCount = servicePublicReviewCount || vendorReviewCount;
   const vendorRatingLabel = vendorRating == null ? 'New' : vendorRating.toFixed(1);
   const publicVendorEmail = getPublicVendorEmail(service?.vendor?.email);
+  const publicContactHref = publicVendorEmail
+    ? `mailto:${publicVendorEmail}`
+    : service?.vendor?.phone
+    ? `tel:${service.vendor.phone}`
+    : null;
+  const publicContactLabel = publicVendorEmail
+    ? 'Email Vendor'
+    : service?.vendor?.phone
+    ? 'Call Vendor'
+    : null;
   const servicePrice = Number(service?.price);
   const hasPublicPrice = Number.isFinite(servicePrice) && servicePrice > 0;
   const favoriteStatusPending = isSignedIn && !favoriteResolved;
@@ -532,29 +552,35 @@ function ServiceDetailPageContent() {
             </div>
             
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                data-testid="service-page-favorite-toggle"
-                aria-label={
-                  favoriteStatusPending
-                    ? 'Checking favorite status'
-                    : !isSignedIn
-                    ? 'Sign in to save service'
-                    : isFavorite
-                    ? 'Remove from favorites'
-                    : 'Add to favorites'
-                }
-                title={!isSignedIn ? 'Sign in to save this service' : undefined}
-                onClick={handleToggleFavorite}
-                disabled={favoriteLoading || favoriteStatusPending}
-                className={`p-2 rounded-full transition-colors ${
-                  isFavorite
-                    ? 'bg-pink-500/16 text-pink-200'
-                    : 'bg-white/8 text-white/64 hover:bg-pink-500/16 hover:text-pink-200'
-                } ${favoriteLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
-              </button>
+              {isSignedIn ? (
+                <button
+                  type="button"
+                  data-testid="service-page-favorite-toggle"
+                  aria-label={
+                    favoriteStatusPending
+                      ? 'Checking saved status'
+                      : isFavorite
+                      ? 'Remove from saved services'
+                      : 'Save this service'
+                  }
+                  onClick={handleToggleFavorite}
+                  disabled={favoriteLoading || favoriteStatusPending}
+                  className={`p-2 rounded-full transition-colors ${
+                    isFavorite
+                      ? 'bg-pink-500/16 text-pink-200'
+                      : 'bg-white/8 text-white/64 hover:bg-pink-500/16 hover:text-pink-200'
+                  } ${favoriteLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
+                </button>
+              ) : (
+                <Link
+                  href={`/auth/login?next=${encodeURIComponent(`/service/${serviceId}`)}`}
+                  className="rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm font-semibold text-white/84 transition-colors hover:bg-white/12 hover:text-white"
+                >
+                  Sign in to save
+                </Link>
+              )}
               <button 
                 onClick={handleShare}
                 className="p-2 rounded-full bg-white/8 text-white/64 transition-colors hover:bg-[rgba(36,107,255,0.18)] hover:text-white"
@@ -1026,12 +1052,18 @@ function ServiceDetailPageContent() {
                 </p>
               ) : null}
 
-              <button 
-                onClick={handleContactVendor}
-                className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
-              >
-                Contact Vendor
-              </button>
+              {publicContactHref && publicContactLabel ? (
+                <a
+                  href={publicContactHref}
+                  className="block w-full rounded-xl bg-gray-100 py-3 text-center font-semibold text-gray-700 transition-colors hover:bg-gray-200"
+                >
+                  {publicContactLabel}
+                </a>
+              ) : (
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
+                  Public contact details are not available yet for this vendor.
+                </p>
+              )}
             </div>
 
             {/* Vendor Card */}

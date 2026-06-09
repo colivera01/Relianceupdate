@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, Play, Search, ShieldCheck, Star, Video } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock3, ShieldCheck, Star, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,7 +9,7 @@ import { PublicHeroArtwork } from '@/components/public/PublicHeroArtwork';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
-import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
+import { useDiscoverServices } from '@/hooks/useServices';
 import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
 
 const HOME_MARKETPLACE_PREVIEW_LIMIT = 4;
@@ -54,29 +54,20 @@ export default function HomePage() {
     sortBy: 'newest',
     limit: HOME_MARKETPLACE_PREVIEW_LIMIT,
   });
-  const {
-    data: categoryData,
-    isLoading: categoriesLoading,
-    isError: categoriesError,
-  } = useServiceCategories();
 
   const marketplaceResults = marketplaceData?.results || [];
   const featuredService =
     marketplaceResults.find((item) => Boolean(item.previewMediaUrl) && Boolean(item.previewMediaType)) ||
     marketplaceResults[0] ||
     null;
-  const secondaryServices = marketplaceResults
-    .filter((item) => item.serviceId !== featuredService?.serviceId)
-    .slice(0, 3);
-  const categoryPreview = (categoryData?.categories || []).slice(0, 5);
-  const totalPublicServices = marketplaceData?.pagination?.total ?? categoryData?.meta?.countedServices ?? 0;
+  const totalPublicServices = marketplaceData?.pagination?.total ?? 0;
   const hasCuratedHeroMedia =
     Boolean(featuredService?.previewMediaUrl) &&
     Boolean(featuredService?.previewMediaType) &&
     !isPlaceholderMarketplacePreview(featuredService?.previewMediaUrl);
   const heroServiceName = featuredService?.serviceName || 'See trusted work before you book';
   const heroVendorName = featuredService?.vendorName || 'Reliance marketplace';
-  const categoryPreviewLoading = categoriesLoading && categoryPreview.length === 0;
+  const hasMarketplaceResults = marketplaceResults.length > 0;
   const publicServicesLoading = marketplaceLoading && marketplaceResults.length === 0;
 
   return (
@@ -87,11 +78,7 @@ export default function HomePage() {
           <PublicSiteHeader
             tone="dark"
             hideLogo
-            links={[
-              { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Services' },
-              { href: '/help', label: 'How It Works' },
-            ]}
+            links={[]}
             className="mb-10"
             ctaLabel="Find a Service"
             ctaHref="/browse"
@@ -101,7 +88,7 @@ export default function HomePage() {
             <div className="max-w-2xl">
               <div className="mb-7 -mt-1">
                 <div className="flex h-[19rem] w-full max-w-[35rem] items-end justify-center overflow-visible sm:h-[20rem] lg:h-[21rem] lg:max-w-[37rem]">
-                  <div className="relative -translate-y-5 w-[25rem] max-w-full sm:w-[27rem] lg:w-[29rem]">
+                  <div className="relative w-[25rem] max-w-full -translate-y-5 sm:w-[27rem] lg:w-[29rem]">
                     <div className="aspect-[864/618] w-full">
                       <div className="pointer-events-none absolute inset-[-8%] bg-[radial-gradient(circle_at_28%_24%,rgba(255,255,255,0.26),rgba(130,167,255,0.2)_34%,rgba(36,107,255,0.18)_58%,transparent_78%)] blur-2xl" />
                       <div
@@ -125,21 +112,19 @@ export default function HomePage() {
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href="/browse">
-                  <Button className="h-12 rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-6 text-white shadow-[0_22px_50px_rgba(36,107,255,0.32)] hover:brightness-110">
-                    <Search className="mr-2 h-4 w-4" />
-                    Explore Services
-                  </Button>
-                </Link>
                 <Link href="/auth/register?type=user">
-                  <Button
-                    variant="outline"
-                    className="h-12 rounded-full border-white/16 bg-white/6 px-6 text-white backdrop-blur-md hover:bg-white/10 hover:text-white"
-                  >
-                    <Play className="mr-2 h-4 w-4" />
+                  <Button className="h-12 rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-6 text-white shadow-[0_22px_50px_rgba(36,107,255,0.32)] hover:brightness-110">
                     Create Account
                   </Button>
                 </Link>
+                <Button
+                  variant="outline"
+                  disabled
+                  className="h-12 rounded-full border-white/16 bg-white/6 px-6 text-white/74 backdrop-blur-md hover:bg-white/6 hover:text-white/74"
+                >
+                  <Clock3 className="mr-2 h-4 w-4" />
+                  Reliance explainer video coming soon
+                </Button>
               </div>
 
               <div className="mt-10 grid gap-3 sm:grid-cols-3">
@@ -161,14 +146,12 @@ export default function HomePage() {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/62">
-                      See a real service listing
+                      Recent public service preview
                     </div>
-                    <div className="mt-2 font-display text-2xl text-white">
-                      {heroServiceName}
-                    </div>
+                    <div className="mt-2 font-display text-2xl text-white">{heroServiceName}</div>
                   </div>
                   <Badge className="bg-[var(--reliance-blue)] text-white hover:bg-[var(--reliance-blue)]">
-                    {marketplaceLoading ? 'Loading live listings' : `${totalPublicServices} public services`}
+                    {marketplaceLoading ? 'Loading recent listings' : `${totalPublicServices} public services`}
                   </Badge>
                 </div>
 
@@ -180,7 +163,7 @@ export default function HomePage() {
                       type={featuredService.previewMediaType}
                       alt={featuredService.serviceName}
                       className="h-72 w-full object-cover"
-                      videoLabel="Verified service story"
+                      videoLabel="Recent public service video"
                     />
                   ) : (
                     <PublicHeroArtwork serviceName={heroServiceName} vendorName={heroVendorName} />
@@ -189,18 +172,16 @@ export default function HomePage() {
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-white/92">
-                      {heroVendorName}
-                    </p>
+                    <p className="text-sm font-semibold text-white/92">{heroVendorName}</p>
                     <p className="mt-1 max-w-xl text-sm leading-6 text-white/64">
                       {featuredService
                         ? cleanPublicServiceDescription(featuredService.serviceDescription, featuredService.vendorName) ||
-                          'Public service listing'
-                        : 'Browse local services backed by public videos, reviews, and platform trust signals.'}
+                          'Newest public service listing'
+                        : 'Reliance shows the newest public services here so customers can quickly see what is already public.'}
                     </p>
                   </div>
                   {featuredService ? (
-                    <Link href={`/service/${featuredService.serviceId}`}>
+                    <Link href={`/service/${featuredService.serviceId}?returnTo=%2F&returnLabel=Back%20to%20Home%20Page`}>
                       <Button className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
                         View Service
                         <ArrowRight className="ml-2 h-4 w-4" />
@@ -215,10 +196,10 @@ export default function HomePage() {
                   <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
                     What you can compare
                   </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-700">
-                      Customer reviews, public service videos, and the Reliance Trust Score each
-                      tell you something different about a provider.
-                    </p>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">
+                    Customer reviews, public service videos, and the Reliance Trust Score each
+                    answer a different question before you book.
+                  </p>
                   <div className="mt-5 space-y-3">
                     {trustMetrics.map((item) => (
                       <div key={item.label} className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
@@ -232,38 +213,30 @@ export default function HomePage() {
                 </div>
 
                 <div className="reliance-light-card rounded-[28px] px-5 py-5 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                  What&apos;s live today
-                </div>
-                <div className="mt-3 text-3xl font-semibold text-slate-950">
-                  {marketplaceLoading ? 'Loading' : totalPublicServices}
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Public services appear here when their listing and customer-facing details are ready.
-                </p>
-                  <div className="mt-6 space-y-3">
-                    {secondaryServices.length > 0 ? (
-                      secondaryServices.map((item) => (
-                        <Link
-                          key={item.serviceId}
-                          href={`/service/${item.serviceId}`}
-                          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 px-3 py-3 transition hover:border-[var(--reliance-blue)] hover:bg-slate-50"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-slate-900">{item.serviceName}</div>
-                            <div className="truncate text-xs text-slate-500">{item.vendorName}</div>
-                          </div>
-                          <ArrowRight className="h-4 w-4 text-slate-400" />
-                        </Link>
-                      ))
-                    ) : (
-                      <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                        {marketplaceLoading
-                          ? 'Loading live public services for this preview now.'
-                          : 'Public categories and vendors appear here as listings load.'}
-                      </div>
-                    )}
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
+                    See how service videos work
                   </div>
+                  <div className="mt-3 text-xl font-semibold text-slate-950">
+                    Before, during, and completed service
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Reliance service videos can show a clear before-service, during-service, and
+                    completed-service story when a vendor shares approved public clips.
+                  </p>
+                  <div className="mt-5 space-y-2">
+                    {['Before Service', 'During Service', 'Completed Service'].map((stage) => (
+                      <div key={stage} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                        {stage}
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="mt-5 w-full rounded-full border-slate-300 bg-white text-slate-500"
+                  >
+                    Reliance explainer video coming soon
+                  </Button>
                 </div>
               </div>
             </div>
@@ -272,26 +245,18 @@ export default function HomePage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <div>
-            <div className="reliance-kicker border border-[var(--reliance-border)] bg-white/5 text-white/62">
-              Why customers use Reliance
-            </div>
-            <h2 className="mt-4 font-display text-3xl font-semibold text-slate-950 sm:text-4xl">
-              See what matters before you book
-            </h2>
+        <div className="mb-8">
+          <div className="reliance-kicker border border-[var(--reliance-border)] bg-white/5 text-white/62">
+            How Reliance helps you compare
           </div>
-          <Link href="/browse" className="text-sm font-semibold text-[var(--reliance-blue)]">
-            Browse live marketplace
-          </Link>
+          <h2 className="mt-4 font-display text-3xl font-semibold text-slate-950 sm:text-4xl">
+            See what matters before you book
+          </h2>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-3">
           {trustPillars.map((item) => (
-            <div
-              key={item.title}
-              className="reliance-light-card rounded-[30px] px-6 py-6"
-            >
+            <div key={item.title} className="reliance-light-card rounded-[30px] px-6 py-6">
               <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(36,107,255,0.15),rgba(53,214,165,0.16))] text-[var(--reliance-blue)]">
                 <item.icon className="h-5 w-5" />
               </div>
@@ -303,143 +268,80 @@ export default function HomePage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="grid gap-8 lg:grid-cols-[0.82fr_1.18fr]">
-          <div className="reliance-light-card rounded-[32px] px-6 py-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                  Browse by Category
-                </div>
-                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Start with the service you need</h2>
+        <div className="reliance-light-card rounded-[32px] px-6 py-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
+                Recent public services
               </div>
-              <Link href="/browse">
-                <Button variant="outline" className="rounded-full border-slate-300 bg-white">
-                  Open Browse
-                </Button>
-              </Link>
+              <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">
+                Newest services customers can compare right now
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                This preview shows the newest public services currently listed on Reliance. When a
+                public service video is available, it appears on the card automatically.
+              </p>
             </div>
-
-            <div className="mt-6 space-y-3">
-              {categoryPreviewLoading ? (
-                Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600"
-                  >
-                    <div className="font-semibold text-slate-900">Loading live categories</div>
-                    <div className="mt-1">Reliance is pulling the latest public category counts now.</div>
-                  </div>
-                ))
-              ) : categoriesError ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-                  Category counts are temporarily unavailable, but the marketplace is still browseable.
-                </div>
-              ) : categoryPreview.length === 0 ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                  Public categories will appear here as more approved listings go live.
-                </div>
-              ) : (
-                categoryPreview.map((category) => (
-                  <Link
-                    key={category.key}
-                    href={`/browse?category=${encodeURIComponent(category.label)}`}
-                    className="flex items-center justify-between gap-3 rounded-[24px] border border-slate-200 px-4 py-4 transition hover:border-[var(--reliance-blue)] hover:bg-slate-50"
-                  >
-                    <div>
-                      <div className="font-semibold text-slate-950">{category.label}</div>
-                      <div className="mt-1 text-sm text-slate-500">Public category inventory</div>
-                    </div>
-                    <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
-                      {category.serviceCount}
-                    </div>
-                  </Link>
-                ))
-              )}
-            </div>
+            <span className="text-sm text-slate-500">
+              {marketplaceLoading ? 'Loading recent public services...' : `${totalPublicServices} public services live`}
+            </span>
           </div>
 
-          <div className="reliance-light-card rounded-[32px] px-6 py-6">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                  Public Services
-                </div>
-                <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">See what customers can book right now</h2>
+          <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {publicServicesLoading ? (
+              Array.from({ length: 4 }).map((_, index) => (
+                <Card key={index} className="overflow-hidden rounded-[26px] border-slate-200">
+                  <div className="h-44 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)]" />
+                  <CardContent className="space-y-3 p-5">
+                    <div className="text-sm font-semibold text-slate-900">Loading recent public services</div>
+                    <div className="text-sm leading-6 text-slate-600">
+                      Reliance is checking the newest public listings, provider details, and any
+                      public service videos.
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : marketplaceError && !hasMarketplaceResults ? (
+              <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900">
+                We could not load recent public services right now. You can still open the live
+                marketplace from Find a Service.
               </div>
-              <span className="text-sm text-slate-500">
-                {marketplaceLoading ? 'Loading...' : `${totalPublicServices} total public services`}
-              </span>
-            </div>
-
-            <div className="mt-6 grid gap-5 md:grid-cols-2">
-              {publicServicesLoading ? (
-                Array.from({ length: 4 }).map((_, index) => (
-                  <Card key={index} className="overflow-hidden rounded-[26px] border-slate-200">
-                    <div className="h-44 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)]" />
-                    <CardContent className="space-y-3 p-5">
-                      <div className="text-sm font-semibold text-slate-900">Loading live public services</div>
-                      <div className="text-sm leading-6 text-slate-600">
-                        Reliance is confirming which services are public and ready for customers to browse right now.
-                      </div>
-                      <div className="text-xs font-medium text-blue-700">
-                        Reviews, service videos, and provider details are loading.
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              ) : marketplaceError ? (
-                <div className="md:col-span-2 rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900">
-                  We could not load live marketplace services right now. The public catalog is still available through Browse.
-                </div>
-              ) : marketplaceResults.length === 0 ? (
-                <div className="md:col-span-2 rounded-[26px] border border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
-                  No public services are available yet. Check back as vendors publish approved listings.
-                </div>
-              ) : (
-                marketplaceResults.map((item) => (
-                  <Card key={item.serviceId} className="overflow-hidden rounded-[26px] border-slate-200 bg-white shadow-none">
-                    <PublicMediaPreview
-                      url={item.previewMediaUrl}
-                      type={item.previewMediaType}
-                      alt={item.serviceName}
-                      className="h-48 w-full object-cover"
-                      videoLabel="Verified service video"
-                    />
-                    <CardContent className="space-y-3 p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-display text-xl font-semibold text-slate-950">{item.serviceName}</div>
-                          <div className="mt-1 text-sm text-slate-500">{item.vendorName}</div>
-                        </div>
-                        {item.vendorCategory ? (
-                          <Badge variant="outline" className="rounded-full border-slate-300 bg-slate-50 text-slate-700">
-                            {item.vendorCategory}
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <p className="line-clamp-2 text-sm leading-6 text-slate-600">
-                        {cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Public service listing'}
-                      </p>
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                          <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
-                            {item.publicListing.hasPublicMedia ? 'Public service video' : 'Public listing'}
-                          </span>
-                          {typeof item.rating === 'number' && typeof item.reviewCount === 'number' ? (
-                            <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
-                              {item.rating.toFixed(1)} • {item.reviewCount} reviews
-                            </span>
-                          ) : null}
-                        </div>
-                        <Link href={`/service/${item.serviceId}`} className="text-sm font-semibold text-[var(--reliance-blue)]">
-                          View
-                        </Link>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
+            ) : marketplaceResults.length === 0 ? (
+              <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
+                Public services will appear here as vendors finish approval and publish
+                customer-facing listings.
+              </div>
+            ) : (
+              marketplaceResults.map((item) => (
+                <Card key={item.serviceId} className="overflow-hidden rounded-[26px] border-slate-200 bg-white shadow-none">
+                  <PublicMediaPreview
+                    url={item.previewMediaUrl}
+                    type={item.previewMediaType}
+                    alt={item.serviceName}
+                    className="h-44 w-full object-cover"
+                    videoLabel="Public service video"
+                  />
+                  <CardContent className="space-y-3 p-5">
+                    <div className="font-display text-xl font-semibold text-slate-950">{item.serviceName}</div>
+                    <div className="text-sm text-slate-500">{item.vendorName}</div>
+                    <p className="line-clamp-2 text-sm leading-6 text-slate-600">
+                      {cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Public service listing'}
+                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        {item.publicListing.hasPublicMedia ? 'Public service video' : 'Public listing'}
+                      </span>
+                      <Link
+                        href={`/service/${item.serviceId}?returnTo=%2F&returnLabel=Back%20to%20Home%20Page`}
+                        className="text-sm font-semibold text-[var(--reliance-blue)]"
+                      >
+                        View
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
         </div>
       </section>

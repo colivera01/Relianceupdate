@@ -3,6 +3,9 @@ export const PUBLIC_DB_UNAVAILABLE_CODE = 'DB_UNAVAILABLE';
 export const PUBLIC_DB_UNAVAILABLE_MESSAGE =
   'This page is temporarily unavailable because Reliance cannot reach the service database. Please try again in a moment.';
 
+const TRANSIENT_DB_RETRY_ATTEMPTS = 3;
+const TRANSIENT_DB_RETRY_BASE_DELAY_MS = 600;
+
 export function isTransientDbConnectivityError(error: unknown): boolean {
   const code =
     error && typeof error === 'object' && 'code' in error
@@ -28,13 +31,24 @@ export function isTransientDbConnectivityError(error: unknown): boolean {
 }
 
 export async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (!isTransientDbConnectivityError(error)) {
-      throw error;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < TRANSIENT_DB_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientDbConnectivityError(error) || attempt === TRANSIENT_DB_RETRY_ATTEMPTS - 1) {
+        throw error;
+      }
+
+      const delayMs = Math.min(
+        TRANSIENT_DB_RETRY_BASE_DELAY_MS * (attempt + 1),
+        TRANSIENT_DB_RETRY_BASE_DELAY_MS * 3
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    return operation();
   }
+
+  throw lastError instanceof Error ? lastError : new Error('Transient database retry exhausted.');
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -72,12 +72,31 @@ interface PublicVendorReview {
   reviewerDisplayName: string;
 }
 
+const PUBLIC_VENDOR_RETRY_ATTEMPTS = 3;
+const PUBLIC_VENDOR_RETRY_DELAY_MS = 1_200;
+
+function sanitizeReturnPath(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith('/')) return null;
+  if (value.startsWith('//')) return null;
+  return value;
+}
+
+function sanitizeReturnLabel(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
 export default function PublicVendorProfilePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const vendorId = String(params?.vendorId || '');
   const { user } = useAuth();
   const userId = resolveCustomerUserId(user?.id);
   const isSignedIn = Boolean(userId);
+  const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null) || '/browse';
+  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Browse';
 
   const [payload, setPayload] = useState<PublicVendorPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,13 +105,44 @@ export default function PublicVendorProfilePage() {
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [reviewsError, setReviewsError] = useState<string | null>(null);
 
+  const fetchRetryablePublicJson = async (url: string) => {
+    let lastResponse: Response | null = null;
+    let lastJson: any = {};
+
+    for (let attempt = 0; attempt < PUBLIC_VENDOR_RETRY_ATTEMPTS; attempt += 1) {
+      const response = await fetch(url, { cache: 'no-store' });
+      lastResponse = response;
+      let json: any = {};
+      try {
+        json = await response.json();
+      } catch {
+        json = {};
+      }
+      lastJson = json;
+
+      const retryableDbUnavailable =
+        response.status === 503 || json?.code === PUBLIC_DB_UNAVAILABLE_CODE;
+
+      if (!retryableDbUnavailable || attempt === PUBLIC_VENDOR_RETRY_ATTEMPTS - 1) {
+        return { response, json };
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, PUBLIC_VENDOR_RETRY_DELAY_MS));
+    }
+
+    if (!lastResponse) {
+      throw new Error('Public vendor request could not be started.');
+    }
+
+    return { response: lastResponse, json: lastJson };
+  };
+
   const loadVendorProfile = async () => {
     if (!vendorId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/vendors/${vendorId}/public`, { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
+      const { response: res, json } = await fetchRetryablePublicJson(`/api/vendors/${vendorId}/public`);
       if (!res.ok || json?.success === false) {
         if (res.status === 503 || json?.code === PUBLIC_DB_UNAVAILABLE_CODE) {
           throw new Error(PUBLIC_DB_UNAVAILABLE_MESSAGE);
@@ -112,8 +162,7 @@ export default function PublicVendorProfilePage() {
     setReviewsLoading(true);
     setReviewsError(null);
     try {
-      const res = await fetch(`/api/vendors/${vendorId}/reviews/public`, { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
+      const { response: res, json } = await fetchRetryablePublicJson(`/api/vendors/${vendorId}/reviews/public`);
       if (!res.ok || json?.success === false) {
         if (res.status === 503 || json?.code === PUBLIC_DB_UNAVAILABLE_CODE) {
           throw new Error('Public reviews are temporarily unavailable. Please try again in a moment.');
@@ -173,13 +222,13 @@ export default function PublicVendorProfilePage() {
           />
 
           <div className="mb-8">
-            <Link href="/browse">
+            <Link href={returnTo}>
               <Button
                 variant="outline"
                 className="rounded-full border-white/12 bg-white/8 text-white hover:bg-white/12 hover:text-white"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Browse
+                {returnLabel}
               </Button>
             </Link>
           </div>
@@ -292,9 +341,11 @@ export default function PublicVendorProfilePage() {
                     className="h-[320px] w-full rounded-[24px] border border-white/10 bg-black"
                   />
                 ) : (
-                  <div className="flex h-[320px] items-center justify-center rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#10203a,#1b355f)] px-8 text-center text-sm text-white/72">
-                    No public service video is available yet for this vendor.
-                  </div>
+                  <PublicMediaPreview
+                    alt={`${vendor.vendorName} public service video`}
+                    className="h-[320px] w-full rounded-[24px] border border-white/10"
+                    emptyLabel="No public service video is available yet for this vendor."
+                  />
                 )}
 
                 <p className="mt-4 text-sm leading-6 text-white/70">
@@ -436,7 +487,7 @@ export default function PublicVendorProfilePage() {
                             <div className="text-sm font-semibold text-slate-900">
                               {service.previewMediaUrl ? 'Public preview available' : 'Public service listing'}
                             </div>
-                            <Link href={`/service/${service.serviceId}`}>
+                            <Link href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(`/vendors/${vendorId}`)}&returnLabel=Back%20to%20Vendor%20Page`}>
                               <Button size="sm" className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
                                 View Service
                               </Button>

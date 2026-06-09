@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { countableReviewWhere, countableServiceWhere } from "@/lib/metrics-exclusion";
 import { cleanPublicReviewComment } from "@/lib/launch-content-cleanup";
+import {
+  isTransientDbConnectivityError,
+  PUBLIC_DB_UNAVAILABLE_CODE,
+  PUBLIC_DB_UNAVAILABLE_MESSAGE,
+  withTransientDbRetry,
+} from "@/lib/transient-db-errors";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -24,64 +30,68 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     const { id } = await context.params;
     const serviceId = String(id || "").trim();
 
-    const service = await prisma.service.findFirst({
-      where: countableServiceWhere({
-        id: serviceId,
-        isPublished: true,
-        vendor: {
-          isPubliclyListed: true,
-          accountStatus: "active",
+    const service = await withTransientDbRetry(() =>
+      prisma.service.findFirst({
+        where: countableServiceWhere({
+          id: serviceId,
+          isPublished: true,
+          vendor: {
+            isPubliclyListed: true,
+            accountStatus: "active",
+          },
+        }),
+        select: {
+          id: true,
+          vendorId: true,
         },
-      }),
-      select: {
-        id: true,
-        vendorId: true,
-      },
-    });
+      })
+    );
 
     if (!service) {
       return NextResponse.json({ success: false, error: "Service not found" }, { status: 404 });
     }
 
-    const reviews = await prisma.review.findMany({
-      where: countableReviewWhere({
-        vendorId: service.vendorId,
-        moderationStatus: "approved",
-        visibilityStatus: "public",
-        OR: [
-          {
-            booking: {
-              is: {
-                serviceId: service.id,
+    const reviews = await withTransientDbRetry(() =>
+      prisma.review.findMany({
+        where: countableReviewWhere({
+          vendorId: service.vendorId,
+          moderationStatus: "approved",
+          visibilityStatus: "public",
+          OR: [
+            {
+              booking: {
+                is: {
+                  serviceId: service.id,
+                },
               },
             },
-          },
-          {
-            mediaSession: {
-              is: {
-                serviceId: service.id,
+            {
+              mediaSession: {
+                is: {
+                  serviceId: service.id,
+                },
               },
             },
-          },
-        ],
-      }),
-      orderBy: { createdAt: "desc" },
-      take: 100,
-      select: {
-        id: true,
-        vendorId: true,
-        bookingId: true,
-        mediaSessionId: true,
-        rating: true,
-        comment: true,
-        createdAt: true,
-        user: {
-          select: {
-            name: true,
+          ],
+        }),
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          vendorId: true,
+          bookingId: true,
+          mediaSessionId: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          user: {
+            select: {
+              name: true,
+            },
           },
         },
-      },
-    });
+      })
+    );
 
     return NextResponse.json({
       success: true,
@@ -103,6 +113,17 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     });
   } catch (error: any) {
     console.error("[services/:id/reviews/public] GET error:", error);
+    if (isTransientDbConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: PUBLIC_DB_UNAVAILABLE_CODE,
+          error: PUBLIC_DB_UNAVAILABLE_MESSAGE,
+          retryable: true,
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: "Failed to fetch public service reviews", details: error?.message || "Unknown error" },
       { status: 500 }

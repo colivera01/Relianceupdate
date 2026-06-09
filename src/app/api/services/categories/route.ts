@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import {
+  isTransientDbConnectivityError,
+  PUBLIC_DB_UNAVAILABLE_CODE,
+  PUBLIC_DB_UNAVAILABLE_MESSAGE,
+  withTransientDbRetry,
+} from "@/lib/transient-db-errors";
 
 const FALLBACK_CATEGORY_LABEL = "Other Services";
 
@@ -13,26 +19,28 @@ const FALLBACK_CATEGORY_LABEL = "Other Services";
  */
 export async function GET(): Promise<NextResponse> {
   try {
-    const services = await prisma.service.findMany({
-      where: {
-        isPublished: true,
-        vendor: {
-          isPubliclyListed: true,
-          accountStatus: "active",
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        vendorId: true,
-        vendor: {
-          select: {
-            category: true,
-            businessType: true,
+    const services = await withTransientDbRetry(() =>
+      prisma.service.findMany({
+        where: {
+          isPublished: true,
+          vendor: {
+            isPubliclyListed: true,
+            accountStatus: "active",
           },
         },
-      },
-    });
+        select: {
+          id: true,
+          name: true,
+          vendorId: true,
+          vendor: {
+            select: {
+              category: true,
+              businessType: true,
+            },
+          },
+        },
+      })
+    );
 
     if (services.length === 0) {
       return NextResponse.json({
@@ -100,6 +108,18 @@ export async function GET(): Promise<NextResponse> {
     });
   } catch (error: any) {
     console.error("[services/categories] GET error:", error);
+    if (isTransientDbConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: PUBLIC_DB_UNAVAILABLE_CODE,
+          error: PUBLIC_DB_UNAVAILABLE_MESSAGE,
+          details: error?.message || "Transient database connectivity issue",
+          retryable: true,
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: "Failed to fetch category aggregation", details: error?.message || "Unknown error" },
       { status: 500 }

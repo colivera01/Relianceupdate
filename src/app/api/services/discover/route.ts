@@ -26,6 +26,12 @@ import {
   buildPublicTrustPresentationSummary,
 } from "@/lib/public-trust-score-presentation";
 import { cleanPublicServiceDescription } from "@/lib/launch-content-cleanup";
+import {
+  isTransientDbConnectivityError,
+  PUBLIC_DB_UNAVAILABLE_CODE,
+  PUBLIC_DB_UNAVAILABLE_MESSAGE,
+  withTransientDbRetry,
+} from "@/lib/transient-db-errors";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 12;
@@ -196,55 +202,59 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (category) promotionAnd.push(buildPromotionCategoryFilter(category));
     if (promotionAnd.length) promotionWhere.AND = promotionAnd;
 
-    const [total, services] = await Promise.all([
-      distanceProcessingRequested ? Promise.resolve(0) : prisma.service.count({ where }),
-      prisma.service.findMany({
-        where,
-        orderBy,
-        ...(distanceProcessingRequested ? {} : { skip, take: limit }),
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          price: true,
-          createdAt: true,
-          vendorId: true,
-          isPublished: true,
-          vendor: {
-            select: {
-              id: true,
-              name: true,
-              businessName: true,
-              businessType: true,
-              category: true,
-              city: true,
-              state: true,
-              latitude: true,
-              longitude: true,
-              geocodedAt: true,
-              isPubliclyListed: true,
-              accountStatus: true,
+    const [total, services] = await withTransientDbRetry(() =>
+      Promise.all([
+        distanceProcessingRequested ? Promise.resolve(0) : prisma.service.count({ where }),
+        prisma.service.findMany({
+          where,
+          orderBy,
+          ...(distanceProcessingRequested ? {} : { skip, take: limit }),
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            price: true,
+            createdAt: true,
+            vendorId: true,
+            isPublished: true,
+            vendor: {
+              select: {
+                id: true,
+                name: true,
+                businessName: true,
+                businessType: true,
+                category: true,
+                city: true,
+                state: true,
+                latitude: true,
+                longitude: true,
+                geocodedAt: true,
+                isPubliclyListed: true,
+                accountStatus: true,
+              },
             },
           },
-        },
-      }),
-    ]);
+        }),
+      ])
+    );
 
     let promotedCampaigns: any[] = [];
     try {
-      promotedCampaigns = await (prisma as any).promotionCampaign.findMany({
-        where: promotionWhere,
-        orderBy: [{ rankPriority: "asc" }, { startAt: "desc" }],
-        take: 12,
-        include: {
-          vendor: true,
-          service: {
-            include: {
-              vendor: true,
+      promotedCampaigns = await withTransientDbRetry(() =>
+        (prisma as any).promotionCampaign.findMany({
+          where: promotionWhere,
+          orderBy: [{ rankPriority: "asc" }, { startAt: "desc" }],
+          take: 12,
+          include: {
+            vendor: true,
+            service: {
+              include: {
+                vendor: true,
+              },
             },
           },
-        },
-      });
+        })
+      );
     } catch (promotionError: any) {
       const message = String(promotionError?.message || "");
       const code = String(promotionError?.code || "");
@@ -252,7 +262,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         code === "P2021" ||
         message.includes("promotion_campaigns") ||
         message.includes("PromotionCampaign");
-      if (!tableMissing) throw promotionError;
+      if (!tableMissing && !isTransientDbConnectivityError(promotionError)) throw promotionError;
+      if (isTransientDbConnectivityError(promotionError)) {
+        console.warn("[services/discover] promotions temporarily unavailable; returning organic results only");
+      }
       promotedCampaigns = [];
     }
 
@@ -266,32 +279,40 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       )
       .map((campaign: any) => campaign.service);
     const serviceIds = Array.from(new Set([...services, ...promotedServices].map((s) => s.id)));
-    const publicAssets = serviceIds.length
-      ? await (prisma as any).mediaAsset.findMany({
-          where: countableMediaAssetWhere({
-            ...getApprovedActiveBaseWhere(),
-            visibilityStatus: {
-              in: getVisibilityStatusesForAudience("public"),
-            },
-            mediaSession: {
-              serviceId: { in: serviceIds },
-            },
-          }),
-          orderBy: { createdAt: "desc" },
-          select: {
-            mimeType: true,
-            blobUrl: true,
-            createdAt: true,
-            mediaSession: {
-              select: {
-                serviceId: true,
-                vendorJobVideoStage: true,
-                sessionType: true,
+    let publicAssets: any[] = [];
+    if (serviceIds.length) {
+      try {
+        publicAssets = await withTransientDbRetry<any[]>(() =>
+          (prisma as any).mediaAsset.findMany({
+            where: countableMediaAssetWhere({
+              ...getApprovedActiveBaseWhere(),
+              visibilityStatus: {
+                in: getVisibilityStatusesForAudience("public"),
+              },
+              mediaSession: {
+                serviceId: { in: serviceIds },
+              },
+            }),
+            orderBy: { createdAt: "desc" },
+            select: {
+              mimeType: true,
+              blobUrl: true,
+              createdAt: true,
+              mediaSession: {
+                select: {
+                  serviceId: true,
+                  vendorJobVideoStage: true,
+                  sessionType: true,
+                },
               },
             },
-          },
-        })
-      : [];
+          })
+        );
+      } catch (assetError) {
+        if (!isTransientDbConnectivityError(assetError)) throw assetError;
+        console.warn("[services/discover] public media preview enrichment temporarily unavailable");
+      }
+    }
 
     const proofSafePublicAssets = publicAssets.filter((asset: any) =>
       shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
@@ -318,7 +339,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const vendorIds = Array.from(new Set([...services, ...promotedServices].map((s) => s.vendorId)));
-    const vendorReviewAggregates = await getVendorReviewAggregatesForPublic(vendorIds);
+    let vendorReviewAggregates = new Map<string, { rating: number | null; reviewCount: number }>();
+    try {
+      vendorReviewAggregates = await withTransientDbRetry(() =>
+        getVendorReviewAggregatesForPublic(vendorIds)
+      );
+    } catch (reviewAggregateError) {
+      if (!isTransientDbConnectivityError(reviewAggregateError)) throw reviewAggregateError;
+      console.warn("[services/discover] public review aggregates temporarily unavailable");
+    }
     const vendorTrustScores = new Map<
       string,
       {
@@ -545,6 +574,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
   } catch (error: any) {
     console.error("[services/discover] GET error:", error);
+    if (isTransientDbConnectivityError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: PUBLIC_DB_UNAVAILABLE_CODE,
+          error: PUBLIC_DB_UNAVAILABLE_MESSAGE,
+          details: error?.message || "Transient database connectivity issue",
+          retryable: true,
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: "Failed to fetch discovery services", details: error?.message || "Unknown error" },
       { status: 500 }

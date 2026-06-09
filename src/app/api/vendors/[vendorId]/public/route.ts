@@ -72,32 +72,38 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     );
 
     const serviceIds = services.map((service) => service.id);
-    const publicAssets = await withTransientDbRetry<any[]>(() =>
-      (prisma as any).mediaAsset.findMany({
-        where: countableMediaAssetWhere({
-          vendorId: vendor.id,
-          ...getApprovedActiveBaseWhere(),
-          visibilityStatus: {
-            in: getVisibilityStatusesForAudience("public"),
-          },
-        }),
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          mimeType: true,
-          blobUrl: true,
-          createdAt: true,
-          mediaSession: {
-            select: {
-              serviceId: true,
-              title: true,
-              vendorJobVideoStage: true,
-              sessionType: true,
+    let publicAssets: any[] = [];
+    try {
+      publicAssets = await withTransientDbRetry<any[]>(() =>
+        (prisma as any).mediaAsset.findMany({
+          where: countableMediaAssetWhere({
+            vendorId: vendor.id,
+            ...getApprovedActiveBaseWhere(),
+            visibilityStatus: {
+              in: getVisibilityStatusesForAudience("public"),
+            },
+          }),
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            mimeType: true,
+            blobUrl: true,
+            createdAt: true,
+            mediaSession: {
+              select: {
+                serviceId: true,
+                title: true,
+                vendorJobVideoStage: true,
+                sessionType: true,
+              },
             },
           },
-        },
-      })
-    );
+        })
+      );
+    } catch (publicAssetError) {
+      if (!isTransientDbConnectivityError(publicAssetError)) throw publicAssetError;
+      console.warn("[vendors/:vendorId/public] public media enrichment temporarily unavailable");
+    }
 
     const proofSafePublicAssets = publicAssets.filter((asset: any) =>
       shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
@@ -210,7 +216,19 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       typeof vendor.serviceAreas === "string"
         ? vendor.serviceAreas.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
-    const vendorReviewAgg = (await withTransientDbRetry(() => getVendorReviewAggregatesForPublic([vendor.id]))).get(vendor.id);
+    let vendorReviewAgg:
+      | {
+          rating: number | null;
+          reviewCount: number;
+        }
+      | undefined;
+    try {
+      vendorReviewAgg = (await withTransientDbRetry(() => getVendorReviewAggregatesForPublic([vendor.id]))).get(vendor.id);
+    } catch (vendorReviewError) {
+      if (!isTransientDbConnectivityError(vendorReviewError)) throw vendorReviewError;
+      console.warn("[vendors/:vendorId/public] public review aggregate enrichment temporarily unavailable");
+      vendorReviewAgg = undefined;
+    }
 
     return NextResponse.json({
       success: true,

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ShieldCheck, Star } from "lucide-react";
+import { PUBLIC_DB_UNAVAILABLE_CODE } from "@/lib/transient-db-errors";
 import { cn } from "@/lib/utils";
 import type {
   PublicTrustEvidenceSummary,
@@ -40,11 +41,21 @@ type PublicTrustScorePanelProps = {
   className?: string;
 };
 
+const PUBLIC_TRUST_SCORE_RETRY_ATTEMPTS = 3;
+const PUBLIC_TRUST_SCORE_RETRY_DELAY_MS = 1_200;
+
 const componentLabels: Record<string, string> = {
   workflowCompletion: "Workflow completion",
   videoVerification: "Video verification",
   disputeFree: "Dispute-free completion",
   operationalReliability: "Operational reliability",
+};
+
+const evidenceDetails: Record<string, string> = {
+  verifiedBookings: "Completed bookings verified through Reliance.",
+  approvedServiceVideos: "Approved public service videos on this vendor profile.",
+  publicReviews: "Published customer reviews customers can read right now.",
+  validatedDisputes: "Disputes confirmed through Reliance review records.",
 };
 
 const toneClasses: Record<
@@ -100,18 +111,28 @@ export function PublicTrustScorePanel({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/vendors/${vendorId}/trust-score`, { cache: "no-store" });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json?.success === false) {
-          throw new Error(String(json?.error || "Trust Score is temporarily unavailable."));
-        }
-        if (!cancelled) {
-          setTrustScore((json?.trustScore as PublicTrustScorePayload) || null);
+        for (let attempt = 0; attempt < PUBLIC_TRUST_SCORE_RETRY_ATTEMPTS; attempt += 1) {
+          const res = await fetch(`/api/vendors/${vendorId}/trust-score`, { cache: "no-store" });
+          const json = await res.json().catch(() => ({}));
+          const retryableDbUnavailable =
+            res.status === 503 || json?.code === PUBLIC_DB_UNAVAILABLE_CODE;
+
+          if (!res.ok || json?.success === false) {
+            if (retryableDbUnavailable && attempt < PUBLIC_TRUST_SCORE_RETRY_ATTEMPTS - 1) {
+              await new Promise((resolve) => setTimeout(resolve, PUBLIC_TRUST_SCORE_RETRY_DELAY_MS));
+              continue;
+            }
+            throw new Error(String(json?.error || "Trust Score is temporarily unavailable."));
+          }
+
+          if (!cancelled) {
+            setTrustScore((json?.trustScore as PublicTrustScorePayload) || null);
+          }
+          return;
         }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Trust Score is temporarily unavailable.");
-          setTrustScore(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -227,7 +248,7 @@ export function PublicTrustScorePanel({
             <div className="h-4 w-40 animate-pulse rounded bg-white/10" />
             <div className="h-20 animate-pulse rounded-2xl bg-white/10" />
           </div>
-        ) : error ? (
+        ) : error && !trustScore ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <div className="flex items-center gap-2 font-semibold">
               <AlertTriangle className="h-4 w-4" />
@@ -241,25 +262,49 @@ export function PublicTrustScorePanel({
           </div>
         ) : (
           <>
+            {error ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="flex items-center gap-2 font-semibold">
+                  <AlertTriangle className="h-4 w-4" />
+                  Showing the latest available Trust Score
+                </div>
+                <p className="mt-1 text-amber-800">
+                  Live refresh is temporarily unavailable, so this panel is showing the latest
+                  confirmed trust view.
+                </p>
+              </div>
+            ) : null}
             <div className={cn("rounded-2xl border px-4 py-4", visualTone.evidenceCard)}>
-              <div className="text-sm font-semibold text-slate-950">What this trust view is based on</div>
+              <div className="text-sm font-semibold text-slate-950">What this score is based on</div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Verified bookings</div>
-                  <div className="mt-1 text-2xl font-semibold text-slate-950">{evidence.verifiedBookings}</div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Approved service videos</div>
-                  <div className="mt-1 text-2xl font-semibold text-slate-950">{evidence.approvedServiceVideos}</div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Public reviews</div>
-                  <div className="mt-1 text-2xl font-semibold text-slate-950">{publicReviewCountValue}</div>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Validated disputes</div>
-                  <div className="mt-1 text-2xl font-semibold text-slate-950">{evidence.validatedDisputes}</div>
-                </div>
+                {[
+                  {
+                    key: 'verifiedBookings',
+                    label: 'Verified bookings',
+                    value: evidence.verifiedBookings,
+                  },
+                  {
+                    key: 'approvedServiceVideos',
+                    label: 'Approved service videos',
+                    value: evidence.approvedServiceVideos,
+                  },
+                  {
+                    key: 'publicReviews',
+                    label: 'Public reviews',
+                    value: publicReviewCountValue,
+                  },
+                  {
+                    key: 'validatedDisputes',
+                    label: 'Validated disputes',
+                    value: evidence.validatedDisputes,
+                  },
+                ].map((item) => (
+                  <div key={item.key} className="rounded-2xl border border-white/60 bg-white/80 px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{item.label}</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">{item.value}</div>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">{evidenceDetails[item.key]}</p>
+                  </div>
+                ))}
               </div>
               <p className="mt-3 text-xs leading-5 text-slate-600">
                 Public reviews help customers compare feedback, but they do not change the Reliance Trust Score.

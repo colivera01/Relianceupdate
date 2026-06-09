@@ -11,7 +11,7 @@ import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
 import { CustomerTrustSignalCard } from '@/components/public/CustomerTrustSignalCard';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
-import { Search, SlidersHorizontal, X, MapPin, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, SlidersHorizontal, X, MapPin, Image as ImageIcon, ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAuth } from '@/contexts/AuthContext';
 import { getCustomerReviewCopy } from '@/lib/customer-review-copy';
@@ -279,6 +279,8 @@ export default function PublicBrowsePage() {
   const pagination = data?.pagination;
   const totalPages = pagination?.totalPages || 0;
   const totalCount = pagination?.total || 0;
+  const hasCategoryData = categories.length > 0;
+  const hasBrowseResults = results.length > 0;
   const categoryCardsLoading = categoriesLoading && categories.length === 0;
   const browseResultsLoading = isLoading && results.length === 0;
 
@@ -389,8 +391,7 @@ export default function PublicBrowsePage() {
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Browse' },
-              { href: '/help', label: 'How It Works' },
+              { href: '/help', label: 'Help' },
             ]}
             ctaHref="/auth/register?type=user"
             ctaLabel="Create Account"
@@ -398,17 +399,14 @@ export default function PublicBrowsePage() {
 
           <div className="grid gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-end">
             <div className="max-w-2xl">
-              <div className="reliance-kicker border border-white/10 bg-white/10 text-white/76">
-                Browse Services
-              </div>
-              <h1 className="mt-6 font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl">
+              <h1 className="font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl">
                 Browse services with reviews, videos, and <span className="text-[var(--reliance-blue-soft)]">clear provider details</span>
               </h1>
               <p className="mt-5 max-w-xl text-lg leading-8 text-white/72">
                 Search public services, compare providers, and see available trust signals before you decide who to contact or book.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                {['Customer Reviews', 'Service Videos', 'Clear Promoted Labels'].map((label) => (
+                {['Customer Reviews', 'Public Service Videos', 'Clear Promoted Labels'].map((label) => (
                   <span
                     key={label}
                     className="rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm font-semibold text-white/82 backdrop-blur-md"
@@ -468,7 +466,7 @@ export default function PublicBrowsePage() {
                   setSelectedCategory(e.target.value);
                   setPage(1);
                 }}
-                className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3.5 text-slate-900 focus:border-[var(--reliance-blue)] focus:ring-2 focus:ring-[var(--reliance-blue)]/15"
+                className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3.5 text-slate-900 focus:border-[var(--reliance-blue)] focus:ring-2 focus:ring-[var(--reliance-blue)]/15"
               >
                 <option value="all">All Services</option>
                 {!hasSelectedCategoryOption && selectedCategory !== 'all' ? (
@@ -595,7 +593,7 @@ export default function PublicBrowsePage() {
                 <button
                   type="button"
                   onClick={stopUsingBrowserLocation}
-                  className="text-sm font-semibold text-gray-700 hover:text-white"
+                  className="text-sm font-semibold text-slate-700 hover:text-slate-950"
                 >
                   Stop using current location
                 </button>
@@ -605,7 +603,7 @@ export default function PublicBrowsePage() {
                 <button
                   type="button"
                   onClick={stopUsingSavedLocation}
-                  className="text-sm font-semibold text-gray-700 hover:text-white"
+                  className="text-sm font-semibold text-slate-700 hover:text-slate-950"
                 >
                   Stop for this session
                 </button>
@@ -701,9 +699,6 @@ export default function PublicBrowsePage() {
         <div className="mb-12">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-display text-3xl font-semibold text-slate-950">Popular Categories</h2>
-            <span className="text-xs font-medium text-blue-700">
-              Live category counts
-            </span>
           </div>
           {categoryCardsLoading ? (
             <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -718,7 +713,7 @@ export default function PublicBrowsePage() {
                 </Card>
               ))}
             </div>
-          ) : categoriesError ? (
+          ) : categoriesError && !hasCategoryData ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               We could not load category counts right now. You can still browse and search services.
             </div>
@@ -769,8 +764,8 @@ export default function PublicBrowsePage() {
         <div className="mb-12">
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h2 className="font-display text-3xl font-semibold text-slate-950">Trusted Services</h2>
-              <p className="text-sm text-gray-600">Compare services by reviews, public service videos, and fit.</p>
+              <h2 className="font-display text-3xl font-semibold text-slate-950">Available services</h2>
+              <p className="text-sm text-gray-600">Compare services by reviews, public service videos, and provider fit.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <TutorialEntryPoint guide={tutorialGuides.browseMarketplace} surface="light" />
@@ -799,7 +794,7 @@ export default function PublicBrowsePage() {
                 </Card>
               ))}
             </div>
-          ) : isError ? (
+          ) : isError && !hasBrowseResults ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
               We could not load marketplace results right now.
               {error instanceof Error ? ` ${error.message}` : ''}
@@ -885,9 +880,12 @@ export default function PublicBrowsePage() {
                     ) : null}
 
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-2xl bg-blue-50 px-3 py-2 text-blue-900">
-                        <div className="font-semibold">{reviewCopy.headline}</div>
-                        <div className="text-blue-700">{reviewCopy.detail}</div>
+                      <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-amber-950">
+                        <div className="flex items-center gap-1 font-semibold">
+                          <Star className="h-3.5 w-3.5 fill-current text-amber-500" />
+                          <span>{reviewCopy.headline}</span>
+                        </div>
+                        <div className="mt-1 text-amber-800">{reviewCopy.detail}</div>
                       </div>
                       <CustomerTrustSignalCard copy={trustCopy} />
                     </div>
@@ -904,13 +902,13 @@ export default function PublicBrowsePage() {
                     </div>
 
                     <div className="mt-4 space-y-2">
-                      <Link href={`/service/${item.serviceId}`} className="block">
+                      <Link href={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Browse`} className="block">
                         <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
                           View Service
                         </Button>
                       </Link>
                       <div className="flex items-center gap-2">
-                        <Link href={`/vendors/${item.vendorId}`} className="flex-1">
+                        <Link href={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Browse`} className="flex-1">
                           <Button size="sm" variant="outline" className="w-full">
                             View Vendor
                           </Button>

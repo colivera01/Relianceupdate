@@ -71,8 +71,8 @@ export const useServiceCategories = () => {
     queryFn: servicesSDK.getCategories,
     staleTime: 30 * 60 * 1000,
     placeholderData: (previousData) => previousData,
-    retry: 1,
-    retryDelay: 1000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * attempt, 2500),
   });
 };
 
@@ -92,7 +92,7 @@ export const useDiscoverServices = (filters?: {
     queryFn: () => servicesSDK.discoverServices(filters),
     staleTime: 2 * 60 * 1000,
     placeholderData: (previousData) => previousData,
-    retry: 1,
-    retryDelay: 1000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * attempt, 2500),
   });
 };

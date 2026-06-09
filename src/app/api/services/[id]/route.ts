@@ -65,32 +65,38 @@ export async function GET(
       }
 
       // Public-safe media only: approved + public + active.
-      const publicAssets = await withTransientDbRetry<any[]>(() =>
-        (prisma as any).mediaAsset.findMany({
-          where: {
-            ...getApprovedActiveBaseWhere(),
-            visibilityStatus: {
-              in: getVisibilityStatusesForAudience('public'),
-            },
-            mediaSession: {
-              serviceId: dbService.id,
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-          select: {
-            id: true,
-            mimeType: true,
-            blobUrl: true,
-            createdAt: true,
-            mediaSession: {
-              select: {
-                vendorJobVideoStage: true,
-                sessionType: true,
+      let publicAssets: any[] = [];
+      try {
+        publicAssets = await withTransientDbRetry<any[]>(() =>
+          (prisma as any).mediaAsset.findMany({
+            where: {
+              ...getApprovedActiveBaseWhere(),
+              visibilityStatus: {
+                in: getVisibilityStatusesForAudience('public'),
+              },
+              mediaSession: {
+                serviceId: dbService.id,
               },
             },
-          },
-        })
-      );
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              mimeType: true,
+              blobUrl: true,
+              createdAt: true,
+              mediaSession: {
+                select: {
+                  vendorJobVideoStage: true,
+                  sessionType: true,
+                },
+              },
+            },
+          })
+        );
+      } catch (publicAssetError) {
+        if (!isTransientDbConnectivityError(publicAssetError)) throw publicAssetError;
+        console.warn('[services/:id] public media enrichment temporarily unavailable');
+      }
 
       const proofSafeAssets = publicAssets.filter((asset: any) =>
         shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
@@ -125,34 +131,41 @@ export async function GET(
                 : 'Service Video',
         isPrimaryProofVideo: Boolean(primaryProofVideo?.id) && String(asset?.id || '') === String(primaryProofVideo.id),
       }));
-      const [vendorReviewAggMap, publicReviewCount] = await Promise.all([
-        withTransientDbRetry(() => getVendorReviewAggregatesForPublic([dbService.vendor.id])),
-        withTransientDbRetry(() =>
-          prisma.review.count({
-            where: countableReviewWhere({
-              vendorId: dbService.vendor.id,
-              moderationStatus: 'approved',
-              visibilityStatus: 'public',
-              OR: [
-                {
-                  booking: {
-                    is: {
-                      serviceId: dbService.id,
+      let vendorReviewAggMap = new Map<string, { rating: number | null; reviewCount: number }>();
+      let publicReviewCount = 0;
+      try {
+        [vendorReviewAggMap, publicReviewCount] = await Promise.all([
+          withTransientDbRetry(() => getVendorReviewAggregatesForPublic([dbService.vendor.id])),
+          withTransientDbRetry(() =>
+            prisma.review.count({
+              where: countableReviewWhere({
+                vendorId: dbService.vendor.id,
+                moderationStatus: 'approved',
+                visibilityStatus: 'public',
+                OR: [
+                  {
+                    booking: {
+                      is: {
+                        serviceId: dbService.id,
+                      },
                     },
                   },
-                },
-                {
-                  mediaSession: {
-                    is: {
-                      serviceId: dbService.id,
+                  {
+                    mediaSession: {
+                      is: {
+                        serviceId: dbService.id,
+                      },
                     },
                   },
-                },
-              ],
-            }),
-          })
-        ),
-      ]);
+                ],
+              }),
+            })
+          ),
+        ]);
+      } catch (reviewEnrichmentError) {
+        if (!isTransientDbConnectivityError(reviewEnrichmentError)) throw reviewEnrichmentError;
+        console.warn('[services/:id] public review enrichment temporarily unavailable');
+      }
       const vendorReviewAgg = vendorReviewAggMap.get(dbService.vendor.id);
 
       const publicVendorName = dbService.vendor.businessName || dbService.vendor.name;
