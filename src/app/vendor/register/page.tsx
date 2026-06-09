@@ -56,6 +56,7 @@ export default function VendorRegisterPage() {
   };
   const router = useRouter();
   const { user, isAuthenticated, isLoading } = useAuth();
+  const darkFieldClass = 'border-white/12 bg-slate-900/90 text-white placeholder:text-white/40';
   const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('');
   const [customBusinessType, setCustomBusinessType] = useState('');
@@ -284,13 +285,14 @@ export default function VendorRegisterPage() {
                   value={businessName}
                   onChange={e => setBusinessName(e.target.value)}
                   required
-                  className="border-white/12 bg-white/6 text-white"
+                  className={darkFieldClass}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1 text-white/88">Business Type</label>
                 <select
-                  className="w-full rounded border border-white/12 bg-white/6 px-3 py-2 text-white"
+                  className="w-full rounded border border-white/12 bg-slate-900/90 px-3 py-2 text-white"
+                  style={{ colorScheme: 'dark' }}
                   value={businessType}
                   onChange={e => setBusinessType(e.target.value)}
                   required
@@ -304,25 +306,26 @@ export default function VendorRegisterPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium mb-1 text-white/88">Street Address</label>
-                  <Input value={address} onChange={(e) => setAddress(e.target.value)} required className="border-white/12 bg-white/6 text-white" />
+                  <Input value={address} onChange={(e) => setAddress(e.target.value)} required className={darkFieldClass} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-white/88">City</label>
-                  <Input value={city} onChange={(e) => setCity(e.target.value)} required className="border-white/12 bg-white/6 text-white" />
+                  <Input value={city} onChange={(e) => setCity(e.target.value)} required className={darkFieldClass} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-white/88">State</label>
-                  <Input value={state} onChange={(e) => setState(e.target.value)} required className="border-white/12 bg-white/6 text-white" />
+                  <Input value={state} onChange={(e) => setState(e.target.value)} required className={darkFieldClass} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-white/88">ZIP Code</label>
-                  <Input value={zipCode} onChange={(e) => setZipCode(e.target.value)} required className="border-white/12 bg-white/6 text-white" />
+                  <Input value={zipCode} onChange={(e) => setZipCode(e.target.value)} required className={darkFieldClass} />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1 text-white/88">Primary Service Category</label>
                 <select
-                  className="w-full rounded border border-white/12 bg-white/6 px-3 py-2 text-white"
+                  className="w-full rounded border border-white/12 bg-slate-900/90 px-3 py-2 text-white"
+                  style={{ colorScheme: 'dark' }}
                   value={primaryServiceCategory}
                   onChange={(e) => {
                     const category = e.target.value;
@@ -342,7 +345,10 @@ export default function VendorRegisterPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-white/88">Prebuilt Service Templates</label>
+                <label className="block text-sm font-medium mb-1 text-white/88">Service Types Offered</label>
+                <p className="mb-3 text-xs leading-5 text-white/56">
+                  Choose the services you offer, then confirm the customer-facing name, estimated duration, price, and description for each one.
+                </p>
                 {primaryServiceCategory && availableTemplates.length > 0 ? (
                   <div className="space-y-2 rounded border border-white/12 bg-white/5 p-3">
                     {availableTemplates.map((template, idx) => {
@@ -350,7 +356,7 @@ export default function VendorRegisterPage() {
                       const selected = selectedTemplateServices.some((s) => s.templateKey === templateKey);
                       const selectedService = selectedTemplateServices.find((s) => s.templateKey === templateKey);
                       return (
-                        <div key={`${template.name}-${template.defaultDuration}`} className="rounded border border-white/10 bg-white/5 p-2">
+                        <div key={`${template.name}-${template.defaultDuration}`} className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
                           <label className="flex items-center gap-2 text-sm font-medium">
                             <input
                               type="checkbox"
@@ -371,72 +377,85 @@ export default function VendorRegisterPage() {
                             {template.name} ({template.defaultDuration} min)
                           </label>
                           {selected ? (
-                            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                              <Input
-                                value={selectedService?.name || template.name}
-                                onChange={(e) => {
-                                  const nextName = e.target.value;
-                                  setSelectedTemplateServices((prev) =>
-                                    prev.map((item) =>
-                                      item.templateKey === templateKey
-                                        ? { ...item, name: nextName }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                placeholder="Edit service name"
-                                className="border-white/12 bg-slate-950/60 text-white"
-                              />
-                              <Input
-                                type="number"
-                                min="1"
-                                value={selectedService?.defaultDuration ?? getTemplateServiceDefaultDetail(primaryServiceCategory, template.name).defaultDuration}
-                                onChange={(e) => {
-                                  const nextDuration = e.target.value ? Number(e.target.value) : undefined;
-                                  setSelectedTemplateServices((prev) =>
-                                    prev.map((item) =>
-                                      item.templateKey === templateKey
-                                        ? { ...item, defaultDuration: nextDuration }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                placeholder="Duration (minutes)"
-                                className="border-white/12 bg-slate-950/60 text-white"
-                              />
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={selectedService?.price ?? ''}
-                                onChange={(e) => {
-                                  const nextPrice = e.target.value ? Number(e.target.value) : undefined;
-                                  setSelectedTemplateServices((prev) =>
-                                    prev.map((item) =>
-                                      item.templateKey === templateKey
-                                        ? { ...item, price: nextPrice }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                placeholder="Price"
-                                className="border-white/12 bg-slate-950/60 text-white"
-                              />
-                              <Input
-                                value={selectedService?.description || ''}
-                                onChange={(e) => {
-                                  const nextDescription = e.target.value;
-                                  setSelectedTemplateServices((prev) =>
-                                    prev.map((item) =>
-                                      item.templateKey === templateKey
-                                        ? { ...item, description: nextDescription }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                placeholder="Customer-facing description"
-                                className="border-white/12 bg-slate-950/60 text-white"
-                              />
+                            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Service Name</label>
+                                <Input
+                                  value={selectedService?.name || template.name}
+                                  onChange={(e) => {
+                                    const nextName = e.target.value;
+                                    setSelectedTemplateServices((prev) =>
+                                      prev.map((item) =>
+                                        item.templateKey === templateKey
+                                          ? { ...item, name: nextName }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  placeholder="Service name"
+                                  className={darkFieldClass}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Estimated Duration (minutes)</label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={selectedService?.defaultDuration ?? getTemplateServiceDefaultDetail(primaryServiceCategory, template.name).defaultDuration}
+                                  onChange={(e) => {
+                                    const nextDuration = e.target.value ? Number(e.target.value) : undefined;
+                                    setSelectedTemplateServices((prev) =>
+                                      prev.map((item) =>
+                                        item.templateKey === templateKey
+                                          ? { ...item, defaultDuration: nextDuration }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  placeholder="Estimated duration"
+                                  className={darkFieldClass}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Starting Price (optional)</label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={selectedService?.price ?? ''}
+                                  onChange={(e) => {
+                                    const nextPrice = e.target.value ? Number(e.target.value) : undefined;
+                                    setSelectedTemplateServices((prev) =>
+                                      prev.map((item) =>
+                                        item.templateKey === templateKey
+                                          ? { ...item, price: nextPrice }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  placeholder="Starting price"
+                                  className={darkFieldClass}
+                                />
+                              </div>
+                              <div className="space-y-1 md:col-span-2">
+                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Customer-Facing Description</label>
+                                <textarea
+                                  value={selectedService?.description || ''}
+                                  onChange={(e) => {
+                                    const nextDescription = e.target.value;
+                                    setSelectedTemplateServices((prev) =>
+                                      prev.map((item) =>
+                                        item.templateKey === templateKey
+                                          ? { ...item, description: nextDescription }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  rows={3}
+                                  placeholder="Describe what the customer can expect from this service."
+                                  className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkFieldClass}`}
+                                />
+                              </div>
                             </div>
                           ) : null}
                         </div>
@@ -478,57 +497,70 @@ export default function VendorRegisterPage() {
                 ) : (
                   <div className="space-y-3">
                     {customServices.map((custom) => (
-                      <div key={custom.id} className="rounded border border-white/10 bg-slate-950/60 p-2">
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                          <Input
-                            placeholder="Service name *"
-                            value={custom.name}
-                            className="border-white/12 bg-white/6 text-white"
-                            onChange={(e) =>
-                              setCustomServices((prev) =>
-                                prev.map((item) => (item.id === custom.id ? { ...item, name: e.target.value } : item))
-                              )
-                            }
-                          />
-                          <Input
-                            type="number"
-                            min="1"
-                            placeholder="Duration (minutes)"
-                            value={custom.defaultDuration}
-                            className="border-white/12 bg-white/6 text-white"
-                            onChange={(e) =>
-                              setCustomServices((prev) =>
-                                prev.map((item) =>
-                                  item.id === custom.id ? { ...item, defaultDuration: e.target.value } : item
+                      <div key={custom.id} className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <div className="space-y-1">
+                            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Service Name</label>
+                            <Input
+                              placeholder="Service name *"
+                              value={custom.name}
+                              className={darkFieldClass}
+                              onChange={(e) =>
+                                setCustomServices((prev) =>
+                                  prev.map((item) => (item.id === custom.id ? { ...item, name: e.target.value } : item))
                                 )
-                              )
-                            }
-                          />
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="Price"
-                            value={custom.price}
-                            className="border-white/12 bg-white/6 text-white"
-                            onChange={(e) =>
-                              setCustomServices((prev) =>
-                                prev.map((item) => (item.id === custom.id ? { ...item, price: e.target.value } : item))
-                              )
-                            }
-                          />
-                          <Input
-                            placeholder="Description"
-                            value={custom.description}
-                            className="border-white/12 bg-white/6 text-white"
-                            onChange={(e) =>
-                              setCustomServices((prev) =>
-                                prev.map((item) =>
-                                  item.id === custom.id ? { ...item, description: e.target.value } : item
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Estimated Duration (minutes)</label>
+                            <Input
+                              type="number"
+                              min="1"
+                              placeholder="Estimated duration"
+                              value={custom.defaultDuration}
+                              className={darkFieldClass}
+                              onChange={(e) =>
+                                setCustomServices((prev) =>
+                                  prev.map((item) =>
+                                    item.id === custom.id ? { ...item, defaultDuration: e.target.value } : item
+                                  )
                                 )
-                              )
-                            }
-                          />
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Starting Price (optional)</label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="Starting price"
+                              value={custom.price}
+                              className={darkFieldClass}
+                              onChange={(e) =>
+                                setCustomServices((prev) =>
+                                  prev.map((item) => (item.id === custom.id ? { ...item, price: e.target.value } : item))
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Customer-Facing Description</label>
+                            <textarea
+                              placeholder="Describe what the customer can expect from this service."
+                              value={custom.description}
+                              rows={3}
+                              className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkFieldClass}`}
+                              onChange={(e) =>
+                                setCustomServices((prev) =>
+                                  prev.map((item) =>
+                                    item.id === custom.id ? { ...item, description: e.target.value } : item
+                                  )
+                                )
+                              }
+                            />
+                          </div>
                         </div>
                         <button
                           type="button"
@@ -544,14 +576,14 @@ export default function VendorRegisterPage() {
                 {customServiceError ? <p className="mt-2 text-xs text-red-300">{customServiceError}</p> : null}
               </div>
               {businessType === 'Other' && (
-                <div>
+                <div className="rounded border border-white/12 bg-white/5 p-3">
                   <label className="block text-sm font-medium mb-1 text-white/88">Custom Business Type</label>
                   <Input
                     value={customBusinessType}
                     onChange={e => setCustomBusinessType(e.target.value)}
                     placeholder="Enter your business type"
                     required
-                    className="border-white/12 bg-white/6 text-white"
+                    className={darkFieldClass}
                   />
                 </div>
               )}

@@ -9,8 +9,8 @@ import {
 
 const exploreLinks = [
   { href: "/", label: "Home" },
-  { href: "/browse", label: "Browse Services" },
-  { href: "/help", label: "How It Works" },
+  { href: "/browse", label: "Browse" },
+  { href: "/help", label: "Help" },
   { href: "/contact", label: "Contact" },
 ];
 
@@ -105,7 +105,7 @@ export function PublicSiteFooter() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-white/8 pt-6 text-sm text-white/44 sm:flex-row sm:items-center sm:justify-between">
-          <p>Reliance keeps reviews, public service videos, and Trust Score separate so customers can compare them clearly.</p>
+          <p>Compare customer reviews, public service videos, and Trust Score separately.</p>
           <p>&copy; {new Date().getFullYear()} Reliance. Public marketplace.</p>
         </div>
       </div>

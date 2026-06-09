@@ -705,7 +705,7 @@ export default function PublicBrowsePage() {
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <Card key={i} className="rounded-[26px] border-slate-200 bg-white">
                   <CardContent className="p-4 h-24 flex flex-col justify-center">
-                    <div className="text-sm font-semibold text-slate-900">Loading live category counts</div>
+                    <div className="text-sm font-semibold text-slate-900">Loading categories</div>
                     <div className="mt-1 text-xs leading-5 text-slate-600">
                       Reliance is checking which public services are live in each category.
                     </div>

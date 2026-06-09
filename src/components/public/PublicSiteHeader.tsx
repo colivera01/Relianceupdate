@@ -64,22 +64,26 @@ export function PublicSiteHeader({
           />
         )}
 
-        <nav className="hidden items-center gap-6 md:flex">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "text-sm font-medium transition-colors",
-                dark
-                  ? "text-white/78 hover:text-white"
-                  : "text-slate-600 hover:text-slate-950"
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        {links.length > 0 ? (
+          <nav className="hidden items-center gap-6 md:flex">
+            {links.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  "text-sm font-medium transition-colors",
+                  dark
+                    ? "text-white/78 hover:text-white"
+                    : "text-slate-600 hover:text-slate-950"
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        ) : (
+          <div className="hidden flex-1 md:block" aria-hidden="true" />
+        )}
 
         <div className="flex items-center gap-2 sm:gap-3">
           <Link href={secondaryHref}>

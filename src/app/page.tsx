@@ -32,13 +32,6 @@ const trustPillars = [
   },
 ];
 
-const trustMetrics = [
-  { label: 'Customer reviews', value: 'Public' },
-  { label: 'Service videos', value: 'Approved' },
-  { label: 'Provider details', value: 'Visible' },
-  { label: 'Trust Score', value: 'Separate' },
-];
-
 function isPlaceholderMarketplacePreview(url: string | null | undefined) {
   const normalized = String(url || '').trim().toLowerCase();
   if (!normalized) return true;
@@ -126,19 +119,6 @@ export default function HomePage() {
                   Reliance explainer video coming soon
                 </Button>
               </div>
-
-              <div className="mt-10 grid gap-3 sm:grid-cols-3">
-                {trustPillars.map((item) => (
-                  <div
-                    key={item.title}
-                    className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-lg"
-                  >
-                    <item.icon className="h-5 w-5 text-[var(--reliance-blue-soft)]" />
-                    <div className="mt-3 text-sm font-semibold">{item.title}</div>
-                    <p className="mt-1 text-sm leading-6 text-white/68">{item.description}</p>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="grid gap-5">
@@ -191,27 +171,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-[1.15fr_0.85fr]">
-                <div className="reliance-light-card rounded-[28px] px-5 py-5 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                    What you can compare
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-700">
-                    Customer reviews, public service videos, and the Reliance Trust Score each
-                    answer a different question before you book.
-                  </p>
-                  <div className="mt-5 space-y-3">
-                    {trustMetrics.map((item) => (
-                      <div key={item.label} className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
-                        <span className="text-sm font-medium text-slate-700">{item.label}</span>
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                          {item.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
+              <div className="grid gap-4">
                 <div className="reliance-light-card rounded-[28px] px-5 py-5 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
                     See how service videos work

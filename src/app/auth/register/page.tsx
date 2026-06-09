@@ -2325,74 +2325,88 @@ function RegisterPageInner() {
                         </div>
                       )}
                       {Array.isArray(formData.serviceTypes) && formData.serviceTypes.length > 0 ? (
-                        <div className="mt-3 space-y-2 rounded-lg border border-gray-200 p-3">
-                          <p className="text-xs text-gray-600">
-                            Optional: rename selected templates and add estimated duration, pricing, or a customer-facing description before saving.
+                        <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                          <p className="text-xs text-slate-600">
+                            Optional: rename selected templates and confirm the service name, estimated duration, starting price, and customer-facing description before saving.
                           </p>
                           {formData.serviceTypes.map((serviceType) => (
-                            <div key={`rename-${serviceType}`} className="rounded-lg border border-gray-200 p-3">
-                              <Label className="text-xs text-gray-500">{serviceType}</Label>
-                              <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                <Input
-                                  value={serviceTypeCustomNames[serviceType] || serviceType}
-                                  onChange={(e) =>
-                                    setServiceTypeCustomNames((prev) => ({
-                                      ...prev,
-                                      [serviceType]: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Display name"
-                                />
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  value={serviceTypeDetails[serviceType]?.defaultDuration || ''}
-                                  onChange={(e) =>
-                                    setServiceTypeDetails((prev) => ({
-                                      ...prev,
-                                      [serviceType]: {
-                                        ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
-                                        defaultDuration: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder="Duration (minutes)"
-                                />
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={serviceTypeDetails[serviceType]?.price || ''}
-                                  onChange={(e) =>
-                                    setServiceTypeDetails((prev) => ({
-                                      ...prev,
-                                      [serviceType]: {
-                                        ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
-                                        price: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder="Price"
-                                />
-                                <Input
-                                  value={serviceTypeDetails[serviceType]?.description || ''}
-                                  onChange={(e) =>
-                                    setServiceTypeDetails((prev) => ({
-                                      ...prev,
-                                      [serviceType]: {
-                                        ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
-                                        description: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder="Customer-facing description"
-                                />
+                            <div key={`rename-${serviceType}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                              <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{serviceType}</Label>
+                              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-slate-500">Service Name</Label>
+                                  <Input
+                                    value={serviceTypeCustomNames[serviceType] || serviceType}
+                                    onChange={(e) =>
+                                      setServiceTypeCustomNames((prev) => ({
+                                        ...prev,
+                                        [serviceType]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Service name"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-slate-500">Estimated Duration (minutes)</Label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={serviceTypeDetails[serviceType]?.defaultDuration || ''}
+                                    onChange={(e) =>
+                                      setServiceTypeDetails((prev) => ({
+                                        ...prev,
+                                        [serviceType]: {
+                                          ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
+                                          defaultDuration: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="Estimated duration"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs text-slate-500">Starting Price (optional)</Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={serviceTypeDetails[serviceType]?.price || ''}
+                                    onChange={(e) =>
+                                      setServiceTypeDetails((prev) => ({
+                                        ...prev,
+                                        [serviceType]: {
+                                          ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
+                                          price: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="Starting price"
+                                  />
+                                </div>
+                                <div className="space-y-1 md:col-span-2">
+                                  <Label className="text-xs text-slate-500">Customer-Facing Description</Label>
+                                  <textarea
+                                    value={serviceTypeDetails[serviceType]?.description || ''}
+                                    onChange={(e) =>
+                                      setServiceTypeDetails((prev) => ({
+                                        ...prev,
+                                        [serviceType]: {
+                                          ...(prev[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType)),
+                                          description: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder="Describe what the customer can expect from this service."
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
                               </div>
                             </div>
                           ))}
                         </div>
                       ) : null}
-                      <div className="mt-3 rounded-lg border border-gray-200 p-3">
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
                         <div className="mb-2 flex items-center justify-between">
                           <Label className="text-sm font-medium">Custom Services</Label>
                           <Button
@@ -2417,63 +2431,77 @@ function RegisterPageInner() {
                         {customServices.length === 0 ? (
                           <p className="text-xs text-gray-500">Add services not covered by templates.</p>
                         ) : (
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                             {customServices.map((service) => (
-                              <div key={service.id} className="rounded border p-2">
-                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                                  <Input
-                                    placeholder="Service name *"
-                                    value={service.name}
-                                    onChange={(e) =>
-                                      setCustomServices((prev) =>
-                                        prev.map((item) =>
-                                          item.id === service.id ? { ...item, name: e.target.value } : item
+                              <div key={service.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-slate-500">Service Name</Label>
+                                    <Input
+                                      placeholder="Service name *"
+                                      value={service.name}
+                                      onChange={(e) =>
+                                        setCustomServices((prev) =>
+                                          prev.map((item) =>
+                                            item.id === service.id ? { ...item, name: e.target.value } : item
+                                          )
                                         )
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    placeholder="Duration (minutes)"
-                                    value={service.defaultDuration}
-                                    onChange={(e) =>
-                                      setCustomServices((prev) =>
-                                        prev.map((item) =>
-                                          item.id === service.id
-                                            ? { ...item, defaultDuration: e.target.value }
-                                            : item
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-slate-500">Estimated Duration (minutes)</Label>
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      placeholder="Estimated duration"
+                                      value={service.defaultDuration}
+                                      onChange={(e) =>
+                                        setCustomServices((prev) =>
+                                          prev.map((item) =>
+                                            item.id === service.id
+                                              ? { ...item, defaultDuration: e.target.value }
+                                              : item
+                                          )
                                         )
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    placeholder="Price"
-                                    value={service.price}
-                                    onChange={(e) =>
-                                      setCustomServices((prev) =>
-                                        prev.map((item) =>
-                                          item.id === service.id ? { ...item, price: e.target.value } : item
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs text-slate-500">Starting Price (optional)</Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      placeholder="Starting price"
+                                      value={service.price}
+                                      onChange={(e) =>
+                                        setCustomServices((prev) =>
+                                          prev.map((item) =>
+                                            item.id === service.id ? { ...item, price: e.target.value } : item
+                                          )
                                         )
-                                      )
-                                    }
-                                  />
-                                  <Input
-                                    placeholder="Description"
-                                    value={service.description}
-                                    onChange={(e) =>
-                                      setCustomServices((prev) =>
-                                        prev.map((item) =>
-                                          item.id === service.id
-                                            ? { ...item, description: e.target.value }
-                                            : item
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1 md:col-span-2">
+                                    <Label className="text-xs text-slate-500">Customer-Facing Description</Label>
+                                    <textarea
+                                      placeholder="Describe what the customer can expect from this service."
+                                      value={service.description}
+                                      rows={3}
+                                      onChange={(e) =>
+                                        setCustomServices((prev) =>
+                                          prev.map((item) =>
+                                            item.id === service.id
+                                              ? { ...item, description: e.target.value }
+                                              : item
+                                          )
                                         )
-                                      )
-                                    }
-                                  />
+                                      }
+                                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    />
+                                  </div>
                                 </div>
                                 <button
                                   type="button"
@@ -2742,11 +2770,11 @@ function RegisterPageInner() {
                       </div>
 
                       {/* Availability Section */}
-                      <div>
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                         <Label>Service Availability</Label>
-                        <p className="text-sm text-gray-600 mb-3">Select when you're available to provide services</p>
-                        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                          Reliance currently records service days, emergency coverage, and 24/7 availability here. Daily operating hours are not part of the live booking model yet.
+                        <p className="mb-3 text-sm text-amber-900">Select when you're generally available to provide services.</p>
+                        <div className="mb-4 rounded-lg border border-amber-300 bg-white/80 p-3 text-sm text-amber-900">
+                          Reliance currently records service days, emergency coverage, and 24/7 availability here. Real daily operating hours need additional schema, API, and booking-model support before they can be added safely.
                         </div>
                         
                         {/* Days of the Week */}
