@@ -38,6 +38,41 @@ function jsonResponse(body: unknown, status: number): NextResponse {
   return response;
 }
 
+function getPublicOrigin(request: NextRequest): string {
+  const configuredUrl = String(
+    process.env.APP_BASE_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      ""
+  ).trim();
+
+  if (configuredUrl) {
+    try {
+      return new URL(configuredUrl).origin;
+    } catch {
+      // Fall back to proxy headers if an environment value is malformed.
+    }
+  }
+
+  const forwardedHost = String(request.headers.get("x-forwarded-host") || "")
+    .split(",")[0]
+    .trim();
+  const forwardedProto =
+    String(request.headers.get("x-forwarded-proto") || "")
+      .split(",")[0]
+      .trim() || "https";
+
+  if (forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  return new URL(request.url).origin;
+}
+
+function betaGateRedirectUrl(path: string, request: NextRequest): URL {
+  return new URL(path, getPublicOrigin(request));
+}
+
 export async function POST(request: NextRequest) {
   const betaGate = getBetaGateConfig();
   const { password, returnTo } = await readPasswordAndReturnTo(request);
@@ -61,7 +96,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const deniedUrl = new URL("/beta-access", request.url);
+    const deniedUrl = betaGateRedirectUrl("/beta-access", request);
     deniedUrl.searchParams.set("error", "1");
     deniedUrl.searchParams.set("returnTo", returnTo);
     const response = NextResponse.redirect(deniedUrl, 303);
@@ -70,7 +105,7 @@ export async function POST(request: NextRequest) {
   }
 
   const token = await createBetaGateToken(betaGate);
-  const response = NextResponse.redirect(new URL(returnTo, request.url), 303);
+  const response = NextResponse.redirect(betaGateRedirectUrl(returnTo, request), 303);
   response.cookies.set(betaGate.cookieName, token, {
     httpOnly: true,
     secure: true,
