@@ -2,9 +2,10 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider   = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
   // Native library engine required for `sqlserver://` DATABASE_URL. Do not run `prisma generate --no-engine`.
-  engineType = "library"
+  engineType    = "library"
 }
 
 datasource db {
