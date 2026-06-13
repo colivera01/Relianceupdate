@@ -28,6 +28,7 @@ export interface User {
   createdAt: string;
   isActive: boolean;
   phone?: string;
+  profilePhoto?: string | null;
 }
 
 export interface CustomerProfile extends User {

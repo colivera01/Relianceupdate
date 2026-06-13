@@ -6,7 +6,12 @@ import {
   AccountStatusError,
   isUserAccountRestricted,
 } from "@/lib/account-status";
-import { isOwnerAdminEmail, isOwnerAdminPhone, isOwnerAdminUserId } from "@/lib/internal-identities";
+import {
+  isInternalDemoUserRecord,
+  isOwnerAdminEmail,
+  isOwnerAdminPhone,
+  isOwnerAdminUserId,
+} from "@/lib/internal-identities";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { clearFailedLoginAttempts, getAuthRateLimitKey, getLoginThrottleState, recordFailedLoginAttempt } from "@/lib/auth-rate-limit";
 import { findDbCredentialByEmail, upsertDbCredential } from "@/lib/auth-credentials";
@@ -98,9 +103,11 @@ export async function POST(request: NextRequest) {
 
     const user = findRegisteredUserByEmail(emailNorm);
     let dbCredential: Awaited<ReturnType<typeof findDbCredentialByEmail>> = null;
+    let credentialLookupFailed = false;
     try {
       dbCredential = await findDbCredentialByEmail(emailNorm);
     } catch (credentialLookupError) {
+      credentialLookupFailed = true;
       if (!IS_DEV) {
         throw credentialLookupError;
       }
@@ -156,11 +163,27 @@ export async function POST(request: NextRequest) {
     let usedDevRegistryIdBecauseDbUnreachable = false;
 
     let resolvedUserId = dbCredential?.userId || user?.id || "temp-id";
-    let resolvedDbUser: { id: string; accountStatus: string; name?: string | null; email?: string | null; phone?: string | null } | null = null;
+    let resolvedDbUser: {
+      id: string;
+      accountStatus: string;
+      name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      profilePhoto?: string | null;
+      demo?: boolean | null;
+    } | null = null;
     try {
       const dbUser = await prisma.user.findFirst({
         where: { email: user?.email || emailNorm },
-        select: { id: true, accountStatus: true, name: true, email: true, phone: true },
+        select: {
+          id: true,
+          accountStatus: true,
+          name: true,
+          email: true,
+          phone: true,
+          profilePhoto: true,
+          demo: true,
+        },
       });
       if (dbUser?.id) {
         resolvedDbUser = dbUser;
@@ -190,6 +213,50 @@ export async function POST(request: NextRequest) {
             code: "USER_ID_RESOLUTION_DB_ERROR",
           },
           { status: 503 }
+        );
+      }
+    }
+
+    const resolvedEmailForVerification = user?.email || resolvedDbUser?.email || emailNorm;
+    const shouldBypassEmailVerification =
+      IS_DEV &&
+      isInternalDemoUserRecord({
+        id: resolvedDbUser?.id || resolvedUserId || user?.id,
+        email: resolvedEmailForVerification,
+        phone: user?.phone || resolvedDbUser?.phone,
+        demo: resolvedDbUser?.demo ?? null,
+      });
+
+    if (!shouldBypassEmailVerification) {
+      if (credentialLookupFailed) {
+        return NextResponse.json(
+          {
+            error: "Reliance could not confirm your email verification status right now. Please try again in a moment.",
+            code: "EMAIL_VERIFICATION_CHECK_UNAVAILABLE",
+          },
+          { status: 503 }
+        );
+      }
+
+      if (!dbCredential?.email) {
+        return NextResponse.json(
+          {
+            error: "Verify your email before signing in.",
+            code: "EMAIL_VERIFICATION_REQUIRED",
+            email: resolvedEmailForVerification,
+          },
+          { status: 403 }
+        );
+      }
+
+      if (!dbCredential.emailVerifiedAt) {
+        return NextResponse.json(
+          {
+            error: "Verify your email before signing in.",
+            code: "EMAIL_VERIFICATION_REQUIRED",
+            email: dbCredential.email,
+          },
+          { status: 403 }
         );
       }
     }
@@ -242,7 +309,8 @@ export async function POST(request: NextRequest) {
       availableProfiles,
       emailVerified: Boolean(dbCredential?.emailVerifiedAt),
       emailVerifiedAt: dbCredential?.emailVerifiedAt?.toISOString?.() ?? null,
-      avatar: sanitizeCustomerFacingAvatar(user?.avatar) || undefined,
+      avatar:
+        sanitizeCustomerFacingAvatar(user?.avatar || resolvedDbUser?.profilePhoto) || undefined,
     };
 
     let resolvedCredentialForMfa = dbCredential;
@@ -303,7 +371,6 @@ export async function POST(request: NextRequest) {
           email: credentialForMfa.email,
           availableProfiles,
           userType: sessionUserType,
-          ...(IS_DEV ? { mfaCodePreview: challenge.codePreview } : {}),
         },
         { status: 202 }
       );

@@ -78,7 +78,10 @@ export default async function AdminSettingsPage() {
     notificationEnv.smsEnabled &&
     Boolean(notificationEnv.twilioAccountSid) &&
     Boolean(notificationEnv.twilioAuthToken) &&
-    Boolean(notificationEnv.twilioPhoneNumber);
+    (Boolean(notificationEnv.twilioMessagingServiceSid) || Boolean(notificationEnv.twilioPhoneNumber));
+  const smsSenderLabel = notificationEnv.twilioMessagingServiceSid
+    ? "10DLC Messaging Service configured"
+    : `Phone sender: ${formatOptional(notificationEnv.twilioPhoneNumber)}`;
   const aiRollout = readAiRolloutStatus();
   const aiPromptCatalog = readAiPromptCatalog();
 
@@ -226,7 +229,7 @@ export default async function AdminSettingsPage() {
               <div>
                 <div className="font-medium text-slate-900">SMS delivery</div>
                 <div className="text-muted-foreground">
-                  Phone sender: {formatOptional(notificationEnv.twilioPhoneNumber)}
+                  {smsSenderLabel}
                 </div>
               </div>
               {statusBadge(smsDeliveryReady, "Ready", "Needs setup")}

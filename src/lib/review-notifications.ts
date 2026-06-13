@@ -63,7 +63,10 @@ export async function notifyReviewWindowClosedWithoutSubmission(context: Reminde
   try {
     const booking = await prisma.booking.findUnique({
       where: { id: context.bookingId },
-      include: { user: { select: { email: true, phone: true, name: true } } },
+      include: {
+        user: { select: { email: true, phone: true, name: true } },
+        vendor: { select: { name: true, businessName: true } },
+      },
     });
     if (!booking) {
       loadError = 'booking_not_found';
@@ -75,6 +78,7 @@ export async function notifyReviewWindowClosedWithoutSubmission(context: Reminde
         customerEmail: booking.user?.email,
         customerPhone: booking.user?.phone,
         customerName: booking.user?.name,
+        vendorName: booking.vendor?.businessName || booking.vendor?.name || null,
       });
     }
   } catch (e) {

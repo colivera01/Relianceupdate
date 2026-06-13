@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { requireAdmin } from '@/lib/admin-auth';
 import { isStaleApprovalQueueFixture } from '@/lib/launch-content-cleanup';
+import { isAiFeatureEnabled } from '@/lib/ai/feature-flags';
+import {
+  buildVendorApprovalContextResolutionFromPendingSource,
+  generateVendorApprovalAiStoredResult,
+  getLatestVendorApprovalAiStoredResults,
+  serializeVendorApprovalAiStoredResult,
+  VENDOR_APPROVAL_AI_SYSTEM_ACTOR,
+} from '@/lib/ai/vendor-approval-review-store';
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,20 +29,36 @@ export async function GET(request: NextRequest) {
         role: 'MANAGER',
       },
       include: {
-        vendor: true,
+        vendor: {
+          include: {
+            services: {
+              select: {
+                id: true,
+                isPublished: true,
+              },
+            },
+          },
+        },
         user: {
           select: {
             id: true,
             name: true,
             email: true,
             phone: true,
+            authCredential: {
+              select: {
+                id: true,
+                emailVerifiedAt: true,
+                createdAt: true,
+              },
+            },
           },
         },
       },
     });
 
     const searchLower = search.toLowerCase();
-    let filteredVendors = pendingMemberships
+    let filteredVendorRows = pendingMemberships
       .map((membership: any) => {
         const vendor = membership.vendor;
         const user = membership.user;
@@ -45,27 +69,37 @@ export async function GET(request: NextRequest) {
           foundedYear && Number.isFinite(foundedYear) ? Math.max(0, new Date().getFullYear() - foundedYear) : 0;
 
         return {
-          id: String(vendor.id),
-          membershipId: String(membership.id),
-          businessName: String(vendor.businessName || vendor.name || 'Unnamed Vendor'),
-          firstName,
-          lastName,
-          email: String(vendor.email || user?.email || ''),
-          phone: String(vendor.phone || user?.phone || ''),
-          category: String(vendor.category || vendor.businessType || 'General'),
-          businessType: String(vendor.businessType || 'Unknown'),
-          foundedYear: foundedYear || null,
-          totalEmployees: 0,
-          yearsInBusiness,
-          address: String(vendor.address || ''),
-          city: String(vendor.city || ''),
-          state: String(vendor.state || ''),
-          zipCode: String(vendor.zipCode || ''),
-          createdAt: membership.requestedAt?.toISOString() || vendor.createdAt?.toISOString(),
-          submittedAt: membership.requestedAt?.toISOString() || vendor.createdAt?.toISOString(),
+          summary: {
+            id: String(vendor.id),
+            membershipId: String(membership.id),
+            businessName: String(vendor.businessName || vendor.name || 'Unnamed Vendor'),
+            firstName,
+            lastName,
+            email: String(vendor.email || user?.email || ''),
+            phone: String(vendor.phone || user?.phone || ''),
+            category: String(vendor.category || vendor.businessType || 'General'),
+            businessType: String(vendor.businessType || 'Unknown'),
+            foundedYear: foundedYear || null,
+            totalEmployees: 0,
+            yearsInBusiness,
+            address: String(vendor.address || ''),
+            city: String(vendor.city || ''),
+            state: String(vendor.state || ''),
+            zipCode: String(vendor.zipCode || ''),
+            createdAt: membership.requestedAt?.toISOString() || vendor.createdAt?.toISOString(),
+            submittedAt: membership.requestedAt?.toISOString() || vendor.createdAt?.toISOString(),
+          },
+          source: {
+            vendor,
+            membership: {
+              ...membership,
+              user,
+            },
+          },
         };
       })
-      .filter((vendor: any) => {
+      .filter((row: any) => {
+        const vendor = row.summary;
         if (isStaleApprovalQueueFixture(vendor)) return false;
         const matchesSearch =
           !searchLower ||
@@ -76,23 +110,25 @@ export async function GET(request: NextRequest) {
         return matchesSearch && matchesCategory;
       });
 
-    filteredVendors.sort((a: any, b: any) => {
+    filteredVendorRows.sort((a: any, b: any) => {
+      const left = a.summary;
+      const right = b.summary;
       const direction = sortOrder === 'asc' ? 1 : -1;
       if (sortBy === 'businessName') {
-        return a.businessName.localeCompare(b.businessName) * direction;
+        return left.businessName.localeCompare(right.businessName) * direction;
       }
       if (sortBy === 'category') {
-        return a.category.localeCompare(b.category) * direction;
+        return left.category.localeCompare(right.category) * direction;
       }
-      const aTime = new Date(a.createdAt).getTime();
-      const bTime = new Date(b.createdAt).getTime();
+      const aTime = new Date(left.createdAt).getTime();
+      const bTime = new Date(right.createdAt).getTime();
       return (aTime - bTime) * direction;
     });
 
     const availableCategories = Array.from(
       new Set<string>(
-        filteredVendors
-          .map((vendor: any) => String(vendor.category || "").trim())
+        filteredVendorRows
+          .map((row: any) => String(row.summary.category || "").trim())
           .filter((value: string) => Boolean(value))
       )
     ).sort((a, b) => a.localeCompare(b));
@@ -100,18 +136,68 @@ export async function GET(request: NextRequest) {
     // Paginate filtered data
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
-    const paginatedVendors = filteredVendors.slice(startIndex, endIndex);
+    const paginatedVendorRows = filteredVendorRows.slice(startIndex, endIndex);
+    const paginatedVendors = paginatedVendorRows.map((row: any) => row.summary);
+
+    const aiEnabled = isAiFeatureEnabled('vendor_approval_assistant');
+    const aiRecommendationsByVendorId = aiEnabled
+      ? await (async () => {
+          const existingByVendorId = await getLatestVendorApprovalAiStoredResults(
+            paginatedVendors.map((vendor: any) => String(vendor.id))
+          );
+          const entries = await Promise.all(
+            paginatedVendorRows.map(async (row: any) => {
+              const vendorId = String(row.summary.id);
+              const resolution = buildVendorApprovalContextResolutionFromPendingSource(row.source);
+              if (resolution.status !== 'ok') {
+                return [vendorId, existingByVendorId[vendorId] || null] as const;
+              }
+              const existing = existingByVendorId[vendorId] || null;
+              const existingMatchesCurrent =
+                existing &&
+                existing.fingerprint === resolution.fingerprint &&
+                existing.applicationSnapshot.submittedAt ===
+                  resolution.applicationSnapshot.submittedAt;
+
+              if (existingMatchesCurrent) {
+                return [vendorId, existing] as const;
+              }
+
+              try {
+                const generated = await generateVendorApprovalAiStoredResult(vendorId, {
+                  actorUserId: VENDOR_APPROVAL_AI_SYSTEM_ACTOR,
+                  source: 'admin_vendor_approval_queue_autorun',
+                  resolution,
+                });
+                return [vendorId, generated || existing] as const;
+              } catch (aiError) {
+                console.error(`Auto-run vendor approval AI review failed for ${vendorId}:`, aiError);
+                return [vendorId, existing] as const;
+              }
+            })
+          );
+
+          return Object.fromEntries(entries);
+        })()
+      : {};
+
+    const paginatedVendorsWithAi = paginatedVendors.map((vendor: any) => ({
+      ...vendor,
+      aiRecommendation: serializeVendorApprovalAiStoredResult(
+        aiRecommendationsByVendorId[String(vendor.id)]
+      ),
+    }));
 
     return NextResponse.json({
       success: true,
       data: {
-        vendors: paginatedVendors,
+        vendors: paginatedVendorsWithAi,
         pagination: {
           page,
           limit,
-          total: filteredVendors.length,
-          totalPages: Math.ceil(filteredVendors.length / limit),
-          hasNextPage: endIndex < filteredVendors.length,
+          total: filteredVendorRows.length,
+          totalPages: Math.ceil(filteredVendorRows.length / limit),
+          hasNextPage: endIndex < filteredVendorRows.length,
           hasPrevPage: page > 1,
         },
         categories: availableCategories,

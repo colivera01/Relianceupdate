@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { operationalReviewWhere } from "@/lib/metrics-exclusion";
+import { getLatestReviewModerationAiStoredResults } from "@/lib/ai/review-moderation-review-store";
 
 /**
  * GET /api/admin/reviews/moderation-queue
@@ -85,6 +86,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       }),
     ]);
 
+    const aiRecommendationsByReviewId = await getLatestReviewModerationAiStoredResults(
+      reviews.map((review) => review.id)
+    );
+
     const rows = reviews.map((review) => ({
       reviewId: review.id,
       vendorId: review.vendorId,
@@ -101,6 +106,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       visibilityStatus: review.visibilityStatus,
       moderationReason: review.moderationReason,
       moderatedAt: review.moderatedAt,
+      aiRecommendation: aiRecommendationsByReviewId[String(review.id)] || null,
     }));
 
     return NextResponse.json({

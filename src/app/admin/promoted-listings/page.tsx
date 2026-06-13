@@ -93,6 +93,23 @@ type PromotionCampaignRow = {
     renderable: boolean;
     note: string;
   };
+  aiRecommendation?: {
+    aiRunId: string;
+    promptVersion: string;
+    model: string;
+    suggestion: {
+      summary: string;
+      decision:
+        | 'ready_to_activate'
+        | 'needs_payment'
+        | 'needs_visibility_work'
+        | 'hold_for_admin_review';
+      confidence: 'low' | 'medium' | 'high';
+      blockingIssues: string[];
+      recommendedActions: string[];
+      impactNotes: string[];
+    };
+  } | null;
 };
 
 type CampaignForm = {
@@ -418,6 +435,7 @@ export default function AdminPromotedListingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [aiLoadingCampaignId, setAiLoadingCampaignId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [pendingCampaignConfirmation, setPendingCampaignConfirmation] =
@@ -475,6 +493,32 @@ export default function AdminPromotedListingsPage() {
     } finally {
       window.clearTimeout(timeoutId);
       setLoading(false);
+    }
+  };
+
+  const requestAiPromotionReview = async (campaign: PromotionCampaignRow) => {
+    setAiLoadingCampaignId(campaign.id);
+    setError('');
+    setMessage('');
+    try {
+      const response = await fetch(`/api/admin/promoted-listings/${campaign.id}/assist`, {
+        method: 'POST',
+        headers: getAdminRequestHeaders(),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error || json?.message || `Status ${response.status}`);
+      }
+      await fetchCampaigns();
+      setMessage(json?.message || 'AI promotion readiness recommendation generated.');
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to generate AI promotion readiness recommendation'
+      );
+    } finally {
+      setAiLoadingCampaignId(null);
     }
   };
 
@@ -1397,14 +1441,14 @@ export default function AdminPromotedListingsPage() {
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
             <div className="font-medium text-gray-900">Need vendor or service IDs?</div>
             <p className="mt-1">
-              Use Vendor Management to confirm the vendor identity and use Publish Management to find the published service you want to promote.
+              Use All Accounts to confirm the vendor identity and use Publish Management to find the published service you want to promote.
             </p>
             <div className="mt-3 flex flex-wrap gap-3">
               <a
-                href="/admin/vendors"
+                href="/admin/accounts?tab=vendors"
                 className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
               >
-                Open Vendor Management
+                Open Vendor Accounts
               </a>
               <a
                 href="/admin/publish-management"
@@ -1637,6 +1681,76 @@ export default function AdminPromotedListingsPage() {
                           Activation blocked: mark payment paid or waived before moving this campaign active.
                         </p>
                       ) : null}
+                      <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 space-y-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
+                              AI Promotion Readiness
+                            </div>
+                            <p className="mt-1 text-xs text-blue-800">
+                              Recommendation only. Campaign activation and payment decisions stay manual.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={aiLoadingCampaignId === campaign.id}
+                            onClick={() => void requestAiPromotionReview(campaign)}
+                          >
+                            {aiLoadingCampaignId === campaign.id
+                              ? 'Checking...'
+                              : campaign.aiRecommendation
+                                ? 'Refresh AI Review'
+                                : 'Run AI Review'}
+                          </Button>
+                        </div>
+                        {campaign.aiRecommendation ? (
+                          <div className="rounded-md border border-blue-200 bg-white p-3 text-sm">
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="outline">
+                                {String(campaign.aiRecommendation.suggestion.decision || '')
+                                  .replace(/_/g, ' ')
+                                  .replace(/\b\w/g, (char) => char.toUpperCase())}
+                              </Badge>
+                              <Badge variant="outline">
+                                {campaign.aiRecommendation.suggestion.confidence} confidence
+                              </Badge>
+                            </div>
+                            <p className="mt-3 text-slate-800">
+                              {campaign.aiRecommendation.suggestion.summary}
+                            </p>
+                            {campaign.aiRecommendation.suggestion.blockingIssues?.length ? (
+                              <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                                <div className="font-semibold uppercase tracking-wide text-amber-700">
+                                  Open blockers
+                                </div>
+                                <ul className="mt-2 space-y-1">
+                                  {campaign.aiRecommendation.suggestion.blockingIssues
+                                    .slice(0, 3)
+                                    .map((item) => (
+                                      <li key={item}>- {item}</li>
+                                    ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {campaign.aiRecommendation.suggestion.recommendedActions?.length ? (
+                              <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                                <div className="font-semibold uppercase tracking-wide text-slate-700">
+                                  Suggested next actions
+                                </div>
+                                <ul className="mt-2 space-y-1">
+                                  {campaign.aiRecommendation.suggestion.recommendedActions
+                                    .slice(0, 3)
+                                    .map((item) => (
+                                      <li key={item}>- {item}</li>
+                                    ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
                       <div className="grid grid-cols-1 gap-3 rounded-md border border-gray-100 bg-gray-50 p-3 md:grid-cols-4">
                         <div className="md:col-span-4">
                           <div className="text-sm font-semibold text-gray-900">Manual Stripe Payment Link workflow</div>

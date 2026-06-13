@@ -118,10 +118,13 @@ describe("auth email verification", () => {
       credentialId: "cred-3",
       recipientName: "Notify User",
       baseUrl: "http://localhost:3000",
+      audience: "customer",
     });
 
     expect(hoisted.sendEmail).toHaveBeenCalledTimes(1);
-    expect(hoisted.sendEmail.mock.calls[0][0].subject).toContain("Verify your email");
+    expect(hoisted.sendEmail.mock.calls[0][0].subject).toContain("Welcome to Reliance");
+    expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("reliance-logo-tight.png");
+    expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("Finish setting up your customer account");
     expect(result.sendResult.ok).toBe(true);
     expect(result.verificationLink).toContain("/auth/verify-email?token=");
     expect(result.verificationTokenPreview).toMatch(/^[a-f0-9]{64}$/);

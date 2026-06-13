@@ -66,24 +66,64 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
     await requireVendorManager(request, vendorId);
     const inviteBaseUrl = resolveInviteBaseUrl(request);
 
-    const invites = await (prisma as any).vendorInvite.findMany({
-      where: { vendorId, isActive: true },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
+    const [invites, pendingMemberships] = await Promise.all([
+      (prisma as any).vendorInvite.findMany({
+        where: { vendorId, isActive: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+      (prisma as any).vendorMembership.findMany({
+        where: { vendorId, status: { in: ["PENDING", "pending"] } },
+        include: {
+          user: {
+            select: {
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+        orderBy: { requestedAt: "desc" },
+        take: 50,
+      }),
+    ]);
+
+    const unusedPendingMemberships = [...pendingMemberships];
 
     return NextResponse.json({
-      invites: invites.map((invite: any) => ({
-        id: invite.id,
-        code: invite.code,
-        token: invite.token,
-        status: "invited",
-        isActive: Boolean(invite.isActive),
-        expiresAt: invite.expiresAt,
-        usesCount: invite.usesCount,
-        canCancel: Boolean(invite.isActive),
-        inviteUrl: `${inviteBaseUrl}/vendor/invite/${invite.token}`,
-      })),
+      invites: invites.map((invite: any) => {
+        const inviteCreatedAt = invite.createdAt ? new Date(invite.createdAt).getTime() : 0;
+        const matchedMembershipIndex = unusedPendingMemberships.findIndex((membership: any) => {
+          const requestedAt = membership?.requestedAt ? new Date(membership.requestedAt).getTime() : 0;
+          if (!inviteCreatedAt || !requestedAt) return false;
+          return Math.abs(inviteCreatedAt - requestedAt) <= 1000 * 60 * 10;
+        });
+        const matchedMembership =
+          matchedMembershipIndex >= 0
+            ? unusedPendingMemberships.splice(matchedMembershipIndex, 1)[0]
+            : null;
+
+        return {
+          id: invite.id,
+          code: invite.code,
+          token: invite.token,
+          status: "invited",
+          isActive: Boolean(invite.isActive),
+          sentAt: invite.createdAt,
+          expiresAt: invite.expiresAt,
+          usesCount: invite.usesCount,
+          canCancel: Boolean(invite.isActive),
+          inviteUrl: `${inviteBaseUrl}/vendor/invite/${invite.token}`,
+          recipient: matchedMembership
+            ? {
+                name: matchedMembership.user?.name || null,
+                email: matchedMembership.user?.email || null,
+                phone: matchedMembership.user?.phone || null,
+                role: matchedMembership.role || null,
+              }
+            : null,
+        };
+      }),
       notificationsConfigured: hasNotificationConfig(),
       allowSelfEmployeeInviteTestMode: allowSelfEmployeeInviteTestMode(),
     });
@@ -125,21 +165,30 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     step = "lookup_or_create_user";
     let inviteeUser = null as any;
-    if (email || phone) {
-      inviteeUser = await (prisma as any).user.findFirst({
-        where: {
-          OR: [email ? { email } : {}, phone ? { phone } : {}],
-        },
+    if (email) {
+      inviteeUser = await (prisma as any).user.findUnique({
+        where: { email },
+      });
+    }
+    if (!inviteeUser && phone) {
+      inviteeUser = await (prisma as any).user.findUnique({
+        where: { phone },
       });
     }
 
     if (!inviteeUser) {
       const fallbackEmail = `invite+${Date.now()}-${crypto.randomBytes(4).toString("hex")}@reliance.local`;
+      const phoneOwner = phone
+        ? await (prisma as any).user.findUnique({
+            where: { phone },
+            select: { id: true },
+          })
+        : null;
       inviteeUser = await (prisma as any).user.create({
         data: {
           name,
           email: email || fallbackEmail,
-          phone: phone || null,
+          phone: phoneOwner ? null : phone || null,
         },
       });
     }
@@ -260,8 +309,15 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         token: invite.token,
         code: invite.code,
         status: "invited",
+        sentAt: invite.createdAt,
         expiresAt: invite.expiresAt,
         inviteUrl,
+        recipient: {
+          name,
+          email: email || null,
+          phone: phone || null,
+          role: role === "MANAGER" ? "MANAGER" : "EMPLOYEE",
+        },
       },
       notificationsConfigured: hasNotificationConfig(),
       allowSelfEmployeeInviteTestMode: allowSelfEmployeeInviteTestMode(),

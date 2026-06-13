@@ -9,6 +9,11 @@ import { addRegisteredUser, findRegisteredUserByEmail } from "@/lib/dev-register
 import { hashPassword } from "@/lib/auth-password";
 import { findDbCredentialByEmail, upsertDbCredential } from "@/lib/auth-credentials";
 import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
+import { isAiFeatureEnabled } from "@/lib/ai/feature-flags";
+import {
+  generateVendorApprovalAiStoredResult,
+  VENDOR_APPROVAL_AI_SYSTEM_ACTOR,
+} from "@/lib/ai/vendor-approval-review-store";
 
 type SelectedServiceInput = {
   name: string;
@@ -205,6 +210,7 @@ export async function POST(request: NextRequest) {
         credentialId: persistedCredentialId,
         recipientName: `${firstName} ${lastName}`.trim() || null,
         baseUrl: request.nextUrl.origin,
+        audience: "vendor",
       }).catch((sendError) => {
         console.error("Vendor verification email send error:", sendError);
         return null;
@@ -360,6 +366,15 @@ export async function POST(request: NextRequest) {
     await trySetVendorApprovalStatus(vendorId, "PENDING");
     await upsertVendorServicesFromRegistration(vendorId, body, primaryCategory);
 
+    if (isAiFeatureEnabled("vendor_approval_assistant")) {
+      void generateVendorApprovalAiStoredResult(vendorId, {
+        actorUserId: VENDOR_APPROVAL_AI_SYSTEM_ACTOR,
+        source: "vendor_registration_pending_autorun",
+      }).catch((autoRunError) => {
+        console.error("Vendor approval AI auto-run failed during registration:", autoRunError);
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: userId
@@ -501,9 +516,12 @@ async function upsertVendorServicesFromRegistration(
       name: item.name,
       description:
         item.description ||
-        `Prebuilt ${primaryCategory || "General"} service template${
-          item.defaultDuration ? ` (estimated ${item.defaultDuration} min)` : ""
-        }`,
+        [
+          `Starter ${primaryCategory || "General"} service saved during vendor registration.`,
+          item.defaultDuration ? `Typical duration estimate: ${item.defaultDuration} minutes.` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
       price: item.price ?? 0,
       isPublished: false,
     })),

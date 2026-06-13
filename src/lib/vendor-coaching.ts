@@ -123,7 +123,7 @@ export function buildVendorCoachingPlan(
 
   if (videoVerification && videoVerification.pct !== null && videoVerification.pct < 100) {
     priorityActions.push(
-      `Video verification is ${videoVerification.pct}%. Tighten stage capture quality so Before, During Service, and Completed Service videos are clearly distinct and moderation-ready.`
+      `Video verification is ${videoVerification.pct}%. Tighten stage capture quality so Starting Condition, Work in Progress, and Final Result videos are clearly distinct and moderation-ready.`
     );
   }
 

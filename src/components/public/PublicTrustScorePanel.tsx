@@ -276,7 +276,7 @@ export function PublicTrustScorePanel({
             ) : null}
             <div className={cn("rounded-2xl border px-4 py-4", visualTone.evidenceCard)}>
               <div className="text-sm font-semibold text-slate-950">What this score is based on</div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {[
                   {
                     key: 'verifiedBookings',
@@ -299,8 +299,10 @@ export function PublicTrustScorePanel({
                     value: evidence.validatedDisputes,
                   },
                 ].map((item) => (
-                  <div key={item.key} className="rounded-2xl border border-white/60 bg-white/80 px-4 py-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{item.label}</div>
+                  <div key={item.key} className="min-w-0 rounded-2xl border border-white/60 bg-white/80 px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase leading-4 tracking-[0.14em] text-slate-500">
+                      {item.label}
+                    </div>
                     <div className="mt-2 text-2xl font-semibold text-slate-950">{item.value}</div>
                     <p className="mt-1 text-xs leading-5 text-slate-600">{evidenceDetails[item.key]}</p>
                   </div>

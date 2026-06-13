@@ -10,6 +10,7 @@ import {
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
+import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -23,6 +24,16 @@ type JobAction =
   | "ASSIGN_JOB"
   | "UPDATE_STATUS"
   | "APPROVE_JOB_COMPLETION";
+
+type ResolvedAssignmentMember = {
+  id: string;
+  displayName: string;
+  user: {
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
+};
 
 function apiResponse(
   success: boolean,
@@ -49,11 +60,25 @@ function parseCustomerMetadata(value: string | null | undefined): Record<string,
   }
 }
 
-function displayNameForMembershipUser(user: { name: string | null; email: string | null } | null | undefined) {
+function displayNameForMembershipUser(
+  user: { name: string | null; email: string | null } | null | undefined
+) {
   if (!user) return "Team member";
   const name = String(user.name || "").trim();
   const email = String(user.email || "").trim();
   return name || email || "Team member";
+}
+
+function resolveJobLinkBaseUrl(request: Request): string {
+  const appBaseUrl = String(process.env.APP_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (appBaseUrl) return appBaseUrl;
+  const origin = String(request.headers.get("origin") || "").trim().replace(/\/+$/, "");
+  if (origin) return origin;
+  try {
+    return new URL(request.url).origin.replace(/\/+$/, "");
+  } catch {
+    return "http://localhost:3000";
+  }
 }
 
 async function resolveJobAssignmentForVendor(
@@ -61,7 +86,7 @@ async function resolveJobAssignmentForVendor(
   assignedMembershipIds: unknown,
   assignedEmployees: unknown
 ): Promise<
-  | { ok: true; membershipIds: string[]; displayNames: string[] }
+  | { ok: true; membershipIds: string[]; displayNames: string[]; members: ResolvedAssignmentMember[] }
   | { ok: false; response: NextResponse }
 > {
   const normalizedIds = Array.isArray(assignedMembershipIds)
@@ -81,7 +106,7 @@ async function resolveJobAssignmentForVendor(
         status: { in: ["ACTIVE", "active"] },
       },
       include: {
-        user: { select: { name: true, email: true } },
+        user: { select: { name: true, email: true, phone: true } },
       },
     });
     if (rows.length !== normalizedIds.length) {
@@ -99,20 +124,32 @@ async function resolveJobAssignmentForVendor(
     }
     const byId = new Map(rows.map((r) => [r.id, r]));
     const displayNames = normalizedIds.map((id) => displayNameForMembershipUser(byId.get(id)?.user));
-    return { ok: true, membershipIds: normalizedIds, displayNames };
+    const members = normalizedIds
+      .map((id, index) => {
+        const row = byId.get(id);
+        if (!row) return null;
+        return {
+          id,
+          displayName: displayNames[index] || displayNameForMembershipUser(row.user),
+          user: row.user || null,
+        };
+      })
+      .filter(Boolean) as ResolvedAssignmentMember[];
+    return { ok: true, membershipIds: normalizedIds, displayNames, members };
   }
 
   if (normalizedNames.length === 0) {
-    return { ok: true, membershipIds: [], displayNames: [] };
+    return { ok: true, membershipIds: [], displayNames: [], members: [] };
   }
 
   const activeMembers = await prisma.vendorMembership.findMany({
     where: { vendorId, status: { in: ["ACTIVE", "active"] } },
-    include: { user: { select: { name: true, email: true } } },
+    include: { user: { select: { name: true, email: true, phone: true } } },
   });
 
   const membershipIdsOut: string[] = [];
   const displayNamesOut: string[] = [];
+  const membersOut: ResolvedAssignmentMember[] = [];
 
   for (const requestedName of normalizedNames) {
     const lower = requestedName.toLowerCase();
@@ -134,11 +171,13 @@ async function resolveJobAssignmentForVendor(
     }
     if (!membershipIdsOut.includes(match.id)) {
       membershipIdsOut.push(match.id);
-      displayNamesOut.push(displayNameForMembershipUser(match.user));
+      const displayName = displayNameForMembershipUser(match.user);
+      displayNamesOut.push(displayName);
+      membersOut.push({ id: match.id, displayName, user: match.user || null });
     }
   }
 
-  return { ok: true, membershipIds: membershipIdsOut, displayNames: displayNamesOut };
+  return { ok: true, membershipIds: membershipIdsOut, displayNames: displayNamesOut, members: membersOut };
 }
 
 function normalizeUiStatusToBookingStatus(value: string | null | undefined): string | null {
@@ -215,6 +254,13 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         vendorId: true,
         status: true,
         customerMetadata: true,
+        title: true,
+        clientName: true,
+        scheduledFor: true,
+        date: true,
+        service: { select: { name: true } },
+        vendor: { select: { name: true, businessName: true } },
+        user: { select: { name: true, email: true, phone: true } },
       },
     });
 
@@ -338,14 +384,26 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       if (!resolved.ok) {
         return resolved.response;
       }
-      const { membershipIds, displayNames } = resolved;
+      const { membershipIds, displayNames, members } = resolved;
       const existing = await prisma.booking.findUnique({
         where: { id: booking.id },
         select: { customerMetadata: true, status: true },
       });
       const metadata = parseCustomerMetadata(existing?.customerMetadata || null);
+      const previouslyAssignedIds = Array.isArray(metadata.vendor_job_assigned_membership_ids)
+        ? metadata.vendor_job_assigned_membership_ids
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+        : [];
       metadata.vendor_job_assigned_membership_ids = membershipIds;
       metadata.vendor_job_assigned_employees = displayNames;
+      if (membershipIds[0]) {
+        metadata.vendor_job_primary_membership_id = membershipIds[0];
+        metadata.vendor_job_primary_employee = displayNames[0] || null;
+      } else {
+        delete metadata.vendor_job_primary_membership_id;
+        delete metadata.vendor_job_primary_employee;
+      }
       const bookingUpper = normalizeBookingStatus(existing?.status);
       if (bookingUpper === "PENDING" && displayNames.length > 0) {
         const ops = getRelianceOps(metadata);
@@ -369,9 +427,56 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         newValue: {
           assignedMembershipIds: membershipIds,
           assignedEmployees: displayNames,
+          primaryMembershipId: membershipIds[0] || null,
+          primaryEmployeeName: displayNames[0] || null,
         },
         metadata: { vendorId },
       });
+
+      const newlyAssignedIds = new Set(
+        membershipIds.filter((id) => !previouslyAssignedIds.includes(id))
+      );
+      const notificationResults = [];
+      if (newlyAssignedIds.size > 0) {
+        const baseUrl = resolveJobLinkBaseUrl(request);
+        const employeeJobLink = `${baseUrl}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`;
+        const vendorName = String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor");
+        const jobTitle = String(booking.title || booking.service?.name || "Assigned job");
+        const customerName = String(booking.clientName || booking.user?.name || "").trim() || null;
+
+        for (const assignmentMember of members) {
+          if (!newlyAssignedIds.has(assignmentMember.id)) continue;
+          try {
+            const notification = await sendJobAssignmentNotification({
+              bookingId: booking.id,
+              actorUserId: member.userId,
+              employeeName: assignmentMember.displayName,
+              employeeEmail: assignmentMember.user?.email || null,
+              employeePhone: assignmentMember.user?.phone || null,
+              employeeJobLink,
+              vendorName,
+              jobTitle,
+              customerName,
+              scheduledFor: booking.scheduledFor || booking.date || null,
+            });
+            notificationResults.push({
+              membershipId: assignmentMember.id,
+              employeeName: assignmentMember.displayName,
+              anySuccess: notification.anySuccess,
+              phoneNumberUsed: notification.phoneNumberUsed,
+              channels: notification.channels,
+            });
+          } catch (error) {
+            notificationResults.push({
+              membershipId: assignmentMember.id,
+              employeeName: assignmentMember.displayName,
+              anySuccess: false,
+              errorMessage: error instanceof Error ? error.message : String(error),
+              channels: [],
+            });
+          }
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -381,7 +486,14 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           status: updated.status,
           assignedMembershipIds: membershipIds,
           assignedEmployees: displayNames,
+          primaryMembershipId: membershipIds[0] || null,
+          primaryEmployeeName: displayNames[0] || null,
           updatedAt: updated.updatedAt,
+        },
+        notifications: {
+          newlyAssignedCount: newlyAssignedIds.size,
+          sentCount: notificationResults.filter((item) => item.anySuccess).length,
+          results: notificationResults,
         },
         message: "Job assignment updated successfully",
       });
@@ -470,7 +582,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           apiResponse(
             false,
             "COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE",
-            "Approve completion only after Before Service, During Service, and Completed Service videos are uploaded."
+            "Approve completion only after Starting Condition, Work in Progress, and Final Result videos are uploaded."
           ),
           { status: 409 }
         );

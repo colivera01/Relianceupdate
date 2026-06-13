@@ -2,6 +2,7 @@ import { AiSchemaValidationError } from "./errors";
 import type {
   DisputeSummaryResult,
   ModerationAssistantResult,
+  VendorApprovalAssistantResult,
   VendorCoachingSummaryResult,
 } from "./schemas";
 
@@ -98,5 +99,19 @@ export function assertVendorCoachingSummaryOutputSafe(result: VendorCoachingSumm
     strings,
     INTERVIEW_CLAIM_PATTERNS,
     "Vendor coaching summary output claimed unsupported interview evidence."
+  );
+}
+
+export function assertVendorApprovalAssistantOutputSafe(result: VendorApprovalAssistantResult) {
+  const strings = flattenStrings(result);
+  assertNoUnsupportedClaim(
+    strings,
+    VIDEO_REVIEW_CLAIM_PATTERNS,
+    "Vendor approval assistant output claimed unsupported video review evidence."
+  );
+  assertNoUnsupportedClaim(
+    strings,
+    INTERVIEW_CLAIM_PATTERNS,
+    "Vendor approval assistant output claimed unsupported interview evidence."
   );
 }

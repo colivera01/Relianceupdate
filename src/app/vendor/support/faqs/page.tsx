@@ -88,20 +88,20 @@ const faqCategories: FaqCategory[] = [
   },
   {
     id: 'jobs',
-    title: 'Job Management',
+    title: 'Scheduled Work',
     icon: Briefcase,
     faqs: [
       {
         id: 'jobs-1',
-        question: 'How do I accept or decline job requests?',
+        question: 'How do I accept or decline scheduled work requests?',
         answer:
-          'Use the Jobs page to review current requests and available job actions. The launch workflow focuses on accepting, declining, completing required video stages, and manager review; live in-app customer messaging is not available on this launch.',
+          'Use Manage Scheduled Work to review current requests and available actions. The launch workflow focuses on accepting, declining, completing required video stages, and manager review; live in-app customer messaging is not available on this launch.',
       },
       {
         id: 'jobs-2',
-        question: 'What happens if I need to reschedule a job?',
+        question: 'What happens if I need to reschedule work?',
         answer:
-          'Coordinate rescheduling through your normal customer contact process for now, then keep the job status current in Reliance when the work changes. Reliance does not provide live in-app messaging during this launch.',
+          'Coordinate rescheduling through your normal customer contact process for now, then keep the work status current in Reliance when the schedule changes. Reliance does not provide live in-app messaging during this launch.',
       },
       {
         id: 'jobs-3',

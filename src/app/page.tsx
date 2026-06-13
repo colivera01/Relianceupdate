@@ -1,14 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, Clock3, ShieldCheck, Star, Video } from 'lucide-react';
+import { CheckCircle2, Clock3, ShieldCheck, Star, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { PublicHeroArtwork } from '@/components/public/PublicHeroArtwork';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
+import { HomeStageVideoShowcase } from '@/components/public/HomeStageVideoShowcase';
 import { useDiscoverServices } from '@/hooks/useServices';
 import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
 
@@ -77,7 +77,7 @@ export default function HomePage() {
             ctaHref="/browse"
           />
 
-          <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,1.04fr)_minmax(420px,0.96fr)] lg:items-start">
             <div className="max-w-2xl">
               <div className="mb-7 -mt-1">
                 <div className="flex h-[19rem] w-full max-w-[35rem] items-end justify-center overflow-visible sm:h-[20rem] lg:h-[21rem] lg:max-w-[37rem]">
@@ -119,86 +119,29 @@ export default function HomePage() {
                   Reliance explainer video coming soon
                 </Button>
               </div>
+
+              <div className="mt-8 max-w-[39rem]">
+                <div className="reliance-glass rounded-[32px] border border-white/10 p-4 shadow-[0_30px_80px_rgba(4,9,20,0.38)]">
+                  <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(6,17,31,0.55)]">
+                    {hasCuratedHeroMedia && featuredService ? (
+                      <PublicMediaPreview
+                        autoPlayVideo
+                        url={featuredService.previewMediaUrl}
+                        type={featuredService.previewMediaType}
+                        alt={featuredService.serviceName}
+                        className="h-60 w-full object-cover sm:h-64"
+                        videoLabel="Recent public service video"
+                      />
+                    ) : (
+                      <PublicHeroArtwork serviceName={heroServiceName} vendorName={heroVendorName} />
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="grid gap-5">
-              <div className="reliance-glass rounded-[32px] border border-white/10 p-5 shadow-[0_30px_80px_rgba(4,9,20,0.38)]">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-white/62">
-                      Recent public service preview
-                    </div>
-                    <div className="mt-2 font-display text-2xl text-white">{heroServiceName}</div>
-                  </div>
-                  <Badge className="bg-[var(--reliance-blue)] text-white hover:bg-[var(--reliance-blue)]">
-                    {marketplaceLoading ? 'Loading recent listings' : `${totalPublicServices} public services`}
-                  </Badge>
-                </div>
-
-                <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(6,17,31,0.55)]">
-                  {hasCuratedHeroMedia && featuredService ? (
-                    <PublicMediaPreview
-                      autoPlayVideo
-                      url={featuredService.previewMediaUrl}
-                      type={featuredService.previewMediaType}
-                      alt={featuredService.serviceName}
-                      className="h-72 w-full object-cover"
-                      videoLabel="Recent public service video"
-                    />
-                  ) : (
-                    <PublicHeroArtwork serviceName={heroServiceName} vendorName={heroVendorName} />
-                  )}
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white/92">{heroVendorName}</p>
-                    <p className="mt-1 max-w-xl text-sm leading-6 text-white/64">
-                      {featuredService
-                        ? cleanPublicServiceDescription(featuredService.serviceDescription, featuredService.vendorName) ||
-                          'Newest public service listing'
-                        : 'Reliance shows the newest public services here so customers can quickly see what is already public.'}
-                    </p>
-                  </div>
-                  {featuredService ? (
-                    <Link href={`/service/${featuredService.serviceId}?returnTo=%2F&returnLabel=Back%20to%20Home%20Page`}>
-                      <Button className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
-                        View Service
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid gap-4">
-                <div className="reliance-light-card rounded-[28px] px-5 py-5 shadow-[0_18px_45px_rgba(7,16,38,0.08)]">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                    See how service videos work
-                  </div>
-                  <div className="mt-3 text-xl font-semibold text-slate-950">
-                    Before, during, and completed service
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Reliance service videos can show a clear before-service, during-service, and
-                    completed-service story when a vendor shares approved public clips.
-                  </p>
-                  <div className="mt-5 space-y-2">
-                    {['Before Service', 'During Service', 'Completed Service'].map((stage) => (
-                      <div key={stage} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-                        {stage}
-                      </div>
-                    ))}
-                  </div>
-                  <Button
-                    variant="outline"
-                    disabled
-                    className="mt-5 w-full rounded-full border-slate-300 bg-white text-slate-500"
-                  >
-                    Reliance explainer video coming soon
-                  </Button>
-                </div>
-              </div>
+            <div className="grid gap-5 lg:pt-2">
+              <HomeStageVideoShowcase />
             </div>
           </div>
         </div>

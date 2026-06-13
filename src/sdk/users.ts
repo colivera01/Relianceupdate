@@ -77,10 +77,10 @@ export const usersSDK = {
   // Upload user photo
   async uploadUserPhoto(photoFile: File): Promise<{ success: boolean; photoUrl: string }> {
     const formData = new FormData();
-    formData.append('photo', photoFile);
+    formData.append('file', photoFile);
     
     return api.post<{ success: boolean; photoUrl: string }>(
-      '/api/users/upload-photo',
+      '/api/customer/profile/photo',
       formData
     );
   },
@@ -155,5 +155,4 @@ export const {
   removeFavorite,
   getUserActivity
 } = usersSDK;
-
 

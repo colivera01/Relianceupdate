@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function LegacyAdminUsersPage() {
-  redirect("/admin/users");
+  redirect("/admin/accounts?tab=customers");
 }

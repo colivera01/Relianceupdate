@@ -241,28 +241,47 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     }
 
     step = "existing_user_lookup";
-    let user = await (prisma as any).user.findFirst({
-      where: { OR: [email ? { email } : {}, phone ? { phone } : {}] },
-    });
+    let user = email
+      ? await (prisma as any).user.findUnique({
+          where: { email },
+        })
+      : null;
+    if (!user && phone) {
+      user = await (prisma as any).user.findUnique({
+        where: { phone },
+      });
+    }
 
     if (!user) {
       step = "user_create";
+      const phoneOwner = phone
+        ? await (prisma as any).user.findUnique({
+            where: { phone },
+            select: { id: true },
+          })
+        : null;
       user = await (prisma as any).user.create({
         data: {
           name,
           email: email || null,
-          phone: phone || null,
+          phone: phoneOwner ? null : phone || null,
         },
       });
     } else {
       step = "user_update";
+      const phoneOwner = phone
+        ? await (prisma as any).user.findUnique({
+            where: { phone },
+            select: { id: true },
+          })
+        : null;
       user = await (prisma as any).user.update({
         where: { id: user.id },
         data: {
           // On accept, prefer submitted invite identity so roster shows the actual employee.
           name: name || user.name,
           email: email || user.email || null,
-          phone: phone || user.phone || null,
+          phone: phone && (!phoneOwner || phoneOwner.id === user.id) ? phone : user.phone || null,
         },
       });
     }

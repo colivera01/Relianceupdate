@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { GuidanceCallout } from "@/components/guidance/GuidanceCallout";
 import { TutorialEntryPoint } from "@/components/guidance/TutorialEntryPoint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -59,10 +60,24 @@ type PairedDeviceState = {
   status: string;
 };
 
+type JobRecoverySuggestion = {
+  summary: string;
+  decision:
+    | "continue_current_step"
+    | "retry_step"
+    | "needs_vendor_follow_up"
+    | "needs_manager_review"
+    | "needs_admin_help";
+  confidence: "low" | "medium" | "high";
+  blockers: string[];
+  recommendedActions: string[];
+  explainWhy: string[];
+};
+
 const STAGES = [
-  { key: "INTRO", label: "Before Service", cue: "Show the area or condition before work begins." },
-  { key: "IN_PROGRESS", label: "During Service", cue: "Show active progress or work being performed." },
-  { key: "COMPLETED", label: "Completed Service", cue: "Show the final result clearly." },
+  { key: "INTRO", label: "Starting Condition", cue: "Show the starting condition before work begins." },
+  { key: "IN_PROGRESS", label: "Work in Progress", cue: "Show active progress while the service is underway." },
+  { key: "COMPLETED", label: "Final Result", cue: "Show the final result clearly." },
 ] as const;
 
 const EMPLOYEE_JOBS_TIMEOUT_MS = 20000;
@@ -204,12 +219,21 @@ export default function EmployeeJobsPage() {
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [showCompletedHistory, setShowCompletedHistory] = useState(false);
   const [focusedStageByJobId, setFocusedStageByJobId] = useState<Record<string, (typeof STAGES)[number]["key"]>>({});
+  const [jobRecoveryByJobId, setJobRecoveryByJobId] = useState<Record<string, JobRecoverySuggestion | null>>({});
+  const [jobRecoveryErrorByJobId, setJobRecoveryErrorByJobId] = useState<Record<string, string>>({});
+  const [jobRecoveryLoadingId, setJobRecoveryLoadingId] = useState<string | null>(null);
+  const [focusedJobId, setFocusedJobId] = useState("");
   const userId = useMemo(() => String(user?.id || "").trim(), [user?.id]);
 
-  const currentJobs = useMemo(
-    () => jobs.filter((job) => !isCompletedStatus(job.status)),
-    [jobs]
-  );
+  const currentJobs = useMemo(() => {
+    const activeJobs = jobs.filter((job) => !isCompletedStatus(job.status));
+    if (!focusedJobId) return activeJobs;
+    return [...activeJobs].sort((a, b) => {
+      if (a.id === focusedJobId) return -1;
+      if (b.id === focusedJobId) return 1;
+      return 0;
+    });
+  }, [focusedJobId, jobs]);
   const completedJobs = useMemo(
     () => dedupeCompletedHistoryJobs(jobs.filter((job) => isCompletedStatus(job.status))),
     [jobs]
@@ -240,6 +264,12 @@ export default function EmployeeJobsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const jobId = new URLSearchParams(window.location.search).get("jobId");
+    setFocusedJobId(String(jobId || "").trim());
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -486,7 +516,60 @@ export default function EmployeeJobsPage() {
     }
   };
 
+  const requestJobRecovery = async (
+    job: EmployeeJob,
+    currentWorkflowLabel: string,
+    currentWorkflowDetail: string
+  ) => {
+    setJobRecoveryLoadingId(job.id);
+    setJobRecoveryErrorByJobId((current) => ({
+      ...current,
+      [job.id]: "",
+    }));
+    try {
+      const response = await fetch("/api/job-recovery-assistant", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getClientSessionHeaders(userId),
+        },
+        body: JSON.stringify({
+          jobId: job.id,
+          role: "employee",
+          title: job.title,
+          status: job.status,
+          operationalPhase: null,
+          clientName: job.customer.name || null,
+          assignedEmployeeNames: [],
+          stageProgress: job.stageProgress,
+          consentStatus: null,
+          rejectionReason: job.rejectionReason || null,
+          currentWorkflowLabel,
+          currentWorkflowDetail,
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error || json?.message || `Status ${response.status}`);
+      }
+      setJobRecoveryByJobId((current) => ({
+        ...current,
+        [job.id]: json?.suggestion || null,
+      }));
+    } catch (error) {
+      console.error("[employee/jobs] job recovery assistant error:", error);
+      setJobRecoveryErrorByJobId((current) => ({
+        ...current,
+        [job.id]:
+          error instanceof Error ? error.message : "Failed to generate AI job recovery guidance",
+      }));
+    } finally {
+      setJobRecoveryLoadingId(null);
+    }
+  };
+
   const renderJobCard = (job: EmployeeJob, historyMode = false) => {
+    const openedFromAssignmentLink = !historyMode && focusedJobId === job.id;
     const normalizedStatus = String(job.status || "").trim().toUpperCase();
     const showUploadControls = !historyMode && shouldAllowStageUpload(normalizedStatus);
     const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
@@ -501,9 +584,39 @@ export default function EmployeeJobsPage() {
     const captureDeviceLabel = getEmployeeCaptureDeviceLabel(pairedDevice);
     const captureSupportCopy = getEmployeeCaptureSupportCopy(pairedDevice);
     const stageActionLabel = getEmployeeCaptureActionLabel(selectedStage.key, selectedStageDone);
+    const workflowLabel = showStartButton
+      ? "Start assigned job"
+      : job.rejectionReason
+        ? "Review requested changes"
+        : isAwaitingReviewStatus(normalizedStatus)
+          ? "Awaiting manager review"
+          : job.canMarkComplete
+            ? "Submit for manager review"
+            : `Capture ${selectedStage.label} video`;
+    const workflowDetail = showStartButton
+      ? "The job is assigned and ready to begin."
+      : job.rejectionReason
+        ? "A manager sent this package back for corrections before it can move forward."
+        : isAwaitingReviewStatus(normalizedStatus)
+          ? "All required videos are uploaded and the package is waiting for manager review."
+          : job.canMarkComplete
+            ? "All required stage videos are available and the package can move into review."
+            : `Finish the ${selectedStage.label.toLowerCase()} step so the workflow can continue.`;
+    const jobRecoverySuggestion = jobRecoveryByJobId[job.id] || null;
+    const jobRecoveryError = jobRecoveryErrorByJobId[job.id] || "";
 
     return (
-      <div key={job.id} className="rounded-lg border bg-white p-4 shadow-sm">
+      <div
+        key={job.id}
+        className={`rounded-lg border p-4 shadow-sm ${
+          openedFromAssignmentLink ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white"
+        }`}
+      >
+        {openedFromAssignmentLink ? (
+          <div className="mb-3 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs text-blue-800">
+            Opened from your job assignment link. This is the job your manager sent to this employee account.
+          </div>
+        ) : null}
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-sm font-semibold text-gray-900">{job.title}</p>
@@ -676,6 +789,96 @@ export default function EmployeeJobsPage() {
         ) : null}
 
         {!historyMode ? (
+          <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-violet-700">
+                  <Sparkles className="h-4 w-4" />
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em]">
+                    AI Workflow Recovery
+                  </p>
+                </div>
+                <p className="mt-2 text-sm text-violet-900">
+                  If this workflow feels unclear or blocked, AI can explain the safest next step using the current job state only.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void requestJobRecovery(job, workflowLabel, workflowDetail)}
+                disabled={jobRecoveryLoadingId === job.id}
+                className="rounded border border-violet-300 bg-white px-3 py-1.5 text-xs font-medium text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {jobRecoveryLoadingId === job.id
+                  ? "Checking..."
+                  : jobRecoverySuggestion
+                    ? "Refresh AI Help"
+                    : "Get AI Help"}
+              </button>
+            </div>
+
+            {jobRecoveryError ? (
+              <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {jobRecoveryError}
+              </div>
+            ) : null}
+
+            {jobRecoverySuggestion ? (
+              <div className="mt-3 rounded-lg border border-violet-100 bg-white p-3 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-700">
+                    {jobRecoverySuggestion.decision
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (char) => char.toUpperCase())}
+                  </span>
+                  <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-700">
+                    {jobRecoverySuggestion.confidence.charAt(0).toUpperCase() +
+                      jobRecoverySuggestion.confidence.slice(1)}{" "}
+                    confidence
+                  </span>
+                </div>
+                <p className="mt-3 text-slate-800">{jobRecoverySuggestion.summary}</p>
+                {jobRecoverySuggestion.explainWhy.length > 0 ? (
+                  <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                    <div className="font-semibold uppercase tracking-wide text-slate-700">
+                      Why this is the right next step
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {jobRecoverySuggestion.explainWhy.slice(0, 3).map((item) => (
+                        <li key={item}>- {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {jobRecoverySuggestion.blockers.length > 0 ? (
+                  <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    <div className="font-semibold uppercase tracking-wide text-amber-700">
+                      Current blockers
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {jobRecoverySuggestion.blockers.slice(0, 3).map((item) => (
+                        <li key={item}>- {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {jobRecoverySuggestion.recommendedActions.length > 0 ? (
+                  <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                    <div className="font-semibold uppercase tracking-wide text-blue-700">
+                      Recommended next actions
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {jobRecoverySuggestion.recommendedActions.slice(0, 3).map((item) => (
+                        <li key={item}>- {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {!historyMode ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {showStartButton ? (
               <button
@@ -752,7 +955,7 @@ export default function EmployeeJobsPage() {
               </div>
               <h1 className="mt-4 text-2xl font-bold text-gray-900">Assigned Jobs</h1>
               <p className="mt-2 text-sm text-gray-600">
-                Mobile-friendly employee workflow for Before, During, and Completed service videos.
+                Mobile-friendly employee workflow for Starting Condition, Work in Progress, and Final Result videos.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -804,11 +1007,11 @@ export default function EmployeeJobsPage() {
 
         <GuidanceCallout
           title="How the stage-video workflow progresses"
-          description="Employees capture Before, During, and Completed service videos in order, then submit the full package for manager review."
+          description="Employees capture Starting Condition, Work in Progress, and Final Result videos in order, then submit the full package for manager review."
           bullets={[
-            'Before Service Video shows the starting condition before work begins.',
-            'During Service Video shows active work or progress while the service is happening.',
-            'Completed Service Video shows the final result customers will later understand.',
+            'Starting Condition video shows what the customer should see before work begins.',
+            'Work in Progress video shows active work or progress while the service is happening.',
+            'Final Result video shows the finished outcome customers will later understand.',
             'Awaiting Manager Review means all stages are uploaded but the package is not approved yet.',
             'Rejected states mean the package needs corrections before it can move forward again.',
             'Completed means the full package has already been manager-approved and moved past employee action.',
@@ -859,10 +1062,17 @@ export default function EmployeeJobsPage() {
                 <span className="font-semibold text-emerald-700">Active</span>.
               </li>
               <li>
-                3. When a job appears, tap <span className="font-semibold">Start Job</span>, capture Before /
-                During / After, then submit for manager review.
+                3. When a job appears, tap <span className="font-semibold">Start Job</span>, capture Starting
+                Condition / Work in Progress / Final Result, then submit for manager review.
               </li>
             </ul>
+          </div>
+        ) : null}
+
+        {!loading && !error && focusedJobId && jobs.length > 0 && !jobs.some((job) => job.id === focusedJobId) ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
+            This assignment link opened correctly, but that job is not currently assigned to this employee account.
+            Ask the manager to confirm the job assignment if you expected to see it here.
           </div>
         ) : null}
 

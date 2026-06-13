@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Review window requires the completed-stage service video',
+          error: 'Review window requires the final-result service video',
           code: 'REVIEW_REQUIRES_COMPLETED_STAGE_VIDEO',
         },
         { status: 409 }

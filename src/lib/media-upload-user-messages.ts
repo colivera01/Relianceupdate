@@ -14,7 +14,7 @@ type ApiErrBody = {
 /** Known POST /media/sessions and related codes → short vendor copy. */
 const VENDOR_MEDIA_CODE_MESSAGES: Record<string, string> = {
   VENDOR_JOB_VIDEO_STAGE_REQUIRED:
-    "Choose a video stage (Before Service, During Service, or Completed Service) before uploading.",
+    "Choose a video stage (Starting Condition, Work in Progress, or Final Result) before uploading.",
   VENDOR_JOB_VIDEO_BOOKING_REQUIRED:
     "This upload must be tied to a job we can load from your dashboard. Re-open the job from the list and try again.",
   JOB_ASSIGNMENT_REQUIRED:

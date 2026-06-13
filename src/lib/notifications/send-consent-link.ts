@@ -153,7 +153,7 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `Reliance: ${vendorName} sent a service video consent request. Review it here: ${absoluteFallbackLink}`;
+    const body = `${vendorName} via Reliance: service video consent request for ${serviceName}. Approve or decline here: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

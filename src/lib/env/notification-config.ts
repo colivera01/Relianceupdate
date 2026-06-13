@@ -10,6 +10,7 @@ export type NotificationEnvSnapshot = {
   twilioAccountSid: string;
   twilioAuthToken: string;
   twilioPhoneNumber: string;
+  twilioMessagingServiceSid: string;
   appBaseUrl: string;
   emailEnabled: boolean;
   smsEnabled: boolean;
@@ -41,6 +42,7 @@ export function readNotificationEnv(): NotificationEnvSnapshot {
     twilioAccountSid: (process.env.TWILIO_ACCOUNT_SID || '').trim(),
     twilioAuthToken: (process.env.TWILIO_AUTH_TOKEN || '').trim(),
     twilioPhoneNumber: (process.env.TWILIO_PHONE_NUMBER || '').trim(),
+    twilioMessagingServiceSid: (process.env.TWILIO_MESSAGING_SERVICE_SID || '').trim(),
     appBaseUrl: (process.env.APP_BASE_URL || '').trim().replace(/\/+$/, ''),
     emailEnabled: parseEnvBoolean(process.env.EMAIL_ENABLED, true),
     smsEnabled: parseEnvBoolean(process.env.SMS_ENABLED, true),
@@ -71,7 +73,11 @@ export function logNotificationEnvWarnings(): void {
   if (e.smsEnabled) {
     if (!e.twilioAccountSid) lines.push('SMS_ENABLED is true but TWILIO_ACCOUNT_SID is missing.');
     if (!e.twilioAuthToken) lines.push('SMS_ENABLED is true but TWILIO_AUTH_TOKEN is missing.');
-    if (!e.twilioPhoneNumber) lines.push('SMS_ENABLED is true but TWILIO_PHONE_NUMBER is missing.');
+    if (!e.twilioPhoneNumber && !e.twilioMessagingServiceSid) {
+      lines.push(
+        'SMS_ENABLED is true but neither TWILIO_MESSAGING_SERVICE_SID nor TWILIO_PHONE_NUMBER is configured.'
+      );
+    }
   }
   if (!e.appBaseUrl) {
     lines.push('APP_BASE_URL is missing (absolute consent/review links in emails/SMS may be incomplete).');

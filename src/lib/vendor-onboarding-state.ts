@@ -103,7 +103,7 @@ export function buildVendorOnboardingState(
     nextStep = "Add at least one service offering with a customer-facing price.";
   } else if (membershipStatus === "PENDING") {
     nextStep =
-      "Your business profile and service drafts are saved. Wait for admin approval while refining your details.";
+      "Your business profile and services are saved. Wait for admin approval while refining your details.";
   } else if (membershipStatus === "ACTIVE" && !isPubliclyListed) {
     nextStep = "Admin approval is complete. Wait for your vendor listing to be made public.";
   } else if (membershipStatus === "ACTIVE" && isPubliclyListed && publishedServiceCount === 0) {
@@ -127,7 +127,7 @@ export function buildVendorOnboardingState(
       complete: serviceDraftCount > 0,
       detail:
         serviceDraftCount > 0
-          ? `${serviceDraftCount} service draft${serviceDraftCount === 1 ? "" : "s"} saved.`
+          ? `${serviceDraftCount} saved service${serviceDraftCount === 1 ? "" : "s"}.`
           : "Add at least one service offering with pricing before admin review.",
     },
     {

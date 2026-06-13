@@ -11,7 +11,6 @@ const exploreLinks = [
   { href: "/", label: "Home" },
   { href: "/browse", label: "Browse" },
   { href: "/help", label: "Help" },
-  { href: "/contact", label: "Contact" },
 ];
 
 const accountLinks = [

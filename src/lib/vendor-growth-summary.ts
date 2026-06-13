@@ -99,7 +99,7 @@ export function buildVendorGrowthSummary(
   } else if (onboarding?.membershipStatus === "PENDING") {
     visibilityTitle = "Your business is not public yet";
     visibilityDetail =
-      "Reliance has your profile and service drafts on file, but customers cannot find the business until admin approval is complete.";
+      "Reliance has your profile and services on file, but customers cannot find the business until admin approval is complete.";
   } else if (onboarding?.membershipStatus === "ACTIVE" && !onboarding.isPubliclyListed) {
     visibilityTitle = "Your business is approved, but not listed yet";
     visibilityDetail =

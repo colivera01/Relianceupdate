@@ -26,11 +26,11 @@ export function getCustomerReviewGateMessage({
   consentAllowsInlineReview: boolean;
 }): string | null {
   if (!hasReviewableCompletedVideo) {
-    return "This booking is not ready for the video-based review flow because no customer-visible approved completed-service video is attached.";
+    return "This booking is not ready for the video-based review flow because no customer-visible approved final-result video is attached.";
   }
 
   if (!canShowInlineReview) {
-    return "Switch to the Completed stage to submit your review.";
+    return "Switch to the Final Result stage to submit your review.";
   }
 
   if (!consentAllowsInlineReview) {

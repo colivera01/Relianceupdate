@@ -53,7 +53,7 @@ export const tutorialGuides = {
     badge: "New vendor",
     title: "How vendor signup works",
     summary:
-      "Create the vendor account, sign in, finish the business profile, add service drafts, and wait for admin approval before public visibility.",
+      "Create the vendor account, sign in, finish the business profile, add services, and wait for admin approval before public visibility.",
     steps: [
       {
         title: "Create the vendor account",
@@ -65,12 +65,12 @@ export const tutorialGuides = {
       },
       {
         title: "Wait for admin approval and publishing",
-        detail: "A vendor can save profile details and service drafts before approval, but public visibility happens only after admin review and publishing.",
+        detail: "A vendor can save profile details and services before approval, but public visibility happens only after admin review and publishing.",
       },
     ],
     reminders: [
       "Admin approval, public vendor listing, and published services are three separate states.",
-      "Service drafts stay internal until Reliance publishes them.",
+      "Saved services stay internal until Reliance publishes them.",
     ],
     relatedLinks: [
       { label: "Vendor support", href: "/vendor/support" },
@@ -134,11 +134,11 @@ export const tutorialGuides = {
     steps: [
       {
         title: "Check the booking state row",
-        detail: "Use the lifecycle panel to see whether work is complete, whether a completed-stage video was submitted, and whether customer access is open yet.",
+        detail: "Use the lifecycle panel to see whether work is complete, whether a final-result video was submitted, and whether customer access is open yet.",
       },
       {
         title: "Wait for approved customer access",
-        detail: "Customers cannot watch service videos or leave a review until an approved completed-stage customer-visible video is available.",
+        detail: "Customers cannot watch service videos or leave a review until an approved final-result customer-visible video is available.",
       },
       {
         title: "Use Help when the state looks unexpected",
@@ -158,7 +158,7 @@ export const tutorialGuides = {
     badge: "Customer reviews",
     title: "How review eligibility works",
     summary:
-      "Reliance opens the review flow only after an approved completed-stage customer-visible video is available for the booking.",
+      "Reliance opens the review flow only after an approved final-result customer-visible video is available for the booking.",
     steps: [
       {
         title: "Use Ready to Review first",
@@ -166,7 +166,7 @@ export const tutorialGuides = {
       },
       {
         title: "Open Review Not Open Yet for the why",
-        detail: "Completed jobs can still be waiting on moderation, customer visibility, or completed-stage media availability.",
+        detail: "Completed jobs can still be waiting on moderation, customer visibility, or final-result media availability.",
       },
       {
         title: "Track submitted reviews here",
@@ -195,7 +195,7 @@ export const tutorialGuides = {
       },
       {
         title: "Add services next",
-        detail: "After the profile is saved, keep moving by adding priced service drafts in the service catalog.",
+        detail: "After the profile is saved, keep moving by adding priced services in your service menu.",
       },
     ],
     reminders: [
@@ -207,7 +207,7 @@ export const tutorialGuides = {
     badge: "Vendor onboarding",
     title: "How vendor launch status works",
     summary:
-      "The vendor dashboard keeps profile completion, service drafts, admin approval, public listing, and published services separate so you always know the next step.",
+      "The vendor dashboard keeps profile completion, saved services, admin approval, public listing, and published services separate so you always know the next step.",
     steps: [
       {
         title: "Read the onboarding status first",
@@ -229,25 +229,25 @@ export const tutorialGuides = {
   },
   vendorServices: {
     badge: "Vendor services",
-    title: "How service drafts and publishing work",
+    title: "How your service menu and publishing work",
     summary:
       "Vendors manage customer-facing pricing and service details here, while public publishing stays coordinated through admin review.",
     steps: [
       {
-        title: "Create the draft with pricing",
-        detail: "Each draft should include a clear name, description, and a customer-facing reference price.",
+        title: "Create the service with pricing",
+        detail: "Each service should include a clear name, description, estimated duration, and customer-facing reference price.",
       },
       {
-        title: "Keep the draft accurate",
+        title: "Keep the service accurate",
         detail: "Customers will eventually see these details once the vendor listing and service are published.",
       },
       {
         title: "Wait for admin-managed publishing",
-        detail: "Saving a draft prepares it for review, but public visibility still depends on admin publication.",
+        detail: "Saving a service prepares it for review, but public visibility still depends on admin publication.",
       },
     ],
     reminders: [
-      "A saved draft is not automatically bookable.",
+      "A saved service is not automatically bookable.",
     ],
     futureVideoNote: "Tutorial video placeholder: Service creation, pricing, and publishing status",
   },
@@ -303,7 +303,7 @@ export const tutorialGuides = {
     badge: "Admin vendors",
     title: "How vendor approval affects launch state",
     summary:
-      "Approving the vendor account enables vendor access, but it does not automatically publish the vendor listing or any service drafts.",
+      "Approving the vendor account enables vendor access, but it does not automatically publish the vendor listing or any saved services.",
     steps: [
       {
         title: "Review the business details",
@@ -398,7 +398,7 @@ export function getVendorNextRecommendedAction(
 
   if (onboarding.serviceDraftCount === 0) {
     return {
-      label: "Create your first service draft",
+      label: "Create your first service",
       detail: "Add a priced service so Reliance has something concrete to review and publish later.",
       href: "/vendor/services",
     };

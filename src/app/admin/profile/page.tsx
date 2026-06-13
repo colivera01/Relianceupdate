@@ -164,7 +164,7 @@ export default async function AdminProfilePage() {
             <Link href="/admin/security">Open Admin Security</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/users">Open Customer Overview</Link>
+            <Link href="/admin/accounts">Open All Accounts</Link>
           </Button>
           <Button asChild variant="outline">
             <Link href="/admin/dashboard">Back to Dashboard</Link>

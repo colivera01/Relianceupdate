@@ -306,14 +306,16 @@ describe('POST /api/reviews/create', () => {
       userId: 'customer-a',
       vendorId: 'v1',
       customerMetadata: JSON.stringify({
-        vendor_job_assigned_membership_ids: ['membership-1'],
-        vendor_job_assigned_employees: ['Tech One'],
+        vendor_job_assigned_membership_ids: ['membership-1', 'membership-2'],
+        vendor_job_assigned_employees: ['Tech One', 'Tech Two'],
+        vendor_job_primary_membership_id: 'membership-2',
+        vendor_job_primary_employee: 'Tech Two',
       }),
     });
     hoisted.reviewFindFirst.mockResolvedValue(null);
     hoisted.vendorMembershipFindFirst.mockResolvedValue({
       userId: 'employee-user-1',
-      user: { name: 'Tech One', email: 'tech1@example.com' },
+      user: { name: 'Tech Two', email: 'tech2@example.com' },
     });
 
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -345,8 +347,8 @@ describe('POST /api/reviews/create', () => {
     expect(hoisted.reviewCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          assignedMembershipId: 'membership-1',
-          assignedEmployeeName: 'Tech One',
+          assignedMembershipId: 'membership-2',
+          assignedEmployeeName: 'Tech Two',
           assignedUserId: 'employee-user-1',
           attributionVersion: 1,
         }),

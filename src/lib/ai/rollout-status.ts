@@ -30,6 +30,20 @@ function modelForFeature(feature: AiFeatureKey, models: ReturnType<typeof readAi
       return models.trustScoreExplainerModel;
     case "vendor_coaching":
       return models.vendorCoachingModel;
+    case "vendor_approval_assistant":
+      return models.vendorApprovalAssistantModel;
+    case "review_moderation_assistant":
+      return models.reviewModerationAssistantModel;
+    case "publish_readiness_assistant":
+      return models.publishReadinessAssistantModel;
+    case "promotions_assistant":
+      return models.promotionsAssistantModel;
+    case "vendor_copy_assistant":
+      return models.vendorCopyAssistantModel;
+    case "job_recovery_assistant":
+      return models.jobRecoveryAssistantModel;
+    case "support_inbox_triage":
+      return models.supportInboxTriageModel;
     default:
       return models.defaultModel;
   }

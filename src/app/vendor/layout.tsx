@@ -66,16 +66,30 @@ const sidebarLinks: SidebarLink[] = [
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
   const { user: authUser, isLoading: authLoading } = useAuth();
-  const { data: vendorProfile, error, errorCode, approvalPending } = useVendorProfile();
+  const {
+    data: vendorProfile,
+    error,
+    errorCode,
+    approvalPending,
+    loading: vendorProfileLoading,
+    hasResolvedVendorContext,
+  } = useVendorProfile();
   const { availableRoles, userId } = useAvailableRoles('vendor');
   const pathname = usePathname() || '';
   const sessionAllowsVendor =
     authUser?.userType === 'vendor' ||
     authUser?.userType === 'both' ||
     authUser?.availableProfiles?.includes('vendor');
+  const hasLiveVendorAccess =
+    sessionAllowsVendor ||
+    Boolean(vendorProfile?.id) ||
+    approvalPending ||
+    hasResolvedVendorContext;
   const isVendorOnboardingRoute =
     pathname === '/vendor/register' || pathname.startsWith('/vendor/invite/');
   const vendorSupportHref = buildVendorSupportHref(pathname);
+  const hasCustomerVendorLinkedAccess =
+    availableRoles.includes('customer') && availableRoles.includes('vendor');
 
   if (isVendorOnboardingRoute) {
     return <div className="min-h-screen">{children}</div>;
@@ -121,7 +135,20 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     );
   }
 
-  if (!sessionAllowsVendor) {
+  if (!hasLiveVendorAccess && vendorProfileLoading) {
+    return (
+      <div className="min-h-screen bg-slate-100 px-6 py-10">
+        <div className="mx-auto max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-medium text-slate-900">Checking vendor access...</p>
+          <p className="mt-2 text-sm text-slate-600">
+            Reliance is confirming whether this signed-in account has active vendor access.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasLiveVendorAccess) {
     return (
       <div className="min-h-screen bg-slate-100 px-6 py-10">
         <div className="mx-auto max-w-2xl rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
@@ -189,7 +216,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
             Your vendor account is not public yet, but you can keep finishing onboarding.
           </p>
           <p className="mt-2 text-sm text-amber-900/80">
-            Continue updating your business profile and service drafts while Reliance reviews the account.
+            Continue updating your business profile and saved services while Reliance reviews the account.
             Public listing and customer visibility only start after admin approval plus publish actions.
           </p>
         </div>
@@ -298,12 +325,30 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
         <div className="flex-1 overflow-x-hidden">
           <div className="w-full max-w-6xl px-6 pt-10 pb-6">
             {availableRoles.length > 1 ? (
-              <div className="mb-6 flex items-center justify-end">
-                <ProfileToggle
-                  currentProfile="vendor"
-                  availableProfiles={availableRoles}
-                  userId={userId}
-                />
+              <div className="mb-6 rounded-[28px] border border-white/10 bg-white/6 px-5 py-4 shadow-[0_18px_60px_rgba(4,9,20,0.18)] backdrop-blur-xl">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-100/78">
+                      Linked account access
+                    </p>
+                    <p className="text-sm font-medium text-white">
+                      {hasCustomerVendorLinkedAccess
+                        ? 'This sign-in is connected to both your customer and vendor views.'
+                        : 'This sign-in can switch between multiple Reliance roles.'}
+                    </p>
+                    <p className="text-sm leading-6 text-white/68">
+                      {hasCustomerVendorLinkedAccess
+                        ? 'Move between booking as a customer and managing your business as a vendor without signing out.'
+                        : 'Use the toggle to move between the areas this account can access.'}
+                    </p>
+                  </div>
+                  <ProfileToggle
+                    currentProfile="vendor"
+                    availableProfiles={availableRoles}
+                    userId={userId}
+                    className="shrink-0"
+                  />
+                </div>
               </div>
             ) : null}
             {content}

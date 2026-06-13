@@ -203,7 +203,6 @@ export default async function PublicHelpPage({
             links={[
               { href: '/', label: 'Home' },
               { href: '/browse', label: 'Services' },
-              { href: '/contact', label: 'Contact' },
             ]}
             ctaHref="/browse"
             ctaLabel="Find a Service"

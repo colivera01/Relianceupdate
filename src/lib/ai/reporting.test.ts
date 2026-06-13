@@ -10,6 +10,8 @@ describe("formatAiFeatureLabel", () => {
   it("maps known AI features to friendly labels", () => {
     expect(formatAiFeatureLabel("moderation_assistant")).toBe("Moderation Assistant");
     expect(formatAiFeatureLabel("vendor_coaching")).toBe("Vendor Coaching");
+    expect(formatAiFeatureLabel("vendor_approval_assistant")).toBe("Vendor Approval Assistant");
+    expect(formatAiFeatureLabel("support_inbox_triage")).toBe("Support Inbox Triage");
     expect(formatAiFeatureLabel("something_else")).toBe("Unknown Feature");
   });
 });
@@ -18,6 +20,9 @@ describe("normalizeAiActivityFeatureFilter", () => {
   it("keeps valid feature filters and falls back invalid values to all", () => {
     expect(normalizeAiActivityFeatureFilter("moderation_assistant")).toBe(
       "moderation_assistant"
+    );
+    expect(normalizeAiActivityFeatureFilter("publish_readiness_assistant")).toBe(
+      "publish_readiness_assistant"
     );
     expect(normalizeAiActivityFeatureFilter("all")).toBe("all");
     expect(normalizeAiActivityFeatureFilter("not-real")).toBe("all");

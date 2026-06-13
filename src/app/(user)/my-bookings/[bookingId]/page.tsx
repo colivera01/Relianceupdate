@@ -20,6 +20,7 @@ import {
   resolveBookingScheduleInstant,
 } from '@/lib/my-bookings';
 import { tutorialGuides } from '@/lib/user-guidance';
+import { getCustomerProofStageLabel } from '@/lib/vendor-job-video-stages';
 import { Badge } from '@/components/ui/badge';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 
@@ -72,10 +73,7 @@ function normalizeStatus(status: string | null | undefined): string {
 }
 
 function stageLabel(stage: 'before' | 'during' | 'after' | null | undefined): string {
-  if (stage === 'before') return 'Before Service';
-  if (stage === 'during') return 'During Service';
-  if (stage === 'after') return 'Completed';
-  return 'Service Video';
+  return getCustomerProofStageLabel(stage);
 }
 
 function stageSummary(
@@ -89,8 +87,8 @@ function stageSummary(
   const hasExistingReview = options?.hasExistingReview === true;
   if (stage === 'before') {
     return {
-      heading: 'Before Service',
-      description: 'This is the pre-service overview shared by your provider before work began.',
+      heading: 'Starting Condition',
+      description: 'This is the starting-condition overview your provider shared before work began.',
       consentPrompt: hasExistingReview
         ? 'This service video is available to watch, but we need your permission before playback.'
         : 'This service video is available to review, but we need your permission before playback.',
@@ -98,7 +96,7 @@ function stageSummary(
   }
   if (stage === 'during') {
     return {
-      heading: 'During Service',
+      heading: 'Work in Progress',
       description: 'This is the in-progress service footage shared while work was being performed.',
       consentPrompt: hasExistingReview
         ? 'This service video is available to watch, but we need your permission before playback.'
@@ -443,22 +441,22 @@ function BookingMediaDetailPageContent() {
       ? {
           title: 'Why this booking shows a submitted review without a playable video',
           description:
-            'This booking has a real submitted review on file, but a customer-visible approved completed-stage service video is not attached right now.',
+            'This booking has a real submitted review on file, but a customer-visible approved final-result video is not attached right now.',
           bullets: [
             'Completed work, video availability, and review history are tracked separately.',
-            'Your earlier review remains on file even though this booking does not currently expose a customer-visible completed-stage video.',
+            'Your earlier review remains on file even though this booking does not currently expose a customer-visible final-result video.',
             'If you expected a playable service video here, use the Help Center with the booking ID below.',
           ],
           tone: 'slate' as const,
         }
       : completedVideoPendingApproval
         ? {
-            title: 'Why the service video is not open yet',
-            description:
-              'The vendor completed the work and submitted the completed-stage service video, but Reliance still has to finish approval before customer playback can open here.',
+          title: 'Why the service video is not open yet',
+          description:
+              'The vendor completed the work and submitted the final-result video, but Reliance still has to finish approval before customer playback can open here.',
             bullets: [
               'Work completion does not automatically make the service video customer-visible.',
-              'Review eligibility opens only after an approved completed-stage customer-visible video is available.',
+              'Review eligibility opens only after an approved final-result customer-visible video is available.',
               "You'll be able to watch the video from this page once approval is complete.",
             ],
             tone: 'amber' as const,
@@ -467,11 +465,11 @@ function BookingMediaDetailPageContent() {
           ? {
               title: 'Why the review window is not open yet',
               description:
-                'Reviews unlock only after an approved completed-stage customer-visible service video exists for this booking.',
+                'Reviews unlock only after an approved final-result customer-visible video exists for this booking.',
               bullets: [
                 'A completed booking can still be waiting on moderation or customer visibility.',
                 'If a video was rejected or kept non-customer-visible, the review flow stays closed.',
-                'Open Help if you expected a playable completed-stage service video already.',
+                'Open Help if you expected a playable final-result video already.',
               ],
               tone: 'amber' as const,
             }
@@ -479,7 +477,7 @@ function BookingMediaDetailPageContent() {
             ? {
                 title: 'Why this completed booking does not show a customer-visible video',
                 description:
-                  'The booking is marked completed, but no approved completed-stage service video is customer-visible right now.',
+                  'The booking is marked completed, but no approved final-result video is customer-visible right now.',
                 bullets: [
                   'Completed work, approved video, customer access, and review timing are separate lifecycle steps.',
                   'This can happen when a video was not submitted, is private, or is not customer-visible.',
@@ -921,16 +919,16 @@ function BookingMediaDetailPageContent() {
             <p className="text-sm font-medium text-amber-900">Awaiting approved service video</p>
             <p className="text-sm text-amber-900">
               {completedVideoPendingApproval
-                ? 'This booking is completed and the completed-stage video is pending approval before Reliance can open the video-based review flow.'
+                ? 'This booking is completed and the final-result video is pending approval before Reliance can open the video-based review flow.'
                 : lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
-                  ? 'This booking is completed, but the submitted completed-stage video is not customer-visible right now.'
-                  : 'This completed booking is still in your review queue, but Reliance cannot open the video-based review flow until an approved completed-service video is attached.'}
+                  ? 'This booking is completed, but the submitted final-result video is not customer-visible right now.'
+                  : 'This completed booking is still in your review queue, but Reliance cannot open the video-based review flow until an approved final-result video is attached.'}
             </p>
             <p className="text-xs text-amber-800">
               {completedVideoPendingApproval
                 ? 'Once approval is complete, this booking will move from Awaiting Service Videos into Ready to Review.'
                 : lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
-                  ? 'If you expected a playable completed-stage video here, contact support with the booking ID from My Services.'
+                  ? 'If you expected a playable final-result video here, contact support with the booking ID from My Services.'
                   : 'Once that approved video is available, this booking will move from Awaiting Service Videos into Ready to Review.'}
             </p>
           </div>
@@ -1059,18 +1057,18 @@ function BookingMediaDetailPageContent() {
                 : followUpRecord
                   ? 'This service date passed without a completed vendor closeout, so no approved service video is attached yet.'
                   : completedVideoPendingApproval
-                    ? 'The vendor submitted a completed-stage service video and it is still being reviewed before it can be shown here.'
+                    ? 'The vendor submitted a final-result video and it is still being reviewed before it can be shown here.'
                   : awaitingApprovedReviewVideo
                     ? lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
-                      ? 'A completed-stage video was submitted for this booking, but it is not customer-visible right now.'
-                      : 'We will open the completed video and review flow here after an approved completed-service video is attached.'
+                      ? 'A final-result video was submitted for this booking, but it is not customer-visible right now.'
+                      : 'We will open the final-result video and review flow here after an approved final-result video is attached.'
                     : completedWithoutCustomerVisibleVideo
                       ? reviewSubmitted
                         ? 'This completed booking already has a submitted review on file, but no customer-visible approved service video is currently attached.'
                         : lifecycleVideoState === 'rejected'
-                          ? 'This booking is marked completed, and a completed-stage video was submitted, but it is not customer-visible right now.'
+                          ? 'This booking is marked completed, and a final-result video was submitted, but it is not customer-visible right now.'
                           : lifecycleVideoState === 'approved_not_customer_visible'
-                            ? 'This booking is marked completed, and a completed-stage video exists, but it is not customer-visible right now.'
+                            ? 'This booking is marked completed, and a final-result video exists, but it is not customer-visible right now.'
                             : 'This booking is marked completed, but no customer-visible approved service video is currently attached.'
                       : 'No customer-visible approved service video is available for this job yet.'}
             </p>
@@ -1083,7 +1081,7 @@ function BookingMediaDetailPageContent() {
             ) : awaitingApprovedReviewVideo ? (
               <p className="text-xs text-gray-500">
                 {lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
-                  ? 'If you expected a playable completed-stage video here, contact support and include the booking ID from My Services.'
+                  ? 'If you expected a playable final-result video here, contact support and include the booking ID from My Services.'
                   : "You'll be notified when the approved video is ready."}
               </p>
             ) : completedWithoutCustomerVisibleVideo ? (
@@ -1131,18 +1129,18 @@ function BookingMediaDetailPageContent() {
               {[
                 {
                   key: 'before' as const,
-                  title: 'Before',
-                  subtitle: 'Before Service',
+                  title: 'Stage 1',
+                  subtitle: 'Starting Condition',
                 },
                 {
                   key: 'during' as const,
-                  title: 'During',
-                  subtitle: 'During Service',
+                  title: 'Stage 2',
+                  subtitle: 'Work in Progress',
                 },
                 {
                   key: 'after' as const,
-                  title: 'Completed',
-                  subtitle: 'Completed',
+                  title: 'Stage 3',
+                  subtitle: 'Final Result',
                 },
               ].map((stage) => {
                 const stageVideo = timelineVideos[stage.key];
@@ -1248,7 +1246,7 @@ function BookingMediaDetailPageContent() {
               </p>
               <p className="text-sm text-gray-700">
                 {awaitingApprovedReviewVideo
-                  ? 'Your review stays paused until the approved completed-service video is attached.'
+                  ? 'Your review stays paused until the approved final-result video is attached.'
                   : reviewGateMessage || 'Review prompts are not active for this stage yet.'}
               </p>
             </div>

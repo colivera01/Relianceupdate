@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, PATCH } from "./[jobId]/actions/route";
 import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
+import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
+import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
+  const bookingFindUnique = vi.fn();
   const bookingUpdate = vi.fn();
   const bookingDelete = vi.fn();
+  const vendorMembershipFindMany = vi.fn();
   const mediaSessionFindMany = vi.fn();
   const mediaSessionUpdateMany = vi.fn();
   const mediaAssetCount = vi.fn();
@@ -24,8 +28,12 @@ const hoisted = vi.hoisted(() => {
   const prisma = {
     booking: {
       findFirst: bookingFindFirst,
+      findUnique: bookingFindUnique,
       update: bookingUpdate,
       delete: bookingDelete,
+    },
+    vendorMembership: {
+      findMany: vendorMembershipFindMany,
     },
     mediaSession: {
       findMany: mediaSessionFindMany,
@@ -41,7 +49,9 @@ const hoisted = vi.hoisted(() => {
   return {
     prisma,
     bookingFindFirst,
+    bookingFindUnique,
     bookingUpdate,
+    vendorMembershipFindMany,
     mediaSessionFindMany,
     mediaSessionUpdateMany,
     mediaAssetCount,
@@ -60,6 +70,14 @@ vi.mock("@/server/db", () => ({
 vi.mock("@/lib/membership-auth", () => ({
   requireVendorMembership: vi.fn(),
   requireVendorManager: vi.fn(),
+}));
+
+vi.mock("@/lib/notifications/send-job-assignment", () => ({
+  sendJobAssignmentNotification: vi.fn(),
+}));
+
+vi.mock("@/lib/lifecycle-audit", () => ({
+  recordLifecycleAudit: vi.fn(),
 }));
 
 function patchReq(vendorId: string, jobId: string, action: string) {
@@ -109,11 +127,26 @@ async function toJson(res: Response) {
 describe("vendor job actions integration", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
-    vi.mocked(requireVendorMembership).mockResolvedValue({} as any);
+    vi.mocked(requireVendorMembership).mockResolvedValue({ userId: "manager-1" } as any);
     vi.mocked(requireVendorManager).mockReset();
     vi.mocked(requireVendorManager).mockResolvedValue({} as any);
+    vi.mocked(sendJobAssignmentNotification).mockReset();
+    vi.mocked(sendJobAssignmentNotification).mockResolvedValue({
+      anySuccess: true,
+      smsEnabled: true,
+      emailEnabled: true,
+      phoneNumberUsed: "+14075550123",
+      channels: [
+        { channel: "email", attempted: true, success: true, providerMessageId: "email-1" },
+        { channel: "sms", attempted: true, success: true, providerMessageId: "sms-1" },
+      ],
+    });
+    vi.mocked(recordLifecycleAudit).mockReset();
+    vi.mocked(recordLifecycleAudit).mockResolvedValue(undefined);
     hoisted.bookingFindFirst.mockReset();
+    hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.vendorMembershipFindMany.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.mediaSessionUpdateMany.mockReset();
     hoisted.mediaAssetCount.mockReset();
@@ -339,6 +372,98 @@ describe("vendor job actions integration", () => {
     const j = await toJson(res);
     expect(j.code).toBe("MANAGER_APPROVAL_REQUIRED");
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("PATCH ASSIGN_JOB stores primary employee attribution and notifies newly assigned employee", async () => {
+    const previousMetadata = JSON.stringify({
+      vendor_job_assigned_membership_ids: ["old-member"],
+      vendor_job_assigned_employees: ["Old Employee"],
+      reliance_ops: { operational_phase: "PENDING" },
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: previousMetadata,
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      scheduledFor: new Date("2026-06-20T15:00:00.000Z"),
+      date: null,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      status: "PENDING",
+      customerMetadata: previousMetadata,
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "member-1",
+        user: {
+          name: "Peter Parker",
+          email: "peter@example.com",
+          phone: "4075550123",
+        },
+      },
+    ]);
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      id: "job1",
+      status: "PENDING",
+      customerMetadata: args.data.customerMetadata,
+      updatedAt: new Date("2026-06-11T12:00:00.000Z"),
+    }));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "ASSIGN_JOB",
+      assignedMembershipIds: ["member-1"],
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job1" },
+        data: expect.objectContaining({
+          customerMetadata: expect.any(String),
+        }),
+      })
+    );
+    const updateArg = hoisted.bookingUpdate.mock.calls[0][0];
+    const savedMetadata = JSON.parse(updateArg.data.customerMetadata);
+    expect(savedMetadata.vendor_job_assigned_membership_ids).toEqual(["member-1"]);
+    expect(savedMetadata.vendor_job_assigned_employees).toEqual(["Peter Parker"]);
+    expect(savedMetadata.vendor_job_primary_membership_id).toBe("member-1");
+    expect(savedMetadata.vendor_job_primary_employee).toBe("Peter Parker");
+    expect(savedMetadata.reliance_ops.operational_phase).toBe("ASSIGNED");
+    expect(recordLifecycleAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: "job_assigned",
+        actorUserId: "manager-1",
+        newValue: expect.objectContaining({
+          primaryMembershipId: "member-1",
+          primaryEmployeeName: "Peter Parker",
+        }),
+      })
+    );
+    expect(sendJobAssignmentNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "job1",
+        actorUserId: "manager-1",
+        employeeName: "Peter Parker",
+        employeeEmail: "peter@example.com",
+        employeePhone: "4075550123",
+        employeeJobLink: "http://localhost/employee/jobs?jobId=job1",
+        vendorName: "Electro LLC",
+        jobTitle: "Outlet Installation",
+        customerName: "Carmen Customer",
+      })
+    );
+    expect(json.notifications).toMatchObject({
+      newlyAssignedCount: 1,
+      sentCount: 1,
+    });
   });
 
   it("DELETE allows CONFIRMED (in-progress) jobs for vendors", async () => {

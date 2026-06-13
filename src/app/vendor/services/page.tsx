@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
+import { AlertCircle, Loader2, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
 import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
 import { tutorialGuides } from '@/lib/user-guidance';
 import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
+import { getServiceTemplatesForCategory, type ServiceTemplate } from '@/config/service-templates';
 
 type ServiceRow = {
   id: string;
@@ -25,7 +26,44 @@ type ServiceFormData = {
   name: string;
   description: string;
   price: string;
+  estimatedDuration: string;
 };
+
+type VendorCopySuggestion = {
+  summary: string;
+  confidence: 'low' | 'medium' | 'high';
+  recommendedHeadline: string;
+  recommendedDescription: string;
+  recommendedBullets: string[];
+  trustGaps: string[];
+  riskyClaims: string[];
+  nextEdits: string[];
+};
+
+const durationNotePattern = /(?:\n\s*)?Estimated duration:\s*(\d+)\s*minutes?\.?\s*$/i;
+const legacyDurationPattern = /\(estimated\s+(\d+)\s+min\)/i;
+
+function extractEstimatedDuration(description: string) {
+  const directMatch = description.match(durationNotePattern);
+  if (directMatch?.[1]) return directMatch[1];
+  const legacyMatch = description.match(legacyDurationPattern);
+  if (legacyMatch?.[1]) return legacyMatch[1];
+  return '';
+}
+
+function stripEstimatedDurationNote(description: string) {
+  return description
+    .replace(durationNotePattern, '')
+    .replace(legacyDurationPattern, '')
+    .trim();
+}
+
+function descriptionWithEstimatedDuration(description: string, estimatedDuration: string) {
+  const cleanDescription = stripEstimatedDurationNote(description);
+  const duration = Number(estimatedDuration);
+  if (!Number.isFinite(duration) || duration <= 0) return cleanDescription;
+  return `${cleanDescription}\n\nEstimated duration: ${Math.round(duration)} minutes.`;
+}
 
 function mapApiService(service: any): ServiceRow {
   return {
@@ -55,10 +93,15 @@ export default function VendorServicesPage() {
     name: '',
     description: '',
     price: '',
+    estimatedDuration: '',
   });
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
+  const [copySuggestion, setCopySuggestion] = useState<VendorCopySuggestion | null>(null);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [copyError, setCopyError] = useState('');
+  const [copyMessage, setCopyMessage] = useState('');
 
   const sortedServices = useMemo(
     () =>
@@ -79,6 +122,13 @@ export default function VendorServicesPage() {
         approvedServiceVideoCount: 0,
       }),
     [vendorId, vendorProfile]
+  );
+  const serviceCategory = String(
+    vendorProfile?.category || vendorProfile?.businessType || ''
+  ).trim();
+  const serviceTemplates = useMemo(
+    () => getServiceTemplatesForCategory(serviceCategory),
+    [serviceCategory]
   );
 
   const reloadServices = useCallback(async () => {
@@ -118,19 +168,42 @@ export default function VendorServicesPage() {
 
   const openCreateModal = () => {
     setEditingService(null);
-    setFormData({ name: '', description: '', price: '' });
+    setFormData({ name: '', description: '', price: '', estimatedDuration: '' });
     setFormError('');
+    setCopySuggestion(null);
+    setCopyError('');
+    setCopyMessage('');
+    setShowFormModal(true);
+  };
+
+  const openCreateModalFromTemplate = (template: ServiceTemplate) => {
+    setEditingService(null);
+    setFormData({
+      name: template.name,
+      description: '',
+      price: '',
+      estimatedDuration: String(template.defaultDuration || ''),
+    });
+    setFormError('');
+    setCopySuggestion(null);
+    setCopyError('');
+    setCopyMessage('');
     setShowFormModal(true);
   };
 
   const openEditModal = (service: ServiceRow) => {
+    const estimatedDuration = extractEstimatedDuration(service.description);
     setEditingService(service);
     setFormData({
       name: service.name,
-      description: service.description,
+      description: stripEstimatedDurationNote(service.description),
       price: String(service.price),
+      estimatedDuration,
     });
     setFormError('');
+    setCopySuggestion(null);
+    setCopyError('');
+    setCopyMessage('');
     setShowFormModal(true);
   };
 
@@ -139,6 +212,9 @@ export default function VendorServicesPage() {
     setShowFormModal(false);
     setEditingService(null);
     setFormError('');
+    setCopySuggestion(null);
+    setCopyError('');
+    setCopyMessage('');
   };
 
   const handleSaveService = async () => {
@@ -146,11 +222,25 @@ export default function VendorServicesPage() {
     const name = formData.name.trim();
     const description = formData.description.trim();
     const price = Number(formData.price);
+    const estimatedDuration = formData.estimatedDuration.trim()
+      ? Number(formData.estimatedDuration)
+      : null;
 
     if (!name || !description || !Number.isFinite(price) || price < 0) {
       setFormError('Service name, description, and a non-negative reference price are required.');
       return;
     }
+    if (
+      estimatedDuration !== null &&
+      (!Number.isFinite(estimatedDuration) || estimatedDuration <= 0)
+    ) {
+      setFormError('Estimated duration must be a positive number of minutes.');
+      return;
+    }
+    const publicDescription = descriptionWithEstimatedDuration(
+      description,
+      estimatedDuration === null ? '' : String(estimatedDuration)
+    );
 
     setFormSaving(true);
     setFormError('');
@@ -161,7 +251,7 @@ export default function VendorServicesPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name,
-            description,
+            description: publicDescription,
             price,
           }),
         });
@@ -175,7 +265,7 @@ export default function VendorServicesPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name,
-            description,
+            description: publicDescription,
             price,
             vendor_id: vendorId,
           }),
@@ -216,6 +306,59 @@ export default function VendorServicesPage() {
     }
   };
 
+  const requestServiceCopySuggestion = async () => {
+    if (!vendorId) return;
+    setCopyLoading(true);
+    setCopyError('');
+    setCopyMessage('');
+    try {
+      const response = await fetch('/api/vendor/copy-assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          vendorId,
+          mode: 'service_draft',
+          businessName:
+            String(vendorProfile?.businessName || vendorProfile?.name || 'Your business').trim() ||
+            'Your business',
+          category: vendorProfile?.category || null,
+          city: vendorProfile?.city || null,
+          state: vendorProfile?.state || null,
+          currentHeadline: formData.name.trim() || null,
+          currentDescription: formData.description,
+          currentBullets: [],
+          trustSignals: [
+            vendorProfile?.membershipStatus === 'ACTIVE'
+              ? 'Vendor account is approved on Reliance.'
+              : 'Vendor account is still awaiting approval.',
+            vendorProfile?.isPubliclyListed
+              ? 'Business profile is currently visible in the public marketplace.'
+              : 'Business profile is not public yet.',
+            Number(vendorProfile?.publishedServiceCount || 0) > 0
+              ? `${Number(vendorProfile?.publishedServiceCount || 0)} published services already help customers find this business.`
+              : 'No services are publicly published yet.',
+            Number(vendorProfile?.ratingCount || 0) > 0
+              ? `${Number(vendorProfile?.ratingCount || 0)} public customer reviews are visible.`
+              : 'No public customer reviews are visible yet.',
+          ],
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error || json?.message || `Status ${response.status}`);
+      }
+      setCopySuggestion(json?.suggestion || null);
+      setCopyMessage(json?.message || 'AI service copy guidance generated.');
+    } catch (error) {
+      console.error('Error generating service copy suggestion:', error);
+      setCopyError(error instanceof Error ? error.message : 'Failed to generate AI copy guidance');
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 py-6">
@@ -226,9 +369,9 @@ export default function VendorServicesPage() {
         ) : null}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Service Discovery</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Your Service Menu</h1>
             <p className="text-gray-600">
-              Create and refine the services customers can discover once Reliance publishes them.
+              Add the services customers will be able to view and book once Reliance publishes them.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -239,26 +382,81 @@ export default function VendorServicesPage() {
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4" />
-              Add Service Draft
+              Add Service
             </button>
           </div>
         </div>
 
         <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-900">
-          <p className="font-semibold text-purple-950">Why this page helps you grow</p>
+          <p className="font-semibold text-purple-950">This is your customer-facing service menu</p>
           <p className="mt-1">
-            Each published service gives customers another path to find your business. Clear service
-            names, useful descriptions, and honest pricing make your public profile easier to trust.
+            Think of each service as a menu item customers can compare before booking. Clear names,
+            simple descriptions, estimated duration, and honest reference pricing help customers
+            understand what you provide. Saving a service here does not create a booking or service
+            video by itself; it prepares the service customers can book after Reliance publishes it.
           </p>
         </div>
 
+        {serviceCategory ? (
+          <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
+                  Common service starters
+                </p>
+                <h2 className="mt-1 text-lg font-semibold">
+                  Choose common services for {serviceCategory}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-blue-900/78">
+                  Start with a common service, then edit the name, duration, price, and description
+                  before saving it to your service menu.
+                </p>
+              </div>
+              <button
+                onClick={openCreateModal}
+                disabled={!vendorId || vendorLoading}
+                className="inline-flex items-center justify-center rounded-full border border-blue-300 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Add custom service
+              </button>
+            </div>
+
+            {serviceTemplates.length > 0 ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {serviceTemplates.map((template) => (
+                  <button
+                    key={template.name}
+                    type="button"
+                    onClick={() => openCreateModalFromTemplate(template)}
+                    disabled={!vendorId || vendorLoading}
+                    className="rounded-xl border border-blue-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <p className="font-semibold text-slate-950">{template.name}</p>
+                    <p className="mt-2 text-sm text-slate-600">
+                      Typical time: {template.defaultDuration} min
+                    </p>
+                    <span className="mt-3 inline-flex rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
+                      Use template
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm text-blue-900/78">
+                No starter templates are configured for {serviceCategory} yet. Add a custom service
+                below.
+              </div>
+            )}
+          </section>
+        ) : null}
+
         <GuidanceCallout
-          title="What customers can and cannot see"
-          description="Drafts help you prepare new offers, but only published services can appear in public browse, vendor pages, and booking flows."
+          title="What customers can see"
+          description="Services you add here are saved internally first. Customers only see them after Reliance publishes them."
           bullets={[
             `${growthSummary.metrics[1].value} published service${growthSummary.metrics[1].value === '1' ? '' : 's'} currently help customers find the business.`,
-            'Draft services stay internal until Reliance finishes the publishing step.',
-            'Stronger service copy improves discovery and helps customers understand what to book.',
+            'Not-public services stay internal until Reliance finishes the publishing step.',
+            'Stronger service copy improves discovery and helps customers understand what they are booking.',
           ]}
           tone="slate"
           className="mb-4"
@@ -266,9 +464,9 @@ export default function VendorServicesPage() {
 
         <GuidanceCallout
           title="Why your services may still not be public"
-          description="Saving a draft prepares the service for review, but customer discovery still depends on vendor approval, public vendor listing, and admin publishing."
+          description="Saving a service prepares it for review, but customer discovery still depends on vendor approval, public vendor listing, and admin publishing."
           bullets={[
-            'Draft saved: Reliance stores the service internally for review.',
+            'Service saved: Reliance stores the service internally for review.',
             'Vendor approved and listed: customers can find the business profile.',
             'Service published: the service becomes publicly discoverable and bookable.',
           ]}
@@ -278,7 +476,7 @@ export default function VendorServicesPage() {
 
         {approvalPending && (
           <div className="p-4 mb-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
-            Vendor account pending approval. Your draft services are saved for admin review, but they are not publicly visible yet.
+            Vendor account pending approval. Your services are saved for admin review, but they are not publicly visible yet.
           </div>
         )}
 
@@ -307,16 +505,25 @@ export default function VendorServicesPage() {
           </div>
         ) : sortedServices.length === 0 ? (
           <div className="p-6 bg-white rounded-2xl border border-gray-200 text-gray-600">
-            No service drafts found for this vendor.
+            No services added yet. Add the first service customers should be able to book.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sortedServices.map((service) => (
+            {sortedServices.map((service) => {
+              const cleanDescription = stripEstimatedDurationNote(service.description);
+              const estimatedDuration = extractEstimatedDuration(service.description);
+
+              return (
               <div key={service.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div>
                     <h3 className="font-semibold text-gray-900">{service.name}</h3>
-                    <p className="text-sm text-gray-600 mt-1">{service.description || 'No description'}</p>
+                    <p className="text-sm text-gray-600 mt-1">{cleanDescription || 'No description'}</p>
+                    {estimatedDuration ? (
+                      <p className="mt-3 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                        Estimated duration: {estimatedDuration} min
+                      </p>
+                    ) : null}
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold text-purple-600">${service.price.toFixed(2)}</div>
@@ -326,7 +533,7 @@ export default function VendorServicesPage() {
                         service.isPublished ? 'text-green-700' : 'text-amber-700'
                       }`}
                     >
-                      {service.isPublished ? 'Public listing: admin-managed' : 'Draft only'}
+                      {service.isPublished ? 'Published for customers' : 'Not public yet'}
                     </div>
                   </div>
                 </div>
@@ -352,10 +559,11 @@ export default function VendorServicesPage() {
                   </button>
                 </div>
                 <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-                  Publishing stays admin-managed for the current launch. Use delete only for drafts or services you no longer want to keep on file.
+                  Publishing stays admin-managed for this launch. Use delete only for services you no longer want Reliance to keep on file.
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -364,7 +572,7 @@ export default function VendorServicesPage() {
             <div className="bg-white rounded-2xl max-w-2xl w-full mx-4">
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900">
-                  {editingService ? 'Edit Service Draft' : 'Add Service Draft'}
+                  {editingService ? 'Edit Service' : 'Add Service'}
                 </h2>
                 <button
                   onClick={closeFormModal}
@@ -396,6 +604,125 @@ export default function VendorServicesPage() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     placeholder="Describe your service"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Estimated Duration (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={formData.estimatedDuration}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, estimatedDuration: e.target.value }))
+                    }
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Example: 60"
+                  />
+                  <p className="mt-2 text-xs text-gray-500">
+                    Shown as a customer-facing estimate so people understand the typical time involved.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 text-violet-700">
+                        <Sparkles className="h-4 w-4" />
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em]">AI Copy Assist</p>
+                      </div>
+                      <p className="mt-2 text-sm text-violet-900">
+                        Use AI to make this service easier for customers to understand before it appears publicly. It can suggest a clearer title, description, trust points, and claims to avoid.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void requestServiceCopySuggestion()}
+                      disabled={copyLoading || !vendorId}
+                      className="rounded-lg border border-violet-300 bg-white px-4 py-2 text-sm font-medium text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {copyLoading
+                        ? 'Generating...'
+                        : copySuggestion
+                          ? 'Refresh AI Suggestion'
+                          : 'Improve Service Copy'}
+                    </button>
+                  </div>
+
+                  {copyMessage ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                      {copyMessage}
+                    </div>
+                  ) : null}
+                  {copyError ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      {copyError}
+                    </div>
+                  ) : null}
+
+                  {copySuggestion ? (
+                    <div className="rounded-lg border border-violet-100 bg-white p-4 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-700">
+                          {copySuggestion.confidence.charAt(0).toUpperCase() + copySuggestion.confidence.slice(1)} confidence
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-800">{copySuggestion.summary}</p>
+                      <div className="rounded-lg border border-violet-100 bg-violet-50/60 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-700">Suggested service title</p>
+                        <p className="mt-2 text-sm font-semibold text-slate-950">{copySuggestion.recommendedHeadline}</p>
+                        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Suggested description</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{copySuggestion.recommendedDescription}</p>
+                      </div>
+                      {copySuggestion.recommendedBullets.length > 0 ? (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Suggested trust points</p>
+                          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                            {copySuggestion.recommendedBullets.map((item) => (
+                              <li key={item}>- {item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {copySuggestion.trustGaps.length > 0 ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">What customers may still question</p>
+                          <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                            {copySuggestion.trustGaps.map((item) => (
+                              <li key={item}>- {item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {copySuggestion.riskyClaims.length > 0 ? (
+                        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Claims to avoid or soften</p>
+                          <ul className="mt-2 space-y-1 text-sm text-red-800">
+                            {copySuggestion.riskyClaims.map((item) => (
+                              <li key={item}>- {item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((current) => ({
+                              ...current,
+                              name: copySuggestion.recommendedHeadline,
+                              description: copySuggestion.recommendedDescription,
+                            }))
+                          }
+                          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+                        >
+                          Use Suggested Title and Description
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div>
@@ -441,7 +768,7 @@ export default function VendorServicesPage() {
                   className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {formSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {editingService ? 'Update Draft' : 'Add Draft'}
+                  {editingService ? 'Update Service' : 'Add Service'}
                 </button>
               </div>
             </div>

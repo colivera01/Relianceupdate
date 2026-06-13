@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from "next/navigation";
 import { useVendorProfile } from '@/hooks/useVendorProfile';
@@ -223,7 +223,7 @@ export default function VendorJobs() {
     if (!nextStage) {
       return {
         label: 'All videos uploaded',
-        detail: 'Before, During Service, and Completed Service videos are present.',
+        detail: 'Starting Condition, Work in Progress, and Final Result videos are present.',
         actionLabel: 'View Job',
         tone: 'green',
       };
@@ -320,6 +320,9 @@ export default function VendorJobs() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsLoadError, setJobsLoadError] = useState('');
+  const [jobRecoveryByJobId, setJobRecoveryByJobId] = useState<Record<string, any>>({});
+  const [jobRecoveryErrorByJobId, setJobRecoveryErrorByJobId] = useState<Record<string, string>>({});
+  const [jobRecoveryLoadingId, setJobRecoveryLoadingId] = useState<string | null>(null);
   const [showCreateJob, setShowCreateJob] = useState(false);
   const [jobModalMode, setJobModalMode] = useState<'create' | 'edit'>('create');
   const [jobFormTargetId, setJobFormTargetId] = useState<string | null>(null);
@@ -407,6 +410,63 @@ export default function VendorJobs() {
     }
     setShowJobWorkflowGuide(false);
     setDontShowJobWorkflowGuideAgain(false);
+  };
+
+  const requestAiJobRecovery = async (job: any) => {
+    const jobId = String(job?.id || '').trim();
+    if (!jobId) return;
+    const workflow = getVendorWorkflowStateForJob(job);
+    setJobRecoveryLoadingId(jobId);
+    setJobRecoveryErrorByJobId((current) => ({
+      ...current,
+      [jobId]: '',
+    }));
+    try {
+      const response = await fetch('/api/job-recovery-assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authUserId ? getClientSessionHeaders(authUserId) : {}),
+        },
+        body: JSON.stringify({
+          jobId,
+          role: isEmployeeView ? 'employee' : 'vendor',
+          title: String(job?.title || 'Untitled job'),
+          status: String(job?.status || ''),
+          operationalPhase: String(job?.operationalPhase || '').trim() || null,
+          clientName: String(job?.client || '').trim() || null,
+          assignedEmployeeNames: Array.isArray(job?.assignedEmployees)
+            ? job.assignedEmployees.filter(Boolean).slice(0, 8)
+            : [],
+          stageProgress: {
+            INTRO: jobHasVideoForStage(job, 'INTRO'),
+            IN_PROGRESS: jobHasVideoForStage(job, 'IN_PROGRESS'),
+            COMPLETED: jobHasVideoForStage(job, 'COMPLETED'),
+          },
+          consentStatus: String(job?.consentStatus || '').trim() || null,
+          rejectionReason: String(job?.rejectionReason || '').trim() || null,
+          currentWorkflowLabel: workflow.label,
+          currentWorkflowDetail: workflow.detail,
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error || json?.message || `Status ${response.status}`);
+      }
+      setJobRecoveryByJobId((current) => ({
+        ...current,
+        [jobId]: json?.suggestion || null,
+      }));
+    } catch (error) {
+      console.error('[vendor/jobs] job recovery assistant error:', error);
+      setJobRecoveryErrorByJobId((current) => ({
+        ...current,
+        [jobId]:
+          error instanceof Error ? error.message : 'Failed to generate AI job recovery guidance',
+      }));
+    } finally {
+      setJobRecoveryLoadingId(null);
+    }
   };
   
   // Bulk selection state
@@ -3764,11 +3824,12 @@ export default function VendorJobs() {
             <Info className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold mb-1">Welcome to Job Management</h3>
+            <h3 className="text-lg font-semibold mb-1">Manage scheduled work</h3>
             <p className="text-blue-100 text-sm leading-relaxed">
-              Completed jobs do more than close work orders. They power approved service videos,
-              future customer reviews, and the public proof that helps new customers trust your business.
-              Click <strong>Create Job</strong> to add a new job and use the <strong>Next Step</strong> button on each card to move work forward.
+              This page is for customer work that is already booked or needs to be tracked manually.
+              To create the services customers can book, use <strong>Your Service Menu</strong>. Use
+              <strong> Add Manual Booking</strong> here for work scheduled outside Reliance, beta/demo
+              jobs, or jobs an admin asks you to enter.
               Hover over any <span className="inline-flex align-text-bottom"><Info className="inline w-4 h-4" /></span>{' '}
               info icon for detailed help.
             </p>
@@ -3779,7 +3840,7 @@ export default function VendorJobs() {
       <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm">
         <p className="font-semibold text-blue-950">Why this page matters for growth</p>
         <p className="mt-1 leading-6">
-          Finished jobs, approved Before Service, During Service, and Completed Service videos, and
+          Finished jobs, approved Starting Condition, Work in Progress, and Final Result videos, and
           review-ready bookings all strengthen the public trust signals customers see later.
         </p>
       </div>
@@ -3796,14 +3857,15 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>How the job workflow works</DialogTitle>
+            <DialogTitle>How scheduled work becomes public proof</DialogTitle>
             <DialogDescription>
-              A quick guide for moving a new vendor job from setup through service videos.
+              A quick guide for moving a booking or manual work item through employee assignment,
+              customer consent, and service video stages.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-gray-700">
-              <li><strong>Create the job</strong> with the customer and service details.</li>
+              <li><strong>Add or receive the booking</strong> with the customer and service details.</li>
               <li><strong>Assign an employee</strong> before starting consent or staged video work.</li>
               <li>
                 <strong>Choose the recording location.</strong> Business address recordings require location
@@ -3812,11 +3874,11 @@ export default function VendorJobs() {
               </li>
               <li><strong>Send customer consent if required</strong> and wait for the customer to accept it.</li>
               <li><strong>Verify location if required</strong> before the recording workflow continues.</li>
-              <li><strong>Start the Before Service Video</strong> once the required consent/location steps are complete.</li>
-              <li><strong>Continue with During Service and Completed Service videos</strong> so the job has the full video package.</li>
+              <li><strong>Start the Starting Condition video</strong> once the required consent/location steps are complete.</li>
+              <li><strong>Continue with Work in Progress and Final Result videos</strong> so the job has the full video package.</li>
             </ol>
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-              Each job card shows its current <strong>Next step</strong>, including whether consent is not required,
+              Each work card shows its current <strong>Next step</strong>, including whether consent is not required,
               waiting for customer acceptance, or ready for the next video stage.
             </div>
             <label className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
@@ -3840,10 +3902,10 @@ export default function VendorJobs() {
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-3xl font-bold text-gray-800">
-              {isEmployeeView ? 'My Assigned Jobs' : 'Manage Jobs'}
+              {isEmployeeView ? 'My Assigned Work' : 'Manage Scheduled Work'}
             </h2>
             <p className="text-gray-600 text-sm mt-1">
-              {isEmployeeView ? 'Jobs assigned to you' : 'Create, track, and manage all your service jobs'}
+              {isEmployeeView ? 'Work assigned to you' : 'Track customer bookings, manual work entries, and service video progress'}
             </p>
           </div>
         </div>
@@ -3940,7 +4002,7 @@ export default function VendorJobs() {
                 className="action-button bg-blue-600 hover:bg-blue-700"
               >
                 <Plus className="w-5 h-5 mr-2" />
-                Create Job
+                Add Manual Booking
               </Button>
             </>
           )}
@@ -4415,7 +4477,7 @@ export default function VendorJobs() {
                   <h4 className="font-medium text-gray-900">Job Information</h4>
                   <div className="space-y-3">
                     <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Job Title:</span>
+                      <span className="text-sm text-gray-600">Work Title:</span>
                       <span className="text-sm font-medium">{selectedVideoForDetails.jobTitle}</span>
                     </div>
                     <div className="flex justify-between">
@@ -4516,7 +4578,7 @@ export default function VendorJobs() {
         </DialogContent>
       </Dialog>
 
-      {/* Create Job Modal */}
+      {/* Add Manual Booking Modal */}
       <Dialog
         open={showCreateJob}
         onOpenChange={(open) => {
@@ -4529,21 +4591,21 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{jobModalMode === 'edit' ? 'Edit Job' : 'Create New Job'}</DialogTitle>
+            <DialogTitle>{jobModalMode === 'edit' ? 'Edit Scheduled Work' : 'Add Manual Booking'}</DialogTitle>
             <DialogDescription>
               {jobModalMode === 'edit'
-                ? 'Update persisted job details.'
-                : 'Create a new service job with client details and requirements.'}
+                ? 'Update saved work details.'
+                : 'Use this when work was scheduled outside Reliance or you need a test/demo booking. Customer-facing services are created from Your Service Menu.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Job Title <span aria-hidden="true">*</span>
+                Work Title <span aria-hidden="true">*</span>
               </label>
               <Input
                 ref={jobTitleInputRef}
-                placeholder="Enter job title"
+                placeholder="Enter work title"
                 value={newJob.title}
                 required
                 aria-invalid={Boolean(jobFieldErrors.title)}
@@ -4561,11 +4623,11 @@ export default function VendorJobs() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Client Name <span aria-hidden="true">*</span>
+                Customer Name <span aria-hidden="true">*</span>
               </label>
               <Input
                 ref={clientNameInputRef}
-                placeholder="Enter client name"
+                placeholder="Enter customer name"
                 value={newJob.client}
                 required
                 aria-invalid={Boolean(jobFieldErrors.client)}
@@ -4629,7 +4691,7 @@ export default function VendorJobs() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Service Type <span aria-hidden="true">*</span>
+                Service From Your Menu <span aria-hidden="true">*</span>
               </label>
               <select
                 ref={serviceTypeSelectRef}
@@ -4647,7 +4709,7 @@ export default function VendorJobs() {
                 disabled={servicesLoading || serviceOptions.length === 0}
               >
                 <option value="">
-                  {servicesLoading ? 'Loading services...' : 'Select service type'}
+                  {servicesLoading ? 'Loading services...' : 'Select service'}
                 </option>
                 {serviceOptions.map((service) => (
                   <option key={service.id} value={service.id}>
@@ -4659,7 +4721,7 @@ export default function VendorJobs() {
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.serviceId}</p>
               )}
               {!servicesLoading && serviceOptions.length === 0 && (
-                <p className="mt-1 text-sm text-amber-700">No services available. Add a service first.</p>
+                <p className="mt-1 text-sm text-amber-700">No service menu items available. Add a customer-facing service first.</p>
               )}
               {servicesLoadError && (
                 <p className="mt-1 text-xs text-amber-700">{servicesLoadError}</p>
@@ -4676,7 +4738,7 @@ export default function VendorJobs() {
               Cancel
             </Button>
             <Button onClick={handleCreateJob} disabled={!canCreateJob}>
-              {isCreatingJob ? (jobModalMode === 'edit' ? 'Saving...' : 'Creating...') : (jobModalMode === 'edit' ? 'Save Job' : 'Create Job')}
+              {isCreatingJob ? (jobModalMode === 'edit' ? 'Saving...' : 'Creating...') : (jobModalMode === 'edit' ? 'Save Work' : 'Add Booking')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4686,9 +4748,9 @@ export default function VendorJobs() {
       <Dialog open={showSelectJobModal} onOpenChange={setShowSelectJobModal}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Select Job</DialogTitle>
+            <DialogTitle>Select Scheduled Work</DialogTitle>
             <DialogDescription>
-              Select the job this service video belongs to.
+              Select the booking or manual work item this service video belongs to.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 max-h-[50vh] overflow-y-auto">
@@ -4700,7 +4762,7 @@ export default function VendorJobs() {
               </div>
             ) : filteredJobs.length === 0 ? (
               <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-                No jobs yet — create one to start uploading videos.
+                No scheduled work yet. Add a manual booking before uploading videos here.
               </div>
             ) : (
               filteredJobs.map((job) => {
@@ -4790,7 +4852,7 @@ export default function VendorJobs() {
               <p className="font-medium text-indigo-950">How staged job videos work</p>
               <ul className="list-disc pl-5 space-y-1.5 leading-snug">
                 <li>
-                  <strong>Before Service</strong>, <strong>During Service</strong>, and <strong>Completed</strong> are three
+                  <strong>Starting Condition</strong>, <strong>Work in Progress</strong>, and <strong>Final Result</strong> are three
                   separate slots. You can have at most <strong>one active video per slot</strong> for the same job.
                 </li>
                 <li>
@@ -5253,9 +5315,9 @@ export default function VendorJobs() {
             </p>
             <div className="rounded border bg-gray-50 p-3 space-y-1">
               {([
-                { key: 'INTRO' as const, label: 'Before Service' },
-                { key: 'IN_PROGRESS' as const, label: 'During Service' },
-                { key: 'COMPLETED' as const, label: 'Completed Service' },
+                { key: 'INTRO' as const, label: 'Starting Condition' },
+                { key: 'IN_PROGRESS' as const, label: 'Work in Progress' },
+                { key: 'COMPLETED' as const, label: 'Final Result' },
               ]).map((stage) => {
                 const present = Boolean(approveJobTarget && jobHasVideoForStage(approveJobTarget, stage.key));
                 return (
@@ -5313,7 +5375,7 @@ export default function VendorJobs() {
               Legal Compliance & Security Verification
             </DialogTitle>
             <DialogDescription>
-              Assign employee, choose recording location, send customer consent if required, then start the Before Service Video.
+              Assign employee, choose recording location, send customer consent if required, then start the Starting Condition video.
             </DialogDescription>
           </DialogHeader>
 
@@ -6081,6 +6143,101 @@ export default function VendorJobs() {
                         </div>
                       );
                     })()}
+                    {(() => {
+                      const jobRecoverySuggestion = jobRecoveryByJobId[String(job.id)] || null;
+                      const jobRecoveryError = jobRecoveryErrorByJobId[String(job.id)] || '';
+                      return (
+                        <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <div className="flex items-center gap-2 text-violet-700">
+                                <Sparkles className="h-4 w-4" />
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em]">
+                                  AI Workflow Recovery
+                                </p>
+                              </div>
+                              <p className="mt-2 text-sm text-violet-900">
+                                Use this when a vendor or employee is unsure what to do next. The AI explains the safest next step based on the current job state only.
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-violet-300 bg-white text-violet-700 hover:bg-violet-100"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void requestAiJobRecovery(job);
+                              }}
+                              disabled={jobRecoveryLoadingId === String(job.id)}
+                            >
+                              {jobRecoveryLoadingId === String(job.id)
+                                ? 'Checking...'
+                                : jobRecoverySuggestion
+                                  ? 'Refresh AI Help'
+                                  : 'Get AI Help'}
+                            </Button>
+                          </div>
+
+                          {jobRecoveryError ? (
+                            <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                              {jobRecoveryError}
+                            </div>
+                          ) : null}
+
+                          {jobRecoverySuggestion ? (
+                            <div className="mt-3 rounded-md border border-violet-100 bg-white p-3 text-sm">
+                              <div className="flex flex-wrap gap-2">
+                                <Badge variant="outline">
+                                  {String(jobRecoverySuggestion.decision || '')
+                                    .replace(/_/g, ' ')
+                                    .replace(/\b\w/g, (char: string) => char.toUpperCase())}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {jobRecoverySuggestion.confidence} confidence
+                                </Badge>
+                              </div>
+                              <p className="mt-3 text-slate-800">{jobRecoverySuggestion.summary}</p>
+                              {Array.isArray(jobRecoverySuggestion.explainWhy) && jobRecoverySuggestion.explainWhy.length > 0 ? (
+                                <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                                  <div className="font-semibold uppercase tracking-wide text-slate-700">
+                                    Why this is the right next step
+                                  </div>
+                                  <ul className="mt-2 space-y-1">
+                                    {jobRecoverySuggestion.explainWhy.slice(0, 3).map((item: string) => (
+                                      <li key={item}>- {item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                              {Array.isArray(jobRecoverySuggestion.blockers) && jobRecoverySuggestion.blockers.length > 0 ? (
+                                <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                                  <div className="font-semibold uppercase tracking-wide text-amber-700">
+                                    Current blockers
+                                  </div>
+                                  <ul className="mt-2 space-y-1">
+                                    {jobRecoverySuggestion.blockers.slice(0, 3).map((item: string) => (
+                                      <li key={item}>- {item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                              {Array.isArray(jobRecoverySuggestion.recommendedActions) && jobRecoverySuggestion.recommendedActions.length > 0 ? (
+                                <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                                  <div className="font-semibold uppercase tracking-wide text-blue-700">
+                                    Recommended next actions
+                                  </div>
+                                  <ul className="mt-2 space-y-1">
+                                    {jobRecoverySuggestion.recommendedActions.slice(0, 3).map((item: string) => (
+                                      <li key={item}>- {item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                     {isJobReadyToSubmitForManagerReview(job) ? (
                       <div className="mt-2">
                         <Button
@@ -6115,9 +6272,9 @@ export default function VendorJobs() {
                         </p>
                         <div className="mt-3 space-y-2">
                           {([
-                            { key: 'INTRO' as const, label: 'Before Service', actionLabel: 'Play Before Video' },
-                            { key: 'IN_PROGRESS' as const, label: 'During Service', actionLabel: 'Play During Video' },
-                            { key: 'COMPLETED' as const, label: 'Completed Service', actionLabel: 'Play Completed Video' },
+                            { key: 'INTRO' as const, label: 'Starting Condition', actionLabel: 'Play Starting Condition Video' },
+                            { key: 'IN_PROGRESS' as const, label: 'Work in Progress', actionLabel: 'Play Work in Progress Video' },
+                            { key: 'COMPLETED' as const, label: 'Final Result', actionLabel: 'Play Final Result Video' },
                           ]).map((stage) => {
                             const stageVideo = getStageVideoForJob(job, stage.key);
                             const stagePresent = jobHasVideoForStage(job, stage.key);

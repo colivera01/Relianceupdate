@@ -147,6 +147,118 @@ describe("GET /api/admin/account-lookup", () => {
     ]);
   });
 
+  it("supports customer browse mode with verification-state filtering", async () => {
+    hoisted.userFindMany.mockResolvedValue([
+      {
+        id: "user-2",
+        name: "Casey Customer",
+        email: "casey@example.com",
+        phone: "555-0202",
+        city: "Orlando",
+        state: "FL",
+        zipCode: "32819",
+        demo: false,
+        accountStatus: "active",
+        accountStatusUpdatedAt: null,
+        accountStatusReason: null,
+        accountStatusAdminNotes: null,
+        createdAt: new Date("2026-05-10T00:00:00.000Z"),
+        authCredential: {
+          emailVerifiedAt: null,
+        },
+      },
+    ]);
+
+    const res = await GET(
+      new Request(
+        "http://localhost/api/admin/account-lookup?mode=browse&targetType=user&accountStatus=pending_verification&sort=newest"
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(hoisted.userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.any(Array),
+        }),
+      })
+    );
+    const json = await readJson(res);
+    expect(json.results).toEqual([
+      expect.objectContaining({
+        targetType: "user",
+        displayName: "Casey Customer",
+        emailVerifiedAt: null,
+        city: "Orlando",
+        state: "FL",
+      }),
+    ]);
+  });
+
+  it("supports restricted browse mode across users and vendors", async () => {
+    hoisted.userFindMany.mockResolvedValue([
+      {
+        id: "user-3",
+        name: "Restricted Customer",
+        email: "restricted@example.com",
+        phone: null,
+        city: null,
+        state: null,
+        zipCode: null,
+        demo: false,
+        accountStatus: "suspended",
+        accountStatusUpdatedAt: new Date("2026-05-20T00:00:00.000Z"),
+        accountStatusReason: "policy_violation",
+        accountStatusAdminNotes: "Manual hold",
+        createdAt: new Date("2026-04-10T00:00:00.000Z"),
+        authCredential: {
+          emailVerifiedAt: new Date("2026-04-11T00:00:00.000Z"),
+        },
+      },
+    ]);
+    hoisted.vendorFindMany.mockResolvedValue([
+      {
+        id: "vendor-3",
+        name: "Owner Name",
+        businessName: "Pending Vendor",
+        email: "pending@example.com",
+        phone: "555-0333",
+        city: "Winter Park",
+        state: "FL",
+        zipCode: "32789",
+        serviceAreas: "Winter Park, Orlando",
+        demo: false,
+        accountStatus: "pending_approval",
+        accountStatusUpdatedAt: new Date("2026-05-21T00:00:00.000Z"),
+        accountStatusReason: "policy_violation",
+        accountStatusAdminNotes: "Need admin review",
+        isPubliclyListed: false,
+        createdAt: new Date("2026-04-11T00:00:00.000Z"),
+      },
+    ]);
+
+    const res = await GET(
+      new Request(
+        "http://localhost/api/admin/account-lookup?mode=browse&targetType=all&accountStatus=restricted&sort=alpha_asc"
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(hoisted.userFindMany).toHaveBeenCalled();
+    expect(hoisted.vendorFindMany).toHaveBeenCalled();
+    const json = await readJson(res);
+    expect(json.results).toEqual([
+      expect.objectContaining({
+        targetType: "user",
+        accountStatus: "suspended",
+      }),
+      expect.objectContaining({
+        targetType: "vendor",
+        accountStatus: "pending_approval",
+      }),
+    ]);
+  });
+
   it("returns 503 when the database is temporarily unavailable", async () => {
     hoisted.userFindMany.mockRejectedValue(new Error("Can't reach database server at demo"));
     hoisted.vendorFindMany.mockResolvedValue([]);

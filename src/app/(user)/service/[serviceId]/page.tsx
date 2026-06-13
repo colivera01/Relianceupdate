@@ -647,7 +647,7 @@ function ServiceDetailPageContent() {
                         <div className="space-y-1">
                           <p className="text-sm font-semibold text-slate-900">Service media</p>
                           <p className="text-sm text-slate-700">
-                            Browse one gallery for service photos and approved service videos below. The featured completed-service clip stays highlighted here, and the remaining videos appear from newest to oldest in the Videos tab.
+                            Browse one gallery for service photos and approved service videos below. The featured final-result clip stays highlighted here, and the remaining videos appear from newest to oldest in the Videos tab.
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2 text-xs font-medium">
@@ -666,11 +666,11 @@ function ServiceDetailPageContent() {
                           ) : null}
                           {hasPrimaryProofVideo ? (
                             <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-900 shadow-sm">
-                              Featured completed-service video
+                              Featured final-result video
                             </span>
                           ) : (
                             <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-900 shadow-sm">
-                              Featured completed-service video coming soon
+                              Featured final-result video coming soon
                             </span>
                           )}
                         </div>
@@ -899,11 +899,11 @@ function ServiceDetailPageContent() {
                     <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
                       {hasPrimaryProofVideo ? (
                         <p className="text-emerald-900">
-                          Featured completed-service video stays highlighted first. Remaining approved service videos are ordered from newest to oldest.
+                          Featured final-result video stays highlighted first. Remaining approved service videos are ordered from newest to oldest.
                         </p>
                       ) : (
                         <p className="text-amber-900">
-                          No featured completed-service video is available yet. Approved service videos still appear below in gallery order.
+                          No featured final-result video is available yet. Approved service videos still appear below in gallery order.
                         </p>
                       )}
                     </div>
@@ -946,7 +946,7 @@ function ServiceDetailPageContent() {
                     </div>
                     {serviceVideoCount > 0 ? (
                       <p className="mb-4 text-sm text-slate-600">
-                        Service videos are labeled by stage so customers can quickly tell whether they are watching the before-service, during-service, or completed-service portion of the job.
+                        Service videos are labeled by stage so customers can quickly tell whether they are watching the starting condition, work in progress, or final result portion of the job.
                       </p>
                     ) : null}
                     
@@ -981,7 +981,7 @@ function ServiceDetailPageContent() {
                           <div className="space-y-1 px-3 py-3">
                             <p className="text-sm font-semibold text-slate-900">
                               {video.isPrimaryProofVideo
-                                ? 'Featured completed-service video'
+                                ? 'Featured final-result video'
                                 : (video.stageLabel || 'Service Video')}
                             </p>
                             {formatMediaTimestamp(video.createdAt) ? (

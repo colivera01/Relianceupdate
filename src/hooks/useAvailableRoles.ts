@@ -102,7 +102,12 @@ export function useAvailableRoles(currentRole: AppRole) {
       const shouldProbeCustomer =
         !sessionRoles.has('customer') &&
         Boolean(userId) &&
-        (!hasExplicitSessionRoles || isRegisteredAdminIdentity);
+        (
+          currentRole === 'vendor' ||
+          currentRole === 'admin' ||
+          !hasExplicitSessionRoles ||
+          isRegisteredAdminIdentity
+        );
 
       if (shouldProbeCustomer) {
         try {
@@ -125,7 +130,12 @@ export function useAvailableRoles(currentRole: AppRole) {
       const shouldProbeVendor =
         !sessionRoles.has('vendor') &&
         Boolean(userId) &&
-        (!hasExplicitSessionRoles || isRegisteredAdminIdentity);
+        (
+          currentRole === 'customer' ||
+          currentRole === 'admin' ||
+          !hasExplicitSessionRoles ||
+          isRegisteredAdminIdentity
+        );
 
       if (shouldProbeVendor) {
         try {

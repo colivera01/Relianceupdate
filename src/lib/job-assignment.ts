@@ -1,6 +1,8 @@
 export type AssignmentMetadata = {
   assignedMembershipIds: string[];
   assignedEmployees: string[];
+  primaryMembershipId: string | null;
+  primaryEmployeeName: string | null;
 };
 
 export function parseCustomerMetadata(value: string | null | undefined): Record<string, unknown> {
@@ -27,7 +29,15 @@ export function parseAssignmentMetadata(value: string | null | undefined): Assig
         .map((name) => String(name || "").trim())
         .filter(Boolean)
     : [];
-  return { assignedMembershipIds, assignedEmployees };
+  const primaryMembershipId =
+    String(parsed.vendor_job_primary_membership_id || "").trim() ||
+    assignedMembershipIds[0] ||
+    null;
+  const primaryEmployeeName =
+    String(parsed.vendor_job_primary_employee || "").trim() ||
+    assignedEmployees[0] ||
+    null;
+  return { assignedMembershipIds, assignedEmployees, primaryMembershipId, primaryEmployeeName };
 }
 
 export function setStageProgressMetadata(

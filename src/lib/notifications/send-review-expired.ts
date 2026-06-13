@@ -10,6 +10,7 @@ export type ReviewExpiredInput = {
   customerEmail?: string | null;
   customerPhone?: string | null;
   customerName?: string | null;
+  vendorName?: string | null;
 };
 
 export type ChannelDelivery = {
@@ -46,15 +47,19 @@ export async function sendReviewExpiredNotification(input: ReviewExpiredInput): 
   const path = reviewsPath(input.bookingId);
   const absoluteFallbackLink = buildAbsoluteUrl(env.appBaseUrl, path);
   const channels: ChannelDelivery[] = [];
+  const vendorName = String(input.vendorName || '').trim();
+  const hasVendorName = Boolean(vendorName);
 
-  const subject = 'Your feedback window has closed';
+  const subject = hasVendorName ? `Your feedback window for ${vendorName} has closed` : 'Your feedback window has closed';
   const html = `
     <p>Hello${input.customerName ? ` ${escapeHtml(String(input.customerName))}` : ''},</p>
-    <p>Your feedback window for this service has ended without a submitted review.</p>
+    <p>Your feedback window${hasVendorName ? ` for ${escapeHtml(vendorName)}` : ''} has ended without a submitted review.</p>
     <p>If you still need help, open My Services in Reliance or contact support from the app.</p>
     <p><a href="${escapeHtml(absoluteFallbackLink)}">Open My Services</a></p>
   `.trim();
-  const text = `Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink}`;
+  const text = hasVendorName
+    ? `${vendorName} via Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink}`
+    : `Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink}`;
 
   const email = (input.customerEmail || '').trim();
   if (env.emailEnabled && email) {
@@ -86,7 +91,9 @@ export async function sendReviewExpiredNotification(input: ReviewExpiredInput): 
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink}`;
+    const body = hasVendorName
+      ? `${vendorName} via Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink} Reply STOP to opt out.`
+      : `Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

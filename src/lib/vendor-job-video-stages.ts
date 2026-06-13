@@ -3,10 +3,22 @@ export const VENDOR_JOB_VIDEO_STAGES = ["INTRO", "IN_PROGRESS", "COMPLETED"] as 
 export type VendorJobVideoStage = (typeof VENDOR_JOB_VIDEO_STAGES)[number];
 
 export const VENDOR_JOB_VIDEO_STAGE_LABELS: Record<VendorJobVideoStage, string> = {
-  INTRO: "Before Service",
-  IN_PROGRESS: "During Service",
-  COMPLETED: "Completed Service",
+  INTRO: "Starting Condition",
+  IN_PROGRESS: "Work in Progress",
+  COMPLETED: "Final Result",
 };
+
+export type CustomerProofStage = "before" | "during" | "after";
+
+export const CUSTOMER_PROOF_STAGE_LABELS: Record<CustomerProofStage, string> = {
+  before: VENDOR_JOB_VIDEO_STAGE_LABELS.INTRO,
+  during: VENDOR_JOB_VIDEO_STAGE_LABELS.IN_PROGRESS,
+  after: VENDOR_JOB_VIDEO_STAGE_LABELS.COMPLETED,
+};
+
+export function getCustomerProofStageLabel(stage: CustomerProofStage | null | undefined): string {
+  return stage ? CUSTOMER_PROOF_STAGE_LABELS[stage] ?? "Service Video" : "Service Video";
+}
 
 export function isVendorJobVideoStage(value: string | null | undefined): value is VendorJobVideoStage {
   return Boolean(value && (VENDOR_JOB_VIDEO_STAGES as readonly string[]).includes(String(value).trim().toUpperCase()));

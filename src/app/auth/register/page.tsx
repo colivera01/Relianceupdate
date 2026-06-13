@@ -933,6 +933,10 @@ function RegisterPageInner() {
     userType === 'vendor'
       ? 'Create your vendor account and launch your dashboard.'
       : entryDescription || 'Create your account and start your journey';
+  const vendorPanelClass = 'rounded-xl border border-white/12 bg-white/5 p-4';
+  const vendorSubpanelClass =
+    'rounded-xl border border-white/10 bg-slate-950/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]';
+  const vendorFieldClass = 'border-white/12 bg-slate-900/90 text-white placeholder:text-white/40';
 
   // City autocomplete states
   const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
@@ -1898,12 +1902,14 @@ function RegisterPageInner() {
                         
                         {/* City suggestions dropdown */}
                         {showCitySuggestions && citySuggestions.length > 0 && (
-                          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                          <div className="absolute z-[120] mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-slate-700 bg-[#081120] shadow-[0_24px_70px_rgba(2,8,23,0.78)] ring-1 ring-black/30">
                             {citySuggestions.map((city, index) => (
                               <div
                                 key={city}
-                                className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${
-                                  index === selectedCityIndex ? 'bg-blue-100' : ''
+                                className={`cursor-pointer border-b border-white/6 px-3 py-2 text-sm font-medium text-slate-100 transition-colors last:border-b-0 ${
+                                  index === selectedCityIndex
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-transparent hover:bg-slate-800 hover:text-white'
                                 }`}
                                 onClick={() => selectCity(city)}
                                 onMouseEnter={() => setSelectedCityIndex(index)}
@@ -1925,7 +1931,7 @@ function RegisterPageInner() {
                             Please select a state first
                           </p>
                         )}
-                        {formData.state && (
+                        {formData.state && !showCitySuggestions && (
                           <p className="text-xs text-gray-500 mt-1">
                             Type to search cities in {formData.state}
                           </p>
@@ -1986,12 +1992,17 @@ function RegisterPageInner() {
                         value={formData.bio}
                         onChange={(e) => handleInputChange('bio', e.target.value)}
                         rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className={`w-full rounded-md border px-3 py-2 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 ${vendorFieldClass}`}
                         placeholder={userType === 'user' ? 
                           "Tell us about yourself and what services you're looking for..." : 
                           "Tell customers about your business, experience, and what makes you unique..."
                         }
                       />
+                      {userType === 'user' && (
+                        <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">
+                          Customer photo upload is not part of signup yet. Reliance uses initials for customer profiles until customer photo controls are added.
+                        </div>
+                      )}
                     </div>
                     
                     <div>
@@ -2119,62 +2130,11 @@ function RegisterPageInner() {
                       )}
                     </div>
 
-                    {/* Profile Photo Upload */}
-                    <div>
-                      <Label htmlFor="profilePhoto">Business Profile Photo</Label>
-                      <div className="mt-2">
-                        <div className="flex items-center space-x-4">
-                          <div className="relative">
-                            {formData.profilePhoto ? (
-                              <img 
-                                src={formData.profilePhoto} 
-                                alt="Profile preview" 
-                                className="w-20 h-20 rounded-lg object-cover border-2 border-gray-200"
-                              />
-                            ) : (
-                              <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50">
-                                <User className="w-8 h-8 text-gray-400" />
-                              </div>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => document.getElementById('profilePhotoInput')?.click()}
-                              className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 transition-colors"
-                            >
-                              <User className="w-4 h-4" />
-                            </button>
-                          </div>
-                          <div className="flex-1">
-                            <input
-                              id="profilePhotoInput"
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const reader = new FileReader();
-                                  reader.onload = (e) => {
-                                    handleInputChange('profilePhoto', e.target?.result as string);
-                                  };
-                                  reader.readAsDataURL(file);
-                                }
-                              }}
-                              className="hidden"
-                            />
-                            <p className="text-sm text-gray-600 mb-2">
-                              Upload a professional photo of your business, team, or workspace
-                            </p>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => document.getElementById('profilePhotoInput')?.click()}
-                            >
-                              Choose Photo
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                      <p className="font-medium">Business photo upload happens after sign-in</p>
+                      <p className="mt-1 leading-6 text-blue-800">
+                        Finish creating the vendor account first. Once you can access the vendor profile page, Reliance gives you the real business-photo upload control there.
+                      </p>
                     </div>
                     
                     <div className="grid grid-cols-2 gap-4">
@@ -2265,13 +2225,13 @@ function RegisterPageInner() {
                       </div>
                     </div>
 
-                    {/* Service Types */}
+                    {/* Starter service menu */}
                     <div>
-                      <Label>Service Types Offered</Label>
+                      <Label>Starter Services for Your Menu</Label>
                       <p className="text-sm text-gray-600 mb-3">
-                        {formData.category ? 
-                          `Select all the services your ${formData.category.toLowerCase()} business provides` : 
-                          'Select your primary service category first to see relevant service types'
+                        {formData.category ?
+                          `Choose common services for ${formData.category}. You can refine these service menu items after registration before customers book.` :
+                          'Select your primary service category first to see common starter services'
                         }
                       </p>
                       {formData.category ? (
@@ -2321,20 +2281,20 @@ function RegisterPageInner() {
                         )
                       ) : (
                         <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                          <p className="text-gray-500 text-sm">Please select a service category above to see available service types</p>
+                          <p className="text-gray-500 text-sm">Please select a service category above to see common starter services</p>
                         </div>
                       )}
                       {Array.isArray(formData.serviceTypes) && formData.serviceTypes.length > 0 ? (
-                        <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-                          <p className="text-xs text-slate-600">
-                            Optional: rename selected templates and confirm the service name, estimated duration, starting price, and customer-facing description before saving.
+                        <div className={`mt-3 space-y-3 ${vendorPanelClass}`}>
+                          <p className="text-xs text-white/62">
+                            Optional: rename selected starter services and confirm the service name, estimated duration, starting price, and customer-facing description before saving.
                           </p>
                           {formData.serviceTypes.map((serviceType) => (
-                            <div key={`rename-${serviceType}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                              <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{serviceType}</Label>
+                            <div key={`rename-${serviceType}`} className={vendorSubpanelClass}>
+                              <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">{serviceType}</Label>
                               <div className="mt-3 grid gap-3 md:grid-cols-2">
                                 <div className="space-y-1">
-                                  <Label className="text-xs text-slate-500">Service Name</Label>
+                                  <Label className="text-xs text-white/46">Service Name</Label>
                                   <Input
                                     value={serviceTypeCustomNames[serviceType] || serviceType}
                                     onChange={(e) =>
@@ -2344,10 +2304,11 @@ function RegisterPageInner() {
                                       }))
                                     }
                                     placeholder="Service name"
+                                    className={vendorFieldClass}
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs text-slate-500">Estimated Duration (minutes)</Label>
+                                  <Label className="text-xs text-white/46">Estimated Duration (minutes)</Label>
                                   <Input
                                     type="number"
                                     min="1"
@@ -2362,10 +2323,11 @@ function RegisterPageInner() {
                                       }))
                                     }
                                     placeholder="Estimated duration"
+                                    className={vendorFieldClass}
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs text-slate-500">Starting Price (optional)</Label>
+                                  <Label className="text-xs text-white/46">Starting Price (optional)</Label>
                                   <Input
                                     type="number"
                                     min="0"
@@ -2381,10 +2343,11 @@ function RegisterPageInner() {
                                       }))
                                     }
                                     placeholder="Starting price"
+                                    className={vendorFieldClass}
                                   />
                                 </div>
                                 <div className="space-y-1 md:col-span-2">
-                                  <Label className="text-xs text-slate-500">Customer-Facing Description</Label>
+                                  <Label className="text-xs text-white/46">Customer-Facing Description</Label>
                                   <textarea
                                     value={serviceTypeDetails[serviceType]?.description || ''}
                                     onChange={(e) =>
@@ -2398,7 +2361,7 @@ function RegisterPageInner() {
                                     }
                                     rows={3}
                                     placeholder="Describe what the customer can expect from this service."
-                                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${vendorFieldClass}`}
                                   />
                                 </div>
                               </div>
@@ -2406,9 +2369,9 @@ function RegisterPageInner() {
                           ))}
                         </div>
                       ) : null}
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                      <div className={`mt-3 ${vendorPanelClass}`}>
                         <div className="mb-2 flex items-center justify-between">
-                          <Label className="text-sm font-medium">Custom Services</Label>
+                          <Label className="text-sm font-medium text-white/88">Custom Services</Label>
                           <Button
                             type="button"
                             variant="outline"
@@ -2429,14 +2392,14 @@ function RegisterPageInner() {
                           </Button>
                         </div>
                         {customServices.length === 0 ? (
-                          <p className="text-xs text-gray-500">Add services not covered by templates.</p>
+                          <p className="text-xs text-white/48">Add services not covered by templates.</p>
                         ) : (
                           <div className="space-y-3">
                             {customServices.map((service) => (
-                              <div key={service.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                              <div key={service.id} className={vendorSubpanelClass}>
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                   <div className="space-y-1">
-                                    <Label className="text-xs text-slate-500">Service Name</Label>
+                                    <Label className="text-xs text-white/46">Service Name</Label>
                                     <Input
                                       placeholder="Service name *"
                                       value={service.name}
@@ -2447,10 +2410,11 @@ function RegisterPageInner() {
                                           )
                                         )
                                       }
+                                      className={vendorFieldClass}
                                     />
                                   </div>
                                   <div className="space-y-1">
-                                    <Label className="text-xs text-slate-500">Estimated Duration (minutes)</Label>
+                                    <Label className="text-xs text-white/46">Estimated Duration (minutes)</Label>
                                     <Input
                                       type="number"
                                       min="1"
@@ -2465,10 +2429,11 @@ function RegisterPageInner() {
                                           )
                                         )
                                       }
+                                      className={vendorFieldClass}
                                     />
                                   </div>
                                   <div className="space-y-1">
-                                    <Label className="text-xs text-slate-500">Starting Price (optional)</Label>
+                                    <Label className="text-xs text-white/46">Starting Price (optional)</Label>
                                     <Input
                                       type="number"
                                       min="0"
@@ -2482,10 +2447,11 @@ function RegisterPageInner() {
                                           )
                                         )
                                       }
+                                      className={vendorFieldClass}
                                     />
                                   </div>
                                   <div className="space-y-1 md:col-span-2">
-                                    <Label className="text-xs text-slate-500">Customer-Facing Description</Label>
+                                    <Label className="text-xs text-white/46">Customer-Facing Description</Label>
                                     <textarea
                                       placeholder="Describe what the customer can expect from this service."
                                       value={service.description}
@@ -2499,13 +2465,13 @@ function RegisterPageInner() {
                                           )
                                         )
                                       }
-                                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${vendorFieldClass}`}
                                     />
                                   </div>
                                 </div>
                                 <button
                                   type="button"
-                                  className="mt-2 text-xs text-red-600"
+                                  className="mt-2 text-xs text-red-300 hover:text-red-200"
                                   onClick={() =>
                                     setCustomServices((prev) => prev.filter((item) => item.id !== service.id))
                                   }
@@ -2686,7 +2652,7 @@ function RegisterPageInner() {
                         id="businessBio"
                         value={formData.businessBio}
                         onChange={(e) => handleInputChange('businessBio', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className={`w-full rounded-md border px-3 py-2 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${vendorFieldClass}`}
                         rows={4}
                         placeholder="Describe your business, services, and what makes you unique..."
                         required
@@ -2770,51 +2736,21 @@ function RegisterPageInner() {
                       </div>
 
                       {/* Availability Section */}
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                        <Label>Service Availability</Label>
-                        <p className="mb-3 text-sm text-amber-900">Select when you're generally available to provide services.</p>
-                        <div className="mb-4 rounded-lg border border-amber-300 bg-white/80 p-3 text-sm text-amber-900">
-                          Reliance currently records service days, emergency coverage, and 24/7 availability here. Real daily operating hours need additional schema, API, and booking-model support before they can be added safely.
+                      <div className={vendorPanelClass}>
+                        <Label className="text-white/88">Service Availability</Label>
+                        <p className="mb-3 text-sm text-white/72">
+                          Weekly operating days and daily open/close hours are not part of the live vendor registration save model yet.
+                        </p>
+                        <div className="mb-4 rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+                          Why you cannot set open and close times here yet: Reliance does not currently persist or enforce a real weekly-hours schedule across vendor onboarding, public booking availability, and service matching. We avoid showing fake hours controls until that schema, API, and booking logic are live.
                         </div>
-                        
-                        {/* Days of the Week */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                          {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
-                            <div key={day} className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                id={`available-${day.toLowerCase()}`}
-                                className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
-                              <label htmlFor={`available-${day.toLowerCase()}`} className="text-sm text-gray-700">
-                                {day}
-                              </label>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Emergency Service */}
-                        <div className="flex items-center space-x-3 mb-4">
-                          <input
-                            type="checkbox"
-                            id="emergencyService"
-                            className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <label htmlFor="emergencyService" className="text-sm text-gray-700">
-                            I offer emergency services outside regular hours
-                          </label>
-                        </div>
-
-                        {/* 24/7 Service */}
-                        <div className="flex items-center space-x-3">
-                          <input
-                            type="checkbox"
-                            id="twentyFourSeven"
-                            className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <label htmlFor="twentyFourSeven" className="text-sm text-gray-700">
-                            I offer 24/7 service availability
-                          </label>
+                        <div className="rounded-lg border border-white/10 bg-slate-950/60 p-3 text-sm text-white/70">
+                          <p className="font-medium text-white/88">Current beta behavior</p>
+                          <ul className="mt-2 list-disc space-y-1 pl-5">
+                            <li>Weekly day selection is not saved in this registration flow yet.</li>
+                            <li>Daily open and close times are not available yet.</li>
+                            <li>For now, use your business description to mention typical availability if customers should know it.</li>
+                          </ul>
                         </div>
                       </div>
                     </div>

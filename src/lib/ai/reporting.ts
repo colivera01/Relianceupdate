@@ -106,6 +106,20 @@ export function formatAiFeatureLabel(feature: string): string {
       return "Trust Score Explanations";
     case "vendor_coaching":
       return "Vendor Coaching";
+    case "vendor_approval_assistant":
+      return "Vendor Approval Assistant";
+    case "review_moderation_assistant":
+      return "Review Moderation Assistant";
+    case "publish_readiness_assistant":
+      return "Publish Readiness Assistant";
+    case "promotions_assistant":
+      return "Promotions Assistant";
+    case "vendor_copy_assistant":
+      return "Vendor Copy Assistant";
+    case "job_recovery_assistant":
+      return "Job Recovery Assistant";
+    case "support_inbox_triage":
+      return "Support Inbox Triage";
     default:
       return "Unknown Feature";
   }

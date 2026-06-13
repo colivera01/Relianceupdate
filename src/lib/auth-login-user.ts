@@ -27,6 +27,7 @@ export async function buildAuthLoginUserPayload(params: {
       name: true,
       email: true,
       phone: true,
+      profilePhoto: true,
     },
   });
 
@@ -73,6 +74,7 @@ export async function buildAuthLoginUserPayload(params: {
     availableProfiles,
     emailVerified: Boolean(params.emailVerifiedAt),
     emailVerifiedAt: params.emailVerifiedAt?.toISOString?.() ?? null,
-    avatar: sanitizeCustomerFacingAvatar(params.avatar) || undefined,
+    avatar:
+      sanitizeCustomerFacingAvatar(params.avatar || dbUser?.profilePhoto) || undefined,
   };
 }

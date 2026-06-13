@@ -93,6 +93,11 @@ describe("sendDevicePairingInvite", () => {
     expect(result.anySuccess).toBe(false);
     expect(result.email.errorMessage).toBe("email_failed");
     expect(result.sms.errorMessage).toBe("sms_failed");
+    expect(hoisted.sendSms.mock.calls[0][0]).toMatchObject({
+      to: "+14075550199",
+    });
+    expect(hoisted.sendSms.mock.calls[0][0].body).toContain("Metro Home Care Pros via Reliance");
+    expect(hoisted.sendSms.mock.calls[0][0].body).toContain("Reply STOP to opt out");
     expect(result.summaryMessage).toContain("link and backup code");
   });
 

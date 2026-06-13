@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Star,
   Store,
+  Users,
 } from "lucide-react";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { getAdminRequestHeaders } from "@/lib/admin-client";
@@ -42,13 +43,22 @@ type DashboardMetric = {
   title: string;
   value: number | null;
   helper: string;
+  href?: string;
+  cta?: string;
 };
 
 const quickLinks: AdminQuickLink[] = [
   {
-    href: "/admin/vendors",
-    label: "Vendor Management",
-    description: "Approve vendors and manage business profiles.",
+    href: "/admin/accounts",
+    label: "All Accounts",
+    description: "Open one unified roster for customers, vendors, and suspended or restricted accounts.",
+    icon: Users,
+    accentClass: "bg-[rgba(53,214,165,0.16)] text-[var(--reliance-emerald)]",
+  },
+  {
+    href: "/admin/accounts?tab=vendors",
+    label: "Vendor Accounts",
+    description: "Jump directly into the vendor roster, approval holds, and account-state controls.",
     icon: Store,
     accentClass: "bg-[rgba(36,107,255,0.16)] text-[var(--reliance-blue-soft)]",
   },
@@ -188,6 +198,8 @@ export default function AdminDashboardPage() {
     {
       title: "Countable Customers",
       value: stats?.totalUsers ?? null,
+      href: "/admin/accounts?tab=customers",
+      cta: "Open customer tab",
       helper: loading
         ? "Loading launch-facing customer count."
         : error
@@ -197,6 +209,8 @@ export default function AdminDashboardPage() {
     {
       title: "Countable Vendors",
       value: stats?.totalVendors ?? null,
+      href: "/admin/accounts?tab=vendors&status=all",
+      cta: "Open vendor tab",
       helper: loading
         ? "Loading launch-facing vendor count."
         : error
@@ -206,6 +220,8 @@ export default function AdminDashboardPage() {
     {
       title: "Countable Reviews",
       value: stats?.totalReviews ?? null,
+      href: "/admin/reviews",
+      cta: "Open review moderation",
       helper: loading
         ? "Loading launch-facing review count."
         : error
@@ -215,6 +231,8 @@ export default function AdminDashboardPage() {
     {
       title: "Pending Moderation",
       value: stats?.pendingModeration ?? null,
+      href: "/admin/media-moderation",
+      cta: "Open moderation queues",
       helper: loading
         ? "Loading pending moderation workload."
         : error
@@ -272,23 +290,35 @@ export default function AdminDashboardPage() {
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
       >
         {metrics.map((metric) => (
-          <Card key={metric.title} className="bg-white">
-            <CardHeader>
-              <CardTitle className="text-sm font-medium text-gray-700">
-                {metric.title}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div
-                className={`text-3xl font-bold leading-none ${
-                  metric.value === null ? "text-gray-300" : "text-slate-950"
-                }`}
-              >
-                {formatMetric(metric.value)}
-              </div>
-              <div className="mt-2 text-xs text-gray-500">{metric.helper}</div>
-            </CardContent>
-          </Card>
+          <Link
+            key={metric.title}
+            href={metric.href || "#"}
+            className={metric.href ? "group block" : "pointer-events-none block"}
+          >
+            <Card className="bg-white transition-all group-hover:-translate-y-0.5 group-hover:border-[var(--reliance-blue)] group-hover:shadow-md">
+              <CardHeader>
+                <CardTitle className="text-sm font-medium text-gray-700">
+                  {metric.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-3xl font-bold leading-none ${
+                    metric.value === null ? "text-gray-300" : "text-slate-950"
+                  }`}
+                >
+                  {formatMetric(metric.value)}
+                </div>
+                <div className="mt-2 text-xs text-gray-500">{metric.helper}</div>
+                {metric.cta ? (
+                  <div className="mt-4 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-[var(--reliance-blue-soft)]">
+                    {metric.cta}
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </section>
 

@@ -48,9 +48,9 @@ type SessionDetails = {
 };
 
 const STAGE_ORDER = [
-  { key: "INTRO", label: "Intro (Before Service)", cue: "Show the area or condition before work begins." },
-  { key: "IN_PROGRESS", label: "In Progress", cue: "Show active progress or work being performed." },
-  { key: "COMPLETED", label: "Completed (Primary Video)", cue: "Show the final result clearly." },
+  { key: "INTRO", label: "Stage 1 (Starting Condition)", cue: "Show the starting condition before work begins." },
+  { key: "IN_PROGRESS", label: "Stage 2 (Work in Progress)", cue: "Show active progress while the service is underway." },
+  { key: "COMPLETED", label: "Stage 3 (Final Result)", cue: "Show the final result clearly." },
 ] as const;
 
 function normalizeStatus(value: string | null | undefined) {

@@ -1,5 +1,5 @@
 ﻿'use client';
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientAuthHeaders } from '@/lib/client-session';
@@ -20,6 +20,8 @@ import {
   Edit,
   Save,
   X,
+  Camera,
+  Trash2,
 } from 'lucide-react';
 
 type CustomerProfile = {
@@ -27,6 +29,7 @@ type CustomerProfile = {
   lastName: string;
   email: string;
   phone: string;
+  profilePhoto: string;
   address: string;
   city: string;
   state: string;
@@ -43,6 +46,7 @@ const emptyProfile: CustomerProfile = {
   lastName: '',
   email: '',
   phone: '',
+  profilePhoto: '',
   address: '',
   city: '',
   state: '',
@@ -62,6 +66,7 @@ function normalizeProfile(rawProfile: any): CustomerProfile {
     lastName: String(rawProfile?.lastName || ''),
     email: String(rawProfile?.email || ''),
     phone: String(rawProfile?.phone || ''),
+    profilePhoto: String(rawProfile?.profilePhoto || rawProfile?.avatar || ''),
     address: String(rawProfile?.address || ''),
     city: String(rawProfile?.city || ''),
     state: String(rawProfile?.state || ''),
@@ -78,6 +83,10 @@ function mergeProfile(base: CustomerProfile, candidate: Partial<CustomerProfile>
     const key = rawKey as keyof CustomerProfile;
     if (typeof rawValue !== 'string') continue;
     const trimmedValue = rawValue.trim();
+    if (key === 'profilePhoto') {
+      next[key] = rawValue as CustomerProfile[typeof key];
+      continue;
+    }
     if (!trimmedValue) continue;
     if (key === 'memberSince' && trimmedValue === 'Not available') continue;
     next[key] = rawValue as CustomerProfile[typeof key];
@@ -133,17 +142,21 @@ export default function ProfileSettingsPage() {
   const router = useRouter();
   const { user: authUser, isAuthenticated, isLoading: authLoading, updateUser } = useAuth();
   const sessionHeaders = useMemo(() => getClientAuthHeaders(), []);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [removingPhoto, setRemovingPhoto] = useState(false);
   const [feedback, setFeedback] = useState<SaveFeedback | null>(null);
 
   const [userProfile, setUserProfile] = useState<CustomerProfile>(emptyProfile);
 
   const [tempProfile, setTempProfile] = useState(userProfile);
   const customerInitials = useMemo(() => profileInitials(tempProfile), [tempProfile]);
+  const customerPhotoUrl = tempProfile.profilePhoto || userProfile.profilePhoto || '';
 
   // Fetch user profile data on component mount
   useEffect(() => {
@@ -224,11 +237,14 @@ export default function ProfileSettingsPage() {
     }
   };
 
-  const updateLocalUserData = (profile: CustomerProfile, nextLocationEnabled: boolean) => {
+  const updateLocalUserData = (
+    profile: CustomerProfile,
+    nextLocationEnabled: boolean,
+    nextPhotoUrl?: string | null
+  ) => {
     const localUserData = localStorage.getItem('userData');
-    if (!localUserData) return;
-
-    const parsed = JSON.parse(localUserData);
+    const parsed = localUserData ? JSON.parse(localUserData) : {};
+    const resolvedPhotoUrl = typeof nextPhotoUrl === 'string' ? nextPhotoUrl : profile.profilePhoto;
     const updatedUserData = {
       ...parsed,
       name: [profile.firstName, profile.lastName].filter(Boolean).join(' '),
@@ -236,6 +252,8 @@ export default function ProfileSettingsPage() {
       lastName: profile.lastName,
       email: profile.email,
       phone: profile.phone,
+      profilePhoto: resolvedPhotoUrl || null,
+      avatar: resolvedPhotoUrl || null,
       address: profile.address,
       city: profile.city,
       state: profile.state,
@@ -284,11 +302,12 @@ export default function ProfileSettingsPage() {
       const savedProfile = await saveProfileToApi(tempProfile, locationEnabled);
       setUserProfile(savedProfile);
       setTempProfile(savedProfile);
-      updateLocalUserData(savedProfile, locationEnabled);
+      updateLocalUserData(savedProfile, locationEnabled, savedProfile.profilePhoto);
       updateUser({
         name: [savedProfile.firstName, savedProfile.lastName].filter(Boolean).join(' '),
         email: savedProfile.email,
         phone: savedProfile.phone,
+        avatar: savedProfile.profilePhoto || undefined,
       });
       setIsEditing(false);
       setFeedback({
@@ -328,7 +347,7 @@ export default function ProfileSettingsPage() {
       setUserProfile(savedProfile);
       setTempProfile(savedProfile);
       setLocationEnabled(nextLocationEnabled);
-      updateLocalUserData(savedProfile, nextLocationEnabled);
+      updateLocalUserData(savedProfile, nextLocationEnabled, savedProfile.profilePhoto);
       setFeedback({
         type: 'success',
         title: 'Location preference updated',
@@ -345,6 +364,116 @@ export default function ProfileSettingsPage() {
       });
     } finally {
       setSavingLocation(false);
+    }
+  };
+
+  const handlePhotoSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingPhoto(true);
+    setFeedback(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/customer/profile/photo', {
+        method: 'POST',
+        headers: {
+          ...sessionHeaders,
+        },
+        body: formData,
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          String(payload?.error || payload?.message || `Photo upload failed with status ${response.status}`)
+        );
+      }
+
+      const nextPhotoUrl = String(payload?.photoUrl || payload?.url || '').trim();
+      if (!nextPhotoUrl) {
+        throw new Error('Profile photo upload completed, but no image URL was returned.');
+      }
+
+      const nextProfile = {
+        ...userProfile,
+        profilePhoto: nextPhotoUrl,
+      };
+
+      setUserProfile(nextProfile);
+      setTempProfile((prev) => ({ ...prev, profilePhoto: nextPhotoUrl }));
+      updateLocalUserData(nextProfile, locationEnabled, nextPhotoUrl);
+      updateUser({ avatar: nextPhotoUrl });
+      setFeedback({
+        type: 'success',
+        title: 'Profile photo updated',
+        message: 'Your customer profile photo is now live across your signed-in account pages.',
+      });
+    } catch (error) {
+      console.error('Customer profile photo upload error:', error);
+      setFeedback({
+        type: 'error',
+        title: 'Photo upload failed',
+        message: error instanceof Error ? error.message : 'Customer profile photo could not be uploaded.',
+      });
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!customerPhotoUrl) return;
+    if (!confirm('Remove your current customer profile photo?')) {
+      return;
+    }
+
+    setRemovingPhoto(true);
+    setFeedback(null);
+
+    try {
+      const response = await fetch('/api/customer/profile/photo', {
+        method: 'DELETE',
+        headers: {
+          ...sessionHeaders,
+        },
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          String(payload?.error || payload?.message || `Photo removal failed with status ${response.status}`)
+        );
+      }
+
+      const nextProfile = {
+        ...userProfile,
+        profilePhoto: '',
+      };
+
+      setUserProfile(nextProfile);
+      setTempProfile((prev) => ({ ...prev, profilePhoto: '' }));
+      updateLocalUserData(nextProfile, locationEnabled, '');
+      updateUser({ avatar: undefined });
+      setFeedback({
+        type: 'success',
+        title: 'Profile photo removed',
+        message: 'Your customer profile photo was removed and your initials are now shown again.',
+      });
+    } catch (error) {
+      console.error('Customer profile photo delete error:', error);
+      setFeedback({
+        type: 'error',
+        title: 'Photo removal failed',
+        message: error instanceof Error ? error.message : 'Customer profile photo could not be removed.',
+      });
+    } finally {
+      setRemovingPhoto(false);
     }
   };
 
@@ -483,7 +612,7 @@ export default function ProfileSettingsPage() {
                     className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:text-blue-700 transition-colors"
                   >
                     <Edit className="w-4 h-4" />
-                    Edit Profile
+                    Edit Profile Details
                   </button>
                 )}
               </div>
@@ -491,11 +620,19 @@ export default function ProfileSettingsPage() {
               <div className="flex items-start gap-6 mb-6">
                 {/* Profile Picture */}
                 <div className="relative">
-                  <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full flex items-center justify-center">
-                    <span className="text-white font-semibold text-2xl">
-                      {(userProfile.firstName[0] || '').toUpperCase()}{(userProfile.lastName[0] || '').toUpperCase()}
-                    </span>
-                  </div>
+                  {customerPhotoUrl ? (
+                    <img
+                      src={customerPhotoUrl}
+                      alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
+                      className="h-24 w-24 rounded-full object-cover ring-2 ring-blue-200"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full flex items-center justify-center">
+                      <span className="text-white font-semibold text-2xl">
+                        {(tempProfile.firstName[0] || '').toUpperCase()}{(tempProfile.lastName[0] || '').toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -739,17 +876,57 @@ export default function ProfileSettingsPage() {
           <div className="space-y-6">
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Image</h2>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoSelected}
+              />
               <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-xl font-bold text-white shadow-sm">
-                  {customerInitials}
-                </div>
+                {customerPhotoUrl ? (
+                  <img
+                    src={customerPhotoUrl}
+                    alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
+                    className="h-16 w-16 rounded-full object-cover shadow-sm ring-2 ring-blue-200"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-xl font-bold text-white shadow-sm">
+                    {customerInitials}
+                  </div>
+                )}
                 <div>
                   <div className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                    Initials only during beta
+                    {customerPhotoUrl ? 'Photo visible on your signed-in account' : 'Initials shown until you upload a photo'}
                   </div>
                   <p className="mt-2 text-sm leading-6 text-gray-600">
-                    Reliance uses your initials for customer profiles right now. Customer photo upload, edit, and remove controls are not live yet, so you will not see a random stock avatar on customer pages.
+                    Upload a customer profile photo here to personalize your signed-in Reliance pages. If you remove it, Reliance falls back to your initials.
                   </p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    Customer photos are managed here after sign-in. They are not part of signup, and Edit Profile Details still only updates your saved contact and address information.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingPhoto || removingPhoto}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                    >
+                      <Camera className="h-4 w-4" />
+                      {uploadingPhoto ? 'Uploading...' : customerPhotoUrl ? 'Change Photo' : 'Upload Photo'}
+                    </button>
+                    {customerPhotoUrl ? (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        disabled={uploadingPhoto || removingPhoto}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {removingPhoto ? 'Removing...' : 'Remove Photo'}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>

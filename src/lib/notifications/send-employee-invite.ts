@@ -117,7 +117,7 @@ export async function sendEmployeeInviteNotification(
   }
 
   if (env.smsEnabled && phone) {
-    const body = `Reliance invite: ${vendorName} invited you to join their team. Accept here: ${input.inviteLink}`;
+    const body = `${vendorName} via Reliance: employee invite to join their team. Accept here: ${input.inviteLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

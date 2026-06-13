@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db";
 import { internalVendorNotClauses } from "@/lib/internal-identities";
+import type { PublishReadinessAiStoredResult } from "@/lib/ai/publish-readiness-review-store";
 
 export type AdminPublishVendor = {
   id: string;
@@ -10,6 +11,7 @@ export type AdminPublishVendor = {
   isPubliclyListed: boolean;
   publiclyListedAt: Date | null;
   createdAt: Date;
+  aiRecommendation?: PublishReadinessAiStoredResult | null;
 };
 
 export type AdminPublishService = {

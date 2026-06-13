@@ -9,24 +9,25 @@ type CustomerTrustSignalCardProps = {
 };
 
 const toneClasses: Record<CustomerTrustScoreCopy["tone"], string> = {
-  muted: "border border-slate-200 bg-slate-50 text-slate-800",
-  calm: "border border-blue-100 bg-blue-50 text-blue-950",
-  balanced: "border border-cyan-100 bg-cyan-50 text-cyan-950",
-  strong: "border border-emerald-100 bg-emerald-50 text-emerald-950",
+  muted: "border border-slate-200 bg-slate-50 text-slate-900",
+  calm: "border border-blue-100 bg-blue-50 text-slate-950",
+  balanced: "border border-sky-100 bg-sky-50 text-slate-950",
+  strong:
+    "border border-blue-400/30 bg-[linear-gradient(160deg,rgba(9,21,43,0.98),rgba(16,40,79,0.96),rgba(23,76,151,0.92))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
 };
 
 const labelClasses: Record<CustomerTrustScoreCopy["tone"], string> = {
   muted: "text-slate-500",
   calm: "text-blue-700",
-  balanced: "text-cyan-700",
-  strong: "text-emerald-700",
+  balanced: "text-sky-700",
+  strong: "text-blue-100/92",
 };
 
 const detailClasses: Record<CustomerTrustScoreCopy["tone"], string> = {
   muted: "text-slate-600",
-  calm: "text-blue-800/80",
-  balanced: "text-cyan-800/80",
-  strong: "text-emerald-800/80",
+  calm: "text-slate-700",
+  balanced: "text-slate-700",
+  strong: "text-blue-100/78",
 };
 
 const headlineClasses: Record<CustomerTrustScoreCopy["emphasis"], string> = {

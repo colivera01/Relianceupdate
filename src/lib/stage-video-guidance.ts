@@ -1,4 +1,7 @@
-import type { VendorJobVideoStage } from "@/lib/vendor-job-video-stages";
+import {
+  VENDOR_JOB_VIDEO_STAGE_LABELS,
+  type VendorJobVideoStage,
+} from "@/lib/vendor-job-video-stages";
 
 export const STAGE_VIDEO_MAX_DURATION_SECONDS = 30;
 
@@ -7,15 +10,15 @@ export const STAGE_VIDEO_GUIDANCE: Record<
   { label: string; cue: string }
 > = {
   INTRO: {
-    label: "Before Service",
-    cue: "Show the area or condition before work begins.",
+    label: VENDOR_JOB_VIDEO_STAGE_LABELS.INTRO,
+    cue: "Show the starting condition before work begins.",
   },
   IN_PROGRESS: {
-    label: "During Service",
-    cue: "Show active progress or work being performed.",
+    label: VENDOR_JOB_VIDEO_STAGE_LABELS.IN_PROGRESS,
+    cue: "Show active progress while the service is underway.",
   },
   COMPLETED: {
-    label: "Completed",
+    label: VENDOR_JOB_VIDEO_STAGE_LABELS.COMPLETED,
     cue: "Show the final result clearly.",
   },
 };

@@ -350,11 +350,11 @@ export default function ReviewsPage() {
               </div>
               <GuidanceCallout
                 title="Why some completed bookings still are not reviewable"
-                description="Reliance opens the review flow only after an approved completed-stage customer-visible service video exists for that booking."
+                description="Reliance opens the review flow only after an approved final-result customer-visible video exists for that booking."
                 bullets={[
                   'Completed work can still be waiting on service-video approval.',
                   'A video can exist without being customer-visible yet.',
-                  'Once the approved completed-stage video is available, this section moves the booking into Ready to Review.',
+                  'Once the approved final-result video is available, this section moves the booking into Ready to Review.',
                 ]}
                 tone="amber"
                 className="mb-4"
@@ -383,7 +383,7 @@ export default function ReviewsPage() {
               <h2 className="text-xl font-semibold text-gray-900">Submitted Reviews</h2>
               <p className="text-sm text-gray-600">
                 Your saved review history. Reviews connected to customer-visible approved
-                completed-service videos are marked below.
+                final-result videos are marked below.
               </p>
             </div>
             {data.submitted.length === 0

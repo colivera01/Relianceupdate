@@ -127,9 +127,11 @@ export async function POST(request: NextRequest) {
     const assignedMembershipIds = assignmentMetadata.assignedMembershipIds;
     const assignedEmployees = assignmentMetadata.assignedEmployees;
     const assignedMembershipId =
-      assignedMembershipIds.length > 0 ? String(assignedMembershipIds[0] || '').trim() : '';
+      String(assignmentMetadata.primaryMembershipId || '').trim() ||
+      (assignedMembershipIds.length > 0 ? String(assignedMembershipIds[0] || '').trim() : '');
     let assignedEmployeeName =
-      assignedEmployees.length > 0 ? String(assignedEmployees[0] || '').trim() : '';
+      String(assignmentMetadata.primaryEmployeeName || '').trim() ||
+      (assignedEmployees.length > 0 ? String(assignedEmployees[0] || '').trim() : '');
     let assignedUserId: string | null = null;
     if (assignedMembershipId) {
       const membership = await (prisma as any).vendorMembership.findFirst({

@@ -279,6 +279,9 @@ export default function VendorRegisterPage() {
               <div className="rounded-lg border border-blue-400/20 bg-blue-500/10 p-4 text-sm text-blue-100">
                 Use this signed-in flow when you already have a Reliance account and need to add a vendor business profile. Your business will stay internal until admin approval and publish steps are complete.
               </div>
+              <div className="rounded-lg border border-white/12 bg-white/5 p-4 text-sm text-white/72">
+                Business photo upload is handled later from <span className="font-semibold text-white">Vendor Profile</span> after vendor access is active. This setup flow saves your business details, services, and approval request first.
+              </div>
               <div>
                 <label className="block text-sm font-medium mb-1 text-white/88">Business Name</label>
                 <Input
@@ -345,9 +348,12 @@ export default function VendorRegisterPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-white/88">Service Types Offered</label>
+                <label className="block text-sm font-medium mb-1 text-white/88">
+                  Starter Services for Your Menu
+                </label>
                 <p className="mb-3 text-xs leading-5 text-white/56">
-                  Choose the services you offer, then confirm the customer-facing name, estimated duration, price, and description for each one.
+                  Optional at signup: choose common services for {primaryServiceCategory || 'your category'}.
+                  These become starter service menu items you can refine later before customers book.
                 </p>
                 {primaryServiceCategory && availableTemplates.length > 0 ? (
                   <div className="space-y-2 rounded border border-white/12 bg-white/5 p-3">
@@ -374,7 +380,12 @@ export default function VendorRegisterPage() {
                                 );
                               }}
                             />
-                            {template.name} ({template.defaultDuration} min)
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span>{template.name}</span>
+                              <span className="rounded-full border border-blue-400/30 bg-blue-500/12 px-2 py-0.5 text-[11px] font-semibold text-blue-100">
+                                Typical time: {template.defaultDuration} min
+                              </span>
+                            </span>
                           </label>
                           {selected ? (
                             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">

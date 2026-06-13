@@ -52,7 +52,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
     return {
       effectiveStatus: "REVIEW_SUBMITTED_WITHOUT_ELIGIBLE_VIDEO",
       lifecycleNote:
-        "A historical review is on file, but there is no current customer-visible approved completed-stage service video.",
+        "A historical review is on file, but there is no current customer-visible approved final-result video.",
       customerLifecycle,
     };
   }
@@ -70,7 +70,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
     return {
       effectiveStatus: "REVIEW_OPEN",
       lifecycleNote:
-        "Customer-visible approved completed-stage service video exists, so the review window is legitimately open.",
+        "A customer-visible approved final-result video exists, so the review window is legitimately open.",
       customerLifecycle,
     };
   }
@@ -80,28 +80,28 @@ export function deriveReviewWindowLifecycleTruth(input: {
       return {
         effectiveStatus: "VIDEO_PENDING_APPROVAL",
         lifecycleNote:
-          "Service work is complete, but the completed-stage service video is still pending approval.",
+          "Service work is complete, but the final-result video is still pending approval.",
         customerLifecycle,
       };
     case "approved_not_customer_visible":
       return {
         effectiveStatus: "VIDEO_APPROVED_NOT_CUSTOMER_VISIBLE",
         lifecycleNote:
-          "A completed-stage service video is approved internally, but it is not customer-visible yet.",
+          "A final-result video is approved internally, but it is not customer-visible yet.",
         customerLifecycle,
       };
     case "rejected":
       return {
         effectiveStatus: "VIDEO_REJECTED",
         lifecycleNote:
-          "Completed-stage service video exists, but the current customer-facing copy should not promise playback or review because the video was rejected.",
+          "A final-result video exists, but the current customer-facing copy should not promise playback or review because the video was rejected.",
         customerLifecycle,
       };
     default:
       return {
         effectiveStatus: "NO_COMPLETED_VIDEO_SUBMITTED",
         lifecycleNote:
-          "The booking is complete, but no completed-stage service video has been submitted for customer review access.",
+          "The booking is complete, but no final-result video has been submitted for customer review access.",
         customerLifecycle,
       };
   }

@@ -20,7 +20,7 @@ export function getReviewsHubUnavailableMessage(
   >
 ): string {
   if (lifecycle.reviewSubmittedWithoutEligibleVideo) {
-    return "A review is already on file for this completed booking, but no customer-visible approved completed-service video is currently available.";
+    return "A review is already on file for this completed booking, but no customer-visible approved final-result video is currently available.";
   }
 
   if (lifecycle.videoState === "pending_approval" || lifecycle.videoPendingApproval) {
@@ -28,18 +28,18 @@ export function getReviewsHubUnavailableMessage(
   }
 
   if (lifecycle.videoState === "approved_not_customer_visible") {
-    return "Service completed. A completed-stage video exists, but it is not customer-visible right now.";
+    return "Service completed. A final-result video exists, but it is not customer-visible right now.";
   }
 
   if (lifecycle.videoState === "rejected") {
-    return "Service completed. A completed-stage video was submitted, but it is not customer-visible right now.";
+    return "Service completed. A final-result video was submitted, but it is not customer-visible right now.";
   }
 
   if (lifecycle.videoSubmitted) {
-    return "Service completed. A completed-stage video exists, but it is not customer-visible right now.";
+    return "Service completed. A final-result video exists, but it is not customer-visible right now.";
   }
 
-  return "Service completed, but no customer-visible approved completed-service video is currently attached.";
+  return "Service completed, but no customer-visible approved final-result video is currently attached.";
 }
 
 export type SubmittedReviewMediaState =

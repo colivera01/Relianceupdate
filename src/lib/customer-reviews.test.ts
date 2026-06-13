@@ -20,17 +20,17 @@ describe("getCustomerReviewGateMessage", () => {
         canShowInlineReview: false,
         consentAllowsInlineReview: false,
       })
-    ).toContain("no customer-visible approved completed-service video");
+    ).toContain("no customer-visible approved final-result video");
   });
 
-  it("prompts the customer to switch to the completed stage when review video exists but is not selected", () => {
+  it("prompts the customer to switch to the final result stage when review video exists but is not selected", () => {
     expect(
       getCustomerReviewGateMessage({
         hasReviewableCompletedVideo: true,
         canShowInlineReview: false,
         consentAllowsInlineReview: false,
       })
-    ).toBe("Switch to the Completed stage to submit your review.");
+    ).toBe("Switch to the Final Result stage to submit your review.");
   });
 
   it("returns consent guidance once the completed review stage is active", () => {

@@ -202,11 +202,11 @@ export default function VendorDashboard() {
             <CardContent className="space-y-3 text-sm text-gray-700">
               <p>
                 Reliance has saved this vendor account for admin review. You can keep refining profile details and
-                service drafts while the approval decision is pending.
+                saved services while the approval decision is pending.
               </p>
               <ul className="space-y-2 text-gray-600">
                 <li>Profile details help admin confirm business identity and service area.</li>
-                <li>Service drafts stay internal until admin publishes them later.</li>
+                <li>Service menu items stay internal until admin publishes them later.</li>
                 <li>Your business will not appear publicly until admin approval, vendor listing, and service publishing are all complete.</li>
               </ul>
             </CardContent>
@@ -352,13 +352,6 @@ export default function VendorDashboard() {
     Math.min(100, Number.isFinite(Number(data.storagePercentUsed)) ? Number(data.storagePercentUsed) : (Number(storageUsedBytes * BigInt(100)) / Number(storageLimitBytes)))
   );
 
-  const commandBarCards = [
-    { label: 'Jobs Today', value: jobsToday.toString(), icon: Calendar, color: 'blue' as keyof typeof colorMap, route: '/vendor/jobs?filter=today' },
-    { label: 'In Progress', value: jobsInProgress.toString(), icon: TrendingUp, color: 'green' as keyof typeof colorMap, route: '/vendor/jobs?filter=in-progress' },
-    { label: 'Awaiting Review', value: awaitingReview.toString(), icon: Star, color: 'yellow' as keyof typeof colorMap, route: '/vendor/jobs?filter=awaiting-review' },
-    { label: 'Completed', value: jobsCompleted.toString(), icon: CheckCircle, color: 'purple' as keyof typeof colorMap, route: '/vendor/jobs?filter=completed' },
-  ];
-
   const videoTiles = [
     { label: 'Awaiting moderation', value: pendingModerationProofs, route: '/vendor/media?filter=pending', highlight: pendingModerationProofs > 0 },
     { label: 'Approved videos', value: approvedProofs, route: '/vendor/media?filter=approved', highlight: false },
@@ -390,6 +383,56 @@ export default function VendorDashboard() {
     promotionServices,
     promotionRecentRequests,
   });
+  const heroMetricCards = [
+    {
+      label: 'Jobs today',
+      value: jobsToday.toString(),
+      detail: 'Jobs currently scheduled for today.',
+      icon: Calendar,
+      color: 'blue' as keyof typeof colorMap,
+      route: '/vendor/jobs?filter=today',
+    },
+    {
+      label: 'Work in progress',
+      value: jobsInProgress.toString(),
+      detail: 'Active jobs your team is working right now.',
+      icon: TrendingUp,
+      color: 'green' as keyof typeof colorMap,
+      route: '/vendor/jobs?filter=in-progress',
+    },
+    {
+      label: 'Awaiting review',
+      value: awaitingReview.toString(),
+      detail: 'Finished jobs still waiting on review or approval steps.',
+      icon: Star,
+      color: 'yellow' as keyof typeof colorMap,
+      route: '/vendor/jobs?filter=awaiting-review',
+    },
+    {
+      label: 'Completed',
+      value: jobsCompleted.toString(),
+      detail: 'Completed jobs already closed out in Reliance.',
+      icon: CheckCircle,
+      color: 'purple' as keyof typeof colorMap,
+      route: '/vendor/jobs?filter=completed',
+    },
+    {
+      label: 'Public reviews',
+      value: ratingCount.toString(),
+      detail: 'Customer comments currently visible to new customers.',
+      icon: Star,
+      color: 'yellow' as keyof typeof colorMap,
+      route: '/vendor/reviews',
+    },
+    {
+      label: 'Approved videos',
+      value: approvedProofs.toString(),
+      detail: 'Approved service videos that support customer trust.',
+      icon: Activity,
+      color: 'green' as keyof typeof colorMap,
+      route: '/vendor/media?filter=approved',
+    },
+  ];
 
   const requestPairingCode = async () => {
     setPairingLoading(true);
@@ -472,71 +515,81 @@ export default function VendorDashboard() {
       <div className={pageContentClass}>
         {vendorProfile?.onboarding ? <VendorOnboardingStatusPanel profile={vendorProfile} /> : null}
         <section className="reliance-operator-hero mb-8 rounded-[32px] px-6 py-7">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
             <div>
-              <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-                Business growth center
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
+                    Vendor dashboard
+                  </div>
+                  <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
+                    See what is helping your business grow
+                  </h1>
+                  <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
+                    Start with business status, customer visibility, and trust signals, then move into
+                    the jobs, reviews, and promotion steps that help more customers choose you.
+                  </p>
+                </div>
+                <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="dark" className="self-start" />
               </div>
-              <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-                Grow visibility, trust, and customer confidence
-              </h1>
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
-                See what customers can find today, what public proof is already helping your business,
-                and which next steps will make Reliance work harder for growth.
-              </p>
             </div>
-            <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="dark" className="self-start" />
+
+            <div className="rounded-[28px] border border-white/10 bg-[rgba(4,10,22,0.48)] p-5 shadow-[0_24px_70px_rgba(4,9,20,0.22)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-100/78">
+                First read
+              </div>
+              <p className="mt-2 text-sm leading-6 text-white/72">
+                Public trust, active work, and approved proof in one glance.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {heroMetricCards.map((card) => {
+                  const colors = colorMap[card.color];
+                  const isAwaitingReview = card.label === 'Awaiting review' && awaitingReview > 0;
+                  return (
+                    <button
+                      key={card.label}
+                      type="button"
+                      onClick={() => router.push(card.route)}
+                      className={`rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/8 ${
+                        isAwaitingReview
+                          ? 'border-amber-300/40 bg-amber-500/10'
+                          : 'border-white/10 bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/54">
+                            {card.label}
+                          </p>
+                          <p className={`mt-2 text-3xl font-semibold ${isAwaitingReview ? 'text-amber-200' : 'text-white'}`}>
+                            {card.value}
+                          </p>
+                        </div>
+                        <div className={`rounded-full p-2.5 ${colors.bg} ${colors.text}`}>
+                          <card.icon className="h-4 w-4" />
+                        </div>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-white/68">{card.detail}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </section>
 
         <VendorBusinessVisibilitySection summary={growthSummary} />
 
-        {/* 1) Command Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {commandBarCards.map((card) => {
-            const colors = colorMap[card.color];
-            const isAwaitingReview = card.label === 'Awaiting Review' && awaitingReview > 0;
-            return (
-              <Card
-                key={card.label}
-                className={`cursor-pointer transition-all hover:shadow-md ${
-                  isAwaitingReview ? 'border-amber-300 bg-amber-50' : 'bg-white'
-                }`}
-                onClick={() => router.push(card.route)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    router.push(card.route);
-                  }
-                }}
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">{card.label}</p>
-                      <p className={`text-2xl font-bold ${isAwaitingReview ? 'text-amber-700' : 'text-gray-900'}`}>{card.value}</p>
-                    </div>
-                    <div className={`p-3 rounded-full ${colors.bg}`}>
-                      <card.icon className={`h-6 w-6 ${colors.text}`} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* 2) Service Video Pipeline */}
+        {/* 2) Build Trust */}
         <Card className="mb-8 bg-white">
           <CardHeader className="space-y-1">
-            <CardTitle>Service Video Pipeline</CardTitle>
+            <CardTitle>Build customer trust with service videos</CardTitle>
             <p className="text-sm text-gray-600">
-              Keep an eye on which job videos still need review, what is approved, and what has already been archived.
+              Track which stage videos still need moderation, which trust-building clips are already approved,
+              and what has been archived for your records.
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {videoTiles.map((tile) => (
                 <button
@@ -554,6 +607,10 @@ export default function VendorDashboard() {
                 </button>
               ))}
             </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+              Approved service videos help first-time customers feel like your business is real before they know you.
+              If clips are waiting for moderation, clearing that step is one of the fastest ways to strengthen public trust.
+            </div>
           </CardContent>
         </Card>
 
@@ -563,9 +620,10 @@ export default function VendorDashboard() {
               <div className="flex items-start gap-3">
                 <Megaphone className="mt-0.5 h-5 w-5 text-blue-700" />
                 <div>
-                  <h2 className="font-semibold text-blue-950">Promote my business</h2>
+                  <h2 className="font-semibold text-blue-950">Grow visibility with promotions</h2>
                   <p className="text-sm text-blue-900">
-                    Promotions help your business earn extra marketplace visibility once your public profile, published services, and trust signals are ready.
+                    Promotions help more customers discover you after your profile, published services,
+                    and trust signals already give them a reason to book.
                   </p>
                 </div>
               </div>
@@ -595,9 +653,10 @@ export default function VendorDashboard() {
                   {effectivePromotionLaunchAvailabilityNote}
                 </div>
                 <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                  Browse promotions matter because they can put your business in front of more customers, but they only render when Reliance still has enough organic results to keep browse trustworthy.
-                  Desktop browse currently needs at least 4 organic listings, and category-filtered browse needs at least 3,
-                  before featured paid placements can appear.
+                  Browse promotions can put your business in front of more customers, but they only render when Reliance
+                  still has enough organic results to keep the marketplace trustworthy. Desktop browse currently needs
+                  at least 4 organic listings, and category-filtered browse needs at least 3, before featured paid
+                  placements can appear.
                 </div>
                 {browseReadinessMessage ? (
                   <div
@@ -794,12 +853,15 @@ export default function VendorDashboard() {
         {/* 3) Performance */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card className="bg-white lg:col-span-7">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Rating</CardTitle>
+            <CardHeader className="space-y-1 pb-2">
+              <CardTitle className="text-base">Customer confidence snapshot</CardTitle>
+              <p className="text-sm text-gray-600">
+                See how published feedback and reliable completed work are translating into public trust.
+              </p>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-gray-900">{Number(dashboardStats.rating || 0).toFixed(1)}</p>
-              <p className="text-sm text-gray-600">{ratingCount} review{ratingCount === 1 ? '' : 's'}</p>
+              <p className="text-sm text-gray-600">{ratingCount} public review{ratingCount === 1 ? '' : 's'}</p>
             </CardContent>
           </Card>
           <Card className="bg-white">
@@ -840,17 +902,20 @@ export default function VendorDashboard() {
         {/* 4) Active Work Area */}
         <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 mb-8">
           <Card className="bg-white lg:col-span-7">
-            <CardHeader>
+            <CardHeader className="space-y-1">
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-blue-600" />
-                Recent Jobs
+                Today&apos;s work
               </CardTitle>
+              <p className="text-sm text-gray-600">
+                The quickest read on what is active, finished, or still waiting on follow-through.
+              </p>
             </CardHeader>
             <CardContent>
               {recentJobs.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  <p className="text-sm">No jobs today - you're all caught up.</p>
-                  <p className="text-xs mt-1">New jobs will appear here automatically.</p>
+                  <p className="text-sm">No active jobs are showing yet.</p>
+                  <p className="text-xs mt-1">New jobs, in-progress work, and completed items will appear here automatically.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -879,17 +944,20 @@ export default function VendorDashboard() {
           </Card>
 
           <Card className="bg-white lg:col-span-3">
-            <CardHeader>
+            <CardHeader className="space-y-1">
               <CardTitle className="flex items-center gap-2">
                 <Star className="h-5 w-5 text-yellow-600" />
-                Recent Reviews
+                Latest customer feedback
               </CardTitle>
+              <p className="text-sm text-gray-600">
+                Published customer feedback helps you see how confidence is building in public.
+              </p>
             </CardHeader>
             <CardContent>
               {recentReviews.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  <p className="text-sm">No reviews yet.</p>
-                  <p className="text-xs mt-1">Customer feedback will appear here.</p>
+                  <p className="text-sm">No public reviews yet.</p>
+                  <p className="text-xs mt-1">Published customer feedback will appear here as completed jobs move through the review process.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -920,8 +988,11 @@ export default function VendorDashboard() {
 
         {/* Storage Snapshot */}
         <Card className="bg-white mb-8">
-          <CardHeader>
+          <CardHeader className="space-y-1">
             <CardTitle>Storage</CardTitle>
+            <p className="text-sm text-gray-600">
+              Internal storage used for service-video capture and supporting job files.
+            </p>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center justify-between text-sm">
@@ -942,11 +1013,14 @@ export default function VendorDashboard() {
 
         {/* 5) Action Layer */}
         <Card className="bg-white">
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+          <CardHeader className="space-y-1">
+            <CardTitle>Go where you need next</CardTitle>
+            <p className="text-sm text-gray-600">
+              Use these shortcuts to manage work, improve trust signals, and keep your business moving.
+            </p>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <button
                 type="button"
                 onClick={() => router.push('/vendor/jobs')}

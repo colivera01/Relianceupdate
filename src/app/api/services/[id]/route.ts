@@ -15,6 +15,10 @@ import {
 } from '@/lib/launch-content-cleanup';
 import { countableReviewWhere } from '@/lib/metrics-exclusion';
 import {
+  VENDOR_JOB_VIDEO_STAGE_LABELS,
+  normalizeVendorJobVideoStage,
+} from '@/lib/vendor-job-video-stages';
+import {
   isTransientDbConnectivityError,
   PUBLIC_DB_UNAVAILABLE_CODE,
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
@@ -117,18 +121,15 @@ export async function GET(
       );
       const videos = videoAssets.map((asset: any) => String(asset.blobUrl));
       const videoItems = videoAssets.map((asset: any) => ({
+        stageKey: String(asset?.mediaSession?.vendorJobVideoStage || '').trim().toUpperCase() || null,
+        stageLabel:
+          (() => {
+            const normalizedStage = normalizeVendorJobVideoStage(asset?.mediaSession?.vendorJobVideoStage);
+            return normalizedStage ? VENDOR_JOB_VIDEO_STAGE_LABELS[normalizedStage] : 'Service Video';
+          })(),
         createdAt: asset?.createdAt?.toISOString?.() || null,
         id: String(asset?.id || ''),
         url: String(asset?.blobUrl || ''),
-        stageKey: String(asset?.mediaSession?.vendorJobVideoStage || '').trim().toUpperCase() || null,
-        stageLabel:
-          String(asset?.mediaSession?.vendorJobVideoStage || '').trim().toUpperCase() === 'INTRO'
-            ? 'Before Service'
-            : String(asset?.mediaSession?.vendorJobVideoStage || '').trim().toUpperCase() === 'IN_PROGRESS'
-              ? 'During Service'
-              : String(asset?.mediaSession?.vendorJobVideoStage || '').trim().toUpperCase() === 'COMPLETED'
-                ? 'Completed Service'
-                : 'Service Video',
         isPrimaryProofVideo: Boolean(primaryProofVideo?.id) && String(asset?.id || '') === String(primaryProofVideo.id),
       }));
       let vendorReviewAggMap = new Map<string, { rating: number | null; reviewCount: number }>();

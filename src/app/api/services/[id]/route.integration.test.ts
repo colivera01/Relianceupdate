@@ -119,7 +119,7 @@ describe('GET /api/services/[id]', () => {
         createdAt: null,
         id: 'asset-featured',
         stageKey: 'COMPLETED',
-        stageLabel: 'Completed Service',
+        stageLabel: 'Final Result',
         url: 'https://cdn.example/video.mp4',
         isPrimaryProofVideo: true,
       },

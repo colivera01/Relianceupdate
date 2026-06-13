@@ -21,6 +21,7 @@ import { tutorialGuides } from '@/lib/user-guidance';
 
 interface PendingVendor {
   id: string;
+  membershipId?: string;
   businessName: string;
   firstName: string;
   lastName: string;
@@ -37,7 +38,42 @@ interface PendingVendor {
   zipCode: string;
   createdAt: string;
   submittedAt: string;
+  aiRecommendation?: VendorApprovalAiResult | null;
 }
+
+type VendorApprovalAiFinding = {
+  label: string;
+  detail: string;
+  evidence: string[];
+};
+
+type VendorApprovalAiSuggestion = {
+  summary: string;
+  decision: 'recommend_approve' | 'needs_manual_review' | 'recommend_reject';
+  confidence: 'low' | 'medium' | 'high';
+  findings: VendorApprovalAiFinding[];
+  blockingIssues: string[];
+  recommendedActions: string[];
+  scopeNotes: string[];
+};
+
+type VendorApprovalAiResult = {
+  aiRunId: string;
+  promptVersion: string;
+  model: string;
+  usage: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+  } | null;
+  suggestion: VendorApprovalAiSuggestion;
+  applicationSnapshot?: {
+    emailVerified?: boolean;
+    serviceDraftCount?: number;
+    publishedServiceCount?: number;
+    submittedAt?: string | null;
+  } | null;
+};
 
 export default function ApprovalQueuePage() {
   const [pendingVendors, setPendingVendors] = useState<PendingVendor[]>([]);
@@ -58,6 +94,8 @@ export default function ApprovalQueuePage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingAction, setProcessingAction] = useState<string | null>(null);
   const [adminNotes, setAdminNotes] = useState('');
+  const [aiSuggestionByVendorId, setAiSuggestionByVendorId] = useState<Record<string, VendorApprovalAiResult>>({});
+  const [aiReviewLoadingId, setAiReviewLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPendingVendors();
@@ -83,7 +121,15 @@ export default function ApprovalQueuePage() {
         throw new Error(payload?.error || 'Failed to load pending vendors');
       }
       const vendors = payload?.data?.vendors;
-      setPendingVendors(Array.isArray(vendors) ? vendors : []);
+      const nextVendors = Array.isArray(vendors) ? (vendors as PendingVendor[]) : [];
+      setPendingVendors(nextVendors);
+      setAiSuggestionByVendorId(
+        Object.fromEntries(
+          nextVendors
+            .filter((vendor) => vendor.aiRecommendation)
+            .map((vendor) => [vendor.id, vendor.aiRecommendation as VendorApprovalAiResult])
+        )
+      );
       setAvailableCategories(
         Array.isArray(payload?.data?.categories)
           ? payload.data.categories.map((value: unknown) => String(value)).filter(Boolean)
@@ -270,6 +316,55 @@ export default function ApprovalQueuePage() {
     }
   };
 
+  const requestAiReview = async (vendor: PendingVendor) => {
+    setAiReviewLoadingId(vendor.id);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/vendors/${vendor.id}/assist`, {
+        method: 'POST',
+        headers: getAdminRequestHeaders(),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Failed to generate AI vendor approval recommendation');
+      }
+
+      setAiSuggestionByVendorId((current) => ({
+        ...current,
+        [vendor.id]: {
+          aiRunId: String(payload?.responseId || ''),
+          promptVersion: String(payload?.promptVersion || ''),
+          model: String(payload?.model || ''),
+          usage:
+            payload?.usage && typeof payload.usage === 'object'
+              ? {
+                  inputTokens:
+                    payload.usage.inputTokens != null ? Number(payload.usage.inputTokens) : null,
+                  outputTokens:
+                    payload.usage.outputTokens != null ? Number(payload.usage.outputTokens) : null,
+                  totalTokens:
+                    payload.usage.totalTokens != null ? Number(payload.usage.totalTokens) : null,
+                }
+              : null,
+          suggestion: payload?.suggestion as VendorApprovalAiSuggestion,
+          applicationSnapshot:
+            payload?.applicationSnapshot && typeof payload.applicationSnapshot === 'object'
+              ? payload.applicationSnapshot
+              : null,
+        },
+      }));
+    } catch (error) {
+      console.error('Error generating AI vendor approval recommendation:', error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to generate AI vendor approval recommendation'
+      );
+    } finally {
+      setAiReviewLoadingId(null);
+    }
+  };
+
   const toggleVendorSelection = (vendorId: string) => {
     setSelectedVendors(prev => 
       prev.includes(vendorId) 
@@ -308,6 +403,22 @@ export default function ApprovalQueuePage() {
     return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
   };
 
+  const formatAiDecisionLabel = (decision: VendorApprovalAiSuggestion['decision']) => {
+    if (decision === 'recommend_approve') return 'Recommend approve';
+    if (decision === 'recommend_reject') return 'Recommend reject';
+    return 'Needs manual review';
+  };
+
+  const getAiDecisionBadgeClass = (decision: VendorApprovalAiSuggestion['decision']) => {
+    if (decision === 'recommend_approve') {
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    }
+    if (decision === 'recommend_reject') {
+      return 'border-red-200 bg-red-50 text-red-700';
+    }
+    return 'border-amber-200 bg-amber-50 text-amber-700';
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -342,10 +453,11 @@ export default function ApprovalQueuePage() {
 
       <GuidanceCallout
         title="What approval does and does not do"
-        description="Approving the vendor account unlocks vendor access, but it does not automatically publish the vendor listing or any service drafts."
+        description="Approving the vendor account unlocks vendor access, but it does not automatically publish the vendor listing or any service menu items."
         bullets={[
           'Approve when the vendor application is valid and complete enough for access.',
           'Reject when the vendor needs to correct the application before access should be granted.',
+          'Use AI review as a recommendation layer only. The admin still decides whether to approve or reject.',
           'Use Publish Management later to control public vendor listing and service visibility.',
         ]}
         tone="blue"
@@ -465,7 +577,10 @@ export default function ApprovalQueuePage() {
 
       {/* Vendor Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {pendingVendors.map((vendor) => (
+        {pendingVendors.map((vendor) => {
+          const aiSuggestion = aiSuggestionByVendorId[vendor.id];
+
+          return (
           <Card key={vendor.id} className="relative">
             {/* Selection Checkbox */}
             <div className="absolute top-4 left-4 z-10">
@@ -540,6 +655,105 @@ export default function ApprovalQueuePage() {
                 </div>
               </div>
 
+              <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
+                      AI Approval Check
+                    </p>
+                    <p className="text-xs text-blue-800">
+                      Auto-runs when the vendor enters this queue. Admin still decides.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => requestAiReview(vendor)}
+                    disabled={aiReviewLoadingId === vendor.id}
+                    className="shrink-0"
+                  >
+                    {aiReviewLoadingId === vendor.id ? (
+                      <>
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-current"></div>
+                        Checking...
+                      </>
+                    ) : aiSuggestion ? (
+                      'Refresh AI review'
+                    ) : (
+                      'Run AI review'
+                    )}
+                  </Button>
+                </div>
+
+                {aiSuggestion ? (
+                  <div className="space-y-3 rounded-md border border-blue-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={getAiDecisionBadgeClass(aiSuggestion.suggestion.decision)}
+                      >
+                        {formatAiDecisionLabel(aiSuggestion.suggestion.decision)}
+                      </Badge>
+                      <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
+                        {aiSuggestion.suggestion.confidence} confidence
+                      </Badge>
+                      {aiSuggestion.applicationSnapshot?.emailVerified === true ? (
+                        <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                          Email verified
+                        </Badge>
+                      ) : aiSuggestion.applicationSnapshot?.emailVerified === false ? (
+                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+                          Email unverified
+                        </Badge>
+                      ) : null}
+                    </div>
+
+                    <p className="text-sm text-slate-800">{aiSuggestion.suggestion.summary}</p>
+
+                    {aiSuggestion.suggestion.blockingIssues.length > 0 ? (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+                          Blocking or delay risks
+                        </p>
+                        <ul className="space-y-1 text-xs text-red-800">
+                          {aiSuggestion.suggestion.blockingIssues.slice(0, 2).map((issue) => (
+                            <li key={issue}>• {issue}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {aiSuggestion.suggestion.recommendedActions.length > 0 ? (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Suggested next step
+                        </p>
+                        <ul className="space-y-1 text-xs text-slate-700">
+                          {aiSuggestion.suggestion.recommendedActions.slice(0, 2).map((action) => (
+                            <li key={action}>• {action}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {aiSuggestion.suggestion.findings.length > 0 ? (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Strongest signals
+                        </p>
+                        <ul className="space-y-1 text-xs text-slate-700">
+                          {aiSuggestion.suggestion.findings.slice(0, 2).map((finding) => (
+                            <li key={`${finding.label}-${finding.detail}`}>
+                              <span className="font-medium">{finding.label}:</span> {finding.detail}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
               {/* Action Buttons */}
               <div className="flex gap-2 pt-3">
                 <Button
@@ -593,7 +807,7 @@ export default function ApprovalQueuePage() {
               </div>
             </CardContent>
           </Card>
-        ))}
+        )})}
       </div>
 
       {/* Empty State */}

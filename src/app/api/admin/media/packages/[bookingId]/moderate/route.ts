@@ -99,7 +99,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         userId: true,
         customerMetadata: true,
         vendor: { select: { businessName: true, name: true } },
-        user: { select: { email: true, name: true } },
+        user: { select: { email: true, name: true, phone: true } },
         service: { select: { name: true } },
       },
     });
@@ -144,7 +144,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 
     if (!REQUIRED_STAGES.every((stage) => latestByStage.has(stage))) {
       return NextResponse.json(
-        { success: false, error: "Incomplete package", message: "Package must have Before Service, During Service, and Completed Service stages" },
+        { success: false, error: "Incomplete package", message: "Package must have Starting Condition, Work in Progress, and Final Result stages" },
         { status: 422 }
       );
     }
@@ -224,12 +224,14 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       if (!alreadyNotified) {
         const videoUrl = toAbsoluteVideoUrl(bookingId);
         const customerEmail = String(booking.user?.email || metadata.client_email || "").trim();
+        const customerPhone = String(booking.user?.phone || metadata.client_phone || "").trim();
         const customerName = String(booking.user?.name || booking.clientName || "").trim();
         let notified = false;
         const sendResult = await sendVideoReadyNotification({
           actorUserId: userId,
           bookingId,
           customerEmail,
+          customerPhone,
           customerName,
           serviceName: booking.service?.name,
           bookingTitle: booking.title,

@@ -78,7 +78,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     if (!hasRequiredStages) {
       return NextResponse.json(
         {
-          error: "Cannot complete job until Before Service, During Service, and Completed Service videos are uploaded.",
+          error: "Cannot complete job until Starting Condition, Work in Progress, and Final Result videos are uploaded.",
           code: "REQUIRED_STAGES_MISSING",
         },
         { status: 409 }

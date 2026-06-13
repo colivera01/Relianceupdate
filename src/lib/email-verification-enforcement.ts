@@ -5,11 +5,6 @@ import { isInternalDemoUserRecord } from "@/lib/internal-identities";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
 
-function isDevAuditEmail(email: unknown): boolean {
-  const normalized = String(email ?? "").trim().toLowerCase();
-  return normalized.endsWith("@reliance.test");
-}
-
 export async function requireVerifiedEmailForAction(params: {
   userId: string;
   action: string;
@@ -45,7 +40,7 @@ export async function requireVerifiedEmailForAction(params: {
     );
   }
 
-  if (IS_DEV && (isInternalDemoUserRecord(user) || isDevAuditEmail(user.email))) {
+  if (IS_DEV && isInternalDemoUserRecord(user)) {
     return null;
   }
 

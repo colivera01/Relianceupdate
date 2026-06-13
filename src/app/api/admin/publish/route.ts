@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getAdminPublishOverview } from "@/lib/admin-publish-controls";
+import { getLatestPublishReadinessAiStoredResults } from "@/lib/ai/publish-readiness-review-store";
 
 /**
  * GET /api/admin/publish
@@ -13,11 +14,18 @@ export async function GET(request: Request): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const q = String(searchParams.get("q") || "");
     const { vendors, services } = await getAdminPublishOverview(q);
+    const aiRecommendationsByVendorId =
+      await getLatestPublishReadinessAiStoredResults(
+        vendors.map((vendor) => String(vendor.id))
+      );
 
     return NextResponse.json({
       success: true,
       message: "Publish control overview fetched successfully",
-      vendors,
+      vendors: vendors.map((vendor) => ({
+        ...vendor,
+        aiRecommendation: aiRecommendationsByVendorId[String(vendor.id)] || null,
+      })),
       services,
     });
   } catch (error: any) {

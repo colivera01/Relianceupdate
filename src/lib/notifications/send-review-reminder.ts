@@ -158,7 +158,9 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `Reliance: your feedback window is open. Review your service here: ${absoluteFallbackLink}`;
+    const body = hasVendorName
+      ? `${vendorName} via Reliance: your feedback window is open for ${serviceLabel}. Watch the service video and review here: ${absoluteFallbackLink} Reply STOP to opt out.`
+      : `Reliance: your feedback window is open. Watch your service video and review your service here: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

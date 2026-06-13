@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 
 type InviteInfo = {
   token: string;
@@ -24,20 +25,17 @@ export default function VendorInvitePage() {
   const [loadState, setLoadState] = useState<InviteLoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [invite, setInvite] = useState<InviteInfo | null>(null);
-  const [debugDetails, setDebugDetails] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [acceptDebugDetails, setAcceptDebugDetails] = useState<string | null>(null);
 
   const loadInvite = async (isRetry = false) => {
     if (isRetry) setRetrying(true);
     else setLoading(true);
     setError(null);
-    setDebugDetails(null);
     setInvite(null);
     setLoadState("loading");
     if (!token) {
@@ -58,12 +56,6 @@ export default function VendorInvitePage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.invite) {
         const code = String(json?.code || "");
-        const diagnostics = json?.diagnostics;
-        if (process.env.NODE_ENV !== "production" && diagnostics) {
-          setDebugDetails(
-            `status=${res.status} code=${code || "none"} diagnostics=${JSON.stringify(diagnostics)}`
-          );
-        }
         if (res.status === 409 || code === "ALREADY_ACCEPTED" || code === "CANCELLED_OR_INACTIVE") {
           setLoadState("already_accepted_or_cancelled");
           throw new Error(json?.error || "Invite has already been accepted or is no longer active.");
@@ -99,7 +91,6 @@ export default function VendorInvitePage() {
     if (!token) return;
     setSubmitting(true);
     setError(null);
-    setAcceptDebugDetails(null);
     try {
       const res = await fetch(`/api/vendor/invite/${token}`, {
         method: "POST",
@@ -112,19 +103,11 @@ export default function VendorInvitePage() {
         const backendCode = String(json?.code || "none");
         const backendMessage = String(json?.message || "");
         const backendStep = String(json?.step || "unknown_step");
-        const backendDetails = json?.details ?? null;
-        if (process.env.NODE_ENV !== "production") {
-          setAcceptDebugDetails(
-            `status=${res.status} error="${backendError}" code=${backendCode} message="${backendMessage}" step=${backendStep} details=${JSON.stringify(
-              backendDetails
-            )}`
-          );
-        }
         throw new Error(
           `Failed to accept invite (${res.status}) | error="${backendError}" code=${backendCode} message="${backendMessage}" step=${backendStep}`
         );
       }
-      setSuccessMessage("Invite accepted. Your employee membership is now active. You can sign in and open /employee/jobs.");
+      setSuccessMessage("Invite accepted. Your team access is active.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to accept invite");
     } finally {
@@ -135,7 +118,11 @@ export default function VendorInvitePage() {
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-10">
       <div className="mx-auto w-full max-w-xl rounded-lg border bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-bold text-gray-900">Team Invite</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Accept Team Invite</h1>
+        <p className="mt-2 text-sm leading-6 text-gray-600">
+          This connects you to the vendor team. After you sign in, your assigned work and service
+          video recording steps appear in Employee Jobs.
+        </p>
         {loading ? <p className="mt-4 text-sm text-gray-600">Loading invite...</p> : null}
         {error ? <p className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
         {!loading && loadState === "invalid_or_expired" ? (
@@ -161,24 +148,40 @@ export default function VendorInvitePage() {
             </button>
           </div>
         ) : null}
-        {process.env.NODE_ENV !== "production" && debugDetails ? (
-          <pre className="mt-3 overflow-auto rounded border bg-gray-100 p-2 text-[11px] text-gray-700">{debugDetails}</pre>
-        ) : null}
         {invite ? (
           <div className="mt-4 space-y-4">
             <div className="rounded border bg-gray-50 p-3 text-sm text-gray-700">
               <p className="font-medium text-gray-900">Company: {invite.vendor.name}</p>
               <p>Role: Employee</p>
-              <p>Invite code: {invite.code}</p>
               <p>Expires: {new Date(invite.expiresAt).toLocaleString()}</p>
             </div>
 
             {successMessage ? (
-              <p className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{successMessage}</p>
+              <div className="rounded border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                <p className="font-semibold">{successMessage}</p>
+                <p className="mt-2 leading-6">
+                  Next, sign in with the same email or phone used on this invite. Your manager assigns
+                  scheduled work separately; the invite itself does not create a recording task.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    href={`/auth/login?next=${encodeURIComponent("/employee/jobs")}`}
+                    className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    Sign in to Employee Jobs
+                  </Link>
+                  <Link
+                    href="/employee/jobs"
+                    className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50"
+                  >
+                    Open Employee Jobs
+                  </Link>
+                </div>
+              </div>
             ) : (
               <>
                 <p className="text-xs text-gray-600">
-                  Confirm your invitee details (name/email/phone) and accept.
+                  Confirm these details so Reliance can connect you to this vendor&apos;s team.
                 </p>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">Name</label>
@@ -202,9 +205,6 @@ export default function VendorInvitePage() {
                 </button>
               </>
             )}
-            {process.env.NODE_ENV !== "production" && acceptDebugDetails ? (
-              <pre className="overflow-auto rounded border bg-gray-100 p-2 text-[11px] text-gray-700">{acceptDebugDetails}</pre>
-            ) : null}
           </div>
         ) : null}
       </div>

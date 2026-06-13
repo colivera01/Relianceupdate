@@ -127,7 +127,7 @@ export async function sendDevicePairingInvite(
       smsResult.success = false;
       smsResult.errorMessage = "sms_disabled";
     } else {
-      const body = `${vendorName} sent you a Reliance device pairing link: ${input.pairingUrl} Backup code: ${input.pairingCode}`;
+      const body = `${vendorName} via Reliance: pair this phone for service-video work. Link: ${input.pairingUrl} Backup code: ${input.pairingCode} Reply STOP to opt out.`;
       const sendResult = await sendSms({ to: phone, body });
       smsResult.success = sendResult.ok;
       smsResult.errorMessage = sendResult.errorMessage;

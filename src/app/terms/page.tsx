@@ -24,8 +24,8 @@ export default function TermsPage() {
 
       <h3>3. Consent and Recordings</h3>
       <p>
-        You acknowledge that service-related recordings may include before-service,
-        in-progress, and after-service documentation when proper consent has been obtained.
+        You acknowledge that service-related recordings may include starting-condition,
+        work-in-progress, and final-result documentation when proper consent has been obtained.
         By accepting consent requests, you authorize participation in the service-video workflow
         and related platform processes.
       </p>

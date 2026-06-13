@@ -727,14 +727,14 @@ export default function MyBookingsPage() {
                           : 'Shared media is ready on the booking detail page. A completed work video has not been published yet.'
                         : activeTab === 'past' && completedRecord && customerLifecycle
                           ? customerVisibleCompletedVideo
-                            ? 'Service completed. An approved completed-stage service video is available on the booking record.'
+                            ? 'Service completed. An approved final-result video is available on the booking record.'
                             : completedVideoPendingApproval
                               ? 'Service completed. Video is pending approval.'
                               : lifecycleVideoState === 'rejected'
-                                ? 'Service completed. A completed-stage video was submitted, but it is not customer-visible right now.'
+                                ? 'Service completed. A final-result video was submitted, but it is not customer-visible right now.'
                                 : lifecycleVideoState === 'approved_not_customer_visible'
-                                ? 'Service completed. A completed-stage video exists, but it is not customer-visible right now.'
-                                  : 'Service completed. No completed-stage service video has been submitted yet.'
+                                ? 'Service completed. A final-result video exists, but it is not customer-visible right now.'
+                                  : 'Service completed. No final-result video has been submitted yet.'
                           : activeWorkflowRecord
                             ? statusKey === 'awaiting_review' || statusKey === 'awaiting review'
                               ? 'Service work is complete and awaiting final review. Customer-visible service videos or images appear here after review and approval.'
@@ -753,7 +753,7 @@ export default function MyBookingsPage() {
                               ? 'Approved service video is already attached. Open the booking detail page to continue into the service media flow.'
                             : mediaLoaded && mediaTotal === 0
                               ? reviewCaptureOk
-                                ? 'No customer-visible approved completed-service video is currently attached to this completed booking. Open the booking record to confirm the current media and review state.'
+                                ? 'No customer-visible approved final-result video is currently attached to this completed booking. Open the booking record to confirm the current media and review state.'
                                 : 'No approved media is available yet. Your vendor may still be uploading, or items may still be in review.'
                               : mediaState?.error
                                 ? 'Could not load the list. See the message under the button.'
@@ -765,18 +765,18 @@ export default function MyBookingsPage() {
                           ? 'This archived record is kept for reference. New review prompts are no longer active here.'
                           : activeTab === 'past' && completedRecord && customerLifecycle
                             ? reviewSubmittedWithoutEligibleVideo
-                              ? 'A review is already on file from an earlier workflow, but no customer-visible approved completed-stage video is currently available.'
+                              ? 'A review is already on file from an earlier workflow, but no customer-visible approved final-result video is currently available.'
                               : reviewSubmitted
                                 ? 'Your review is already on file for this completed booking.'
                                 : reviewEligible
-                                  ? 'Open the approved completed-stage video to continue into the video-based review flow.'
+                                ? 'Open the approved final-result video to continue into the video-based review flow.'
                                   : completedVideoPendingApproval
-                                    ? 'Review opens after the completed-stage service video is approved for customer viewing.'
-                                    : 'Review opens only after a customer-visible approved completed-stage video is available.'
+                                    ? 'Review opens after the final-result video is approved for customer viewing.'
+                                    : 'Review opens only after a customer-visible approved final-result video is available.'
                           : activeWorkflowRecord
                             ? statusKey === 'awaiting_review' || statusKey === 'awaiting review'
-                              ? 'Review opens after the completed-stage service video is approved for customer viewing.'
-                              : 'Review is not open yet. It becomes available only after completed-stage service video approval.'
+                              ? 'Review opens after the final-result video is approved for customer viewing.'
+                              : 'Review is not open yet. It becomes available only after final-result video approval.'
                           : mediaState?.loading && reviewCaptureOk
                             ? 'We are checking whether this booking is ready for the video-based review flow.'
                           : reviewCaptureOk
@@ -784,7 +784,7 @@ export default function MyBookingsPage() {
                               ? 'After you open the booking and playback starts, watch for prompts to leave quick feedback.'
                             : !mediaLoaded && proofLikelyReady
                                 ? 'Open the booking detail page to continue into the service media and review flow.'
-                              : 'The video-based review flow only opens when a customer-visible completed-service video is attached. Some completed bookings may already have a review on file even if no playable video is available here.'
+                              : 'The video-based review flow only opens when a customer-visible final-result video is attached. Some completed bookings may already have a review on file even if no playable video is available here.'
                             : 'Not offered for cancelled services.'}
                       </li>
                     </ul>

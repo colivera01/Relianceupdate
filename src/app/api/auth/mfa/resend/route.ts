@@ -44,9 +44,6 @@ export async function POST(request: NextRequest) {
       success: true,
       message: "A new sign-in code was sent to your email.",
       challengeId: resent.challengeId,
-      ...(process.env.NODE_ENV !== "production"
-        ? { mfaCodePreview: resent.codePreview }
-        : {}),
     });
   } catch (error) {
     console.error("MFA resend error:", error);

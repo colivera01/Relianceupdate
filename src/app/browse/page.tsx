@@ -880,12 +880,12 @@ export default function PublicBrowsePage() {
                     ) : null}
 
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-amber-950">
+                      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-slate-950">
                         <div className="flex items-center gap-1 font-semibold">
                           <Star className="h-3.5 w-3.5 fill-current text-amber-500" />
                           <span>{reviewCopy.headline}</span>
                         </div>
-                        <div className="mt-1 text-amber-800">{reviewCopy.detail}</div>
+                        <div className="mt-1 text-slate-700">{reviewCopy.detail}</div>
                       </div>
                       <CustomerTrustSignalCard copy={trustCopy} />
                     </div>

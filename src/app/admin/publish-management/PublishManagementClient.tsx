@@ -39,6 +39,7 @@ export default function PublishManagementClient({
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [aiBusyVendorId, setAiBusyVendorId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingPublishAction>(null);
 
   const load = async (query = q) => {
@@ -164,6 +165,34 @@ export default function PublishManagementClient({
 
   const closePendingAction = () => setPendingAction(null);
 
+  const requestAiPublishReadiness = async (vendor: AdminPublishVendor) => {
+    setAiBusyVendorId(vendor.id);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/admin/publish/vendors/${vendor.id}/assist`, {
+        method: 'POST',
+        headers: getAdminRequestHeaders(),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || json?.message || `Status ${res.status}`);
+      await load(q);
+      setFeedback({
+        type: 'success',
+        message: json?.message || 'AI publish readiness recommendation generated',
+      });
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to generate AI publish readiness recommendation',
+      });
+    } finally {
+      setAiBusyVendorId(null);
+    }
+  };
+
   const confirmPendingAction = async () => {
     if (!pendingAction) return;
     if (pendingAction.kind === 'vendor') {
@@ -259,14 +288,15 @@ export default function PublishManagementClient({
             <p className="text-gray-500">No vendors found.</p>
           ) : (
             vendors.map((vendor) => (
-              <div key={vendor.id} className="border rounded p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div className="space-y-1">
+              <div key={vendor.id} className="border rounded p-3 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                <div className="space-y-3 flex-1">
+                  <div className="space-y-1">
                   <p className="font-medium">{vendor.businessName || vendor.name || 'Unknown Vendor'}</p>
                   <p className="text-sm text-gray-600">
                     {vendor.category || vendor.businessType || 'Uncategorized'} • Created{' '}
                     {new Date(vendor.createdAt).toLocaleDateString()}
                   </p>
-                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                     {vendor.isPubliclyListed ? (
                       <Badge className="bg-green-100 text-green-800">Publicly Listed</Badge>
                     ) : (
@@ -276,6 +306,76 @@ export default function PublishManagementClient({
                       <span className="text-xs text-gray-500">
                         First listed: {new Date(vendor.publiclyListedAt).toLocaleString()}
                       </span>
+                    ) : null}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
+                          AI Publish Readiness
+                        </div>
+                        <p className="mt-1 text-xs text-blue-800">
+                          Recommendation only. Listing and publishing decisions stay manual.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => requestAiPublishReadiness(vendor)}
+                        disabled={aiBusyVendorId === vendor.id}
+                      >
+                        {aiBusyVendorId === vendor.id
+                          ? 'Checking...'
+                          : vendor.aiRecommendation
+                            ? 'Refresh AI Review'
+                            : 'Run AI Review'}
+                      </Button>
+                    </div>
+                    {vendor.aiRecommendation ? (
+                      <div className="rounded-md border border-blue-200 bg-white p-3 text-sm">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline">
+                            {String(vendor.aiRecommendation.suggestion.decision || '')
+                              .replace(/_/g, ' ')
+                              .replace(/\b\w/g, (char) => char.toUpperCase())}
+                          </Badge>
+                          <Badge variant="outline">
+                            {vendor.aiRecommendation.suggestion.confidence} confidence
+                          </Badge>
+                        </div>
+                        <p className="mt-3 text-slate-800">
+                          {vendor.aiRecommendation.suggestion.summary}
+                        </p>
+                        {vendor.aiRecommendation.suggestion.blockingIssues?.length ? (
+                          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                            <div className="font-semibold uppercase tracking-wide text-amber-700">
+                              Open blockers
+                            </div>
+                            <ul className="mt-2 space-y-1">
+                              {vendor.aiRecommendation.suggestion.blockingIssues
+                                .slice(0, 3)
+                                .map((issue) => (
+                                  <li key={issue}>- {issue}</li>
+                                ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {vendor.aiRecommendation.suggestion.recommendedActions?.length ? (
+                          <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                            <div className="font-semibold uppercase tracking-wide text-slate-700">
+                              Suggested next actions
+                            </div>
+                            <ul className="mt-2 space-y-1">
+                              {vendor.aiRecommendation.suggestion.recommendedActions
+                                .slice(0, 3)
+                                .map((action) => (
+                                  <li key={action}>- {action}</li>
+                                ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>

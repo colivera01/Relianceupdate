@@ -95,6 +95,15 @@ vi.mock("@/lib/auth-email-verification", () => ({
   })),
 }));
 
+vi.mock("@/lib/ai/feature-flags", () => ({
+  isAiFeatureEnabled: vi.fn(() => true),
+}));
+
+vi.mock("@/lib/ai/vendor-approval-review-store", () => ({
+  VENDOR_APPROVAL_AI_SYSTEM_ACTOR: "system_ai",
+  generateVendorApprovalAiStoredResult: vi.fn(async () => null),
+}));
+
 async function readJson(response: Response) {
   return response.json() as Promise<Record<string, any>>;
 }
@@ -116,6 +125,8 @@ describe("POST /api/vendor/register", () => {
     const { findRegisteredUserByEmail, addRegisteredUser } = await import("@/lib/dev-registered-users");
     const { sendOrPreviewEmailVerification } = await import("@/lib/auth-email-verification");
     const { trySetVendorApprovalStatus } = await import("@/lib/vendor-status");
+    const { isAiFeatureEnabled } = await import("@/lib/ai/feature-flags");
+    const { generateVendorApprovalAiStoredResult } = await import("@/lib/ai/vendor-approval-review-store");
 
     vi.mocked(getUserIdFromRequest).mockReset();
     vi.mocked(getUserIdFromRequest).mockResolvedValue(null);
@@ -134,6 +145,10 @@ describe("POST /api/vendor/register", () => {
     } as any);
     vi.mocked(trySetVendorApprovalStatus).mockReset();
     vi.mocked(trySetVendorApprovalStatus).mockResolvedValue(true as any);
+    vi.mocked(isAiFeatureEnabled).mockReset();
+    vi.mocked(isAiFeatureEnabled).mockReturnValue(true);
+    vi.mocked(generateVendorApprovalAiStoredResult).mockReset();
+    vi.mocked(generateVendorApprovalAiStoredResult).mockResolvedValue(null as any);
 
     hoisted.userFindUnique.mockReset();
     hoisted.userCreate.mockReset();
@@ -243,6 +258,61 @@ describe("POST /api/vendor/register", () => {
         ]),
       })
     );
+  });
+
+  it("starts the AI vendor approval review after the application enters the pending queue", async () => {
+    const { generateVendorApprovalAiStoredResult, VENDOR_APPROVAL_AI_SYSTEM_ACTOR } = await import(
+      "@/lib/ai/vendor-approval-review-store"
+    );
+
+    const response = await POST(
+      createVendorRegisterRequest({
+        firstName: "Rosa",
+        lastName: "Vendor",
+        email: "rosa.vendor@reliance.test",
+        phone: "407-555-1212",
+        password: "VendorTest1!",
+        businessName: "Rosa Plumbing Co",
+        businessType: "Plumbing",
+        category: "Plumbing",
+        address: "123 Main St",
+        city: "Orlando",
+        state: "Florida",
+        zipCode: "32801",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(generateVendorApprovalAiStoredResult).toHaveBeenCalledWith("vendor-1", {
+      actorUserId: VENDOR_APPROVAL_AI_SYSTEM_ACTOR,
+      source: "vendor_registration_pending_autorun",
+    });
+  });
+
+  it("skips the auto-run when the AI feature flag is disabled", async () => {
+    const { isAiFeatureEnabled } = await import("@/lib/ai/feature-flags");
+    const { generateVendorApprovalAiStoredResult } = await import("@/lib/ai/vendor-approval-review-store");
+    vi.mocked(isAiFeatureEnabled).mockReturnValue(false);
+
+    const response = await POST(
+      createVendorRegisterRequest({
+        firstName: "Rosa",
+        lastName: "Vendor",
+        email: "rosa.vendor@reliance.test",
+        phone: "407-555-1212",
+        password: "VendorTest1!",
+        businessName: "Rosa Plumbing Co",
+        businessType: "Plumbing",
+        category: "Plumbing",
+        address: "123 Main St",
+        city: "Orlando",
+        state: "Florida",
+        zipCode: "32801",
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(generateVendorApprovalAiStoredResult).not.toHaveBeenCalled();
   });
 
   it("rejects duplicate vendor registration emails before creating records", async () => {

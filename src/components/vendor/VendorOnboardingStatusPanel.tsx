@@ -40,7 +40,7 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
             {onboarding.publicVisibilityLabel}
           </Badge>
           <Badge variant="outline" className="border-white/15 bg-white/6 text-white/88">
-            {onboarding.serviceDraftCount} service draft{onboarding.serviceDraftCount === 1 ? '' : 's'}
+            {onboarding.serviceDraftCount} saved service{onboarding.serviceDraftCount === 1 ? '' : 's'}
           </Badge>
           <Badge variant="outline" className="border-white/15 bg-white/6 text-white/88">
             {onboarding.publishedServiceCount} published service{onboarding.publishedServiceCount === 1 ? '' : 's'}
@@ -107,7 +107,7 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
             href="/vendor/services"
             className="inline-flex items-center rounded-full border border-white/14 bg-white/6 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
           >
-            Manage service drafts
+            Manage services
           </Link>
           <Link
             href="/vendor/support"

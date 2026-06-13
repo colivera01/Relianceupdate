@@ -3,6 +3,13 @@ export const AI_FEATURE_KEYS = [
   "dispute_summary_assistant",
   "trust_score_explanations",
   "vendor_coaching",
+  "vendor_approval_assistant",
+  "review_moderation_assistant",
+  "publish_readiness_assistant",
+  "promotions_assistant",
+  "vendor_copy_assistant",
+  "job_recovery_assistant",
+  "support_inbox_triage",
 ] as const;
 
 export type AiFeatureKey = (typeof AI_FEATURE_KEYS)[number];
@@ -15,6 +22,13 @@ export type AiModelConfig = {
   disputeSummaryModel: string;
   trustScoreExplainerModel: string;
   vendorCoachingModel: string;
+  vendorApprovalAssistantModel: string;
+  reviewModerationAssistantModel: string;
+  publishReadinessAssistantModel: string;
+  promotionsAssistantModel: string;
+  vendorCopyAssistantModel: string;
+  jobRecoveryAssistantModel: string;
+  supportInboxTriageModel: string;
 };
 
 export type AiEnvSnapshot = {
@@ -77,6 +91,20 @@ export function readAiEnv(): AiEnvSnapshot {
       trustScoreExplainerModel:
         clean(process.env.OPENAI_TRUST_SCORE_EXPLAINER_MODEL) || defaultModel,
       vendorCoachingModel: clean(process.env.OPENAI_VENDOR_COACHING_MODEL) || defaultModel,
+      vendorApprovalAssistantModel:
+        clean(process.env.OPENAI_VENDOR_APPROVAL_ASSISTANT_MODEL) || defaultModel,
+      reviewModerationAssistantModel:
+        clean(process.env.OPENAI_REVIEW_MODERATION_ASSISTANT_MODEL) || defaultModel,
+      publishReadinessAssistantModel:
+        clean(process.env.OPENAI_PUBLISH_READINESS_ASSISTANT_MODEL) || defaultModel,
+      promotionsAssistantModel:
+        clean(process.env.OPENAI_PROMOTIONS_ASSISTANT_MODEL) || defaultModel,
+      vendorCopyAssistantModel:
+        clean(process.env.OPENAI_VENDOR_COPY_ASSISTANT_MODEL) || defaultModel,
+      jobRecoveryAssistantModel:
+        clean(process.env.OPENAI_JOB_RECOVERY_ASSISTANT_MODEL) || defaultModel,
+      supportInboxTriageModel:
+        clean(process.env.OPENAI_SUPPORT_INBOX_TRIAGE_MODEL) || defaultModel,
     },
     features: {
       moderation_assistant: parseEnvBoolean(
@@ -92,6 +120,34 @@ export function readAiEnv(): AiEnvSnapshot {
         false
       ),
       vendor_coaching: parseEnvBoolean(process.env.OPENAI_VENDOR_COACHING_ENABLED, false),
+      vendor_approval_assistant: parseEnvBoolean(
+        process.env.OPENAI_VENDOR_APPROVAL_ASSISTANT_ENABLED,
+        false
+      ),
+      review_moderation_assistant: parseEnvBoolean(
+        process.env.OPENAI_REVIEW_MODERATION_ASSISTANT_ENABLED,
+        false
+      ),
+      publish_readiness_assistant: parseEnvBoolean(
+        process.env.OPENAI_PUBLISH_READINESS_ASSISTANT_ENABLED,
+        false
+      ),
+      promotions_assistant: parseEnvBoolean(
+        process.env.OPENAI_PROMOTIONS_ASSISTANT_ENABLED,
+        false
+      ),
+      vendor_copy_assistant: parseEnvBoolean(
+        process.env.OPENAI_VENDOR_COPY_ASSISTANT_ENABLED,
+        false
+      ),
+      job_recovery_assistant: parseEnvBoolean(
+        process.env.OPENAI_JOB_RECOVERY_ASSISTANT_ENABLED,
+        false
+      ),
+      support_inbox_triage: parseEnvBoolean(
+        process.env.OPENAI_SUPPORT_INBOX_TRIAGE_ENABLED,
+        false
+      ),
     },
   };
 }
@@ -109,6 +165,20 @@ export function getAiFeatureModel(
       return snapshot.models.trustScoreExplainerModel;
     case "vendor_coaching":
       return snapshot.models.vendorCoachingModel;
+    case "vendor_approval_assistant":
+      return snapshot.models.vendorApprovalAssistantModel;
+    case "review_moderation_assistant":
+      return snapshot.models.reviewModerationAssistantModel;
+    case "publish_readiness_assistant":
+      return snapshot.models.publishReadinessAssistantModel;
+    case "promotions_assistant":
+      return snapshot.models.promotionsAssistantModel;
+    case "vendor_copy_assistant":
+      return snapshot.models.vendorCopyAssistantModel;
+    case "job_recovery_assistant":
+      return snapshot.models.jobRecoveryAssistantModel;
+    case "support_inbox_triage":
+      return snapshot.models.supportInboxTriageModel;
     default:
       return snapshot.models.defaultModel;
   }

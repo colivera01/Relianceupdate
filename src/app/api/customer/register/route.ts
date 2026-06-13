@@ -194,6 +194,7 @@ export async function POST(request: NextRequest) {
         credentialId: String(credential.id),
         recipientName: `${firstName} ${lastName}`.trim() || null,
         baseUrl: request.nextUrl.origin,
+        audience: "customer",
       }).catch((sendError) => {
         console.error("Customer verification email send error:", sendError);
         return null;

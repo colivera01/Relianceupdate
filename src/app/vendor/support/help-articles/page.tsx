@@ -47,7 +47,7 @@ const categories: Category[] = [
   { id: 'all', name: 'All Articles', icon: BookOpen },
   { id: 'getting-started', name: 'Getting Started', icon: Rocket },
   { id: 'profile', name: 'Profile & Settings', icon: User },
-  { id: 'jobs', name: 'Job Management', icon: Briefcase },
+  { id: 'jobs', name: 'Scheduled Work', icon: Briefcase },
   { id: 'free-launch', name: 'Free Launch', icon: Wallet },
   { id: 'marketing', name: 'Marketing & Growth', icon: Megaphone },
   { id: 'best-practices', name: 'Best Practices', icon: Star },
@@ -69,16 +69,16 @@ const articles: Article[] = [
   },
   {
     id: 'first-job',
-    title: 'Accepting Your First Job: A Complete Guide',
+    title: 'Managing Your First Scheduled Work Item',
     category: 'jobs',
-    categoryName: 'Job Management',
+    categoryName: 'Scheduled Work',
     description:
-      'Use the live Jobs page to review requests, required video stages, and manager approval status.',
+      'Use Manage Scheduled Work to review bookings, required video stages, and manager approval status.',
     readTime: '8 min read',
     difficulty: 'Beginner',
     tags: ['first job', 'acceptance', 'completion'],
     actionHref: '/vendor/jobs',
-    actionLabel: 'View Jobs',
+    actionLabel: 'View Scheduled Work',
   },
   {
     id: 'pricing-strategy',
@@ -104,7 +104,7 @@ const articles: Article[] = [
     difficulty: 'Intermediate',
     tags: ['communication', 'customers', 'professionalism'],
     actionHref: '/vendor/jobs',
-    actionLabel: 'View Jobs',
+    actionLabel: 'View Scheduled Work',
   },
   {
     id: 'reviews-success',
@@ -123,7 +123,7 @@ const articles: Article[] = [
     id: 'availability-management',
     title: 'Managing Your Availability and Schedule',
     category: 'jobs',
-    categoryName: 'Job Management',
+    categoryName: 'Scheduled Work',
     description:
       'Use the current vendor tools to keep team access and job ownership clear.',
     readTime: '6 min read',
@@ -151,7 +151,7 @@ const articles: Article[] = [
     category: 'marketing',
     categoryName: 'Marketing & Growth',
     description:
-      'Add or revise service drafts and reference estimates without implying live payment setup.',
+      'Add or revise saved services and reference estimates without implying live payment setup.',
     readTime: '11 min read',
     difficulty: 'Advanced',
     tags: ['expansion', 'services', 'growth'],

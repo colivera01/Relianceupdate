@@ -54,7 +54,6 @@ function LoginPageContent() {
   const [mfaChallengeId, setMfaChallengeId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [mfaEmail, setMfaEmail] = useState('');
-  const [mfaCodePreview, setMfaCodePreview] = useState('');
   const [rememberDevice, setRememberDevice] = useState(false);
   const [supportsPasskeys, setSupportsPasskeys] = useState(false);
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
@@ -235,14 +234,10 @@ function LoginPageContent() {
           setMfaChallengeId(String(data.challengeId || ''));
           setMfaEmail(String(data.email || formData.email));
           setMfaCode('');
-          setMfaCodePreview(String(data.mfaCodePreview || ''));
           setRememberDevice(false);
           setFormMessage({
             tone: 'success',
-            text:
-              process.env.NODE_ENV !== 'production' && data.mfaCodePreview
-                ? `A sign-in code was sent. Dev preview: ${String(data.mfaCodePreview)}`
-                : 'A sign-in code was sent to your email.',
+            text: 'A sign-in code was sent to your email.',
           });
           return;
         }
@@ -304,14 +299,10 @@ function LoginPageContent() {
         return;
       }
       setMfaChallengeId(String(data.challengeId || mfaChallengeId));
-      setMfaCodePreview(String(data.mfaCodePreview || ''));
       setMfaCode('');
       setFormMessage({
         tone: 'success',
-        text:
-          process.env.NODE_ENV !== 'production' && data.mfaCodePreview
-            ? `A new sign-in code was sent. Dev preview: ${String(data.mfaCodePreview)}`
-            : 'A new sign-in code was sent to your email.',
+        text: 'A new sign-in code was sent to your email.',
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -372,11 +363,8 @@ function LoginPageContent() {
                     maxLength={6}
                     required
                   />
-                  {process.env.NODE_ENV !== 'production' && mfaCodePreview ? (
-                    <p className="mt-2 text-xs text-slate-500">Dev code preview: {mfaCodePreview}</p>
-                  ) : null}
                   <p className="mt-2 text-xs text-slate-500">
-                    Vendor, employee, and admin operational accounts use an extra sign-in step to protect dashboard and job access.
+                    Vendor-capable, employee, and admin accounts use this extra sign-in step to protect dashboard, job, and admin access.
                   </p>
                   <label className="mt-3 flex items-center gap-2 text-sm text-slate-600">
                     <input
@@ -384,7 +372,7 @@ function LoginPageContent() {
                       checked={rememberDevice}
                       onChange={(e) => setRememberDevice(e.target.checked)}
                     />
-                    Skip the email code on this device for 30 days
+                    Remember this device for 30 days
                   </label>
                   <button
                     type="button"
@@ -401,7 +389,6 @@ function LoginPageContent() {
                       setMfaChallengeId('');
                       setMfaCode('');
                       setMfaEmail('');
-                      setMfaCodePreview('');
                       setRememberDevice(false);
                     }}
                   >

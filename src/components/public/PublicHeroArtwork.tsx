@@ -8,7 +8,7 @@ export function PublicHeroArtwork({
   vendorName = 'Reliance marketplace',
 }: PublicHeroArtworkProps) {
   return (
-    <div className="relative h-72 overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#040913,#081120_52%,#0d1d36_100%)]">
+    <div className="relative h-[17rem] overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#040913,#081120_52%,#0d1d36_100%)] sm:h-[18rem]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(36,107,255,0.24),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(53,214,165,0.16),transparent_16%)]" />
 
       <svg
@@ -77,23 +77,23 @@ export function PublicHeroArtwork({
       </div>
 
       <div className="absolute right-5 top-5 rounded-full border border-white/10 bg-[rgba(6,12,23,0.72)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70 backdrop-blur-md">
-        Before / During / Complete
+        Start / In Progress / Final
       </div>
 
-      <div className="absolute bottom-5 left-5 max-w-[50%]">
+      <div className="absolute left-5 top-[4.8rem] max-w-[48%] pr-2">
         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/52">
           See what&apos;s available
         </div>
-        <div className="mt-3 font-display text-[1.9rem] font-semibold leading-tight text-white">
+        <div className="mt-2.5 font-display text-[1.18rem] font-semibold leading-[1.08] text-white sm:text-[1.34rem]">
           Know when a public service video is available.
         </div>
-        <p className="mt-3 text-sm leading-6 text-white/68">
+        <p className="mt-2.5 text-[13px] leading-5 text-white/68">
           Some providers share approved public service videos after completed work. When no video is
           available yet, you can still compare reviews, provider details, and service information.
         </p>
       </div>
 
-      <div className="absolute bottom-5 right-5 w-[220px] rounded-[22px] border border-white/10 bg-[rgba(6,11,21,0.78)] p-4 text-white backdrop-blur-xl">
+      <div className="absolute bottom-5 right-5 w-[198px] rounded-[22px] border border-white/10 bg-[rgba(6,11,21,0.78)] p-4 text-white backdrop-blur-xl sm:w-[210px]">
         <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/54">
           Featured preview
         </div>

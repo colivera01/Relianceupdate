@@ -30,6 +30,7 @@ import {
   validatePromotionPackageRules,
 } from "@/lib/promoted-listings";
 import { countablePromotionCampaignWhere } from "@/lib/metrics-exclusion";
+import { getLatestPromotionReadinessAiStoredResults } from "@/lib/ai/promotion-readiness-review-store";
 import {
   doesBrowseReadinessMeetCategoryFloor,
   getBrowsePromotionRenderReadiness,
@@ -577,11 +578,21 @@ export async function GET(request: Request): Promise<NextResponse> {
       getBrowsePromotionRenderReadiness(),
     ]);
 
+    const serializedCampaigns = campaigns.map((campaign: any) =>
+      serializeCampaign(campaign, packages, { browseReadiness })
+    );
+    const aiRecommendationsByCampaignId =
+      await getLatestPromotionReadinessAiStoredResults(
+        serializedCampaigns.map((campaign: any) => String(campaign.id))
+      );
+
     return NextResponse.json({
       success: true,
-      campaigns: campaigns.map((campaign: any) =>
-        serializeCampaign(campaign, packages, { browseReadiness })
-      ),
+      campaigns: serializedCampaigns.map((campaign: any) => ({
+        ...campaign,
+        aiRecommendation:
+          aiRecommendationsByCampaignId[String(campaign.id)] || null,
+      })),
       meta: {
         eligibilityRule: promotionEligibilityNote(),
         packages,

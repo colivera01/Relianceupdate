@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings, CheckCircle, XCircle, Info, User, Shield, Bell, Smartphone as DeviceIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Settings, CheckCircle, XCircle, Info, User, Shield, Bell, Smartphone as DeviceIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorDevices } from '@/hooks/useVendorDevices';
@@ -67,6 +67,17 @@ const notificationPreferenceCopy: Record<string, { label: string; description: s
   },
 };
 
+type VendorCopySuggestion = {
+  summary: string;
+  confidence: 'low' | 'medium' | 'high';
+  recommendedHeadline: string;
+  recommendedDescription: string;
+  recommendedBullets: string[];
+  trustGaps: string[];
+  riskyClaims: string[];
+  nextEdits: string[];
+};
+
 export default function VendorProfilePage() {
   const { data: profile, loading, error, saving, approvalPending, updateProfile, refetch } = useVendorProfile();
   
@@ -89,6 +100,10 @@ export default function VendorProfilePage() {
   // Photo upload ref and state
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [vendorCopySuggestion, setVendorCopySuggestion] = useState<VendorCopySuggestion | null>(null);
+  const [vendorCopyLoading, setVendorCopyLoading] = useState(false);
+  const [vendorCopyError, setVendorCopyError] = useState<string | null>(null);
+  const [vendorCopyMessage, setVendorCopyMessage] = useState<string | null>(null);
   
   // Local UI state (not profile data)
   const [localFormData, setLocalFormData] = useState<Partial<VendorProfileUpdateRequest>>({});
@@ -466,6 +481,62 @@ export default function VendorProfilePage() {
     publishedReviewCount: Number(profile?.ratingCount || 0),
     approvedServiceVideoCount: 0,
   });
+  const vendorCopyTrustSignals = [
+    profile?.membershipStatus === 'ACTIVE'
+      ? 'Vendor account is approved on Reliance.'
+      : 'Vendor account is still awaiting approval.',
+    profile?.isPubliclyListed
+      ? 'Business profile is currently visible in the public marketplace.'
+      : 'Business profile is not public yet.',
+    Number(profile?.publishedServiceCount || 0) > 0
+      ? `${Number(profile?.publishedServiceCount || 0)} published services help customers find this business.`
+      : 'No services are publicly published yet.',
+    Number(profile?.ratingCount || 0) > 0
+      ? `${Number(profile?.ratingCount || 0)} public customer reviews are visible.`
+      : 'No public customer reviews are visible yet.',
+  ].filter(Boolean) as string[];
+
+  const requestVendorCopySuggestion = async () => {
+    if (!vendorId) return;
+    setVendorCopyLoading(true);
+    setVendorCopyError(null);
+    setVendorCopyMessage(null);
+    try {
+      const response = await fetch('/api/vendor/copy-assistant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          vendorId,
+          mode: 'profile_bio',
+          businessName: businessDisplayName,
+          category: String(localFormData.category || profile?.category || '').trim() || null,
+          city: String(localFormData.city || profile?.city || '').trim() || null,
+          state: String(localFormData.state || profile?.state || '').trim() || null,
+          currentHeadline: businessDisplayName,
+          currentDescription: String(localFormData.bio || profile?.bio || ''),
+          currentBullets: Array.isArray(localFormData.serviceTypes)
+            ? localFormData.serviceTypes.slice(0, 5)
+            : [],
+          trustSignals: vendorCopyTrustSignals.slice(0, 6),
+        }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error || json?.message || `Status ${response.status}`);
+      }
+      setVendorCopySuggestion(json?.suggestion || null);
+      setVendorCopyMessage(json?.message || 'AI vendor copy guidance generated.');
+    } catch (err) {
+      console.error('Error generating vendor copy suggestion:', err);
+      setVendorCopyError(
+        err instanceof Error ? err.message : 'Failed to generate AI copy guidance'
+      );
+    } finally {
+      setVendorCopyLoading(false);
+    }
+  };
 
   return (
     <div className="bg-gradient-to-br from-slate-50 to-blue-50">
@@ -519,10 +590,10 @@ export default function VendorProfilePage() {
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
                 {growthSummary.metrics.slice(0, 4).map((metric) => (
-                  <div key={metric.label} className="rounded-xl border border-blue-100 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{metric.label}</p>
-                    <p className="mt-2 text-lg font-semibold text-slate-950">{metric.value}</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">{metric.detail}</p>
+                  <div key={metric.label} className="min-w-0 rounded-xl border border-blue-100 bg-white p-4">
+                    <p className="break-words text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{metric.label}</p>
+                    <p className="mt-2 break-words text-lg font-semibold text-slate-950">{metric.value}</p>
+                    <p className="mt-2 break-words text-sm leading-6 text-slate-600">{metric.detail}</p>
                   </div>
                 ))}
               </div>
@@ -541,6 +612,136 @@ export default function VendorProfilePage() {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+          <Card className="border-violet-200 bg-violet-50 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-violet-700">
+                    <Sparkles className="h-4 w-4" />
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em]">AI Copy Assist</p>
+                  </div>
+                  <CardTitle className="mt-2 text-xl text-violet-950">Make your public business story easier to trust</CardTitle>
+                  <p className="mt-2 text-sm text-violet-900">
+                    This assistant rewrites your public-facing bio in clearer customer language without changing any approval, publishing, or Trust Score rules.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="bg-white"
+                  onClick={requestVendorCopySuggestion}
+                  disabled={vendorCopyLoading || !vendorId}
+                >
+                  {vendorCopyLoading
+                    ? 'Generating...'
+                    : vendorCopySuggestion
+                      ? 'Refresh AI Suggestion'
+                      : 'Suggest Better Bio'}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {vendorCopyMessage ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {vendorCopyMessage}
+                </div>
+              ) : null}
+              {vendorCopyError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {vendorCopyError}
+                </div>
+              ) : null}
+              {vendorCopySuggestion ? (
+                <div className="rounded-xl border border-violet-100 bg-white p-4 space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">
+                      {vendorCopySuggestion.confidence.charAt(0).toUpperCase() + vendorCopySuggestion.confidence.slice(1)} confidence
+                    </Badge>
+                    <Badge variant="outline">Headline suggestion included</Badge>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">AI summary</p>
+                    <p className="mt-2 text-sm text-slate-800">{vendorCopySuggestion.summary}</p>
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-lg border border-violet-100 bg-violet-50/60 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-700">Suggested opening line</p>
+                      <p className="mt-2 text-base font-semibold text-slate-950">
+                        {vendorCopySuggestion.recommendedHeadline}
+                      </p>
+                      <p className="mt-3 text-sm leading-6 text-slate-700">
+                        {vendorCopySuggestion.recommendedDescription}
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Suggested proof points</p>
+                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                          {vendorCopySuggestion.recommendedBullets.length > 0 ? (
+                            vendorCopySuggestion.recommendedBullets.map((item) => (
+                              <li key={item}>- {item}</li>
+                            ))
+                          ) : (
+                            <li>No extra bullet points were suggested.</li>
+                          )}
+                        </ul>
+                      </div>
+                      {vendorCopySuggestion.trustGaps.length > 0 ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">What customers may still question</p>
+                          <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                            {vendorCopySuggestion.trustGaps.map((item) => (
+                              <li key={item}>- {item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  {vendorCopySuggestion.riskyClaims.length > 0 ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Claims to avoid or soften</p>
+                      <ul className="mt-2 space-y-1 text-sm text-red-800">
+                        {vendorCopySuggestion.riskyClaims.map((item) => (
+                          <li key={item}>- {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {vendorCopySuggestion.nextEdits.length > 0 ? (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Recommended next edits</p>
+                      <ul className="mt-2 space-y-1 text-sm text-blue-900">
+                        {vendorCopySuggestion.nextEdits.map((item) => (
+                          <li key={item}>- {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      onClick={() =>
+                        setLocalFormData((current) => ({
+                          ...current,
+                          bio: vendorCopySuggestion.recommendedDescription,
+                        }))
+                      }
+                    >
+                      Use Suggested Bio
+                    </Button>
+                    <p className="text-xs text-slate-600">
+                      The suggested opening line is shown here for guidance. Your actual saved profile field on this page is the business bio below.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-violet-200 bg-white px-4 py-5 text-sm text-slate-600">
+                  Run AI Copy Assist to get a clearer profile bio draft based on your current business details and existing public trust signals.
+                </div>
+              )}
             </CardContent>
           </Card>
           {/* Enhanced Profile Information Card */}
@@ -662,10 +863,12 @@ export default function VendorProfilePage() {
                   <p className="text-sm text-gray-500 mt-1">Shown on your public profile and job listings.</p>
                 </div>
 
-                {/* Service Types Section */}
+                {/* Business specialties section */}
                 <div className="mb-6">
-                  <label className="block text-sm font-medium mb-2 text-gray-700">Service Types Offered</label>
-                  <p className="text-sm text-gray-600 mb-3">Select all the services your business provides</p>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Business Specialties</label>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Select broad specialties for your profile. Customer-bookable services are managed from Your Service Menu.
+                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {serviceTypeOptions.map((serviceType) => (
                       <div key={serviceType} className="flex items-center space-x-2">
@@ -695,7 +898,7 @@ export default function VendorProfilePage() {
                       </div>
                     ))}
                   </div>
-                  <p className="text-sm text-gray-500 mt-2">Selected: {(localFormData.serviceTypes || []).length} service types</p>
+                  <p className="text-sm text-gray-500 mt-2">Selected: {(localFormData.serviceTypes || []).length} specialties</p>
                 </div>
 
                 <div>
@@ -1188,36 +1391,39 @@ export default function VendorProfilePage() {
         {/* Enhanced Right Panel */}
         <aside className="w-full xl:w-80 space-y-6">
           {/* Enhanced Security Card */}
-          <Card className="bg-gradient-to-br from-white to-red-50 border-red-200 shadow-lg">
+          <Card className="border-blue-200 bg-blue-50 shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <Shield className="w-5 h-5 text-red-600" />
+                <div className="rounded-lg bg-blue-100 p-2">
+                  <Shield className="h-5 w-5 text-blue-700" />
                 </div>
-                <CardTitle className="text-lg text-gray-800">Security</CardTitle>
+                <CardTitle className="text-lg text-blue-950">Account Protection</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm text-gray-600">Two-Factor Auth</span>
-                    <p className="text-xs text-gray-500">Vendor sign-in protection is active. Review MFA, passkeys, and login alerts in Security Settings.</p>
+              <div className="space-y-4 text-sm text-blue-950">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">Vendor sign-in protection</span>
+                    <Badge className="bg-blue-100 text-blue-800">
+                      Active
+                    </Badge>
                   </div>
-                  <Badge className="bg-green-100 text-green-700">
-                    Active
-                  </Badge>
+                  <p className="text-xs leading-5 text-blue-900">
+                    Review MFA, passkeys, and login alerts from Security Settings. This protects dashboard,
+                    team, and job access.
+                  </p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Login Notifications</span>
-                  <Badge className={(profile?.loginNotifications ?? securitySettings.loginNotifications) ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium">Login notifications</span>
+                  <Badge className={(profile?.loginNotifications ?? securitySettings.loginNotifications) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}>
                     {(profile?.loginNotifications ?? securitySettings.loginNotifications) ? 'On' : 'Off'}
                   </Badge>
                 </div>
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="w-full bg-white hover:bg-red-50"
+                  className="w-full bg-white hover:bg-blue-50"
                   onClick={() => setShowSecurityModal(true)}
                 >
                   <Shield className="w-4 h-4 mr-2" />

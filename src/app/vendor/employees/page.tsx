@@ -8,14 +8,43 @@ import { getClientSessionHeaders } from "@/lib/client-session";
 import {
   fetchVendorTeamMembers,
   avatarUrlForName,
-  type VendorTeamMember,
+type VendorTeamMember,
 } from "@/lib/vendor-team-members";
+
+type PendingInvite = {
+  id: string;
+  token?: string;
+  inviteUrl: string;
+  sentAt?: string | null;
+  expiresAt: string;
+  status: string;
+  canCancel?: boolean;
+  recipient?: {
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    role?: string | null;
+  } | null;
+};
 
 function roleLabel(role: string) {
   const r = String(role || "").toUpperCase();
   if (r === "MANAGER") return "Manager";
   if (r === "EMPLOYEE") return "Team member";
   return role || "Member";
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "Unknown date";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function getPerformanceBadge(rating: number, reviewCount: number): { label: string; className: string } {
@@ -59,22 +88,12 @@ export default function EmployeesPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePhone, setInvitePhone] = useState("");
   const [inviteRole, setInviteRole] = useState("EMPLOYEE");
-  const [allowSelfInvite, setAllowSelfInvite] = useState(false);
-  const [allowSelfInviteTestMode, setAllowSelfInviteTestMode] = useState(false);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [inviteCancellingId, setInviteCancellingId] = useState<string | null>(null);
   const [removingMembershipId, setRemovingMembershipId] = useState<string | null>(null);
   const [inviteMessage, setInviteMessage] = useState("");
-  const [invites, setInvites] = useState<
-    Array<{
-      id: string;
-      token?: string;
-      inviteUrl: string;
-      expiresAt: string;
-      status: string;
-      canCancel?: boolean;
-    }>
-  >([]);
+  const [expandedInviteIds, setExpandedInviteIds] = useState<Record<string, boolean>>({});
+  const [invites, setInvites] = useState<PendingInvite[]>([]);
 
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -106,7 +125,6 @@ export default function EmployeesPage() {
       const dashboardJson = await dashboardRes.json().catch(() => ({}));
       setTeamMembers(members);
       setInvites(Array.isArray(invitesJson?.invites) ? invitesJson.invites : []);
-      setAllowSelfInviteTestMode(Boolean(invitesJson?.allowSelfEmployeeInviteTestMode));
       const employeePerformance = Array.isArray(dashboardJson?.employeePerformance)
         ? dashboardJson.employeePerformance
         : [];
@@ -138,6 +156,13 @@ export default function EmployeesPage() {
 
   const handleCreateInvite = async () => {
     if (!vendorId || !authUserId) return;
+    const trimmedName = inviteName.trim();
+    const trimmedEmail = inviteEmail.trim();
+    const trimmedPhone = invitePhone.trim();
+    if (!trimmedName || (!trimmedEmail && !trimmedPhone)) {
+      setInviteMessage("Enter the team member's name and at least one contact method.");
+      return;
+    }
     setInviteSubmitting(true);
     setInviteMessage("");
     try {
@@ -148,11 +173,10 @@ export default function EmployeesPage() {
           ...getClientSessionHeaders(authUserId),
         },
         body: JSON.stringify({
-          name: inviteName,
-          email: inviteEmail,
-          phone: invitePhone,
+          name: trimmedName,
+          email: trimmedEmail,
+          phone: trimmedPhone,
           role: inviteRole || "EMPLOYEE",
-          allowSelfInvite: allowSelfInvite === true,
           origin: window.location.origin,
         }),
       });
@@ -160,19 +184,15 @@ export default function EmployeesPage() {
       if (!res.ok || !json?.invite?.inviteUrl) {
         const backendError = String(json?.error || "Failed to create invite.");
         const backendCode = String(json?.code || "none");
-        const backendMessage = String(json?.message || "");
-        const backendStep = String(json?.step || json?.details?.step || "unknown_step");
-        const backendDetails = json?.details ?? null;
         if (res.status === 409 && backendCode === "ALREADY_ACTIVE_MANAGER") {
           throw new Error(
-            "This person is already an active manager for this vendor. Use a different employee email/phone, or enable dev test mode locally."
+            "This person already has manager access for this business. Use a different team member contact."
           );
         }
-        throw new Error(
-          `Create Invite failed (${res.status}) | error="${backendError}" code=${backendCode} message="${backendMessage}" step=${backendStep} details=${JSON.stringify(
-            backendDetails
-          )}`
-        );
+        if (res.status === 422) {
+          throw new Error("Enter the team member's name and at least one contact method.");
+        }
+        throw new Error(backendError || "Could not create the invite. Check the details and try again.");
       }
       const emailChannel = Array.isArray(json?.notification?.channels)
         ? json.notification.channels.find((c: any) => c?.channel === "email")
@@ -180,15 +200,13 @@ export default function EmployeesPage() {
       const smsChannel = Array.isArray(json?.notification?.channels)
         ? json.notification.channels.find((c: any) => c?.channel === "sms")
         : null;
-      const fallbackMessage = `Invite created. Copy and share this link: ${json.invite.inviteUrl}`;
+      const fallbackMessage = "Invite created. Open the pending invite below if you need to copy or share the link.";
       if (emailChannel?.success && smsChannel?.attempted && !smsChannel?.success) {
         setInviteMessage(
-          `Email sent. SMS failed: ${String(smsChannel?.errorMessage || "unknown_error")} (${String(
-            smsChannel?.errorCode || "no_code"
-          )}). Share this invite link: ${json.invite.inviteUrl}`
+          "Email sent. SMS could not be delivered. Open the pending invite below if you need to share the link."
         );
       } else {
-        setInviteMessage(json?.delivery ? `${json.delivery} Share this invite link: ${json.invite.inviteUrl}` : fallbackMessage);
+        setInviteMessage(json?.delivery ? `${json.delivery} Open the pending invite below if you need the link.` : fallbackMessage);
       }
       setInviteName("");
       setInviteEmail("");
@@ -241,16 +259,7 @@ export default function EmployeesPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         const backendError = String(json?.error || `Failed to remove member (${res.status})`);
-        const backendCode = String(json?.code || "none");
-        const backendStep = String(json?.step || "unknown_step");
-        const backendDetails = json?.details || json?.debug || null;
-        throw new Error(
-          process.env.NODE_ENV !== "production"
-            ? `${backendError} (status=${res.status} code=${backendCode} step=${backendStep} details=${JSON.stringify(
-                backendDetails
-              )})`
-            : backendError
-        );
+        throw new Error(backendError);
       }
       await loadRosterAndInvites();
       setInviteMessage("Team member removed.");
@@ -261,14 +270,21 @@ export default function EmployeesPage() {
     }
   };
 
+  const toggleInviteDetails = (inviteId: string) => {
+    setExpandedInviteIds((prev) => ({
+      ...prev,
+      [inviteId]: !prev[inviteId],
+    }));
+  };
+
   return (
-    <div className="w-full">
+    <div className="w-full text-slate-100">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Team Management</h2>
-          <p className="text-gray-600 mt-1">
-            Active team members for this vendor (same roster as job assignments). Pending invites and
-            approvals are managed through your membership workflow.
+          <h2 className="text-2xl font-bold text-white">Team Access</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-300">
+            Invite employees and managers who help complete scheduled work. Accepting an invite gives
+            them team access; recording service videos happens later from Employee Jobs after work is assigned.
           </p>
         </div>
       </div>
@@ -281,68 +297,73 @@ export default function EmployeesPage() {
 
       {/* Team Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className="bg-green-50 p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-green-600">
+        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+          <div className="text-2xl font-bold text-emerald-100">
             {profileLoading || loading ? "—" : managers.length}
           </div>
-          <div className="text-sm text-green-600">Managers</div>
+          <div className="text-sm text-emerald-200">Managers</div>
         </div>
-        <div className="bg-purple-50 p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-purple-600">
+        <div className="rounded-2xl border border-blue-400/20 bg-blue-500/10 p-4">
+          <div className="text-2xl font-bold text-blue-100">
             {profileLoading || loading ? "—" : employees.length}
           </div>
-          <div className="text-sm text-purple-600">Employees</div>
+          <div className="text-sm text-blue-200">Employees</div>
         </div>
       </div>
 
-      <div className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-900">Invite Employee</h3>
-        <p className="mt-1 text-sm text-gray-600">
-          Add an employee invite with name, phone, email, and role. Default role is employee.
+      <div className="mb-6 rounded-2xl border border-blue-400/20 bg-blue-950/30 p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">How employee access works</p>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          {[
+            "Send an invite with the team member's contact details.",
+            "They accept the invite and sign in with the same email or phone.",
+            "A manager assigns scheduled work from Manage Scheduled Work.",
+            "The employee opens Employee Jobs to record Starting Condition, Work in Progress, and Final Result clips.",
+          ].map((step, index) => (
+            <div key={step} className="rounded-xl border border-white/10 bg-slate-950/50 p-3 text-sm leading-6 text-slate-200">
+              <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                {index + 1}
+              </span>
+              <p>{step}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-950/75 p-4 shadow-sm">
+        <h3 className="text-lg font-semibold text-white">Invite Employee</h3>
+        <p className="mt-1 text-sm leading-6 text-slate-300">
+          Add the person who will help with scheduled work. The invite does not create a job by itself.
         </p>
-        {allowSelfInviteTestMode ? (
-          <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
-            Dev test mode is enabled: same-email/phone self-invite tests are allowed without changing your active manager membership.
-          </p>
-        ) : null}
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <input
             value={inviteName}
             onChange={(e) => setInviteName(e.target.value)}
             placeholder="Full name"
-            className="rounded border px-3 py-2 text-sm"
+            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
           />
           <input
             value={invitePhone}
             onChange={(e) => setInvitePhone(e.target.value)}
             placeholder="Phone"
-            className="rounded border px-3 py-2 text-sm"
+            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
           />
           <input
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
             placeholder="Email"
-            className="rounded border px-3 py-2 text-sm"
+            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
           />
           <select
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value)}
-            className="rounded border px-3 py-2 text-sm"
+            className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-blue-400 focus:outline-none"
+            style={{ colorScheme: "dark" }}
           >
             <option value="EMPLOYEE">Employee</option>
             <option value="MANAGER">Manager</option>
           </select>
         </div>
-        {process.env.NODE_ENV !== "production" ? (
-          <label className="mt-3 flex items-center gap-2 text-xs text-gray-700">
-            <input
-              type="checkbox"
-              checked={allowSelfInvite}
-              onChange={(e) => setAllowSelfInvite(e.target.checked)}
-            />
-            Dev Mode: Allow self-invite
-          </label>
-        ) : null}
         <div className="mt-3 flex items-center gap-2">
           <button
             type="button"
@@ -352,67 +373,114 @@ export default function EmployeesPage() {
           >
             {inviteSubmitting ? "Creating..." : "Create Invite"}
           </button>
-          {inviteMessage ? <p className="text-xs text-gray-700">{inviteMessage}</p> : null}
+          {inviteMessage ? <p className="text-xs text-slate-300">{inviteMessage}</p> : null}
         </div>
       </div>
 
-      <div className="mb-6 rounded-lg border bg-white p-4 shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-900">Pending/Invited Links</h3>
-        <div className="mt-2 space-y-2">
+      <div className="mb-6 rounded-2xl border border-slate-700 bg-slate-950/75 p-4 shadow-sm">
+        <h3 className="text-lg font-semibold text-white">Pending employee invites</h3>
+        <p className="mt-1 text-sm text-slate-300">
+          Click an invite to view contact details and copy the invite link.
+        </p>
+        <div className="mt-3 space-y-3">
           {invites.length === 0 ? (
-            <p className="text-sm text-gray-600">No active invites.</p>
+            <p className="text-sm text-slate-300">No active invites.</p>
           ) : (
-            invites.map((invite) => (
-              <div key={invite.id} className="rounded border bg-gray-50 p-2 text-xs text-gray-700">
-                {(() => {
-                  const computedInviteUrl =
-                    !isProduction && invite.token
-                      ? `${window.location.origin}/vendor/invite/${invite.token}`
-                      : invite.inviteUrl;
-                  return (
-                    <>
-                <p>Status: {invite.status}</p>
-                <p>Expires: {new Date(invite.expiresAt).toLocaleString()}</p>
-                <p className="break-all">Invite link: {computedInviteUrl}</p>
-                {invite.canCancel !== false ? (
+            invites.map((invite) => {
+              const computedInviteUrl =
+                !isProduction && invite.token
+                  ? `${window.location.origin}/vendor/invite/${invite.token}`
+                  : invite.inviteUrl;
+              const isExpanded = Boolean(expandedInviteIds[invite.id]);
+              const recipientName = invite.recipient?.name || "Pending team invite";
+              const recipientRole = roleLabel(invite.recipient?.role || "EMPLOYEE");
+              return (
+                <div key={invite.id} className="rounded-2xl border border-slate-700 bg-slate-900/70 p-3 text-sm text-slate-300">
                   <button
                     type="button"
-                    onClick={() => void handleCancelInvite(invite.id)}
-                    disabled={inviteCancellingId === invite.id}
-                    className="mt-2 rounded border border-red-300 px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-60"
+                    onClick={() => toggleInviteDetails(invite.id)}
+                    className="flex w-full flex-col gap-3 text-left md:flex-row md:items-center md:justify-between"
+                    aria-expanded={isExpanded}
                   >
-                    {inviteCancellingId === invite.id ? "Cancelling..." : "Cancel Invite"}
+                    <div>
+                      <p className="font-semibold text-white">{recipientName}</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Sent {formatDateTime(invite.sentAt)} · {recipientRole}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                        Invite pending
+                      </span>
+                      <span className="text-xs font-medium text-blue-600">
+                        {isExpanded ? "Hide details" : "View details"}
+                      </span>
+                    </div>
                   </button>
-                ) : null}
-                    </>
-                  );
-                })()}
-              </div>
-            ))
+
+                  {isExpanded ? (
+                    <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950 p-3 text-xs text-slate-300">
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <p>
+                          <span className="font-semibold text-white">Email:</span>{" "}
+                          {invite.recipient?.email || "Not provided"}
+                        </p>
+                        <p>
+                          <span className="font-semibold text-white">Phone:</span>{" "}
+                          {invite.recipient?.phone || "Not provided"}
+                        </p>
+                        <p>
+                          <span className="font-semibold text-white">Status:</span>{" "}
+                          {invite.status}
+                        </p>
+                        <p>
+                          <span className="font-semibold text-white">Expires:</span>{" "}
+                          {formatDateTime(invite.expiresAt)}
+                        </p>
+                      </div>
+                      <p className="mt-3 break-all">
+                        <span className="font-semibold text-white">Invite link:</span>{" "}
+                        {computedInviteUrl}
+                      </p>
+                      {invite.canCancel !== false ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleCancelInvite(invite.id)}
+                          disabled={inviteCancellingId === invite.id}
+                          className="mt-3 rounded border border-red-300 px-3 py-1.5 text-[11px] font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                        >
+                          {inviteCancellingId === invite.id ? "Cancelling..." : "Cancel Invite"}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
           )}
         </div>
       </div>
 
       {/* Employee List */}
-      <div className="bg-white rounded-lg border shadow-sm">
-        <div className="p-4 border-b">
-          <h3 className="text-lg font-semibold">Team roster</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Data from active vendor memberships (same API as Manage Jobs assignments).
+      <div className="rounded-2xl border border-slate-700 bg-slate-950/75 shadow-sm">
+        <div className="border-b border-slate-800 p-4">
+          <h3 className="text-lg font-semibold text-white">Team roster</h3>
+          <p className="mt-1 text-sm text-slate-400">
+            Active team members who can be assigned to scheduled work.
           </p>
         </div>
-        <div className="divide-y">
+        <div className="divide-y divide-slate-800">
           {profileLoading || loading ? (
-            <div className="p-6 text-gray-600 text-sm">Loading team…</div>
+            <div className="p-6 text-sm text-slate-300">Loading team…</div>
           ) : !vendorId ? (
-            <div className="p-6 text-gray-600 text-sm">Sign in as a vendor to view your team.</div>
+            <div className="p-6 text-sm text-slate-300">Sign in as a vendor to view your team.</div>
           ) : teamMembers.length === 0 ? (
-            <div className="p-6 text-gray-600 text-sm">No active team members yet.</div>
+            <div className="p-6 text-sm text-slate-300">No active team members yet.</div>
           ) : (
             teamMembers.map((emp) => (
               <div
                 key={emp.membershipId}
-                className="flex items-center gap-4 p-4 hover:bg-gray-50"
+                className="flex items-center gap-4 p-4 hover:bg-slate-900/80"
               >
                 <img
                   src={avatarUrlForName(emp.name)}
@@ -420,8 +488,8 @@ export default function EmployeesPage() {
                   className="w-12 h-12 rounded-full border"
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate">{emp.name}</div>
-                  <div className="text-sm text-gray-500 truncate">
+                  <div className="truncate font-semibold text-white">{emp.name}</div>
+                  <div className="truncate text-sm text-slate-400">
                     {emp.email || "—"}
                   </div>
                   {(() => {
@@ -434,13 +502,13 @@ export default function EmployeesPage() {
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         {row.reviewCount > 0 ? (
                           <>
-                            <span className="text-xs font-medium text-gray-700">⭐ {row.averageRating.toFixed(1)}</span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs font-medium text-slate-200">⭐ {row.averageRating.toFixed(1)}</span>
+                            <span className="text-xs text-slate-400">
                               {row.reviewCount} review{row.reviewCount === 1 ? "" : "s"}
                             </span>
                           </>
                         ) : (
-                          <span className="text-xs text-gray-500">No reviews yet</span>
+                          <span className="text-xs text-slate-400">No reviews yet</span>
                         )}
                         <Badge variant="outline" className={badge.className}>
                           {badge.label}

@@ -1,12 +1,21 @@
 // src/app/admin/notifications/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Bell, AlertTriangle, CheckCircle, XCircle, RefreshCw, ShieldAlert, UserX } from 'lucide-react';
+import {
+  Bell,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  ShieldAlert,
+  UserX,
+  Sparkles,
+} from 'lucide-react';
 import { getAdminRequestHeaders } from '@/lib/admin-client';
 
 interface AdminNotification {
@@ -24,28 +33,145 @@ interface AdminNotification {
   };
 }
 
+interface SupportTriageRecommendation {
+  aiRunId: string;
+  promptVersion: string;
+  model: string;
+  generatedAt?: string | null;
+  suggestion: {
+    summary: string;
+    confidence: 'low' | 'medium' | 'high';
+    urgentItems: string[];
+    soonItems: string[];
+    batchLaterItems: string[];
+    redFlags: string[];
+    recommendedActions: string[];
+  };
+}
+
+interface SupportTriageState {
+  counts: {
+    unreadCount: number;
+    totalCount: number;
+  };
+  latestRecommendation: SupportTriageRecommendation | null;
+}
+
+function prettyConfidence(value: 'low' | 'medium' | 'high') {
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)} confidence`;
+}
+
 export default function AdminNotificationsPage() {
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [supportTriage, setSupportTriage] = useState<SupportTriageState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [triageLoading, setTriageLoading] = useState(false);
   const [error, setError] = useState('');
+  const [triageError, setTriageError] = useState('');
+  const [triageMessage, setTriageMessage] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread' | 'storage' | 'safety' | 'reports' | 'accounts'>('all');
 
-  const fetchNotifications = async () => {
+  const fetchNotificationsData = async () => {
+    const res = await fetch('/api/admin/notifications', {
+      headers: getAdminRequestHeaders(),
+      cache: 'no-store',
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json?.error || json?.message || `Status ${res.status}`);
+    }
+    return Array.isArray(json.notifications) ? json.notifications : [];
+  };
+
+  const fetchSupportTriageData = async (): Promise<SupportTriageState> => {
+    const res = await fetch('/api/admin/support-triage', {
+      headers: getAdminRequestHeaders(),
+      cache: 'no-store',
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json?.error || json?.message || `Status ${res.status}`);
+    }
+    return {
+      counts: {
+        unreadCount: Number(json?.counts?.unreadCount || 0),
+        totalCount: Number(json?.counts?.totalCount || 0),
+      },
+      latestRecommendation: json?.latestRecommendation || null,
+    };
+  };
+
+  const loadAll = async () => {
     setLoading(true);
     setError('');
+    setTriageError('');
+    setTriageMessage('');
+
+    const [notificationsResult, triageResult] = await Promise.allSettled([
+      fetchNotificationsData(),
+      fetchSupportTriageData(),
+    ]);
+
+    if (notificationsResult.status === 'fulfilled') {
+      setNotifications(notificationsResult.value);
+    } else {
+      console.error('Error fetching notifications:', notificationsResult.reason);
+      setNotifications([]);
+      setError(
+        notificationsResult.reason instanceof Error
+          ? notificationsResult.reason.message
+          : 'Failed to load notifications'
+      );
+    }
+
+    if (triageResult.status === 'fulfilled') {
+      setSupportTriage(triageResult.value);
+    } else {
+      console.error('Error fetching support triage:', triageResult.reason);
+      setSupportTriage(null);
+      setTriageError(
+        triageResult.reason instanceof Error
+          ? triageResult.reason.message
+          : 'Failed to load AI support triage'
+      );
+    }
+
+    setLoading(false);
+  };
+
+  const refreshSupportTriageOnly = async () => {
     try {
-      const res = await fetch('/api/admin/notifications', {
-        headers: getAdminRequestHeaders(),
-        cache: 'no-store',
-      });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      const json = await res.json();
-      setNotifications(json.notifications || []);
+      const next = await fetchSupportTriageData();
+      setSupportTriage(next);
+      setTriageError('');
     } catch (err) {
-      console.error('Error fetching notifications:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load notifications');
+      console.error('Error refreshing support triage:', err);
+      setTriageError(err instanceof Error ? err.message : 'Failed to load AI support triage');
+    }
+  };
+
+  const runSupportTriage = async () => {
+    setTriageLoading(true);
+    setTriageError('');
+    setTriageMessage('');
+    try {
+      const res = await fetch('/api/admin/support-triage', {
+        method: 'POST',
+        headers: getAdminRequestHeaders(),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || json?.message || `Status ${res.status}`);
+      }
+      setTriageMessage(json?.message || 'AI support triage generated.');
+      await refreshSupportTriageOnly();
+    } catch (err) {
+      console.error('Error running support triage:', err);
+      setTriageError(
+        err instanceof Error ? err.message : 'Failed to generate AI support triage'
+      );
     } finally {
-      setLoading(false);
+      setTriageLoading(false);
     }
   };
 
@@ -56,7 +182,7 @@ export default function AdminNotificationsPage() {
         headers: getAdminRequestHeaders(),
       });
       if (!res.ok) throw new Error(`Status ${res.status}`);
-      await fetchNotifications();
+      await loadAll();
     } catch (err) {
       console.error('Error marking as read:', err);
     }
@@ -69,14 +195,14 @@ export default function AdminNotificationsPage() {
         headers: getAdminRequestHeaders(),
       });
       if (!res.ok) throw new Error(`Status ${res.status}`);
-      await fetchNotifications();
+      await loadAll();
     } catch (err) {
       console.error('Error marking all as read:', err);
     }
   };
 
   useEffect(() => {
-    fetchNotifications();
+    void loadAll();
   }, []);
 
   const filteredNotifications = notifications.filter((n) => {
@@ -95,6 +221,7 @@ export default function AdminNotificationsPage() {
   ).length;
   const contentReportAlerts = notifications.filter((n) => n.type === 'CONTENT_REPORT' && !n.read).length;
   const accountActionAlerts = notifications.filter((n) => n.type === 'ACCOUNT_ACTION' && !n.read).length;
+  const latestSuggestion = supportTriage?.latestRecommendation?.suggestion || null;
 
   const parseMetadata = (value: string | null): Record<string, any> | null => {
     if (!value) return null;
@@ -127,22 +254,15 @@ export default function AdminNotificationsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Admin Notifications</h1>
-          <p className="text-gray-600 mt-1">Monitor system alerts, reported content, and account actions</p>
+          <p className="text-gray-600 mt-1">Monitor system alerts, reported content, account actions, and AI triage guidance</p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={fetchNotifications}
-            disabled={loading}
-          >
+          <Button variant="outline" onClick={() => void loadAll()} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           {unreadCount > 0 && (
-            <Button
-              variant="outline"
-              onClick={markAllAsRead}
-            >
+            <Button variant="outline" onClick={markAllAsRead}>
               Mark All Read
             </Button>
           )}
@@ -176,6 +296,159 @@ export default function AdminNotificationsPage() {
         </Card>
       </div>
 
+      <Card className="mb-6 border-blue-200 bg-blue-50">
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-blue-700">
+                <Sparkles className="h-4 w-4" />
+                <p className="text-xs font-semibold uppercase tracking-[0.18em]">
+                  AI Support Inbox Triage
+                </p>
+              </div>
+              <p className="mt-2 text-sm text-blue-900">
+                This assistant reviews the current internal admin notification feed and groups what needs urgent follow-up, what can wait for the next pass, and what can be batched later.
+              </p>
+              <p className="mt-2 text-xs text-blue-800">
+                Recommendation only. This is based on internal Reliance notifications, not an external email inbox.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="bg-white"
+                onClick={() => void refreshSupportTriageOnly()}
+                disabled={triageLoading}
+              >
+                Refresh AI State
+              </Button>
+              <Button type="button" onClick={() => void runSupportTriage()} disabled={triageLoading}>
+                {triageLoading
+                  ? 'Running AI triage...'
+                  : latestSuggestion
+                    ? 'Refresh AI Triage'
+                    : 'Run AI Triage'}
+              </Button>
+              <Button asChild type="button" variant="outline" className="bg-white">
+                <Link href="/admin/ai-review-queue">Open AI Review Queue</Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-lg border border-blue-100 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unread now</div>
+              <div className="mt-2 text-2xl font-bold text-slate-900">
+                {supportTriage?.counts.unreadCount ?? unreadCount}
+              </div>
+            </div>
+            <div className="rounded-lg border border-blue-100 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current slice</div>
+              <div className="mt-2 text-2xl font-bold text-slate-900">
+                {supportTriage?.counts.totalCount ?? notifications.length}
+              </div>
+            </div>
+            <div className="rounded-lg border border-blue-100 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Red flags in latest AI pass</div>
+              <div className="mt-2 text-2xl font-bold text-red-700">
+                {latestSuggestion?.redFlags.length ?? 0}
+              </div>
+            </div>
+          </div>
+
+          {triageMessage ? (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {triageMessage}
+            </div>
+          ) : null}
+
+          {triageError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {triageError}
+            </div>
+          ) : null}
+
+          {latestSuggestion ? (
+            <div className="rounded-lg border border-blue-100 bg-white p-4 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{prettyConfidence(latestSuggestion.confidence)}</Badge>
+                {supportTriage?.latestRecommendation?.generatedAt ? (
+                  <Badge variant="outline">
+                    Updated {new Date(supportTriage.latestRecommendation.generatedAt).toLocaleString()}
+                  </Badge>
+                ) : null}
+              </div>
+
+              <p className="text-sm text-slate-800">{latestSuggestion.summary}</p>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-red-700">Urgent</div>
+                  <ul className="mt-2 space-y-1 text-sm text-red-800">
+                    {latestSuggestion.urgentItems.length > 0 ? (
+                      latestSuggestion.urgentItems.slice(0, 4).map((item) => <li key={item}>- {item}</li>)
+                    ) : (
+                      <li>No urgent items identified.</li>
+                    )}
+                  </ul>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Soon</div>
+                  <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                    {latestSuggestion.soonItems.length > 0 ? (
+                      latestSuggestion.soonItems.slice(0, 4).map((item) => <li key={item}>- {item}</li>)
+                    ) : (
+                      <li>No same-pass follow-up items identified.</li>
+                    )}
+                  </ul>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-700">Batch later</div>
+                  <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                    {latestSuggestion.batchLaterItems.length > 0 ? (
+                      latestSuggestion.batchLaterItems.slice(0, 4).map((item) => <li key={item}>- {item}</li>)
+                    ) : (
+                      <li>No batch-later items identified.</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              {latestSuggestion.redFlags.length > 0 ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-red-700">
+                    Current AI red flags
+                  </div>
+                  <ul className="mt-2 space-y-1 text-sm text-red-800">
+                    {latestSuggestion.redFlags.slice(0, 5).map((item) => (
+                      <li key={item}>- {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {latestSuggestion.recommendedActions.length > 0 ? (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                    Recommended next actions
+                  </div>
+                  <ul className="mt-2 space-y-1 text-sm text-blue-900">
+                    {latestSuggestion.recommendedActions.slice(0, 5).map((item) => (
+                      <li key={item}>- {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-blue-200 bg-white px-4 py-5 text-sm text-slate-600">
+              Run AI triage to generate the first grouped summary for current internal notifications.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {error ? (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -183,46 +456,22 @@ export default function AdminNotificationsPage() {
       ) : null}
 
       <div className="flex gap-2 mb-4">
-        <Button
-          variant={filter === 'all' ? 'default' : 'outline'}
-          onClick={() => setFilter('all')}
-          size="sm"
-        >
+        <Button variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')} size="sm">
           All
         </Button>
-        <Button
-          variant={filter === 'unread' ? 'default' : 'outline'}
-          onClick={() => setFilter('unread')}
-          size="sm"
-        >
+        <Button variant={filter === 'unread' ? 'default' : 'outline'} onClick={() => setFilter('unread')} size="sm">
           Unread ({unreadCount})
         </Button>
-        <Button
-          variant={filter === 'storage' ? 'default' : 'outline'}
-          onClick={() => setFilter('storage')}
-          size="sm"
-        >
+        <Button variant={filter === 'storage' ? 'default' : 'outline'} onClick={() => setFilter('storage')} size="sm">
           Storage Alerts
         </Button>
-        <Button
-          variant={filter === 'safety' ? 'default' : 'outline'}
-          onClick={() => setFilter('safety')}
-          size="sm"
-        >
+        <Button variant={filter === 'safety' ? 'default' : 'outline'} onClick={() => setFilter('safety')} size="sm">
           Safety ({safetyAlerts})
         </Button>
-        <Button
-          variant={filter === 'reports' ? 'default' : 'outline'}
-          onClick={() => setFilter('reports')}
-          size="sm"
-        >
+        <Button variant={filter === 'reports' ? 'default' : 'outline'} onClick={() => setFilter('reports')} size="sm">
           Reports ({contentReportAlerts})
         </Button>
-        <Button
-          variant={filter === 'accounts' ? 'default' : 'outline'}
-          onClick={() => setFilter('accounts')}
-          size="sm"
-        >
+        <Button variant={filter === 'accounts' ? 'default' : 'outline'} onClick={() => setFilter('accounts')} size="sm">
           Account Actions ({accountActionAlerts})
         </Button>
       </div>
@@ -292,16 +541,14 @@ export default function AdminNotificationsPage() {
                                 {metadata.status && <div>Status: {metadata.status}</div>}
                                 {metadata.reasonCategory && <div>Reason: {metadata.reasonCategory}</div>}
                                 <Link
-                                  href="/admin/vendors"
+                                  href="/admin/accounts?tab=restricted"
                                   className="inline-flex text-[#204080] font-medium hover:underline"
                                 >
                                   Open account controls
                                 </Link>
                               </div>
                             )}
-                            {metadata.threshold && (
-                              <div>Threshold: {metadata.threshold}%</div>
-                            )}
+                            {metadata.threshold && <div>Threshold: {metadata.threshold}%</div>}
                             {metadata.percentUsed && (
                               <div>Usage: {parseFloat(metadata.percentUsed).toFixed(1)}%</div>
                             )}
@@ -319,11 +566,7 @@ export default function AdminNotificationsPage() {
                       </div>
                     </div>
                     {!notification.read && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => markAsRead(notification.id)}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => void markAsRead(notification.id)}>
                         <CheckCircle className="w-4 h-4 mr-1" />
                         Mark Read
                       </Button>
@@ -338,4 +581,3 @@ export default function AdminNotificationsPage() {
     </div>
   );
 }
-

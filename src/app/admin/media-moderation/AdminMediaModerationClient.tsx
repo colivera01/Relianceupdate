@@ -12,14 +12,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { getAdminRequestHeaders } from '@/lib/admin-client';
 import { RefreshCw, Video, ShieldAlert, Sparkles } from 'lucide-react';
 import { tutorialGuides } from '@/lib/user-guidance';
+import { VENDOR_JOB_VIDEO_STAGE_LABELS } from '@/lib/vendor-job-video-stages';
 
 type StageKey = 'INTRO' | 'IN_PROGRESS' | 'COMPLETED';
 
 const STAGE_ORDER: StageKey[] = ['INTRO', 'IN_PROGRESS', 'COMPLETED'];
 const STAGE_LABELS: Record<StageKey, string> = {
-  INTRO: 'Before Service',
-  IN_PROGRESS: 'During Service',
-  COMPLETED: 'Completed Service',
+  INTRO: VENDOR_JOB_VIDEO_STAGE_LABELS.INTRO,
+  IN_PROGRESS: VENDOR_JOB_VIDEO_STAGE_LABELS.IN_PROGRESS,
+  COMPLETED: VENDOR_JOB_VIDEO_STAGE_LABELS.COMPLETED,
 };
 
 type QueueVideo = {

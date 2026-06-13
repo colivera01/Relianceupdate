@@ -18,6 +18,10 @@ import {
   cleanPublicServicePrice,
 } from "@/lib/launch-content-cleanup";
 import {
+  VENDOR_JOB_VIDEO_STAGE_LABELS,
+  normalizeVendorJobVideoStage,
+} from "@/lib/vendor-job-video-stages";
+import {
   isTransientDbConnectivityError,
   PUBLIC_DB_UNAVAILABLE_CODE,
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
@@ -174,14 +178,8 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
       const dedupeKey = `${serviceId || "vendor"}:${normalizedStageKey}`;
       if (latestGalleryAssetByStageKey.has(dedupeKey)) continue;
 
-      const stageLabel =
-        stageKey === "INTRO"
-          ? "Before Service"
-          : stageKey === "IN_PROGRESS"
-            ? "During Service"
-            : stageKey === "COMPLETED"
-              ? "Completed Service"
-              : null;
+      const normalizedStage = normalizeVendorJobVideoStage(stageKey);
+      const stageLabel = normalizedStage ? VENDOR_JOB_VIDEO_STAGE_LABELS[normalizedStage] : null;
 
       latestGalleryAssetByStageKey.set(dedupeKey, {
         mediaId: String(asset.id),

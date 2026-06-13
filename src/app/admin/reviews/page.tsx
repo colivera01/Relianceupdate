@@ -28,6 +28,25 @@ type ReviewQueueRow = {
   visibilityStatus: string;
   moderationReason: string | null;
   moderatedAt: string | null;
+  aiRecommendation?: {
+    aiRunId: string;
+    promptVersion: string;
+    model: string;
+    suggestion: {
+      summary: string;
+      decision:
+        | 'approve_public'
+        | 'approve_vendor_private'
+        | 'flag'
+        | 'reject'
+        | 'needs_manual_review';
+      confidence: 'low' | 'medium' | 'high';
+      blockingIssues: string[];
+      recommendedActions: string[];
+      customerTrustNote: string;
+      suggestedModerationReason: string | null;
+    };
+  } | null;
 };
 
 function formatReviewerEmail(email: string | null | undefined) {
@@ -69,6 +88,7 @@ function ReviewsPageContent() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [selectedReview, setSelectedReview] = useState<ReviewQueueRow | null>(null);
   const [reviewActionLoadingId, setReviewActionLoadingId] = useState<string | null>(null);
+  const [aiLoadingReviewId, setAiLoadingReviewId] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [visibilityFilter, setVisibilityFilter] = useState('all');
@@ -203,6 +223,95 @@ function ReviewsPageContent() {
     } finally {
       setReviewActionLoadingId(null);
     }
+  };
+
+  const requestAiReview = async (review: ReviewQueueRow) => {
+    setAiLoadingReviewId(review.reviewId);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/admin/reviews/${review.reviewId}/assist`, {
+        method: 'POST',
+        headers: getAdminRequestHeaders(),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || json?.message || `Status ${res.status}`);
+      }
+
+      setReviews((current) =>
+        current.map((row) =>
+          row.reviewId === review.reviewId
+            ? {
+                ...row,
+                aiRecommendation: {
+                  aiRunId: String(json?.aiRunId || json?.responseId || ''),
+                  promptVersion: String(json?.promptVersion || ''),
+                  model: String(json?.model || ''),
+                  suggestion: json?.suggestion,
+                },
+              }
+            : row
+        )
+      );
+
+      setSelectedReview((current) =>
+        current && current.reviewId === review.reviewId
+          ? {
+              ...current,
+              aiRecommendation: {
+                aiRunId: String(json?.aiRunId || json?.responseId || ''),
+                promptVersion: String(json?.promptVersion || ''),
+                model: String(json?.model || ''),
+                suggestion: json?.suggestion,
+              },
+            }
+          : current
+      );
+
+      setFeedback({
+        type: 'success',
+        message: json?.message || 'AI review moderation recommendation generated',
+      });
+    } catch (e) {
+      setFeedback({
+        type: 'error',
+        message:
+          e instanceof Error
+            ? e.message
+            : 'Failed to generate AI review moderation recommendation',
+      });
+    } finally {
+      setAiLoadingReviewId(null);
+    }
+  };
+
+  const prettyAiDecision = (
+    value:
+      | 'approve_public'
+      | 'approve_vendor_private'
+      | 'flag'
+      | 'reject'
+      | 'needs_manual_review'
+  ) =>
+    value
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const aiDecisionClass = (
+    value:
+      | 'approve_public'
+      | 'approve_vendor_private'
+      | 'flag'
+      | 'reject'
+      | 'needs_manual_review'
+  ) => {
+    if (value === 'reject' || value === 'flag') {
+      return 'border-red-200 bg-red-50 text-red-700';
+    }
+    if (value === 'approve_vendor_private' || value === 'needs_manual_review') {
+      return 'border-amber-200 bg-amber-50 text-amber-800';
+    }
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   };
 
   const vendors = useMemo(
@@ -447,7 +556,7 @@ function ReviewsPageContent() {
                       <div>Created: {new Date(review.createdAt).toLocaleString()}</div>
                       {review.moderatedAt ? <div>Moderated: {new Date(review.moderatedAt).toLocaleString()}</div> : null}
                     </div>
-                    <div className="lg:col-span-2 space-y-2">
+                  <div className="lg:col-span-2 space-y-2">
                       <Badge className="block w-fit">{prettyStatus(review.moderationStatus)}</Badge>
                       <Badge variant="outline" className="block w-fit">
                         {reviewVisibilityLabel(review.visibilityStatus)}
@@ -457,6 +566,18 @@ function ReviewsPageContent() {
                           Reason: {review.moderationReason}
                         </p>
                       ) : null}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={aiLoadingReviewId === review.reviewId}
+                        onClick={() => requestAiReview(review)}
+                      >
+                        {aiLoadingReviewId === review.reviewId
+                          ? 'Checking...'
+                          : review.aiRecommendation
+                            ? 'Refresh AI Review'
+                            : 'Run AI Review'}
+                      </Button>
                     </div>
                     <div className="lg:col-span-3 flex flex-col gap-2">
                       <Button size="sm" variant="outline" onClick={() => setSelectedReview(review)}>
@@ -482,6 +603,55 @@ function ReviewsPageContent() {
                       </Button>
                     </div>
                   </div>
+                  {review.aiRecommendation ? (
+                    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={aiDecisionClass(review.aiRecommendation.suggestion.decision)}
+                        >
+                          {prettyAiDecision(review.aiRecommendation.suggestion.decision)}
+                        </Badge>
+                        <Badge variant="outline">
+                          {review.aiRecommendation.suggestion.confidence} confidence
+                        </Badge>
+                      </div>
+                      <p className="mt-3 text-slate-800">
+                        {review.aiRecommendation.suggestion.summary}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-600">
+                        Customer trust note: {review.aiRecommendation.suggestion.customerTrustNote}
+                      </p>
+                      {review.aiRecommendation.suggestion.blockingIssues.length > 0 ? (
+                        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                          <div className="font-semibold uppercase tracking-wide text-red-700">
+                            Risk signals
+                          </div>
+                          <ul className="mt-2 space-y-1">
+                            {review.aiRecommendation.suggestion.blockingIssues
+                              .slice(0, 3)
+                              .map((item) => (
+                                <li key={item}>- {item}</li>
+                              ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {review.aiRecommendation.suggestion.recommendedActions.length > 0 ? (
+                        <div className="mt-3 rounded-md border border-blue-200 bg-white p-3 text-xs text-slate-700">
+                          <div className="font-semibold uppercase tracking-wide text-slate-700">
+                            Suggested next action
+                          </div>
+                          <ul className="mt-2 space-y-1">
+                            {review.aiRecommendation.suggestion.recommendedActions
+                              .slice(0, 3)
+                              .map((item) => (
+                                <li key={item}>- {item}</li>
+                              ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             );
