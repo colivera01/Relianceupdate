@@ -6,11 +6,15 @@ import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
 import { prisma } from "@/server/db";
 import { geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
 
-// reCAPTCHA Secret Key - Update this with your actual secret key
-const RECAPTCHA_SECRET_KEY = '6LdAapYrAAAAAEuuGMIKNjSNv0PE1yeMtWO1rKKk';
+const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || "";
 
 async function verifyRecaptcha(token: string): Promise<boolean> {
   try {
+    if (!RECAPTCHA_SECRET_KEY) {
+      console.error("reCAPTCHA verification skipped because RECAPTCHA_SECRET_KEY is not configured.");
+      return false;
+    }
+
     const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
       method: 'POST',
       headers: {
@@ -97,6 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = hashPassword(password);
+    const isProductionRuntime = process.env.NODE_ENV === "production";
 
     const registryFallbackId = crypto.randomUUID();
 
@@ -126,8 +131,9 @@ export async function POST(request: NextRequest) {
       reviews: [],
     };
 
-    // Store customer data for login system
-    addRegisteredUser(customerData);
+    if (!isProductionRuntime) {
+      addRegisteredUser(customerData);
+    }
 
     let persistedCustomerId = registryFallbackId;
     let verification:
@@ -180,15 +186,17 @@ export async function POST(request: NextRequest) {
         },
       });
       persistedCustomerId = String(persistedUser?.id || registryFallbackId);
-      addRegisteredUser({
-        ...customerData,
-        id: persistedCustomerId,
-      });
       const credential = await upsertDbCredential({
         userId: persistedCustomerId,
         email,
         passwordHash,
       });
+      if (!isProductionRuntime) {
+        addRegisteredUser({
+          ...customerData,
+          id: persistedCustomerId,
+        });
+      }
       verification = await sendOrPreviewEmailVerification({
         email,
         credentialId: String(credential.id),
@@ -200,7 +208,18 @@ export async function POST(request: NextRequest) {
         return null;
       });
     } catch (dbError) {
-      console.warn("Customer registration DB persistence skipped:", dbError);
+      console.error("Customer registration DB persistence failed:", dbError);
+      if (isProductionRuntime) {
+        return NextResponse.json(
+          {
+            error:
+              "Registration could not be completed right now. Please try again in a moment.",
+            code: "CUSTOMER_REGISTRATION_DB_PERSISTENCE_FAILED",
+          },
+          { status: 503 }
+        );
+      }
+      console.warn("Customer registration is using the local development fallback registry.");
     }
 
     // TODO: Store customer data in your database
