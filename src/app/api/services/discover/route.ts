@@ -6,7 +6,7 @@ import {
   isCompletedStageProofVideo,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
-import { buildProofCard, type ProofStageAvailability } from "@/lib/proof-card";
+import { buildProofCard, rankProofFirstResults, type ProofStageAvailability } from "@/lib/proof-card";
 import { buildProofCardDemoDiscoverResponse } from "@/lib/proof-card-demo-fixtures";
 import { resolveVendorJobVideoStageFromSession } from "@/lib/vendor-job-video-stages";
 import { getGeocodingProvider } from "@/lib/geocoding";
@@ -143,6 +143,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       MAX_LIMIT
     );
     const skip = (page - 1) * limit;
+    const proofFirstRankingRequested = sortBy === "newest" && !distanceProcessingRequested;
+    const sourceTake = proofFirstRankingRequested
+      ? Math.min(Math.max(skip + limit, limit * 4, 36), 100)
+      : limit;
+    const sourceSkip = proofFirstRankingRequested ? 0 : skip;
     const proofDemoMode =
       process.env.NODE_ENV !== "production" && String(searchParams.get("proofDemo") || "") === "1";
 
@@ -225,7 +230,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         prisma.service.findMany({
           where,
           orderBy,
-          ...(distanceProcessingRequested ? {} : { skip, take: limit }),
+          ...(distanceProcessingRequested ? {} : { skip: sourceSkip, take: sourceTake }),
           select: {
             id: true,
             name: true,
@@ -562,13 +567,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           endsAt: campaign.endAt instanceof Date ? campaign.endAt.toISOString() : new Date(campaign.endAt).toISOString(),
         },
       }));
+    const proofRankedResults = proofFirstRankingRequested
+      ? rankProofFirstResults(mappedResults)
+      : mappedResults;
     const radiusFilteredResults =
       origin && radiusFilterRequested
-        ? mappedResults.filter(
+        ? proofRankedResults.filter(
             (result) =>
               typeof result.distanceMiles === "number" && result.distanceMiles <= radiusMiles
           )
-        : mappedResults;
+        : proofRankedResults;
     const distanceSortedResults =
       origin && distanceSortRequested
         ? [...radiusFilteredResults].sort((a, b) => {
@@ -583,9 +591,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const distanceResultCount = mappedResults.filter(
       (result) => typeof result.distanceMiles === "number"
     ).length;
-    const results = distanceProcessingRequested
+    const sortedResults = distanceSortedResults;
+    const results = distanceProcessingRequested || proofFirstRankingRequested
       ? distanceSortedResults.slice(skip, skip + limit)
-      : distanceSortedResults;
+      : sortedResults;
     const responseTotal = distanceProcessingRequested ? distanceSortedResults.length : total;
     const distanceFilteringApplied = Boolean(origin && radiusFilterRequested);
     const distanceSortingApplied = Boolean(origin && distanceSortRequested && distanceResultCount > 0);
@@ -628,6 +637,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             : "Distance requires lat/lng origin coordinates; zipCode alone is accepted but not converted in this endpoint.",
         reviews:
           "rating/reviewCount are vendor-level aggregates from reviews where moderationStatus=approved and visibilityStatus=public.",
+        ranking:
+          proofFirstRankingRequested
+            ? "Default discovery is proof-first: completed public proof, proof-building evidence, reviews, Trust Score maturity, and vendor credibility are prioritized before service-only listings."
+            : "Explicit sort and location filters preserve the selected ordering while cards still show proof context.",
       },
     });
   } catch (error: any) {

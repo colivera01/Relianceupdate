@@ -39,6 +39,17 @@ export type BuildProofCardInput = {
   trustScore?: TrustScoreInput;
 };
 
+export type ProofRankableResult = {
+  serviceName?: string | null;
+  reviewCount?: number | null;
+  previewMediaType?: "image" | "video" | null;
+  publicListing?: {
+    hasPublicMedia?: boolean | null;
+  } | null;
+  trustScore?: TrustScoreInput;
+  proofCard?: ProofCard | null;
+};
+
 const EMPTY_STAGE_AVAILABILITY: ProofStageAvailability = {
   startingCondition: false,
   workInProgress: false,
@@ -169,4 +180,63 @@ export function buildProofCard(input: BuildProofCardInput): ProofCard {
     }),
     primaryCta,
   };
+}
+
+function getTrustMaturityRank(trustScore: TrustScoreInput): number {
+  const maturity = String((trustScore as any)?.maturityState || "").trim();
+  if (maturity === "established") return 120;
+  if (maturity === "emerging") return 80;
+  if (maturity === "early_stage") return 40;
+  return hasTrustEvidence(trustScore) ? 20 : 0;
+}
+
+export function getProofFirstRankScore(result: ProofRankableResult): number {
+  const proofCard = result.proofCard || null;
+  const stageAvailability = proofCard?.stageAvailability || EMPTY_STAGE_AVAILABILITY;
+  const trustScore = result.trustScore || null;
+  const reviewCount =
+    typeof result.reviewCount === "number" && Number.isFinite(result.reviewCount) && result.reviewCount > 0
+      ? Math.round(result.reviewCount)
+      : 0;
+
+  const kindScore =
+    proofCard?.kind === "public_proof"
+      ? 3000
+      : proofCard?.kind === "partial_proof"
+        ? 2000
+        : 1000;
+  const stageScore =
+    (stageAvailability.finalResult ? 500 : 0) +
+    (stageAvailability.workInProgress ? 150 : 0) +
+    (stageAvailability.startingCondition ? 100 : 0);
+  const mediaScore =
+    result.previewMediaType === "video"
+      ? 180
+      : result.publicListing?.hasPublicMedia || result.previewMediaType === "image"
+        ? 80
+        : 0;
+  const reviewScore = Math.min(reviewCount, 25) * 10;
+  const trustEvidenceScore =
+    getTrustMaturityRank(trustScore) +
+    Math.min(getVerifiedServiceRecordCount(trustScore), 50) * 4 +
+    Math.min(getApprovedServiceVideoCount(trustScore), 50) * 6;
+  const trustScoreValue =
+    trustScore?.scored && typeof trustScore.totalScorePct === "number" && Number.isFinite(trustScore.totalScorePct)
+      ? Math.min(Math.max(Math.round(trustScore.totalScorePct), 0), 100)
+      : 0;
+
+  return kindScore + stageScore + mediaScore + reviewScore + trustEvidenceScore + trustScoreValue;
+}
+
+export function rankProofFirstResults<T extends ProofRankableResult>(results: T[]): T[] {
+  return results
+    .map((result, index) => ({ result, index, score: getProofFirstRankScore(result) }))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const aName = String(a.result.serviceName || "");
+      const bName = String(b.result.serviceName || "");
+      const nameCompare = aName.localeCompare(bName);
+      return nameCompare || a.index - b.index;
+    })
+    .map((entry) => entry.result);
 }

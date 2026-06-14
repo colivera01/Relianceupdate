@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProofCard } from "./proof-card";
+import { buildProofCard, getProofFirstRankScore, rankProofFirstResults } from "./proof-card";
 import { buildProofCardDemoDiscoverResponse } from "./proof-card-demo-fixtures";
 
 describe("buildProofCard", () => {
@@ -100,5 +100,97 @@ describe("buildProofCard", () => {
     expect(
       response.results.find((result) => result.proofCard?.kind === "service_offered_only")?.proofCard?.primaryCta
     ).toBe("View Service Offered");
+  });
+
+  it("ranks real discover results by public proof before service-only listings", () => {
+    const serviceOnly = {
+      serviceName: "Lighting Installation",
+      reviewCount: 0,
+      previewMediaType: null,
+      publicListing: { hasPublicMedia: false },
+      trustScore: {
+        scored: false,
+        totalScorePct: null,
+        maturityLabel: "Building",
+        evidence: {
+          verifiedBookings: 0,
+          approvedServiceVideos: 0,
+          validatedDisputes: 0,
+        },
+      },
+      proofCard: buildProofCard({
+        serviceName: "Lighting Installation",
+        hasPublicMedia: false,
+        reviewCount: 0,
+      }),
+    };
+    const partialProof = {
+      serviceName: "Panel Inspection",
+      reviewCount: 6,
+      previewMediaType: null,
+      publicListing: { hasPublicMedia: false },
+      trustScore: {
+        scored: true,
+        totalScorePct: 89,
+        maturityState: "emerging" as const,
+        maturityLabel: "Emerging Trust Score",
+        evidence: {
+          verifiedBookings: 8,
+          approvedServiceVideos: 1,
+          validatedDisputes: 0,
+        },
+      },
+      proofCard: buildProofCard({
+        serviceName: "Panel Inspection",
+        reviewCount: 6,
+        trustScore: {
+          scored: true,
+          totalScorePct: 89,
+          maturityLabel: "Emerging Trust Score",
+          evidence: {
+            verifiedBookings: 8,
+            approvedServiceVideos: 1,
+            validatedDisputes: 0,
+          },
+        },
+      }),
+    };
+    const publicProof = {
+      serviceName: "Outlet Installation",
+      reviewCount: 1,
+      previewMediaType: "video" as const,
+      publicListing: { hasPublicMedia: true },
+      trustScore: {
+        scored: true,
+        totalScorePct: 96,
+        maturityState: "emerging" as const,
+        maturityLabel: "Emerging Trust Score",
+        evidence: {
+          verifiedBookings: 9,
+          approvedServiceVideos: 3,
+          validatedDisputes: 0,
+        },
+      },
+      proofCard: buildProofCard({
+        serviceName: "Outlet Installation",
+        stageAvailability: {
+          startingCondition: true,
+          workInProgress: true,
+          finalResult: true,
+        },
+        hasPublicMedia: true,
+        reviewCount: 1,
+      }),
+    };
+
+    const ranked = rankProofFirstResults([serviceOnly, partialProof, publicProof]);
+
+    expect(ranked.map((result) => result.proofCard.kind)).toEqual([
+      "public_proof",
+      "partial_proof",
+      "service_offered_only",
+    ]);
+    expect(getProofFirstRankScore(publicProof)).toBeGreaterThan(getProofFirstRankScore(partialProof));
+    expect(getProofFirstRankScore(partialProof)).toBeGreaterThan(getProofFirstRankScore(serviceOnly));
   });
 });
