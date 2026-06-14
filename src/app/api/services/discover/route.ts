@@ -6,6 +6,9 @@ import {
   isCompletedStageProofVideo,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
+import { buildProofCard, type ProofStageAvailability } from "@/lib/proof-card";
+import { buildProofCardDemoDiscoverResponse } from "@/lib/proof-card-demo-fixtures";
+import { resolveVendorJobVideoStageFromSession } from "@/lib/vendor-job-video-stages";
 import { getGeocodingProvider } from "@/lib/geocoding";
 import { distanceMiles, hasValidCoordinates, roundDistanceMiles, type Coordinates } from "@/lib/distance";
 import {
@@ -140,6 +143,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       MAX_LIMIT
     );
     const skip = (page - 1) * limit;
+    const proofDemoMode =
+      process.env.NODE_ENV !== "production" && String(searchParams.get("proofDemo") || "") === "1";
+
+    if (proofDemoMode) {
+      return NextResponse.json(
+        buildProofCardDemoDiscoverResponse({
+          q,
+          category,
+          sortBy,
+          page,
+          limit,
+        })
+      );
+    }
 
     const where: any = countableServiceWhere({
       isPublished: true,
@@ -320,6 +337,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const previewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
     const primaryProofPreviewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
+    const stageAvailabilityByServiceId = new Map<string, ProofStageAvailability>();
+
+    const ensureStageAvailability = (serviceId: string): ProofStageAvailability => {
+      const existing = stageAvailabilityByServiceId.get(serviceId);
+      if (existing) return existing;
+      const next = {
+        startingCondition: false,
+        workInProgress: false,
+        finalResult: false,
+      };
+      stageAvailabilityByServiceId.set(serviceId, next);
+      return next;
+    };
+
     for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
       const blobUrl = String(asset?.blobUrl || "").trim();
@@ -327,6 +358,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       if (!String(asset?.mimeType || "").startsWith("video/")) continue;
       if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
       primaryProofPreviewByServiceId.set(serviceId, { url: blobUrl, type: "video" });
+    }
+    for (const asset of proofSafePublicAssets) {
+      const serviceId = String(asset?.mediaSession?.serviceId || "");
+      if (!serviceId || !String(asset?.mimeType || "").startsWith("video/")) continue;
+      const stage = resolveVendorJobVideoStageFromSession(asset?.mediaSession || {});
+      const availability = ensureStageAvailability(serviceId);
+      if (stage === "INTRO") availability.startingCondition = true;
+      if (stage === "IN_PROGRESS") availability.workInProgress = true;
+      if (stage === "COMPLETED") availability.finalResult = true;
     }
     for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
@@ -432,6 +472,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
       const previewMedia = primaryProofPreviewByServiceId.get(service.id) || previewByServiceId.get(service.id) || null;
 
+      const reviewCount = vendorReviewAggregates.get(service.vendorId)?.reviewCount ?? null;
+      const trustScore =
+        vendorTrustScores.get(service.vendorId) || {
+          scored: false,
+          totalScorePct: null,
+          maturityState: "not_ready" as const,
+          maturityLabel: "Building",
+          evidence: {
+            verifiedBookings: 0,
+            approvedServiceVideos: 0,
+            validatedDisputes: 0,
+          },
+        };
+      const stageAvailability =
+        stageAvailabilityByServiceId.get(service.id) || {
+          startingCondition: false,
+          workInProgress: false,
+          finalResult: false,
+        };
+      const hasPublicMedia = Boolean(previewMedia);
+
       return {
         serviceId: service.id,
         serviceName: service.name,
@@ -447,19 +508,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         previewMediaType: previewMedia?.type || null,
         price: Number(service.price),
         rating: vendorReviewAggregates.get(service.vendorId)?.rating ?? null,
-        reviewCount: vendorReviewAggregates.get(service.vendorId)?.reviewCount ?? null,
-        trustScore:
-          vendorTrustScores.get(service.vendorId) || {
-            scored: false,
-            totalScorePct: null,
-            maturityState: "not_ready" as const,
-            maturityLabel: "Building",
-            evidence: {
-              verifiedBookings: 0,
-              approvedServiceVideos: 0,
-              validatedDisputes: 0,
-            },
-          },
+        reviewCount,
+        trustScore,
         badges: {
           verified: null,
           featured: null,
@@ -470,8 +520,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               service.vendor?.isPubliclyListed &&
               String((service.vendor as any)?.accountStatus || "active").toLowerCase() === "active"
           ),
-          hasPublicMedia: Boolean(previewMedia),
+          hasPublicMedia,
         },
+        proofCard: buildProofCard({
+          serviceName: service.name,
+          vendorName,
+          stageAvailability,
+          hasPublicMedia,
+          reviewCount,
+          trustScore,
+        }),
       };
     };
 

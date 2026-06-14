@@ -4,29 +4,29 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { TrustScoreEducationCard } from '@/components/guidance/TrustScoreEducationCard';
-import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
-import { CustomerTrustSignalCard } from '@/components/public/CustomerTrustSignalCard';
+import { ProofFirstCard } from '@/components/public/ProofFirstCard';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
-import { Search, SlidersHorizontal, X, MapPin, Image as ImageIcon, ChevronLeft, ChevronRight, Star } from 'lucide-react';
+import { Search, SlidersHorizontal, X, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAuth } from '@/contexts/AuthContext';
-import { getCustomerReviewCopy } from '@/lib/customer-review-copy';
-import { getCustomerTrustScoreCopy } from '@/lib/customer-trust-score-copy';
-import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
 import { tutorialGuides } from '@/lib/user-guidance';
 import {
   PROMOTION_BROWSE_SECTION_EXPLAINER,
   PROMOTION_BROWSE_SECTION_TITLE,
   PROMOTION_PUBLIC_EXPLAINER,
-  PROMOTION_PUBLIC_LABEL,
   resolvePromotionZoneLimits,
 } from '@/lib/promoted-listings';
 
 const DISCOVERY_PAGE_SIZE = 12;
+
+const PROOF_CARD_DISPLAY_RANK: Record<string, number> = {
+  public_proof: 0,
+  partial_proof: 1,
+  service_offered_only: 2,
+};
 
 const CATEGORY_DECORATION: Record<string, { icon: string; description: string }> = {
   automotive: { icon: '🚗', description: 'Vehicle and transportation services' },
@@ -51,10 +51,6 @@ function parseOptionalNumber(value: string | null): number | null {
   if (value == null || value.trim() === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function formatDistanceMiles(value: number): string {
-  return `${value.toFixed(1)} miles away`;
 }
 
 function hasCustomerProfileAccess(userType: string | undefined): boolean {
@@ -85,6 +81,7 @@ export default function PublicBrowsePage() {
   const [radiusMiles, setRadiusMiles] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [hasHydratedFromUrl, setHasHydratedFromUrl] = useState(false);
+  const [proofDemoEnabled, setProofDemoEnabled] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const didHydrateFromUrl = useRef(false);
   const didAutoApplyDistanceSort = useRef(false);
@@ -100,7 +97,9 @@ export default function PublicBrowsePage() {
     const nextLng = parseOptionalNumber(params.get('lng'));
     const nextRadiusMiles = parseOptionalNumber(params.get('radiusMiles'));
     const nextSortBy = normalizeSortBy(params.get('sortBy'));
+    const nextProofDemoEnabled = params.get('proofDemo') === '1';
 
+    setProofDemoEnabled(nextProofDemoEnabled);
     if (category) {
       setSelectedCategory(category);
       setPage(1);
@@ -225,13 +224,14 @@ export default function PublicBrowsePage() {
     if (hasCoordinateOrigin && radiusMiles != null && radiusMiles > 0) {
       params.set('radiusMiles', String(radiusMiles));
     }
+    if (proofDemoEnabled) params.set('proofDemo', '1');
 
     const nextUrl = params.toString() ? `/browse?${params.toString()}` : '/browse';
     const currentUrl = `${window.location.pathname}${window.location.search}`;
     if (currentUrl !== nextUrl) {
       window.history.replaceState(null, '', nextUrl);
     }
-  }, [hasCoordinateOrigin, hasHydratedFromUrl, originLat, originLng, radiusMiles, searchQuery, selectedCategory, sortBy]);
+  }, [hasCoordinateOrigin, hasHydratedFromUrl, originLat, originLng, proofDemoEnabled, radiusMiles, searchQuery, selectedCategory, sortBy]);
 
   const discoveryFilters = useMemo(
     () => ({
@@ -240,6 +240,7 @@ export default function PublicBrowsePage() {
       sortBy,
       ...(hasEffectiveCoordinateOrigin ? { lat: effectiveOriginLat, lng: effectiveOriginLng } : {}),
       ...(hasEffectiveCoordinateOrigin && radiusMiles != null && radiusMiles > 0 ? { radiusMiles } : {}),
+      ...(proofDemoEnabled ? { proofDemo: '1' } : {}),
       page,
       limit: DISCOVERY_PAGE_SIZE,
     }),
@@ -247,6 +248,7 @@ export default function PublicBrowsePage() {
       effectiveOriginLat,
       effectiveOriginLng,
       hasEffectiveCoordinateOrigin,
+      proofDemoEnabled,
       radiusMiles,
       searchQuery,
       selectedCategory,
@@ -269,6 +271,15 @@ export default function PublicBrowsePage() {
     categories.some((category) => category.label === selectedCategory);
 
   const results = data?.results || [];
+  const displayResults = useMemo(
+    () =>
+      [...results].sort((a, b) => {
+        const aRank = PROOF_CARD_DISPLAY_RANK[a.proofCard?.kind || 'service_offered_only'] ?? 2;
+        const bRank = PROOF_CARD_DISPLAY_RANK[b.proofCard?.kind || 'service_offered_only'] ?? 2;
+        return aRank - bRank;
+      }),
+    [results]
+  );
   const promotedListings = data?.promotedListings || [];
   const hasCategoryFilter = selectedCategory !== 'all';
   const promotedDisplayLimit = resolvePromotionZoneLimits('BROWSE_FEATURED', {
@@ -638,7 +649,7 @@ export default function PublicBrowsePage() {
             <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
                 <div className="mb-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                  {PROMOTION_PUBLIC_LABEL}
+                  Featured proof placement
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">{PROMOTION_BROWSE_SECTION_TITLE}</h2>
                 <p className="text-sm text-gray-700">
@@ -651,46 +662,12 @@ export default function PublicBrowsePage() {
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {visiblePromotedListings.map((item) => (
-                <Card key={item.promotion?.campaignId || item.serviceId} className="border-amber-200 bg-white shadow-sm hover:shadow-lg transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div>
-                        <Badge className="mb-2 bg-amber-500 text-white hover:bg-amber-500">
-                          {item.promotion?.label || PROMOTION_PUBLIC_LABEL}
-                        </Badge>
-                        <h3 className="text-lg font-semibold leading-snug text-gray-900">{item.serviceName}</h3>
-                      </div>
-                      {item.vendorCategory ? (
-                        <Badge variant="outline" className="text-xs">
-                          {item.vendorCategory}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="mb-2 line-clamp-2 text-sm text-gray-600">{cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Service offered with proof context pending'}</p>
-                    <p className="mb-2 text-sm font-medium text-gray-900">Vendor: {item.vendorName}</p>
-                    {item.location ? (
-                      <div className="mb-3 flex items-center text-sm text-gray-600">
-                        <MapPin className="mr-1 h-4 w-4" />
-                        {item.location}
-                      </div>
-                    ) : null}
-                    <p className="mb-4 text-xs text-gray-600">
-                      {item.promotion?.explainer || PROMOTION_PUBLIC_EXPLAINER}
-                    </p>
-                    <div className="flex gap-2">
-                      <Link href={`/service/${item.serviceId}`} className="flex-1">
-                        <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-                          View Proof
-                        </Button>
-                      </Link>
-                      <Link href={`/vendors/${item.vendorId}`} className="flex-1">
-                        <Button size="sm" variant="outline" className="w-full">
-                          View Vendor
-                        </Button>
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
+                <ProofFirstCard
+                  key={item.promotion?.campaignId || item.serviceId}
+                  item={item}
+                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`}
+                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`}
+                />
               ))}
             </div>
           </div>
@@ -799,7 +776,7 @@ export default function PublicBrowsePage() {
               We could not load public proof right now.
               {error instanceof Error ? ` ${error.message}` : ''}
             </div>
-          ) : results.length === 0 ? (
+          ) : displayResults.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-[28px] border">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Search className="w-8 h-8 text-gray-400" />
@@ -819,113 +796,24 @@ export default function PublicBrowsePage() {
             </div>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {results.map((item) => {
-                const trustCopy = getCustomerTrustScoreCopy({
-                  hasPublicMedia: item.publicListing.hasPublicMedia,
-                  reviewCount: item.reviewCount,
-                  trustScore: item.trustScore,
-                });
-                const reviewCopy = getCustomerReviewCopy({
-                  rating: item.rating,
-                  reviewCount: item.reviewCount,
-                });
-
-                return (
-                <Card key={item.serviceId} className="h-full flex-col overflow-hidden rounded-[28px] border-slate-200 bg-white transition-all hover:-translate-y-1 hover:shadow-[0_26px_70px_rgba(7,16,38,0.14)]">
-                  <div className="relative">
-                    <PublicMediaPreview
-                      url={item.previewMediaUrl}
-                      type={item.previewMediaType}
-                      alt={item.serviceName}
-                      className="w-full h-48 object-cover rounded-t-lg"
-                      emptyLabel="No public service video yet"
-                      videoLabel="Service video available"
-                    />
-                    <div className="absolute left-3 top-3">
-                      {item.publicListing.hasPublicMedia ? (
-                        <Badge className="bg-blue-600 text-white hover:bg-blue-600">Public service video</Badge>
-                      ) : (
-                        <Badge className="bg-white/90 text-gray-700 hover:bg-white">Public listing</Badge>
-                      )}
-                    </div>
-                  </div>
-                  <CardContent className="flex flex-1 flex-col p-5">
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <h3 className="font-display text-xl font-semibold leading-snug text-slate-950">{item.serviceName}</h3>
-                      {item.vendorCategory ? (
-                        <Badge variant="outline" className="text-xs">
-                          {item.vendorCategory}
-                        </Badge>
-                      ) : null}
-                    </div>
-
-                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">{cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'No description yet.'}</p>
-                    <p className="text-sm text-gray-900 font-medium mb-1">Vendor: {item.vendorName}</p>
-
-                    {item.vendorBusinessType ? (
-                      <p className="text-xs text-gray-600 mb-1">Business Type: {item.vendorBusinessType}</p>
-                    ) : null}
-
-                    {item.location ? (
-                      <div className="flex items-center text-sm text-gray-600 mb-2">
-                        <MapPin className="h-4 w-4 mr-1" />
-                        {item.location}
-                      </div>
-                    ) : null}
-
-                    {typeof item.distanceMiles === 'number' ? (
-                      <div className="mb-2 inline-flex w-fit items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                        {formatDistanceMiles(item.distanceMiles)}
-                      </div>
-                    ) : null}
-
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-slate-950">
-                        <div className="flex items-center gap-1 font-semibold">
-                          <Star className="h-3.5 w-3.5 fill-current text-amber-500" />
-                          <span>{reviewCopy.headline}</span>
-                        </div>
-                        <div className="mt-1 text-slate-700">{reviewCopy.detail}</div>
-                      </div>
-                      <CustomerTrustSignalCard copy={trustCopy} />
-                    </div>
-
-                    <div className="flex items-center justify-between mt-3">
-                      <div className="text-sm font-semibold text-gray-900">
-                        {item.publicListing.hasPublicMedia ? 'Public service video available' : 'No public service video yet'}
-                      </div>
-                      {item.publicListing.hasPublicMedia ? (
-                        <Badge className="bg-blue-100 text-blue-800">Video available</Badge>
-                      ) : (
-                        <Badge className="bg-gray-100 text-gray-700">No public video yet</Badge>
-                      )}
-                    </div>
-
-                    <div className="mt-4 space-y-2">
-                      <Link href={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`} className="block">
-                        <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-                          View Proof
-                        </Button>
-                      </Link>
-                      <div className="flex items-center gap-2">
-                        <Link href={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`} className="flex-1">
-                          <Button size="sm" variant="outline" className="w-full">
-                            View Vendor
-                          </Button>
-                        </Link>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleShareService(item.serviceId, item.serviceName)}
-                        >
-                          Share
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                );
-              })}
+              {displayResults.map((item) => (
+                <ProofFirstCard
+                  key={item.serviceId}
+                  item={item}
+                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`}
+                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`}
+                  secondaryAction={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-white/15 bg-white/[0.04] text-white hover:bg-white/[0.08]"
+                      onClick={() => handleShareService(item.serviceId, item.serviceName)}
+                    >
+                      Share
+                    </Button>
+                  }
+                />
+              ))}
             </div>
           )}
 

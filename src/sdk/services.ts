@@ -86,6 +86,7 @@ export const servicesSDK = {
     lng?: number;
     radiusMiles?: number;
     zipCode?: string;
+    proofDemo?: string | boolean;
     page?: number;
     limit?: number;
   }): Promise<DiscoverServicesResponse> {

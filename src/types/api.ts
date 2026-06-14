@@ -189,6 +189,20 @@ export interface DiscoverServiceResult {
     serviceEligible: boolean;
     hasPublicMedia: boolean;
   };
+  proofCard?: {
+    kind: 'public_proof' | 'partial_proof' | 'service_offered_only';
+    headline: string;
+    statusLabel: string;
+    stageAvailability: {
+      startingCondition: boolean;
+      workInProgress: boolean;
+      finalResult: boolean;
+    };
+    reviewLabel: string;
+    trustLabel: string;
+    evidenceSummary: string;
+    primaryCta: 'View Proof' | 'View Provider' | 'View Service Offered';
+  };
   promotion?: {
     campaignId: string;
     campaignName: string;

@@ -84,6 +84,7 @@ export const useDiscoverServices = (filters?: {
   lng?: number;
   radiusMiles?: number;
   zipCode?: string;
+  proofDemo?: string | boolean;
   page?: number;
   limit?: number;
 }) => {

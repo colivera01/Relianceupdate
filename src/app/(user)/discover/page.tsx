@@ -2,16 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Search, MapPin, SlidersHorizontal, X, ChevronLeft, ChevronRight, Heart, LocateFixed } from 'lucide-react';
+import { Search, SlidersHorizontal, X, ChevronLeft, ChevronRight, Heart, LocateFixed } from 'lucide-react';
 import { useDiscoverServices, useServiceCategories } from '@/hooks/useServices';
 import { useAddFavorite, useFavoritesOptional, useRemoveFavorite } from '@/hooks/useFavorites';
-import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
-import { CustomerTrustSignalCard } from '@/components/public/CustomerTrustSignalCard';
-import { getCustomerReviewCopy } from '@/lib/customer-review-copy';
-import { getCustomerTrustScoreCopy } from '@/lib/customer-trust-score-copy';
+import { ProofFirstCard } from '@/components/public/ProofFirstCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
 import type { DiscoverServiceResult } from '@/types/api';
@@ -31,6 +28,12 @@ type LocationOrigin = {
   longitude: number;
 };
 
+const PROOF_CARD_DISPLAY_RANK: Record<string, number> = {
+  public_proof: 0,
+  partial_proof: 1,
+  service_offered_only: 2,
+};
+
 function buildDiscoverUrl(params: Record<string, string | number | null | undefined>) {
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -43,6 +46,7 @@ function buildDiscoverUrl(params: Record<string, string | number | null | undefi
 
 export default function UserDiscoverPage() {
   const { user: authUser, isAuthenticated, isLoading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -58,16 +62,18 @@ export default function UserDiscoverPage() {
   const [nearbyLoading, setNearbyLoading] = useState(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
   const DISCOVERY_PAGE_SIZE = 12;
+  const proofDemoEnabled = searchParams?.get('proofDemo') === '1';
 
   const filters = useMemo(
     () => ({
       q: searchQuery.trim() || undefined,
       category: selectedCategory !== 'all' ? selectedCategory : undefined,
       sortBy,
+      ...(proofDemoEnabled ? { proofDemo: '1' } : {}),
       page,
       limit: DISCOVERY_PAGE_SIZE,
     }),
-    [searchQuery, selectedCategory, sortBy, page]
+    [page, proofDemoEnabled, searchQuery, selectedCategory, sortBy]
   );
 
   const { data, isLoading, isError, error, isFetching } = useDiscoverServices(filters);
@@ -82,6 +88,24 @@ export default function UserDiscoverPage() {
 
   const categories = categoryData?.categories || [];
   const results = data?.results || [];
+  const displayResults = useMemo(
+    () =>
+      [...results].sort((a, b) => {
+        const aRank = PROOF_CARD_DISPLAY_RANK[a.proofCard?.kind || 'service_offered_only'] ?? 2;
+        const bRank = PROOF_CARD_DISPLAY_RANK[b.proofCard?.kind || 'service_offered_only'] ?? 2;
+        return aRank - bRank;
+      }),
+    [results]
+  );
+  const displayNearbyServices = useMemo(
+    () =>
+      [...nearbyServices].sort((a, b) => {
+        const aRank = PROOF_CARD_DISPLAY_RANK[a.proofCard?.kind || 'service_offered_only'] ?? 2;
+        const bRank = PROOF_CARD_DISPLAY_RANK[b.proofCard?.kind || 'service_offered_only'] ?? 2;
+        return aRank - bRank;
+      }),
+    [nearbyServices]
+  );
   const favorites = favoritesData?.favorites || [];
   const favoriteByServiceId = new Map(favorites.map((item) => [item.serviceId, item.favoriteId]));
   const favoritesUnavailable = favoritesError;
@@ -309,103 +333,30 @@ export default function UserDiscoverPage() {
   const serviceReturnLabel = 'Back to Explore Proof';
 
   const renderServiceCard = (item: DiscoverServiceResult) => {
-    const trustCopy = getCustomerTrustScoreCopy({
-      hasPublicMedia: item.publicListing.hasPublicMedia,
-      reviewCount: item.reviewCount,
-      trustScore: item.trustScore,
-    });
-    const reviewCopy = getCustomerReviewCopy({
-      rating: item.rating,
-      reviewCount: item.reviewCount,
-    });
-
     return (
-      <Card key={item.serviceId} className="hover:shadow-lg transition-shadow mb-4">
-        <div className="relative">
-          <PublicMediaPreview
-            url={item.previewMediaUrl}
-            type={item.previewMediaType}
-            alt={item.serviceName}
-            className="w-full h-48 object-cover rounded-t-lg"
-            emptyLabel="No public service video yet"
-            videoLabel="Service video available"
-          />
-        </div>
-
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-3 mb-2">
-            <h3 className="font-semibold text-lg text-gray-900">{item.serviceName}</h3>
-            {item.vendorCategory ? <Badge variant="outline" className="text-xs">{item.vendorCategory}</Badge> : null}
-          </div>
-
-          <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-            {item.serviceDescription || 'No description yet.'}
-          </p>
-          <p className="text-sm text-gray-900 font-medium mb-1">Vendor: {item.vendorName}</p>
-          {item.vendorBusinessType ? (
-            <p className="text-xs text-gray-600 mb-1">Business Type: {item.vendorBusinessType}</p>
-          ) : null}
-          {item.location ? (
-            <div className="flex items-center text-sm text-gray-600 mb-2">
-              <MapPin className="h-4 w-4 mr-1" />
-              {item.location}
-            </div>
-          ) : null}
-          {typeof item.distanceMiles === 'number' ? (
-            <div className="mb-2 inline-flex w-fit items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-              {item.distanceMiles.toFixed(1)} mi away
-            </div>
-          ) : null}
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-2xl bg-blue-50 px-3 py-2 text-blue-900">
-              <div className="font-semibold">{reviewCopy.headline}</div>
-              <div className="text-blue-700">{reviewCopy.detail}</div>
-            </div>
-            <CustomerTrustSignalCard copy={trustCopy} />
-          </div>
-
-          <div className="flex items-center justify-between mt-3">
-            <div className="text-base font-bold text-gray-900">${item.price.toFixed(2)}</div>
-            {item.publicListing.hasPublicMedia ? (
-              <Badge className="bg-blue-100 text-blue-800">Public service video</Badge>
-            ) : (
-              <Badge className="bg-gray-100 text-gray-700">No public video yet</Badge>
-            )}
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <Link
-              href={`/service/${item.serviceId}?returnTo=${encodeURIComponent(serviceReturnHref)}&returnLabel=${encodeURIComponent(serviceReturnLabel)}`}
-              className="block"
-            >
-              <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-                View Proof
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Link href={`/vendors/${item.vendorId}`} className="flex-1">
-                <Button size="sm" variant="outline" className="w-full">
-                  View Vendor
-                </Button>
-              </Link>
-              <Button
-                size="sm"
-                variant="outline"
-                data-testid={`discover-favorite-toggle-${item.serviceId}`}
-                disabled={favoritesUnavailable || favoritesLoading || addFavorite.isPending || removeFavorite.isPending}
-                onClick={() => handleToggleFavorite(item.serviceId)}
-                className="px-3"
-                aria-label={favoriteByServiceId.has(item.serviceId) ? 'Remove from favorites' : 'Add to favorites'}
-                title={favoritesUnavailable ? 'Favorites unavailable in current auth context' : undefined}
-              >
-                <Heart
-                  className={`h-4 w-4 ${favoriteByServiceId.has(item.serviceId) ? 'fill-current text-pink-600' : 'text-gray-600'}`}
-                />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <ProofFirstCard
+        key={item.serviceId}
+        item={item}
+        proofHref={`/service/${item.serviceId}?returnTo=${encodeURIComponent(serviceReturnHref)}&returnLabel=${encodeURIComponent(serviceReturnLabel)}`}
+        providerHref={`/vendors/${item.vendorId}`}
+        compact={Boolean(item.distanceMiles)}
+        secondaryAction={
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid={`discover-favorite-toggle-${item.serviceId}`}
+            disabled={favoritesUnavailable || favoritesLoading || addFavorite.isPending || removeFavorite.isPending}
+            onClick={() => handleToggleFavorite(item.serviceId)}
+            className="border-white/15 bg-white/[0.04] px-3 text-white hover:bg-white/[0.08]"
+            aria-label={favoriteByServiceId.has(item.serviceId) ? 'Remove from favorites' : 'Add to favorites'}
+            title={favoritesUnavailable ? 'Favorites unavailable in current auth context' : undefined}
+          >
+            <Heart
+              className={`h-4 w-4 ${favoriteByServiceId.has(item.serviceId) ? 'fill-current text-pink-300' : 'text-slate-200'}`}
+            />
+          </Button>
+        }
+      />
     );
   };
 
@@ -555,14 +506,14 @@ export default function UserDiscoverPage() {
           <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4 text-sm text-amber-800">
             {nearbyError}
           </div>
-        ) : nearbyServices.length === 0 ? (
+        ) : displayNearbyServices.length === 0 ? (
           <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm text-slate-700">
             No public proof or services offered were found within 50 miles of your{' '}
             {effectiveLocationSource === 'current' ? 'current location' : 'saved address'} yet.
           </div>
         ) : (
           <div className="mt-4 grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {nearbyServices.map(renderServiceCard)}
+            {displayNearbyServices.map(renderServiceCard)}
           </div>
         )}
       </section>
@@ -585,7 +536,7 @@ export default function UserDiscoverPage() {
           Failed to load discover results.
           {error instanceof Error ? ` ${error.message}` : ''}
         </div>
-      ) : results.length === 0 ? (
+      ) : displayResults.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border mb-10">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No public proof found</h3>
           <p className="text-gray-600 mb-4">Try adjusting your search terms or filters.</p>
@@ -595,7 +546,7 @@ export default function UserDiscoverPage() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-          {results.map(renderServiceCard)}
+          {displayResults.map(renderServiceCard)}
         </div>
       )}
 
