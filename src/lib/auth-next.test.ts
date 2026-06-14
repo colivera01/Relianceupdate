@@ -26,8 +26,8 @@ describe('auth next helpers', () => {
     );
   });
 
-  it('uses a contextual auth back label for booking flows', () => {
-    expect(getAuthEntryBackLabel('/booking/service-123')).toBe('Back to Booking');
+  it('uses a contextual auth back label for service-request flows', () => {
+    expect(getAuthEntryBackLabel('/booking/service-123')).toBe('Back to Service Request');
     expect(getAuthEntryBackHref('/booking/service-123')).toBe('/booking/service-123');
   });
 
@@ -38,7 +38,7 @@ describe('auth next helpers', () => {
 
   it('describes interrupted auth journeys honestly', () => {
     expect(getAuthEntryDescription('register', '/booking/service-123')).toBe(
-      'Create your account to continue with this booking.'
+      'Create your account to continue with this service request.'
     );
     expect(getAuthEntryDescription('login', '/service/service-123')).toBe(
       'Sign in to continue with this service detail.'
@@ -46,14 +46,14 @@ describe('auth next helpers', () => {
   });
 
   it('maps next paths to continuation targets', () => {
-    expect(getAuthContinuationTarget('/booking/service-123')).toBe('this booking');
-    expect(getAuthContinuationTarget('/browse?category=cleaning')).toBe('browsing local services');
+    expect(getAuthContinuationTarget('/booking/service-123')).toBe('this service request');
+    expect(getAuthContinuationTarget('/browse?category=cleaning')).toBe('exploring public proof');
     expect(getAuthContinuationTarget(null)).toBeNull();
   });
 
   it('formats continuation phrases naturally', () => {
-    expect(getAuthContinuationPhrase('/booking/service-123')).toBe('continue with this booking');
-    expect(getAuthContinuationPhrase('/browse?category=cleaning')).toBe('keep browsing local services');
+    expect(getAuthContinuationPhrase('/booking/service-123')).toBe('continue with this service request');
+    expect(getAuthContinuationPhrase('/browse?category=cleaning')).toBe('keep exploring public proof');
   });
 
   it('keeps customer booking continuations for customer accounts', () => {

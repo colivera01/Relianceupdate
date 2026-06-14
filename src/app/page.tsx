@@ -58,8 +58,8 @@ export default function HomePage() {
     Boolean(featuredService?.previewMediaUrl) &&
     Boolean(featuredService?.previewMediaType) &&
     !isPlaceholderMarketplacePreview(featuredService?.previewMediaUrl);
-  const heroServiceName = featuredService?.serviceName || 'See trusted work before you book';
-  const heroVendorName = featuredService?.vendorName || 'Reliance marketplace';
+  const heroServiceName = featuredService?.serviceName || 'See trusted work before you choose';
+  const heroVendorName = featuredService?.vendorName || 'Reliance proof platform';
   const hasMarketplaceResults = marketplaceResults.length > 0;
   const publicServicesLoading = marketplaceLoading && marketplaceResults.length === 0;
 
@@ -73,7 +73,7 @@ export default function HomePage() {
             hideLogo
             links={[]}
             className="mb-10"
-            ctaLabel="Find a Service"
+            ctaLabel="See Public Proof"
             ctaHref="/browse"
           />
 
@@ -97,11 +97,11 @@ export default function HomePage() {
                 </div>
               </div>
               <h1 className="max-w-3xl font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl lg:text-7xl">
-                Find local services you can <span className="text-[var(--reliance-blue-soft)]">trust</span>
+                See local service proof before you <span className="text-[var(--reliance-blue-soft)]">choose</span>
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-white/76 sm:text-xl">
-                Compare customer reviews, public service videos, and provider details before you
-                decide who to book.
+                Compare completed work, public service videos, customer reviews, and Trust Score
+                evidence before choosing a provider.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -153,7 +153,7 @@ export default function HomePage() {
             How Reliance helps you compare
           </div>
           <h2 className="mt-4 font-display text-3xl font-semibold text-slate-950 sm:text-4xl">
-            See what matters before you book
+            See what matters before you choose
           </h2>
         </div>
 
@@ -175,18 +175,18 @@ export default function HomePage() {
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                Recent public services
+                Recent public proof
               </div>
               <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">
-                Newest services customers can compare right now
+                Completed-work proof customers can review
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                This preview shows the newest public services currently listed on Reliance. When a
-                public service video is available, it appears on the card automatically.
+                This preview highlights public proof currently visible on Reliance. When an
+                approved public service video is available, it appears on the card automatically.
               </p>
             </div>
             <span className="text-sm text-slate-500">
-              {marketplaceLoading ? 'Loading recent public services...' : `${totalPublicServices} public services live`}
+              {marketplaceLoading ? 'Loading public proof...' : `${totalPublicServices} public proof sources live`}
             </span>
           </div>
 
@@ -196,23 +196,22 @@ export default function HomePage() {
                 <Card key={index} className="overflow-hidden rounded-[26px] border-slate-200">
                   <div className="h-44 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)]" />
                   <CardContent className="space-y-3 p-5">
-                    <div className="text-sm font-semibold text-slate-900">Loading recent public services</div>
+                    <div className="text-sm font-semibold text-slate-900">Loading public proof</div>
                     <div className="text-sm leading-6 text-slate-600">
-                      Reliance is checking the newest public listings, provider details, and any
-                      public service videos.
+                      Reliance is checking approved public proof, provider details, and any public
+                      service videos.
                     </div>
                   </CardContent>
                 </Card>
               ))
             ) : marketplaceError && !hasMarketplaceResults ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900">
-                We could not load recent public services right now. You can still open the live
-                marketplace from Find a Service.
+                We could not load public proof right now. You can still open Explore Proof.
               </div>
             ) : marketplaceResults.length === 0 ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
-                Public services will appear here as vendors finish approval and publish
-                customer-facing listings.
+                Public proof will appear here as vendors finish approval and publish
+                customer-visible proof.
               </div>
             ) : (
               marketplaceResults.map((item) => (
@@ -228,11 +227,11 @@ export default function HomePage() {
                     <div className="font-display text-xl font-semibold text-slate-950">{item.serviceName}</div>
                     <div className="text-sm text-slate-500">{item.vendorName}</div>
                     <p className="line-clamp-2 text-sm leading-6 text-slate-600">
-                      {cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Public service listing'}
+                      {cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Service offered with proof context pending'}
                     </p>
                     <div className="flex items-center justify-between gap-3">
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                        {item.publicListing.hasPublicMedia ? 'Public service video' : 'Public listing'}
+                        {item.publicListing.hasPublicMedia ? 'Public service video' : 'Service offered'}
                       </span>
                       <Link
                         href={`/service/${item.serviceId}?returnTo=%2F&returnLabel=Back%20to%20Home%20Page`}
@@ -256,13 +255,13 @@ export default function HomePage() {
               For Customers
             </div>
             <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">
-              Find local services with less guesswork
+              Choose providers with less guesswork
             </h3>
             <ul className="mt-5 space-y-3 text-sm text-slate-600">
               {[
-                'Compare customer reviews, public service videos, and provider details in one place.',
-                'Browse vendor and service pages before you decide who to book.',
-                'Track bookings, approved service videos, and reviews from one customer account.',
+                'Compare completed work, public service videos, customer reviews, and provider details in one place.',
+                'Review vendor and service-offered pages before deciding who to contact.',
+                'Track service records, approved service videos, and reviews from one customer account.',
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-emerald)]" />
@@ -284,13 +283,13 @@ export default function HomePage() {
               For Vendors
             </div>
             <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">
-              Show your business clearly to new customers
+              Turn completed work into proof customers can trust
             </h3>
             <ul className="mt-5 space-y-3 text-sm text-slate-600">
               {[
-                'Share public service videos instead of relying on text alone.',
-                'Let customer reviews and the Reliance Trust Score stay separate and clear.',
-                'Keep your vendor, employee, moderation, and review workflows intact.',
+                'Share approved public service videos instead of relying on text alone.',
+                'Let customer reviews and Trust Score evidence stay separate and clear.',
+                'Keep vendor, employee, moderation, and review workflows intact while building public proof.',
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-blue)]" />

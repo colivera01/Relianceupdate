@@ -179,12 +179,12 @@ function BookingMediaDetailPageContent() {
   const loadPage = async () => {
     if (!bookingId) {
       setLoading(false);
-      setError('Booking not found.');
+      setError('Service record not found.');
       return;
     }
     if (!userId) {
       setLoading(false);
-      setError('Unauthorized. Sign in to view this booking.');
+      setError('Unauthorized. Sign in to view this service record.');
       return;
     }
 
@@ -206,7 +206,7 @@ function BookingMediaDetailPageContent() {
 
       const bookingJson = await bookingRes.json().catch(() => ({}));
       if (!bookingRes.ok) {
-        throw new Error(bookingJson?.error || `Failed to load booking (${bookingRes.status})`);
+        throw new Error(bookingJson?.error || `Failed to load service record (${bookingRes.status})`);
       }
       const mediaJson = await mediaRes.json().catch(() => ({}));
       if (!mediaRes.ok) {
@@ -236,7 +236,7 @@ function BookingMediaDetailPageContent() {
       const selectedPrimary = completedStagePrimary || approvedPlayableVideos[0] || null;
       setActiveVideoId(selectedPrimary?.id || null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load booking details');
+      setError(e instanceof Error ? e.message : 'Failed to load service record details');
       setBooking(null);
       setCustomerLifecycle(null);
       setAssets([]);
@@ -370,7 +370,7 @@ function BookingMediaDetailPageContent() {
     hasExistingReview: hasExistingCustomerReview,
   });
   const resolvedReturnTo = requestedReturnTo === '/reviews' ? '/reviews' : '/my-bookings';
-  const returnLinkLabel = resolvedReturnTo === '/reviews' ? 'Back to My Reviews' : 'Back to My Services';
+  const returnLinkLabel = resolvedReturnTo === '/reviews' ? 'Back to My Reviews' : 'Back to My Service Records';
   const awaitingApprovedReviewVideo =
     resolvedReturnTo === '/reviews' &&
     !archivedRecord &&
@@ -392,10 +392,10 @@ function BookingMediaDetailPageContent() {
   const existingReviewSupportMessage = archivedRecord
     ? 'This archived record no longer includes customer-visible media, but your review remains on file.'
     : playableVideos.length > 0
-      ? 'You can still approve video access to rewatch the completed service, but this booking does not need another review submission.'
+      ? 'You can still approve video access to rewatch the completed service, but this service record does not need another review submission.'
       : completedWithoutCustomerVisibleVideo
-        ? 'Your review remains on file for this completed booking, but no customer-visible approved service video is currently available here.'
-        : 'Your review is already on file for this booking. No additional review submission is needed.';
+        ? 'Your review remains on file for this completed service record, but no customer-visible approved service video is currently available here.'
+        : 'Your review is already on file for this service record. No additional review submission is needed.';
   const lifecycleRows =
     completedRecord && customerLifecycle
       ? [
@@ -439,13 +439,13 @@ function BookingMediaDetailPageContent() {
   const lifecycleGuidance =
     reviewSubmittedWithoutEligibleVideo || (reviewSubmitted && completedWithoutCustomerVisibleVideo)
       ? {
-          title: 'Why this booking shows a submitted review without a playable video',
+          title: 'Why this service record shows a submitted review without a playable video',
           description:
-            'This booking has a real submitted review on file, but a customer-visible approved final-result video is not attached right now.',
+            'This service record has a real submitted review on file, but a customer-visible approved final-result video is not attached right now.',
           bullets: [
             'Completed work, video availability, and review history are tracked separately.',
-            'Your earlier review remains on file even though this booking does not currently expose a customer-visible final-result video.',
-            'If you expected a playable service video here, use the Help Center with the booking ID below.',
+            'Your earlier review remains on file even though this service record does not currently expose a customer-visible final-result video.',
+            'If you expected a playable service video here, use the Help Center with the reference ID below.',
           ],
           tone: 'slate' as const,
         }
@@ -465,9 +465,9 @@ function BookingMediaDetailPageContent() {
           ? {
               title: 'Why the review window is not open yet',
               description:
-                'Reviews unlock only after an approved final-result customer-visible video exists for this booking.',
+                'Reviews unlock only after an approved final-result customer-visible video exists for this service record.',
               bullets: [
-                'A completed booking can still be waiting on moderation or customer visibility.',
+                'A completed service record can still be waiting on moderation or customer visibility.',
                 'If a video was rejected or kept non-customer-visible, the review flow stays closed.',
                 'Open Help if you expected a playable final-result video already.',
               ],
@@ -475,9 +475,9 @@ function BookingMediaDetailPageContent() {
             }
           : completedWithoutCustomerVisibleVideo
             ? {
-                title: 'Why this completed booking does not show a customer-visible video',
+                title: 'Why this completed service record does not show a customer-visible video',
                 description:
-                  'The booking is marked completed, but no approved final-result video is customer-visible right now.',
+                  'The service record is marked completed, but no approved final-result video is customer-visible right now.',
                 bullets: [
                   'Completed work, approved video, customer access, and review timing are separate lifecycle steps.',
                   'This can happen when a video was not submitted, is private, or is not customer-visible.',
@@ -734,7 +734,7 @@ function BookingMediaDetailPageContent() {
         <div className="max-w-5xl mx-auto px-4 py-10">
           <div className="rounded-lg border bg-white p-6 space-y-4">
             <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
-              <p className="text-sm font-medium text-blue-900">Loading booking details...</p>
+              <p className="text-sm font-medium text-blue-900">Loading service record details...</p>
               <p className="text-xs text-blue-800">Fetching service videos, timeline stages, and customer review tools.</p>
             </div>
             <div className="h-5 w-44 rounded bg-gray-200 animate-pulse" />
@@ -769,7 +769,7 @@ function BookingMediaDetailPageContent() {
           ) : null}
           {bookingId ? (
             <p className="text-xs text-gray-500">
-              Booking ID: <span className="font-mono">{bookingId}</span>
+              Reference ID: <span className="font-mono">{bookingId}</span>
             </p>
           ) : null}
           <div className="text-sm text-gray-700">
@@ -810,7 +810,7 @@ function BookingMediaDetailPageContent() {
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold text-gray-900">{booking?.service?.name || booking?.title || 'Service booking'}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{booking?.service?.name || booking?.title || 'Service record'}</h1>
             <p className="text-sm text-gray-600">
               {archivedRecord
                 ? 'Archived Service Record'
@@ -819,7 +819,7 @@ function BookingMediaDetailPageContent() {
                   : awaitingApprovedReviewVideo
                     ? 'Awaiting Service Video'
                     : completedWithoutCustomerVisibleVideo
-                      ? 'Completed Booking Record'
+                      ? 'Completed Service Record'
                       : 'Service Videos'}
             </p>
           </div>
@@ -895,7 +895,7 @@ function BookingMediaDetailPageContent() {
         {lifecycleRows.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 space-y-3">
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-gray-900">Current booking state</p>
+              <p className="text-sm font-semibold text-gray-900">Current service-record state</p>
               <p className="text-xs text-gray-600">
                 Work completion, video approval, customer access, and review availability are tracked separately.
               </p>
@@ -919,17 +919,17 @@ function BookingMediaDetailPageContent() {
             <p className="text-sm font-medium text-amber-900">Awaiting approved service video</p>
             <p className="text-sm text-amber-900">
               {completedVideoPendingApproval
-                ? 'This booking is completed and the final-result video is pending approval before Reliance can open the video-based review flow.'
+                ? 'This service record is completed and the final-result video is pending approval before Reliance can open the video-based review flow.'
                 : lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
-                  ? 'This booking is completed, but the submitted final-result video is not customer-visible right now.'
-                  : 'This completed booking is still in your review queue, but Reliance cannot open the video-based review flow until an approved final-result video is attached.'}
+                  ? 'This service record is completed, but the submitted final-result video is not customer-visible right now.'
+                  : 'This completed service record is still in your review queue, but Reliance cannot open the video-based review flow until an approved final-result video is attached.'}
             </p>
             <p className="text-xs text-amber-800">
               {completedVideoPendingApproval
-                ? 'Once approval is complete, this booking will move from Awaiting Service Videos into Ready to Review.'
+                ? 'Once approval is complete, this service record will move from Awaiting Service Videos into Ready to Review.'
                 : lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
-                  ? 'If you expected a playable final-result video here, contact support with the booking ID from My Services.'
-                  : 'Once that approved video is available, this booking will move from Awaiting Service Videos into Ready to Review.'}
+                  ? 'If you expected a playable final-result video here, contact support with the reference ID from My Service Records.'
+                  : 'Once that approved video is available, this service record will move from Awaiting Service Videos into Ready to Review.'}
             </p>
           </div>
         ) : null}
@@ -1060,35 +1060,35 @@ function BookingMediaDetailPageContent() {
                     ? 'The vendor submitted a final-result video and it is still being reviewed before it can be shown here.'
                   : awaitingApprovedReviewVideo
                     ? lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
-                      ? 'A final-result video was submitted for this booking, but it is not customer-visible right now.'
+                      ? 'A final-result video was submitted for this service record, but it is not customer-visible right now.'
                       : 'We will open the final-result video and review flow here after an approved final-result video is attached.'
                     : completedWithoutCustomerVisibleVideo
                       ? reviewSubmitted
-                        ? 'This completed booking already has a submitted review on file, but no customer-visible approved service video is currently attached.'
+                        ? 'This completed service record already has a submitted review on file, but no customer-visible approved service video is currently attached.'
                         : lifecycleVideoState === 'rejected'
-                          ? 'This booking is marked completed, and a final-result video was submitted, but it is not customer-visible right now.'
+                          ? 'This service record is marked completed, and a final-result video was submitted, but it is not customer-visible right now.'
                           : lifecycleVideoState === 'approved_not_customer_visible'
-                            ? 'This booking is marked completed, and a final-result video exists, but it is not customer-visible right now.'
-                            : 'This booking is marked completed, but no customer-visible approved service video is currently attached.'
+                            ? 'This service record is marked completed, and a final-result video exists, but it is not customer-visible right now.'
+                            : 'This service record is marked completed, but no customer-visible approved service video is currently attached.'
                       : 'No customer-visible approved service video is available for this job yet.'}
             </p>
             {archivedRecord ? (
               <p className="text-xs text-gray-500">This record is kept for reference only.</p>
             ) : followUpRecord ? (
-              <p className="text-xs text-gray-500">If you still need help on this booking, contact support with the booking ID from My Services.</p>
+              <p className="text-xs text-gray-500">If you still need help on this service record, contact support with the reference ID from My Service Records.</p>
             ) : completedVideoPendingApproval ? (
               <p className="text-xs text-gray-500">You&apos;ll be notified once approval is complete and the video can be opened here.</p>
             ) : awaitingApprovedReviewVideo ? (
               <p className="text-xs text-gray-500">
                 {lifecycleVideoState === 'rejected' || lifecycleVideoState === 'approved_not_customer_visible'
-                  ? 'If you expected a playable final-result video here, contact support and include the booking ID from My Services.'
+                  ? 'If you expected a playable final-result video here, contact support and include the reference ID from My Service Records.'
                   : "You'll be notified when the approved video is ready."}
               </p>
             ) : completedWithoutCustomerVisibleVideo ? (
               <p className="text-xs text-gray-500">
                 {reviewSubmitted
-                  ? 'Your earlier review remains on file even though this completed booking does not currently include a customer-visible service video.'
-                  : 'If you expected a playable service video here, contact support and include the booking ID from My Services.'}
+                  ? 'Your earlier review remains on file even though this completed service record does not currently include a customer-visible service video.'
+                  : 'If you expected a playable service video here, contact support and include the reference ID from My Service Records.'}
               </p>
             ) : (
               <p className="text-xs text-gray-500">You&apos;ll be notified when video is ready.</p>
@@ -1236,7 +1236,7 @@ function BookingMediaDetailPageContent() {
             <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-2">
               <p className="text-sm font-medium text-gray-900">Review not active yet</p>
               <p className="text-sm text-gray-700">
-                This service date passed without an approved completed-work video, so review prompts are not active on this booking yet.
+                This service date passed without an approved completed-work video, so review prompts are not active on this service record yet.
               </p>
             </div>
           ) : !canShowInlineReview ? (
@@ -1309,11 +1309,11 @@ function BookingMediaDetailPageContent() {
           {showDetails ? (
             <div className="mt-3 grid gap-2 text-sm text-gray-700">
               <p>
-                <span className="font-medium text-gray-900">Booking ID:</span>{' '}
+                <span className="font-medium text-gray-900">Reference ID:</span>{' '}
                 <span className="font-mono text-xs">{bookingId}</span>
               </p>
               <p>
-                <span className="font-medium text-gray-900">Service:</span> {booking?.service?.name || booking?.title || 'Service booking'}
+                <span className="font-medium text-gray-900">Service:</span> {booking?.service?.name || booking?.title || 'Service record'}
               </p>
               <p>
                 <span className="font-medium text-gray-900">Vendor:</span> {vendorName}
@@ -1327,7 +1327,7 @@ function BookingMediaDetailPageContent() {
               </p>
               {nonStageAdditionalMedia.length > 0 ? (
                 <p className="text-xs text-gray-500">
-                  Additional approved files are available for this booking ({nonStageAdditionalMedia.length}).
+                  Additional approved files are available for this service record ({nonStageAdditionalMedia.length}).
                 </p>
               ) : null}
             </div>
@@ -1342,7 +1342,7 @@ function BookingMediaDetailPageFallback() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="rounded-lg border bg-white p-4 text-sm text-gray-700">
-        Loading booking details...
+        Loading service record details...
       </div>
     </div>
   );

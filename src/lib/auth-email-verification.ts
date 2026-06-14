@@ -212,9 +212,9 @@ function getVerificationEmailCopy(audience: "customer" | "vendor" | "account" = 
         subject: "Welcome to Reliance. Verify your email to start using your account",
         headline: "Finish setting up your customer account",
         intro:
-          "Your Reliance account is almost ready. Verify your email so you can sign in confidently, manage bookings, and access service videos and reviews when they are available.",
+          "Your Reliance account is almost ready. Verify your email so you can sign in confidently, manage service records, and access service videos and reviews when they are available.",
         body:
-          "We use email verification to protect your account and make sure future booking updates, service-video access, and sign-in recovery stay connected to the right person.",
+          "We use email verification to protect your account and make sure future service-record updates, service-video access, and sign-in recovery stay connected to the right person.",
         afterVerification:
           "After verification, you can sign in and continue using Reliance with your new customer account.",
       };
@@ -227,7 +227,7 @@ function getVerificationEmailCopy(audience: "customer" | "vendor" | "account" = 
         body:
           "We verify your email before vendor access opens so your business account stays secure and Reliance can reliably send approval, profile, and service-status updates to the right inbox.",
         afterVerification:
-          "After verification, sign in again to continue building your vendor profile and services.",
+          "After verification, sign in again to continue building your vendor profile and services offered.",
       };
     default:
       return {

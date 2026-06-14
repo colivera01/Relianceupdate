@@ -19,9 +19,9 @@ export function getAuthContinuationTarget(nextPath: string | null | undefined): 
   const safeNextPath = sanitizeAuthNextPath(nextPath);
   if (!safeNextPath) return null;
 
-  if (safeNextPath.startsWith('/booking/')) return 'this booking';
+  if (safeNextPath.startsWith('/booking/')) return 'this service request';
   if (safeNextPath.startsWith('/service/')) return 'this service detail';
-  if (safeNextPath.startsWith('/browse')) return 'browsing local services';
+  if (safeNextPath.startsWith('/browse')) return 'exploring public proof';
   if (safeNextPath.startsWith('/help')) return 'the Help Center';
   return 'where you left off';
 }
@@ -29,7 +29,7 @@ export function getAuthContinuationTarget(nextPath: string | null | undefined): 
 export function getAuthContinuationPhrase(nextPath: string | null | undefined): string | null {
   const target = getAuthContinuationTarget(nextPath);
   if (!target) return null;
-  if (target === 'browsing local services') return 'keep browsing local services';
+  if (target === 'exploring public proof') return 'keep exploring public proof';
   if (target === 'the Help Center') return 'continue to the Help Center';
   if (target === 'where you left off') return 'continue where you left off';
   return `continue with ${target}`;
@@ -102,10 +102,10 @@ export function getAuthEntryBackLabel(nextPath: string | null | undefined): stri
   const safeNextPath = sanitizeAuthNextPath(nextPath);
   if (!safeNextPath) return 'Back to Home';
 
-  if (safeNextPath.startsWith('/booking/')) return 'Back to Booking';
+  if (safeNextPath.startsWith('/booking/')) return 'Back to Service Request';
   if (safeNextPath.startsWith('/service/')) return 'Back to Service Detail';
   if (safeNextPath.startsWith('/vendor/')) return 'Back to Vendor Area';
-  if (safeNextPath.startsWith('/browse')) return 'Back to Browse';
+  if (safeNextPath.startsWith('/browse')) return 'Back to Explore Proof';
   if (safeNextPath.startsWith('/help')) return 'Back to Help Center';
   return 'Back to Requested Page';
 }

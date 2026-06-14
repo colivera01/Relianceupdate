@@ -37,7 +37,7 @@ export default function PricingManagement() {
               <Link href="/vendor/profile">Open Profile &amp; Settings</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/vendor/services">Open Services</Link>
+              <Link href="/vendor/services">Open Services Offered</Link>
             </Button>
           </div>
         </CardContent>

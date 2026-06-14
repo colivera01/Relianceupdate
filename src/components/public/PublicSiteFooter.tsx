@@ -9,7 +9,7 @@ import {
 
 const exploreLinks = [
   { href: "/", label: "Home" },
-  { href: "/browse", label: "Browse" },
+  { href: "/browse", label: "Explore Proof" },
   { href: "/help", label: "Help" },
 ];
 
@@ -33,8 +33,8 @@ export function PublicSiteFooter() {
               frameClassName="h-[5.8rem] w-[5.8rem]"
             />
             <p className="mt-5 max-w-sm text-sm leading-7 text-white/64">
-              Reliance helps customers compare reviews, public service videos, and provider details
-              before they book.
+              Reliance helps customers compare completed work, public service videos, reviews, and
+              Trust Score evidence before choosing a provider.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {["Customer Reviews", "Verified Service Videos", "Reliance Trust Score"].map((item) => (
@@ -105,7 +105,7 @@ export function PublicSiteFooter() {
 
         <div className="mt-10 flex flex-col gap-3 border-t border-white/8 pt-6 text-sm text-white/44 sm:flex-row sm:items-center sm:justify-between">
           <p>Compare customer reviews, public service videos, and Trust Score separately.</p>
-          <p>&copy; {new Date().getFullYear()} Reliance. Public marketplace.</p>
+          <p>&copy; {new Date().getFullYear()} Reliance. Proof-of-service platform.</p>
         </div>
       </div>
     </footer>

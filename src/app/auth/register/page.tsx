@@ -862,19 +862,19 @@ const getSpecializationsForCategory = (category: string) => {
 
 // Benefits lists
 const userBenefits = [
-  'Find trusted local service providers',
+  'Compare trusted local service providers',
   'Read verified customer reviews',
-  'Book appointments instantly',
-  'Get competitive quotes',
+  'Review public proof before choosing',
+  'Track service records and proof updates',
   '24/7 customer support',
-  'Secure payment processing'
+  'Clear Trust Score context'
 ];
 
 const vendorBenefits = [
-  'Grow your business with new customers',
-  'Manage bookings and schedules easily',
-  'Get paid quickly and securely',
-  'Build your online reputation',
+  'Grow your business with public proof',
+  'Turn completed work into public proof',
+  'Show approved service videos',
+  'Build public credibility',
   'Access business tools and analytics',
   'Dedicated support team'
 ];
@@ -1343,18 +1343,18 @@ function RegisterPageInner() {
   };
 
   const userBenefits = [
-    "Browse local professionals in your area",
+    "Explore local providers with public proof",
     "Read authentic customer reviews",
-    "View vendor video profiles",
+    "View approved service videos",
     "Contact vendors directly",
     "Save your favorite professionals"
   ];
 
   const vendorBenefits = [
     "Create your professional profile",
-    "Showcase your services with video",
-    "Get discovered by local customers",
-    "Build your online reputation",
+    "Showcase completed work with video",
+    "Build public proof customers can trust",
+    "Strengthen your business credibility",
     "Access customer reviews and feedback"
   ];
 
@@ -1693,7 +1693,7 @@ function RegisterPageInner() {
                     {userType === 'user' ? 'Customer Registration' : 'Vendor Registration'}
                   </CardTitle>
                   <CardDescription>
-                    {userType === 'user' ? 'Join to find services' : 'Join to provide services'}
+                    {userType === 'user' ? 'Join to explore public proof' : 'Join to build public proof'}
                   </CardDescription>
                 </div>
               </div>
@@ -2230,7 +2230,7 @@ function RegisterPageInner() {
                       <Label>Starter Services for Your Menu</Label>
                       <p className="text-sm text-gray-600 mb-3">
                         {formData.category ?
-                          `Choose common services for ${formData.category}. You can refine these service menu items after registration before customers book.` :
+                          `Choose common services for ${formData.category}. You can refine these service menu items after registration before customers request service.` :
                           'Select your primary service category first to see common starter services'
                         }
                       </p>
@@ -2657,7 +2657,7 @@ function RegisterPageInner() {
                         placeholder="Describe your business, services, and what makes you unique..."
                         required
                       />
-                      <p className="text-sm text-gray-500 mt-1">This will be displayed on your service listings and profile page</p>
+                      <p className="text-sm text-gray-500 mt-1">This will be displayed on your public profile and Services Offered pages.</p>
                     </div>
 
                     {/* Service Areas */}
@@ -2742,7 +2742,7 @@ function RegisterPageInner() {
                           Weekly operating days and daily open/close hours are not part of the live vendor registration save model yet.
                         </p>
                         <div className="mb-4 rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
-                          Why you cannot set open and close times here yet: Reliance does not currently persist or enforce a real weekly-hours schedule across vendor onboarding, public booking availability, and service matching. We avoid showing fake hours controls until that schema, API, and booking logic are live.
+                          Why you cannot set open and close times here yet: Reliance does not currently persist or enforce a real weekly-hours schedule across vendor onboarding, service-request availability, and service matching. We avoid showing fake hours controls until that schema, API, and request logic are live.
                         </div>
                         <div className="rounded-lg border border-white/10 bg-slate-950/60 p-3 text-sm text-white/70">
                           <p className="font-medium text-white/88">Current beta behavior</p>

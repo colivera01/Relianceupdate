@@ -5,7 +5,7 @@ type PublicHeroArtworkProps = {
 
 export function PublicHeroArtwork({
   serviceName = 'Public service video',
-  vendorName = 'Reliance marketplace',
+  vendorName = 'Reliance proof platform',
 }: PublicHeroArtworkProps) {
   return (
     <div className="relative h-[17rem] overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#040913,#081120_52%,#0d1d36_100%)] sm:h-[18rem]">
@@ -85,11 +85,11 @@ export function PublicHeroArtwork({
           See what&apos;s available
         </div>
         <div className="mt-2.5 font-display text-[1.18rem] font-semibold leading-[1.08] text-white sm:text-[1.34rem]">
-          Know when a public service video is available.
+          Know when public proof is available.
         </div>
         <p className="mt-2.5 text-[13px] leading-5 text-white/68">
           Some providers share approved public service videos after completed work. When no video is
-          available yet, you can still compare reviews, provider details, and service information.
+          available yet, you can still compare reviews, provider details, and services offered.
         </p>
       </div>
 

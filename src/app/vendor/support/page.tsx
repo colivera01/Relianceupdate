@@ -80,14 +80,14 @@ function SupportPageContent() {
                     Prepare service details and reference prices while publishing remains coordinated for launch.
                   </p>
                   <Link href="/vendor/services" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
-                    Manage Services
+                    Manage Services Offered
                   </Link>
                 </div>
                 
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <h3 className="font-semibold mb-2">Scheduled Work</h3>
                   <p className="text-sm text-gray-600 mb-3">
-                    Review active work, booking details, video stages, and manager approval steps.
+                    Review active work, service-record details, video stages, and manager approval steps.
                   </p>
                   <Link href="/vendor/jobs" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
                     View Scheduled Work

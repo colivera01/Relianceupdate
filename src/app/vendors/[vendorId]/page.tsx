@@ -96,7 +96,7 @@ export default function PublicVendorProfilePage() {
   const userId = resolveCustomerUserId(user?.id);
   const isSignedIn = Boolean(userId);
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null) || '/browse';
-  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Browse';
+  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Proof';
 
   const [payload, setPayload] = useState<PublicVendorPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -214,11 +214,11 @@ export default function PublicVendorProfilePage() {
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Browse' },
+              { href: '/browse', label: 'Explore Proof' },
               { href: '/help', label: 'Help' },
             ]}
             ctaHref="/browse"
-            ctaLabel="Explore Services"
+            ctaLabel="Explore Proof"
           />
 
           <div className="mb-8">
@@ -236,7 +236,7 @@ export default function PublicVendorProfilePage() {
           {loading ? (
             <div className="space-y-4">
               <div className="rounded-[28px] border border-white/12 bg-white/8 px-6 py-5 text-sm text-white/82 backdrop-blur-xl">
-                Reliance is loading this public vendor profile now. Public services, reviews, and any approved
+                Reliance is loading this public vendor profile now. Services offered, reviews, and any approved
                 service videos will appear as soon as the listing is ready.
               </div>
               <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -300,9 +300,9 @@ export default function PublicVendorProfilePage() {
                     </div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
-                    <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Public services</div>
+                    <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Services offered</div>
                     <div className="mt-3 text-3xl font-semibold">{services.length}</div>
-                    <div className="mt-1 text-sm text-white/66">Approved listings currently shown to customers</div>
+                    <div className="mt-1 text-sm text-white/66">Approved services offered currently shown to customers</div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">
                     <div className="text-[11px] uppercase tracking-[0.24em] text-white/56">Service videos</div>
@@ -454,7 +454,7 @@ export default function PublicVendorProfilePage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                      Public Services
+                      Services Offered
                     </div>
                     <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Available service lineup</h2>
                   </div>
@@ -465,7 +465,7 @@ export default function PublicVendorProfilePage() {
 
                 {services.length === 0 ? (
                   <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                    No publicly listed services are available for this vendor yet.
+                    No public services offered are available for this vendor yet.
                   </div>
                 ) : (
                   <div className="mt-6 grid gap-5 md:grid-cols-2">
@@ -485,11 +485,11 @@ export default function PublicVendorProfilePage() {
                           </p>
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-sm font-semibold text-slate-900">
-                              {service.previewMediaUrl ? 'Public preview available' : 'Public service listing'}
+                              {service.previewMediaUrl ? 'Public preview available' : 'Service offered'}
                             </div>
                             <Link href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(`/vendors/${vendorId}`)}&returnLabel=Back%20to%20Vendor%20Page`}>
                               <Button size="sm" className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
-                                View Service
+                                View Proof
                               </Button>
                             </Link>
                           </div>

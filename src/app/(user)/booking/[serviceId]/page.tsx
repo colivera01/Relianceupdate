@@ -162,7 +162,7 @@ export default function BookingPage() {
 
   const handleConfirmBooking = async () => {
     if (!service || !selectedDate || !selectedTime) {
-      setError('Missing required booking information');
+      setError('Missing required service-request information');
       return;
     }
 
@@ -217,20 +217,20 @@ export default function BookingPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create booking');
+        throw new Error(errorData.error || 'Failed to create service record');
       }
 
       const bookingResult = await response.json();
       const createdBookingId = bookingResult?.booking?.id ? String(bookingResult.booking.id) : '';
       if (!createdBookingId) {
-        throw new Error('Booking was created but response is missing booking ID');
+        throw new Error('Service record was created but response is missing a reference ID');
       }
 
-      // Redirect to confirmation page with canonical persisted booking ID.
+      // Redirect to confirmation page with canonical persisted service-record ID.
       router.push(`/booking/${serviceId}/confirmation?bookingId=${encodeURIComponent(createdBookingId)}`);
       
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create booking';
+      const message = err instanceof Error ? err.message : 'Failed to create service record';
       setSubmitError(message);
       setError(message);
     } finally {
@@ -523,7 +523,7 @@ export default function BookingPage() {
 
             {currentStep === 'review' && (
               <div className="bg-white rounded-2xl p-6 shadow-sm">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">Review Your Booking</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Review Your Service Request</h2>
                 
                 <div className="space-y-6">
                   {/* Service Details */}
@@ -601,7 +601,7 @@ export default function BookingPage() {
                 <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                   <p className="text-sm text-amber-900 font-medium mb-1">No in-app payment yet</p>
                   <p className="text-sm text-amber-800">
-                    Reliance does not collect card or wallet payments on this step. Confirming saves your booking and
+                    Reliance does not collect card or wallet payments on this step. Confirming saves a service record and
                     service price to your account; the vendor may contact you for payment separately.
                   </p>
                 </div>
@@ -636,7 +636,7 @@ export default function BookingPage() {
                     disabled={submitting}
                     className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {submitting ? 'Creating Booking...' : 'Confirm booking'}
+                    {submitting ? 'Saving Service Record...' : 'Request Service'}
                   </button>
                 ) : (
                   <button
@@ -654,7 +654,7 @@ export default function BookingPage() {
           {/* Sidebar */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-2xl p-6 shadow-sm sticky top-24">
-              <h3 className="font-semibold text-gray-900 mb-4">Booking Summary</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">Service Request Summary</h3>
               
               <div className="space-y-4">
                 <div className="flex items-center gap-3">

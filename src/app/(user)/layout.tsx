@@ -65,7 +65,7 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
             <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--reliance-blue)]" />
             <h1 className="font-display text-3xl font-semibold text-slate-950">Checking your customer account</h1>
             <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              Reliance is confirming your sign-in so your bookings, reviews, and saved details load in the right account.
+              Reliance is confirming your sign-in so your service records, reviews, and saved details load in the right account.
             </p>
           </div>
         </div>
@@ -83,13 +83,13 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
             </div>
             <h1 className="mt-5 font-display text-3xl font-semibold text-slate-950">Sign in to open your customer account</h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-              Your bookings, reviews, saved items, and profile settings only appear after you sign in with the customer account that created them.
+              Your service records, reviews, saved items, and profile settings only appear after you sign in with the customer account that created them.
             </p>
             <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-700">
               <p className="font-medium text-slate-900">What you can do next</p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-600">
                 <li>Sign in to see your active and completed services.</li>
-                <li>Open approved service videos and leave reviews from the right booking.</li>
+                <li>Open approved service videos and leave reviews from the right service record.</li>
                 <li>Update your saved profile details and customer preferences.</li>
               </ul>
             </div>

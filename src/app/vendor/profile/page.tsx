@@ -42,7 +42,7 @@ import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
 const notificationPreferenceCopy: Record<string, { label: string; description: string; disabled?: boolean }> = {
   job: {
     label: 'Job requests',
-    description: 'New job requests and booking updates',
+    description: 'New job requests and service-record updates',
   },
   review: {
     label: 'Customer reviews',
@@ -486,10 +486,10 @@ export default function VendorProfilePage() {
       ? 'Vendor account is approved on Reliance.'
       : 'Vendor account is still awaiting approval.',
     profile?.isPubliclyListed
-      ? 'Business profile is currently visible in the public marketplace.'
+      ? 'Business profile is currently visible as public proof on Reliance.'
       : 'Business profile is not public yet.',
     Number(profile?.publishedServiceCount || 0) > 0
-      ? `${Number(profile?.publishedServiceCount || 0)} published services help customers find this business.`
+      ? `${Number(profile?.publishedServiceCount || 0)} published services offered help customers find this business.`
       : 'No services are publicly published yet.',
     Number(profile?.ratingCount || 0) > 0
       ? `${Number(profile?.ratingCount || 0)} public customer reviews are visible.`
@@ -867,7 +867,7 @@ export default function VendorProfilePage() {
                 <div className="mb-6">
                   <label className="block text-sm font-medium mb-2 text-gray-700">Business Specialties</label>
                   <p className="text-sm text-gray-600 mb-3">
-                    Select broad specialties for your profile. Customer-bookable services are managed from Your Service Menu.
+                    Select broad specialties for your profile. Customer-visible services offered are managed from Services Offered.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {serviceTypeOptions.map((serviceType) => (

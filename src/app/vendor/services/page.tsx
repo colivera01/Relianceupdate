@@ -334,10 +334,10 @@ export default function VendorServicesPage() {
               ? 'Vendor account is approved on Reliance.'
               : 'Vendor account is still awaiting approval.',
             vendorProfile?.isPubliclyListed
-              ? 'Business profile is currently visible in the public marketplace.'
+              ? 'Business profile is currently visible as public proof on Reliance.'
               : 'Business profile is not public yet.',
             Number(vendorProfile?.publishedServiceCount || 0) > 0
-              ? `${Number(vendorProfile?.publishedServiceCount || 0)} published services already help customers find this business.`
+              ? `${Number(vendorProfile?.publishedServiceCount || 0)} published services offered already help customers find this business.`
               : 'No services are publicly published yet.',
             Number(vendorProfile?.ratingCount || 0) > 0
               ? `${Number(vendorProfile?.ratingCount || 0)} public customer reviews are visible.`
@@ -369,9 +369,9 @@ export default function VendorServicesPage() {
         ) : null}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Your Service Menu</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Your Services Offered</h1>
             <p className="text-gray-600">
-              Add the services customers will be able to view and book once Reliance publishes them.
+              Add the services customers will be able to understand and request once Reliance publishes them.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -382,18 +382,18 @@ export default function VendorServicesPage() {
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-4 h-4" />
-              Add Service
+              Add Service Offered
             </button>
           </div>
         </div>
 
         <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-900">
-          <p className="font-semibold text-purple-950">This is your customer-facing service menu</p>
+          <p className="font-semibold text-purple-950">This is your customer-facing Services Offered menu</p>
           <p className="mt-1">
-            Think of each service as a menu item customers can compare before booking. Clear names,
+            Think of each service offered as a menu item customers can compare before requesting help. Clear names,
             simple descriptions, estimated duration, and honest reference pricing help customers
-            understand what you provide. Saving a service here does not create a booking or service
-            video by itself; it prepares the service customers can book after Reliance publishes it.
+            understand what you provide. Saving a service offered here does not create a service
+            record or service video by itself; it prepares the service customers can request after Reliance publishes it.
           </p>
         </div>
 
@@ -409,7 +409,7 @@ export default function VendorServicesPage() {
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-blue-900/78">
                   Start with a common service, then edit the name, duration, price, and description
-                  before saving it to your service menu.
+                  before saving it to your Services Offered menu.
                 </p>
               </div>
               <button
@@ -452,23 +452,23 @@ export default function VendorServicesPage() {
 
         <GuidanceCallout
           title="What customers can see"
-          description="Services you add here are saved internally first. Customers only see them after Reliance publishes them."
+          description="Services offered here are saved internally first. Customers only see them after Reliance publishes them."
           bullets={[
-            `${growthSummary.metrics[1].value} published service${growthSummary.metrics[1].value === '1' ? '' : 's'} currently help customers find the business.`,
+            `${growthSummary.metrics[1].value} published service${growthSummary.metrics[1].value === '1' ? '' : 's'} offered currently help customers find the business.`,
             'Not-public services stay internal until Reliance finishes the publishing step.',
-            'Stronger service copy improves discovery and helps customers understand what they are booking.',
+            'Stronger service copy improves discovery and helps customers understand what they can request.',
           ]}
           tone="slate"
           className="mb-4"
         />
 
         <GuidanceCallout
-          title="Why your services may still not be public"
+          title="Why your Services Offered may still not be public"
           description="Saving a service prepares it for review, but customer discovery still depends on vendor approval, public vendor listing, and admin publishing."
           bullets={[
             'Service saved: Reliance stores the service internally for review.',
             'Vendor approved and listed: customers can find the business profile.',
-            'Service published: the service becomes publicly discoverable and bookable.',
+            'Service published: the service becomes publicly discoverable and request-ready.',
           ]}
           tone="blue"
           className="mb-4"
@@ -476,7 +476,7 @@ export default function VendorServicesPage() {
 
         {approvalPending && (
           <div className="p-4 mb-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
-            Vendor account pending approval. Your services are saved for admin review, but they are not publicly visible yet.
+            Vendor account pending approval. Your services offered are saved for admin review, but they are not publicly visible yet.
           </div>
         )}
 
@@ -505,7 +505,7 @@ export default function VendorServicesPage() {
           </div>
         ) : sortedServices.length === 0 ? (
           <div className="p-6 bg-white rounded-2xl border border-gray-200 text-gray-600">
-            No services added yet. Add the first service customers should be able to book.
+            No services offered added yet. Add the first service customers should be able to understand and request.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -572,7 +572,7 @@ export default function VendorServicesPage() {
             <div className="bg-white rounded-2xl max-w-2xl w-full mx-4">
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900">
-                  {editingService ? 'Edit Service' : 'Add Service'}
+                  {editingService ? 'Edit Service Offered' : 'Add Service Offered'}
                 </h2>
                 <button
                   onClick={closeFormModal}
@@ -768,7 +768,7 @@ export default function VendorServicesPage() {
                   className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {formSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {editingService ? 'Update Service' : 'Add Service'}
+                  {editingService ? 'Update Service Offered' : 'Add Service Offered'}
                 </button>
               </div>
             </div>

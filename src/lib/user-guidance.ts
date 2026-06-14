@@ -25,7 +25,7 @@ export const tutorialGuides = {
     badge: "New customer",
     title: "How customer signup works",
     summary:
-      "Create your account first, then sign in and continue browsing, booking, and tracking services from your customer dashboard.",
+      "Create your account first, then sign in and continue exploring public proof, contacting vendors, and tracking service records from your customer dashboard.",
     steps: [
       {
         title: "Create the account",
@@ -42,18 +42,18 @@ export const tutorialGuides = {
     ],
     reminders: [
       "Customer Reviews, Verified Service Videos, and the Reliance Trust Score stay separate.",
-      "Booking pages only unlock protected actions after you sign in.",
+      "Service-request pages only unlock protected actions after you sign in.",
     ],
     relatedLinks: [
       { label: "Open Help Center", href: "/help?role=customer" },
     ],
-    futureVideoNote: "Tutorial video placeholder: Customer signup and first booking",
+    futureVideoNote: "Tutorial video placeholder: Customer signup and first service record",
   },
   vendorRegistration: {
     badge: "New vendor",
     title: "How vendor signup works",
     summary:
-      "Create the vendor account, sign in, finish the business profile, add services, and wait for admin approval before public visibility.",
+      "Create the vendor account, sign in, finish the business profile, add services offered, and wait for admin approval before public visibility.",
     steps: [
       {
         title: "Create the vendor account",
@@ -61,16 +61,16 @@ export const tutorialGuides = {
       },
       {
         title: "Sign in and finish business setup",
-        detail: "After registration, sign in and continue through the vendor dashboard, profile, and services pages.",
+        detail: "After registration, sign in and continue through the vendor dashboard, profile, and Services Offered pages.",
       },
       {
         title: "Wait for admin approval and publishing",
-        detail: "A vendor can save profile details and services before approval, but public visibility happens only after admin review and publishing.",
+        detail: "A vendor can save profile details and services offered before approval, but public visibility happens only after admin review and publishing.",
       },
     ],
     reminders: [
-      "Admin approval, public vendor listing, and published services are three separate states.",
-      "Saved services stay internal until Reliance publishes them.",
+      "Admin approval, public vendor profile, and published services offered are three separate states.",
+      "Saved services offered stay internal until Reliance publishes them.",
     ],
     relatedLinks: [
       { label: "Vendor support", href: "/vendor/support" },
@@ -78,14 +78,14 @@ export const tutorialGuides = {
     futureVideoNote: "Tutorial video placeholder: Vendor registration and launch checklist",
   },
   browseMarketplace: {
-    badge: "Customer browsing",
-    title: "How to compare services on Reliance",
+    badge: "Public proof",
+    title: "How to compare proof on Reliance",
     summary:
-      "Browse shows public service cards, public vendor pages, customer ratings, service videos, and the Reliance Trust Score side by side so customers can compare trust signals before booking.",
+      "Explore Proof shows public service cards, public vendor pages, customer ratings, service videos, and the Reliance Trust Score side by side so customers can compare trust signals before choosing who to contact.",
     steps: [
       {
         title: "Search or filter first",
-        detail: "Use category filters, search, and location-aware sorting to narrow down public services.",
+        detail: "Use category filters, search, and location-aware sorting to narrow down public proof and services offered.",
       },
       {
         title: "Compare two separate trust signals",
@@ -93,7 +93,7 @@ export const tutorialGuides = {
       },
       {
         title: "Open service or vendor detail",
-        detail: "Use View Service for booking context and View Vendor for the broader business profile.",
+        detail: "Use View Proof for service context and View Vendor for the broader business profile.",
       },
     ],
     reminders: [
@@ -106,7 +106,7 @@ export const tutorialGuides = {
     badge: "Public service page",
     title: "How service detail works",
     summary:
-      "This page explains the service, the vendor, public review signals, and approved media before you start a booking.",
+      "This page explains the service offered, the vendor, public review signals, and approved media before you contact or request service.",
     steps: [
       {
         title: "Review the service basics",
@@ -117,23 +117,23 @@ export const tutorialGuides = {
         detail: "Customer Rating and Reliance Trust Score stay separate so you can compare opinion with platform reliability.",
       },
       {
-        title: "Book only when ready",
-        detail: "Watching a public video does not replace the private customer video lifecycle you may see later in My Services.",
+        title: "Request service only when ready",
+        detail: "Watching a public video does not replace the private customer video lifecycle you may see later in My Service Records.",
       },
     ],
     reminders: [
-      "Public service media is not the same as customer-only post-booking service video access.",
+      "Public service media is not the same as customer-only service-record video access.",
     ],
     futureVideoNote: "Tutorial video placeholder: Understanding a Reliance service page",
   },
   bookingDetail: {
     badge: "Customer lifecycle",
-    title: "How My Services updates over time",
+    title: "How My Service Records update over time",
     summary:
-      "A booking can be completed before its customer-visible service video is approved. Reliance tracks work completion, video approval, customer access, and review eligibility as separate steps.",
+      "A service record can be completed before its customer-visible service video is approved. Reliance tracks work completion, video approval, customer access, and review eligibility as separate steps.",
     steps: [
       {
-        title: "Check the booking state row",
+        title: "Check the service-record state row",
         detail: "Use the lifecycle panel to see whether work is complete, whether a final-result video was submitted, and whether customer access is open yet.",
       },
       {
@@ -142,7 +142,7 @@ export const tutorialGuides = {
       },
       {
         title: "Use Help when the state looks unexpected",
-        detail: "If the booking is completed but no customer-visible service video is available, the detail page explains why before asking you to contact support.",
+        detail: "If the service record is completed but no customer-visible service video is available, the detail page explains why before asking you to contact support.",
       },
     ],
     reminders: [
@@ -158,11 +158,11 @@ export const tutorialGuides = {
     badge: "Customer reviews",
     title: "How review eligibility works",
     summary:
-      "Reliance opens the review flow only after an approved final-result customer-visible video is available for the booking.",
+      "Reliance opens the review flow only after an approved final-result customer-visible video is available for the service record.",
     steps: [
       {
         title: "Use Ready to Review first",
-        detail: "These bookings have the approved customer-facing video state needed for the review workflow.",
+        detail: "These service records have the approved customer-facing video state needed for the review workflow.",
       },
       {
         title: "Open Review Not Open Yet for the why",
@@ -170,7 +170,7 @@ export const tutorialGuides = {
       },
       {
         title: "Track submitted reviews here",
-        detail: "Submitted feedback stays linked to the booking and can wait on moderation before it appears publicly.",
+        detail: "Submitted feedback stays linked to the service record and can wait on moderation before it appears publicly.",
       },
     ],
     reminders: [
@@ -228,10 +228,10 @@ export const tutorialGuides = {
     futureVideoNote: "Tutorial video placeholder: Vendor dashboard and launch checklist",
   },
   vendorServices: {
-    badge: "Vendor services",
-    title: "How your service menu and publishing work",
+    badge: "Services offered",
+    title: "How your Services Offered menu and publishing work",
     summary:
-      "Vendors manage customer-facing pricing and service details here, while public publishing stays coordinated through admin review.",
+      "Vendors manage customer-facing services offered, pricing, and service details here, while public publishing stays coordinated through admin review.",
     steps: [
       {
         title: "Create the service with pricing",
@@ -247,7 +247,7 @@ export const tutorialGuides = {
       },
     ],
     reminders: [
-      "A saved service is not automatically bookable.",
+      "A saved service offered is not automatically public or request-ready.",
     ],
     futureVideoNote: "Tutorial video placeholder: Service creation, pricing, and publishing status",
   },

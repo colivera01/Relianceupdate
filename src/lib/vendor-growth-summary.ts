@@ -95,7 +95,7 @@ export function buildVendorGrowthSummary(
   if (onboarding?.vendorVisibleToPublic) {
     visibilityTitle = "Your business is visible to customers";
     visibilityDetail =
-      "Customers can already find your published services. The next growth levers are stronger public proof, approved service videos, and published reviews.";
+      "Customers can already find your published services offered. The next growth levers are stronger public proof, approved service videos, and published reviews.";
   } else if (onboarding?.membershipStatus === "PENDING") {
     visibilityTitle = "Your business is not public yet";
     visibilityDetail =
@@ -105,9 +105,9 @@ export function buildVendorGrowthSummary(
     visibilityDetail =
       "Your vendor access is ready. Public visibility starts after Reliance lists the business and publishes at least one service.";
   } else if (onboarding?.isPubliclyListed && publishedServiceCount === 0) {
-    visibilityTitle = "Your business is listed, but customers cannot book yet";
+    visibilityTitle = "Your business is listed, but services are not request-ready yet";
     visibilityDetail =
-      "Your public profile can exist, but customers still need at least one published service before they can discover and book you in the marketplace.";
+      "Your public profile can exist, but customers still need at least one published service offered before they can discover your work and request service.";
   }
 
   let promotionStatus: VendorGrowthSummary["promotionStatus"] = {
@@ -130,7 +130,7 @@ export function buildVendorGrowthSummary(
       promotionStatus = {
         label: "Publish a service before requesting promotion",
         detail:
-          "Promotions only help once customers can click into a published service from the marketplace.",
+          "Promotions only help once customers can click into a published service offered from public proof.",
         tone: "warning",
       };
     } else if (input.promotionBrowseReadiness && !input.promotionBrowseReadiness.desktopBrowseEligible) {
@@ -143,7 +143,7 @@ export function buildVendorGrowthSummary(
       promotionStatus = {
         label: "Eligible to request promotion review",
         detail:
-          "Your public profile and published services are ready for Reliance to review for extra marketplace visibility.",
+          "Your public profile and published services offered are ready for Reliance to review for extra public visibility.",
         tone: "success",
       };
     }
@@ -165,7 +165,7 @@ export function buildVendorGrowthSummary(
       detail:
         publishedServiceCount > 0
           ? "Published services help customers find your business in search and browse."
-          : "Customers need at least one published service before they can discover you in the marketplace.",
+          : "Customers need at least one published service offered before they can discover your work publicly.",
       tone: publishedServiceCount > 0 ? "success" : "warning",
     },
     {
@@ -209,7 +209,7 @@ export function buildVendorGrowthSummary(
     nextSteps.push({
       label: "Get at least one service published",
       detail:
-        "Published services are what place your business into public marketplace discovery.",
+        "Published services offered are what place your business into public proof discovery.",
       href: "/vendor/services",
     });
   }

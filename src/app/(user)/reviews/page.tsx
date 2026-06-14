@@ -124,7 +124,7 @@ function bookingMetaRow(bookingId: string | null | undefined, dateLabel: string,
       <p>{dateLabel}: {formatDate(dateValue)}</p>
       {bookingId ? (
         <p>
-          Booking ID:{' '}
+          Reference ID:{' '}
           <span className="font-mono text-[11px] text-gray-600">{bookingId}</span>
         </p>
       ) : null}
@@ -234,12 +234,12 @@ export default function ReviewsPage() {
               Review completed services
             </h1>
             <p className="max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
-              When a completed booking has an approved customer-visible service video, you can leave
-              a review here and keep your submitted feedback tied to the right booking.
+              When a completed service record has an approved customer-visible service video, you can leave
+              a review here and keep your submitted feedback tied to the right service record.
             </p>
             <p className="text-sm leading-7 text-white/68">
               {loading || authLoading
-                ? 'Loading your review totals and booking-linked feedback history...'
+                ? 'Loading your review totals and service-record feedback history...'
                 : `You have ${data.pending.length} ${data.pending.length === 1 ? 'service' : 'services'} ready for a review${
                     awaitingVideoCount > 0
                       ? `, ${awaitingVideoCount} completed ${awaitingVideoCount === 1 ? 'service is' : 'services are'} still waiting on review access,`
@@ -344,17 +344,17 @@ export default function ReviewsPage() {
               <div className="space-y-1 mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">Review Not Open Yet</h2>
                 <p className="text-sm text-gray-600">
-                  These completed services are not reviewable yet. Open the booking to see whether
+                  These completed services are not reviewable yet. Open the service record to see whether
                   the service video is pending approval, not customer-visible, or still unavailable.
                 </p>
               </div>
               <GuidanceCallout
-                title="Why some completed bookings still are not reviewable"
-                description="Reliance opens the review flow only after an approved final-result customer-visible video exists for that booking."
+                title="Why some completed service records still are not reviewable"
+                description="Reliance opens the review flow only after an approved final-result customer-visible video exists for that service record."
                 bullets={[
                   'Completed work can still be waiting on service-video approval.',
                   'A video can exist without being customer-visible yet.',
-                  'Once the approved final-result video is available, this section moves the booking into Ready to Review.',
+                  'Once the approved final-result video is available, this section moves the service record into Ready to Review.',
                 ]}
                 tone="amber"
                 className="mb-4"
@@ -371,7 +371,7 @@ export default function ReviewsPage() {
                     <p className="text-xs text-amber-700">{item.statusMessage}</p>
                   </div>
                   <Link href={reviewsBookingHref(item.bookingId)}>
-                    <Button variant="outline">View booking</Button>
+                    <Button variant="outline">View service record</Button>
                   </Link>
                 </div>
               ))}
@@ -416,7 +416,7 @@ export default function ReviewsPage() {
                       </Link>
                     ) : item.bookingId ? (
                       <Link href={reviewsBookingHref(item.bookingId)}>
-                        <Button variant="outline">View booking record</Button>
+                        <Button variant="outline">View service record</Button>
                       </Link>
                     ) : null}
                   </div>

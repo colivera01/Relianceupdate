@@ -46,7 +46,7 @@ const faqCategories: FaqCategory[] = [
         id: 'account-1',
         question: 'How do I complete my vendor profile?',
         answer:
-          'Go to your Profile page to keep business details, service area, contact details, reminder preferences, and security preferences current. Use the Services page for service-specific descriptions and reference prices.',
+          'Go to your Profile page to keep business details, service area, contact details, reminder preferences, and security preferences current. Use Services Offered for service-specific descriptions and reference prices.',
       },
       {
         id: 'account-2',
@@ -120,7 +120,7 @@ const faqCategories: FaqCategory[] = [
         id: 'reviews-1',
         question: 'How do customers leave reviews?',
         answer:
-          'Reviews are tied to completed video-backed bookings. After eligible work is completed, customers can leave a review through the customer video and review flow.',
+          'Reviews are tied to completed video-backed service records. After eligible work is completed, customers can leave a review through the customer video and review flow.',
       },
       {
         id: 'reviews-2',

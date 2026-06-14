@@ -73,7 +73,7 @@ const articles: Article[] = [
     category: 'jobs',
     categoryName: 'Scheduled Work',
     description:
-      'Use Manage Scheduled Work to review bookings, required video stages, and manager approval status.',
+      'Use Manage Scheduled Work to review service records, required video stages, and manager approval status.',
     readTime: '8 min read',
     difficulty: 'Beginner',
     tags: ['first job', 'acceptance', 'completion'],
@@ -82,7 +82,7 @@ const articles: Article[] = [
   },
   {
     id: 'pricing-strategy',
-    title: 'Setting Competitive Pricing for Your Services',
+    title: 'Setting Competitive Reference Prices for Services Offered',
     category: 'profile',
     categoryName: 'Profile & Settings',
     description:
@@ -91,7 +91,7 @@ const articles: Article[] = [
     difficulty: 'Intermediate',
     tags: ['pricing', 'strategy', 'competition'],
     actionHref: '/vendor/services',
-    actionLabel: 'Manage Services',
+    actionLabel: 'Manage Services Offered',
   },
   {
     id: 'client-communication',
@@ -112,7 +112,7 @@ const articles: Article[] = [
     category: 'marketing',
     categoryName: 'Marketing & Growth',
     description:
-      'How approved public reviews connect to completed video-backed bookings during launch.',
+      'How approved public reviews connect to completed video-backed service records during launch.',
     readTime: '7 min read',
     difficulty: 'Beginner',
     tags: ['reviews', 'reputation', 'feedback'],
@@ -156,7 +156,7 @@ const articles: Article[] = [
     difficulty: 'Advanced',
     tags: ['expansion', 'services', 'growth'],
     actionHref: '/vendor/services',
-    actionLabel: 'Manage Services',
+    actionLabel: 'Manage Services Offered',
   },
 ];
 

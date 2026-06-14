@@ -39,7 +39,7 @@ function buildVendorSupportHref(pathname: string): string {
       : pathname.startsWith('/vendor/telemetry')
         ? 'Back to Telemetry'
         : pathname.startsWith('/vendor/services')
-          ? 'Back to Services'
+          ? 'Back to Services Offered'
           : pathname.startsWith('/vendor/profile')
             ? 'Back to Profile & Settings'
             : pathname.startsWith('/vendor/jobs/')
@@ -58,7 +58,7 @@ const sidebarLinks: SidebarLink[] = [
   { label: 'Analytics & Trust', icon: BarChart3, href: '/vendor/analytics' },
   { label: 'Reviews', icon: Star, href: '/vendor/reviews' },
   { label: 'Telemetry', icon: Activity, href: '/vendor/telemetry' },
-  { label: 'Services', icon: ClipboardList, href: '/vendor/services' },
+  { label: 'Services Offered', icon: ClipboardList, href: '/vendor/services' },
   { label: 'Profile & Settings', icon: Users, href: '/vendor/profile' },
   { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },
   { label: 'Employees', icon: Users, href: '/vendor/employees' },
@@ -338,7 +338,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
                     </p>
                     <p className="text-sm leading-6 text-white/68">
                       {hasCustomerVendorLinkedAccess
-                        ? 'Move between booking as a customer and managing your business as a vendor without signing out.'
+                        ? 'Move between requesting service as a customer and managing your business as a vendor without signing out.'
                         : 'Use the toggle to move between the areas this account can access.'}
                     </p>
                   </div>

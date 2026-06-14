@@ -508,7 +508,7 @@ export default function ProfileSettingsPage() {
               onClick={() => router.push('/discover')}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              Browse Services
+              Explore Proof
             </button>
           </div>
         </div>
@@ -784,7 +784,7 @@ export default function ProfileSettingsPage() {
                   <div>
                     <h3 className="font-medium text-blue-900 mb-1">How this works</h3>
                     <p className="text-blue-800 text-sm">
-                      If browser location is unavailable, Reliance can use your saved address on supported customer marketplace views to calculate nearby services when providers have usable coordinates.
+                      If browser location is unavailable, Reliance can use your saved address on supported customer proof views to calculate nearby services offered when providers have usable coordinates.
                     </p>
                   </div>
                 </div>
@@ -976,14 +976,14 @@ export default function ProfileSettingsPage() {
                   className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <Calendar className="w-5 h-5" />
-                  <span>View My Bookings</span>
+                  <span>View My Service Records</span>
                 </button>
                 <button
                   onClick={() => router.push('/discover')}
                   className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <Grid className="w-5 h-5" />
-                  <span>Browse Services</span>
+                  <span>Explore Proof</span>
                 </button>
                 <button
                   onClick={() => router.push('/customer/secure-account')}

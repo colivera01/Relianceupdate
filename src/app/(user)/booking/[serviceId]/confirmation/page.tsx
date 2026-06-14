@@ -70,7 +70,7 @@ function BookingConfirmationPageInner() {
 
   const loadBooking = useCallback(async () => {
     if (!bookingId) {
-      setError('Missing booking ID. Please create a booking first.');
+      setError('Missing service-record ID. Please request the service again.');
       setLoading(false);
       setBooking(null);
       return;
@@ -84,15 +84,15 @@ function BookingConfirmationPageInner() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload?.error || `Failed to load booking (${response.status})`);
+        throw new Error(payload?.error || `Failed to load service record (${response.status})`);
       }
       if (!payload?.booking?.id) {
-        throw new Error('Booking data is missing from API response');
+        throw new Error('Service-record data is missing from API response');
       }
       setBooking(payload.booking as BookingContract);
     } catch (err) {
       setBooking(null);
-      setError(err instanceof Error ? err.message : 'Failed to load booking');
+      setError(err instanceof Error ? err.message : 'Failed to load service record');
     } finally {
       setLoading(false);
     }
@@ -146,8 +146,8 @@ function BookingConfirmationPageInner() {
   const handleDownloadReceipt = () => {
     if (!bookingDisplay) return;
     const lines = [
-      `Booking Receipt`,
-      `Booking ID: ${bookingDisplay.id}`,
+      `Service Record Receipt`,
+      `Reference ID: ${bookingDisplay.id}`,
       `Service: ${bookingDisplay.serviceName}`,
       `Vendor: ${bookingDisplay.vendorName}`,
       `Date: ${bookingDisplay.dateText}`,
@@ -163,7 +163,7 @@ function BookingConfirmationPageInner() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `booking-${bookingDisplay.id}-receipt.txt`;
+    a.download = `service-record-${bookingDisplay.id}-receipt.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -171,8 +171,8 @@ function BookingConfirmationPageInner() {
   const handleShare = () => {
     if (!bookingDisplay) return;
     navigator.share?.({
-      title: 'Booking Confirmation',
-      text: `Booking confirmed: ${bookingDisplay.serviceName} with ${bookingDisplay.vendorName}`,
+      title: 'Service Record Confirmation',
+      text: `Service record saved: ${bookingDisplay.serviceName} with ${bookingDisplay.vendorName}`,
       url: window.location.href,
     });
   };
@@ -191,11 +191,11 @@ function BookingConfirmationPageInner() {
         {loading ? (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mx-auto mb-4" />
-            <p className="text-gray-700 font-medium">Loading booking confirmation...</p>
+            <p className="text-gray-700 font-medium">Loading service-record confirmation...</p>
           </div>
         ) : error ? (
           <div className="bg-white rounded-2xl shadow-sm border border-red-200 p-8 text-center">
-            <p className="text-red-700 font-medium mb-2">Unable to load booking confirmation</p>
+            <p className="text-red-700 font-medium mb-2">Unable to load service-record confirmation</p>
             <p className="text-sm text-gray-600 mb-5">{error}</p>
             <div className="flex items-center justify-center gap-2">
               <button
@@ -209,19 +209,19 @@ function BookingConfirmationPageInner() {
                 onClick={handleViewBookings}
                 className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
               >
-                Go to My Services
+                Go to My Service Records
               </button>
             </div>
           </div>
         ) : !bookingDisplay ? (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
-            <p className="text-gray-800 font-medium mb-2">Booking not found</p>
-            <p className="text-sm text-gray-600 mb-5">The booking reference may be invalid or unavailable.</p>
+            <p className="text-gray-800 font-medium mb-2">Service record not found</p>
+            <p className="text-sm text-gray-600 mb-5">The service-record reference may be invalid or unavailable.</p>
             <button
               onClick={handleViewBookings}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
             >
-              Go to My Services
+              Go to My Service Records
             </button>
           </div>
         ) : (
@@ -231,9 +231,9 @@ function BookingConfirmationPageInner() {
               <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <CheckCircle className="w-10 h-10 text-green-600" />
               </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Booking Confirmed!</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Service Request Saved</h1>
               <p className="text-gray-600">
-                Your booking has been saved. This page is loaded from live booking data.
+                Your service record has been saved. This page is loaded from live service-record data.
               </p>
             </div>
 
@@ -241,7 +241,7 @@ function BookingConfirmationPageInner() {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-6">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-gray-900">Booking Details</h2>
+                  <h2 className="text-xl font-semibold text-gray-900">Service Record Details</h2>
                   <div className="text-sm text-gray-500" data-testid="booking-confirmation-reference">
                     #{bookingDisplay.id}
                   </div>
@@ -294,7 +294,7 @@ function BookingConfirmationPageInner() {
 
                 {(bookingDisplay.customerEmail || bookingDisplay.customerPhone || bookingDisplay.customerNotes) ? (
                   <div className="border border-gray-200 rounded-lg p-4 mb-6">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Your details (saved with this booking)</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Your details (saved with this service record)</h3>
                     <div className="space-y-2 text-sm text-gray-700">
                       {bookingDisplay.customerEmail ? (
                         <div className="flex items-center gap-2">
@@ -325,8 +325,8 @@ function BookingConfirmationPageInner() {
                     <span className="text-2xl font-bold text-gray-900">${bookingDisplay.total.toFixed(2)}</span>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    No card or wallet payment was processed in Reliance for this booking. The total reflects the catalog
-                    amount stored on your booking record.
+                    No card or wallet payment was processed in Reliance for this request. The total reflects the service
+                    amount stored on your service record.
                   </p>
                   <div className="flex items-center gap-2 mt-2">
                     <CheckCircle className="w-4 h-4 text-green-600" />
@@ -365,10 +365,10 @@ function BookingConfirmationPageInner() {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">What&apos;s Next?</h3>
               <div className="space-y-3">
                 <p className="text-sm text-gray-700">
-                  Your booking has been persisted and can be viewed from <strong>My Services</strong>.
+                  Your service record has been saved and can be viewed from <strong>My Service Records</strong>.
                 </p>
                 <p className="text-sm text-gray-700">
-                  Use this page URL later to reload the same booking confirmation.
+                  Use this page URL later to reload the same service-record confirmation.
                 </p>
               </div>
             </div>
@@ -403,7 +403,7 @@ function BookingConfirmationPageInner() {
                 onClick={handleViewBookings}
                 className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
               >
-                View My Services
+                View My Service Records
               </button>
             </div>
           </>

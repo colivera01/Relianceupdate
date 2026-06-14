@@ -73,7 +73,7 @@ export default function MyBookingsPage() {
   const [mediaByBooking, setMediaByBooking] = useState<Record<string, MediaState>>({});
   const [proofSignalByBooking, setProofSignalByBooking] = useState<Record<string, ProofSignal>>({});
   const customerHelpHref =
-    '/help?role=customer&returnTo=%2Fmy-bookings&returnLabel=Back%20to%20My%20Services';
+    '/help?role=customer&returnTo=%2Fmy-bookings&returnLabel=Back%20to%20My%20Service%20Records';
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -175,13 +175,13 @@ export default function MyBookingsPage() {
   }, [bookings]);
 
   const cancelBooking = async (bookingId: string) => {
-    if (!confirm('Cancel this booking?')) return;
+    if (!confirm('Cancel this service record?')) return;
     setActionMessage(null);
     setCancellingId(bookingId);
     try {
       const userId = resolveCustomerUserId(user?.id);
       if (!userId) {
-        setActionMessage('Sign in required to cancel a booking.');
+        setActionMessage('Sign in required to cancel this service record.');
         return;
       }
       const res = await fetch(`/api/bookings/${bookingId}/cancel`, {
@@ -193,7 +193,7 @@ export default function MyBookingsPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(json?.error || `Failed to cancel booking (${res.status})`);
+        throw new Error(json?.error || `Failed to cancel service record (${res.status})`);
       }
       setBookings((prev) =>
         prev.map((b) =>
@@ -202,9 +202,9 @@ export default function MyBookingsPage() {
             : b
         )
       );
-      setActionMessage(json?.message || 'Booking cancelled');
+      setActionMessage(json?.message || 'Service record cancelled');
     } catch (e) {
-      setActionMessage(e instanceof Error ? e.message : 'Failed to cancel booking');
+      setActionMessage(e instanceof Error ? e.message : 'Failed to cancel service record');
     } finally {
       setCancellingId(null);
     }
@@ -236,7 +236,7 @@ export default function MyBookingsPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(json?.error || `Failed to load booking media (${res.status})`);
+        throw new Error(json?.error || `Failed to load service-record media (${res.status})`);
       }
       const total = Array.isArray(json?.assets) ? json.assets.length : 0;
       const imageCount = Array.isArray(json?.images) ? json.images.length : 0;
@@ -344,10 +344,10 @@ export default function MyBookingsPage() {
             </div>
             <div>
               <h1 className="font-display text-3xl font-semibold text-white sm:text-4xl">
-                My Services
+                My Service Records
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
-                Track scheduled services, open approved service videos, and follow each booking in one clear timeline.
+                Track scheduled work, open approved service videos, and follow each service record in one clear timeline.
               </p>
             </div>
           </div>
@@ -358,10 +358,10 @@ export default function MyBookingsPage() {
             </ButtonLike>
             <Link
               href="/discover"
-              title="Browse services to book (Discover)"
+              title="Explore public proof"
               className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
             >
-              Book a Service
+              Explore Proof
             </Link>
           </div>
         </div>
@@ -372,7 +372,7 @@ export default function MyBookingsPage() {
             <div className="space-y-1">
               <p className="font-medium text-gray-900">Service updates appear here</p>
               <p className="text-gray-700">
-                Vendors can share approved service videos or images after work is done. Open a service to view what has been published for you and leave feedback when the review flow is available.
+                Vendors can share approved service videos or images after work is done. Open a service record to view what has been published for you and leave feedback when the review flow is available.
               </p>
             </div>
           </div>
@@ -384,12 +384,12 @@ export default function MyBookingsPage() {
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search service, vendor, title, or booking ID"
+                placeholder="Search service, vendor, title, or reference ID"
                 aria-describedby="my-bookings-search-hint"
                 className="border rounded px-3 py-2 text-sm w-full"
               />
               <p id="my-bookings-search-hint" className="text-xs text-gray-500">
-                Matches the service, vendor, title, or booking ID.
+                Matches the service, vendor, title, or reference ID.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -431,7 +431,7 @@ export default function MyBookingsPage() {
                 {latestProofBooking.booking ? (
                   <p className="mt-1 text-xs text-emerald-800">
                     {latestProofBooking.booking.service.name} with {latestProofBooking.booking.vendor.name}
-                    {' '}is also listed in your booking history. You may be asked to confirm consent before playback.
+                    {' '}is also listed in your service-record history. You may be asked to confirm consent before playback.
                   </p>
                 ) : null}
               </div>
@@ -489,15 +489,15 @@ export default function MyBookingsPage() {
                   : activeTab === 'needs_follow_up'
                     ? 'These are services whose scheduled date passed without a completed vendor closeout.'
                     : activeTab === 'archived'
-                      ? 'These are older retained booking records kept for reference.'
-                    : 'Try another tab or book a service from Discover.'
+                    ? 'These are older retained service records kept for reference.'
+                    : 'Try another tab or explore public proof.'
             }
           />
         ) : (
           <div className="space-y-3 mb-10">
             {activeTab === 'archived' ? (
               <div className="rounded-md border border-slate-200 bg-slate-50/90 px-4 py-3 text-sm text-slate-800">
-                These are older retained booking records kept for reference.
+                These are older retained service records kept for reference.
               </div>
             ) : null}
             {activeTab === 'needs_follow_up' ? (
@@ -599,16 +599,16 @@ export default function MyBookingsPage() {
                 hasSharedMediaNoVideo ||
                 (mediaLoaded && typeof mediaTotal === 'number' && mediaTotal === 0);
               const primaryBookingActionLabel = archivedRecord
-                ? 'Open booking record'
+                ? 'Open service record'
                 : activeTab === 'needs_follow_up'
-                  ? 'Open booking status'
+                  ? 'Open service-record status'
                   : activeTab === 'past' && customerVisibleCompletedVideo
                     ? 'Open service video'
                   : activeTab === 'past'
-                    ? 'Open booking record'
+                    ? 'Open service record'
                     : hasSharedMediaNoVideo
-                      ? 'Open booking media status'
-                      : 'Open booking detail';
+                      ? 'Open service-record media status'
+                      : 'Open service-record detail';
 
               return (
                 <div
@@ -621,7 +621,7 @@ export default function MyBookingsPage() {
                       <p className="font-semibold text-gray-900">{booking.service.name}</p>
                       <p className="text-sm text-gray-600">Vendor: {booking.vendor.name}</p>
                       <p className="text-sm text-gray-600">
-                        Booking ID: <span className="font-mono text-xs">{booking.id}</span>
+                        Reference ID: <span className="font-mono text-xs">{booking.id}</span>
                       </p>
                       <p className="text-xs text-gray-500">
                         Keep this handy if you contact support.
@@ -711,8 +711,8 @@ export default function MyBookingsPage() {
                         <strong>Shared service updates:</strong>{' '}
                         {archivedRecord && hasSharedVideoPublished
                           ? primaryProofVideo
-                            ? 'Retained service video is available on the booking detail page for reference.'
-                            : 'Retained media is available on the booking detail page for reference.'
+                            ? 'Retained service video is available on the service-record detail page for reference.'
+                            : 'Retained media is available on the service-record detail page for reference.'
                           : archivedRecord && hasSharedMediaNoVideo
                             ? `This archived record keeps ${mediaTotal} retained file(s)${
                                 imageCount > 0 ? ` (${imageCount} image${imageCount === 1 ? '' : 's'})` : ''
@@ -720,14 +720,14 @@ export default function MyBookingsPage() {
                             : archivedRecord && mediaLoaded && mediaTotal === 0
                               ? 'No retained media is attached to this archived record.'
                               : archivedRecord && !mediaState?.error
-                                ? 'Use the booking detail page to check whether any retained media is attached to this archived record.'
+                                ? 'Use the service-record detail page to check whether any retained media is attached to this archived record.'
                         : hasSharedVideoPublished
                           ? primaryProofVideo
-                            ? 'A completed service video is ready on the booking detail page. You may be asked to confirm consent before playback.'
-                          : 'Shared media is ready on the booking detail page. A completed work video has not been published yet.'
+                            ? 'A completed service video is ready on the service-record detail page. You may be asked to confirm consent before playback.'
+                          : 'Shared media is ready on the service-record detail page. A completed work video has not been published yet.'
                         : activeTab === 'past' && completedRecord && customerLifecycle
                           ? customerVisibleCompletedVideo
-                            ? 'Service completed. An approved final-result video is available on the booking record.'
+                            ? 'Service completed. An approved final-result video is available on the service record.'
                             : completedVideoPendingApproval
                               ? 'Service completed. Video is pending approval.'
                               : lifecycleVideoState === 'rejected'
@@ -747,13 +747,13 @@ export default function MyBookingsPage() {
                               }.`
                             : mediaState?.loading
                               ? reviewCaptureOk
-                                ? 'Checking whether approved service media is ready on the booking detail page.'
-                                : 'Checking whether approved media is ready on the booking detail page.'
+                                ? 'Checking whether approved service media is ready on the service-record detail page.'
+                                : 'Checking whether approved media is ready on the service-record detail page.'
                             : !mediaLoaded && proofLikelyReady
-                              ? 'Approved service video is already attached. Open the booking detail page to continue into the service media flow.'
+                              ? 'Approved service video is already attached. Open the service-record detail page to continue into the service media flow.'
                             : mediaLoaded && mediaTotal === 0
                               ? reviewCaptureOk
-                                ? 'No customer-visible approved final-result video is currently attached to this completed booking. Open the booking record to confirm the current media and review state.'
+                                ? 'No customer-visible approved final-result video is currently attached to this completed service record. Open the service record to confirm the current media and review state.'
                                 : 'No approved media is available yet. Your vendor may still be uploading, or items may still be in review.'
                               : mediaState?.error
                                 ? 'Could not load the list. See the message under the button.'
@@ -767,7 +767,7 @@ export default function MyBookingsPage() {
                             ? reviewSubmittedWithoutEligibleVideo
                               ? 'A review is already on file from an earlier workflow, but no customer-visible approved final-result video is currently available.'
                               : reviewSubmitted
-                                ? 'Your review is already on file for this completed booking.'
+                                ? 'Your review is already on file for this completed service record.'
                                 : reviewEligible
                                 ? 'Open the approved final-result video to continue into the video-based review flow.'
                                   : completedVideoPendingApproval
@@ -778,13 +778,13 @@ export default function MyBookingsPage() {
                               ? 'Review opens after the final-result video is approved for customer viewing.'
                               : 'Review is not open yet. It becomes available only after final-result video approval.'
                           : mediaState?.loading && reviewCaptureOk
-                            ? 'We are checking whether this booking is ready for the video-based review flow.'
+                            ? 'We are checking whether this service record is ready for the video-based review flow.'
                           : reviewCaptureOk
                             ? hasSharedVideoPublished
-                              ? 'After you open the booking and playback starts, watch for prompts to leave quick feedback.'
+                              ? 'After you open the service record and playback starts, watch for prompts to leave quick feedback.'
                             : !mediaLoaded && proofLikelyReady
-                                ? 'Open the booking detail page to continue into the service media and review flow.'
-                              : 'The video-based review flow only opens when a customer-visible final-result video is attached. Some completed bookings may already have a review on file even if no playable video is available here.'
+                                ? 'Open the service-record detail page to continue into the service media and review flow.'
+                              : 'The video-based review flow only opens when a customer-visible final-result video is attached. Some completed service records may already have a review on file even if no playable video is available here.'
                             : 'Not offered for cancelled services.'}
                       </li>
                     </ul>
@@ -802,7 +802,7 @@ export default function MyBookingsPage() {
                         }}
                         className="px-3 py-2 rounded border border-red-300 text-red-700 text-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {cancellingId === booking.id ? 'Cancelling...' : 'Cancel Booking'}
+                        {cancellingId === booking.id ? 'Cancelling...' : 'Cancel Service Record'}
                       </button>
                     )}
                     {cancelState.mode === 'disabled' && cancelState.reason ? (
@@ -847,7 +847,7 @@ export default function MyBookingsPage() {
                           ? 'Open retained media'
                           : customerVisibleCompletedVideo
                             ? 'Open service video'
-                            : 'Open booking media'}
+                            : 'Open service-record media'}
                       </Link>
                     ) : null}
                     {showMediaCheckButton && mediaState?.loading ? (
@@ -881,13 +881,13 @@ export default function MyBookingsPage() {
                       </p>
                       <p className="mb-2 text-xs text-gray-600">
                         {archivedRecord
-                          ? 'These files are kept with the archived record for reference. Open the booking detail page to review them in the full timeline experience.'
-                          : 'These files are approved and customer-visible. Open the booking detail page to review them in the full timeline experience and complete any consent step required before playback.'}
+                          ? 'These files are kept with the archived record for reference. Open the service-record detail page to review them in the full timeline experience.'
+                          : 'These files are approved and customer-visible. Open the service-record detail page to review them in the full timeline experience and complete any consent step required before playback.'}
                       </p>
                       {primaryProofVideo ? (
                         <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-900">
                           <strong>{archivedRecord ? 'Featured retained video available:' : 'Featured video available:'}</strong>{' '}
-                          {archivedRecord ? 'open this archived booking to review the retained record.' : 'open this booking to review completed work.'}
+                          {archivedRecord ? 'open this archived service record to review the retained record.' : 'open this service record to review completed work.'}
                         </div>
                       ) : (
                         <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">

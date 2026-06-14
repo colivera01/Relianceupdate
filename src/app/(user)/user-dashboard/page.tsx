@@ -275,7 +275,7 @@ export default function UserDashboardPage() {
                 Welcome, {profile.firstName} {profile.lastName}!
               </h2>
               <p className="text-white/72">
-                Browse services, track bookings, and check review progress from one place.
+                Explore public proof, track service records, and check review progress from one place.
               </p>
               <p className="mt-1 text-sm text-white/58">
                 Profile &amp; Settings keeps your contact details, saved address, and account preferences together.
@@ -344,12 +344,12 @@ export default function UserDashboardPage() {
 
   const quickStats = [
     {
-      label: 'Active Services',
+      label: 'Active Records',
       value: String(dashboardCounts.activeBookings),
       icon: Calendar,
       badgeClassName: 'bg-blue-100 text-blue-700',
-      helpTitle: 'Active Services',
-      helpBody: 'Services you booked that are still scheduled, in progress, or waiting for follow-up.',
+      helpTitle: 'Active Service Records',
+      helpBody: 'Service records that are still scheduled, in progress, or waiting for follow-up.',
     },
     {
       label: 'Saved Items',
@@ -357,7 +357,7 @@ export default function UserDashboardPage() {
       icon: Bookmark,
       badgeClassName: 'bg-rose-100 text-rose-700',
       helpTitle: 'Saved Items',
-      helpBody: 'Services or vendors you bookmarked so you can come back later.',
+      helpBody: 'Public proof, services offered, or vendors you bookmarked so you can come back later.',
     },
     {
       label: 'Reviews Submitted',
@@ -379,18 +379,18 @@ export default function UserDashboardPage() {
 
   const quickActions = [
     {
-      title: 'Find Services',
-      description: 'Browse services and compare providers before you book.',
+      title: 'Explore Proof',
+      description: 'Review public proof, service videos, reviews, and provider details before choosing who to contact.',
       href: '/discover',
       icon: Search,
-      buttonLabel: 'Open Discover',
+      buttonLabel: 'Open Explore Proof',
     },
     {
-      title: 'View My Services',
-      description: 'Track upcoming, completed, and follow-up services in one place.',
+      title: 'View Service Records',
+      description: 'Track upcoming, completed, and follow-up service records in one place.',
       href: '/my-bookings',
       icon: ClipboardList,
-      buttonLabel: 'Open My Services',
+      buttonLabel: 'Open Service Records',
     },
     {
       title: 'Saved Favorites',
@@ -424,11 +424,11 @@ export default function UserDashboardPage() {
           Customer dashboard
         </div>
         <h1 className="mt-5 font-display text-4xl font-semibold text-white sm:text-5xl">
-          Manage your services in one place
+          Manage your service records in one place
         </h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
-          Track bookings, open approved service videos, manage saved items, and see when completed
-          services are ready for a review.
+          Track service records, open approved service videos, manage saved proof, and see when
+          completed work is ready for a review.
         </p>
       </section>
 
@@ -522,13 +522,13 @@ export default function UserDashboardPage() {
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
                 <Search className="h-5 w-5 text-blue-700" />
               </div>
-              <h3 className="mb-1 font-semibold text-gray-900">Book a Service</h3>
-              <p className="mb-3 text-sm text-gray-600">Browse services and choose a provider that fits your needs.</p>
+              <h3 className="mb-1 font-semibold text-gray-900">Request a Service</h3>
+              <p className="mb-3 text-sm text-gray-600">Explore public proof and choose a provider that fits your needs.</p>
               <Link
                 href="/discover"
                 className="inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white hover:bg-[#1a58db]"
               >
-                Explore Services
+                Explore Proof
               </Link>
             </div>
 
@@ -542,7 +542,7 @@ export default function UserDashboardPage() {
                 href="/my-bookings"
                 className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
-                My Bookings
+                My Service Records
               </Link>
             </div>
 
@@ -558,7 +558,7 @@ export default function UserDashboardPage() {
                 href="/my-bookings"
                 className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
               >
-                My Bookings
+                My Service Records
               </Link>
             </div>
 
@@ -567,7 +567,7 @@ export default function UserDashboardPage() {
                 <MessageSquare className="h-5 w-5 text-amber-600" />
               </div>
               <h3 className="mb-1 font-semibold text-gray-900">Leave a Review</h3>
-              <p className="mb-3 text-sm text-gray-600">Reviews open after an approved final-result video is available for your booking.</p>
+              <p className="mb-3 text-sm text-gray-600">Reviews open after an approved final-result video is available for your service record.</p>
               <Link
                 href="/reviews"
                 className="inline-flex w-full items-center justify-center rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"

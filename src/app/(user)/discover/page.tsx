@@ -189,10 +189,10 @@ export default function UserDiscoverPage() {
       : 'none';
   const nearbyDescription =
     effectiveLocationSource === 'current'
-      ? 'Showing published services within 50 miles of your current location.'
+      ? 'Showing public proof and services offered within 50 miles of your current location.'
       : effectiveLocationSource === 'saved'
-        ? 'Showing published services within 50 miles of your saved address.'
-        : 'Turn on location or add your address to see services near you.';
+        ? 'Showing public proof and services offered within 50 miles of your saved address.'
+        : 'Turn on location or add your address to see public proof near you.';
 
   useEffect(() => {
     if (!effectiveLocationOrigin) {
@@ -306,7 +306,7 @@ export default function UserDiscoverPage() {
     }
   };
   const serviceReturnHref = '/discover';
-  const serviceReturnLabel = 'Back to Discover';
+  const serviceReturnLabel = 'Back to Explore Proof';
 
   const renderServiceCard = (item: DiscoverServiceResult) => {
     const trustCopy = getCustomerTrustScoreCopy({
@@ -379,7 +379,7 @@ export default function UserDiscoverPage() {
               className="block"
             >
               <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-                View Service
+                View Proof
               </Button>
             </Link>
             <div className="flex items-center gap-2">
@@ -413,8 +413,8 @@ export default function UserDiscoverPage() {
     <div className="pt-6">
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold mb-6 text-gray-900">Browse Services</h1>
-          <p className="text-gray-600">Compare services, public reviews, and service videos in one place.</p>
+          <h1 className="text-2xl font-semibold mb-6 text-gray-900">Explore Public Proof</h1>
+          <p className="text-gray-600">Compare completed work, public reviews, service videos, and provider details in one place.</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
@@ -428,7 +428,7 @@ export default function UserDiscoverPage() {
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
         <input
           type="text"
-          placeholder="Search for services or vendors..."
+          placeholder="Search services offered, vendors, or public proof..."
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           onKeyDown={(e) => {
@@ -462,7 +462,7 @@ export default function UserDiscoverPage() {
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="all">All Services</option>
+                <option value="all">All Services Offered</option>
                 {categories.map((category) => (
                   <option key={category.key} value={category.label}>
                     {category.label} ({category.serviceCount})
@@ -490,14 +490,14 @@ export default function UserDiscoverPage() {
           </div>
 
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            Use search, category, and price sorting to narrow the full marketplace. Nearby Services above uses real location context when available.
+            Use search, category, and proof context to narrow visible providers. Public proof near you uses real location context when available.
           </div>
         </div>
       )}
 
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm text-gray-600">
-          {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount} services`}
+          {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount} proof sources`}
         </div>
       </div>
       {favoriteActionError ? (
@@ -509,8 +509,8 @@ export default function UserDiscoverPage() {
       <section className="mb-10 rounded-2xl border border-blue-100 bg-blue-50 p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Nearby services</p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-950">Available Near You</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Public proof near you</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">Proof Available Near You</h2>
             <p className="mt-2 text-sm leading-6 text-blue-900">{nearbyDescription}</p>
             {browserLocationMessage ? (
               <p className="mt-2 text-sm font-medium text-amber-800">{browserLocationMessage}</p>
@@ -539,7 +539,7 @@ export default function UserDiscoverPage() {
         {effectiveLocationSource === 'none' ? (
           <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm text-slate-700">
             Reliance will not show fake nearby results. Turn on location or add your address to see
-            services within 50 miles.
+            public proof within 50 miles.
           </div>
         ) : nearbyLoading ? (
           <div className="mt-4 grid md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -557,7 +557,7 @@ export default function UserDiscoverPage() {
           </div>
         ) : nearbyServices.length === 0 ? (
           <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm text-slate-700">
-            No published services were found within 50 miles of your{' '}
+            No public proof or services offered were found within 50 miles of your{' '}
             {effectiveLocationSource === 'current' ? 'current location' : 'saved address'} yet.
           </div>
         ) : (
@@ -587,7 +587,7 @@ export default function UserDiscoverPage() {
         </div>
       ) : results.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border mb-10">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No services found</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No public proof found</h3>
           <p className="text-gray-600 mb-4">Try adjusting your search terms or filters.</p>
           <Button variant="outline" onClick={clearFilters}>
             Clear Filters

@@ -167,7 +167,7 @@ export default function VendorAnalyticsPage() {
 
   const metricCards = [
     {
-      label: "Total bookings",
+      label: "Total service records",
       value: String(derived.totalBookings),
       helper: `${derived.totalClients} distinct clients`,
       icon: CalendarDays,
@@ -201,7 +201,7 @@ export default function VendorAnalyticsPage() {
         <div className="mt-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
-              Understand what makes customers trust and book your business
+              Understand what makes customers trust and contact your business
             </h1>
             <p className="mt-4 text-sm leading-7 text-white/72 sm:text-base">
               Review the public trust signals, approved service videos, review strength, and

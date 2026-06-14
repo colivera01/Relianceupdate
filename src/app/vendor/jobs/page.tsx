@@ -3826,9 +3826,9 @@ export default function VendorJobs() {
           <div>
             <h3 className="text-lg font-semibold mb-1">Manage scheduled work</h3>
             <p className="text-blue-100 text-sm leading-relaxed">
-              This page is for customer work that is already booked or needs to be tracked manually.
-              To create the services customers can book, use <strong>Your Service Menu</strong>. Use
-              <strong> Add Manual Booking</strong> here for work scheduled outside Reliance, beta/demo
+              This page is for customer work that is already scheduled or needs to be tracked manually.
+              To create the services customers can request, use <strong>Services Offered</strong>. Use
+              <strong> Add Manual Work Record</strong> here for work scheduled outside Reliance, beta/demo
               jobs, or jobs an admin asks you to enter.
               Hover over any <span className="inline-flex align-text-bottom"><Info className="inline w-4 h-4" /></span>{' '}
               info icon for detailed help.
@@ -3841,7 +3841,7 @@ export default function VendorJobs() {
         <p className="font-semibold text-blue-950">Why this page matters for growth</p>
         <p className="mt-1 leading-6">
           Finished jobs, approved Starting Condition, Work in Progress, and Final Result videos, and
-          review-ready bookings all strengthen the public trust signals customers see later.
+          review-ready service records all strengthen the public trust signals customers see later.
         </p>
       </div>
 
@@ -3859,13 +3859,13 @@ export default function VendorJobs() {
           <DialogHeader>
             <DialogTitle>How scheduled work becomes public proof</DialogTitle>
             <DialogDescription>
-              A quick guide for moving a booking or manual work item through employee assignment,
+              A quick guide for moving a service record or manual work item through employee assignment,
               customer consent, and service video stages.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-gray-700">
-              <li><strong>Add or receive the booking</strong> with the customer and service details.</li>
+              <li><strong>Add or receive the service record</strong> with the customer and service details.</li>
               <li><strong>Assign an employee</strong> before starting consent or staged video work.</li>
               <li>
                 <strong>Choose the recording location.</strong> Business address recordings require location
@@ -3905,7 +3905,7 @@ export default function VendorJobs() {
               {isEmployeeView ? 'My Assigned Work' : 'Manage Scheduled Work'}
             </h2>
             <p className="text-gray-600 text-sm mt-1">
-              {isEmployeeView ? 'Work assigned to you' : 'Track customer bookings, manual work entries, and service video progress'}
+              {isEmployeeView ? 'Work assigned to you' : 'Track customer service records, manual work entries, and service video progress'}
             </p>
           </div>
         </div>
@@ -4002,7 +4002,7 @@ export default function VendorJobs() {
                 className="action-button bg-blue-600 hover:bg-blue-700"
               >
                 <Plus className="w-5 h-5 mr-2" />
-                Add Manual Booking
+                Add Manual Work Record
               </Button>
             </>
           )}
@@ -4199,7 +4199,7 @@ export default function VendorJobs() {
                   onChange={(e) => setArchiveServiceTypeFilter(e.target.value)}
                   className="w-full p-2 border border-gray-300 rounded-lg appearance-none bg-white video-archive-dropdown"
                 >
-                  <option value="all">All Services</option>
+                  <option value="all">All Services Offered</option>
                   {getArchiveServiceTypes().map((serviceType) => (
                     <option key={serviceType} value={serviceType}>
                       {serviceType}
@@ -4591,11 +4591,11 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{jobModalMode === 'edit' ? 'Edit Scheduled Work' : 'Add Manual Booking'}</DialogTitle>
+            <DialogTitle>{jobModalMode === 'edit' ? 'Edit Scheduled Work' : 'Add Manual Work Record'}</DialogTitle>
             <DialogDescription>
               {jobModalMode === 'edit'
                 ? 'Update saved work details.'
-                : 'Use this when work was scheduled outside Reliance or you need a test/demo booking. Customer-facing services are created from Your Service Menu.'}
+                : 'Use this when work was scheduled outside Reliance or you need a test/demo work record. Customer-facing services are managed from Services Offered.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -4721,7 +4721,7 @@ export default function VendorJobs() {
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.serviceId}</p>
               )}
               {!servicesLoading && serviceOptions.length === 0 && (
-                <p className="mt-1 text-sm text-amber-700">No service menu items available. Add a customer-facing service first.</p>
+                <p className="mt-1 text-sm text-amber-700">No Services Offered items available. Add a customer-facing service offered first.</p>
               )}
               {servicesLoadError && (
                 <p className="mt-1 text-xs text-amber-700">{servicesLoadError}</p>
@@ -4738,7 +4738,7 @@ export default function VendorJobs() {
               Cancel
             </Button>
             <Button onClick={handleCreateJob} disabled={!canCreateJob}>
-              {isCreatingJob ? (jobModalMode === 'edit' ? 'Saving...' : 'Creating...') : (jobModalMode === 'edit' ? 'Save Work' : 'Add Booking')}
+              {isCreatingJob ? (jobModalMode === 'edit' ? 'Saving...' : 'Creating...') : (jobModalMode === 'edit' ? 'Save Work' : 'Add Work Record')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4750,7 +4750,7 @@ export default function VendorJobs() {
           <DialogHeader>
             <DialogTitle>Select Scheduled Work</DialogTitle>
             <DialogDescription>
-              Select the booking or manual work item this service video belongs to.
+              Select the service record or manual work item this service video belongs to.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 max-h-[50vh] overflow-y-auto">
@@ -4762,7 +4762,7 @@ export default function VendorJobs() {
               </div>
             ) : filteredJobs.length === 0 ? (
               <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-                No scheduled work yet. Add a manual booking before uploading videos here.
+                No scheduled work yet. Add a manual work record before uploading videos here.
               </div>
             ) : (
               filteredJobs.map((job) => {
@@ -5298,7 +5298,7 @@ export default function VendorJobs() {
           <DialogHeader>
             <DialogTitle>Approve job completion?</DialogTitle>
             <DialogDescription>
-              This will mark the booking completed and send the video package to admin moderation.
+              This will mark the service record completed and send the video package to admin moderation.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm text-gray-700">
@@ -6110,7 +6110,7 @@ export default function VendorJobs() {
                      <p className="text-gray-600">Client: {job.client}</p>
                      <p className="text-xs text-gray-500">Reference: {String(job.id || '').trim() || 'Unavailable'}</p>
                      <p className="text-xs text-gray-500">
-                       Source: {String(job.source || '').toLowerCase() === 'customer_booking' ? 'Customer Booking' : 'Vendor-Created Job'}
+                       Source: {String(job.source || '').toLowerCase() === 'customer_booking' ? 'Customer Service Record' : 'Vendor-Created Job'}
                      </p>
                     <p className="text-gray-600">Service Type: {job.serviceName || job.serviceType || 'General Service'}</p>
                     <p className="text-gray-600">Created: {formatDateOnlyUtc(job.createdAt)}</p>

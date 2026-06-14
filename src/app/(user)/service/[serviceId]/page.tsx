@@ -80,7 +80,7 @@ function ServiceDetailLoadingState() {
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
   const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null);
   const resolvedBackHref = returnTo || (user?.id ? '/discover' : '/');
-  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Discover' : 'Back to Home Page');
+  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Explore Proof' : 'Back to Home Page');
 
   return (
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
@@ -105,7 +105,7 @@ function ServiceDetailLoadingState() {
 
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-6 rounded-[28px] border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-blue-900 shadow-sm">
-          Reliance is loading this public service listing now. Provider details, reviews, and any public service video will appear as soon as the page is ready.
+          Reliance is loading this service-offered proof page now. Provider details, reviews, and any public service video will appear as soon as the page is ready.
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -383,7 +383,7 @@ function ServiceDetailPageContent() {
     }
   };
   const resolvedBackHref = returnTo || (isSignedIn ? '/discover' : '/');
-  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Discover' : 'Back to Home Page');
+  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Explore Proof' : 'Back to Home Page');
   const handleBack = () => {
     router.push(resolvedBackHref);
   };
@@ -402,7 +402,7 @@ function ServiceDetailPageContent() {
           <h1 className="font-display text-3xl font-semibold text-slate-950">This service page is not ready yet</h1>
           <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">{error}</p>
           <p className="mt-2 text-sm text-slate-500">
-            This usually means the public listing is having trouble loading right now, not that the service was removed. You can retry in a moment or go back to the service catalog.
+            This usually means the public proof page is having trouble loading right now, not that the service offered was removed. You can retry in a moment or go back to public proof.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <button
@@ -633,7 +633,7 @@ function ServiceDetailPageContent() {
                   <div className="absolute top-4 right-4">
                     <div className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1">
                       <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                      {service.socialProof.bookingsToday} booked today
+                      {service.socialProof.bookingsToday} service record{service.socialProof.bookingsToday === 1 ? '' : 's'} today
                     </div>
                   </div>
                 )}
@@ -753,7 +753,7 @@ function ServiceDetailPageContent() {
                   </div>
                 ) : (
                   <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-right">
-                    <div className="text-sm font-semibold text-blue-900">Public service listing</div>
+                    <div className="text-sm font-semibold text-blue-900">Service offered</div>
                     <div className="text-xs text-blue-700">
                       {vendorReviewCount} public review{vendorReviewCount === 1 ? '' : 's'} available
                     </div>
@@ -1020,9 +1020,9 @@ function ServiceDetailPageContent() {
                   </>
                 ) : (
                   <>
-                    <div className="text-xl font-bold text-gray-900 mb-2">Review this service before you book</div>
+                    <div className="text-xl font-bold text-gray-900 mb-2">Review proof before you choose</div>
                     <p className="text-sm text-gray-600">
-                      Review completed work, public feedback, and vendor details before signing in to book.
+                      Review completed work, public feedback, and vendor details before signing in to request service.
                     </p>
                   </>
                 )}
@@ -1043,12 +1043,12 @@ function ServiceDetailPageContent() {
                 href={isSignedIn ? `/booking/${serviceId}` : `/auth/login?next=${encodeURIComponent(`/booking/${serviceId}`)}`}
                 className="mb-4 block w-full rounded-xl bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] py-3 text-center font-semibold text-white transition-all duration-200 hover:brightness-110"
               >
-                {isSignedIn ? 'Book Now' : 'Sign in to Book'}
+                {isSignedIn ? 'Request Service' : 'Sign in to Request'}
               </Link>
 
               {!isSignedIn ? (
                 <p className="text-xs text-gray-500 text-center mb-4">
-                  Create or sign in to a free customer account before booking or saving this service.
+                  Create or sign in to a free customer account before requesting or saving this service.
                 </p>
               ) : null}
 
@@ -1176,7 +1176,7 @@ function ServiceDetailPageContent() {
                   <span className="text-sm font-medium">Popular in your area</span>
                 </div>
                 <div className="text-sm text-green-600">
-                  {service.socialProof.bookingsToday} people in {service.socialProof.area} booked this {service.socialProof.timeFrame}
+                  {service.socialProof.bookingsToday} service record{service.socialProof.bookingsToday === 1 ? '' : 's'} were created in {service.socialProof.area} {service.socialProof.timeFrame}
                 </div>
                 {service.socialProof.peopleLikeYou && (
                   <div className="text-sm text-green-600 mt-1">

@@ -22,13 +22,13 @@ export default function MessagesPage() {
         </CardHeader>
         <CardContent className="space-y-4 text-gray-700">
           <p>
-            Reliance currently focuses on discovery, booking, service videos,
+            Reliance currently focuses on public proof, service records, service videos,
             reviews, and vendor job operations. Messaging will return once the
             customer conversation tools have full backend support.
           </p>
           <div className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/my-bookings">View My Services</Link>
+              <Link href="/my-bookings">View My Service Records</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/profile-settings">Profile Settings</Link>

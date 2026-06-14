@@ -204,7 +204,7 @@ export function HomeStageVideoShowcase() {
             These are short approved stage previews, not full-job recordings. Each public clip is
             capped at {formatStageVideoDuration(STAGE_VIDEO_MAX_DURATION_SECONDS)} so customers can
             quickly understand the starting condition, the work in progress, and the final result
-            before they book.
+            before they choose.
           </p>
         </div>
 

@@ -353,7 +353,7 @@ export default function VendorRegisterPage() {
                 </label>
                 <p className="mb-3 text-xs leading-5 text-white/56">
                   Optional at signup: choose common services for {primaryServiceCategory || 'your category'}.
-                  These become starter service menu items you can refine later before customers book.
+                  These become starter Services Offered items you can refine later before customers request service.
                 </p>
                 {primaryServiceCategory && availableTemplates.length > 0 ? (
                   <div className="space-y-2 rounded border border-white/12 bg-white/5 p-3">
@@ -483,7 +483,7 @@ export default function VendorRegisterPage() {
               </div>
               <div className="rounded border border-white/12 bg-white/5 p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="block text-sm font-medium text-white/88">Custom Services</label>
+                  <label className="block text-sm font-medium text-white/88">Custom Services Offered</label>
                   <Button
                     type="button"
                     variant="outline"

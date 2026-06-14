@@ -3,7 +3,7 @@ export default function BookingDetailLoading() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
         <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
-          <p className="text-sm font-medium text-blue-900">Loading booking details...</p>
+          <p className="text-sm font-medium text-blue-900">Loading service-record details...</p>
           <p className="text-xs text-blue-800">Fetching the service timeline, booking status, and review tools.</p>
         </div>
 

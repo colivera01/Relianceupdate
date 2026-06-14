@@ -51,7 +51,7 @@ export function VendorBusinessVisibilitySection({
             </Button>
           ) : null}
           <Button asChild variant="outline" className="rounded-full">
-            <Link href="/vendor/services">Manage Services</Link>
+            <Link href="/vendor/services">Manage Services Offered</Link>
           </Button>
         </div>
       </div>
@@ -97,7 +97,7 @@ export function VendorBusinessVisibilitySection({
               Best next steps to grow
             </div>
             <p className="text-sm leading-7 text-blue-900">
-              Each step below is based on your current public readiness, published services, reviews,
+              Each step below is based on your current public readiness, published services offered, reviews,
               and approved service videos.
             </p>
           </div>

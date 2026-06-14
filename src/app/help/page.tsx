@@ -62,11 +62,11 @@ function buildHelpContext(
         backHref: '/user-dashboard',
         backLabel: 'Back to Customer Dashboard',
         intro:
-          'Reliance helps customers discover publicly listed local services, manage bookings, and keep account and sign-in settings in one place.',
-        bookingHeading: 'My services and bookings',
+          'Reliance helps customers explore public proof, manage service records, and keep account and sign-in settings in one place.',
+        bookingHeading: 'My service records',
         bookingDescription:
-          'Open your existing services and booking history to review active work, completed services, and saved customer requests.',
-        bookingLabel: 'View My Services',
+          'Open your service-record history to review active work, completed work, approved videos, and saved customer requests.',
+        bookingLabel: 'View My Service Records',
         bookingHref: '/my-bookings',
         vendorHeading: 'Account settings',
         vendorDescription:
@@ -84,10 +84,10 @@ function buildHelpContext(
       backHref: '/',
       backLabel: 'Back to Reliance',
       intro:
-        'Reliance helps customers discover publicly listed local services and helps approved vendors manage service work.',
-      bookingHeading: 'Booking or saving a service',
+        'Reliance helps customers explore public proof and helps approved vendors turn completed work into customer-visible credibility.',
+      bookingHeading: 'Requesting or saving service proof',
       bookingDescription:
-        'Create a customer account or sign in before booking, saving favorites, or managing service requests.',
+        'Create a customer account or sign in before saving proof examples, contacting vendors, or managing service records.',
       bookingLabel: 'Create a customer account',
       bookingHref: '/auth/register?type=user',
       vendorHeading: 'Vendor access',
@@ -131,7 +131,7 @@ function buildHelpContext(
         'Reliance helps approved vendors manage jobs, customer reviews, business profile settings, and support workflows.',
       bookingHeading: 'Active vendor work',
       bookingDescription:
-        'Open your job workspace to manage scheduling, customer requests, and service progress for active work.',
+        'Open your job workspace to manage customer requests, work progress, and the proof that may support future customer confidence.',
       bookingLabel: 'Open Manage Jobs',
       bookingHref: '/vendor/jobs',
       vendorHeading: 'Vendor support',
@@ -151,11 +151,11 @@ function buildHelpContext(
     backHref: '/user-dashboard',
     backLabel: 'Back to Customer Dashboard',
     intro:
-      'Reliance helps customers discover publicly listed local services, manage bookings, and keep account and sign-in settings in one place.',
-    bookingHeading: 'My services and bookings',
+      'Reliance helps customers explore public proof, manage service records, and keep account and sign-in settings in one place.',
+    bookingHeading: 'My service records',
     bookingDescription:
-      'Open your existing services and booking history to review active work, completed services, and saved customer requests.',
-    bookingLabel: 'View My Services',
+      'Open your service-record history to review active work, completed work, approved videos, and saved customer requests.',
+    bookingLabel: 'View My Service Records',
     bookingHref: '/my-bookings',
     vendorHeading: 'Account settings',
     vendorDescription:
@@ -202,10 +202,10 @@ export default async function PublicHelpPage({
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Services' },
+              { href: '/browse', label: 'Explore Proof' },
             ]}
             ctaHref="/browse"
-            ctaLabel="Find a Service"
+            ctaLabel="See Public Proof"
           />
 
           <Link href={backHref} className="inline-flex text-sm font-medium text-[var(--reliance-blue-soft)] hover:text-white">
@@ -231,7 +231,7 @@ export default async function PublicHelpPage({
                   <a href={LAUNCH_SUPPORT_MAILTO} className="font-semibold text-white underline underline-offset-4">
                     {LAUNCH_SUPPORT_EMAIL}
                   </a>
-                  . Use this for account access, booking questions, vendor approval, video or media concerns,
+                  . Use this for account access, service-record questions, vendor approval, video or media concerns,
                   public listing issues, or safety and moderation follow-up. Reliance aims to respond{' '}
                   {LAUNCH_SUPPORT_RESPONSE_TIME}.
                 </p>
@@ -270,11 +270,11 @@ export default async function PublicHelpPage({
             <div className="mt-8 grid gap-5 lg:grid-cols-3">
               {[
                 {
-                  heading: 'Browsing services',
+                  heading: 'Exploring public proof',
                   description:
-                    'Use the public browse page to search services from vendors that are publicly listed and have published inventory.',
+                    'Use Explore Proof to review public work examples, vendor details, service videos, reviews, and Trust Score context.',
                   href: '/browse',
-                  label: 'Browse public services',
+                  label: 'Explore public proof',
                 },
                 {
                   heading: helpContext.bookingHeading,

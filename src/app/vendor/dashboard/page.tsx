@@ -622,8 +622,8 @@ export default function VendorDashboard() {
                 <div>
                   <h2 className="font-semibold text-blue-950">Grow visibility with promotions</h2>
                   <p className="text-sm text-blue-900">
-                    Promotions help more customers discover you after your profile, published services,
-                    and trust signals already give them a reason to book.
+                    Promotions help more customers discover you after your profile, published services offered,
+                    and trust signals already give them a reason to contact you.
                   </p>
                 </div>
               </div>
@@ -637,7 +637,7 @@ export default function VendorDashboard() {
                 <div className="mb-4 grid gap-3 md:grid-cols-3">
                   <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
                     <p className="font-semibold">1. Pick a package</p>
-                    <p className="mt-1 text-xs text-blue-800">Choose the placement and published service you want Reliance to review for extra visibility.</p>
+                    <p className="mt-1 text-xs text-blue-800">Choose the placement and published service offered you want Reliance to review for extra visibility.</p>
                   </div>
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     <p className="font-semibold">2. Wait for admin review</p>
@@ -654,7 +654,7 @@ export default function VendorDashboard() {
                 </div>
                 <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                   Browse promotions can put your business in front of more customers, but they only render when Reliance
-                  still has enough organic results to keep the marketplace trustworthy. Desktop browse currently needs
+                  still has enough organic proof results to keep discovery trustworthy. Desktop Explore Proof currently needs
                   at least 4 organic listings, and category-filtered browse needs at least 3, before featured paid
                   placements can appear.
                 </div>
@@ -747,7 +747,7 @@ export default function VendorDashboard() {
                         </div>
                         <p className="mt-2">{selectedPromotionPackage.bestFor}</p>
                         <p className="mt-2 text-xs text-blue-800">
-                          Use promotions after your profile already gives customers a strong reason to click, trust, and book.
+                          Use promotions after your profile already gives customers a strong reason to click, trust, and contact you.
                         </p>
                       </div>
                     ) : null}

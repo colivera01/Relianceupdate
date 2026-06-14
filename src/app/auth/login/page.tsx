@@ -321,8 +321,8 @@ function LoginPageContent() {
       backLabel={entryBackLabel}
       title="Welcome Back"
       description={entryDescription || 'Sign in to your Reliance account and pick up right where you left off.'}
-      heroTitle="Return to a marketplace where trust signals stay separate."
-      heroDescription="Reliance keeps Customer Reviews, Verified Service Videos, and the Reliance Trust Score visible as distinct systems so every booking, approval, and follow-up feels grounded in real evidence."
+      heroTitle="Return to a proof-of-service platform where trust signals stay separate."
+      heroDescription="Reliance keeps Customer Reviews, Verified Service Videos, and the Reliance Trust Score visible as distinct systems so every service record, approval, and follow-up feels grounded in real evidence."
       heroBadge="Built for transparent service decisions."
     >
         <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
@@ -494,8 +494,8 @@ function LoginPageFallback() {
       backLabel="Back to Home"
       title="Welcome Back"
       description="Preparing your Reliance sign-in experience."
-      heroTitle="Return to a marketplace where trust signals stay separate."
-      heroDescription="Reliance keeps Customer Reviews, Verified Service Videos, and the Reliance Trust Score visible as distinct systems so every booking, approval, and follow-up feels grounded in real evidence."
+      heroTitle="Return to a proof-of-service platform where trust signals stay separate."
+      heroDescription="Reliance keeps Customer Reviews, Verified Service Videos, and the Reliance Trust Score visible as distinct systems so every service record, approval, and follow-up feels grounded in real evidence."
       heroBadge="Built for transparent service decisions."
     >
       <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">

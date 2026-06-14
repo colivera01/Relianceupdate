@@ -71,7 +71,7 @@ function ForgotPasswordPageContent() {
             : "We've sent you a password reset link."
         }
         heroTitle="Recover access without losing context."
-        heroDescription="Password recovery should feel like a continuation of the same marketplace journey, not a separate detour. Reliance keeps the destination and purpose visible all the way through."
+        heroDescription="Password recovery should feel like a continuation of the same proof-of-service journey, not a separate detour. Reliance keeps the destination and purpose visible all the way through."
         heroBadge="Recovery that keeps the trust flow intact."
       >
           <Card className="overflow-hidden rounded-[30px] border-white/80 bg-white/92 shadow-[0_30px_90px_rgba(15,23,42,0.14)] backdrop-blur-xl">
