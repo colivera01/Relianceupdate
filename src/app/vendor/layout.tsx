@@ -36,8 +36,8 @@ function buildVendorSupportHref(pathname: string): string {
     ? 'Back to Analytics & Trust'
     : pathname.startsWith('/vendor/reviews')
       ? 'Back to Reviews'
-      : pathname.startsWith('/vendor/telemetry')
-        ? 'Back to Telemetry'
+    : pathname.startsWith('/vendor/telemetry')
+        ? 'Back to Service Video Activity'
         : pathname.startsWith('/vendor/services')
           ? 'Back to Services Offered'
           : pathname.startsWith('/vendor/profile')
@@ -57,7 +57,7 @@ const sidebarLinks: SidebarLink[] = [
   { label: 'Dashboard', icon: Home, href: '/vendor/dashboard' },
   { label: 'Analytics & Trust', icon: BarChart3, href: '/vendor/analytics' },
   { label: 'Reviews', icon: Star, href: '/vendor/reviews' },
-  { label: 'Telemetry', icon: Activity, href: '/vendor/telemetry' },
+  { label: 'Service Video Activity', icon: Activity, href: '/vendor/telemetry' },
   { label: 'Services Offered', icon: ClipboardList, href: '/vendor/services' },
   { label: 'Profile & Settings', icon: Users, href: '/vendor/profile' },
   { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },

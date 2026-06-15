@@ -266,9 +266,9 @@ export default function VendorTelemetryPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Device Telemetry</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Service Video Activity</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Inspect Gen-1 device events for your vendor (phone-bridged).
+            See whether employee devices are connected and sending service-video activity for assigned work.
           </p>
         </div>
         <Button
@@ -339,7 +339,7 @@ export default function VendorTelemetryPage() {
                     disabled={!device.deviceUid}
                     onClick={() => showRawTelemetryForDevice(device.deviceUid)}
                   >
-                    Raw telemetry
+                    View device events
                   </Button>
                 </div>
               </div>

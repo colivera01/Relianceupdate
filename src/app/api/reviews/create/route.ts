@@ -11,6 +11,10 @@ import { assertReviewWindowActive, isValidSubmittedVia } from '@/lib/review-capt
 import { createAdminAuditLog } from '@/lib/admin-audit';
 import { parseAssignmentMetadata } from '@/lib/job-assignment';
 import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
+import {
+  normalizeReviewAttributionTarget,
+  shouldAttributeReviewToAssignedTeam,
+} from '@/lib/review-attribution-intent';
 
 export async function POST(request: NextRequest) {
   let step = 'parse_request';
@@ -39,7 +43,18 @@ export async function POST(request: NextRequest) {
     const rating = Number(body?.rating);
     const comment = String(body?.comment || '').trim();
     const submittedVia = String(body?.submittedVia || '').trim();
-    debug = { reviewWindowId, bookingId, vendorId, mediaSessionId, userId, rating, submittedVia };
+    const reviewAttributionTarget = normalizeReviewAttributionTarget(body?.reviewAttributionTarget);
+    const shouldAttributeToTeam = shouldAttributeReviewToAssignedTeam(reviewAttributionTarget);
+    debug = {
+      reviewWindowId,
+      bookingId,
+      vendorId,
+      mediaSessionId,
+      userId,
+      rating,
+      submittedVia,
+      reviewAttributionTarget,
+    };
 
     if (!reviewWindowId || !bookingId || !vendorId || !Number.isFinite(rating)) {
       return NextResponse.json(
@@ -126,12 +141,15 @@ export async function POST(request: NextRequest) {
     const assignmentMetadata = parseAssignmentMetadata(booking.customerMetadata);
     const assignedMembershipIds = assignmentMetadata.assignedMembershipIds;
     const assignedEmployees = assignmentMetadata.assignedEmployees;
-    const assignedMembershipId =
+    const resolvedAssignedMembershipId =
       String(assignmentMetadata.primaryMembershipId || '').trim() ||
       (assignedMembershipIds.length > 0 ? String(assignedMembershipIds[0] || '').trim() : '');
+    const assignedMembershipId = shouldAttributeToTeam ? resolvedAssignedMembershipId : '';
     let assignedEmployeeName =
-      String(assignmentMetadata.primaryEmployeeName || '').trim() ||
-      (assignedEmployees.length > 0 ? String(assignedEmployees[0] || '').trim() : '');
+      shouldAttributeToTeam
+        ? String(assignmentMetadata.primaryEmployeeName || '').trim() ||
+          (assignedEmployees.length > 0 ? String(assignedEmployees[0] || '').trim() : '')
+        : '';
     let assignedUserId: string | null = null;
     if (assignedMembershipId) {
       const membership = await (prisma as any).vendorMembership.findFirst({
@@ -165,7 +183,7 @@ export async function POST(request: NextRequest) {
           assignedMembershipId: assignedMembershipId || null,
           assignedEmployeeName: assignedEmployeeName || null,
           assignedUserId: assignedUserId || null,
-          attributionVersion: 1,
+          attributionVersion: 2,
           moderationStatus: 'pending_review',
           visibilityStatus: 'private',
           date: new Date(),
@@ -193,7 +211,12 @@ export async function POST(request: NextRequest) {
         data: {
           reviewWindowId,
           eventType: 'quick_review_submitted',
-          metadata: JSON.stringify({ rating, submittedVia }),
+          metadata: JSON.stringify({
+            rating,
+            submittedVia,
+            reviewAttributionTarget,
+            employeeAttributionApplied: Boolean(assignedMembershipId),
+          }),
         },
       });
       return review;
@@ -205,7 +228,14 @@ export async function POST(request: NextRequest) {
       entityType: 'review',
       entityId: created.id,
       actorUserId: String(userId),
-      metadata: { bookingId, vendorId, reviewWindowId, submittedVia },
+      metadata: {
+        bookingId,
+        vendorId,
+        reviewWindowId,
+        submittedVia,
+        reviewAttributionTarget,
+        employeeAttributionApplied: Boolean(assignedMembershipId),
+      },
     });
 
     return NextResponse.json({

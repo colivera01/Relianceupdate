@@ -6,6 +6,7 @@ import { ExitIntentPrompt } from './ExitIntentPrompt';
 import { QuickReviewPanel } from './QuickReviewPanel';
 import { PrivateFeedbackPanel } from './PrivateFeedbackPanel';
 import { getClientAuthHeaders } from '@/lib/client-session';
+import type { ReviewAttributionTarget } from '@/lib/review-attribution-intent';
 
 type Props = {
   src: string;
@@ -245,7 +246,11 @@ export function SmartVideoPlayer({
     }
   };
 
-  const handleQuickSubmit = async (payload: { rating: number; comment: string }) => {
+  const handleQuickSubmit = async (payload: {
+    rating: number;
+    comment: string;
+    reviewAttributionTarget: ReviewAttributionTarget;
+  }) => {
     if (!reviewWindowId || !trimmedUserId || reviewSubmitting) return;
     setReviewSubmitting(true);
     setSubmitError(null);
@@ -261,6 +266,7 @@ export function SmartVideoPlayer({
           rating: payload.rating,
           comment: payload.comment,
           submittedVia: 'video_overlay',
+          reviewAttributionTarget: payload.reviewAttributionTarget,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -294,7 +300,10 @@ export function SmartVideoPlayer({
           )} details=${JSON.stringify(backendDetails)}`
         );
       }
-      await logPromptEvent('quick_review_submitted', { rating: payload.rating });
+      await logPromptEvent('quick_review_submitted', {
+        rating: payload.rating,
+        reviewAttributionTarget: payload.reviewAttributionTarget,
+      });
       setShowQuickReview(false);
       setPrompt('none');
       setShowPrivateFeedback(false);

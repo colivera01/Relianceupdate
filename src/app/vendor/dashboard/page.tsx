@@ -1073,8 +1073,8 @@ export default function VendorDashboard() {
                 className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
               >
                 <Activity className="h-5 w-5 text-blue-600" />
-                <p className="mt-3 font-semibold text-gray-900">Device Telemetry</p>
-                <p className="mt-1 text-sm text-gray-600">Review connected-device health and incoming capture activity.</p>
+                <p className="mt-3 font-semibold text-gray-900">Service Video Activity</p>
+                <p className="mt-1 text-sm text-gray-600">Review connected-device health and incoming service-video activity.</p>
               </button>
               <button
                 type="button"

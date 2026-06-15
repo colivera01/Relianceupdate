@@ -95,7 +95,7 @@ export function buildVendorApprovalAssistantInput(
     `Service areas present: ${yesNo(context.hasServiceAreas)}`,
     "",
     "Service setup context:",
-    `Service drafts saved: ${context.serviceDraftCount}`,
+    `Services offered saved: ${context.serviceDraftCount}`,
     `Published services: ${context.publishedServiceCount}`,
     "Reminder: lack of published services does NOT block access approval by itself. It only affects public visibility later.",
   ].join("\n");

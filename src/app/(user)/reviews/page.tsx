@@ -277,6 +277,17 @@ export default function ReviewsPage() {
         <TutorialEntryPoint guide={tutorialGuides.reviewHub} surface="dark" className="self-start" />
       </div>
 
+      <GuidanceCallout
+        title="How your review is counted"
+        description="Your star rating can affect the vendor's public business rating after Reliance approval. When you leave the review, you can tell Reliance whether the feedback is about the overall business, the assigned worker or crew, scheduling/management, or you are not sure."
+        bullets={[
+          'Public business rating: approved customer reviews customers can see.',
+          'Private team performance: only used when feedback is clearly about the assigned worker or crew.',
+          'Reliance Trust Score: separate from your star rating and based on verified operational activity.',
+        ]}
+        tone="blue"
+      />
+
       <div className="flex items-center justify-end">
         <Button variant="outline" onClick={() => void loadReviews()} disabled={loading || authLoading}>
           Refresh
