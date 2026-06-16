@@ -40,6 +40,16 @@ type VendorCopySuggestion = {
   nextEdits: string[];
 };
 
+function friendlyAiCopyError(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : String(error || 'Failed to generate AI copy guidance');
+  const lower = message.toLowerCase();
+  if (lower.includes('disabled') || lower.includes('configuration') || lower.includes('openai')) {
+    return 'AI Copy Assist is not active in this environment yet. Your service can still be saved normally; enable the OpenAI settings later to receive rewrite suggestions.';
+  }
+  return message;
+}
+
 const durationNotePattern = /(?:\n\s*)?Estimated duration:\s*(\d+)\s*minutes?\.?\s*$/i;
 const legacyDurationPattern = /\(estimated\s+(\d+)\s+min\)/i;
 
@@ -353,7 +363,7 @@ export default function VendorServicesPage() {
       setCopyMessage(json?.message || 'AI service copy guidance generated.');
     } catch (error) {
       console.error('Error generating service copy suggestion:', error);
-      setCopyError(error instanceof Error ? error.message : 'Failed to generate AI copy guidance');
+      setCopyError(friendlyAiCopyError(error));
     } finally {
       setCopyLoading(false);
     }
@@ -379,10 +389,10 @@ export default function VendorServicesPage() {
             <button
               onClick={openCreateModal}
               disabled={!vendorId || vendorLoading}
-              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-sky-500 px-4 py-2 text-white transition-all duration-200 hover:from-blue-700 hover:to-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-blue-300/40 bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:from-blue-700 hover:via-blue-600 hover:to-sky-600 hover:shadow-[0_18px_42px_rgba(37,99,235,0.36)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
             >
               <Plus className="w-4 h-4" />
-              Add Service to Menu
+              + Add Customer Service
             </button>
           </div>
         </div>
@@ -415,13 +425,6 @@ export default function VendorServicesPage() {
                   before saving it to your Services Offered menu.
                 </p>
               </div>
-              <button
-                onClick={openCreateModal}
-                disabled={!vendorId || vendorLoading}
-                className="inline-flex items-center justify-center rounded-full border border-blue-300 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Add custom service
-              </button>
             </div>
 
             {serviceTemplates.length > 0 ? (
@@ -446,8 +449,8 @@ export default function VendorServicesPage() {
               </div>
             ) : (
               <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm text-blue-900/78">
-                No starter templates are configured for {serviceCategory} yet. Add a custom service
-                below.
+                No starter templates are configured for {serviceCategory} yet. Use + Add Customer Service above
+                to create one manually.
               </div>
             )}
           </section>

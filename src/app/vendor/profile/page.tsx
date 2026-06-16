@@ -11,7 +11,6 @@ import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorDevices } from '@/hooks/useVendorDevices';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
-import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
 import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
 
 // BACKEND DEVELOPER NOTES:
@@ -77,6 +76,16 @@ type VendorCopySuggestion = {
   riskyClaims: string[];
   nextEdits: string[];
 };
+
+function friendlyAiCopyError(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : String(error || 'Failed to generate AI copy guidance');
+  const lower = message.toLowerCase();
+  if (lower.includes('disabled') || lower.includes('configuration') || lower.includes('openai')) {
+    return 'AI Copy Assist is not active in this environment yet. You can still save your profile normally; enable the OpenAI settings later to receive rewrite suggestions.';
+  }
+  return message;
+}
 
 export default function VendorProfilePage() {
   const { data: profile, loading, error, saving, approvalPending, updateProfile, refetch } = useVendorProfile();
@@ -530,33 +539,31 @@ export default function VendorProfilePage() {
       setVendorCopyMessage(json?.message || 'AI vendor copy guidance generated.');
     } catch (err) {
       console.error('Error generating vendor copy suggestion:', err);
-      setVendorCopyError(
-        err instanceof Error ? err.message : 'Failed to generate AI copy guidance'
-      );
+      setVendorCopyError(friendlyAiCopyError(err));
     } finally {
       setVendorCopyLoading(false);
     }
   };
 
   return (
-    <div className="bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="text-white">
       <div className="w-full">
-      <div className="mb-6 rounded-2xl border border-white/60 bg-white/85 p-5 shadow-sm">
-        <h1 className="text-3xl font-semibold text-gray-900">Public Credibility Center</h1>
-        <p className="mt-1 text-sm text-gray-600">
+      <div className="mb-6 rounded-3xl border border-white/10 bg-slate-950/75 p-5 shadow-[0_20px_70px_rgba(3,8,20,0.28)]">
+        <h1 className="text-3xl font-semibold text-white">Public Credibility Center</h1>
+        <p className="mt-1 text-sm text-slate-300">
           Manage the business details, public signals, and account settings that shape how customers experience your business.
         </p>
       </div>
 
       {loading && (
         <div className="space-y-6">
-          <div className="rounded-2xl border border-white/60 bg-white/80 p-6 shadow-sm">
-            <div className="mb-4 h-6 w-52 animate-pulse rounded bg-slate-200" />
+          <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-sm">
+            <div className="mb-4 h-6 w-52 animate-pulse rounded bg-white/10" />
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
-              <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
+              <div className="h-24 animate-pulse rounded-xl bg-white/8" />
+              <div className="h-24 animate-pulse rounded-xl bg-white/8" />
             </div>
-            <p className="mt-4 text-sm text-gray-600">Loading your vendor profile...</p>
+            <p className="mt-4 text-sm text-slate-300">Loading your vendor profile...</p>
           </div>
         </div>
       )}
@@ -578,29 +585,28 @@ export default function VendorProfilePage() {
       {!loading && !error && profile && (
         <main className="flex flex-col xl:flex-row gap-8">
         {/* Profile Form */}
-        <section className="flex-1 max-w-2xl space-y-6">
-          {profile.onboarding ? <VendorOnboardingStatusPanel profile={profile} /> : null}
-          <Card className="border-blue-200 bg-blue-50 shadow-sm">
+        <section className="flex flex-1 max-w-2xl flex-col gap-6">
+          <Card className="order-2 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-3">
-              <CardTitle className="text-xl text-blue-950">What customers see</CardTitle>
-              <p className="text-sm text-blue-900">
+              <CardTitle className="text-xl text-white">What customers see</CardTitle>
+              <p className="text-sm leading-6 text-slate-300">
                 Use this summary to understand whether customers can find your business and which public signals are helping them trust you.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
                 {growthSummary.metrics.slice(0, 4).map((metric) => (
-                  <div key={metric.label} className="min-w-0 rounded-xl border border-blue-100 bg-white p-4">
-                    <p className="break-words text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{metric.label}</p>
-                    <p className="mt-2 break-words text-lg font-semibold text-slate-950">{metric.value}</p>
-                    <p className="mt-2 break-words text-sm leading-6 text-slate-600">{metric.detail}</p>
+                  <div key={metric.label} className="min-w-0 rounded-xl border border-blue-300/20 bg-slate-900/78 p-4">
+                    <p className="break-words text-xs font-semibold uppercase tracking-[0.14em] text-blue-100/70">{metric.label}</p>
+                    <p className="mt-2 break-words text-lg font-semibold text-white">{metric.value}</p>
+                    <p className="mt-2 break-words text-sm leading-6 text-slate-300">{metric.detail}</p>
                   </div>
                 ))}
               </div>
-              <div className="rounded-xl border border-blue-100 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Public profile status</p>
-                <p className="mt-2 text-lg font-semibold text-slate-950">{growthSummary.visibilityTitle}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{growthSummary.visibilityDetail}</p>
+              <div className="rounded-xl border border-blue-300/20 bg-slate-900/78 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">Public profile status</p>
+                <p className="mt-2 text-lg font-semibold text-white">{growthSummary.visibilityTitle}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">{growthSummary.visibilityDetail}</p>
                 <div className="mt-4 flex flex-wrap gap-3">
                   {growthSummary.publicProfileHref ? (
                     <Button asChild size="sm" className="bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
@@ -614,23 +620,23 @@ export default function VendorProfilePage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-violet-200 bg-violet-50 shadow-sm">
+          <Card className="order-3 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-3">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <div className="flex items-center gap-2 text-violet-700">
+                  <div className="flex items-center gap-2 text-blue-100/80">
                     <Sparkles className="h-4 w-4" />
                     <p className="text-xs font-semibold uppercase tracking-[0.18em]">AI Copy Assist</p>
                   </div>
-                  <CardTitle className="mt-2 text-xl text-violet-950">Make your public business story easier to trust</CardTitle>
-                  <p className="mt-2 text-sm text-violet-900">
+                  <CardTitle className="mt-2 text-xl text-white">Make your public business story easier to trust</CardTitle>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
                     This assistant rewrites your public-facing bio in clearer customer language without changing any approval, publishing, or Trust Score rules.
                   </p>
                 </div>
                 <Button
                   type="button"
                   variant="outline"
-                  className="bg-white"
+                  className="border-white/15 bg-slate-900 text-white hover:bg-slate-800"
                   onClick={requestVendorCopySuggestion}
                   disabled={vendorCopyLoading || !vendorId}
                 >
@@ -654,7 +660,7 @@ export default function VendorProfilePage() {
                 </div>
               ) : null}
               {vendorCopySuggestion ? (
-                <div className="rounded-xl border border-violet-100 bg-white p-4 space-y-4">
+                <div className="space-y-4 rounded-xl border border-blue-300/20 bg-slate-900/75 p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">
                       {vendorCopySuggestion.confidence.charAt(0).toUpperCase() + vendorCopySuggestion.confidence.slice(1)} confidence
@@ -662,23 +668,23 @@ export default function VendorProfilePage() {
                     <Badge variant="outline">Headline suggestion included</Badge>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">AI summary</p>
-                    <p className="mt-2 text-sm text-slate-800">{vendorCopySuggestion.summary}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">AI summary</p>
+                    <p className="mt-2 text-sm text-slate-300">{vendorCopySuggestion.summary}</p>
                   </div>
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-lg border border-violet-100 bg-violet-50/60 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-700">Suggested opening line</p>
-                      <p className="mt-2 text-base font-semibold text-slate-950">
+                    <div className="rounded-lg border border-blue-300/20 bg-slate-950/80 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">Suggested opening line</p>
+                      <p className="mt-2 text-base font-semibold text-white">
                         {vendorCopySuggestion.recommendedHeadline}
                       </p>
-                      <p className="mt-3 text-sm leading-6 text-slate-700">
+                      <p className="mt-3 text-sm leading-6 text-slate-300">
                         {vendorCopySuggestion.recommendedDescription}
                       </p>
                     </div>
                     <div className="space-y-3">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Suggested proof points</p>
-                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                      <div className="rounded-lg border border-white/10 bg-slate-950/80 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">Suggested proof points</p>
+                        <ul className="mt-2 space-y-1 text-sm text-slate-300">
                           {vendorCopySuggestion.recommendedBullets.length > 0 ? (
                             vendorCopySuggestion.recommendedBullets.map((item) => (
                               <li key={item}>- {item}</li>
@@ -689,9 +695,9 @@ export default function VendorProfilePage() {
                         </ul>
                       </div>
                       {vendorCopySuggestion.trustGaps.length > 0 ? (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">What customers may still question</p>
-                          <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                        <div className="rounded-lg border border-blue-300/20 bg-slate-950/80 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">What customers may still question</p>
+                          <ul className="mt-2 space-y-1 text-sm text-slate-300">
                             {vendorCopySuggestion.trustGaps.map((item) => (
                               <li key={item}>- {item}</li>
                             ))}
@@ -711,9 +717,9 @@ export default function VendorProfilePage() {
                     </div>
                   ) : null}
                   {vendorCopySuggestion.nextEdits.length > 0 ? (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Recommended next edits</p>
-                      <ul className="mt-2 space-y-1 text-sm text-blue-900">
+                    <div className="rounded-lg border border-blue-300/20 bg-blue-500/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">Recommended next edits</p>
+                      <ul className="mt-2 space-y-1 text-sm text-slate-300">
                         {vendorCopySuggestion.nextEdits.map((item) => (
                           <li key={item}>- {item}</li>
                         ))}
@@ -732,33 +738,33 @@ export default function VendorProfilePage() {
                     >
                       Use Suggested Bio
                     </Button>
-                    <p className="text-xs text-slate-600">
+                    <p className="text-xs text-slate-400">
                       The suggested opening line is shown here for guidance. Your actual saved profile field on this page is the business bio below.
                     </p>
                   </div>
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-violet-200 bg-white px-4 py-5 text-sm text-slate-600">
+                <div className="rounded-xl border border-dashed border-blue-300/25 bg-slate-900/75 px-4 py-5 text-sm leading-6 text-slate-300">
                   Run AI Copy Assist to get a clearer profile bio draft based on your current business details and existing public trust signals.
                 </div>
               )}
             </CardContent>
           </Card>
           {/* Enhanced Profile Information Card */}
-          <Card className="bg-gradient-to-br from-white to-blue-50 border-blue-200 shadow-lg">
+          <Card className="order-1 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)] [&_input]:border-white/10 [&_input]:bg-slate-900/75 [&_input]:text-white [&_input]:placeholder:text-slate-500 [&_label]:!text-blue-100 [&_p]:!text-slate-300 [&_select]:border-white/10 [&_select]:bg-slate-900/75 [&_select]:text-white [&_textarea]:border-white/10 [&_textarea]:bg-slate-900/75 [&_textarea]:text-white [&_textarea]:placeholder:text-slate-500">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <User className="w-6 h-6 text-blue-600" />
+                <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
+                  <User className="w-6 h-6 text-blue-100" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl text-gray-800">Business Profile</CardTitle>
-                  <p className="text-sm text-gray-600">Manage saved business information customers and staff rely on</p>
+                  <CardTitle className="text-xl text-white">Business Profile</CardTitle>
+                  <p className="text-sm text-slate-300">Manage saved business information customers and staff rely on</p>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              <div className="mb-6 rounded-lg border border-blue-300/20 bg-blue-500/10 p-3 text-sm leading-6 text-blue-100">
                 Profile fields on this page save to your vendor profile. Device pairing and storage limits use live vendor APIs; future-only launch features are marked where they appear.
               </div>
               <form className="space-y-6">
@@ -766,15 +772,17 @@ export default function VendorProfilePage() {
                 <div className="mb-6">
                   <label className="block text-sm font-medium mb-2 text-gray-700">Business Profile Photo</label>
                   <div className="flex items-center gap-4">
-                    <div className="relative">
+                    <div className="relative shrink-0">
                       {localFormData.profilePhoto || profile.profilePhoto ? (
-                        <img 
-                          src={localFormData.profilePhoto || profile.profilePhoto || ''} 
-                          alt="Business Profile" 
-                          className="w-24 h-24 rounded-lg object-cover border-2 border-gray-200"
-                        />
+                        <div className="h-28 w-40 overflow-hidden rounded-2xl border border-blue-300/20 bg-slate-900 shadow-[0_12px_30px_rgba(3,8,20,0.22)]">
+                          <img
+                            src={localFormData.profilePhoto || profile.profilePhoto || ''}
+                            alt="Business Profile"
+                            className="h-full w-full object-cover object-center"
+                          />
+                        </div>
                       ) : (
-                        <div className="flex h-24 w-24 items-center justify-center rounded-lg border-2 border-gray-200 bg-gradient-to-br from-slate-100 to-blue-100 text-2xl font-semibold text-slate-700">
+                        <div className="flex h-28 w-40 items-center justify-center rounded-2xl border border-blue-300/20 bg-gradient-to-br from-slate-800 to-blue-950 text-3xl font-semibold text-blue-100 shadow-[0_12px_30px_rgba(3,8,20,0.22)]">
                           {businessInitials}
                         </div>
                       )}
@@ -1125,16 +1133,16 @@ export default function VendorProfilePage() {
           </Card>
 
           {/* Enhanced Device Management Card */}
-          <Card className="bg-gradient-to-br from-white to-indigo-50 border-indigo-200 shadow-lg">
+          <Card className="order-4 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-100 rounded-lg">
-                    <DeviceIcon className="w-6 h-6 text-indigo-600" />
+                  <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
+                    <DeviceIcon className="h-6 w-6 text-blue-100" />
                   </div>
                   <div>
-                    <CardTitle className="text-xl text-gray-800">Device Management</CardTitle>
-                    <p className="text-sm text-gray-600">
+                    <CardTitle className="text-xl text-white">Device Management</CardTitle>
+                    <p className="text-sm leading-6 text-slate-300">
                       Pair employee phones for stage video capture. Headsets should be connected from a paired phone when supported—this page does not handle Bluetooth pairing directly.
                     </p>
                   </div>
@@ -1144,7 +1152,7 @@ export default function VendorProfilePage() {
                   size="sm"
                   onClick={() => fetchDevices()}
                   disabled={devicesLoading}
-                  className="bg-white hover:bg-indigo-50"
+                  className="border-white/15 bg-slate-900 text-white hover:bg-slate-800"
                 >
                   <RefreshCw className={`w-4 h-4 mr-2 ${devicesLoading ? 'animate-spin' : ''}`} />
                   Refresh
@@ -1176,17 +1184,17 @@ export default function VendorProfilePage() {
                 </div>
               ) : devicesLoading ? (
                 <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                  <p className="text-gray-500">Loading devices...</p>
+                  <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-300"></div>
+                  <p className="text-slate-300">Loading devices...</p>
                 </div>
               ) : devices.length === 0 ? (
                 <div className="text-center py-8">
-                  <DeviceIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-4">No devices paired yet</p>
+                  <DeviceIcon className="mx-auto mb-4 h-12 w-12 text-blue-100/45" />
+                  <p className="mb-4 text-slate-300">No devices paired yet</p>
                   <Button 
                     variant="outline" 
                     onClick={handleOpenPairModal}
-                    className="bg-white hover:bg-indigo-50"
+                    className="border-white/15 bg-slate-900 text-white hover:bg-slate-800"
                   >
                     <DeviceIcon className="w-4 h-4 mr-2" />
                     Pair New Device
@@ -1195,20 +1203,20 @@ export default function VendorProfilePage() {
               ) : (
                 <div className="space-y-4">
                   {devices.map(dev => (
-                    <div key={dev.id} className="flex items-center gap-4 p-4 bg-white rounded-lg border border-indigo-200 hover:shadow-md transition-shadow">
-                      <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center border-2 border-indigo-200">
-                        <DeviceIcon className="w-6 h-6 text-indigo-600" />
+                    <div key={dev.id} className="flex items-center gap-4 rounded-lg border border-blue-300/20 bg-slate-900/75 p-4 transition-shadow hover:shadow-md">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-blue-300/20 bg-blue-500/12">
+                        <DeviceIcon className="h-6 w-6 text-blue-100" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-gray-800">
+                          <span className="font-semibold text-white">
                             {dev.deviceName ?? dev.deviceType ?? "Device"}
                           </span>
-                          <Badge className="text-xs bg-indigo-100 text-indigo-700">
+                          <Badge className="border border-blue-300/20 bg-blue-500/15 text-xs text-blue-100">
                             {dev.deviceType}
                           </Badge>
                         </div>
-                        <div className="text-xs text-gray-500 flex items-center gap-4">
+                        <div className="flex items-center gap-4 text-xs text-slate-400">
                           <span>Last seen: {dev.lastSeenAt ? new Date(dev.lastSeenAt).toLocaleDateString() : "—"}</span>
                           <span>Added: {dev.createdAt ? new Date(dev.createdAt).toLocaleDateString() : "—"}</span>
                         </div>
@@ -1233,7 +1241,7 @@ export default function VendorProfilePage() {
                   <Button 
                     variant="outline" 
                     onClick={handleOpenPairModal}
-                    className="w-full bg-white hover:bg-indigo-50"
+                    className="w-full border-white/15 bg-slate-900 text-white hover:bg-slate-800"
                   >
                     <DeviceIcon className="w-4 h-4 mr-2" />
                     Pair Additional Device
@@ -1244,80 +1252,80 @@ export default function VendorProfilePage() {
           </Card>
 
           {/* Enhanced Reminders & Notifications Card */}
-          <Card className="bg-gradient-to-br from-white to-purple-50 border-purple-200 shadow-lg">
+          <Card className="order-5 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <Bell className="w-6 h-6 text-purple-600" />
+                <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
+                  <Bell className="h-6 w-6 text-blue-100" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl text-gray-800">Reminder Preferences</CardTitle>
-                  <p className="text-sm text-gray-600">Save communication preferences for supported launch workflows</p>
+                  <CardTitle className="text-xl text-white">Reminder Preferences</CardTitle>
+                  <p className="text-sm text-slate-300">Save communication preferences for supported launch workflows</p>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <p className="text-sm text-gray-600 mb-4">
+                <p className="mb-4 text-sm leading-6 text-slate-300">
                   These preferences are saved to your profile. Reliance only sends supported launch communications; delayed automation may be limited.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors cursor-pointer">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors hover:bg-slate-800">
                     <input 
                       type="checkbox" 
                       checked={reminders.review} 
                       onChange={e => setReminders(r => ({ ...r, review: e.target.checked }))}
-                      className="w-4 h-4 text-purple-600"
+                      className="h-4 w-4 accent-blue-500"
                     />
                     <div>
-                      <div className="font-medium text-gray-800">Review Requests</div>
-                      <div className="text-sm text-gray-600">Request reviews after eligible completed jobs.</div>
+                      <div className="font-medium text-white">Review Requests</div>
+                      <div className="text-sm text-slate-300">Request reviews after eligible completed jobs.</div>
                     </div>
-                    <Info className="w-4 h-4 text-purple-500 ml-auto" />
+                    <Info className="ml-auto h-4 w-4 text-blue-100/55" />
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors cursor-pointer">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors hover:bg-slate-800">
                     <input 
                       type="checkbox" 
                       checked={reminders.invoice} 
                       onChange={e => setReminders(r => ({ ...r, invoice: e.target.checked }))}
-                      className="w-4 h-4 text-purple-600"
+                      className="h-4 w-4 accent-blue-500"
                     />
                     <div>
-                      <div className="font-medium text-gray-800">Follow-up Reminders</div>
-                      <div className="text-sm text-gray-600">Save your preference for future post-service follow-up reminders.</div>
+                      <div className="font-medium text-white">Follow-up Reminders</div>
+                      <div className="text-sm text-slate-300">Save your preference for future post-service follow-up reminders.</div>
                     </div>
-                    <Info className="w-4 h-4 text-purple-500 ml-auto" />
+                    <Info className="ml-auto h-4 w-4 text-blue-100/55" />
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors cursor-pointer">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors hover:bg-slate-800">
                     <input 
                       type="checkbox" 
                       checked={reminders.maintenance} 
                       onChange={e => setReminders(r => ({ ...r, maintenance: e.target.checked }))}
-                      className="w-4 h-4 text-purple-600"
+                      className="h-4 w-4 accent-blue-500"
                     />
                     <div>
-                      <div className="font-medium text-gray-800">Maintenance Alerts</div>
-                      <div className="text-sm text-gray-600">Save your preference for future maintenance follow-up prompts.</div>
+                      <div className="font-medium text-white">Maintenance Alerts</div>
+                      <div className="text-sm text-slate-300">Save your preference for future maintenance follow-up prompts.</div>
                     </div>
-                    <Info className="w-4 h-4 text-purple-500 ml-auto" />
+                    <Info className="ml-auto h-4 w-4 text-blue-100/55" />
                   </label>
-                  <label className="flex items-center gap-3 p-3 bg-white rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors cursor-pointer">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors hover:bg-slate-800">
                     <input 
                       type="checkbox" 
                       checked={reminders.followUp} 
                       onChange={e => setReminders(r => ({ ...r, followUp: e.target.checked }))}
-                      className="w-4 h-4 text-purple-600"
+                      className="h-4 w-4 accent-blue-500"
                     />
                     <div>
-                      <div className="font-medium text-gray-800">Follow-up Calls</div>
-                      <div className="text-sm text-gray-600">Save your preference for post-service call reminders.</div>
+                      <div className="font-medium text-white">Follow-up Calls</div>
+                      <div className="text-sm text-slate-300">Save your preference for post-service call reminders.</div>
                     </div>
-                    <Info className="w-4 h-4 text-purple-500 ml-auto" />
+                    <Info className="ml-auto h-4 w-4 text-blue-100/55" />
                   </label>
                 </div>
                 <Button 
                   onClick={handleSaveReminders} 
-                  className="w-fit bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white"
+                  className="w-fit bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]"
                 >
                   Save Reminder Settings
                 </Button>
@@ -1331,15 +1339,15 @@ export default function VendorProfilePage() {
           </Card>
 
           {/* Enhanced Notification Settings Card */}
-          <Card className="bg-gradient-to-br from-white to-orange-50 border-orange-200 shadow-lg">
+          <Card className="order-6 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Bell className="w-6 h-6 text-orange-600" />
+                <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
+                  <Bell className="h-6 w-6 text-blue-100" />
                 </div>
                 <div>
-                  <CardTitle className="text-xl text-gray-800">Notification Preferences</CardTitle>
-                  <p className="text-sm text-gray-600">Manage saved notification settings for active launch features</p>
+                  <CardTitle className="text-xl text-white">Notification Preferences</CardTitle>
+                  <p className="text-sm text-slate-300">Manage saved notification settings for active launch features</p>
                 </div>
               </div>
             </CardHeader>
@@ -1353,8 +1361,8 @@ export default function VendorProfilePage() {
                   return (
                   <label
                     key={key}
-                    className={`flex items-center gap-3 p-3 bg-white rounded-lg border border-orange-200 transition-colors ${
-                      copy.disabled ? 'opacity-75 cursor-not-allowed' : 'hover:bg-orange-50 cursor-pointer'
+                    className={`flex items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors ${
+                      copy.disabled ? 'cursor-not-allowed opacity-55 grayscale' : 'cursor-pointer hover:bg-slate-800'
                     }`}
                   >
                     <input 
@@ -1362,11 +1370,11 @@ export default function VendorProfilePage() {
                       checked={value} 
                       onChange={e => setNotificationSettings(s => ({ ...s, [key]: e.target.checked }))}
                       disabled={copy.disabled}
-                      className="w-4 h-4 text-orange-600"
+                      className="h-4 w-4 accent-blue-500"
                     />
                     <div>
-                      <div className="font-medium text-gray-800">{copy.label}</div>
-                      <div className="text-sm text-gray-600">{copy.description}</div>
+                      <div className="font-medium text-white">{copy.label}</div>
+                      <div className="text-sm text-slate-300">{copy.description}</div>
                     </div>
                   </label>
                   );
@@ -1374,7 +1382,7 @@ export default function VendorProfilePage() {
               </div>
               <Button 
                 onClick={handleSaveNotifications} 
-                className="w-fit mt-4 bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
+                className="mt-4 w-fit bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]"
               >
                 Save Notification Settings
               </Button>
@@ -1391,39 +1399,39 @@ export default function VendorProfilePage() {
         {/* Enhanced Right Panel */}
         <aside className="w-full xl:w-80 space-y-6">
           {/* Enhanced Security Card */}
-          <Card className="border-blue-200 bg-blue-50 shadow-sm">
+          <Card className="border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-blue-100 p-2">
-                  <Shield className="h-5 w-5 text-blue-700" />
+                <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
+                  <Shield className="h-5 w-5 text-blue-100" />
                 </div>
-                <CardTitle className="text-lg text-blue-950">Account Protection</CardTitle>
+                <CardTitle className="text-lg text-white">Account Protection</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4 text-sm text-blue-950">
+              <div className="space-y-4 text-sm text-slate-200">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium">Vendor sign-in protection</span>
-                    <Badge className="bg-blue-100 text-blue-800">
+                    <Badge className="border border-blue-300/20 bg-blue-500/15 text-blue-100">
                       Active
                     </Badge>
                   </div>
-                  <p className="text-xs leading-5 text-blue-900">
+                  <p className="text-xs leading-5 text-slate-300">
                     Review MFA, passkeys, and login alerts from Security Settings. This protects dashboard,
                     team, and job access.
                   </p>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium">Login notifications</span>
-                  <Badge className={(profile?.loginNotifications ?? securitySettings.loginNotifications) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}>
+                  <Badge className={(profile?.loginNotifications ?? securitySettings.loginNotifications) ? 'border border-emerald-300/25 bg-emerald-500/15 text-emerald-100' : 'border border-slate-500/25 bg-slate-800 text-slate-200'}>
                     {(profile?.loginNotifications ?? securitySettings.loginNotifications) ? 'On' : 'Off'}
                   </Badge>
                 </div>
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="w-full bg-white hover:bg-blue-50"
+                  className="w-full border-white/15 bg-slate-900 text-white hover:bg-slate-800"
                   onClick={() => setShowSecurityModal(true)}
                 >
                   <Shield className="w-4 h-4 mr-2" />

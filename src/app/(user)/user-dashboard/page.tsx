@@ -409,7 +409,7 @@ export default function UserDashboardPage() {
     {
       title: 'Support & Help',
       description: 'Open customer help guidance and the published support path.',
-      href: '/help?role=customer&returnTo=%2Fuser-dashboard&returnLabel=Back%20to%20Customer%20Dashboard',
+      href: '/customer/support?returnTo=%2Fuser-dashboard&returnLabel=Back%20to%20Customer%20Dashboard',
       icon: HelpCircle,
       buttonLabel: 'Open Help Center',
     },

@@ -382,7 +382,7 @@ function BookingMediaDetailPageContent() {
       ? `/my-bookings/${bookingId}?returnTo=${encodeURIComponent('/reviews')}`
       : `/my-bookings/${bookingId}`;
   const helpReturnLabel = resolvedReturnTo === '/reviews' ? 'Back to review detail' : 'Back to service page';
-  const customerHelpHref = `/help?role=customer&returnTo=${encodeURIComponent(detailReturnPath)}&returnLabel=${encodeURIComponent(helpReturnLabel)}`;
+  const customerHelpHref = `/customer/support?returnTo=${encodeURIComponent(detailReturnPath)}&returnLabel=${encodeURIComponent(helpReturnLabel)}`;
   const canPlayFullStory = orderedStageVideos.length > 1;
   const completedWithoutCustomerVisibleVideo =
     completedRecord &&
@@ -782,7 +782,7 @@ function BookingMediaDetailPageContent() {
                 <Link href={resolvedReturnTo} className="text-blue-700 underline font-medium">
                   {returnLinkLabel}
                 </Link>
-                <Link href="/help" className="text-blue-700 underline font-medium">
+                <Link href={customerHelpHref} className="text-blue-700 underline font-medium">
                   Open Help Center
                 </Link>
               </div>
@@ -794,7 +794,7 @@ function BookingMediaDetailPageContent() {
                 <Link href={resolvedReturnTo} className="text-blue-700 underline font-medium">
                   {returnLinkLabel}
                 </Link>
-                <Link href="/help" className="text-blue-700 underline font-medium">
+                <Link href={customerHelpHref} className="text-blue-700 underline font-medium">
                   Open Help Center
                 </Link>
               </div>
@@ -1129,18 +1129,18 @@ function BookingMediaDetailPageContent() {
               {[
                 {
                   key: 'before' as const,
-                  title: 'Stage 1',
-                  subtitle: 'Starting Condition',
+                  title: 'Starting Condition',
+                  subtitle: 'How the work looked before service began',
                 },
                 {
                   key: 'during' as const,
-                  title: 'Stage 2',
-                  subtitle: 'Work in Progress',
+                  title: 'Work in Progress',
+                  subtitle: 'What changed while the work was underway',
                 },
                 {
                   key: 'after' as const,
-                  title: 'Stage 3',
-                  subtitle: 'Final Result',
+                  title: 'Final Result',
+                  subtitle: 'How the completed work looked afterward',
                 },
               ].map((stage) => {
                 const stageVideo = timelineVideos[stage.key];

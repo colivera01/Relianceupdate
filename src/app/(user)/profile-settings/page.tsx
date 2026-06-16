@@ -995,7 +995,7 @@ export default function ProfileSettingsPage() {
                 <button
                   onClick={() =>
                     router.push(
-                      '/help?role=customer&returnTo=%2Fprofile-settings&returnLabel=Back%20to%20Profile%20Settings'
+                      '/customer/support?returnTo=%2Fprofile-settings&returnLabel=Back%20to%20Profile%20Settings'
                     )
                   }
                   className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"

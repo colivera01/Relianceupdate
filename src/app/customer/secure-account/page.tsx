@@ -44,7 +44,7 @@ export default async function CustomerSecureAccountPage() {
       secondaryActions={[
         {
           label: "Open Help Center",
-          href: "/help?role=customer&returnTo=%2Fcustomer%2Fsecure-account&returnLabel=Back%20to%20Secure%20Account",
+          href: "/customer/support?returnTo=%2Fcustomer%2Fsecure-account&returnLabel=Back%20to%20Secure%20Account",
         },
         { label: "Go to Dashboard", href: "/user-dashboard" },
       ]}

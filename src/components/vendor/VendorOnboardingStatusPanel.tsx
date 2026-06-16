@@ -40,7 +40,7 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
             {onboarding.publicVisibilityLabel}
           </Badge>
           <Badge variant="outline" className="border-white/15 bg-white/6 text-white/88">
-            {onboarding.serviceDraftCount} saved service{onboarding.serviceDraftCount === 1 ? '' : 's'}
+            {onboarding.serviceDraftCount} saved service offered{onboarding.serviceDraftCount === 1 ? '' : 's'}
           </Badge>
           <Badge variant="outline" className="border-white/15 bg-white/6 text-white/88">
             {onboarding.publishedServiceCount} published service{onboarding.publishedServiceCount === 1 ? '' : 's'}
@@ -50,21 +50,11 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
 
       {recommendedAction ? (
         <div className="mt-5 rounded-2xl border border-blue-400/25 bg-blue-500/10 p-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-100/78">
-                Next recommended action
-              </p>
-              <p className="text-base font-semibold text-white">{recommendedAction.label}</p>
-              <p className="text-sm leading-6 text-white/72">{recommendedAction.detail}</p>
-            </div>
-            <Link
-              href={recommendedAction.href}
-              className="inline-flex items-center justify-center rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
-            >
-              Open next step
-            </Link>
-          </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-100/78">
+            Next recommended action
+          </p>
+          <p className="mt-1 text-base font-semibold text-white">{recommendedAction.label}</p>
+          <p className="mt-1 text-sm leading-6 text-white/72">{recommendedAction.detail}</p>
         </div>
       ) : null}
 
@@ -74,7 +64,7 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
             key={item.key}
             className={`rounded-2xl border px-4 py-4 ${
               item.complete
-                ? 'border-emerald-400/30 bg-emerald-500/10'
+                ? 'border-blue-400/30 bg-blue-500/10'
                 : 'border-white/10 bg-white/5'
             }`}
           >
@@ -83,8 +73,8 @@ export default function VendorOnboardingStatusPanel({ profile, showActions = fal
               <span
                 className={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
                   item.complete
-                    ? 'bg-emerald-500/18 text-emerald-200'
-                    : 'bg-amber-500/18 text-amber-200'
+                    ? 'bg-blue-500/18 text-blue-100'
+                    : 'border border-blue-300/25 bg-slate-900/75 text-blue-100'
                 }`}
               >
                 {item.complete ? 'Complete' : 'Needs action'}

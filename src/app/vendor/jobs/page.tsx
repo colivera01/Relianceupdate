@@ -121,6 +121,24 @@ const JOB_WORKFLOW_GUIDE_DISMISSED_KEY = 'reliance.vendorJobs.workflowGuideDismi
 const VENDOR_JOBS_TIMEOUT_MS = 20000;
 const VENDOR_TEAM_TIMEOUT_MS = 15000;
 const VENDOR_SERVICES_TIMEOUT_MS = 15000;
+const ADD_NEW_SERVICE_VALUE = "__add_new_service__";
+
+function descriptionWithEstimatedDuration(description: string, estimatedDuration: string) {
+  const cleanDescription = String(description || '').trim();
+  const duration = Number(estimatedDuration);
+  if (!Number.isFinite(duration) || duration <= 0) return cleanDescription;
+  return `${cleanDescription}\n\nEstimated duration: ${Math.round(duration)} minutes.`;
+}
+
+function friendlyAiJobError(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : String(error || "Failed to generate AI job guidance");
+  const lower = message.toLowerCase();
+  if (lower.includes("disabled") || lower.includes("configuration") || lower.includes("openai")) {
+    return "AI job recovery help is not active in this environment yet. The job workflow still works normally; enable the OpenAI settings later for recovery recommendations.";
+  }
+  return message;
+}
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
@@ -331,6 +349,12 @@ export default function VendorJobs() {
   const [selectedJobForVideoId, setSelectedJobForVideoId] = useState<string>('');
   const [selectedJob, setSelectedJob] = useState(null);
   const [newJob, setNewJob] = useState({ title: '', client: '', phone: '', email: '', serviceId: '' });
+  const [newServiceForJob, setNewServiceForJob] = useState({
+    name: '',
+    description: '',
+    price: '',
+    estimatedDuration: '',
+  });
   const [createJobError, setCreateJobError] = useState('');
   const [isCreatingJob, setIsCreatingJob] = useState(false);
   const [jobFieldErrors, setJobFieldErrors] = useState({
@@ -352,7 +376,6 @@ export default function VendorJobs() {
       String(member?.status || '').trim().toUpperCase() === 'ACTIVE' &&
       String(member?.role || '').trim().toUpperCase() === 'MANAGER'
   );
-  const jobTitleInputRef = useRef<HTMLInputElement | null>(null);
   const clientNameInputRef = useRef<HTMLInputElement | null>(null);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const emailInputRef = useRef<HTMLInputElement | null>(null);
@@ -461,8 +484,7 @@ export default function VendorJobs() {
       console.error('[vendor/jobs] job recovery assistant error:', error);
       setJobRecoveryErrorByJobId((current) => ({
         ...current,
-        [jobId]:
-          error instanceof Error ? error.message : 'Failed to generate AI job recovery guidance',
+        [jobId]: friendlyAiJobError(error),
       }));
     } finally {
       setJobRecoveryLoadingId(null);
@@ -971,20 +993,34 @@ export default function VendorJobs() {
     if (selectedCalendarDate) return;
     setSelectedCalendarDate(new Date().toISOString().split('T')[0]);
   }, [selectedCalendarDate]);
-  const trimmedJobTitle = newJob.title.trim();
   const trimmedClientName = newJob.client.trim();
   const phoneDigits = getPhoneDigits(newJob.phone);
   const trimmedEmail = newJob.email.trim();
   const selectedServiceId = newJob.serviceId.trim();
+  const isAddingServiceFromJob = selectedServiceId === ADD_NEW_SERVICE_VALUE;
+  const selectedServiceForWorkRecord = serviceOptions.find((service) => service.id === selectedServiceId);
+  const newServiceName = newServiceForJob.name.trim();
+  const newServiceDescription = newServiceForJob.description.trim();
+  const newServicePrice = Number(newServiceForJob.price);
+  const newServiceDuration = newServiceForJob.estimatedDuration.trim()
+    ? Number(newServiceForJob.estimatedDuration)
+    : null;
+  const newServiceIsValid = Boolean(
+    newServiceName &&
+    newServiceDescription &&
+    Number.isFinite(newServicePrice) &&
+    newServicePrice >= 0 &&
+    (newServiceDuration === null ||
+      (Number.isFinite(newServiceDuration) && newServiceDuration > 0))
+  );
   const isCreateJobEmailValid = trimmedEmail.includes('@') && trimmedEmail.includes('.');
   const isEditMode = jobModalMode === 'edit';
   const canCreateJob = Boolean(
-    trimmedJobTitle &&
     trimmedClientName &&
     (isEditMode || phoneDigits.length === 10) &&
     (isEditMode || isCreateJobEmailValid) &&
     selectedServiceId &&
-    serviceOptions.length > 0 &&
+    (isAddingServiceFromJob ? newServiceIsValid : Boolean(selectedServiceForWorkRecord)) &&
     vendorId &&
     !isCreatingJob &&
     !servicesLoading
@@ -2064,17 +2100,23 @@ export default function VendorJobs() {
       return;
     }
 
-    const title = newJob.title.trim();
     const client = newJob.client.trim();
     const normalizedPhoneDigits = getPhoneDigits(newJob.phone);
     const formattedPhone = formatPhoneNumber(normalizedPhoneDigits);
     const email = newJob.email.trim();
     const serviceId = newJob.serviceId.trim();
     const selectedService = serviceOptions.find((service) => service.id === serviceId);
+    const addingServiceFromJob = serviceId === ADD_NEW_SERVICE_VALUE;
+    const manualServiceName = newServiceForJob.name.trim();
+    const manualServiceDescription = newServiceForJob.description.trim();
+    const manualServicePrice = Number(newServiceForJob.price);
+    const manualServiceDuration = newServiceForJob.estimatedDuration.trim()
+      ? Number(newServiceForJob.estimatedDuration)
+      : null;
     const isValidEmail = email.includes('@') && email.includes('.');
     const requiresContactValidation = jobModalMode !== 'edit';
     const nextJobErrors = {
-      title: title ? '' : 'Job title is required',
+      title: '',
       client: client ? '' : 'Client name is required',
       phone: !requiresContactValidation || normalizedPhoneDigits.length === 10 ? '' : 'Valid phone number is required',
       email: !requiresContactValidation || isValidEmail ? '' : 'Valid email is required',
@@ -2089,9 +2131,7 @@ export default function VendorJobs() {
       nextJobErrors.email ||
       nextJobErrors.serviceId
     ) {
-      if (nextJobErrors.title) {
-        jobTitleInputRef.current?.focus();
-      } else if (nextJobErrors.client) {
+      if (nextJobErrors.client) {
         clientNameInputRef.current?.focus();
       } else if (nextJobErrors.phone) {
         phoneInputRef.current?.focus();
@@ -2100,6 +2140,33 @@ export default function VendorJobs() {
       } else if (nextJobErrors.serviceId) {
         serviceTypeSelectRef.current?.focus();
       }
+      return;
+    }
+
+    if (addingServiceFromJob) {
+      if (
+        !manualServiceName ||
+        !manualServiceDescription ||
+        !Number.isFinite(manualServicePrice) ||
+        manualServicePrice < 0
+      ) {
+        setCreateJobError(
+          'Add the service name, customer-facing description, and non-negative reference price before creating the work record.'
+        );
+        return;
+      }
+      if (
+        manualServiceDuration !== null &&
+        (!Number.isFinite(manualServiceDuration) || manualServiceDuration <= 0)
+      ) {
+        setCreateJobError('Estimated service duration must be a positive number of minutes.');
+        return;
+      }
+    }
+
+    if (!addingServiceFromJob && !selectedService) {
+      setCreateJobError('Choose a saved service offered so Reliance can use a consistent work title.');
+      serviceTypeSelectRef.current?.focus();
       return;
     }
 
@@ -2120,13 +2187,14 @@ export default function VendorJobs() {
           { id: jobFormTargetId },
           "UPDATE_JOB",
           {
-            title,
+            title: selectedService?.name || newJob.title.trim() || 'Work record',
             clientName: client,
             serviceId: serviceId || undefined,
           }
         );
         await reloadJobsFromBackend();
         setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
+        setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
         setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
         setJobModalMode('create');
         setJobFormTargetId(null);
@@ -2141,11 +2209,53 @@ export default function VendorJobs() {
 
     setCreateJobError('');
     setIsCreatingJob(true);
+    let resolvedServiceId = serviceId;
+    let resolvedServiceName = selectedService?.name || '';
+
+    if (addingServiceFromJob) {
+      try {
+        const createServiceRes = await fetch('/api/services', {
+          method: 'POST',
+          headers: getRequestHeaders(),
+          body: JSON.stringify({
+            vendor_id: vendorId,
+            name: manualServiceName,
+            description: descriptionWithEstimatedDuration(
+              manualServiceDescription,
+              manualServiceDuration === null ? '' : String(manualServiceDuration)
+            ),
+            price: manualServicePrice,
+          }),
+        });
+        const createServicePayload = await createServiceRes.json().catch(() => ({}));
+        if (!createServiceRes.ok) {
+          throw new Error(
+            createServicePayload?.error ||
+              createServicePayload?.message ||
+              `Failed to create service offered (${createServiceRes.status})`
+          );
+        }
+        resolvedServiceId = String(createServicePayload?.service?.id || '').trim();
+        resolvedServiceName = String(createServicePayload?.service?.name || manualServiceName).trim();
+        if (!resolvedServiceId) {
+          throw new Error('Service offered was created without an id.');
+        }
+        setServiceOptions((current) => {
+          if (current.some((service) => service.id === resolvedServiceId)) return current;
+          return [...current, { id: resolvedServiceId, name: resolvedServiceName || manualServiceName }];
+        });
+      } catch (error) {
+        setCreateJobError(error instanceof Error ? error.message : 'Failed to add service offered.');
+        setIsCreatingJob(false);
+        return;
+      }
+    }
+
     const now = new Date();
     const payload = {
       vendor_id: vendorId,
-      service_id: serviceId,
-      title: selectedService?.name ? `${selectedService.name} - ${title}` : title,
+      service_id: resolvedServiceId,
+      title: resolvedServiceName || 'Work record',
       client_name: client,
       client_phone: normalizedPhoneDigits || undefined,
       client_email: email || undefined,
@@ -2178,6 +2288,7 @@ export default function VendorJobs() {
       await reloadJobsFromBackend();
       setJobsLoadError('');
       setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
+      setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
       setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
       setJobModalMode('create');
       setJobFormTargetId(null);
@@ -2898,6 +3009,7 @@ export default function VendorJobs() {
       applyConsentStatusFromBackend(consentPayload?.consent?.status || 'REQUESTED', {
         consentToken: token,
       });
+      setGeoInfo('Customer consent request sent. The customer can now accept from their email or text link.');
       const bookingKey = selectedJobSnapshot?.bookingId
         ? String(selectedJobSnapshot.bookingId)
         : String(selectedJobSnapshot?.id || '');
@@ -3910,39 +4022,11 @@ export default function VendorJobs() {
           </div>
         </div>
         
-        {/* View Toggle */}
         <div className="flex items-center gap-3">
           <TutorialEntryPoint guide={tutorialGuides.vendorJobs} surface="light" />
-          <span className="text-sm font-medium text-gray-700">View Mode:</span>
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setIsEmployeeView(false)}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                  !isEmployeeView 
-                    ? 'bg-white text-blue-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                Manager
-              </button>
-              <button
-                onClick={() => setIsEmployeeView(true)}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                  isEmployeeView 
-                    ? 'bg-white text-green-600 shadow-sm' 
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                Employee
-              </button>
-            </div>
-            <p className="text-xs text-gray-500">
-              {isEmployeeView
-                ? 'Employee View: See only jobs assigned to you.'
-                : 'Manager View: See all jobs and manage assignments.'}
-            </p>
-          </div>
+          <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+            Manager workspace
+          </Badge>
         </div>
       </div>
       </div>
@@ -3994,6 +4078,7 @@ export default function VendorJobs() {
                   setJobModalMode('create');
                   setJobFormTargetId(null);
                   setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
+                  setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
                   setCreateJobError('');
                   setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
                   setShowCreateJob(true);
@@ -4477,7 +4562,7 @@ export default function VendorJobs() {
                   <h4 className="font-medium text-gray-900">Job Information</h4>
                   <div className="space-y-3">
                     <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Work Title:</span>
+                      <span className="text-sm text-gray-600">Work Type:</span>
                       <span className="text-sm font-medium">{selectedVideoForDetails.jobTitle}</span>
                     </div>
                     <div className="flex justify-between">
@@ -4586,6 +4671,7 @@ export default function VendorJobs() {
           if (!open) {
             setJobModalMode('create');
             setJobFormTargetId(null);
+            setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
           }
         }}
       >
@@ -4595,30 +4681,60 @@ export default function VendorJobs() {
             <DialogDescription>
               {jobModalMode === 'edit'
                 ? 'Update saved work details.'
-                : 'Use this when work was scheduled outside Reliance or you need a test/demo work record. Customer-facing services are managed from Services Offered.'}
+                : 'Use this when work was scheduled outside Reliance or you need a test/demo work record. Choose the service offered this work belongs to, or add a new service offered while you create the record.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Work Title <span aria-hidden="true">*</span>
+                Service Offered / Work Type <span aria-hidden="true">*</span>
               </label>
-              <Input
-                ref={jobTitleInputRef}
-                placeholder="Enter work title"
-                value={newJob.title}
+              <select
+                ref={serviceTypeSelectRef}
+                value={newJob.serviceId}
                 required
-                aria-invalid={Boolean(jobFieldErrors.title)}
+                aria-invalid={Boolean(jobFieldErrors.serviceId)}
                 onChange={(e) => {
                   const value = e.target.value;
-                  setNewJob({ ...newJob, title: value });
-                  if (value.trim()) {
-                    setJobFieldErrors((prev) => ({ ...prev, title: '' }));
+                  const chosenService = serviceOptions.find((service) => service.id === value);
+                  setNewJob({
+                    ...newJob,
+                    serviceId: value,
+                    title: value === ADD_NEW_SERVICE_VALUE ? '' : chosenService?.name || '',
+                  });
+                  if (value !== ADD_NEW_SERVICE_VALUE) {
+                    setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
+                  }
+                  if (value) {
+                    setJobFieldErrors((prev) => ({ ...prev, serviceId: '', title: '' }));
                   }
                 }}
-              />
-              {jobFieldErrors.title && (
-                <p className="mt-1 text-sm text-red-600">{jobFieldErrors.title}</p>
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                disabled={servicesLoading}
+              >
+                <option value="">
+                  {servicesLoading ? 'Loading services...' : 'Select a service offered'}
+                </option>
+                {jobModalMode !== 'edit' ? (
+                  <option value={ADD_NEW_SERVICE_VALUE}>+ Add a new service offered</option>
+                ) : null}
+                {serviceOptions.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                This becomes the work title customers, employees, videos, reviews, and proof cards reference.
+              </p>
+              {jobFieldErrors.serviceId && (
+                <p className="mt-1 text-sm text-red-600">{jobFieldErrors.serviceId}</p>
+              )}
+              {!servicesLoading && serviceOptions.length === 0 && (
+                <p className="mt-1 text-sm text-amber-700">No Services Offered items available. Add a customer-facing service offered first.</p>
+              )}
+              {servicesLoadError && (
+                <p className="mt-1 text-xs text-amber-700">{servicesLoadError}</p>
               )}
             </div>
             <div>
@@ -4689,44 +4805,79 @@ export default function VendorJobs() {
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.email}</p>
               )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Service From Your Menu <span aria-hidden="true">*</span>
-              </label>
-              <select
-                ref={serviceTypeSelectRef}
-                value={newJob.serviceId}
-                required
-                aria-invalid={Boolean(jobFieldErrors.serviceId)}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setNewJob({ ...newJob, serviceId: value });
-                  if (value) {
-                    setJobFieldErrors((prev) => ({ ...prev, serviceId: '' }));
-                  }
-                }}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                disabled={servicesLoading || serviceOptions.length === 0}
-              >
-                <option value="">
-                  {servicesLoading ? 'Loading services...' : 'Select service'}
-                </option>
-                {serviceOptions.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name}
-                  </option>
-                ))}
-              </select>
-              {jobFieldErrors.serviceId && (
-                <p className="mt-1 text-sm text-red-600">{jobFieldErrors.serviceId}</p>
-              )}
-              {!servicesLoading && serviceOptions.length === 0 && (
-                <p className="mt-1 text-sm text-amber-700">No Services Offered items available. Add a customer-facing service offered first.</p>
-              )}
-              {servicesLoadError && (
-                <p className="mt-1 text-xs text-amber-700">{servicesLoadError}</p>
-              )}
-            </div>
+            {newJob.serviceId === ADD_NEW_SERVICE_VALUE ? (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="mb-3">
+                  <p className="text-sm font-semibold text-blue-950">Add this to Services Offered</p>
+                  <p className="mt-1 text-xs leading-5 text-blue-800">
+                    This creates a customer-facing menu item first, then links this manual work record to it.
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-900">
+                      Service name
+                    </label>
+                    <Input
+                      value={newServiceForJob.name}
+                      onChange={(event) =>
+                        setNewServiceForJob((current) => ({ ...current, name: event.target.value }))
+                      }
+                      placeholder="Example: Outlet installation"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-900">
+                      Estimated duration
+                    </label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={newServiceForJob.estimatedDuration}
+                      onChange={(event) =>
+                        setNewServiceForJob((current) => ({
+                          ...current,
+                          estimatedDuration: event.target.value,
+                        }))
+                      }
+                      placeholder="Minutes, example: 60"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-900">
+                      Reference price
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newServiceForJob.price}
+                      onChange={(event) =>
+                        setNewServiceForJob((current) => ({ ...current, price: event.target.value }))
+                      }
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-900">
+                      Customer-facing description
+                    </label>
+                    <textarea
+                      value={newServiceForJob.description}
+                      onChange={(event) =>
+                        setNewServiceForJob((current) => ({
+                          ...current,
+                          description: event.target.value,
+                        }))
+                      }
+                      rows={3}
+                      className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200"
+                      placeholder="Describe what customers can expect from this service."
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {createJobError && (
               <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
                 {createJobError}

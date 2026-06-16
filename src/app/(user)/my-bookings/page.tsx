@@ -73,7 +73,7 @@ export default function MyBookingsPage() {
   const [mediaByBooking, setMediaByBooking] = useState<Record<string, MediaState>>({});
   const [proofSignalByBooking, setProofSignalByBooking] = useState<Record<string, ProofSignal>>({});
   const customerHelpHref =
-    '/help?role=customer&returnTo=%2Fmy-bookings&returnLabel=Back%20to%20My%20Service%20Records';
+    '/customer/support?returnTo=%2Fmy-bookings&returnLabel=Back%20to%20My%20Service%20Records';
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);

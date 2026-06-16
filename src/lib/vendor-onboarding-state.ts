@@ -100,7 +100,7 @@ export function buildVendorOnboardingState(
   if (!hasRequiredProfileFields) {
     nextStep = `Finish your business profile. Missing: ${missingProfileFields.join(", ")}.`;
   } else if (serviceDraftCount === 0) {
-    nextStep = "Add at least one service offering with a customer-facing price.";
+    nextStep = "Add at least one service offered with a customer-facing reference price.";
   } else if (membershipStatus === "PENDING") {
     nextStep =
       "Your business profile and services are saved. Wait for admin approval while refining your details.";
@@ -127,8 +127,8 @@ export function buildVendorOnboardingState(
       complete: serviceDraftCount > 0,
       detail:
         serviceDraftCount > 0
-          ? `${serviceDraftCount} saved service${serviceDraftCount === 1 ? "" : "s"}.`
-          : "Add at least one service offering with pricing before admin review.",
+          ? `${serviceDraftCount} saved service offered${serviceDraftCount === 1 ? "" : "s"}.`
+          : "Add at least one service offered with pricing before admin review.",
     },
     {
       key: "approval",

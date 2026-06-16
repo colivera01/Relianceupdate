@@ -4,8 +4,8 @@ type PublicHeroArtworkProps = {
 };
 
 export function PublicHeroArtwork({
-  serviceName = 'Public service video',
-  vendorName = 'Reliance proof platform',
+  serviceName = 'Reliance explainer',
+  vendorName = 'Video coming soon',
 }: PublicHeroArtworkProps) {
   return (
     <div className="relative h-[17rem] overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#040913,#081120_52%,#0d1d36_100%)] sm:h-[18rem]">
@@ -73,29 +73,29 @@ export function PublicHeroArtwork({
       </svg>
 
       <div className="absolute left-5 top-5 flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-white/72 backdrop-blur-md">
-        Public Service Video
+        Explainer Video
       </div>
 
       <div className="absolute right-5 top-5 rounded-full border border-white/10 bg-[rgba(6,12,23,0.72)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70 backdrop-blur-md">
-        Start / In Progress / Final
+        Coming Soon
       </div>
 
       <div className="absolute left-5 top-[4.8rem] max-w-[48%] pr-2">
         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/52">
-          See what&apos;s available
+          See how Reliance works
         </div>
         <div className="mt-2.5 font-display text-[1.18rem] font-semibold leading-[1.08] text-white sm:text-[1.34rem]">
-          Know when public proof is available.
+          A short guide will live here.
         </div>
         <p className="mt-2.5 text-[13px] leading-5 text-white/68">
-          Some providers share approved public service videos after completed work. When no video is
-          available yet, you can still compare reviews, provider details, and services offered.
+          This space is reserved for a future Reliance explainer video that shows customers how
+          public proof, reviews, and Trust Score help them choose with confidence.
         </p>
       </div>
 
       <div className="absolute bottom-5 right-5 w-[198px] rounded-[22px] border border-white/10 bg-[rgba(6,11,21,0.78)] p-4 text-white backdrop-blur-xl sm:w-[210px]">
         <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/54">
-          Featured preview
+          Future video
         </div>
         <div className="mt-2 text-base font-semibold leading-tight">{serviceName}</div>
         <div className="mt-1 text-sm text-white/60">{vendorName}</div>

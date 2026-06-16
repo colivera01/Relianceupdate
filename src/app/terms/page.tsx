@@ -10,7 +10,7 @@ export default function TermsPage() {
 
       <h3>1. Platform Role</h3>
       <p>
-        Reliance is a technology platform that facilitates service-related media access,
+        Reliance is a technology platform that supports proof-of-service media access,
         communication, consent, and review workflows between users and service providers.
         Reliance does not perform, supervise, or control the underlying vendor services.
       </p>
@@ -22,7 +22,15 @@ export default function TermsPage() {
         statement, representation, or recording made by vendors.
       </p>
 
-      <h3>3. Consent and Recordings</h3>
+      <h3>3. Public Proof, Reviews, and Trust Signals</h3>
+      <p>
+        Public service videos, reviews, Trust Score information, and other proof signals are
+        intended to help users compare available information. They are not a guarantee,
+        certification, warranty, endorsement, or promise of future performance. Users remain
+        responsible for deciding whether to contact, hire, or continue working with a vendor.
+      </p>
+
+      <h3>4. Consent and Recordings</h3>
       <p>
         You acknowledge that service-related recordings may include starting-condition,
         work-in-progress, and final-result documentation when proper consent has been obtained.
@@ -30,21 +38,45 @@ export default function TermsPage() {
         and related platform processes.
       </p>
 
-      <h3>4. Acceptable Use</h3>
+      <h3>5. Vendor Claims, Licensing, and Compliance</h3>
+      <p>
+        Vendors are responsible for maintaining any licenses, insurance, permits, authorizations,
+        workplace practices, customer permissions, and legal compliance required for their work.
+        Vendors must not upload misleading media, submit false business information, impersonate
+        another person or business, or use Reliance to create a false impression of completed work.
+      </p>
+
+      <h3>6. Acceptable Use</h3>
       <p>
         You agree not to misuse the platform, including fraud, impersonation, unauthorized sharing
         of content, attempts to bypass consent controls, or interference with platform operations,
         security, or availability.
       </p>
 
-      <h3>5. Account and Security Responsibilities</h3>
+      <h3>7. Communications</h3>
+      <p>
+        Reliance may send account, verification, invite, consent, service-record, review, security,
+        and support communications by email, SMS, or other available channels. Message delivery may
+        depend on third-party providers, carrier filtering, contact accuracy, and user device
+        settings.
+      </p>
+
+      <h3>8. Account and Security Responsibilities</h3>
       <p>
         You are responsible for maintaining the confidentiality of your account credentials and for
         ensuring your account information is accurate and current. You are responsible for activity
         occurring under your account unless prohibited by applicable law.
       </p>
 
-      <h3>6. Limitation of Liability</h3>
+      <h3>9. Moderation and Availability</h3>
+      <p>
+        Reliance may review, reject, restrict, hide, remove, or delay content, accounts,
+        promotions, service records, reviews, or public proof when needed for safety, quality,
+        compliance, launch readiness, suspected abuse, or platform integrity. Reliance may also
+        change, pause, or discontinue features during beta or launch operations.
+      </p>
+
+      <h3>10. Limitation of Liability</h3>
       <p>
         The platform is provided on an &quot;as is&quot; and &quot;as available&quot; basis. To the maximum
         extent permitted by law, Reliance disclaims warranties and is not liable for indirect,
@@ -54,14 +86,14 @@ export default function TermsPage() {
         period preceding the claim.
       </p>
 
-      <h3>7. Indemnification</h3>
+      <h3>11. Indemnification</h3>
       <p>
         You agree to defend, indemnify, and hold harmless Reliance, its affiliates, and personnel
         from claims, liabilities, damages, losses, and expenses arising from your misuse of the
         platform, violations of these Terms, unlawful content, or disputes caused by your conduct.
       </p>
 
-      <h3>8. Disputes, Arbitration, and Class Action Waiver</h3>
+      <h3>12. Disputes, Arbitration, and Class Action Waiver</h3>
       <p>
         Any dispute arising out of or relating to these Terms or platform use will be resolved by
         final and binding arbitration on an individual basis, except where prohibited by law.
@@ -69,14 +101,14 @@ export default function TermsPage() {
         class action, class arbitration, or representative proceeding.
       </p>
 
-      <h3>9. Suspension and Termination</h3>
+      <h3>13. Suspension and Termination</h3>
       <p>
         Reliance may suspend, restrict, or terminate access to the platform at its discretion for
         abuse, fraud, policy violations, security concerns, unlawful conduct, or other behavior
         that creates risk for users, vendors, or the platform.
       </p>
 
-      <h3>10. Changes to Terms</h3>
+      <h3>14. Changes to Terms</h3>
       <p>
         Reliance may update these Terms from time to time. Updated terms may be provided through
         the platform or related communications. Continued use of Reliance after updates become

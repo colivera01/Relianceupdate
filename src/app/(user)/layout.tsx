@@ -136,12 +136,26 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
       <main className="reliance-operator-main flex-1 overflow-auto">
         <div className="w-full max-w-6xl px-4 pt-10 pb-6 sm:px-6">
           {availableRoles.length > 1 ? (
-            <div className="mb-6 flex items-center justify-end">
-              <ProfileToggle
-                currentProfile={currentProfile}
-                availableProfiles={availableRoles}
-                userId={userId}
-              />
+            <div className="mb-6 rounded-[28px] border border-white/10 bg-white/6 px-5 py-4 shadow-[0_18px_60px_rgba(4,9,20,0.18)] backdrop-blur-xl">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-100/78">
+                    Linked account access
+                  </p>
+                  <p className="text-sm font-medium text-white">
+                    This sign-in is connected to more than one Reliance view.
+                  </p>
+                  <p className="text-sm leading-6 text-white/68">
+                    Move between your customer account and business tools without signing out.
+                  </p>
+                </div>
+                <ProfileToggle
+                  currentProfile={currentProfile}
+                  availableProfiles={availableRoles}
+                  userId={userId}
+                  className="shrink-0"
+                />
+              </div>
             </div>
           ) : null}
           {content}

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { VendorGrowthSummary } from "@/lib/vendor-growth-summary";
@@ -9,16 +8,16 @@ const toneClasses: Record<
   { card: string; badge: string }
 > = {
   success: {
-    card: "border-emerald-200 bg-emerald-50",
-    badge: "border-emerald-200 bg-emerald-100 text-emerald-800",
+    card: "border-blue-400/30 bg-blue-500/10",
+    badge: "border-blue-300/40 bg-blue-500/15 text-blue-100",
   },
   warning: {
-    card: "border-blue-200 bg-blue-50",
-    badge: "border-blue-200 bg-blue-100 text-blue-900",
+    card: "border-blue-300/20 bg-slate-900/72",
+    badge: "border-blue-300/35 bg-blue-500/12 text-blue-100",
   },
   neutral: {
-    card: "border-slate-200 bg-slate-50",
-    badge: "border-slate-200 bg-white text-slate-700",
+    card: "border-white/10 bg-white/6",
+    badge: "border-white/12 bg-white/8 text-white/78",
   },
 };
 
@@ -32,26 +31,26 @@ export function VendorBusinessVisibilitySection({
   const promotionTone = toneClasses[summary.promotionStatus.tone];
 
   return (
-    <section className="mb-8 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="mb-8 rounded-[32px] border border-white/10 bg-slate-950/65 p-6 shadow-[0_22px_70px_rgba(2,6,14,0.28)]">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="max-w-3xl space-y-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-100/70">
             What customers can see
           </div>
-          <h2 className="font-display text-3xl font-semibold text-slate-950">
+          <h2 className="font-display text-3xl font-semibold text-white">
             {summary.visibilityTitle}
           </h2>
-          <p className="text-sm leading-7 text-slate-600">{summary.visibilityDetail}</p>
+          <p className="text-sm leading-7 text-slate-300">{summary.visibilityDetail}</p>
         </div>
 
         <div className="flex flex-wrap gap-3">
           {summary.publicProfileHref ? (
             <Button asChild className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
-              <Link href={summary.publicProfileHref}>View Public Profile</Link>
+              <a href={summary.publicProfileHref}>View Public Profile</a>
             </Button>
           ) : null}
           <Button asChild variant="outline" className="rounded-full">
-            <Link href="/vendor/services">Manage Services Offered</Link>
+            <a href="/vendor/services">Manage Services Offered</a>
           </Button>
         </div>
       </div>
@@ -63,40 +62,40 @@ export function VendorBusinessVisibilitySection({
           return (
             <div key={metric.label} className={`rounded-3xl border p-4 ${tone.card}`}>
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-100/62">
                   {metric.label}
                 </div>
-                <Icon className="h-4 w-4 text-slate-500" />
+                <Icon className="h-4 w-4 text-blue-100/55" />
               </div>
-              <div className="mt-3 text-lg font-semibold text-slate-950">{metric.value}</div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{metric.detail}</p>
+              <div className="mt-3 text-lg font-semibold text-white">{metric.value}</div>
+              <p className="mt-2 text-sm leading-6 text-slate-300">{metric.detail}</p>
             </div>
           );
         })}
 
         <div className={`rounded-3xl border p-4 ${promotionTone.card}`}>
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-100/62">
               Promotion eligibility
             </div>
-            <Megaphone className="h-4 w-4 text-slate-500" />
+            <Megaphone className="h-4 w-4 text-blue-100/55" />
           </div>
           <div className="mt-3">
             <Badge variant="outline" className={promotionTone.badge}>
               {summary.promotionStatus.label}
             </Badge>
           </div>
-          <p className="mt-3 text-sm leading-6 text-slate-600">{summary.promotionStatus.detail}</p>
+          <p className="mt-3 text-sm leading-6 text-slate-300">{summary.promotionStatus.detail}</p>
         </div>
       </div>
 
-      <div className="mt-6 rounded-3xl border border-blue-100 bg-blue-50 p-5">
+      <div className="mt-6 rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-700">
               Best next steps to grow
             </div>
-            <p className="text-sm leading-7 text-blue-900">
+            <p className="text-sm leading-7 text-blue-100/86">
               Each step below is based on your current public readiness, published services offered, reviews,
               and approved service videos.
             </p>
@@ -105,12 +104,9 @@ export function VendorBusinessVisibilitySection({
 
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {summary.nextSteps.map((step) => (
-            <div key={step.label} className="rounded-2xl border border-blue-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-950">{step.label}</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{step.detail}</p>
-              <Button asChild variant="outline" size="sm" className="mt-4 rounded-full">
-                <Link href={step.href}>Open next step</Link>
-              </Button>
+            <div key={step.label} className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
+              <p className="text-sm font-semibold text-white">{step.label}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-300">{step.detail}</p>
             </div>
           ))}
         </div>

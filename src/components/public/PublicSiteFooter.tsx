@@ -36,16 +36,6 @@ export function PublicSiteFooter() {
               Reliance helps customers compare completed work, public service videos, reviews, and
               Trust Score evidence before choosing a provider.
             </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {["Customer Reviews", "Verified Service Videos", "Reliance Trust Score"].map((item) => (
-                <span
-                  key={item}
-                  className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-semibold text-white/80"
-                >
-                  {item}
-                </span>
-              ))}
-            </div>
           </div>
 
           <div>
@@ -104,8 +94,8 @@ export function PublicSiteFooter() {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 border-t border-white/8 pt-6 text-sm text-white/44 sm:flex-row sm:items-center sm:justify-between">
-          <p>Compare customer reviews, public service videos, and Trust Score separately.</p>
-          <p>&copy; {new Date().getFullYear()} Reliance. Proof-of-service platform.</p>
+          <p>&copy; {new Date().getFullYear()} Reliance.</p>
+          <p>Public proof for local service work.</p>
         </div>
       </div>
     </footer>

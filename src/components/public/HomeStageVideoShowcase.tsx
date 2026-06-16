@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Clock3, Lock, VolumeX } from "lucide-react";
+import { Clock3, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   STAGE_VIDEO_MAX_DURATION_SECONDS,
@@ -10,7 +10,6 @@ import {
 
 type StagePreview = {
   title: string;
-  label: string;
   cue: string;
   previewEndSeconds: number;
   previewStartSeconds?: number;
@@ -37,7 +36,6 @@ function getStagePlaybackWindow(stage: StagePreview) {
 const STAGE_PREVIEWS: StagePreview[] = [
   {
     title: "Starting Condition",
-    label: "Stage 1",
     cue: "Customers can see the space, surface, or issue before work begins.",
     previewStartSeconds: 4,
     previewEndSeconds: 20.55,
@@ -48,7 +46,6 @@ const STAGE_PREVIEWS: StagePreview[] = [
   },
   {
     title: "Work in Progress",
-    label: "Stage 2",
     cue: "Customers can watch active progress instead of guessing what happened mid-service.",
     previewEndSeconds: 29.76,
     src: "/homepage/service-video-stages/during-service.mp4",
@@ -58,7 +55,6 @@ const STAGE_PREVIEWS: StagePreview[] = [
   },
   {
     title: "Final Result",
-    label: "Stage 3",
     cue: "Customers can see the finished outcome clearly when the work is complete.",
     previewEndSeconds: 15,
     src: "/homepage/service-video-stages/completed-service.mp4",
@@ -68,7 +64,7 @@ const STAGE_PREVIEWS: StagePreview[] = [
   },
 ];
 
-function StageVideoCard({ stage, index }: { stage: StagePreview; index: number }) {
+function StageVideoCard({ stage }: { stage: StagePreview }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const playbackWindow = getStagePlaybackWindow(stage);
 
@@ -145,13 +141,6 @@ function StageVideoCard({ stage, index }: { stage: StagePreview; index: number }
             />
           </div>
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,12,0.04),rgba(2,6,12,0.42))]" />
-          <div className="pointer-events-none absolute left-3 top-3 rounded-full border border-white/12 bg-black/45 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/76 backdrop-blur-md">
-            Stage {index + 1}
-          </div>
-          <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-white/12 bg-black/50 px-2.5 py-1.5 text-[11px] text-white/78 backdrop-blur-md">
-            <VolumeX className="h-3.5 w-3.5" />
-            Muted loop
-          </div>
         </div>
 
         <div className="min-w-0 flex-1">
@@ -159,11 +148,6 @@ function StageVideoCard({ stage, index }: { stage: StagePreview; index: number }
             <Badge className="border-white/12 bg-white/8 text-white hover:bg-white/8">
               {stage.title}
             </Badge>
-            <span
-              className={`text-[11px] font-semibold uppercase tracking-[0.26em] ${stage.accentClassName}`}
-            >
-              {stage.label}
-            </span>
           </div>
 
           <div className="mt-3 text-xl font-semibold leading-tight text-white">
@@ -209,8 +193,8 @@ export function HomeStageVideoShowcase() {
         </div>
 
         <div className="space-y-4">
-          {STAGE_PREVIEWS.map((stage, index) => (
-            <StageVideoCard key={stage.title} stage={stage} index={index} />
+          {STAGE_PREVIEWS.map((stage) => (
+            <StageVideoCard key={stage.title} stage={stage} />
           ))}
         </div>
 

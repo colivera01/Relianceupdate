@@ -58,7 +58,7 @@ function buildCustomerHelpHref(pathname: string, search: string): string {
           ? 'Back to Service Detail'
           : 'Back to Customer Dashboard';
 
-  return `/help?role=customer&returnTo=${encodeURIComponent(returnTo)}&returnLabel=${encodeURIComponent(returnLabel)}`;
+  return `/customer/support?returnTo=${encodeURIComponent(returnTo)}&returnLabel=${encodeURIComponent(returnLabel)}`;
 }
 
 const navLinks = [
@@ -195,6 +195,7 @@ function UserSidebarContent() {
           </div>
           {navigationLinks.map((link) => {
             const isActive =
+              (link.label === 'Support & Help' && pathname === '/customer/support') ||
               pathname === link.href ||
               (link.href !== '/' && pathname.startsWith(`${link.href}/`));
             return (
