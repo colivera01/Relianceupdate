@@ -191,6 +191,20 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
           phone: phoneOwner ? null : phone || null,
         },
       });
+    } else {
+      const currentPhone = String(inviteeUser.phone || "").trim();
+      const currentName = String(inviteeUser.name || "").trim();
+      const shouldUpdatePhone = Boolean(phone && currentPhone !== phone);
+      const shouldUpdateName = Boolean(name && currentName !== name);
+      if (shouldUpdatePhone || shouldUpdateName) {
+        inviteeUser = await (prisma as any).user.update({
+          where: { id: inviteeUser.id },
+          data: {
+            ...(shouldUpdateName ? { name } : {}),
+            ...(shouldUpdatePhone ? { phone } : {}),
+          },
+        });
+      }
     }
 
     step = "upsert_membership";
@@ -356,6 +370,15 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     });
     if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (String(errorCode).toUpperCase() === "P2002") {
+      return NextResponse.json(
+        {
+          error: "That email or phone number is already used by another Reliance account.",
+          code: "CONTACT_ALREADY_USED",
+        },
+        { status: 409 }
+      );
     }
     const nonProd = process.env.NODE_ENV !== "production";
     return NextResponse.json(

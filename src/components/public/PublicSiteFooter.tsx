@@ -9,7 +9,7 @@ import {
 
 const exploreLinks = [
   { href: "/", label: "Home" },
-  { href: "/browse", label: "Explore Proof" },
+  { href: "/browse", label: "Browse Services" },
   { href: "/help", label: "Help" },
 ];
 

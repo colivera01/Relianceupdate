@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Calendar, Star, TrendingUp, Smartphone, Activity, Megaphone, BarChart3, HelpCircle } from 'lucide-react';
+import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, BarChart3, HelpCircle } from 'lucide-react';
 import { useVendorDashboard } from '@/hooks/useVendorDashboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
@@ -63,10 +63,6 @@ export default function VendorDashboard() {
   const { data: vendorProfile, loading: vendorProfileLoading } = useVendorProfile();
   const { user } = useAuth();
   const router = useRouter();
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [pairingExpiresAt, setPairingExpiresAt] = useState<string | null>(null);
-  const [pairingLoading, setPairingLoading] = useState(false);
-  const [pairingError, setPairingError] = useState<string | null>(null);
   const [promotionOpen, setPromotionOpen] = useState(false);
   const [promotionPackages, setPromotionPackages] = useState<PromotionPackageOption[]>([]);
   const [promotionServices, setPromotionServices] = useState<PromotionServiceOption[]>([]);
@@ -434,29 +430,6 @@ export default function VendorDashboard() {
     },
   ];
 
-  const requestPairingCode = async () => {
-    setPairingLoading(true);
-    setPairingError(null);
-    try {
-      const res = await fetch('/api/device/pairing/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(String(json?.error || 'Failed to generate pairing code'));
-      }
-      setPairingCode(String(json?.code || ''));
-      setPairingExpiresAt(String(json?.expiresAt || ''));
-    } catch (e) {
-      setPairingError(e instanceof Error ? e.message : 'Failed to generate pairing code');
-      setPairingCode(null);
-      setPairingExpiresAt(null);
-    } finally {
-      setPairingLoading(false);
-    }
-  };
-
   const submitPromotionRequest = async () => {
     if (!vendorIdForPromotion) return;
     setPromotionSubmitting(true);
@@ -654,7 +627,7 @@ export default function VendorDashboard() {
                 </div>
                 <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                   Browse promotions can put your business in front of more customers, but they only render when Reliance
-                  still has enough organic proof results to keep discovery trustworthy. Desktop Explore Proof currently needs
+                  still has enough organic service results to keep discovery trustworthy. Desktop Browse Services currently needs
                   at least 4 organic listings, and category-filtered browse needs at least 3, before featured paid
                   placements can appear.
                 </div>
@@ -1059,22 +1032,12 @@ export default function VendorDashboard() {
               </button>
               <button
                 type="button"
-                onClick={requestPairingCode}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={pairingLoading}
-              >
-                <Smartphone className="h-5 w-5 text-blue-600" />
-                <p className="mt-3 font-semibold text-gray-900">{pairingLoading ? 'Generating...' : 'Pair Device'}</p>
-                <p className="mt-1 text-sm text-gray-600">Create a short code so an employee phone can connect to Reliance.</p>
-              </button>
-              <button
-                type="button"
                 onClick={() => router.push('/vendor/telemetry')}
                 className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
               >
                 <Activity className="h-5 w-5 text-blue-600" />
                 <p className="mt-3 font-semibold text-gray-900">Service Video Activity</p>
-                <p className="mt-1 text-sm text-gray-600">Review connected-device health and incoming service-video activity.</p>
+                <p className="mt-1 text-sm text-gray-600">Review incoming service-video activity for assigned work.</p>
               </button>
               <button
                 type="button"
@@ -1087,23 +1050,6 @@ export default function VendorDashboard() {
               </button>
             </div>
 
-            {pairingError ? (
-              <p className="mt-3 text-sm text-red-600">{pairingError}</p>
-            ) : null}
-            {pairingCode ? (
-              <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                <p className="text-sm font-medium text-blue-900">Pairing code</p>
-                <p className="mt-1 text-3xl font-bold tracking-widest text-blue-900">{pairingCode}</p>
-                <p className="mt-2 text-xs text-blue-700">
-                  Use the pairing modal on Vendor Profile to send a device link, or open <span className="font-semibold">/device/pair</span> on the phone and enter this backup code.
-                </p>
-                {pairingExpiresAt ? (
-                  <p className="text-xs text-blue-700">
-                    Expires: {new Date(pairingExpiresAt).toLocaleString('en-US', { timeZone: 'UTC' })}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
           </CardContent>
         </Card>
       </div>

@@ -66,7 +66,7 @@ export default function FavoritesPage() {
               </Badge>
             </div>
             <Link href="/discover">
-              <Button size="sm">Explore Proof</Button>
+              <Button size="sm">Browse Services</Button>
             </Link>
         </div>
       </div>
@@ -76,7 +76,7 @@ export default function FavoritesPage() {
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 mb-10">
             <h2 className="text-lg font-semibold text-blue-900 mb-2">Sign in to use favorites</h2>
             <p className="text-sm text-blue-800 mb-4">
-              Save vendors and public proof sources when you want to come back later.
+              Save vendors, services, reviews, or videos when you want to come back later.
             </p>
             <Link href="/auth/login?next=%2Ffavorites">
               <Button size="sm">Sign In</Button>
@@ -123,7 +123,7 @@ export default function FavoritesPage() {
               {searchQuery.trim() ? 'Try a different search.' : 'Save vendors, services offered, or public proof when you want to revisit them.'}
             </p>
             <Link href="/discover">
-              <Button>Explore Proof</Button>
+              <Button>Browse Services</Button>
             </Link>
           </div>
             ) : (

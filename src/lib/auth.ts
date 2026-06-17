@@ -2,6 +2,7 @@
 import { prisma } from "@/server/db";
 import { registeredUsers, syncRegisteredUsersFromDisk } from "@/lib/dev-registered-users";
 import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "@/lib/auth-session";
+import { getVendorSessionTimeoutStatus, hasVendorAccessInSession } from "@/lib/vendor-security";
 
 export interface JWTPayload {
   sub?: string;
@@ -75,6 +76,17 @@ function getCookieCandidate(
 }
 
 const IS_DEV = process.env.NODE_ENV !== "production";
+
+async function isVendorSessionTimedOut(claims: ReturnType<typeof getAuthSessionClaimsFromRequest>): Promise<boolean> {
+  if (!claims || !hasVendorAccessInSession(claims)) return false;
+  try {
+    const status = await getVendorSessionTimeoutStatus(claims);
+    return status.expired;
+  } catch (error) {
+    console.error("[auth] vendor session timeout check failed", error);
+    return false;
+  }
+}
 
 async function resolveDevRegistryUserId(userId: string | null): Promise<string | null> {
   const normalized = typeof userId === "string" ? userId.trim() : "";
@@ -153,11 +165,17 @@ export async function getUserIdFromRequest(request: Request): Promise<string | n
  */
 export async function getVendorIdFromRequest(request: Request): Promise<string | null> {
   const signedSession = getAuthSessionClaimsFromRequest(request);
+  if (await isVendorSessionTimedOut(signedSession)) {
+    return null;
+  }
   const signedUserId = signedSession?.userId ? await resolveDevRegistryUserId(signedSession.userId) : null;
 
   const bearerToken = getBearerTokenFromRequest(request);
   if (bearerToken) {
     const signedClaims = verifyAuthBearerToken(bearerToken);
+    if (await isVendorSessionTimedOut(signedClaims)) {
+      return null;
+    }
     if (signedClaims?.userId) {
       const activeMembership = await (prisma as any).vendorMembership.findFirst({
         where: {

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       emailVerifiedAt: result.authCredential.emailVerifiedAt,
     });
 
-    return buildSuccessfulLoginResponse({ user });
+    return await buildSuccessfulLoginResponse({ user, request });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Error completing passkey sign-in:", error);

@@ -13,7 +13,7 @@ import {
   MessageSquare,
   Search,
   Star,
-  TrendingUp,
+  Store,
   Zap,
   Bookmark,
 } from 'lucide-react';
@@ -41,7 +41,17 @@ type CustomerProfile = {
   createdAt?: string;
   isActive?: boolean;
   bio?: string;
+  avatar?: string | null;
+  profilePhoto?: string | null;
 };
+
+const quickActionIconStyles = [
+  'bg-cyan-500/16 text-cyan-200 ring-1 ring-cyan-300/20',
+  'bg-blue-500/16 text-blue-200 ring-1 ring-blue-300/20',
+  'bg-rose-500/16 text-rose-200 ring-1 ring-rose-300/20',
+  'bg-amber-500/18 text-amber-200 ring-1 ring-amber-300/24',
+  'bg-violet-500/16 text-violet-200 ring-1 ring-violet-300/20',
+];
 
 function splitDisplayName(name: string | undefined) {
   const parts = String(name || '')
@@ -63,6 +73,7 @@ function buildCustomerProfileShell(authUser: NonNullable<ReturnType<typeof useAu
     lastName,
     email: authUser.email,
     phone: authUser.phone,
+    avatar: authUser.avatar || null,
     isActive: true,
   };
 }
@@ -261,21 +272,32 @@ export default function UserDashboardPage() {
       locationLabel !== 'Not added yet' ? `Saved area: ${locationLabel}` : 'Saved area not added yet',
       profile.createdAt ? `Member since ${new Date(profile.createdAt).toLocaleDateString()}` : null,
     ].filter(Boolean);
+    const profileAvatar = profile.profilePhoto || profile.avatar || authUser?.avatar || null;
+    const initials = `${profile.firstName?.charAt(0) || ''}${profile.lastName?.charAt(0) || ''}` || 'R';
 
     return (
       <div className="mb-8">
         <div className="reliance-dark-shell overflow-hidden rounded-[28px] p-6 text-white shadow-[0_30px_80px_rgba(7,16,38,0.18)]">
           <div className="mb-4 flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 text-lg font-bold text-white">
-              {profile.firstName?.charAt(0)}
-              {profile.lastName?.charAt(0)}
-            </div>
+            {profileAvatar ? (
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-slate-950/75 p-1 shadow-md">
+                <img
+                  src={profileAvatar}
+                  alt={`${profile.firstName || 'Customer'} profile`}
+                  className="max-h-full max-w-full rounded-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 text-lg font-bold text-white">
+                {initials}
+              </div>
+            )}
             <div>
               <h2 className="font-display text-2xl font-semibold text-white">
                 Welcome, {profile.firstName} {profile.lastName}!
               </h2>
               <p className="text-white/72">
-                Explore public proof, track service records, and check review progress from one place.
+                Browse vendor services, track service records, and check review progress from one place.
               </p>
               <p className="mt-1 text-sm text-white/58">
                 Profile &amp; Settings keeps your contact details, saved address, and account preferences together.
@@ -344,20 +366,20 @@ export default function UserDashboardPage() {
 
   const quickStats = [
     {
-      label: 'Active Records',
+      label: 'Active Service Records',
       value: String(dashboardCounts.activeBookings),
       icon: Calendar,
       badgeClassName: 'bg-blue-100 text-blue-700',
       helpTitle: 'Active Service Records',
-      helpBody: 'Service records that are still scheduled, in progress, or waiting for follow-up.',
+      helpBody: 'Services you requested that are still open, scheduled, in progress, or waiting for follow-up.',
     },
     {
-      label: 'Saved Items',
+      label: 'Saved Favorites',
       value: String(dashboardCounts.savedFavorites),
       icon: Bookmark,
       badgeClassName: 'bg-rose-100 text-rose-700',
-      helpTitle: 'Saved Items',
-      helpBody: 'Public proof, services offered, or vendors you bookmarked so you can come back later.',
+      helpTitle: 'Saved Favorites',
+      helpBody: 'Vendor services or providers you saved so you can compare them or come back later.',
     },
     {
       label: 'Reviews Submitted',
@@ -370,7 +392,7 @@ export default function UserDashboardPage() {
     {
       label: 'Saved Vendors',
       value: String(dashboardCounts.vendorsFollowed),
-      icon: TrendingUp,
+      icon: Store,
       badgeClassName: 'bg-emerald-100 text-emerald-700',
       helpTitle: 'Saved Vendors',
       helpBody: 'Unique vendors connected to the items you saved.',
@@ -379,11 +401,12 @@ export default function UserDashboardPage() {
 
   const quickActions = [
     {
-      title: 'Explore Proof',
-      description: 'Review public proof, service videos, reviews, and provider details before choosing who to contact.',
+      title: 'Browse Services',
+      description: 'Compare vendor services, service videos, reviews, and provider details before choosing who to contact.',
       href: '/discover',
       icon: Search,
-      buttonLabel: 'Open Explore Proof',
+      buttonLabel: 'Open Browse Services',
+      iconClassName: quickActionIconStyles[0],
     },
     {
       title: 'View Service Records',
@@ -391,6 +414,7 @@ export default function UserDashboardPage() {
       href: '/my-bookings',
       icon: ClipboardList,
       buttonLabel: 'Open Service Records',
+      iconClassName: quickActionIconStyles[1],
     },
     {
       title: 'Saved Favorites',
@@ -398,6 +422,7 @@ export default function UserDashboardPage() {
       href: '/favorites',
       icon: Bookmark,
       buttonLabel: 'Open Favorites',
+      iconClassName: quickActionIconStyles[2],
     },
     {
       title: 'My Reviews',
@@ -405,6 +430,7 @@ export default function UserDashboardPage() {
       href: '/reviews',
       icon: Star,
       buttonLabel: 'Open Reviews',
+      iconClassName: quickActionIconStyles[3],
     },
     {
       title: 'Support & Help',
@@ -412,6 +438,7 @@ export default function UserDashboardPage() {
       href: '/customer/support?returnTo=%2Fuser-dashboard&returnLabel=Back%20to%20Customer%20Dashboard',
       icon: HelpCircle,
       buttonLabel: 'Open Help Center',
+      iconClassName: quickActionIconStyles[4],
     },
   ];
 
@@ -489,11 +516,11 @@ export default function UserDashboardPage() {
             {quickActions.map((action) => (
               <div
                 key={action.title}
-                className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(7,16,38,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(7,16,38,0.1)]"
+                className="flex h-full flex-col rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(7,16,38,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(7,16,38,0.1)]"
               >
-                <div className="mb-3 flex items-start gap-3">
-                  <div className="rounded-full bg-blue-100 p-2">
-                    <action.icon className="h-5 w-5 text-blue-700" />
+                <div className="mb-4 flex flex-1 items-start gap-3">
+                  <div className={`rounded-full p-2.5 ${action.iconClassName}`}>
+                    <action.icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-semibold text-gray-900">{action.title}</h3>
@@ -502,7 +529,7 @@ export default function UserDashboardPage() {
                 </div>
                 <Link
                   href={action.href}
-                  className="inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a58db]"
+                  className="mt-auto inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a58db]"
                 >
                   {action.buttonLabel}
                 </Link>
@@ -518,59 +545,59 @@ export default function UserDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
                 <Search className="h-5 w-5 text-blue-700" />
               </div>
               <h3 className="mb-1 font-semibold text-gray-900">Request a Service</h3>
-              <p className="mb-3 text-sm text-gray-600">Explore public proof and choose a provider that fits your needs.</p>
+              <p className="mb-3 flex-1 text-sm text-gray-600">Browse vendor services and choose a provider that fits your needs.</p>
               <Link
                 href="/discover"
-                className="inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white hover:bg-[#1a58db]"
+                className="mt-auto inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white hover:bg-[#1a58db]"
               >
-                Explore Proof
+                Browse Services
               </Link>
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
                 <ClipboardList className="h-5 w-5 text-blue-600" />
               </div>
               <h3 className="mb-1 font-semibold text-gray-900">Track the Service</h3>
-              <p className="mb-3 text-sm text-gray-600">Follow the service from request to completion.</p>
+              <p className="mb-3 flex-1 text-sm text-gray-600">Follow the service from request to completion.</p>
               <Link
                 href="/my-bookings"
-                className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                className="mt-auto inline-flex w-full items-center justify-center rounded-full bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
                 My Service Records
               </Link>
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
                 <Camera className="h-5 w-5 text-emerald-600" />
               </div>
               <h3 className="mb-1 font-semibold text-gray-900">Watch Service Videos</h3>
-              <p className="mb-3 text-sm text-gray-600">
+              <p className="mb-3 flex-1 text-sm text-gray-600">
                 Open approved service videos or images after the vendor completes the job.
               </p>
               <Link
                 href="/my-bookings"
-                className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                className="mt-auto inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a58db]"
               >
                 My Service Records
               </Link>
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
                 <MessageSquare className="h-5 w-5 text-amber-600" />
               </div>
               <h3 className="mb-1 font-semibold text-gray-900">Leave a Review</h3>
-              <p className="mb-3 text-sm text-gray-600">Reviews open after an approved final-result video is available for your service record.</p>
+              <p className="mb-3 flex-1 text-sm text-gray-600">Reviews open after an approved final-result video is available for your service record.</p>
               <Link
                 href="/reviews"
-                className="inline-flex w-full items-center justify-center rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                className="mt-auto inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a58db]"
               >
                 My Reviews
               </Link>

@@ -32,23 +32,24 @@ type AdminNavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
+  iconClassName: string;
 };
 
 const adminNav: AdminNavItem[] = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: Home },
-  { href: '/admin/accounts', label: 'All Accounts', icon: Users },
-  { href: '/admin/publish-management', label: 'Publish Management', icon: Megaphone },
-  { href: '/admin/promoted-listings', label: 'Promoted Listings', icon: MapPinned },
-  { href: '/admin/media-moderation', label: 'Media Moderation', icon: Clapperboard },
-  { href: '/admin/reviews', label: 'Review Moderation', icon: Star },
-  { href: '/admin/review-audit', label: 'Review Audit', icon: Search },
-  { href: '/admin/reported-content', label: 'Reported Content', icon: ShieldAlert },
-  { href: '/admin/ai-review-queue', label: 'AI Review Queue', icon: Sparkles },
-  { href: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
-  { href: '/admin/audit-logs', label: 'Audit Logs', icon: ClipboardList },
-  { href: '/admin/activity', label: 'Activity Monitoring', icon: Activity },
-  { href: '/admin/security', label: 'Admin Security', icon: KeyRound },
-  { href: '/admin/settings', label: 'Admin Settings', icon: Settings },
+  { href: '/admin/dashboard', label: 'Dashboard', icon: Home, iconClassName: 'text-blue-200' },
+  { href: '/admin/accounts', label: 'All Accounts', icon: Users, iconClassName: 'text-emerald-200' },
+  { href: '/admin/publish-management', label: 'Publish Management', icon: Megaphone, iconClassName: 'text-sky-200' },
+  { href: '/admin/promoted-listings', label: 'Promoted Listings', icon: MapPinned, iconClassName: 'text-orange-200' },
+  { href: '/admin/media-moderation', label: 'Media Moderation', icon: Clapperboard, iconClassName: 'text-cyan-200' },
+  { href: '/admin/reviews', label: 'Review Moderation', icon: Star, iconClassName: 'text-amber-200' },
+  { href: '/admin/review-audit', label: 'Review Audit', icon: Search, iconClassName: 'text-yellow-200' },
+  { href: '/admin/reported-content', label: 'Reported Content', icon: ShieldAlert, iconClassName: 'text-rose-200' },
+  { href: '/admin/ai-review-queue', label: 'AI Review Queue', icon: Sparkles, iconClassName: 'text-violet-200' },
+  { href: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3, iconClassName: 'text-teal-200' },
+  { href: '/admin/audit-logs', label: 'Audit Logs', icon: ClipboardList, iconClassName: 'text-slate-200' },
+  { href: '/admin/activity', label: 'Activity Monitoring', icon: Activity, iconClassName: 'text-lime-200' },
+  { href: '/admin/security', label: 'Admin Security', icon: KeyRound, iconClassName: 'text-red-200' },
+  { href: '/admin/settings', label: 'Admin Settings', icon: Settings, iconClassName: 'text-indigo-200' },
 ];
 
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
@@ -122,7 +123,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
                   isActive ? 'reliance-operator-nav-link-active' : ''
                 }`}
               >
-                <item.icon className="h-5 w-5 shrink-0" />
+                <item.icon className={`h-5 w-5 shrink-0 ${item.iconClassName}`} />
                 <span className="flex-1 truncate">{item.label}</span>
               </Link>
             );

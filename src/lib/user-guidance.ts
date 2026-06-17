@@ -81,7 +81,7 @@ export const tutorialGuides = {
     badge: "Public proof",
     title: "How to compare proof on Reliance",
     summary:
-      "Explore Proof shows public service cards, public vendor pages, customer ratings, service videos, and the Reliance Trust Score side by side so customers can compare trust signals before choosing who to contact.",
+      "Browse Services shows public service cards, public vendor pages, customer ratings, service videos, and the Reliance Trust Score side by side so customers can compare trust signals before choosing who to contact.",
     steps: [
       {
         title: "Search or filter first",

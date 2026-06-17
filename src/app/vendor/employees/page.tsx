@@ -94,6 +94,12 @@ export default function EmployeesPage() {
   const [inviteMessage, setInviteMessage] = useState("");
   const [expandedInviteIds, setExpandedInviteIds] = useState<Record<string, boolean>>({});
   const [invites, setInvites] = useState<PendingInvite[]>([]);
+  const [editingMember, setEditingMember] = useState<VendorTeamMember | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editMessage, setEditMessage] = useState("");
+  const [savingMembershipId, setSavingMembershipId] = useState<string | null>(null);
 
   const isProduction = process.env.NODE_ENV === "production";
 
@@ -270,6 +276,65 @@ export default function EmployeesPage() {
     }
   };
 
+  const openEditMember = (member: VendorTeamMember) => {
+    setEditingMember(member);
+    setEditName(member.name || "");
+    setEditEmail(member.email || "");
+    setEditPhone(member.phone || "");
+    setEditMessage("");
+  };
+
+  const closeEditMember = () => {
+    if (savingMembershipId) return;
+    setEditingMember(null);
+    setEditName("");
+    setEditEmail("");
+    setEditPhone("");
+    setEditMessage("");
+  };
+
+  const handleSaveMember = async () => {
+    if (!vendorId || !authUserId || !editingMember) return;
+    const trimmedName = editName.trim();
+    const trimmedEmail = editEmail.trim();
+    const trimmedPhone = editPhone.trim();
+    if (!trimmedName) {
+      setEditMessage("Enter the team member's name.");
+      return;
+    }
+    if (!trimmedEmail && !trimmedPhone) {
+      setEditMessage("Enter at least one contact method.");
+      return;
+    }
+    setSavingMembershipId(editingMember.membershipId);
+    setEditMessage("");
+    try {
+      const res = await fetch(`/api/vendors/${vendorId}/memberships/${editingMember.membershipId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getClientSessionHeaders(authUserId),
+        },
+        body: JSON.stringify({
+          name: trimmedName,
+          email: trimmedEmail,
+          phone: trimmedPhone,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(json?.error || `Failed to update member (${res.status})`));
+      }
+      await loadRosterAndInvites();
+      setInviteMessage("Team member contact details updated.");
+      setSavingMembershipId(null);
+      closeEditMember();
+    } catch (e) {
+      setEditMessage(e instanceof Error ? e.message : "Failed to update team member.");
+      setSavingMembershipId(null);
+    }
+  };
+
   const toggleInviteDetails = (inviteId: string) => {
     setExpandedInviteIds((prev) => ({
       ...prev,
@@ -394,6 +459,7 @@ export default function EmployeesPage() {
               const isExpanded = Boolean(expandedInviteIds[invite.id]);
               const recipientName = invite.recipient?.name || "Pending team invite";
               const recipientRole = roleLabel(invite.recipient?.role || "EMPLOYEE");
+              const recipientPhone = invite.recipient?.phone || "Not provided";
               return (
                 <div key={invite.id} className="rounded-2xl border border-slate-700 bg-slate-900/70 p-3 text-sm text-slate-300">
                   <button
@@ -406,6 +472,9 @@ export default function EmployeesPage() {
                       <p className="font-semibold text-white">{recipientName}</p>
                       <p className="mt-1 text-xs text-slate-400">
                         Sent {formatDateTime(invite.sentAt)} · {recipientRole}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-300">
+                        Phone: <span className="text-slate-100">{recipientPhone}</span>
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -492,6 +561,9 @@ export default function EmployeesPage() {
                   <div className="truncate text-sm text-slate-400">
                     {emp.email || "—"}
                   </div>
+                  <div className="truncate text-sm text-slate-400">
+                    Phone: {emp.phone || "Not provided"}
+                  </div>
                   {(() => {
                     const row = employeeRatingsByMembershipId[String(emp.membershipId)] || {
                       averageRating: 0,
@@ -520,6 +592,13 @@ export default function EmployeesPage() {
                 <Badge variant={String(emp.role).toUpperCase() === "MANAGER" ? "default" : "secondary"}>
                   {roleLabel(emp.role)}
                 </Badge>
+                <button
+                  type="button"
+                  onClick={() => openEditMember(emp)}
+                  className="rounded border border-blue-300 px-2 py-1 text-[11px] font-medium text-blue-100 hover:bg-blue-500/10"
+                >
+                  Edit contact
+                </button>
                 {emp.userId !== authUserId ? (
                   <button
                     type="button"
@@ -535,6 +614,83 @@ export default function EmployeesPage() {
           )}
         </div>
       </div>
+      {editingMember ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-950 p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Edit team member contact</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-300">
+                  Update the active roster details used for job assignments and team communication.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditMember}
+                className="rounded-full border border-slate-700 px-3 py-1 text-sm text-slate-300 hover:bg-slate-900"
+                aria-label="Close edit member"
+              >
+                x
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm font-medium text-slate-200">
+                Name
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                  placeholder="Team member name"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-200">
+                Email
+                <input
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                  placeholder="email@example.com"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-200">
+                Phone
+                <input
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                  placeholder="(407) 555-1234"
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-blue-400/20 bg-blue-950/30 p-3 text-xs leading-5 text-blue-100">
+              If this team member signs in with email, changing the email here also updates their Reliance sign-in email.
+            </div>
+
+            {editMessage ? <p className="mt-3 text-sm text-amber-200">{editMessage}</p> : null}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEditMember}
+                disabled={Boolean(savingMembershipId)}
+                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveMember()}
+                disabled={savingMembershipId === editingMember.membershipId}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+              >
+                {savingMembershipId === editingMember.membershipId ? "Saving..." : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

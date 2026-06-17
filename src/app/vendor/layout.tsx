@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProfileToggle from '@/components/ProfileToggle';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { RelianceLogo } from '@/components/public/RelianceLogo';
+import VendorSessionGuard from '@/components/vendor/VendorSessionGuard';
 
 // TODO Future mobile: convert this sidebar into a bottom nav or slide-out
 // drawer for an app-like experience on small screens. The sidebar is hidden
@@ -28,6 +29,7 @@ type SidebarLink = {
   label: string;
   icon: LucideIcon;
   href: string;
+  iconClassName: string;
 };
 
 function buildVendorSupportHref(pathname: string): string {
@@ -54,14 +56,14 @@ function buildVendorSupportHref(pathname: string): string {
 }
 
 const sidebarLinks: SidebarLink[] = [
-  { label: 'Dashboard', icon: Home, href: '/vendor/dashboard' },
-  { label: 'Analytics & Trust', icon: BarChart3, href: '/vendor/analytics' },
-  { label: 'Reviews', icon: Star, href: '/vendor/reviews' },
-  { label: 'Service Video Activity', icon: Activity, href: '/vendor/telemetry' },
-  { label: 'Services Offered', icon: ClipboardList, href: '/vendor/services' },
-  { label: 'Profile & Settings', icon: Users, href: '/vendor/profile' },
-  { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs' },
-  { label: 'Employees', icon: Users, href: '/vendor/employees' },
+  { label: 'Dashboard', icon: Home, href: '/vendor/dashboard', iconClassName: 'text-blue-200' },
+  { label: 'Analytics & Trust', icon: BarChart3, href: '/vendor/analytics', iconClassName: 'text-cyan-200' },
+  { label: 'Reviews', icon: Star, href: '/vendor/reviews', iconClassName: 'text-amber-200' },
+  { label: 'Service Video Activity', icon: Activity, href: '/vendor/telemetry', iconClassName: 'text-emerald-200' },
+  { label: 'Services Offered', icon: ClipboardList, href: '/vendor/services', iconClassName: 'text-sky-200' },
+  { label: 'Profile & Settings', icon: Users, href: '/vendor/profile', iconClassName: 'text-violet-200' },
+  { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs', iconClassName: 'text-orange-200' },
+  { label: 'Employees', icon: Users, href: '/vendor/employees', iconClassName: 'text-teal-200' },
 ];
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
@@ -227,6 +229,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen">
+      <VendorSessionGuard />
       {/* Sidebar - hidden below md (see mobile TODO above). */}
       <aside className="reliance-operator-sidebar hidden w-72 flex-col min-h-screen md:flex">
         {/* Logo area */}
@@ -246,15 +249,15 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
           <div className="flex flex-col items-center mb-8 px-2">
             <div className="relative mb-4">
               {vendorAvatar ? (
-                <div className="h-16 w-16 overflow-hidden rounded-full border-2 border-white/20 bg-slate-900 shadow-md">
+                <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-2 border-white/20 bg-slate-950/85 p-1.5 shadow-md">
                   <img
                     src={vendorAvatar}
                     alt={vendorBusinessName}
-                    className="h-full w-full object-cover object-center"
+                    className="max-h-full max-w-full rounded-xl object-contain"
                   />
                 </div>
               ) : (
-                <div className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xl">
+                <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-2 border-white/20 bg-gradient-to-r from-blue-500 to-purple-500 text-xl font-bold text-white shadow-md">
                   {vendorInitials}
                 </div>
               )}
@@ -282,7 +285,10 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
             <div className="text-xs font-semibold text-blue-200 uppercase tracking-wider mb-4 px-3">
               Navigation
             </div>
-            {[...sidebarLinks, { label: 'Support & Help', icon: HelpCircle, href: vendorSupportHref }].map((link) => {
+            {[
+              ...sidebarLinks,
+              { label: 'Support & Help', icon: HelpCircle, href: vendorSupportHref, iconClassName: 'text-cyan-200' },
+            ].map((link) => {
               const isActive =
                 link.label === 'Support & Help'
                   ? pathname === '/vendor/support' || pathname.startsWith('/vendor/support/')
@@ -297,7 +303,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
                     : ''
                 }`}
               >
-                  <link.icon size={18} />
+                  <link.icon size={18} className={`shrink-0 ${link.iconClassName}`} />
                   <span className="flex-1 truncate">{link.label}</span>
                 </Link>
               );
@@ -308,7 +314,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
                 href="/logout"
                 className="reliance-operator-nav-link flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-colors text-base font-medium"
               >
-                <LogOut size={18} />
+                <LogOut size={18} className="shrink-0 text-rose-200" />
                 Log Out
               </Link>
             </div>

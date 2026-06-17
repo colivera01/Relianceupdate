@@ -411,7 +411,7 @@ export default async function AdminSettingsPage() {
               </li>
             ) : null}
             {publicBaseUrlReachable && HAS_LAUNCH_SUPPORT_EMAIL && smsDeliveryReady ? (
-              <li>External communications and device pairing links are configured for broader launch use.</li>
+              <li>External communications are configured for broader launch use.</li>
             ) : null}
           </ul>
           <div className="flex flex-wrap gap-3">

@@ -350,7 +350,13 @@ export async function PUT(request: Request) {
     // Security Settings
     if (body.twoFactorEnabled !== undefined) updateData.twoFactorEnabled = body.twoFactorEnabled;
     if (body.loginNotifications !== undefined) updateData.loginNotifications = body.loginNotifications;
-    if (body.sessionTimeout !== undefined) updateData.sessionTimeout = body.sessionTimeout;
+    if (body.sessionTimeout !== undefined) {
+      const parsedSessionTimeout = Number(body.sessionTimeout);
+      updateData.sessionTimeout = Math.min(
+        1440,
+        Math.max(5, Math.round(Number.isFinite(parsedSessionTimeout) ? parsedSessionTimeout : 30))
+      );
+    }
     if (body.passwordExpiry !== undefined) updateData.passwordExpiry = body.passwordExpiry ?? null;
     if (body.failedLoginLockout !== undefined) updateData.failedLoginLockout = body.failedLoginLockout ?? null;
 

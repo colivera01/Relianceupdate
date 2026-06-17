@@ -376,8 +376,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return buildSuccessfulLoginResponse({
+    return await buildSuccessfulLoginResponse({
       user: userResponse,
+      request,
       ...(IS_DEV && usedDevRegistryIdBecauseDbUnreachable
         ? {
             devWarning:

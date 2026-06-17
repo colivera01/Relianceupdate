@@ -53,7 +53,7 @@ function buildCustomerHelpHref(pathname: string, search: string): string {
         : pathname.startsWith('/favorites')
           ? 'Back to My Favorites'
         : pathname.startsWith('/discover')
-          ? 'Back to Explore Proof'
+          ? 'Back to Browse Services'
         : pathname.startsWith('/service/')
           ? 'Back to Service Detail'
           : 'Back to Customer Dashboard';
@@ -62,13 +62,13 @@ function buildCustomerHelpHref(pathname: string, search: string): string {
 }
 
 const navLinks = [
-  { label: 'Home', icon: Home, href: '/user-dashboard' },
-  { label: 'Explore Proof', icon: LayoutDashboard, href: '/discover' },
-  { label: 'My Service Records', icon: Calendar, href: '/my-bookings' },
-  { label: 'Favorites', icon: Heart, href: '/favorites' },
-  { label: 'Reviews', icon: Star, href: '/reviews' },
-  { label: 'Profile & Settings', icon: User, href: '/profile-settings' },
-  { label: 'Secure Account', icon: Shield, href: '/customer/secure-account' },
+  { label: 'Home', icon: Home, href: '/user-dashboard', iconClassName: 'text-blue-200' },
+  { label: 'Browse Services', icon: LayoutDashboard, href: '/discover', iconClassName: 'text-cyan-200' },
+  { label: 'My Service Records', icon: Calendar, href: '/my-bookings', iconClassName: 'text-sky-200' },
+  { label: 'Favorites', icon: Heart, href: '/favorites', iconClassName: 'text-rose-200' },
+  { label: 'Reviews', icon: Star, href: '/reviews', iconClassName: 'text-amber-200' },
+  { label: 'Profile & Settings', icon: User, href: '/profile-settings', iconClassName: 'text-violet-200' },
+  { label: 'Secure Account', icon: Shield, href: '/customer/secure-account', iconClassName: 'text-emerald-200' },
 ];
 
 function displayNameFromStoredUser(parsed: Record<string, unknown>): string {
@@ -134,7 +134,10 @@ function UserSidebarContent() {
 
   const initials = initialsFromDisplayName(visibleUser.name);
   const navigationLinks = React.useMemo(
-    () => [...navLinks, { label: 'Support & Help', icon: HelpCircle, href: customerHelpHref }],
+    () => [
+      ...navLinks,
+      { label: 'Support & Help', icon: HelpCircle, href: customerHelpHref, iconClassName: 'text-cyan-200' },
+    ],
     [customerHelpHref]
   );
 
@@ -156,14 +159,16 @@ function UserSidebarContent() {
         {/* Identity block */}
         <div className="flex flex-col items-center mb-8 px-2">
           <div className="relative mb-4">
-            {currentUser.avatar ? (
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
-                className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md object-cover"
-              />
+            {visibleUser.avatar ? (
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-white/20 bg-slate-950/85 p-1 shadow-md">
+                <img
+                  src={visibleUser.avatar}
+                  alt={visibleUser.name}
+                  className="max-h-full max-w-full rounded-full object-contain"
+                />
+              </div>
             ) : (
-              <div className="w-16 h-16 rounded-full border-2 border-white/20 shadow-md bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xl">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-white/20 bg-gradient-to-r from-blue-500 to-purple-500 text-xl font-bold text-white shadow-md">
                 {initials}
               </div>
             )}
@@ -208,7 +213,7 @@ function UserSidebarContent() {
                     : ''
                 }`}
               >
-                <link.icon size={18} />
+                <link.icon size={18} className={`shrink-0 ${link.iconClassName}`} />
                 <span className="flex-1 truncate">{link.label}</span>
               </Link>
             );
@@ -222,7 +227,7 @@ function UserSidebarContent() {
                 onClick={handleLogout}
                 className="reliance-operator-nav-link flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-base font-medium transition-colors"
               >
-                <LogOut size={18} />
+                <LogOut size={18} className="shrink-0 text-rose-200" />
                 Log Out
               </button>
             ) : (
@@ -230,7 +235,7 @@ function UserSidebarContent() {
                 href="/auth/login"
                 className="reliance-operator-nav-link flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-base font-medium transition-colors"
               >
-                <User size={18} />
+                <User size={18} className="shrink-0 text-blue-200" />
                 Sign In
               </Link>
             )}

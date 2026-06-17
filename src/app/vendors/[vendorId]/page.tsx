@@ -96,7 +96,7 @@ export default function PublicVendorProfilePage() {
   const userId = resolveCustomerUserId(user?.id);
   const isSignedIn = Boolean(userId);
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null) || '/browse';
-  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Proof';
+  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Browse Services';
 
   const [payload, setPayload] = useState<PublicVendorPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -214,11 +214,11 @@ export default function PublicVendorProfilePage() {
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Explore Proof' },
+              { href: '/browse', label: 'Browse Services' },
               { href: '/help', label: 'Help' },
             ]}
             ctaHref="/browse"
-            ctaLabel="Explore Proof"
+            ctaLabel="Browse Services"
           />
 
           <div className="mb-8">

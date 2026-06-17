@@ -923,7 +923,7 @@ export default function EmployeeJobsPage() {
         <div className="mx-auto w-full max-w-2xl rounded-lg border border-amber-200 bg-white p-4 shadow-sm">
           <h1 className="text-xl font-bold text-gray-900">Employee access required</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Sign in with an employee-enabled account to open assigned jobs, device pairing, and stage uploads.
+            Sign in with an employee-enabled account to open assigned jobs and stage uploads.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
@@ -973,35 +973,6 @@ export default function EmployeeJobsPage() {
                 Sign Out
               </Link>
             </div>
-          </div>
-
-          <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs">
-            {pairedDevice ? (
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-emerald-700">Device paired</p>
-                  <p className="truncate text-gray-600">{shortDeviceLabel(pairedDevice)}</p>
-                </div>
-                <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                  Active
-                </span>
-              </div>
-            ) : pairingError ? (
-              <div>
-                <p className="font-semibold text-amber-800">Device not paired</p>
-                <p className="text-amber-700">{pairingError}</p>
-                <p className="mt-1 text-amber-700">
-                  Reload to retry. Uploads will still work but will not be linked to this device.
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p className="text-gray-600">Connecting this device to your employee workspace...</p>
-                <p className="mt-1 text-[11px] text-gray-500">
-                  If this takes longer than a few seconds, reload and confirm your manager assigned work to this account.
-                </p>
-              </div>
-            )}
           </div>
         </div>
 

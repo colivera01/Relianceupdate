@@ -73,8 +73,8 @@ export default function HomePage() {
             hideLogo
             links={[]}
             className="mb-10"
-            ctaLabel="See Public Proof"
-            ctaHref="/browse"
+            ctaLabel="Create Account"
+            ctaHref="/auth/register?type=user"
           />
 
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1.04fr)_minmax(420px,0.96fr)] lg:items-start">
@@ -103,22 +103,6 @@ export default function HomePage() {
                 Compare completed work, public service videos, customer reviews, and Trust Score
                 evidence before choosing a provider.
               </p>
-
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Link href="/auth/register?type=user">
-                  <Button className="h-12 rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-6 text-white shadow-[0_22px_50px_rgba(36,107,255,0.32)] hover:brightness-110">
-                    Create Account
-                  </Button>
-                </Link>
-                <Button
-                  variant="outline"
-                  disabled
-                  className="h-12 rounded-full border-white/16 bg-white/6 px-6 text-white/74 backdrop-blur-md hover:bg-white/6 hover:text-white/74"
-                >
-                  <Clock3 className="mr-2 h-4 w-4" />
-                  Reliance explainer video coming soon
-                </Button>
-              </div>
 
               <div className="mt-8 max-w-[39rem]">
                 <div className="reliance-glass rounded-[32px] border border-white/10 p-4 shadow-[0_30px_80px_rgba(4,9,20,0.38)]">
@@ -186,7 +170,7 @@ export default function HomePage() {
               </p>
             </div>
             <span className="text-sm text-slate-500">
-              {marketplaceLoading ? 'Loading public proof...' : `${totalPublicServices} public proof sources live`}
+              {marketplaceLoading ? 'Loading services...' : `${totalPublicServices} public services live`}
             </span>
           </div>
 
@@ -206,7 +190,7 @@ export default function HomePage() {
               ))
             ) : marketplaceError && !hasMarketplaceResults ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900">
-                We could not load public proof right now. You can still open Explore Proof.
+                We could not load public service details right now. You can still open Browse Services.
               </div>
             ) : marketplaceResults.length === 0 ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
@@ -299,7 +283,7 @@ export default function HomePage() {
             </ul>
             <div className="mt-6">
               <Link href="/auth/register?type=vendor">
-                <Button variant="outline" className="rounded-full border-slate-300 bg-white text-slate-900 hover:bg-slate-50">
+                <Button className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
                   Join as Vendor
                 </Button>
               </Link>

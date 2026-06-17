@@ -5,10 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings, CheckCircle, XCircle, Info, User, Shield, Bell, Smartphone as DeviceIcon, Activity as ActivityIcon, Camera, RefreshCw, AlertTriangle, Sparkles } from 'lucide-react';
+import { Settings, CheckCircle, XCircle, Info, User, Shield, Bell, Camera, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
-import { useVendorDevices } from '@/hooks/useVendorDevices';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
 import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
@@ -90,18 +89,6 @@ function friendlyAiCopyError(error: unknown) {
 export default function VendorProfilePage() {
   const { data: profile, loading, error, saving, approvalPending, updateProfile, refetch } = useVendorProfile();
   
-  const {
-    devices,
-    loading: devicesLoading,
-    error: devicesError,
-    pairing,
-    pairingLoading,
-    fetchDevices,
-    requestPairingCode,
-    revokeDevice,
-    setPairing,
-  } = useVendorDevices();
-
   // Storage usage
   const vendorId = profile?.id || null;
   const { storage, loading: storageLoading, fetchStorage } = useVendorStorage(vendorId);
@@ -117,14 +104,7 @@ export default function VendorProfilePage() {
   // Local UI state (not profile data)
   const [localFormData, setLocalFormData] = useState<Partial<VendorProfileUpdateRequest>>({});
   const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [showPairModal, setShowPairModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [pairingSuccess, setPairingSuccess] = useState(false);
-  const [pairingInviteEmail, setPairingInviteEmail] = useState('');
-  const [pairingInvitePhone, setPairingInvitePhone] = useState('');
-  const [pairingBaseUrlOverride, setPairingBaseUrlOverride] = useState('');
-  const [pairingInviteFeedback, setPairingInviteFeedback] = useState<string | null>(null);
   
   const [reminders, setReminders] = useState({ review: true, invoice: false, maintenance: true, followUp: true });
   const [showReminderToast, setShowReminderToast] = useState(false);
@@ -223,26 +203,6 @@ export default function VendorProfilePage() {
       });
     }
   }, [profile]);
-
-  // Countdown effect - derive from pairing.expiresAt
-  useEffect(() => {
-    if (!pairing) {
-      setCountdown(null);
-      return;
-    }
-    
-    const expires = new Date(pairing.expiresAt).getTime();
-    
-    const update = () => {
-      const remaining = Math.max(0, Math.floor((expires - Date.now()) / 1000));
-      setCountdown(remaining);
-    };
-    
-    update(); // Initial update
-    const id = setInterval(update, 1000);
-    
-    return () => clearInterval(id);
-  }, [pairing]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -350,129 +310,24 @@ export default function VendorProfilePage() {
   
   const handleSaveSecuritySettings = async () => {
     try {
+      const normalizedSessionTimeout = Math.min(
+        1440,
+        Math.max(5, Math.round(Number(securitySettings.sessionTimeout) || 30))
+      );
       await updateProfile({
         loginNotifications: securitySettings.loginNotifications,
-        sessionTimeout: securitySettings.sessionTimeout,
+        sessionTimeout: normalizedSessionTimeout,
       });
+      setSecuritySettings((current) => ({
+        ...current,
+        sessionTimeout: normalizedSessionTimeout,
+      }));
       // Close modal after save
       setShowSecurityModal(false);
     } catch (err) {
       console.error('Error saving security settings:', err);
     }
   };
-
-  const handleOpenPairModal = async () => {
-    setPairingSuccess(false);
-    setPairingInviteFeedback(null);
-    setPairing(null);
-    setCountdown(null);
-    setShowPairModal(true);
-  };
-
-  const handleStartPairing = async (sendInvite: boolean) => {
-    try {
-      setPairingSuccess(false);
-      setPairingInviteFeedback(null);
-      const result = await requestPairingCode({
-        inviteEmail: sendInvite ? pairingInviteEmail : undefined,
-        invitePhone: sendInvite ? pairingInvitePhone : undefined,
-        baseUrlOverride: pairingBaseUrlOverride,
-      });
-
-      const feedback = sendInvite
-        ? result.inviteDelivery?.summaryMessage ||
-          (result.inviteDelivery?.email?.attempted || result.inviteDelivery?.sms?.attempted
-            ? "Invite sending was attempted. If it did not arrive, use the backup link and code below."
-            : "No invite channel was available. Use the backup link and code below.")
-        : "Backup link and pairing code ready to share manually.";
-      setPairingInviteFeedback(feedback);
-    } catch (err) {
-      console.error('Error requesting pairing code:', err);
-      setPairingInviteFeedback(err instanceof Error ? err.message : 'Failed to create pairing invite.');
-    }
-  };
-
-  const runtimeIsLocalOnly =
-    typeof window !== 'undefined' &&
-    /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const saved = String(window.localStorage.getItem('reliance_pairing_base_url_override') || '').trim();
-    if (saved) {
-      setPairingBaseUrlOverride(saved);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const normalized = pairingBaseUrlOverride.trim();
-    if (normalized) {
-      window.localStorage.setItem('reliance_pairing_base_url_override', normalized);
-    } else {
-      window.localStorage.removeItem('reliance_pairing_base_url_override');
-    }
-  }, [pairingBaseUrlOverride]);
-
-  // Refresh device list and pairing status while pairing modal is open.
-  useEffect(() => {
-    if (!showPairModal || !pairing?.code || pairingSuccess) {
-      return;
-    }
-
-    let isCancelled = false;
-    const poll = async () => {
-      try {
-        const [statusRes] = await Promise.all([
-          fetch(`/api/device/pairing/status?code=${encodeURIComponent(pairing.code)}`, {
-            cache: 'no-store',
-          }),
-          fetchDevices(),
-        ]);
-        const statusJson = await statusRes.json().catch(() => ({}));
-        if (isCancelled) return;
-
-        if (statusRes.ok && statusJson?.status === 'paired') {
-          setPairingSuccess(true);
-        }
-      } catch (error) {
-        if (!isCancelled) {
-          console.error('Error polling pairing status:', error);
-        }
-      }
-    };
-
-    void poll();
-    const interval = setInterval(() => {
-      void poll();
-    }, 2000);
-
-    return () => {
-      isCancelled = true;
-      clearInterval(interval);
-    };
-  }, [fetchDevices, pairing?.code, pairingSuccess, showPairModal]);
-
-  // Auto-close vendor pairing modal after success, even when an existing device was re-paired.
-  useEffect(() => {
-    if (!showPairModal || !pairingSuccess) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      setShowPairModal(false);
-      setPairing(null);
-      setCountdown(null);
-      setPairingSuccess(false);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [pairingSuccess, setPairing, showPairModal]);
-
-  // Refresh device list when pairing modal closes
-  useEffect(() => {
-    if (!showPairModal) {
-      fetchDevices();
-    }
-  }, [showPairModal, fetchDevices]);
 
   const businessDisplayName =
     String(localFormData.businessName || profile?.businessName || profile?.name || 'Your business').trim() ||
@@ -620,136 +475,6 @@ export default function VendorProfilePage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="order-3 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
-            <CardHeader className="pb-3">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <div className="flex items-center gap-2 text-blue-100/80">
-                    <Sparkles className="h-4 w-4" />
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em]">AI Copy Assist</p>
-                  </div>
-                  <CardTitle className="mt-2 text-xl text-white">Make your public business story easier to trust</CardTitle>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    This assistant rewrites your public-facing bio in clearer customer language without changing any approval, publishing, or Trust Score rules.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-white/15 bg-slate-900 text-white hover:bg-slate-800"
-                  onClick={requestVendorCopySuggestion}
-                  disabled={vendorCopyLoading || !vendorId}
-                >
-                  {vendorCopyLoading
-                    ? 'Generating...'
-                    : vendorCopySuggestion
-                      ? 'Refresh AI Suggestion'
-                      : 'Suggest Better Bio'}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {vendorCopyMessage ? (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  {vendorCopyMessage}
-                </div>
-              ) : null}
-              {vendorCopyError ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {vendorCopyError}
-                </div>
-              ) : null}
-              {vendorCopySuggestion ? (
-                <div className="space-y-4 rounded-xl border border-blue-300/20 bg-slate-900/75 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">
-                      {vendorCopySuggestion.confidence.charAt(0).toUpperCase() + vendorCopySuggestion.confidence.slice(1)} confidence
-                    </Badge>
-                    <Badge variant="outline">Headline suggestion included</Badge>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">AI summary</p>
-                    <p className="mt-2 text-sm text-slate-300">{vendorCopySuggestion.summary}</p>
-                  </div>
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-lg border border-blue-300/20 bg-slate-950/80 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">Suggested opening line</p>
-                      <p className="mt-2 text-base font-semibold text-white">
-                        {vendorCopySuggestion.recommendedHeadline}
-                      </p>
-                      <p className="mt-3 text-sm leading-6 text-slate-300">
-                        {vendorCopySuggestion.recommendedDescription}
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="rounded-lg border border-white/10 bg-slate-950/80 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">Suggested proof points</p>
-                        <ul className="mt-2 space-y-1 text-sm text-slate-300">
-                          {vendorCopySuggestion.recommendedBullets.length > 0 ? (
-                            vendorCopySuggestion.recommendedBullets.map((item) => (
-                              <li key={item}>- {item}</li>
-                            ))
-                          ) : (
-                            <li>No extra bullet points were suggested.</li>
-                          )}
-                        </ul>
-                      </div>
-                      {vendorCopySuggestion.trustGaps.length > 0 ? (
-                        <div className="rounded-lg border border-blue-300/20 bg-slate-950/80 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">What customers may still question</p>
-                          <ul className="mt-2 space-y-1 text-sm text-slate-300">
-                            {vendorCopySuggestion.trustGaps.map((item) => (
-                              <li key={item}>- {item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                  {vendorCopySuggestion.riskyClaims.length > 0 ? (
-                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Claims to avoid or soften</p>
-                      <ul className="mt-2 space-y-1 text-sm text-red-800">
-                        {vendorCopySuggestion.riskyClaims.map((item) => (
-                          <li key={item}>- {item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {vendorCopySuggestion.nextEdits.length > 0 ? (
-                    <div className="rounded-lg border border-blue-300/20 bg-blue-500/10 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">Recommended next edits</p>
-                      <ul className="mt-2 space-y-1 text-sm text-slate-300">
-                        {vendorCopySuggestion.nextEdits.map((item) => (
-                          <li key={item}>- {item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  <div className="flex flex-wrap gap-3">
-                    <Button
-                      type="button"
-                      onClick={() =>
-                        setLocalFormData((current) => ({
-                          ...current,
-                          bio: vendorCopySuggestion.recommendedDescription,
-                        }))
-                      }
-                    >
-                      Use Suggested Bio
-                    </Button>
-                    <p className="text-xs text-slate-400">
-                      The suggested opening line is shown here for guidance. Your actual saved profile field on this page is the business bio below.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-blue-300/25 bg-slate-900/75 px-4 py-5 text-sm leading-6 text-slate-300">
-                  Run AI Copy Assist to get a clearer profile bio draft based on your current business details and existing public trust signals.
-                </div>
-              )}
-            </CardContent>
-          </Card>
           {/* Enhanced Profile Information Card */}
           <Card className="order-1 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)] [&_input]:border-white/10 [&_input]:bg-slate-900/75 [&_input]:text-white [&_input]:placeholder:text-slate-500 [&_label]:!text-blue-100 [&_p]:!text-slate-300 [&_select]:border-white/10 [&_select]:bg-slate-900/75 [&_select]:text-white [&_textarea]:border-white/10 [&_textarea]:bg-slate-900/75 [&_textarea]:text-white [&_textarea]:placeholder:text-slate-500">
             <CardHeader className="pb-4">
@@ -765,24 +490,24 @@ export default function VendorProfilePage() {
             </CardHeader>
             <CardContent>
               <div className="mb-6 rounded-lg border border-blue-300/20 bg-blue-500/10 p-3 text-sm leading-6 text-blue-100">
-                Profile fields on this page save to your vendor profile. Device pairing and storage limits use live vendor APIs; future-only launch features are marked where they appear.
+                Profile fields on this page save to your vendor profile. Future-only launch features are marked where they appear.
               </div>
               <form className="space-y-6">
                 {/* Profile Photo Section */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium mb-2 text-gray-700">Business Profile Photo</label>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                     <div className="relative shrink-0">
                       {localFormData.profilePhoto || profile.profilePhoto ? (
-                        <div className="h-28 w-40 overflow-hidden rounded-2xl border border-blue-300/20 bg-slate-900 shadow-[0_12px_30px_rgba(3,8,20,0.22)]">
+                        <div className="flex h-72 w-full max-w-[240px] items-center justify-center overflow-hidden rounded-3xl border border-blue-300/25 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-2 shadow-[0_18px_40px_rgba(3,8,20,0.28)]">
                           <img
                             src={localFormData.profilePhoto || profile.profilePhoto || ''}
                             alt="Business Profile"
-                            className="h-full w-full object-cover object-center"
+                            className="max-h-full max-w-full rounded-2xl object-contain"
                           />
                         </div>
                       ) : (
-                        <div className="flex h-28 w-40 items-center justify-center rounded-2xl border border-blue-300/20 bg-gradient-to-br from-slate-800 to-blue-950 text-3xl font-semibold text-blue-100 shadow-[0_12px_30px_rgba(3,8,20,0.22)]">
+                        <div className="flex h-72 w-full max-w-[240px] items-center justify-center rounded-3xl border border-blue-300/25 bg-gradient-to-br from-slate-800 to-blue-950 text-4xl font-semibold text-blue-100 shadow-[0_18px_40px_rgba(3,8,20,0.28)]">
                           {businessInitials}
                         </div>
                       )}
@@ -798,7 +523,7 @@ export default function VendorProfilePage() {
 
                       <button
                         type="button"
-                        className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="absolute -bottom-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploadingPhoto || (storage?.isOverLimit ?? false)}
                         title={storage?.isOverLimit ? 'Storage limit reached. Delete existing media to upload new files.' : undefined}
@@ -806,11 +531,12 @@ export default function VendorProfilePage() {
                         <Camera className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-600 mb-2">Upload a professional photo of your business, team, or workspace. Customers will use it as a first impression when your public profile is live.</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-2 text-sm leading-6 text-slate-300">Upload a professional photo of your business, team, or workspace. Customers will use it as a first impression when your public profile is live.</p>
+                      <p className="mb-3 text-xs leading-5 text-slate-400">Vertical job-site photos work well here. Reliance fits the full image inside a polished preview instead of cutting off important details.</p>
                       <button
                         type="button"
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploadingPhoto || (storage?.isOverLimit ?? false)}
                         title={storage?.isOverLimit ? 'Storage limit reached. Delete existing media to upload new files.' : undefined}
@@ -859,7 +585,28 @@ export default function VendorProfilePage() {
 
                 {/* Business Bio Section */}
                 <div className="mb-6">
-                  <label className="block text-sm font-medium mb-2 text-gray-700">Business Bio</label>
+                  <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Business Bio</label>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Write it yourself, or let AI improve the same bio using the business details you already shared.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-blue-300/20 bg-slate-900/80 text-white hover:bg-slate-800"
+                      onClick={requestVendorCopySuggestion}
+                      disabled={vendorCopyLoading || !vendorId}
+                    >
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      {vendorCopyLoading
+                        ? 'Improving...'
+                        : vendorCopySuggestion
+                          ? 'Improve Again'
+                          : 'Improve with AI'}
+                    </Button>
+                  </div>
                   <textarea
                     name="bio"
                     value={localFormData.bio || ''}
@@ -869,6 +616,56 @@ export default function VendorProfilePage() {
                     placeholder="Tell customers about your business, experience, and what makes you unique..."
                   />
                   <p className="text-sm text-gray-500 mt-1">Shown on your public profile and job listings.</p>
+                  {vendorCopyMessage ? (
+                    <div className="mt-3 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+                      {vendorCopyMessage}
+                    </div>
+                  ) : null}
+                  {vendorCopyError ? (
+                    <div className="mt-3 rounded-lg border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                      {vendorCopyError}
+                    </div>
+                  ) : null}
+                  {vendorCopySuggestion ? (
+                    <div className="mt-4 rounded-2xl border border-blue-300/20 bg-slate-900/78 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">AI suggested bio</p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            Review it first. Using the suggestion replaces the text in your Business Bio field.
+                          </p>
+                        </div>
+                        <Badge variant="outline">
+                          {vendorCopySuggestion.confidence.charAt(0).toUpperCase() + vendorCopySuggestion.confidence.slice(1)} confidence
+                        </Badge>
+                      </div>
+                      <p className="mt-3 rounded-xl border border-white/10 bg-slate-950/70 p-4 text-sm leading-6 text-slate-200">
+                        {vendorCopySuggestion.recommendedDescription}
+                      </p>
+                      {vendorCopySuggestion.riskyClaims.length > 0 ? (
+                        <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100">
+                          <span className="font-semibold">AI caution:</span> {vendorCopySuggestion.riskyClaims.join(' ')}
+                        </div>
+                      ) : null}
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Button
+                          type="button"
+                          className="bg-blue-600 text-white hover:bg-blue-700"
+                          onClick={() =>
+                            setLocalFormData((current) => ({
+                              ...current,
+                              bio: vendorCopySuggestion.recommendedDescription,
+                            }))
+                          }
+                        >
+                          Use This Bio
+                        </Button>
+                        <p className="text-xs text-slate-400">
+                          You can still edit the bio manually after applying it.
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Business specialties section */}
@@ -877,34 +674,54 @@ export default function VendorProfilePage() {
                   <p className="text-sm text-gray-600 mb-3">
                     Select broad specialties for your profile. Customer-visible services offered are managed from Services Offered.
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {serviceTypeOptions.map((serviceType) => (
-                      <div key={serviceType} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id={serviceType}
-                          checked={(localFormData.serviceTypes || []).includes(serviceType)}
-                          onChange={(e) => {
-                            const currentTypes = localFormData.serviceTypes || [];
-                            if (e.target.checked) {
-                              setLocalFormData(prev => ({
-                                ...prev,
-                                serviceTypes: [...currentTypes, serviceType]
-                              }));
-                            } else {
-                              setLocalFormData(prev => ({
-                                ...prev,
-                                serviceTypes: currentTypes.filter(type => type !== serviceType)
-                              }));
-                            }
-                          }}
-                          className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <label htmlFor={serviceType} className="text-sm text-gray-700 cursor-pointer">
-                          {serviceType}
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {serviceTypeOptions.map((serviceType) => {
+                      const isSelected = (localFormData.serviceTypes || []).includes(serviceType);
+
+                      return (
+                        <label
+                          key={serviceType}
+                          htmlFor={serviceType}
+                          className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-sm transition ${
+                            isSelected
+                              ? 'border-blue-300/70 bg-blue-500/20 text-white shadow-[0_0_0_1px_rgba(96,165,250,0.28),0_12px_28px_rgba(37,99,235,0.18)]'
+                              : 'border-white/10 bg-slate-900/60 text-slate-300 hover:border-blue-300/35 hover:bg-blue-500/10 hover:text-white'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            id={serviceType}
+                            checked={isSelected}
+                            onChange={(e) => {
+                              const currentTypes = localFormData.serviceTypes || [];
+                              if (e.target.checked) {
+                                setLocalFormData(prev => ({
+                                  ...prev,
+                                  serviceTypes: [...currentTypes, serviceType]
+                                }));
+                              } else {
+                                setLocalFormData(prev => ({
+                                  ...prev,
+                                  serviceTypes: currentTypes.filter(type => type !== serviceType)
+                                }));
+                              }
+                            }}
+                            className="sr-only"
+                          />
+                          <span
+                            aria-hidden="true"
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition ${
+                              isSelected
+                                ? 'border-blue-200 bg-blue-500 text-white'
+                                : 'border-slate-500 bg-slate-950/80'
+                            }`}
+                          >
+                            {isSelected ? <CheckCircle className="h-3.5 w-3.5" /> : null}
+                          </span>
+                          <span className="leading-5">{serviceType}</span>
                         </label>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <p className="text-sm text-gray-500 mt-2">Selected: {(localFormData.serviceTypes || []).length} specialties</p>
                 </div>
@@ -1131,128 +948,8 @@ export default function VendorProfilePage() {
               </form>
             </CardContent>
           </Card>
-
-          {/* Enhanced Device Management Card */}
-          <Card className="order-4 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
-                    <DeviceIcon className="h-6 w-6 text-blue-100" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl text-white">Device Management</CardTitle>
-                    <p className="text-sm leading-6 text-slate-300">
-                      Pair employee phones for stage video capture. Headsets should be connected from a paired phone when supported—this page does not handle Bluetooth pairing directly.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fetchDevices()}
-                  disabled={devicesLoading}
-                  className="border-white/15 bg-slate-900 text-white hover:bg-slate-800"
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${devicesLoading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {devicesError ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium">Device list is temporarily unavailable.</p>
-                      <p className="mt-1 text-amber-800">
-                        Your profile is still usable. Refresh devices or try again after the connection recovers.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fetchDevices()}
-                        disabled={devicesLoading}
-                        className="mt-3 bg-white hover:bg-amber-50"
-                      >
-                        <RefreshCw className={`w-4 h-4 mr-2 ${devicesLoading ? 'animate-spin' : ''}`} />
-                        Retry Devices
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : devicesLoading ? (
-                <div className="text-center py-8">
-                  <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-300"></div>
-                  <p className="text-slate-300">Loading devices...</p>
-                </div>
-              ) : devices.length === 0 ? (
-                <div className="text-center py-8">
-                  <DeviceIcon className="mx-auto mb-4 h-12 w-12 text-blue-100/45" />
-                  <p className="mb-4 text-slate-300">No devices paired yet</p>
-                  <Button 
-                    variant="outline" 
-                    onClick={handleOpenPairModal}
-                    className="border-white/15 bg-slate-900 text-white hover:bg-slate-800"
-                  >
-                    <DeviceIcon className="w-4 h-4 mr-2" />
-                    Pair New Device
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {devices.map(dev => (
-                    <div key={dev.id} className="flex items-center gap-4 rounded-lg border border-blue-300/20 bg-slate-900/75 p-4 transition-shadow hover:shadow-md">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-blue-300/20 bg-blue-500/12">
-                        <DeviceIcon className="h-6 w-6 text-blue-100" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-white">
-                            {dev.deviceName ?? dev.deviceType ?? "Device"}
-                          </span>
-                          <Badge className="border border-blue-300/20 bg-blue-500/15 text-xs text-blue-100">
-                            {dev.deviceType}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-slate-400">
-                          <span>Last seen: {dev.lastSeenAt ? new Date(dev.lastSeenAt).toLocaleDateString() : "—"}</span>
-                          <span>Added: {dev.createdAt ? new Date(dev.createdAt).toLocaleDateString() : "—"}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              await revokeDevice(dev.id);
-                            } catch (err) {
-                              console.error('Error revoking device:', err);
-                            }
-                          }}
-                        >
-                          Revoke
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <Button 
-                    variant="outline" 
-                    onClick={handleOpenPairModal}
-                    className="w-full border-white/15 bg-slate-900 text-white hover:bg-slate-800"
-                  >
-                    <DeviceIcon className="w-4 h-4 mr-2" />
-                    Pair Additional Device
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Enhanced Reminders & Notifications Card */}
-          <Card className="order-5 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
+          <Card className="order-4 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
                 <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
@@ -1339,7 +1036,7 @@ export default function VendorProfilePage() {
           </Card>
 
           {/* Enhanced Notification Settings Card */}
-          <Card className="order-6 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
+          <Card className="order-5 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
             <CardHeader className="pb-4">
               <div className="flex items-center gap-3">
                 <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
@@ -1418,7 +1115,7 @@ export default function VendorProfilePage() {
                     </Badge>
                   </div>
                   <p className="text-xs leading-5 text-slate-300">
-                    Review MFA, passkeys, and login alerts from Security Settings. This protects dashboard,
+                    Review email sign-in alerts and dashboard timeout rules. These settings protect dashboard,
                     team, and job access.
                   </p>
                 </div>
@@ -1446,181 +1143,6 @@ export default function VendorProfilePage() {
       </main>
       )}
       </div>
-
-      {/* Modals - Always rendered (controlled by their own state) */}
-      {/* Enhanced Pair Device Modal */}
-      <Dialog 
-        open={showPairModal} 
-        onOpenChange={(open) => {
-          setShowPairModal(open);
-          if (!open) {
-            setPairing(null);
-            setCountdown(null);
-            setPairingSuccess(false);
-            setPairingInviteFeedback(null);
-            setPairingInviteEmail('');
-            setPairingInvitePhone('');
-          }
-        }}
-      >
-        <DialogContent className="max-w-md bg-white">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <DeviceIcon className="w-5 h-5 text-blue-600" />
-              Pair Employee Device
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mt-4 flex flex-col items-center gap-4">
-            {pairingSuccess ? (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="w-10 h-10 text-green-600" />
-                </div>
-                <h3 className="text-xl font-semibold text-green-700 mb-2">Device Paired Successfully!</h3>
-                <p className="text-gray-600 mb-4">The device has been added to your account.</p>
-                <p className="text-sm text-gray-500">This window will close automatically...</p>
-              </div>
-            ) : pairing ? (
-              <>
-                {pairingInviteFeedback ? (
-                  <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                    {pairingInviteFeedback}
-                  </div>
-                ) : null}
-                <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  Reliance is waiting for the employee phone to open the link and confirm pairing. The backup code stays available if the employee needs to enter it manually.
-                </div>
-                <div className="text-3xl font-mono tracking-widest bg-gradient-to-r from-blue-100 to-blue-200 px-6 py-3 rounded-lg border-2 border-blue-300" aria-label="Pairing Code">
-                  {pairing.code}
-                </div>
-                <div className="text-gray-700 text-center text-sm mb-4">
-                  Send this link to the employee phone you want to pair. The link already includes the code, and the 6-digit code stays available as a backup.
-                </div>
-                {pairing.linkAccessMode === 'local_only' ? (
-                  <div className="w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    This pairing link uses a local-only Reliance address for this environment. It can open on this machine, but it is not ready as a true phone email/text link until <code className="font-mono">APP_BASE_URL</code> points to a public or phone-reachable URL.
-                  </div>
-                ) : null}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                  <div className="text-xs text-blue-800 font-medium mb-2">Shareable pairing link:</div>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 text-xs bg-white px-2 py-1 rounded border border-blue-200 text-blue-900 break-all">
-                      {pairing.pairingUrl}
-                    </code>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(pairing.pairingUrl);
-                      }}
-                      className="text-xs"
-                    >
-                      Copy link
-                    </Button>
-                  </div>
-                </div>
-                <div className="text-blue-600 font-semibold mt-2 text-lg" aria-live="polite">
-                  {countdown != null
-                    ? `${Math.floor(countdown / 60)}:${(countdown % 60)
-                        .toString()
-                        .padStart(2, "0")}`
-                    : "00:00"}
-                </div>
-                <div className="text-green-700 font-medium text-sm" aria-live="polite">
-                  {pairingLoading ? "Generating code..." : "Waiting for the phone to confirm pairing..."}
-                </div>
-              </>
-            ) : null}
-            {!pairing && pairingLoading && (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Generating pairing code...</p>
-              </div>
-            )}
-            {!pairing && !pairingLoading && (
-              <div className="w-full space-y-4">
-                {pairingInviteFeedback ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    {pairingInviteFeedback}
-                  </div>
-                ) : null}
-                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                  Enter the employee contact details below. Reliance will try to send a pairing link first, and you can still use the backup link and code if needed.
-                </div>
-                {runtimeIsLocalOnly ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    This vendor session is running on a local-only Reliance address. Email or text pairing invites from this screen are useful for copy review, but they will not open on another phone until you set <code className="font-mono">APP_BASE_URL</code> or enter a phone-reachable pairing URL below.
-                  </div>
-                ) : null}
-                {runtimeIsLocalOnly ? (
-                  <div className="space-y-2">
-                    <label htmlFor="pairing-base-url" className="text-sm font-medium text-gray-700">
-                      Phone-reachable pairing URL
-                    </label>
-                    <Input
-                      id="pairing-base-url"
-                      type="url"
-                      placeholder="https://your-staging-or-tunnel-url.com"
-                      value={pairingBaseUrlOverride}
-                      onChange={(e) => setPairingBaseUrlOverride(e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      Optional in local development. Reliance will use this exact base URL in the invite link, so make sure the employee phone can actually open it.
-                    </p>
-                  </div>
-                ) : null}
-                <div className="space-y-2">
-                  <label htmlFor="pairing-invite-email" className="text-sm font-medium text-gray-700">
-                    Employee email
-                  </label>
-                  <Input
-                    id="pairing-invite-email"
-                    type="email"
-                    placeholder="employee@example.com"
-                    value={pairingInviteEmail}
-                    onChange={(e) => setPairingInviteEmail(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="pairing-invite-phone" className="text-sm font-medium text-gray-700">
-                    Employee phone
-                  </label>
-                  <Input
-                    id="pairing-invite-phone"
-                    type="tel"
-                    placeholder="(407) 555-1234"
-                    value={pairingInvitePhone}
-                    onChange={(e) => setPairingInvitePhone(e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500">
-                    Email sending is supported now. Text delivery will only send if SMS is configured for this environment.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <Button
-                    onClick={() => handleStartPairing(true)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    Send Pairing Link
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleStartPairing(false)}
-                  >
-                    Use Backup Code Only
-                  </Button>
-                </div>
-              </div>
-            )}
-            {!pairingSuccess && (
-              <Button variant="outline" onClick={() => setShowPairModal(false)} className="w-full bg-white hover:bg-gray-50">
-                Close
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Security Settings Modal */}
       <Dialog open={showSecurityModal} onOpenChange={setShowSecurityModal}>
         <DialogContent className="max-w-lg bg-white">
@@ -1642,26 +1164,36 @@ export default function VendorProfilePage() {
                 Active
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Login Notifications</span>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <span className="text-sm font-medium">Email login alerts</span>
+                <p className="mt-1 text-xs text-slate-500">
+                  Send an email alert when this account signs in to vendor tools.
+                </p>
+              </div>
               <input 
                 type="checkbox" 
                 checked={securitySettings.loginNotifications}
                 onChange={(e) => setSecuritySettings(s => ({ ...s, loginNotifications: e.target.checked }))}
-                className="w-4 h-4 text-red-600"
+                className="mt-1 h-4 w-4 accent-blue-600"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Session Timeout (minutes)</label>
+              <label className="block text-sm font-medium mb-2">Vendor session timeout (minutes)</label>
               <Input 
                 type="number" 
+                min={5}
+                max={1440}
                 value={securitySettings.sessionTimeout}
                 onChange={(e) => setSecuritySettings(s => ({ ...s, sessionTimeout: Number(e.target.value) }))}
                 className="w-24"
               />
+              <p className="mt-1 text-xs text-slate-500">
+                Vendor access expires after this many minutes from sign-in. Minimum 5 minutes.
+              </p>
             </div>
             <Button 
-              className="w-full bg-red-600 hover:bg-red-700 text-white"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               onClick={handleSaveSecuritySettings}
             >
               Save Security Settings

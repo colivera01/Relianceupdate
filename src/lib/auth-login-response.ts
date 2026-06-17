@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAuthBearerToken, createAuthSessionCookie, getAuthSessionCookieOptions } from "@/lib/auth-session";
+import { sendVendorLoginAlert } from "@/lib/vendor-security";
 
 export type AuthLoginUserPayload = {
   id: string;
@@ -12,9 +13,10 @@ export type AuthLoginUserPayload = {
   emailVerifiedAt: string | null;
 };
 
-export function buildSuccessfulLoginResponse(params: {
+export async function buildSuccessfulLoginResponse(params: {
   user: AuthLoginUserPayload;
   devWarning?: string;
+  request?: Request;
 }) {
   const response = NextResponse.json({
     success: true,
@@ -51,6 +53,14 @@ export function buildSuccessfulLoginResponse(params: {
     sameSite: "lax",
     httpOnly: false,
   });
+
+  if (params.request) {
+    try {
+      await sendVendorLoginAlert({ user: params.user, request: params.request });
+    } catch (error) {
+      console.error("[auth-login-response] vendor login alert failed", error);
+    }
+  }
 
   return response;
 }

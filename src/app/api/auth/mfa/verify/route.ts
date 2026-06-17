@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
             emailVerifiedAt: credential!.emailVerifiedAt,
           });
 
-    const response = buildSuccessfulLoginResponse({ user });
+    const response = await buildSuccessfulLoginResponse({ user, request });
 
     if (rememberDevice && credential) {
       const trustedDevice = await issueTrustedDevice({

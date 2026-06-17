@@ -508,7 +508,7 @@ export default function ProfileSettingsPage() {
               onClick={() => router.push('/discover')}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             >
-              Explore Proof
+              Browse Services
             </button>
           </div>
         </div>
@@ -621,13 +621,15 @@ export default function ProfileSettingsPage() {
                 {/* Profile Picture */}
                 <div className="relative">
                   {customerPhotoUrl ? (
-                    <img
-                      src={customerPhotoUrl}
-                      alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
-                      className="h-24 w-24 rounded-full object-cover ring-2 ring-blue-200"
-                    />
+                    <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-slate-950/90 p-1.5 ring-2 ring-blue-200">
+                      <img
+                        src={customerPhotoUrl}
+                        alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
+                        className="max-h-full max-w-full rounded-full object-contain"
+                      />
+                    </div>
                   ) : (
-                    <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full flex items-center justify-center">
+                    <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400">
                       <span className="text-white font-semibold text-2xl">
                         {(tempProfile.firstName[0] || '').toUpperCase()}{(tempProfile.lastName[0] || '').toUpperCase()}
                       </span>
@@ -885,13 +887,15 @@ export default function ProfileSettingsPage() {
               />
               <div className="flex items-center gap-4">
                 {customerPhotoUrl ? (
-                  <img
-                    src={customerPhotoUrl}
-                    alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
-                    className="h-16 w-16 rounded-full object-cover shadow-sm ring-2 ring-blue-200"
-                  />
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950/90 p-1 shadow-sm ring-2 ring-blue-200">
+                    <img
+                      src={customerPhotoUrl}
+                      alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
+                      className="max-h-full max-w-full rounded-full object-contain"
+                    />
+                  </div>
                 ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-xl font-bold text-white shadow-sm">
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-xl font-bold text-white shadow-sm">
                     {customerInitials}
                   </div>
                 )}
@@ -983,7 +987,7 @@ export default function ProfileSettingsPage() {
                   className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <Grid className="w-5 h-5" />
-                  <span>Explore Proof</span>
+                  <span>Browse Services</span>
                 </button>
                 <button
                   onClick={() => router.push('/customer/secure-account')}

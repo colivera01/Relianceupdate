@@ -7,6 +7,7 @@ export type VendorTeamMember = {
   userId: string;
   name: string;
   email: string | null;
+  phone: string | null;
   role: string;
   status: string;
 };
@@ -67,6 +68,7 @@ export async function fetchVendorTeamMembers(
       userId: String(m?.userId || ""),
       name,
       email: m?.user?.email != null ? String(m.user.email) : null,
+      phone: m?.user?.phone != null ? String(m.user.phone) : null,
       role: String(m?.role || "").trim().toUpperCase(),
       status: String(m?.status || "").trim().toUpperCase(),
     });

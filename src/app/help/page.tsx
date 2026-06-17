@@ -202,10 +202,10 @@ export default async function PublicHelpPage({
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Explore Proof' },
+              { href: '/browse', label: 'Browse Services' },
             ]}
             ctaHref="/browse"
-            ctaLabel="See Public Proof"
+            ctaLabel="Browse Services"
           />
 
           <Link href={backHref} className="inline-flex text-sm font-medium text-[var(--reliance-blue-soft)] hover:text-white">
@@ -272,9 +272,9 @@ export default async function PublicHelpPage({
                 {
                   heading: 'Exploring public proof',
                   description:
-                    'Use Explore Proof to review public work examples, vendor details, service videos, reviews, and Trust Score context.',
+                    'Use Browse Services to review public work examples, vendor details, service videos, reviews, and Trust Score context.',
                   href: '/browse',
-                  label: 'Explore public proof',
+                  label: 'Browse services',
                 },
                 {
                   heading: helpContext.bookingHeading,

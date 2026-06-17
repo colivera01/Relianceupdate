@@ -6,6 +6,158 @@ interface RouteParams {
   params: Promise<{ vendorId: string; membershipId: string }>;
 }
 
+function normalizeEmail(value: unknown): string | null {
+  const email = String(value || "").trim().toLowerCase();
+  return email || null;
+}
+
+function normalizeText(value: unknown): string | null {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function isUniqueConstraintError(error: any): boolean {
+  return String(error?.code || "").toUpperCase() === "P2002";
+}
+
+export async function PATCH(request: Request, { params }: RouteParams): Promise<NextResponse> {
+  let step = "init";
+  const nonProd = process.env.NODE_ENV !== "production";
+  const debug: Record<string, unknown> = {};
+  try {
+    step = "resolve_params";
+    const { vendorId, membershipId } = await params;
+    debug.membershipIdReceived = membershipId;
+    debug.vendorId = vendorId;
+
+    step = "require_manager";
+    await requireVendorManager(request, vendorId);
+
+    step = "parse_body";
+    const body = await request.json().catch(() => ({}));
+    const name = normalizeText(body?.name);
+    const email = normalizeEmail(body?.email);
+    const phone = normalizeText(body?.phone);
+
+    if (!name) {
+      return NextResponse.json({ error: "Team member name is required" }, { status: 422 });
+    }
+    if (!email && !phone) {
+      return NextResponse.json(
+        { error: "Enter at least one contact method for this team member" },
+        { status: 422 }
+      );
+    }
+
+    step = "load_membership";
+    const membership = await (prisma as any).vendorMembership.findUnique({
+      where: { id: membershipId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            authCredential: { select: { id: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!membership) {
+      return NextResponse.json({ error: "Membership not found" }, { status: 404 });
+    }
+    if (String(membership.vendorId) !== String(vendorId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (String(membership.status || "").trim().toUpperCase() !== "ACTIVE") {
+      return NextResponse.json(
+        { error: "Only active team members can be edited", code: "MEMBERSHIP_NOT_ACTIVE" },
+        { status: 422 }
+      );
+    }
+    if (membership.user?.authCredential?.id && !email) {
+      return NextResponse.json(
+        { error: "This team member signs in with email, so an email address is required." },
+        { status: 422 }
+      );
+    }
+
+    step = "update_user_contact";
+    const updated = await (prisma as any).$transaction(async (tx: any) => {
+      const updatedUser = await tx.user.update({
+        where: { id: String(membership.userId) },
+        data: {
+          name,
+          email,
+          phone,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+        },
+      });
+
+      const authCredentialId = membership.user?.authCredential?.id
+        ? String(membership.user.authCredential.id)
+        : "";
+      const existingAuthEmail = String(membership.user?.authCredential?.email || "").trim().toLowerCase();
+      if (authCredentialId && email && existingAuthEmail !== email) {
+        await tx.authCredential.update({
+          where: { id: authCredentialId },
+          data: { email },
+        });
+      }
+
+      return updatedUser;
+    });
+
+    return NextResponse.json({
+      success: true,
+      membership: {
+        id: membership.id,
+        userId: membership.userId,
+        role: membership.role,
+        status: membership.status,
+        user: updated,
+      },
+    });
+  } catch (error: any) {
+    if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json(
+        {
+          error: "That email or phone number is already used by another Reliance account.",
+          code: "CONTACT_ALREADY_USED",
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      {
+        error: "Failed to update team member",
+        details: error?.message || String(error),
+        ...(nonProd
+          ? {
+              step,
+              debug: {
+                ...debug,
+                prismaCode: error?.code || null,
+                prismaMeta: error?.meta || null,
+              },
+            }
+          : {}),
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(request: Request, { params }: RouteParams): Promise<NextResponse> {
   let step = "init";
   const nonProd = process.env.NODE_ENV !== "production";

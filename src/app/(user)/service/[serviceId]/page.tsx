@@ -80,7 +80,7 @@ function ServiceDetailLoadingState() {
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
   const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null);
   const resolvedBackHref = returnTo || (user?.id ? '/discover' : '/');
-  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Explore Proof' : 'Back to Home Page');
+  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Browse Services' : 'Back to Home Page');
 
   return (
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
@@ -383,7 +383,7 @@ function ServiceDetailPageContent() {
     }
   };
   const resolvedBackHref = returnTo || (isSignedIn ? '/discover' : '/');
-  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Explore Proof' : 'Back to Home Page');
+  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Browse Services' : 'Back to Home Page');
   const handleBack = () => {
     router.push(resolvedBackHref);
   };

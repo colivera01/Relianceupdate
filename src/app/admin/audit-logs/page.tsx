@@ -170,7 +170,7 @@ export default function AuditLogsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Audit Logs</h1>
           <p className="text-gray-600 mt-1">
-            Admin actions captured across vendor operations, booking workflows, moderation, device pairing, and AI assist activity.
+            Admin actions captured across vendor operations, service-record workflows, moderation, and AI assist activity.
           </p>
         </div>
         <Button variant="outline" onClick={fetchLogs} disabled={loading}>
