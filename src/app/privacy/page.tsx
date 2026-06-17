@@ -43,7 +43,21 @@ export default function PrivacyPage() {
         rights, or platform integrity.
       </p>
 
-      <h3>4. Media and Consent Data</h3>
+      <h3>4. SMS and Mobile Number Privacy</h3>
+      <p>
+        Reliance may send transactional SMS messages for account verification, vendor or employee
+        invitations, service-record updates, customer video consent requests, approved service
+        video notifications, review reminders, security alerts, and support-related account
+        updates. Message frequency varies based on your account, invite, consent, service-record,
+        review, and support activity. Message and data rates may apply. Reply STOP to opt out and
+        HELP for help where SMS replies are supported.
+      </p>
+      <p>
+        Reliance does not sell, rent, or share mobile phone numbers or SMS opt-in consent with
+        third parties or affiliates for marketing or promotional purposes.
+      </p>
+
+      <h3>5. Media and Consent Data</h3>
       <p>
         Service-related media and consent records may be stored and associated with relevant
         service records and accounts. These records may be retained and used for compliance,
@@ -52,7 +66,7 @@ export default function PrivacyPage() {
         pages when the platform and moderation workflow allow it.
       </p>
 
-      <h3>5. Public and Private Information</h3>
+      <h3>6. Public and Private Information</h3>
       <p>
         Public-facing areas may show provider profile details, services offered, approved public
         videos, public reviews, Trust Score context, and related proof signals. Private account
@@ -60,14 +74,14 @@ export default function PrivacyPage() {
         are used for platform operations and are not intended for general public display.
       </p>
 
-      <h3>6. AI-Assisted Review</h3>
+      <h3>7. AI-Assisted Review</h3>
       <p>
         Reliance may use AI-assisted tools to help summarize, triage, or flag content for human
         review. AI assistance does not replace final human decisions for approval, moderation,
         vendor access, or account restrictions where manual review is required.
       </p>
 
-      <h3>7. Data Retention</h3>
+      <h3>8. Data Retention</h3>
       <p>
         We retain information for as long as reasonably necessary for legitimate business and
         operational needs, including legal, security, compliance, support, and dispute-handling
@@ -75,21 +89,21 @@ export default function PrivacyPage() {
         obligations.
       </p>
 
-      <h3>8. Security</h3>
+      <h3>9. Security</h3>
       <p>
         We use commercially reasonable administrative, technical, and organizational safeguards to
         help protect personal information. No method of transmission or storage is completely
         secure, and we cannot guarantee absolute security.
       </p>
 
-      <h3>9. Your Rights and Choices</h3>
+      <h3>10. Your Rights and Choices</h3>
       <p>
         Where applicable, you may request access to, correction of, or deletion of certain personal
         information. You may also manage communication preferences through available settings or by
         contacting support where those controls are supported.
       </p>
 
-      <h3>10. Policy Updates</h3>
+      <h3>11. Policy Updates</h3>
       <p>
         Reliance may update this Privacy Policy from time to time. When updates are made, we may
         post the revised policy through the platform or related communications. Continued use of

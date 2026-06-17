@@ -60,6 +60,14 @@ export default function TermsPage() {
         depend on third-party providers, carrier filtering, contact accuracy, and user device
         settings.
       </p>
+      <p>
+        By providing your mobile phone number during account registration, vendor onboarding,
+        employee invitation, customer consent, service-record, or review workflows, you authorize
+        Reliance to send transactional messages related to that activity. Message frequency varies
+        based on account, invite, consent, service-record, review, and support activity. Message
+        and data rates may apply. Reply STOP to opt out and HELP for help where SMS replies are
+        supported.
+      </p>
 
       <h3>8. Account and Security Responsibilities</h3>
       <p>
