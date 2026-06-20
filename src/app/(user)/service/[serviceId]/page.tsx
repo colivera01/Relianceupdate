@@ -105,7 +105,7 @@ function ServiceDetailLoadingState() {
 
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-6 rounded-[28px] border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-blue-900 shadow-sm">
-          Reliance is loading this service-offered proof page now. Provider details, reviews, and any public service video will appear as soon as the page is ready.
+          Reliance is loading this service details page now. Provider details, reviews, and any public service video will appear as soon as the page is ready.
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -402,7 +402,7 @@ function ServiceDetailPageContent() {
           <h1 className="font-display text-3xl font-semibold text-slate-950">This service page is not ready yet</h1>
           <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">{error}</p>
           <p className="mt-2 text-sm text-slate-500">
-            This usually means the public proof page is having trouble loading right now, not that the service offered was removed. You can retry in a moment or go back to public proof.
+            This usually means the service details page is having trouble loading right now, not that the service offered was removed. You can retry in a moment or go back to Browse Services.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <button

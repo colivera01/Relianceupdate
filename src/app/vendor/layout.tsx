@@ -249,15 +249,15 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
           <div className="flex flex-col items-center mb-8 px-2">
             <div className="relative mb-4">
               {vendorAvatar ? (
-                <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-2 border-white/20 bg-slate-950/85 p-1.5 shadow-md">
+                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border-2 border-white/20 bg-slate-950/85 p-1.5 shadow-md">
                   <img
                     src={vendorAvatar}
                     alt={vendorBusinessName}
-                    className="max-h-full max-w-full rounded-xl object-contain"
+                    className="h-full w-full rounded-2xl object-contain"
                   />
                 </div>
               ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-2xl border-2 border-white/20 bg-gradient-to-r from-blue-500 to-purple-500 text-xl font-bold text-white shadow-md">
+                <div className="flex h-24 w-24 items-center justify-center rounded-3xl border-2 border-white/20 bg-gradient-to-r from-blue-500 to-purple-500 text-xl font-bold text-white shadow-md">
                   {vendorInitials}
                 </div>
               )}

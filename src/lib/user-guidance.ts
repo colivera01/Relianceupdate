@@ -25,7 +25,7 @@ export const tutorialGuides = {
     badge: "New customer",
     title: "How customer signup works",
     summary:
-      "Create your account first, then sign in and continue exploring public proof, contacting vendors, and tracking service records from your customer dashboard.",
+      "Create your account first, then sign in and continue browsing vendor services, contacting vendors, and tracking service records from your customer dashboard.",
     steps: [
       {
         title: "Create the account",
@@ -78,14 +78,14 @@ export const tutorialGuides = {
     futureVideoNote: "Tutorial video placeholder: Vendor registration and launch checklist",
   },
   browseMarketplace: {
-    badge: "Public proof",
-    title: "How to compare proof on Reliance",
+    badge: "Browse services",
+    title: "How to compare providers on Reliance",
     summary:
       "Browse Services shows public service cards, public vendor pages, customer ratings, service videos, and the Reliance Trust Score side by side so customers can compare trust signals before choosing who to contact.",
     steps: [
       {
         title: "Search or filter first",
-        detail: "Use category filters, search, and location-aware sorting to narrow down public proof and services offered.",
+        detail: "Use category filters, search, and location-aware sorting to narrow down service examples and services offered.",
       },
       {
         title: "Compare two separate trust signals",
@@ -93,7 +93,7 @@ export const tutorialGuides = {
       },
       {
         title: "Open service or vendor detail",
-        detail: "Use View Proof for service context and View Vendor for the broader business profile.",
+        detail: "Open the service page for service context or the vendor page for the broader business profile.",
       },
     ],
     reminders: [

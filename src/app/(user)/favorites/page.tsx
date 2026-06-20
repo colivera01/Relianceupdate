@@ -90,7 +90,7 @@ export default function FavoritesPage() {
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <Input
-                  placeholder="Search saved proof, services offered, or vendors..."
+                  placeholder="Search saved services, videos, reviews, or vendors..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10"
@@ -118,9 +118,9 @@ export default function FavoritesPage() {
             ) : filteredFavorites.length === 0 ? (
           <div className="text-center py-12 mb-10">
             <Heart size={48} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No saved proof yet</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No saved services yet</h3>
             <p className="text-gray-600 mb-6">
-              {searchQuery.trim() ? 'Try a different search.' : 'Save vendors, services offered, or public proof when you want to revisit them.'}
+              {searchQuery.trim() ? 'Try a different search.' : 'Save vendors or services offered when you want to revisit them.'}
             </p>
             <Link href="/discover">
               <Button>Browse Services</Button>
@@ -193,7 +193,7 @@ export default function FavoritesPage() {
                         <Link
                           href={`/service/${item.serviceId}?returnTo=${encodeURIComponent(serviceReturnHref)}&returnLabel=${encodeURIComponent(serviceReturnLabel)}`}
                         >
-                          <Button size="sm">View Proof</Button>
+                          <Button size="sm">View Service Details</Button>
                         </Link>
                         <Link href={`/vendors/${item.vendorId}`}>
                           <Button size="sm" variant="outline">View Vendor</Button>

@@ -10,7 +10,7 @@ const PAUSED_DATABASE_PATTERN =
 
 const DEFAULT_ERROR_MESSAGES: Record<EmployeeRuntimeErrorContext, string> = {
   jobs: "Failed to fetch assigned employee jobs",
-  pair: "Failed to pair employee device",
+  pair: "Failed to prepare employee phone",
   start: "Failed to start employee job",
   stage: "Failed to mark stage complete",
   complete: "Failed to complete employee job",
@@ -20,7 +20,7 @@ const TEMPORARY_UNAVAILABLE_MESSAGES: Record<EmployeeRuntimeErrorContext, string
   jobs:
     "Assigned jobs are temporarily unavailable because the connected database is paused. Try again after the database resumes.",
   pair:
-    "Device pairing is temporarily unavailable because the connected database is paused. Try again after the database resumes.",
+    "Phone video setup is temporarily unavailable because the connected database is paused. Try again after the database resumes.",
   start:
     "Starting this job is temporarily unavailable because the connected database is paused. Try again after the database resumes.",
   stage:

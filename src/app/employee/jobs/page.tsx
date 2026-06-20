@@ -316,10 +316,10 @@ export default function EmployeeJobsPage() {
       } catch (e) {
         const message =
           e instanceof Error && e.message === "Request timed out"
-            ? "Device pairing took too long. Reload to retry."
+            ? "Phone setup took too long. Reload to retry."
             : e instanceof Error
               ? e.message
-              : "Could not pair this device.";
+              : "Could not prepare this phone for video capture.";
         setPairingError(message);
         setPairedDevice(null);
       }
@@ -1027,11 +1027,8 @@ export default function EmployeeJobsPage() {
               You do not have any jobs assigned yet. When your manager assigns one, it will appear here.
             </p>
             <ul className="mt-3 space-y-2 text-xs text-gray-700">
-              <li>1. Make sure you are signed in on the phone you will use on-site.</li>
-              <li>
-                2. Confirm the device-paired indicator above shows{" "}
-                <span className="font-semibold text-emerald-700">Active</span>.
-              </li>
+              <li>1. Open the assigned job link on the phone you will use on-site.</li>
+              <li>2. Keep the page open while you capture each short service-video stage.</li>
               <li>
                 3. When a job appears, tap <span className="font-semibold">Start Job</span>, capture Starting
                 Condition / Work in Progress / Final Result, then submit for manager review.

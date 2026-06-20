@@ -3969,7 +3969,7 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>How scheduled work becomes public proof</DialogTitle>
+            <DialogTitle>How scheduled work becomes customer-visible evidence</DialogTitle>
             <DialogDescription>
               A quick guide for moving a service record or manual work item through employee assignment,
               customer consent, and service video stages.
@@ -4725,7 +4725,7 @@ export default function VendorJobs() {
                 ))}
               </select>
               <p className="mt-1 text-xs text-gray-500">
-                This becomes the work title customers, employees, videos, reviews, and proof cards reference.
+                This becomes the work title customers, employees, videos, reviews, and service cards reference.
               </p>
               {jobFieldErrors.serviceId && (
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.serviceId}</p>

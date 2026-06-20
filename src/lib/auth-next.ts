@@ -21,7 +21,7 @@ export function getAuthContinuationTarget(nextPath: string | null | undefined): 
 
   if (safeNextPath.startsWith('/booking/')) return 'this service request';
   if (safeNextPath.startsWith('/service/')) return 'this service detail';
-  if (safeNextPath.startsWith('/browse')) return 'exploring public proof';
+  if (safeNextPath.startsWith('/browse')) return 'browsing vendor services';
   if (safeNextPath.startsWith('/help')) return 'the Help Center';
   return 'where you left off';
 }
@@ -29,7 +29,7 @@ export function getAuthContinuationTarget(nextPath: string | null | undefined): 
 export function getAuthContinuationPhrase(nextPath: string | null | undefined): string | null {
   const target = getAuthContinuationTarget(nextPath);
   if (!target) return null;
-  if (target === 'exploring public proof') return 'keep exploring public proof';
+  if (target === 'browsing vendor services') return 'keep browsing vendor services';
   if (target === 'the Help Center') return 'continue to the Help Center';
   if (target === 'where you left off') return 'continue where you left off';
   return `continue with ${target}`;

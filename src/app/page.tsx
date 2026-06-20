@@ -159,13 +159,13 @@ export default function HomePage() {
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                Recent public proof
+                Recent public examples
               </div>
               <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">
-                Completed-work proof customers can review
+                Completed work customers can review
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                This preview highlights public proof currently visible on Reliance. When an
+                This preview highlights public examples currently visible on Reliance. When an
                 approved public service video is available, it appears on the card automatically.
               </p>
             </div>
@@ -180,9 +180,9 @@ export default function HomePage() {
                 <Card key={index} className="overflow-hidden rounded-[26px] border-slate-200">
                   <div className="h-44 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)]" />
                   <CardContent className="space-y-3 p-5">
-                    <div className="text-sm font-semibold text-slate-900">Loading public proof</div>
+                    <div className="text-sm font-semibold text-slate-900">Loading service examples</div>
                     <div className="text-sm leading-6 text-slate-600">
-                      Reliance is checking approved public proof, provider details, and any public
+                      Reliance is checking approved public examples, provider details, and any public
                       service videos.
                     </div>
                   </CardContent>
@@ -194,8 +194,8 @@ export default function HomePage() {
               </div>
             ) : marketplaceResults.length === 0 ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
-                Public proof will appear here as vendors finish approval and publish
-                customer-visible proof.
+                Public examples will appear here as vendors finish approval and publish
+                customer-visible service videos, reviews, and Trust Score context.
               </div>
             ) : (
               marketplaceResults.map((item) => (
@@ -273,7 +273,7 @@ export default function HomePage() {
               {[
                 'Share approved public service videos instead of relying on text alone.',
                 'Let customer reviews and Trust Score evidence stay separate and clear.',
-                'Keep vendor, employee, moderation, and review workflows intact while building public proof.',
+                'Keep vendor, employee, moderation, and review workflows intact while building public credibility.',
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-blue)]" />

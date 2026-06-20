@@ -89,7 +89,7 @@ export function PublicHeroArtwork({
         </div>
         <p className="mt-2.5 text-[13px] leading-5 text-white/68">
           This space is reserved for a future Reliance explainer video that shows customers how
-          public proof, reviews, and Trust Score help them choose with confidence.
+          service videos, reviews, and Trust Score help them choose with confidence.
         </p>
       </div>
 

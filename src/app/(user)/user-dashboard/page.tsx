@@ -284,7 +284,7 @@ export default function UserDashboardPage() {
                 <img
                   src={profileAvatar}
                   alt={`${profile.firstName || 'Customer'} profile`}
-                  className="max-h-full max-w-full rounded-full object-contain"
+                  className="h-full w-full rounded-full object-cover"
                 />
               </div>
             ) : (
@@ -454,7 +454,7 @@ export default function UserDashboardPage() {
           Manage your service records in one place
         </h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
-          Track service records, open approved service videos, manage saved proof, and see when
+          Track service records, open approved service videos, manage saved services, and see when
           completed work is ready for a review.
         </p>
       </section>

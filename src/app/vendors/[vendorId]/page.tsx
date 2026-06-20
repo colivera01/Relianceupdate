@@ -489,7 +489,7 @@ export default function PublicVendorProfilePage() {
                             </div>
                             <Link href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(`/vendors/${vendorId}`)}&returnLabel=Back%20to%20Vendor%20Page`}>
                               <Button size="sm" className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
-                                View Proof
+                                View Service Details
                               </Button>
                             </Link>
                           </div>

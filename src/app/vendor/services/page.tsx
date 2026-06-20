@@ -344,7 +344,7 @@ export default function VendorServicesPage() {
               ? 'Vendor account is approved on Reliance.'
               : 'Vendor account is still awaiting approval.',
             vendorProfile?.isPubliclyListed
-              ? 'Business profile is currently visible as public proof on Reliance.'
+              ? 'Business profile is currently visible to customers on Reliance.'
               : 'Business profile is not public yet.',
             Number(vendorProfile?.publishedServiceCount || 0) > 0
               ? `${Number(vendorProfile?.publishedServiceCount || 0)} published services offered already help customers find this business.`

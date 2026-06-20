@@ -15,10 +15,10 @@ export default function DevicePairPage() {
             <Smartphone className="h-6 w-6 text-blue-100" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold text-white">Device pairing is not active yet</CardTitle>
+            <CardTitle className="text-2xl font-bold text-white">Phone video setup is not active yet</CardTitle>
             <CardDescription className="mt-2 text-slate-300">
-              Reliance will support direct phone and headset pairing in a future release. For now, employees can use
-              their assigned job links to capture stage videos without pairing a device first.
+              Reliance will support direct phone setup and headset-assisted recording in a future release. For now,
+              employees can use their assigned job links to capture stage videos without setting up a device first.
             </CardDescription>
           </div>
         </CardHeader>

@@ -490,7 +490,7 @@ export default function MyBookingsPage() {
                     ? 'These are services whose scheduled date passed without a completed vendor closeout.'
                     : activeTab === 'archived'
                     ? 'These are older retained service records kept for reference.'
-                    : 'Try another tab or explore public proof.'
+                    : 'Try another tab or browse vendor services.'
             }
           />
         ) : (

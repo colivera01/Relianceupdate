@@ -62,7 +62,7 @@ function buildHelpContext(
         backHref: '/user-dashboard',
         backLabel: 'Back to Customer Dashboard',
         intro:
-          'Reliance helps customers explore public proof, manage service records, and keep account and sign-in settings in one place.',
+          'Reliance helps customers browse provider services, review public service videos, manage service records, and keep account settings in one place.',
         bookingHeading: 'My service records',
         bookingDescription:
           'Open your service-record history to review active work, completed work, approved videos, and saved customer requests.',
@@ -84,7 +84,7 @@ function buildHelpContext(
       backHref: '/',
       backLabel: 'Back to Reliance',
       intro:
-        'Reliance helps customers explore public proof and helps approved vendors turn completed work into customer-visible credibility.',
+        'Reliance helps customers compare provider services and helps approved vendors turn completed work into customer-visible credibility.',
       bookingHeading: 'Requesting or saving service proof',
       bookingDescription:
         'Create a customer account or sign in before saving proof examples, contacting vendors, or managing service records.',
@@ -151,7 +151,7 @@ function buildHelpContext(
     backHref: '/user-dashboard',
     backLabel: 'Back to Customer Dashboard',
     intro:
-      'Reliance helps customers explore public proof, manage service records, and keep account and sign-in settings in one place.',
+      'Reliance helps customers browse provider services, manage service records, and keep account and sign-in settings in one place.',
     bookingHeading: 'My service records',
     bookingDescription:
       'Open your service-record history to review active work, completed work, approved videos, and saved customer requests.',
@@ -270,7 +270,7 @@ export default async function PublicHelpPage({
             <div className="mt-8 grid gap-5 lg:grid-cols-3">
               {[
                 {
-                  heading: 'Exploring public proof',
+                  heading: 'Browsing vendor services',
                   description:
                     'Use Browse Services to review public work examples, vendor details, service videos, reviews, and Trust Score context.',
                   href: '/browse',

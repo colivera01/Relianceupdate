@@ -201,7 +201,7 @@ export interface DiscoverServiceResult {
     reviewLabel: string;
     trustLabel: string;
     evidenceSummary: string;
-    primaryCta: 'View Proof' | 'View Provider' | 'View Service Offered';
+    primaryCta: 'View Service Details' | 'View Provider' | 'View Service Offered';
   };
   promotion?: {
     campaignId: string;

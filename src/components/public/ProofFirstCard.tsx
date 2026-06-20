@@ -22,12 +22,12 @@ const KIND_STYLES: Record<string, { card: string; badge: string; label: string }
   public_proof: {
     card: 'border-emerald-400/35 bg-[linear-gradient(145deg,rgba(6,78,59,0.72),rgba(8,17,34,0.96)_48%,rgba(15,23,42,0.98))]',
     badge: 'bg-emerald-600 text-white hover:bg-emerald-600',
-    label: 'Public proof',
+    label: 'Completed work',
   },
   partial_proof: {
     card: 'border-blue-400/35 bg-[linear-gradient(145deg,rgba(30,64,175,0.54),rgba(8,17,34,0.96)_50%,rgba(15,23,42,0.98))]',
     badge: 'bg-blue-600 text-white hover:bg-blue-600',
-    label: 'Proof building',
+    label: 'Trust signals building',
   },
   service_offered_only: {
     card: 'border-slate-700/80 bg-[linear-gradient(145deg,rgba(15,23,42,0.98),rgba(8,17,34,0.98)_54%,rgba(2,6,23,0.98))]',
@@ -90,8 +90,8 @@ export function ProofFirstCard({
           type={item.previewMediaType}
           alt={proofCard.headline}
           className={`${compact ? 'h-40' : 'h-48'} w-full object-cover rounded-t-[28px]`}
-          emptyLabel="Proof video not available yet"
-          videoLabel="Public proof video"
+          emptyLabel="Service video not available yet"
+          videoLabel="Public service video"
         />
         <div className="absolute left-3 top-3 flex flex-wrap gap-2">
           <Badge className={styles.badge}>{styles.label}</Badge>
@@ -112,7 +112,7 @@ export function ProofFirstCard({
           <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-300">
             {hasProof
               ? proofCard.evidenceSummary
-              : 'This is a service offered by the provider. Public proof for this work type is still building.'}
+              : 'This is a service offered by the provider. Customer-visible videos and reviews for this work type are still building.'}
           </p>
         </div>
 

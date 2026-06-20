@@ -22,8 +22,8 @@ export default function MessagesPage() {
         </CardHeader>
         <CardContent className="space-y-4 text-gray-700">
           <p>
-            Reliance currently focuses on public proof, service records, service videos,
-            reviews, and vendor job operations. Messaging will return once the
+            Reliance currently focuses on service records, public service videos,
+            customer reviews, Trust Score context, and vendor job operations. Messaging will return once the
             customer conversation tools have full backend support.
           </p>
           <div className="flex flex-wrap gap-3">

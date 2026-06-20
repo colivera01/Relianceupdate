@@ -864,15 +864,15 @@ const getSpecializationsForCategory = (category: string) => {
 const userBenefits = [
   'Compare trusted local service providers',
   'Read verified customer reviews',
-  'Review public proof before choosing',
-  'Track service records and proof updates',
+  'Review videos and Trust Score before choosing',
+  'Track service records and video updates',
   '24/7 customer support',
   'Clear Trust Score context'
 ];
 
 const vendorBenefits = [
-  'Grow your business with public proof',
-  'Turn completed work into public proof',
+  'Grow your business with visible trust signals',
+  'Turn completed work into customer confidence',
   'Show approved service videos',
   'Build public credibility',
   'Access business tools and analytics',
@@ -1343,7 +1343,7 @@ function RegisterPageInner() {
   };
 
   const userBenefits = [
-    "Explore local providers with public proof",
+    "Browse local providers with videos, reviews, and Trust Score context",
     "Read authentic customer reviews",
     "View approved service videos",
     "Contact vendors directly",
@@ -1353,7 +1353,7 @@ function RegisterPageInner() {
   const vendorBenefits = [
     "Create your professional profile",
     "Showcase completed work with video",
-    "Build public proof customers can trust",
+    "Build credibility customers can trust",
     "Strengthen your business credibility",
     "Access customer reviews and feedback"
   ];
@@ -1693,7 +1693,7 @@ function RegisterPageInner() {
                     {userType === 'user' ? 'Customer Registration' : 'Vendor Registration'}
                   </CardTitle>
                   <CardDescription>
-                    {userType === 'user' ? 'Join to explore public proof' : 'Join to build public proof'}
+                    {userType === 'user' ? 'Join to browse vendor services' : 'Join to build customer confidence'}
                   </CardDescription>
                 </div>
               </div>

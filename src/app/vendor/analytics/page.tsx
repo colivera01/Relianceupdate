@@ -305,7 +305,7 @@ export default function VendorAnalyticsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Public proof highlights</CardTitle>
+            <CardTitle>Customer trust highlights</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {derived.topPerformer ? (

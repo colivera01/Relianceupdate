@@ -48,16 +48,16 @@ export function getEmployeeCaptureStageHeading(stage: VendorJobVideoStage): stri
 
 export function getEmployeeCaptureDeviceLabel(device: EmployeeCaptureDevice | null): string {
   const deviceType = String(device?.deviceType || "").trim().toUpperCase();
-  if (deviceType === "HEADSET") return "Paired headset";
-  if (deviceType === "PHONE") return "Paired phone";
+  if (deviceType === "HEADSET") return "Headset capture";
+  if (deviceType === "PHONE") return "This phone";
   const fallback = String(device?.deviceName || device?.model || "").trim();
-  return fallback || "Paired device";
+  return fallback || "This device";
 }
 
 export function getEmployeeCaptureSupportCopy(device: EmployeeCaptureDevice | null): string {
   const deviceType = String(device?.deviceType || "").trim().toUpperCase();
   if (deviceType === "HEADSET") {
-    return "Capture this stage hands-free with the paired headset, then review and retake it before moving on if needed.";
+    return "Capture this stage hands-free, then review and retake it before moving on if needed.";
   }
   return "Use the phone camera for a short clip that clearly shows this stage. You can retake the stage on-site before moving on.";
 }

@@ -73,9 +73,9 @@ export function buildProofCardDemoDiscoverResponse(input: DemoInput = {}): Disco
       serviceId: "dev-proof-public-completed-service",
       serviceName: "Outlet Installation",
       serviceDescription:
-        "Completed electrical outlet installation with approved public video proof and customer-ready evidence.",
+        "Completed electrical outlet installation with approved public service video and customer-ready evidence.",
       vendorId: "dev-proof-vendor-public",
-      vendorName: "Reliance Proof Demo Electric",
+      vendorName: "Reliance Service Demo Electric",
       vendorCategory: "Electrician",
       location: "Winter Springs, Florida",
       price: 185,
@@ -105,9 +105,9 @@ export function buildProofCardDemoDiscoverResponse(input: DemoInput = {}): Disco
       serviceId: "dev-proof-partial-review-trust",
       serviceName: "Panel Inspection",
       serviceDescription:
-        "A service with customer review and Trust Score context, but no completed public video proof yet.",
+        "A service with customer review and Trust Score context, but no completed public service video yet.",
       vendorId: "dev-proof-vendor-partial",
-      vendorName: "Reliance Proof Demo Inspectors",
+      vendorName: "Reliance Service Demo Inspectors",
       vendorCategory: "Electrician",
       location: "Orlando, Florida",
       price: 120,

@@ -79,7 +79,7 @@ export default function TermsPage() {
       <h3>9. Moderation and Availability</h3>
       <p>
         Reliance may review, reject, restrict, hide, remove, or delay content, accounts,
-        promotions, service records, reviews, or public proof when needed for safety, quality,
+        promotions, service records, reviews, or customer-visible service evidence when needed for safety, quality,
         compliance, launch readiness, suspected abuse, or platform integrity. Reliance may also
         change, pause, or discontinue features during beta or launch operations.
       </p>

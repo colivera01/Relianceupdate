@@ -639,7 +639,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           "rating/reviewCount are vendor-level aggregates from reviews where moderationStatus=approved and visibilityStatus=public.",
         ranking:
           proofFirstRankingRequested
-            ? "Default discovery is proof-first: completed public proof, proof-building evidence, reviews, Trust Score maturity, and vendor credibility are prioritized before service-only listings."
+            ? "Default discovery prioritizes completed work, public service videos, reviews, Trust Score maturity, and vendor credibility before service-only listings."
             : "Explicit sort and location filters preserve the selected ordering while cards still show proof context.",
       },
     });

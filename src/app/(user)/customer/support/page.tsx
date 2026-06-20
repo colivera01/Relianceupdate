@@ -44,9 +44,9 @@ export default async function CustomerSupportPage({
           Help without leaving your account
         </h1>
         <p className="mt-5 max-w-3xl text-base leading-8 text-white/72">
-          Use this page for account access, service-record questions, public proof concerns, reviews,
+          Use this page for account access, service-record questions, public service-video concerns, reviews,
           vendor approval questions, or media follow-up. Your customer navigation stays visible so you
-          can move back to your records, profile, and saved proof without starting over.
+          can move back to your records, profile, and saved services without starting over.
         </p>
 
         <div className="mt-8 rounded-[28px] border border-[rgba(130,167,255,0.26)] bg-[rgba(36,107,255,0.14)] p-6">

@@ -95,7 +95,7 @@ export function buildVendorGrowthSummary(
   if (onboarding?.vendorVisibleToPublic) {
     visibilityTitle = "Your business is visible to customers";
     visibilityDetail =
-      "Customers can already find your published services offered. The next growth levers are stronger public proof, approved service videos, and published reviews.";
+      "Customers can already find your published services offered. The next growth levers are stronger customer-visible evidence, approved service videos, and published reviews.";
   } else if (onboarding?.membershipStatus === "PENDING") {
     visibilityTitle = "Your business is not public yet";
     visibilityDetail =
@@ -130,7 +130,7 @@ export function buildVendorGrowthSummary(
       promotionStatus = {
         label: "Publish a service before requesting promotion",
         detail:
-          "Promotions only help once customers can click into a published service offered from public proof.",
+          "Promotions only help once customers can click into a published service offered from Browse Services.",
         tone: "warning",
       };
     } else if (input.promotionBrowseReadiness && !input.promotionBrowseReadiness.desktopBrowseEligible) {
@@ -209,7 +209,7 @@ export function buildVendorGrowthSummary(
     nextSteps.push({
       label: "Get at least one service published",
       detail:
-        "Published services offered are what place your business into public proof discovery.",
+        "Published services offered are what place your business into customer-facing discovery.",
       href: "/vendor/services",
     });
   }
@@ -238,9 +238,9 @@ export function buildVendorGrowthSummary(
     !hasInFlightPromotionRequest(promotionRecentRequests)
   ) {
     nextSteps.push({
-      label: "Consider a promotion request after your public proof is ready",
+      label: "Consider a promotion request after your public profile is ready",
       detail:
-        "Promotions work best when customers already land on a profile with a published service, trust context, and clear proof of completed work.",
+        "Promotions work best when customers already land on a profile with a published service, Trust Score context, and clear completed-work examples.",
       href: "/vendor/dashboard",
     });
   }

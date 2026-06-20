@@ -27,7 +27,7 @@ describe("buildProofCard", () => {
 
     expect(card.kind).toBe("public_proof");
     expect(card.statusLabel).toBe("Completed Service");
-    expect(card.primaryCta).toBe("View Proof");
+    expect(card.primaryCta).toBe("View Service Details");
     expect(card.stageAvailability.finalResult).toBe(true);
     expect(card.reviewLabel).toBe("Review Available");
   });
@@ -55,7 +55,7 @@ describe("buildProofCard", () => {
 
     expect(card.kind).toBe("partial_proof");
     expect(card.statusLabel).toBe("Proof Building");
-    expect(card.primaryCta).toBe("View Proof");
+    expect(card.primaryCta).toBe("View Service Details");
     expect(card.trustLabel).toBe("Emerging Trust Score: 88%");
   });
 
@@ -84,7 +84,7 @@ describe("buildProofCard", () => {
     expect(card.kind).toBe("service_offered_only");
     expect(card.statusLabel).toBe("Service Offered");
     expect(card.primaryCta).toBe("View Service Offered");
-    expect(card.evidenceSummary).toBe("This work type is listed, but public proof is still building.");
+    expect(card.evidenceSummary).toBe("This work type is listed, but customer-visible videos and reviews are still building.");
   });
 
   it("provides dev demo fixtures for all three proof-card states", () => {
@@ -95,7 +95,7 @@ describe("buildProofCard", () => {
     expect(states).toContain("partial_proof");
     expect(states).toContain("service_offered_only");
     expect(response.results.find((result) => result.proofCard?.kind === "public_proof")?.proofCard?.primaryCta).toBe(
-      "View Proof"
+      "View Service Details"
     );
     expect(
       response.results.find((result) => result.proofCard?.kind === "service_offered_only")?.proofCard?.primaryCta

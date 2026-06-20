@@ -47,13 +47,13 @@ describe('auth next helpers', () => {
 
   it('maps next paths to continuation targets', () => {
     expect(getAuthContinuationTarget('/booking/service-123')).toBe('this service request');
-    expect(getAuthContinuationTarget('/browse?category=cleaning')).toBe('exploring public proof');
+    expect(getAuthContinuationTarget('/browse?category=cleaning')).toBe('browsing vendor services');
     expect(getAuthContinuationTarget(null)).toBeNull();
   });
 
   it('formats continuation phrases naturally', () => {
     expect(getAuthContinuationPhrase('/booking/service-123')).toBe('continue with this service request');
-    expect(getAuthContinuationPhrase('/browse?category=cleaning')).toBe('keep exploring public proof');
+    expect(getAuthContinuationPhrase('/browse?category=cleaning')).toBe('keep browsing vendor services');
   });
 
   it('keeps customer booking continuations for customer accounts', () => {

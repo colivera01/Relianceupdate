@@ -350,7 +350,7 @@ export default function VendorProfilePage() {
       ? 'Vendor account is approved on Reliance.'
       : 'Vendor account is still awaiting approval.',
     profile?.isPubliclyListed
-      ? 'Business profile is currently visible as public proof on Reliance.'
+      ? 'Business profile is currently visible to customers on Reliance.'
       : 'Business profile is not public yet.',
     Number(profile?.publishedServiceCount || 0) > 0
       ? `${Number(profile?.publishedServiceCount || 0)} published services offered help customers find this business.`
@@ -499,15 +499,15 @@ export default function VendorProfilePage() {
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                     <div className="relative shrink-0">
                       {localFormData.profilePhoto || profile.profilePhoto ? (
-                        <div className="flex h-72 w-full max-w-[240px] items-center justify-center overflow-hidden rounded-3xl border border-blue-300/25 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-2 shadow-[0_18px_40px_rgba(3,8,20,0.28)]">
+                        <div className="flex h-80 w-full max-w-[260px] items-center justify-center overflow-hidden rounded-3xl border border-blue-300/25 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-2 shadow-[0_18px_40px_rgba(3,8,20,0.28)]">
                           <img
                             src={localFormData.profilePhoto || profile.profilePhoto || ''}
                             alt="Business Profile"
-                            className="max-h-full max-w-full rounded-2xl object-contain"
+                            className="h-full w-full rounded-2xl object-contain"
                           />
                         </div>
                       ) : (
-                        <div className="flex h-72 w-full max-w-[240px] items-center justify-center rounded-3xl border border-blue-300/25 bg-gradient-to-br from-slate-800 to-blue-950 text-4xl font-semibold text-blue-100 shadow-[0_18px_40px_rgba(3,8,20,0.28)]">
+                        <div className="flex h-80 w-full max-w-[260px] items-center justify-center rounded-3xl border border-blue-300/25 bg-gradient-to-br from-slate-800 to-blue-950 text-4xl font-semibold text-blue-100 shadow-[0_18px_40px_rgba(3,8,20,0.28)]">
                           {businessInitials}
                         </div>
                       )}

@@ -625,7 +625,7 @@ export default function ProfileSettingsPage() {
                       <img
                         src={customerPhotoUrl}
                         alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
-                        className="max-h-full max-w-full rounded-full object-contain"
+                        className="h-full w-full rounded-full object-cover"
                       />
                     </div>
                   ) : (
@@ -891,7 +891,7 @@ export default function ProfileSettingsPage() {
                     <img
                       src={customerPhotoUrl}
                       alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
-                      className="max-h-full max-w-full rounded-full object-contain"
+                      className="h-full w-full rounded-full object-cover"
                     />
                   </div>
                 ) : (

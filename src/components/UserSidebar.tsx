@@ -164,7 +164,7 @@ function UserSidebarContent() {
                 <img
                   src={visibleUser.avatar}
                   alt={visibleUser.name}
-                  className="max-h-full max-w-full rounded-full object-contain"
+                  className="h-full w-full rounded-full object-cover"
                 />
               </div>
             ) : (

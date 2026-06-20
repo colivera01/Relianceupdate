@@ -6,7 +6,7 @@ export type ProofStageAvailability = {
   finalResult: boolean;
 };
 
-export type ProofCardCta = "View Proof" | "View Provider" | "View Service Offered";
+export type ProofCardCta = "View Service Details" | "View Provider" | "View Service Offered";
 
 export type ProofCard = {
   kind: ProofCardKind;
@@ -121,14 +121,14 @@ function buildEvidenceSummary(input: {
   if (pieces.length > 0) return `Based on ${pieces.join(", ")}.`;
 
   if (input.kind === "service_offered_only") {
-    return "This work type is listed, but public proof is still building.";
+    return "This work type is listed, but customer-visible videos and reviews are still building.";
   }
 
   if (input.stageAvailability.finalResult) {
-    return "Approved final-result proof is available.";
+    return "Approved final-result service video is available.";
   }
 
-  return "Public proof is still building.";
+  return "Customer-visible videos and reviews are still building.";
 }
 
 export function buildProofCard(input: BuildProofCardInput): ProofCard {
@@ -150,7 +150,7 @@ export function buildProofCard(input: BuildProofCardInput): ProofCard {
 
   const primaryCta: ProofCardCta =
     kind === "public_proof" || kind === "partial_proof"
-      ? "View Proof"
+      ? "View Service Details"
       : "View Service Offered";
 
   const reviewLabel =

@@ -437,7 +437,7 @@ export default function PublicBrowsePage() {
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Categories</div>
                 <div className="mt-3 text-3xl font-semibold">{categoryCardsLoading ? 'Loading' : categories.length}</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Service groups with customer-visible proof.</p>
+                <p className="mt-2 text-sm leading-6 text-white/68">Service groups with customer-visible examples.</p>
               </div>
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">What you can compare</div>
@@ -684,7 +684,7 @@ export default function PublicBrowsePage() {
                   <CardContent className="p-4 h-24 flex flex-col justify-center">
                     <div className="text-sm font-semibold text-slate-900">Loading categories</div>
                     <div className="mt-1 text-xs leading-5 text-slate-600">
-                      Reliance is checking which service-offered categories currently have public proof.
+                      Reliance is checking which service-offered categories currently have customer-visible examples.
                     </div>
                   </CardContent>
                 </Card>
