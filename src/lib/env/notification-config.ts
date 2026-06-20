@@ -7,10 +7,14 @@ export type NotificationEnvSnapshot = {
   resendApiKey: string;
   emailFrom: string;
   emailReplyTo: string;
+  smsProvider: 'twilio' | 'telnyx';
   twilioAccountSid: string;
   twilioAuthToken: string;
   twilioPhoneNumber: string;
   twilioMessagingServiceSid: string;
+  telnyxApiKey: string;
+  telnyxFromNumber: string;
+  telnyxMessagingProfileId: string;
   appBaseUrl: string;
   emailEnabled: boolean;
   smsEnabled: boolean;
@@ -34,15 +38,29 @@ function parseEnvBoolean(raw: string | undefined, defaultValue: boolean): boolea
   return defaultValue;
 }
 
+function resolveSmsProvider(): 'twilio' | 'telnyx' {
+  const configured = String(process.env.SMS_PROVIDER || '').trim().toLowerCase();
+  if (configured === 'telnyx') return 'telnyx';
+  if (configured === 'twilio') return 'twilio';
+
+  // Make local setup forgiving when Telnyx credentials are present but SMS_PROVIDER was not added yet.
+  if (process.env.TELNYX_API_KEY || process.env.TELNYX_FROM_NUMBER) return 'telnyx';
+  return 'twilio';
+}
+
 export function readNotificationEnv(): NotificationEnvSnapshot {
   return {
     resendApiKey: (process.env.RESEND_API_KEY || '').trim(),
     emailFrom: normalizeEmailFrom(process.env.EMAIL_FROM),
     emailReplyTo: (process.env.EMAIL_REPLY_TO || '').trim(),
+    smsProvider: resolveSmsProvider(),
     twilioAccountSid: (process.env.TWILIO_ACCOUNT_SID || '').trim(),
     twilioAuthToken: (process.env.TWILIO_AUTH_TOKEN || '').trim(),
     twilioPhoneNumber: (process.env.TWILIO_PHONE_NUMBER || '').trim(),
     twilioMessagingServiceSid: (process.env.TWILIO_MESSAGING_SERVICE_SID || '').trim(),
+    telnyxApiKey: (process.env.TELNYX_API_KEY || '').trim(),
+    telnyxFromNumber: (process.env.TELNYX_FROM_NUMBER || '').trim(),
+    telnyxMessagingProfileId: (process.env.TELNYX_MESSAGING_PROFILE_ID || '').trim(),
     appBaseUrl: (process.env.APP_BASE_URL || '').trim().replace(/\/+$/, ''),
     emailEnabled: parseEnvBoolean(process.env.EMAIL_ENABLED, true),
     smsEnabled: parseEnvBoolean(process.env.SMS_ENABLED, true),
@@ -71,12 +89,17 @@ export function logNotificationEnvWarnings(): void {
     }
   }
   if (e.smsEnabled) {
-    if (!e.twilioAccountSid) lines.push('SMS_ENABLED is true but TWILIO_ACCOUNT_SID is missing.');
-    if (!e.twilioAuthToken) lines.push('SMS_ENABLED is true but TWILIO_AUTH_TOKEN is missing.');
-    if (!e.twilioPhoneNumber && !e.twilioMessagingServiceSid) {
-      lines.push(
-        'SMS_ENABLED is true but neither TWILIO_MESSAGING_SERVICE_SID nor TWILIO_PHONE_NUMBER is configured.'
-      );
+    if (e.smsProvider === 'telnyx') {
+      if (!e.telnyxApiKey) lines.push('SMS_PROVIDER=telnyx but TELNYX_API_KEY is missing.');
+      if (!e.telnyxFromNumber) lines.push('SMS_PROVIDER=telnyx but TELNYX_FROM_NUMBER is missing.');
+    } else {
+      if (!e.twilioAccountSid) lines.push('SMS_PROVIDER=twilio but TWILIO_ACCOUNT_SID is missing.');
+      if (!e.twilioAuthToken) lines.push('SMS_PROVIDER=twilio but TWILIO_AUTH_TOKEN is missing.');
+      if (!e.twilioPhoneNumber && !e.twilioMessagingServiceSid) {
+        lines.push(
+          'SMS_PROVIDER=twilio but neither TWILIO_MESSAGING_SERVICE_SID nor TWILIO_PHONE_NUMBER is configured.'
+        );
+      }
     }
   }
   if (!e.appBaseUrl) {

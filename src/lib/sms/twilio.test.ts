@@ -29,10 +29,14 @@ function mockNotificationEnv(overrides: Record<string, unknown> = {}) {
     resendApiKey: "",
     emailFrom: "",
     emailReplyTo: "",
+    smsProvider: "twilio",
     twilioAccountSid: "AC_test",
     twilioAuthToken: "auth_token",
     twilioPhoneNumber: "+14075550100",
     twilioMessagingServiceSid: "",
+    telnyxApiKey: "",
+    telnyxFromNumber: "",
+    telnyxMessagingProfileId: "",
     appBaseUrl: "http://localhost:3000",
     emailEnabled: true,
     smsEnabled: true,
@@ -49,6 +53,7 @@ describe("sendSms", () => {
     hoisted.createMessage.mockReset();
     hoisted.twilioFactory.mockClear();
     hoisted.readNotificationEnv.mockReset();
+    vi.unstubAllGlobals();
     mockNotificationEnv();
   });
 
@@ -62,7 +67,7 @@ describe("sendSms", () => {
     const { sendSms } = await import("./twilio");
     const result = await sendSms({ to: "+14079148888", body: "Reliance test" });
 
-    expect(result).toEqual({ ok: true, providerMessageId: "SM_message_service" });
+    expect(result).toEqual({ ok: true, provider: "twilio", providerMessageId: "SM_message_service" });
     expect(hoisted.twilioFactory).toHaveBeenCalledWith("AC_test", "auth_token");
     expect(hoisted.createMessage).toHaveBeenCalledWith({
       to: "+14079148888",
@@ -77,7 +82,7 @@ describe("sendSms", () => {
     const { sendSms } = await import("./twilio");
     const result = await sendSms({ to: "+14079148888", body: "Reliance test" });
 
-    expect(result).toEqual({ ok: true, providerMessageId: "SM_direct_sender" });
+    expect(result).toEqual({ ok: true, provider: "twilio", providerMessageId: "SM_direct_sender" });
     expect(hoisted.createMessage).toHaveBeenCalledWith({
       to: "+14079148888",
       from: "+14075550100",
@@ -94,7 +99,7 @@ describe("sendSms", () => {
     const { sendSms } = await import("./twilio");
     const result = await sendSms({ to: "+14079148888", body: "Reliance test" });
 
-    expect(result).toEqual({ ok: false, errorMessage: "missing_twilio_config" });
+    expect(result).toEqual({ ok: false, provider: "twilio", errorMessage: "missing_twilio_config" });
     expect(hoisted.twilioFactory).not.toHaveBeenCalled();
     expect(hoisted.createMessage).not.toHaveBeenCalled();
   });
@@ -109,5 +114,84 @@ describe("sendSms", () => {
     expect(result.errorCode).toBe("30032");
     expect(result.senderVerificationRestriction).toBe(true);
     expect(result.errorMessage).toContain("approved A2P 10DLC Messaging Service");
+  });
+
+  it("sends through Telnyx when SMS_PROVIDER is telnyx", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: "telnyx-message-1" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    mockNotificationEnv({
+      smsProvider: "telnyx",
+      telnyxApiKey: "KEY_test",
+      telnyxFromNumber: "+13213951708",
+    });
+
+    const { sendSms } = await import("./twilio");
+    const result = await sendSms({ to: "+14079148888", body: "Reliance test" });
+
+    expect(result).toEqual({ ok: true, provider: "telnyx", providerMessageId: "telnyx-message-1" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.telnyx.com/v2/messages",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer KEY_test",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          from: "+13213951708",
+          to: "+14079148888",
+          text: "Reliance test",
+        }),
+      })
+    );
+    expect(hoisted.twilioFactory).not.toHaveBeenCalled();
+  });
+
+  it("does not attempt Telnyx SMS when Telnyx credentials are missing", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    mockNotificationEnv({
+      smsProvider: "telnyx",
+      telnyxApiKey: "",
+      telnyxFromNumber: "",
+    });
+
+    const { sendSms } = await import("./twilio");
+    const result = await sendSms({ to: "+14079148888", body: "Reliance test" });
+
+    expect(result).toEqual({ ok: false, provider: "telnyx", errorMessage: "missing_telnyx_config" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(hoisted.twilioFactory).not.toHaveBeenCalled();
+  });
+
+  it("maps Telnyx API failures to a clear setup message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        json: async () => ({
+          errors: [{ code: "10015", detail: "The 'to' number is invalid." }],
+        }),
+      })
+    );
+    mockNotificationEnv({
+      smsProvider: "telnyx",
+      telnyxApiKey: "KEY_test",
+      telnyxFromNumber: "+13213951708",
+    });
+
+    const { sendSms } = await import("./twilio");
+    const result = await sendSms({ to: "+1407", body: "Reliance test" });
+
+    expect(result).toEqual({
+      ok: false,
+      provider: "telnyx",
+      errorMessage: "The 'to' number is invalid.",
+      errorCode: "10015",
+    });
   });
 });

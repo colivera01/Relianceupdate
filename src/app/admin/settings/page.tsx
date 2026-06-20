@@ -76,12 +76,17 @@ export default async function AdminSettingsPage() {
     Boolean(notificationEnv.emailFrom);
   const smsDeliveryReady =
     notificationEnv.smsEnabled &&
-    Boolean(notificationEnv.twilioAccountSid) &&
-    Boolean(notificationEnv.twilioAuthToken) &&
-    (Boolean(notificationEnv.twilioMessagingServiceSid) || Boolean(notificationEnv.twilioPhoneNumber));
-  const smsSenderLabel = notificationEnv.twilioMessagingServiceSid
-    ? "10DLC Messaging Service configured"
-    : `Phone sender: ${formatOptional(notificationEnv.twilioPhoneNumber)}`;
+    (notificationEnv.smsProvider === "telnyx"
+      ? Boolean(notificationEnv.telnyxApiKey) && Boolean(notificationEnv.telnyxFromNumber)
+      : Boolean(notificationEnv.twilioAccountSid) &&
+        Boolean(notificationEnv.twilioAuthToken) &&
+        (Boolean(notificationEnv.twilioMessagingServiceSid) || Boolean(notificationEnv.twilioPhoneNumber)));
+  const smsSenderLabel =
+    notificationEnv.smsProvider === "telnyx"
+      ? `Telnyx sender: ${formatOptional(notificationEnv.telnyxFromNumber)}`
+      : notificationEnv.twilioMessagingServiceSid
+        ? "Twilio 10DLC Messaging Service configured"
+        : `Twilio phone sender: ${formatOptional(notificationEnv.twilioPhoneNumber)}`;
   const aiRollout = readAiRolloutStatus();
   const aiPromptCatalog = readAiPromptCatalog();
 
@@ -132,8 +137,8 @@ export default async function AdminSettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-sm text-muted-foreground">
-            Email delivery depends on Resend plus a valid sender. SMS stays provider-gated until Twilio-style
-            credentials are complete.
+            Email delivery depends on Resend plus a valid sender. SMS uses the configured provider
+            ({notificationEnv.smsProvider}) once sender credentials are complete.
           </CardContent>
         </Card>
 

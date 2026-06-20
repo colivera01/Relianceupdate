@@ -8,6 +8,7 @@ export type SendSmsInput = {
 
 export type SendSmsResult = {
   ok: boolean;
+  provider?: 'twilio' | 'telnyx';
   providerMessageId?: string;
   errorMessage?: string;
   errorCode?: string;
@@ -46,18 +47,24 @@ function mapTwilioError(err: unknown): {
 
 export async function sendSms(input: SendSmsInput): Promise<SendSmsResult> {
   const env = readNotificationEnv();
-  const logPrefix = '[sms:twilio]';
+  const provider = env.smsProvider === 'telnyx' ? 'telnyx' : 'twilio';
 
   if (!env.smsEnabled) {
-    console.info(`${logPrefix} skipped: SMS_ENABLED is false`);
-    return { ok: false, errorMessage: 'sms_disabled' };
+    console.info(`[sms:${provider}] skipped: SMS_ENABLED is false`);
+    return { ok: false, provider, errorMessage: 'sms_disabled' };
   }
 
+  if (provider === 'telnyx') return sendTelnyxSms(input, env);
+  return sendTwilioSms(input, env);
+}
+
+async function sendTwilioSms(input: SendSmsInput, env: ReturnType<typeof readNotificationEnv>): Promise<SendSmsResult> {
+  const logPrefix = '[sms:twilio]';
   const hasMessagingService = Boolean(env.twilioMessagingServiceSid);
   const hasDirectSender = Boolean(env.twilioPhoneNumber);
   if (!env.twilioAccountSid || !env.twilioAuthToken || (!hasMessagingService && !hasDirectSender)) {
     console.warn(`${logPrefix} missing Twilio configuration`);
-    return { ok: false, errorMessage: 'missing_twilio_config' };
+    return { ok: false, provider: 'twilio', errorMessage: 'missing_twilio_config' };
   }
 
   try {
@@ -80,17 +87,74 @@ export async function sendSms(input: SendSmsInput): Promise<SendSmsResult> {
       sender: hasMessagingService ? 'messaging_service' : 'phone_number',
       providerMessageId: msg.sid,
     });
-    return { ok: true, providerMessageId: msg.sid };
+    return { ok: true, provider: 'twilio', providerMessageId: msg.sid };
   } catch (err) {
     const { message, code, trialRestriction, senderVerificationRestriction } = mapTwilioError(err);
     console.error(`${logPrefix} failure`, { message, code, to: redactPhone(input.to) });
     return {
       ok: false,
+      provider: 'twilio',
       errorMessage: message,
       errorCode: code,
       trialRestriction,
       senderVerificationRestriction,
     };
+  }
+}
+
+async function sendTelnyxSms(input: SendSmsInput, env: ReturnType<typeof readNotificationEnv>): Promise<SendSmsResult> {
+  const logPrefix = '[sms:telnyx]';
+  if (!env.telnyxApiKey || !env.telnyxFromNumber) {
+    console.warn(`${logPrefix} missing Telnyx configuration`);
+    return { ok: false, provider: 'telnyx', errorMessage: 'missing_telnyx_config' };
+  }
+
+  try {
+    const response = await fetch('https://api.telnyx.com/v2/messages', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.telnyxApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: env.telnyxFromNumber,
+        to: input.to,
+        text: input.body,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      data?: { id?: string };
+      errors?: Array<{ code?: string; title?: string; detail?: string }>;
+    } | null;
+
+    if (!response.ok) {
+      const firstError = payload?.errors?.[0];
+      const message =
+        firstError?.detail ||
+        firstError?.title ||
+        `telnyx_error_${response.status}`;
+      const code = firstError?.code || String(response.status);
+      console.error(`${logPrefix} failure`, { message, code, to: redactPhone(input.to) });
+      return {
+        ok: false,
+        provider: 'telnyx',
+        errorMessage: message,
+        errorCode: code,
+      };
+    }
+
+    const providerMessageId = payload?.data?.id;
+    console.info(`${logPrefix} success`, {
+      to: redactPhone(input.to),
+      sender: redactPhone(env.telnyxFromNumber),
+      providerMessageId,
+    });
+    return { ok: true, provider: 'telnyx', providerMessageId };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`${logPrefix} failure`, { message, to: redactPhone(input.to) });
+    return { ok: false, provider: 'telnyx', errorMessage: message };
   }
 }
 

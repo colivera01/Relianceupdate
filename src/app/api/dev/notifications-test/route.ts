@@ -4,7 +4,7 @@ import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationEnvWarnings } from '@/lib/env/notification-config';
 
 /**
- * Dev-only: verify Resend + Twilio wiring with explicit targets.
+ * Dev-only: verify Resend + configured SMS provider wiring with explicit targets.
  * POST JSON: { "email"?: string, "phone"?: string }
  * Header: x-notifications-test-secret must match NOTIFICATIONS_TEST_SECRET.
  */

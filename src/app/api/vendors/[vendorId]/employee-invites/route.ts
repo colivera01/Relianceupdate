@@ -3,28 +3,37 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
 import { sendEmployeeInviteNotification } from "@/lib/notifications/send-employee-invite";
+import { readNotificationEnv } from "@/lib/env/notification-config";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
 }
 
 function hasNotificationConfig() {
-  const hasEmail = Boolean(process.env.EMAIL_ENABLED !== "false" && process.env.RESEND_API_KEY);
+  const env = readNotificationEnv();
+  const hasEmail = Boolean(env.emailEnabled && env.resendApiKey);
   const hasSms = Boolean(
-    process.env.SMS_ENABLED !== "false" &&
-      process.env.TWILIO_ACCOUNT_SID &&
-      process.env.TWILIO_AUTH_TOKEN &&
-      process.env.TWILIO_PHONE_NUMBER
+    env.smsEnabled &&
+      (env.smsProvider === "telnyx"
+        ? env.telnyxApiKey && env.telnyxFromNumber
+        : env.twilioAccountSid &&
+          env.twilioAuthToken &&
+          (env.twilioPhoneNumber || env.twilioMessagingServiceSid))
   );
   return hasEmail || hasSms;
 }
 
 function smsEnvState() {
+  const env = readNotificationEnv();
   return {
-    smsEnabled: process.env.SMS_ENABLED !== "false",
-    hasTwilioAccountSid: Boolean(process.env.TWILIO_ACCOUNT_SID),
-    hasTwilioAuthToken: Boolean(process.env.TWILIO_AUTH_TOKEN),
-    hasTwilioPhoneNumber: Boolean(process.env.TWILIO_PHONE_NUMBER),
+    smsEnabled: env.smsEnabled,
+    provider: env.smsProvider,
+    hasTelnyxApiKey: Boolean(env.telnyxApiKey),
+    hasTelnyxFromNumber: Boolean(env.telnyxFromNumber),
+    hasTwilioAccountSid: Boolean(env.twilioAccountSid),
+    hasTwilioAuthToken: Boolean(env.twilioAuthToken),
+    hasTwilioPhoneNumber: Boolean(env.twilioPhoneNumber),
+    hasTwilioMessagingServiceSid: Boolean(env.twilioMessagingServiceSid),
   };
 }
 
