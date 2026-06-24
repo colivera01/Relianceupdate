@@ -1120,9 +1120,12 @@ function RegisterPageInner() {
     if (!formData.email.trim()) newErrors.email = 'Email address is required';
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Please enter a valid email address (e.g., user@example.com)';
     
-    if (!formData.phone.trim()) newErrors.phone = 'Phone number is required';
-    else if (!/^[\+]?[1-9][\d]{0,15}$/.test(formData.phone.replace(/[\s\-\(\)]/g, ''))) {
+    if (userType === 'vendor' && !formData.phone.trim()) newErrors.phone = 'Phone number is required for vendor account access and launch support.';
+    else if (formData.phone.trim() && !/^[\+]?[1-9][\d]{0,15}$/.test(formData.phone.replace(/[\s\-\(\)]/g, ''))) {
       newErrors.phone = 'Please enter a valid phone number (e.g., 555-123-4567)';
+    }
+    if (formData.phone.trim() && !formData.smsConsent) {
+      newErrors.smsConsent = 'Check the SMS consent box before adding a mobile phone number, or leave the phone field blank.';
     }
 
     if (!formData.password) newErrors.password = 'Password is required';
@@ -1253,6 +1256,7 @@ function RegisterPageInner() {
         // Convert booleans to strings
         insuranceStatus: String(formData.insuranceStatus),
         bondingStatus: String(formData.bondingStatus),
+        smsConsent: String(formData.smsConsent),
         userType,
         recaptchaToken: token // Include reCAPTCHA token if available
       };
@@ -1825,7 +1829,9 @@ function RegisterPageInner() {
                     </div>
                     
                     <div>
-                      <Label htmlFor="phone">Phone Number *</Label>
+                      <Label htmlFor="phone">
+                        Phone Number {userType === 'vendor' ? '*' : <span className="text-gray-500">(optional)</span>}
+                      </Label>
                       <Input
                         id="phone"
                         type="tel"
@@ -1833,12 +1839,61 @@ function RegisterPageInner() {
                         onChange={(e) => handleInputChange('phone', e.target.value)}
                         className={errors.phone ? 'border-red-500' : ''}
                         placeholder="(555) 123-4567"
-                        required
+                        required={userType === 'vendor'}
                       />
+                      {userType === 'user' && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Leave this blank if you do not want SMS updates.
+                        </p>
+                      )}
                       {errors.phone && (
                         <p className="text-red-500 text-sm mt-1 flex items-center">
                           <AlertCircle className="w-4 h-4 mr-1" />
                           {errors.phone}
+                        </p>
+                      )}
+                      <label
+                        htmlFor="smsConsent"
+                        className={`mt-3 flex gap-3 rounded-xl border p-3 text-sm leading-6 ${
+                          errors.smsConsent
+                            ? 'border-red-400 bg-red-950/25 text-red-100'
+                            : 'border-blue-300/35 bg-blue-950/35 text-blue-50'
+                        }`}
+                      >
+                        <input
+                          id="smsConsent"
+                          type="checkbox"
+                          checked={formData.smsConsent}
+                          onChange={(e) => handleInputChange('smsConsent', e.target.checked)}
+                          className="mt-1 h-4 w-4 rounded border-blue-300 bg-slate-950 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>
+                          <span className="font-semibold text-white">
+                            I agree to receive transactional SMS from Reliance.
+                          </span>{' '}
+                          Reliance may text me account access, service-record updates, invite links,
+                          customer video consent requests, approved video availability, review reminders,
+                          security alerts, and support updates. Message frequency varies. Msg &amp; data
+                          rates may apply. Reply STOP to opt out or HELP for help. Consent is not required
+                          to create an account or request service. See{' '}
+                          <Link href="/sms-policy" className="font-semibold text-blue-200 underline">
+                            SMS Policy
+                          </Link>
+                          ,{' '}
+                          <Link href="/privacy" className="font-semibold text-blue-200 underline">
+                            Privacy Policy
+                          </Link>
+                          , and{' '}
+                          <Link href="/terms" className="font-semibold text-blue-200 underline">
+                            Terms
+                          </Link>
+                          .
+                        </span>
+                      </label>
+                      {errors.smsConsent && (
+                        <p className="text-red-500 text-sm mt-1 flex items-center">
+                          <AlertCircle className="w-4 h-4 mr-1" />
+                          {errors.smsConsent}
                         </p>
                       )}
                     </div>
@@ -2797,7 +2852,13 @@ function RegisterPageInner() {
                       <h4 className="font-semibold mb-2">Account Summary:</h4>
                       <p><strong>Name:</strong> {formData.firstName} {formData.lastName}</p>
                       <p><strong>Email:</strong> {formData.email}</p>
-                      <p><strong>Phone:</strong> {formData.phone}</p>
+                      <p><strong>Phone:</strong> {formData.phone || 'Not provided'}</p>
+                      {formData.phone && (
+                        <p>
+                          <strong>SMS updates:</strong>{' '}
+                          {formData.smsConsent ? 'Opted in to transactional Reliance SMS' : 'Not opted in'}
+                        </p>
+                      )}
                       <p><strong>Location:</strong> {formData.address}, {formData.city}, {formData.state} {formData.zipCode}</p>
                       {formData.bio && <p><strong>Bio:</strong> {formData.bio}</p>}
                     </div>

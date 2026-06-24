@@ -126,6 +126,15 @@ describe("private beta gate", () => {
     expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 
+  it("does not block public compliance and SMS consent pages", async () => {
+    for (const path of ["/privacy", "/terms", "/sms-policy", "/auth/register?type=user", "/help"]) {
+      const response = await middleware(betaRequest(path));
+
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    }
+  });
+
   it("allows normal behavior when the beta gate is disabled", async () => {
     process.env.BETA_GATE_ENABLED = "false";
 

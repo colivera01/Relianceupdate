@@ -51,6 +51,17 @@ export function isBetaGateBypassPath(pathname: string): boolean {
   if (path === "/api/beta-gate" || path.startsWith("/api/beta-gate/")) return true;
   if (path === "/api/health" || path.startsWith("/api/health/")) return true;
 
+  // Public compliance pages must remain reviewable by messaging carriers even
+  // when the wider beta site is password protected.
+  const publicCompliancePaths = ["/privacy", "/terms", "/sms-policy", "/auth/register", "/help"];
+  if (
+    publicCompliancePaths.some(
+      (publicPath) => path === publicPath || path.startsWith(`${publicPath}/`)
+    )
+  ) {
+    return true;
+  }
+
   if (path.startsWith("/_next/")) return true;
   if (path.startsWith("/__nextjs")) return true;
 

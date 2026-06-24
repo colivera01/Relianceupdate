@@ -61,12 +61,18 @@ export default function TermsPage() {
         settings.
       </p>
       <p>
-        By providing your mobile phone number during account registration, vendor onboarding,
-        employee invitation, customer consent, service-record, or review workflows, you authorize
-        Reliance to send transactional messages related to that activity. Message frequency varies
-        based on account, invite, consent, service-record, review, and support activity. Message
-        and data rates may apply. Reply STOP to opt out and HELP for help where SMS replies are
-        supported.
+        When you provide your mobile phone number and affirmatively opt in during account
+        registration, vendor onboarding, employee invitation, customer consent, service-record, or
+        review workflows, you authorize Reliance to send transactional messages related to that
+        activity. Reliance is the sender of these SMS messages. Vendor or business names may appear
+        only as context for the relevant service record, invite, consent request, or review
+        workflow. Individual vendors are not the SMS sender.
+      </p>
+      <p>
+        SMS consent is not required to create an account, request service, or use available
+        non-SMS workflows. Message frequency varies based on account, invite, consent,
+        service-record, review, and support activity. Message and data rates may apply. Reply STOP
+        to opt out and HELP for help where SMS replies are supported.
       </p>
 
       <h3>8. Account and Security Responsibilities</h3>

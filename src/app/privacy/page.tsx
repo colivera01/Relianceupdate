@@ -45,12 +45,19 @@ export default function PrivacyPage() {
 
       <h3>4. SMS and Mobile Number Privacy</h3>
       <p>
+        Reliance is the sender of the Reliance transactional SMS program. Vendor or business names
+        may appear in a message only as context for the related invite, service record, consent
+        request, review, or support workflow. Individual vendors are not the sender of the Reliance
+        SMS program.
+      </p>
+      <p>
         Reliance may send transactional SMS messages for account verification, vendor or employee
         invitations, service-record updates, customer video consent requests, approved service
         video notifications, review reminders, security alerts, and support-related account
-        updates. Message frequency varies based on your account, invite, consent, service-record,
-        review, and support activity. Message and data rates may apply. Reply STOP to opt out and
-        HELP for help where SMS replies are supported.
+        updates after you provide a mobile number and opt in. Message frequency varies based on
+        your account, invite, consent, service-record, review, and support activity. Message and
+        data rates may apply. Reply STOP to opt out and HELP for help where SMS replies are
+        supported.
       </p>
       <p>
         Reliance does not sell, rent, or share mobile phone numbers or SMS opt-in consent with

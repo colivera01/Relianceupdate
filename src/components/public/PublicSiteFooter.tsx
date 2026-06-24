@@ -19,6 +19,12 @@ const accountLinks = [
   { href: "/auth/register?type=vendor", label: "Join as Vendor" },
 ];
 
+const legalLinks = [
+  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/terms", label: "Terms" },
+  { href: "/sms-policy", label: "SMS Policy" },
+];
+
 export function PublicSiteFooter() {
   return (
     <footer className="border-t border-white/8 bg-[linear-gradient(180deg,#04070d,#02050b)]">
@@ -95,7 +101,17 @@ export function PublicSiteFooter() {
 
         <div className="mt-10 flex flex-col gap-3 border-t border-white/8 pt-6 text-sm text-white/44 sm:flex-row sm:items-center sm:justify-between">
           <p>&copy; {new Date().getFullYear()} Reliance.</p>
-          <p>Public service videos, reviews, and Trust Score context for local work.</p>
+          <div className="flex flex-wrap gap-4">
+            {legalLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="font-medium text-white/58 transition hover:text-white"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </footer>

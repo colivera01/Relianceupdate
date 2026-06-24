@@ -7,6 +7,7 @@ export type RegisterFormData = {
   lastName: string;
   email: string;
   phone: string;
+  smsConsent: boolean;
   address: string;
   city: string;
   state: string;
@@ -62,6 +63,7 @@ export function createInitialRegisterFormData(): RegisterFormData {
     lastName: '',
     email: '',
     phone: '',
+    smsConsent: false,
     address: '',
     city: '',
     state: '',
@@ -104,6 +106,7 @@ export function getRegisterFormDataForRoleSwitch(
     lastName: current.lastName,
     email: current.email,
     phone: current.phone,
+    smsConsent: current.smsConsent,
     address: current.address,
     city: current.city,
     state: current.state,
