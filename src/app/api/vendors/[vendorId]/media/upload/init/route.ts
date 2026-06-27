@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 import { generateUploadUrl } from "@/lib/azure-blob-storage";
 import crypto from "crypto";
@@ -22,10 +23,12 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const { vendorId } = await context.params;
-    const { userId, membershipId, role } = await requireVendorMembership(request, vendorId);
-
     const body = await request.json();
-    const { fileName, expectedBytes, mimeType, deviceId } = body;
+    const { fileName, expectedBytes, mimeType, deviceId, bookingId } = body;
+    await resolveEmployeeCaptureAccess(request, {
+      vendorId,
+      bookingId: bookingId ? String(bookingId) : null,
+    }) || await requireVendorMembership(request, vendorId);
 
     if (!fileName || !mimeType) {
       return NextResponse.json(

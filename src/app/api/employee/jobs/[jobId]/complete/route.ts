@@ -7,6 +7,7 @@ import {
   ensureUserAccountCanAct,
   ensureVendorAccountCanOperate,
 } from "@/lib/account-status";
+import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 
@@ -17,15 +18,18 @@ interface RouteParams {
 export async function POST(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const userId = await getUserIdFromRequest(request);
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    await ensureUserAccountCanAct(userId);
     const { jobId } = await context.params;
+    const tokenAccess = userId ? null : await resolveEmployeeCaptureAccess(request, { bookingId: jobId });
+    if (!userId && !tokenAccess) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (userId) await ensureUserAccountCanAct(userId);
     console.log("[employee-complete] route hit", { jobId, userId });
 
-    const memberships = await prisma.vendorMembership.findMany({
-      where: { userId, status: "ACTIVE" },
-      select: { id: true, vendorId: true, role: true },
-    });
+    const memberships = tokenAccess
+      ? [{ id: tokenAccess.membershipId, vendorId: tokenAccess.vendorId, role: "EMPLOYEE" }]
+      : await prisma.vendorMembership.findMany({
+          where: { userId: userId!, status: "ACTIVE" },
+          select: { id: true, vendorId: true, role: true },
+        });
     const booking = await prisma.booking.findUnique({
       where: { id: jobId },
       select: { id: true, vendorId: true, status: true, customerMetadata: true },

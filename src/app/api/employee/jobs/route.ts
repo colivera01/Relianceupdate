@@ -9,6 +9,7 @@ import {
 } from "@/lib/account-status";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 
 type StageKey = "INTRO" | "IN_PROGRESS" | "COMPLETED";
 
@@ -23,15 +24,23 @@ function emptyStageProgress() {
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const userId = await getUserIdFromRequest(request);
+    const tokenAccess = userId ? null : await resolveEmployeeCaptureAccess(request);
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      if (!tokenAccess) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    await ensureUserAccountCanAct(userId);
+    if (userId) {
+      await ensureUserAccountCanAct(userId);
+    }
 
-    const memberships = await prisma.vendorMembership.findMany({
-      where: { userId, status: "ACTIVE", role: "EMPLOYEE" },
-      select: { id: true, vendorId: true, vendor: { select: { name: true, businessName: true, accountStatus: true } } },
-    });
+    const memberships = tokenAccess
+      ? await prisma.vendorMembership.findMany({
+          where: { id: tokenAccess.membershipId },
+          select: { id: true, vendorId: true, vendor: { select: { name: true, businessName: true, accountStatus: true } } },
+        })
+      : await prisma.vendorMembership.findMany({
+          where: { userId: userId!, status: "ACTIVE", role: "EMPLOYEE" },
+          select: { id: true, vendorId: true, vendor: { select: { name: true, businessName: true, accountStatus: true } } },
+        });
     const activeVendorMemberships = memberships.filter((m) => !isVendorAccountRestricted((m.vendor as any)?.accountStatus));
     if (activeVendorMemberships.length === 0) {
       return NextResponse.json({ jobs: [], membership: null });
@@ -45,6 +54,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const bookings = await prisma.booking.findMany({
       where: {
         vendorId: { in: Array.from(byVendor.keys()) },
+        ...(tokenAccess ? { id: tokenAccess.bookingId } : {}),
         status: { in: ["PENDING", "CONFIRMED", "IN_PROGRESS", "AWAITING_REVIEW", "COMPLETED"] },
       },
       include: {

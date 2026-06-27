@@ -11,6 +11,7 @@ import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
+import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -103,7 +104,7 @@ async function resolveJobAssignmentForVendor(
       where: {
         vendorId,
         id: { in: normalizedIds },
-        status: { in: ["ACTIVE", "active"] },
+        status: { in: ["ACTIVE", "active", "PENDING", "pending"] },
       },
       include: {
         user: { select: { name: true, email: true, phone: true } },
@@ -116,7 +117,7 @@ async function resolveJobAssignmentForVendor(
           apiResponse(
             false,
             "INVALID_MEMBERSHIP",
-            "One or more selected team members are not active on this vendor."
+            "One or more selected team members are not eligible for this vendor."
           ),
           { status: 422 }
         ),
@@ -143,7 +144,7 @@ async function resolveJobAssignmentForVendor(
   }
 
   const activeMembers = await prisma.vendorMembership.findMany({
-    where: { vendorId, status: { in: ["ACTIVE", "active"] } },
+    where: { vendorId, status: { in: ["ACTIVE", "active", "PENDING", "pending"] } },
     include: { user: { select: { name: true, email: true, phone: true } } },
   });
 
@@ -439,7 +440,6 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const notificationResults = [];
       if (newlyAssignedIds.size > 0) {
         const baseUrl = resolveJobLinkBaseUrl(request);
-        const employeeJobLink = `${baseUrl}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`;
         const vendorName = String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor");
         const jobTitle = String(booking.title || booking.service?.name || "Assigned job");
         const customerName = String(booking.clientName || booking.user?.name || "").trim() || null;
@@ -447,6 +447,14 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         for (const assignmentMember of members) {
           if (!newlyAssignedIds.has(assignmentMember.id)) continue;
           try {
+            const employeeJobLink = appendEmployeeCaptureToken(
+              `${baseUrl}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`,
+              createEmployeeCaptureToken({
+                vendorId,
+                bookingId: booking.id,
+                membershipId: assignmentMember.id,
+              })
+            );
             const notification = await sendJobAssignmentNotification({
               bookingId: booking.id,
               actorUserId: member.userId,

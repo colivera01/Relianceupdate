@@ -223,7 +223,15 @@ export default function EmployeeJobsPage() {
   const [jobRecoveryErrorByJobId, setJobRecoveryErrorByJobId] = useState<Record<string, string>>({});
   const [jobRecoveryLoadingId, setJobRecoveryLoadingId] = useState<string | null>(null);
   const [focusedJobId, setFocusedJobId] = useState("");
+  const [captureToken, setCaptureToken] = useState("");
   const userId = useMemo(() => String(user?.id || "").trim(), [user?.id]);
+  const hasCaptureToken = Boolean(captureToken);
+
+  const employeeRequestHeaders = (contentType = true): Record<string, string> => ({
+    ...(contentType ? { "Content-Type": "application/json" } : {}),
+    ...getClientSessionHeaders(userId),
+    ...(captureToken ? { "x-employee-capture-token": captureToken } : {}),
+  });
 
   const currentJobs = useMemo(() => {
     const activeJobs = jobs.filter((job) => !isCompletedStatus(job.status));
@@ -240,12 +248,15 @@ export default function EmployeeJobsPage() {
   );
 
   const loadJobs = async () => {
-    if (!userId) return;
+    if (!userId && !captureToken) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithTimeout("/api/employee/jobs", {
-        headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+      const url = captureToken
+        ? `/api/employee/jobs?ct=${encodeURIComponent(captureToken)}`
+        : "/api/employee/jobs";
+      const res = await fetchWithTimeout(url, {
+        headers: employeeRequestHeaders(),
         cache: "no-store",
       }, EMPLOYEE_JOBS_TIMEOUT_MS);
       const json = await res.json().catch(() => ({}));
@@ -267,23 +278,34 @@ export default function EmployeeJobsPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const jobId = new URLSearchParams(window.location.search).get("jobId");
+    const params = new URLSearchParams(window.location.search);
+    const jobId = params.get("jobId");
+    const token = params.get("ct") || params.get("captureToken") || "";
     setFocusedJobId(String(jobId || "").trim());
+    if (token.trim()) {
+      const normalizedToken = token.trim();
+      setCaptureToken(normalizedToken);
+      sessionStorage.setItem("employee_capture_token", normalizedToken);
+    } else {
+      const storedToken = sessionStorage.getItem("employee_capture_token") || "";
+      if (storedToken.trim()) setCaptureToken(storedToken.trim());
+    }
   }, []);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId && !captureToken) return;
     void loadJobs();
-  }, [userId]);
+  }, [userId, captureToken]);
 
   useEffect(() => {
+    if (captureToken) return;
     if (!userId) return;
     const pair = async () => {
       const deviceUid = getOrCreateDeviceUid();
       try {
         const res = await fetchWithTimeout("/api/employee/device/pair", {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+          headers: employeeRequestHeaders(),
           body: JSON.stringify({
             deviceUid,
             deviceType: "PHONE",
@@ -325,13 +347,13 @@ export default function EmployeeJobsPage() {
       }
     };
     void pair();
-  }, [userId]);
+  }, [userId, captureToken]);
 
   const startJob = async (jobId: string) => {
     setActionMessage(null);
     const res = await fetch(`/api/employee/jobs/${jobId}/start`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+      headers: employeeRequestHeaders(),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -346,7 +368,7 @@ export default function EmployeeJobsPage() {
     setActionMessage(null);
     const res = await fetch(`/api/employee/jobs/${jobId}/complete`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+      headers: employeeRequestHeaders(),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -382,7 +404,7 @@ export default function EmployeeJobsPage() {
 
       const createSessionRes = await fetch(`/api/vendors/${job.vendorId}/media/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+        headers: employeeRequestHeaders(),
         body: JSON.stringify({
           bookingId: job.id,
           vendorJobVideoStage: stage,
@@ -403,11 +425,12 @@ export default function EmployeeJobsPage() {
 
       const initRes = await fetch(`/api/vendors/${job.vendorId}/media/upload/init`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+        headers: employeeRequestHeaders(),
         body: JSON.stringify({
           fileName: file.name,
           expectedBytes: file.size,
           mimeType: file.type || "video/mp4",
+          bookingId: job.id,
         }),
       });
       const initJson = await initRes.json().catch(() => ({}));
@@ -426,7 +449,7 @@ export default function EmployeeJobsPage() {
 
       const completeRes = await fetch(`/api/vendors/${job.vendorId}/media/upload/complete`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+        headers: employeeRequestHeaders(),
         body: JSON.stringify({
           assetId: initJson.assetId,
           blobKey: initJson.blobKey,
@@ -445,7 +468,7 @@ export default function EmployeeJobsPage() {
 
       const stageRes = await fetch(`/api/employee/jobs/${job.id}/stage`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getClientSessionHeaders(userId) },
+        headers: employeeRequestHeaders(),
         body: JSON.stringify({ stage }),
       });
       const stageJson = await stageRes.json().catch(() => ({}));
@@ -917,7 +940,7 @@ export default function EmployeeJobsPage() {
     );
   }
 
-  if (!userId) {
+  if (!userId && !hasCaptureToken) {
     return (
       <div className="reliance-operator-shell reliance-grid-lines min-h-screen p-4">
         <div className="mx-auto w-full max-w-2xl rounded-lg border border-amber-200 bg-white p-4 shadow-sm">

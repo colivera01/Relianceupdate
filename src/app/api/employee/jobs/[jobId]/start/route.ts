@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
+import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
@@ -12,13 +13,16 @@ interface RouteParams {
 export async function POST(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const userId = await getUserIdFromRequest(request);
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { jobId } = await context.params;
+    const tokenAccess = userId ? null : await resolveEmployeeCaptureAccess(request, { bookingId: jobId });
+    if (!userId && !tokenAccess) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const memberships = await prisma.vendorMembership.findMany({
-      where: { userId, status: "ACTIVE", role: "EMPLOYEE" },
-      select: { id: true, vendorId: true },
-    });
+    const memberships = tokenAccess
+      ? [{ id: tokenAccess.membershipId, vendorId: tokenAccess.vendorId }]
+      : await prisma.vendorMembership.findMany({
+          where: { userId: userId!, status: "ACTIVE", role: "EMPLOYEE" },
+          select: { id: true, vendorId: true },
+        });
     const booking = await prisma.booking.findUnique({
       where: { id: jobId },
       select: { id: true, vendorId: true, status: true, customerMetadata: true },
@@ -56,7 +60,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       actionType: "job_started",
       entityType: "booking",
       entityId: booking.id,
-      actorUserId: userId,
+      actorUserId: userId || tokenAccess!.userId,
       previousValue: { status: previousStatus },
       newValue: { status: updated.status },
       metadata: {

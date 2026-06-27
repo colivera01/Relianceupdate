@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 import { downloadBlobToBuffer, getBlobProperties } from "@/lib/azure-blob-storage";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
@@ -29,7 +30,6 @@ export async function POST(
       console.log("[media/upload/complete] HIT");
     }
     const { vendorId } = await context.params;
-    const { userId, membershipId, role } = await requireVendorMembership(request, vendorId);
 
     const body = await request.json();
     const {
@@ -42,6 +42,9 @@ export async function POST(
       mediaSessionId,
       durationSeconds,
     } = body;
+    const tokenAccess = await resolveEmployeeCaptureAccess(request, { vendorId });
+    const membership = tokenAccess || (await requireVendorMembership(request, vendorId));
+    const membershipId = membership.membershipId;
 
     if (!assetId || !blobKey || !bytes || !mimeType) {
       return NextResponse.json(
@@ -120,13 +123,22 @@ export async function POST(
           id: mediaSessionId,
           vendorId,
         },
-        select: { id: true, vendorJobVideoStage: true, sessionType: true },
+        select: { id: true, bookingId: true, vendorJobVideoStage: true, sessionType: true },
       });
 
       if (!session) {
         return NextResponse.json(
           { error: "Invalid mediaSessionId for this vendor" },
           { status: 422 }
+        );
+      }
+      if (tokenAccess && String(session.bookingId || "") !== tokenAccess.bookingId) {
+        return NextResponse.json(
+          {
+            error: "JOB_CAPTURE_TOKEN_FORBIDDEN",
+            message: "This capture link is not authorized for this media session.",
+          },
+          { status: 403 }
         );
       }
       const isStagedJobVideo =

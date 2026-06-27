@@ -1105,6 +1105,7 @@ export default function VendorJobs() {
       setEmployeesLoadError('');
       try {
         const members = await fetchVendorTeamMembers(String(vendorId), () => getRequestHeaders(), {
+          includePending: true,
           timeoutMs: VENDOR_TEAM_TIMEOUT_MS,
         });
         setTeamMembers(members);
@@ -3435,7 +3436,7 @@ export default function VendorJobs() {
     );
   };
 
-  // Get available employees (active memberships without active/pending assignments)
+  // Get available employees (active or invited memberships without active/pending assignments)
   const getAvailableEmployees = () => {
     const assignedMembershipIdSet = new Set<string>();
     jobs.forEach((job) => {
@@ -3967,7 +3968,7 @@ export default function VendorJobs() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>How scheduled work becomes customer-visible evidence</DialogTitle>
             <DialogDescription>
@@ -4009,11 +4010,11 @@ export default function VendorJobs() {
       </Dialog>
 
       {/* Header */}
-      <div className="reliance-light-card mb-6 rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between">
+      <div className="reliance-light-card mb-6 rounded-2xl border border-slate-200 p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <div>
-            <h2 className="text-3xl font-bold text-gray-800">
+            <h2 className="text-2xl font-bold text-gray-800 sm:text-3xl">
               {isEmployeeView ? 'My Assigned Work' : 'Manage Scheduled Work'}
             </h2>
             <p className="text-gray-600 text-sm mt-1">
@@ -4022,7 +4023,7 @@ export default function VendorJobs() {
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <TutorialEntryPoint guide={tutorialGuides.vendorJobs} surface="light" />
           <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
             Manager workspace
@@ -4033,7 +4034,7 @@ export default function VendorJobs() {
 
       {/* Action Bar */}
       <div className="reliance-light-card mb-6 rounded-2xl border border-slate-200 p-4 shadow-sm">
-      <div className="flex flex-col md:flex-row gap-4">
+      <div className="flex flex-col gap-4 lg:flex-row">
         <div className="flex-1 min-w-0 search-input-container">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -4042,16 +4043,16 @@ export default function VendorJobs() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10 border-2 border-gray-200 rounded-lg w-full min-w-0"
-              style={{ minWidth: '280px' }}
+              style={{ minWidth: 0 }}
             />
           </div>
         </div>
-        <div className="flex gap-2">
-          <div className="relative">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative w-full sm:w-auto">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="appearance-none px-4 py-2 pr-10 border-2 border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[140px]"
+              className="w-full appearance-none rounded-lg border-2 border-gray-200 bg-white px-4 py-2 pr-10 text-gray-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:min-w-[140px]"
             >
               <option value="all">{isEmployeeView ? 'All My Jobs' : 'All Status'}</option>
               <option value="pending">Pending</option>
@@ -4068,7 +4069,7 @@ export default function VendorJobs() {
                 type="button"
                 variant="outline"
                 onClick={openJobWorkflowGuide}
-                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                className="w-full justify-center border-blue-200 text-blue-700 hover:bg-blue-50 sm:w-auto"
               >
                 <Info className="w-4 h-4 mr-2" />
                 How job workflow works
@@ -4084,7 +4085,7 @@ export default function VendorJobs() {
                   setShowCreateJob(true);
                 }} 
                 disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
-                className="action-button bg-blue-600 hover:bg-blue-700"
+                className="action-button w-full justify-center bg-blue-600 hover:bg-blue-700 sm:w-auto"
               >
                 <Plus className="w-5 h-5 mr-2" />
                 Add Manual Work Record
@@ -4113,7 +4114,7 @@ export default function VendorJobs() {
 
       {/* Content Archive Modal */}
       <Dialog open={showVideoArchive} onOpenChange={setShowVideoArchive}>
-        <DialogContent className="max-w-7xl max-h-[90vh] flex flex-col">
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] flex-col sm:max-h-[90vh] sm:max-w-7xl">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Video className="w-5 h-5" />
@@ -4447,7 +4448,7 @@ export default function VendorJobs() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{playbackTitle || 'Watch Service Video'}</DialogTitle>
             <DialogDescription>
@@ -4480,7 +4481,7 @@ export default function VendorJobs() {
 
       {/* Video Details Modal */}
       <Dialog open={showVideoDetailsModal} onOpenChange={setShowVideoDetailsModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] flex-col sm:max-h-[90vh] sm:max-w-4xl">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -4675,7 +4676,7 @@ export default function VendorJobs() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{jobModalMode === 'edit' ? 'Edit Scheduled Work' : 'Add Manual Work Record'}</DialogTitle>
             <DialogDescription>
@@ -4897,7 +4898,7 @@ export default function VendorJobs() {
 
       {/* Select Job Modal */}
       <Dialog open={showSelectJobModal} onOpenChange={setShowSelectJobModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Select Scheduled Work</DialogTitle>
             <DialogDescription>
@@ -4991,7 +4992,7 @@ export default function VendorJobs() {
           setShowModal(open);
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Upload Service Video</DialogTitle>
             <DialogDescription>
@@ -5177,7 +5178,7 @@ export default function VendorJobs() {
           if (open) setBulkAssignmentMembershipIds([]);
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Bulk Assign Jobs</DialogTitle>
             <DialogDescription>
@@ -5192,7 +5193,7 @@ export default function VendorJobs() {
               ) : employeesLoadError ? (
                 <p className="text-sm text-red-700">{employeesLoadError}</p>
               ) : teamMembers.length === 0 ? (
-                <p className="text-sm text-amber-700">No active employees available for assignment.</p>
+                <p className="text-sm text-amber-700">No available employees for assignment.</p>
               ) : (
                 <div className="space-y-2">
                   {teamMembers.map((m) => (
@@ -5247,7 +5248,7 @@ export default function VendorJobs() {
 
       {/* Individual Job Assignment Modal */}
       <Dialog open={showAssignmentModal} onOpenChange={setShowAssignmentModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {selectedJob?.assignedEmployees?.length > 0 ? 'Reassign Job' : 'Assign Job'}
@@ -5267,7 +5268,7 @@ export default function VendorJobs() {
               ) : employeesLoadError ? (
                 <p className="text-sm text-red-700">{employeesLoadError}</p>
               ) : teamMembers.length === 0 ? (
-                <p className="text-sm text-amber-700">No active employees available for assignment.</p>
+                <p className="text-sm text-amber-700">No available employees for assignment.</p>
               ) : (
                 <div className="space-y-2">
                   {teamMembers.map((m) => (
@@ -5322,7 +5323,7 @@ export default function VendorJobs() {
 
       {/* Job Status Modal */}
       <Dialog open={showStatusModal} onOpenChange={setShowStatusModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Update Job Status</DialogTitle>
             <DialogDescription>
@@ -5395,7 +5396,7 @@ export default function VendorJobs() {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Request Changes</DialogTitle>
             <DialogDescription>
@@ -5445,7 +5446,7 @@ export default function VendorJobs() {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Approve job completion?</DialogTitle>
             <DialogDescription>
@@ -5519,7 +5520,7 @@ export default function VendorJobs() {
           setShowComplianceModal(open);
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-h-[90vh] sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield className="w-5 h-5 text-blue-600" />
@@ -6130,7 +6131,7 @@ export default function VendorJobs() {
             </div>
           ) : (
             <div className="text-center py-4">
-              <p className="text-gray-600">No active employees available for assignment.</p>
+              <p className="text-gray-600">No available employees for assignment.</p>
             </div>
           )}
         </div>
@@ -6729,7 +6730,7 @@ export default function VendorJobs() {
       </div>
 
       <Dialog open={showJobActionConfirmModal} onOpenChange={setShowJobActionConfirmModal}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{pendingJobActionTitle}</DialogTitle>
             <DialogDescription>

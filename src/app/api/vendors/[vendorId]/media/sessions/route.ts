@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { mapMediaSessionCreateFailure } from "@/lib/media-session-create-errors";
+import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { normalizeVendorJobVideoStage } from "@/lib/vendor-job-video-stages";
 
 interface RouteParams {
@@ -49,8 +50,6 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const { vendorId } = await context.params;
-    const { userId } = await requireVendorMembership(request, vendorId);
-
     const body = await request.json().catch(() => ({}));
     const {
       bookingId,
@@ -69,6 +68,12 @@ export async function POST(
       consentAccepted,
       consentToken,
     } = body;
+    const tokenAccess = await resolveEmployeeCaptureAccess(request, {
+      vendorId,
+      bookingId: bookingId ? String(bookingId) : null,
+    });
+    const membership = tokenAccess || (await requireVendorMembership(request, vendorId));
+    const userId = membership.userId;
 
     // Keep booking linkage optional and backward-compatible with UI-local job IDs.
     // If bookingId is provided but not found for this vendor, ignore it instead of failing FK constraints.
@@ -130,6 +135,16 @@ export async function POST(
             message: "Assign this job before uploading service videos.",
           },
           { status: 409 }
+        );
+      }
+      if (tokenAccess && !assignedMembershipIds.includes(tokenAccess.membershipId)) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "JOB_CAPTURE_TOKEN_FORBIDDEN",
+            message: "This capture link is not authorized for this assigned job.",
+          },
+          { status: 403 }
         );
       }
 

@@ -7,6 +7,7 @@ import {
   ensureUserAccountCanAct,
   ensureVendorAccountCanOperate,
 } from "@/lib/account-status";
+import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, setStageProgressMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
@@ -20,19 +21,22 @@ const STAGES = new Set(["INTRO", "IN_PROGRESS", "COMPLETED"]);
 export async function POST(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const userId = await getUserIdFromRequest(request);
-    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    await ensureUserAccountCanAct(userId);
     const { jobId } = await context.params;
+    const tokenAccess = userId ? null : await resolveEmployeeCaptureAccess(request, { bookingId: jobId });
+    if (!userId && !tokenAccess) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (userId) await ensureUserAccountCanAct(userId);
     const body = await request.json().catch(() => ({}));
     const stage = String(body?.stage || "").trim().toUpperCase();
     if (!STAGES.has(stage)) {
       return NextResponse.json({ error: "Invalid stage. Use INTRO, IN_PROGRESS, or COMPLETED." }, { status: 422 });
     }
 
-    const memberships = await prisma.vendorMembership.findMany({
-      where: { userId, status: "ACTIVE", role: "EMPLOYEE" },
-      select: { id: true, vendorId: true },
-    });
+    const memberships = tokenAccess
+      ? [{ id: tokenAccess.membershipId, vendorId: tokenAccess.vendorId }]
+      : await prisma.vendorMembership.findMany({
+          where: { userId: userId!, status: "ACTIVE", role: "EMPLOYEE" },
+          select: { id: true, vendorId: true },
+        });
     const booking = await prisma.booking.findUnique({
       where: { id: jobId },
       select: { id: true, vendorId: true, customerMetadata: true },
@@ -106,7 +110,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       actionType: "job_stage_uploaded",
       entityType: "booking",
       entityId: booking.id,
-      actorUserId: userId,
+      actorUserId: userId || tokenAccess!.userId,
       newValue: {
         stage,
         awaitingReview: hasAllRequiredStages,

@@ -15,7 +15,7 @@ export type VendorTeamMember = {
 export async function fetchVendorTeamMembers(
   vendorId: string,
   getHeaders: () => Record<string, string>,
-  options?: { timeoutMs?: number }
+  options?: { timeoutMs?: number; includePending?: boolean }
 ): Promise<VendorTeamMember[]> {
   const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timeoutMs = typeof options?.timeoutMs === "number" ? options.timeoutMs : 0;
@@ -26,8 +26,9 @@ export async function fetchVendorTeamMembers(
 
   let res: Response;
   try {
+    const statusQuery = options?.includePending ? "" : "?status=ACTIVE";
     res = await fetch(
-      `/api/vendors/${encodeURIComponent(vendorId)}/memberships?status=ACTIVE`,
+      `/api/vendors/${encodeURIComponent(vendorId)}/memberships${statusQuery}`,
       {
         method: "GET",
         headers: { ...getHeaders(), "Content-Type": "application/json" },
@@ -73,7 +74,8 @@ export async function fetchVendorTeamMembers(
       status: String(m?.status || "").trim().toUpperCase(),
     });
   }
-  return Array.from(byId.values());
+  const allowedStatuses = options?.includePending ? new Set(["ACTIVE", "PENDING"]) : new Set(["ACTIVE"]);
+  return Array.from(byId.values()).filter((member) => allowedStatuses.has(member.status));
 }
 
 export function avatarUrlForName(name: string): string {

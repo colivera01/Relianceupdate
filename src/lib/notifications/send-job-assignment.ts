@@ -94,13 +94,13 @@ export async function sendJobAssignmentNotification(
       link,
       "",
       "What to do next:",
-      "- Sign in with the employee account linked to this team",
+      "- Open the secure job link",
       "- Tap Start Job when work begins",
       "- Capture Starting Condition, Work in Progress, and Final Result clips",
       "- Keep each public stage clip to 30 seconds or less",
       "- Submit the completed package for manager review",
       "",
-      "This link opens your Reliance employee job queue and only shows jobs assigned to your account.",
+      "This secure link only opens the Reliance job assigned to you.",
       "",
       "- Reliance Team",
     ]
@@ -117,13 +117,13 @@ export async function sendJobAssignmentNotification(
       <p><a href="${escapeHtml(link)}">Open your assigned job on this phone</a></p>
       <p><strong>What to do next:</strong></p>
       <ol>
-        <li>Sign in with the employee account linked to this team.</li>
+        <li>Open the secure job link.</li>
         <li>Tap Start Job when work begins.</li>
         <li>Capture Starting Condition, Work in Progress, and Final Result clips.</li>
         <li>Keep each public stage clip to 30 seconds or less.</li>
         <li>Submit the completed package for manager review.</li>
       </ol>
-      <p>This link opens your Reliance employee job queue and only shows jobs assigned to your account.</p>
+      <p>This secure link only opens the Reliance job assigned to you.</p>
       <p>- Reliance Team</p>
     `.trim();
     const result = await sendEmail({ to: email, subject, text, html });
@@ -153,7 +153,7 @@ export async function sendJobAssignmentNotification(
   }
 
   if (env.smsEnabled && phone) {
-    const body = `${vendorName} via Reliance: new job assigned - ${jobTitle}. Open your employee job queue: ${link} Reply STOP to opt out.`;
+    const body = `Reliance: New job assigned for ${vendorName} - ${jobTitle}. Open your employee job queue: ${link} Reply STOP to opt out.`;
     const result = await sendSms({ to: phone, body });
     channels.push({
       channel: "sms",

@@ -454,7 +454,9 @@ describe("vendor job actions integration", () => {
         employeeName: "Peter Parker",
         employeeEmail: "peter@example.com",
         employeePhone: "4075550123",
-        employeeJobLink: "http://localhost/employee/jobs?jobId=job1",
+        employeeJobLink: expect.stringMatching(
+          /^http:\/\/localhost\/employee\/jobs\?jobId=job1&ct=.+/
+        ),
         vendorName: "Electro LLC",
         jobTitle: "Outlet Installation",
         customerName: "Carmen Customer",

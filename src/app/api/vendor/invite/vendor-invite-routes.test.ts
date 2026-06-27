@@ -6,6 +6,7 @@ const hoisted = vi.hoisted(() => {
   const vendorInviteFindFirst = vi.fn();
   const vendorInviteUpdate = vi.fn();
   const vendorFindUnique = vi.fn();
+  const userFindUnique = vi.fn();
   const userFindFirst = vi.fn();
   const userCreate = vi.fn();
   const userUpdate = vi.fn();
@@ -20,6 +21,7 @@ const hoisted = vi.hoisted(() => {
       findUnique: vendorFindUnique,
     },
     user: {
+      findUnique: userFindUnique,
       findFirst: userFindFirst,
       create: userCreate,
       update: userUpdate,
@@ -35,6 +37,7 @@ const hoisted = vi.hoisted(() => {
     vendorInviteFindFirst,
     vendorInviteUpdate,
     vendorFindUnique,
+    userFindUnique,
     userFindFirst,
     userCreate,
     userUpdate,
@@ -95,6 +98,7 @@ describe("vendor invite token routes", () => {
     hoisted.vendorInviteFindFirst.mockReset();
     hoisted.vendorInviteUpdate.mockReset();
     hoisted.vendorFindUnique.mockReset();
+    hoisted.userFindUnique.mockReset();
     hoisted.userFindFirst.mockReset();
     hoisted.userCreate.mockReset();
     hoisted.userUpdate.mockReset();
@@ -155,6 +159,7 @@ describe("vendor invite token routes", () => {
   it("accepts a valid invite and activates employee membership", async () => {
     hoisted.vendorInviteFindFirst.mockResolvedValue(buildInviteFixture());
     hoisted.vendorFindUnique.mockResolvedValue(buildVendorFixture());
+    hoisted.userFindUnique.mockResolvedValue(null);
     hoisted.userFindFirst.mockResolvedValue(null);
     hoisted.userCreate.mockResolvedValue({
       id: "employee-user-1",
