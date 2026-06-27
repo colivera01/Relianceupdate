@@ -704,6 +704,12 @@ export default function EmployeeJobsPage() {
     const selectedRecordingKey = `${job.id}:${selectedStage.key}`;
     const isRecordingSelectedStage = recordingKey === selectedRecordingKey;
     const isRecordingAnotherStage = Boolean(recordingKey && recordingKey !== selectedRecordingKey);
+    const canStartStageFromCard =
+      hasCaptureToken &&
+      showUploadControls &&
+      !selectedDraft &&
+      !recordingKey &&
+      !uploadingKey;
 
     return (
       <div
@@ -759,28 +765,33 @@ export default function EmployeeJobsPage() {
               {STAGES.map((stage) => {
                 const done = Boolean(job.stageProgress[stage.key]);
                 const selected = selectedStage.key === stage.key;
+                const canStartThisStage = canStartStageFromCard && !done;
                 return (
                   <button
                     key={stage.key}
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
                       setFocusedStageByJobId((current) => ({
                         ...current,
                         [job.id]: stage.key,
-                      }))
-                    }
+                      }));
+                      if (canStartThisStage) {
+                        void startCameraRecording(job, stage.key);
+                      }
+                    }}
+                    disabled={Boolean(hasCaptureToken && (isRecordingAnotherStage || uploadingKey))}
                     className={`rounded border p-3 text-left text-xs transition ${
                       selected
                         ? "border-blue-500 bg-blue-50"
                         : done
                           ? "border-emerald-200 bg-emerald-50/60 hover:border-emerald-300"
                           : "border-gray-200 bg-white hover:border-blue-200 hover:bg-blue-50/40"
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
                   >
                     <p className="font-medium text-gray-900">{stage.label}</p>
                     <p className="mt-1 text-[11px] text-gray-600">{stage.cue}</p>
                     <p className={`mt-2 text-[11px] font-medium ${done ? "text-emerald-700" : "text-gray-500"}`}>
-                      {done ? "Uploaded" : "Required"}
+                      {done ? "Recorded" : hasCaptureToken ? "Tap to record" : "Required"}
                     </p>
                   </button>
                 );
@@ -814,7 +825,11 @@ export default function EmployeeJobsPage() {
                 </p>
                 <p className="font-medium text-blue-700">{getStageVideoLimitCopy()}</p>
               </div>
-              <p className="mt-2 text-xs text-gray-600">{captureSupportCopy}</p>
+              <p className="mt-2 text-xs text-gray-600">
+                {hasCaptureToken
+                  ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
+                  : captureSupportCopy}
+              </p>
 
               {selectedStageDone ? (
                 <p className="mt-2 text-xs text-amber-700">
@@ -874,6 +889,10 @@ export default function EmployeeJobsPage() {
                         </button>
                       </div>
                     </div>
+                  ) : hasCaptureToken ? (
+                    <p className="text-[11px] text-gray-500">
+                      Select a stage card above to record directly from this device. Nothing is saved until you confirm the preview.
+                    </p>
                   ) : (
                     <div className="flex flex-wrap items-center gap-2">
                       <button
