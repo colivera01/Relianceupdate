@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 
 type InviteInfo = {
   token: string;
@@ -120,8 +119,8 @@ export default function VendorInvitePage() {
       <div className="mx-auto w-full max-w-xl rounded-lg border bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-bold text-gray-900">Accept Team Invite</h1>
         <p className="mt-2 text-sm leading-6 text-gray-600">
-          This connects you to the vendor team. After you sign in, your assigned work and service
-          video recording steps appear in Employee Jobs.
+          This connects your email or phone to the vendor team so assigned recording links can be
+          sent to you when a manager schedules work.
         </p>
         {loading ? <p className="mt-4 text-sm text-gray-600">Loading invite...</p> : null}
         {error ? <p className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
@@ -160,23 +159,10 @@ export default function VendorInvitePage() {
               <div className="rounded border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                 <p className="font-semibold">{successMessage}</p>
                 <p className="mt-2 leading-6">
-                  Next, sign in with the same email or phone used on this invite. Your manager assigns
-                  scheduled work separately; the invite itself does not create a recording task.
+                  You are connected to this vendor team. Your manager will assign scheduled work
+                  separately, and future recording links will be sent to you by email or SMS. The
+                  invite itself does not create a recording task.
                 </p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <Link
-                    href={`/auth/login?next=${encodeURIComponent("/employee/jobs")}`}
-                    className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                  >
-                    Sign in to Employee Jobs
-                  </Link>
-                  <Link
-                    href="/employee/jobs"
-                    className="rounded border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50"
-                  >
-                    Open Employee Jobs
-                  </Link>
-                </div>
               </div>
             ) : (
               <>
