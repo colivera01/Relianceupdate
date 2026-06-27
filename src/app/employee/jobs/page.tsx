@@ -19,6 +19,8 @@ import {
   STAGE_VIDEO_MAX_DURATION_SECONDS,
   formatStageVideoDuration,
   getStageVideoLimitCopy,
+  getVideoFileDurationSeconds,
+  isOverStageVideoLimit,
 } from "@/lib/stage-video-guidance";
 import { tutorialGuides } from "@/lib/user-guidance";
 
@@ -228,11 +230,16 @@ export default function EmployeeJobsPage() {
   const [activeCameraStream, setActiveCameraStream] = useState<MediaStream | null>(null);
   const [capturedDraft, setCapturedDraft] = useState<CapturedVideoDraft | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
+  const fallbackCaptureInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
   const recordingStopTimerRef = useRef<number | null>(null);
   const activeCameraStreamRef = useRef<MediaStream | null>(null);
   const capturedDraftUrlRef = useRef<string | null>(null);
+  const fallbackCaptureRef = useRef<{
+    job: EmployeeJob;
+    stage: (typeof STAGES)[number]["key"];
+  } | null>(null);
   const userId = useMemo(() => String(user?.id || "").trim(), [user?.id]);
   const hasCaptureToken = Boolean(captureToken);
 
@@ -565,6 +572,69 @@ export default function EmployeeJobsPage() {
     }
   };
 
+  const prepareCapturedDraftFromFile = async (
+    job: EmployeeJob,
+    stage: (typeof STAGES)[number]["key"],
+    file: File,
+    source: "native-camera" | "recorder" = "native-camera"
+  ) => {
+    const nextRecordingKey = `${job.id}:${stage}`;
+    try {
+      const durationSeconds = await getVideoFileDurationSeconds(file);
+      if (isOverStageVideoLimit(durationSeconds)) {
+        setStageFeedback((prev) => ({
+          ...prev,
+          [nextRecordingKey]: {
+            status: "error",
+            message: `Clip is ${formatStageVideoDuration(durationSeconds)}. Retake a ${formatStageVideoDuration(
+              STAGE_VIDEO_MAX_DURATION_SECONDS
+            )} max video.`,
+          },
+        }));
+        return;
+      }
+      clearCapturedDraft();
+      const previewUrl = URL.createObjectURL(file);
+      capturedDraftUrlRef.current = previewUrl;
+      setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds });
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "success",
+          message:
+            source === "native-camera"
+              ? "Preview the video. Confirm to save it to the project, or retake it."
+              : "Preview the video. Confirm to save it to the project, or retake it.",
+        },
+      }));
+    } catch {
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "error",
+          message: "Could not read the video. Retake a short camera video and try again.",
+        },
+      }));
+    }
+  };
+
+  const openNativeCameraFallback = (
+    job: EmployeeJob,
+    stage: (typeof STAGES)[number]["key"],
+    message = "Opening the phone camera. After recording, preview it here before saving."
+  ) => {
+    const nextRecordingKey = `${job.id}:${stage}`;
+    fallbackCaptureRef.current = { job, stage };
+    setStageFeedback((prev) => ({
+      ...prev,
+      [nextRecordingKey]: {
+        status: "uploading",
+        message,
+      },
+    }));
+    fallbackCaptureInputRef.current?.click();
+  };
+
   const startCameraRecording = async (
     job: EmployeeJob,
     stage: (typeof STAGES)[number]["key"]
@@ -584,20 +654,14 @@ export default function EmployeeJobsPage() {
     clearCapturedDraft();
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setStageFeedback((prev) => ({
-        ...prev,
-        [nextRecordingKey]: {
-          status: "error",
-          message: "This browser cannot record directly from the camera. Open this link in Safari or Chrome on the phone.",
-        },
-      }));
+      openNativeCameraFallback(job, stage, "Your browser needs the phone camera recorder. Record the clip, then preview it here before saving.");
       return;
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
-        audio: true,
+        audio: false,
       });
       const mimeType = [
         "video/webm;codecs=vp9,opus",
@@ -666,16 +730,17 @@ export default function EmployeeJobsPage() {
     } catch (error) {
       setRecordingKey(null);
       stopActiveCameraStream();
-      setStageFeedback((prev) => ({
-        ...prev,
-        [nextRecordingKey]: {
-          status: "error",
-          message:
-            error instanceof Error && error.name === "NotAllowedError"
-              ? "Camera access was blocked. Allow camera access and try again."
-              : "Could not open the camera. Try again from the phone camera browser.",
-        },
-      }));
+      if (error instanceof Error && error.name === "NotAllowedError") {
+        setStageFeedback((prev) => ({
+          ...prev,
+          [nextRecordingKey]: {
+            status: "error",
+            message: "Camera access was blocked. Allow camera access in the browser and tap the stage again.",
+          },
+        }));
+      } else {
+        openNativeCameraFallback(job, stage, "The in-page camera did not open on this phone. Use the phone camera recorder, then preview it here before saving.");
+      }
     }
   };
 
@@ -710,6 +775,13 @@ export default function EmployeeJobsPage() {
     const selectedRecordingKey = `${job.id}:${selectedStage.key}`;
     const isRecordingSelectedStage = recordingKey === selectedRecordingKey;
     const isRecordingAnotherStage = Boolean(recordingKey && recordingKey !== selectedRecordingKey);
+    const selectedStageFeedback = stageFeedback[selectedStageFeedbackKey] || null;
+    const canOfferNativeCameraRetry =
+      hasCaptureToken &&
+      showUploadControls &&
+      !selectedDraft &&
+      !isRecordingSelectedStage &&
+      selectedStageFeedback?.status === "error";
     const canStartStageFromCard =
       hasCaptureToken &&
       showUploadControls &&
@@ -925,9 +997,20 @@ export default function EmployeeJobsPage() {
                       </div>
                     </div>
                   ) : hasCaptureToken ? (
-                    <p className="rounded-xl border border-blue-300/15 bg-blue-300/5 px-3 py-2 text-xs leading-5 text-blue-100/75">
-                      Select a stage card above to record directly from this device. Nothing is saved until you confirm the preview.
-                    </p>
+                    <div className="space-y-2">
+                      <p className="rounded-xl border border-blue-300/15 bg-blue-300/5 px-3 py-2 text-xs leading-5 text-blue-100/75">
+                        Select a stage card above to record directly from this device. Nothing is saved until you confirm the preview.
+                      </p>
+                      {canOfferNativeCameraRetry ? (
+                        <button
+                          type="button"
+                          onClick={() => openNativeCameraFallback(job, selectedStage.key)}
+                          className="w-full rounded-xl border border-blue-300 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+                        >
+                          Open Phone Camera
+                        </button>
+                      ) : null}
+                    </div>
                   ) : (
                     <div className="flex flex-wrap items-center gap-2">
                       <button
@@ -950,17 +1033,17 @@ export default function EmployeeJobsPage() {
                 </p>
               )}
 
-              {stageFeedback[selectedStageFeedbackKey] ? (
+              {selectedStageFeedback ? (
                 <p
                   className={`mt-2 text-[11px] ${
-                    stageFeedback[selectedStageFeedbackKey].status === "error"
+                    selectedStageFeedback.status === "error"
                       ? "text-red-200"
-                      : stageFeedback[selectedStageFeedbackKey].status === "success"
+                      : selectedStageFeedback.status === "success"
                       ? "text-emerald-200"
                       : "text-blue-200"
                   }`}
                 >
-                  {stageFeedback[selectedStageFeedbackKey].message}
+                  {selectedStageFeedback.message}
                 </p>
               ) : null}
             </div>
@@ -1058,6 +1141,27 @@ export default function EmployeeJobsPage() {
 
   return (
     <div className="reliance-operator-shell reliance-grid-lines min-h-screen p-4">
+      <input
+        ref={fallbackCaptureInputRef}
+        type="file"
+        accept="video/*"
+        capture="environment"
+        className="sr-only"
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          const fallbackCapture = fallbackCaptureRef.current;
+          event.currentTarget.value = "";
+          if (!file || !fallbackCapture) return;
+          void prepareCapturedDraftFromFile(
+            fallbackCapture.job,
+            fallbackCapture.stage,
+            file,
+            "native-camera"
+          );
+        }}
+      />
       <div className="mx-auto w-full max-w-2xl space-y-4">
         <div className="reliance-operator-hero rounded-[28px] p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
