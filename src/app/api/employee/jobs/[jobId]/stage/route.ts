@@ -97,11 +97,6 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       where: { id: booking.id },
       data: {
         customerMetadata: setStageProgressMetadata(booking.customerMetadata, stage as any),
-        ...(hasAllRequiredStages
-          ? {
-              status: "AWAITING_REVIEW",
-            }
-          : {}),
       },
       select: { id: true, customerMetadata: true, updatedAt: true },
     });
@@ -125,7 +120,8 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     return NextResponse.json({
       success: true,
       stage,
-      awaitingReview: hasAllRequiredStages,
+      readyForManagerReview: hasAllRequiredStages,
+      awaitingReview: false,
       job: updated,
     });
   } catch (error: any) {

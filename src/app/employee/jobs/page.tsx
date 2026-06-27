@@ -579,8 +579,10 @@ export default function EmployeeJobsPage() {
     source: "native-camera" | "recorder" = "native-camera"
   ) => {
     const nextRecordingKey = `${job.id}:${stage}`;
+    let durationSeconds = 1;
+    let durationWarning = false;
     try {
-      const durationSeconds = await getVideoFileDurationSeconds(file);
+      durationSeconds = await getVideoFileDurationSeconds(file);
       if (isOverStageVideoLimit(durationSeconds)) {
         setStageFeedback((prev) => ({
           ...prev,
@@ -593,29 +595,22 @@ export default function EmployeeJobsPage() {
         }));
         return;
       }
-      clearCapturedDraft();
-      const previewUrl = URL.createObjectURL(file);
-      capturedDraftUrlRef.current = previewUrl;
-      setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds });
-      setStageFeedback((prev) => ({
-        ...prev,
-        [nextRecordingKey]: {
-          status: "success",
-          message:
-            source === "native-camera"
-              ? "Preview the video. Confirm to save it to the project, or retake it."
-              : "Preview the video. Confirm to save it to the project, or retake it.",
-        },
-      }));
     } catch {
-      setStageFeedback((prev) => ({
-        ...prev,
-        [nextRecordingKey]: {
-          status: "error",
-          message: "Could not read the video. Retake a short camera video and try again.",
-        },
-      }));
+      durationWarning = true;
     }
+    clearCapturedDraft();
+    const previewUrl = URL.createObjectURL(file);
+    capturedDraftUrlRef.current = previewUrl;
+    setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds });
+    setStageFeedback((prev) => ({
+      ...prev,
+      [nextRecordingKey]: {
+        status: durationWarning ? "uploading" : "success",
+        message: durationWarning
+          ? "Preview the video. Reliance will verify the 30-second limit when you confirm."
+          : "Preview the video. Confirm to save it to the project, or retake it.",
+      },
+    }));
   };
 
   const openNativeCameraFallback = (

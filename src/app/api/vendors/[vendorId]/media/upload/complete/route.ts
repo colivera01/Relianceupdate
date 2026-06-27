@@ -291,18 +291,10 @@ export async function POST(
             });
             const packageState = evaluateVendorJobPackageState(sessions);
             const hasAllRequiredStages = packageState.hasAllRequiredStages;
-            const nextMeta = setOperationalPhaseOnMetadataJson(
-              bookingRow.customerMetadata,
-              hasAllRequiredStages ? "AWAITING_ADMIN_REVIEW" : "IN_PROGRESS"
-            );
+            const nextMeta = setOperationalPhaseOnMetadataJson(bookingRow.customerMetadata, "IN_PROGRESS");
             await prisma.booking.update({
               where: { id: bookingRow.id },
-              data: {
-                customerMetadata: nextMeta,
-                ...(hasAllRequiredStages && st !== "AWAITING_REVIEW"
-                  ? { status: "AWAITING_REVIEW" }
-                  : {}),
-              },
+              data: { customerMetadata: nextMeta },
             });
           }
         }

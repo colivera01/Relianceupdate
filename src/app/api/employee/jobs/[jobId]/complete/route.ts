@@ -10,6 +10,7 @@ import {
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
@@ -93,6 +94,10 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       where: { id: booking.id },
       data: {
         status: "AWAITING_REVIEW",
+        customerMetadata: setOperationalPhaseOnMetadataJson(
+          booking.customerMetadata,
+          "AWAITING_ADMIN_REVIEW"
+        ),
       },
       select: { id: true, status: true, date: true },
     });
