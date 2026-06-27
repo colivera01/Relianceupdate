@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GuidanceCallout } from "@/components/guidance/GuidanceCallout";
 import { TutorialEntryPoint } from "@/components/guidance/TutorialEntryPoint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,7 +9,6 @@ import { getClientSessionHeaders } from "@/lib/client-session";
 import { normalizeEmployeeJobStatusLabel, shouldShowEmployeeStartButton } from "@/lib/employee-job-status";
 import {
   getCompletedEmployeeCaptureCount,
-  getEmployeeCaptureActionLabel,
   getEmployeeCaptureDeviceLabel,
   getEmployeeCaptureStageHeading,
   getEmployeeCaptureSupportCopy,
@@ -21,8 +19,6 @@ import {
   STAGE_VIDEO_MAX_DURATION_SECONDS,
   formatStageVideoDuration,
   getStageVideoLimitCopy,
-  getVideoFileDurationSeconds,
-  isOverStageVideoLimit,
 } from "@/lib/stage-video-guidance";
 import { tutorialGuides } from "@/lib/user-guidance";
 
@@ -60,25 +56,19 @@ type PairedDeviceState = {
   status: string;
 };
 
-type JobRecoverySuggestion = {
-  summary: string;
-  decision:
-    | "continue_current_step"
-    | "retry_step"
-    | "needs_vendor_follow_up"
-    | "needs_manager_review"
-    | "needs_admin_help";
-  confidence: "low" | "medium" | "high";
-  blockers: string[];
-  recommendedActions: string[];
-  explainWhy: string[];
-};
-
 const STAGES = [
   { key: "INTRO", label: "Starting Condition", cue: "Show the starting condition before work begins." },
   { key: "IN_PROGRESS", label: "Work in Progress", cue: "Show active progress while the service is underway." },
   { key: "COMPLETED", label: "Final Result", cue: "Show the final result clearly." },
 ] as const;
+
+type CapturedVideoDraft = {
+  jobId: string;
+  stage: (typeof STAGES)[number]["key"];
+  file: File;
+  previewUrl: string;
+  durationSeconds: number;
+};
 
 const EMPLOYEE_JOBS_TIMEOUT_MS = 20000;
 const EMPLOYEE_PAIR_TIMEOUT_MS = 15000;
@@ -207,6 +197,13 @@ function submitHelperText(job: EmployeeJob): string | null {
   return null;
 }
 
+function captureLinkSubmitButtonLabel(status: string | null | undefined): string {
+  const normalized = String(status || "").trim().toUpperCase();
+  if (normalized === "AWAITING_REVIEW") return "Sent to Manager";
+  if (normalized === "COMPLETED") return "Completed";
+  return "Send Videos to Manager";
+}
+
 export default function EmployeeJobsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [jobs, setJobs] = useState<EmployeeJob[]>([]);
@@ -219,11 +216,17 @@ export default function EmployeeJobsPage() {
   const [pairingError, setPairingError] = useState<string | null>(null);
   const [showCompletedHistory, setShowCompletedHistory] = useState(false);
   const [focusedStageByJobId, setFocusedStageByJobId] = useState<Record<string, (typeof STAGES)[number]["key"]>>({});
-  const [jobRecoveryByJobId, setJobRecoveryByJobId] = useState<Record<string, JobRecoverySuggestion | null>>({});
-  const [jobRecoveryErrorByJobId, setJobRecoveryErrorByJobId] = useState<Record<string, string>>({});
-  const [jobRecoveryLoadingId, setJobRecoveryLoadingId] = useState<string | null>(null);
   const [focusedJobId, setFocusedJobId] = useState("");
   const [captureToken, setCaptureToken] = useState("");
+  const [recordingKey, setRecordingKey] = useState<string | null>(null);
+  const [activeCameraStream, setActiveCameraStream] = useState<MediaStream | null>(null);
+  const [capturedDraft, setCapturedDraft] = useState<CapturedVideoDraft | null>(null);
+  const liveVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
+  const recordingStopTimerRef = useRef<number | null>(null);
+  const activeCameraStreamRef = useRef<MediaStream | null>(null);
+  const capturedDraftUrlRef = useRef<string | null>(null);
   const userId = useMemo(() => String(user?.id || "").trim(), [user?.id]);
   const hasCaptureToken = Boolean(captureToken);
 
@@ -296,6 +299,26 @@ export default function EmployeeJobsPage() {
     if (!userId && !captureToken) return;
     void loadJobs();
   }, [userId, captureToken]);
+
+  useEffect(() => {
+    if (!liveVideoRef.current) return;
+    liveVideoRef.current.srcObject = activeCameraStream;
+  }, [activeCameraStream, recordingKey]);
+
+  useEffect(() => {
+    return () => {
+      if (recordingStopTimerRef.current !== null) {
+        window.clearTimeout(recordingStopTimerRef.current);
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      activeCameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (capturedDraftUrlRef.current) {
+        URL.revokeObjectURL(capturedDraftUrlRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (captureToken) return;
@@ -507,88 +530,158 @@ export default function EmployeeJobsPage() {
     }
   };
 
-  const validateAndUploadStageVideo = async (
-    job: EmployeeJob,
-    stage: (typeof STAGES)[number]["key"],
-    file: File
-  ) => {
-    const uploadKey = `${job.id}:${stage}`;
-    try {
-      const durationSeconds = await getVideoFileDurationSeconds(file);
-      if (isOverStageVideoLimit(durationSeconds)) {
-        setStageFeedback((prev) => ({
-          ...prev,
-          [uploadKey]: {
-            status: "error",
-            message: `Clip is ${formatStageVideoDuration(durationSeconds)}. Retake a ${formatStageVideoDuration(
-              STAGE_VIDEO_MAX_DURATION_SECONDS
-            )} max video.`,
-          },
-        }));
-        return;
+  const clearCapturedDraft = () => {
+    setCapturedDraft((current) => {
+      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl);
+      if (capturedDraftUrlRef.current === current?.previewUrl) {
+        capturedDraftUrlRef.current = null;
       }
-      await uploadStageVideo(job, stage, file, durationSeconds);
-    } catch {
+      return null;
+    });
+  };
+
+  const stopActiveCameraStream = (stream: MediaStream | null = activeCameraStream) => {
+    stream?.getTracks().forEach((track) => track.stop());
+    if (!stream || activeCameraStreamRef.current === stream) {
+      activeCameraStreamRef.current = null;
+    }
+    setActiveCameraStream(null);
+  };
+
+  const stopCameraRecording = () => {
+    if (recordingStopTimerRef.current !== null) {
+      window.clearTimeout(recordingStopTimerRef.current);
+      recordingStopTimerRef.current = null;
+    }
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  };
+
+  const startCameraRecording = async (
+    job: EmployeeJob,
+    stage: (typeof STAGES)[number]["key"]
+  ) => {
+    const nextRecordingKey = `${job.id}:${stage}`;
+    setError(null);
+    setActionMessage(null);
+    setStageFeedback((prev) => ({
+      ...prev,
+      [nextRecordingKey]: {
+        status: "uploading",
+        message: `Recording live camera video. Recording stops automatically at ${formatStageVideoDuration(
+          STAGE_VIDEO_MAX_DURATION_SECONDS
+        )}.`,
+      },
+    }));
+    clearCapturedDraft();
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setStageFeedback((prev) => ({
         ...prev,
-        [uploadKey]: {
+        [nextRecordingKey]: {
           status: "error",
-          message: "Could not read the video duration. Retake or choose a 30-second max clip.",
+          message: "This browser cannot record directly from the camera. Open this link in Safari or Chrome on the phone.",
+        },
+      }));
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: true,
+      });
+      const mimeType = [
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+        "video/mp4",
+      ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const startedAt = Date.now();
+      recordingChunksRef.current = [];
+      mediaRecorderRef.current = recorder;
+      activeCameraStreamRef.current = stream;
+      setRecordingKey(nextRecordingKey);
+      setActiveCameraStream(stream);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onerror = () => {
+        setStageFeedback((prev) => ({
+          ...prev,
+          [nextRecordingKey]: {
+            status: "error",
+            message: "Camera recording failed. Retake this stage from the camera.",
+          },
+        }));
+        stopActiveCameraStream(stream);
+        setRecordingKey(null);
+      };
+      recorder.onstop = () => {
+        if (recordingStopTimerRef.current !== null) {
+          window.clearTimeout(recordingStopTimerRef.current);
+          recordingStopTimerRef.current = null;
+        }
+        const durationSeconds = Math.max(
+          1,
+          Math.min(STAGE_VIDEO_MAX_DURATION_SECONDS, (Date.now() - startedAt) / 1000)
+        );
+        const blobType = recorder.mimeType || "video/webm";
+        const blob = new Blob(recordingChunksRef.current, { type: blobType });
+        const extension = blobType.includes("mp4") ? "mp4" : "webm";
+        const file = new File([blob], `${stage.toLowerCase()}-${Date.now()}.${extension}`, {
+          type: blobType,
+        });
+        const previewUrl = URL.createObjectURL(blob);
+        capturedDraftUrlRef.current = previewUrl;
+        stopActiveCameraStream(stream);
+        setRecordingKey(null);
+        setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds });
+        setStageFeedback((prev) => ({
+          ...prev,
+          [nextRecordingKey]: {
+            status: "success",
+            message: "Preview the video. Confirm to save it to the project, or retake it.",
+          },
+        }));
+      };
+
+      recorder.start();
+      recordingStopTimerRef.current = window.setTimeout(
+        () => stopCameraRecording(),
+        STAGE_VIDEO_MAX_DURATION_SECONDS * 1000
+      );
+    } catch (error) {
+      setRecordingKey(null);
+      stopActiveCameraStream();
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "error",
+          message:
+            error instanceof Error && error.name === "NotAllowedError"
+              ? "Camera access was blocked. Allow camera access and try again."
+              : "Could not open the camera. Try again from the phone camera browser.",
         },
       }));
     }
   };
 
-  const requestJobRecovery = async (
-    job: EmployeeJob,
-    currentWorkflowLabel: string,
-    currentWorkflowDetail: string
-  ) => {
-    setJobRecoveryLoadingId(job.id);
-    setJobRecoveryErrorByJobId((current) => ({
-      ...current,
-      [job.id]: "",
-    }));
-    try {
-      const response = await fetch("/api/job-recovery-assistant", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getClientSessionHeaders(userId),
-        },
-        body: JSON.stringify({
-          jobId: job.id,
-          role: "employee",
-          title: job.title,
-          status: job.status,
-          operationalPhase: null,
-          clientName: job.customer.name || null,
-          assignedEmployeeNames: [],
-          stageProgress: job.stageProgress,
-          consentStatus: null,
-          rejectionReason: job.rejectionReason || null,
-          currentWorkflowLabel,
-          currentWorkflowDetail,
-        }),
-      });
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(json?.error || json?.message || `Status ${response.status}`);
-      }
-      setJobRecoveryByJobId((current) => ({
-        ...current,
-        [job.id]: json?.suggestion || null,
-      }));
-    } catch (error) {
-      console.error("[employee/jobs] job recovery assistant error:", error);
-      setJobRecoveryErrorByJobId((current) => ({
-        ...current,
-        [job.id]:
-          error instanceof Error ? error.message : "Failed to generate AI job recovery guidance",
-      }));
-    } finally {
-      setJobRecoveryLoadingId(null);
+  const confirmCapturedDraft = async (job: EmployeeJob) => {
+    if (!capturedDraft || capturedDraft.jobId !== job.id) return;
+    const draft = capturedDraft;
+    setCapturedDraft(null);
+    if (capturedDraftUrlRef.current === draft.previewUrl) {
+      capturedDraftUrlRef.current = null;
     }
+    URL.revokeObjectURL(draft.previewUrl);
+    await uploadStageVideo(job, draft.stage, draft.file, draft.durationSeconds);
   };
 
   const renderJobCard = (job: EmployeeJob, historyMode = false) => {
@@ -606,27 +699,11 @@ export default function EmployeeJobsPage() {
     const stageProgressLabel = `Step ${getEmployeeStageStep(selectedStage.key)} of ${STAGES.length}`;
     const captureDeviceLabel = getEmployeeCaptureDeviceLabel(pairedDevice);
     const captureSupportCopy = getEmployeeCaptureSupportCopy(pairedDevice);
-    const stageActionLabel = getEmployeeCaptureActionLabel(selectedStage.key, selectedStageDone);
-    const workflowLabel = showStartButton
-      ? "Start assigned job"
-      : job.rejectionReason
-        ? "Review requested changes"
-        : isAwaitingReviewStatus(normalizedStatus)
-          ? "Awaiting manager review"
-          : job.canMarkComplete
-            ? "Submit for manager review"
-            : `Capture ${selectedStage.label} video`;
-    const workflowDetail = showStartButton
-      ? "The job is assigned and ready to begin."
-      : job.rejectionReason
-        ? "A manager sent this package back for corrections before it can move forward."
-        : isAwaitingReviewStatus(normalizedStatus)
-          ? "All required videos are uploaded and the package is waiting for manager review."
-          : job.canMarkComplete
-            ? "All required stage videos are available and the package can move into review."
-            : `Finish the ${selectedStage.label.toLowerCase()} step so the workflow can continue.`;
-    const jobRecoverySuggestion = jobRecoveryByJobId[job.id] || null;
-    const jobRecoveryError = jobRecoveryErrorByJobId[job.id] || "";
+    const selectedDraft =
+      capturedDraft?.jobId === job.id && capturedDraft.stage === selectedStage.key ? capturedDraft : null;
+    const selectedRecordingKey = `${job.id}:${selectedStage.key}`;
+    const isRecordingSelectedStage = recordingKey === selectedRecordingKey;
+    const isRecordingAnotherStage = Boolean(recordingKey && recordingKey !== selectedRecordingKey);
 
     return (
       <div
@@ -654,9 +731,11 @@ export default function EmployeeJobsPage() {
               </p>
             ) : null}
           </div>
-          <span className="rounded border bg-gray-100 px-2 py-1 text-xs text-gray-700">
-            {normalizeEmployeeJobStatusLabel(job.status)}
-          </span>
+          {!hasCaptureToken ? (
+            <span className="rounded border bg-gray-100 px-2 py-1 text-xs text-gray-700">
+              {normalizeEmployeeJobStatusLabel(job.status)}
+            </span>
+          ) : null}
         </div>
 
         {historyMode ? (
@@ -744,34 +823,72 @@ export default function EmployeeJobsPage() {
               ) : null}
 
               {showUploadControls ? (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <label
-                    htmlFor={`${job.id}-${selectedStage.key}-upload`}
-                    className={`inline-flex cursor-pointer items-center rounded border px-3 py-2 text-xs font-medium transition ${
-                      uploadingKey === selectedStageFeedbackKey
-                        ? "border-blue-200 bg-blue-50 text-blue-700"
-                        : "border-blue-300 bg-white text-blue-700 hover:bg-blue-50"
-                    }`}
-                  >
-                    {uploadingKey === selectedStageFeedbackKey ? "Uploading..." : stageActionLabel}
-                  </label>
-                  <input
-                    id={`${job.id}-${selectedStage.key}-upload`}
-                    type="file"
-                    accept="video/*"
-                    capture="environment"
-                    className="sr-only"
-                    disabled={Boolean(uploadingKey)}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      void validateAndUploadStageVideo(job, selectedStage.key, file);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                  <span className="text-[11px] text-gray-500">
-                    Choose camera or gallery on the phone. Headset capture uses the same stage flow later.
-                  </span>
+                <div className="mt-3 space-y-3">
+                  {isRecordingSelectedStage ? (
+                    <div className="space-y-3">
+                      <video
+                        ref={liveVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="aspect-video w-full rounded-lg border border-blue-200 bg-black object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={stopCameraRecording}
+                        className="rounded border border-blue-300 bg-white px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-50"
+                      >
+                        Stop and Preview
+                      </button>
+                    </div>
+                  ) : selectedDraft ? (
+                    <div className="space-y-3">
+                      <video
+                        src={selectedDraft.previewUrl}
+                        controls
+                        playsInline
+                        className="aspect-video w-full rounded-lg border border-slate-200 bg-black object-contain"
+                      />
+                      <p className="text-[11px] text-gray-500">
+                        Preview is temporary. This video is saved to the project only after you confirm.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void confirmCapturedDraft(job)}
+                          disabled={Boolean(uploadingKey)}
+                          className="rounded border border-emerald-300 bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {uploadingKey === selectedStageFeedbackKey ? "Saving..." : "Confirm and Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearCapturedDraft();
+                            void startCameraRecording(job, selectedStage.key);
+                          }}
+                          disabled={Boolean(uploadingKey)}
+                          className="rounded border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Retake
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void startCameraRecording(job, selectedStage.key)}
+                        disabled={Boolean(uploadingKey) || isRecordingAnotherStage}
+                        className="rounded border border-blue-300 bg-white px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Record Live Camera
+                      </button>
+                      <span className="text-[11px] text-gray-500">
+                        Record directly from this device. Nothing is saved until you confirm the preview.
+                      </span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="mt-3 text-[11px] text-gray-500">
@@ -812,98 +929,8 @@ export default function EmployeeJobsPage() {
         ) : null}
 
         {!historyMode ? (
-          <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-violet-700">
-                  <Sparkles className="h-4 w-4" />
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em]">
-                    AI Workflow Recovery
-                  </p>
-                </div>
-                <p className="mt-2 text-sm text-violet-900">
-                  If this workflow feels unclear or blocked, AI can explain the safest next step using the current job state only.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void requestJobRecovery(job, workflowLabel, workflowDetail)}
-                disabled={jobRecoveryLoadingId === job.id}
-                className="rounded border border-violet-300 bg-white px-3 py-1.5 text-xs font-medium text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {jobRecoveryLoadingId === job.id
-                  ? "Checking..."
-                  : jobRecoverySuggestion
-                    ? "Refresh AI Help"
-                    : "Get AI Help"}
-              </button>
-            </div>
-
-            {jobRecoveryError ? (
-              <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {jobRecoveryError}
-              </div>
-            ) : null}
-
-            {jobRecoverySuggestion ? (
-              <div className="mt-3 rounded-lg border border-violet-100 bg-white p-3 text-sm">
-                <div className="flex flex-wrap gap-2">
-                  <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-700">
-                    {jobRecoverySuggestion.decision
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (char) => char.toUpperCase())}
-                  </span>
-                  <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-700">
-                    {jobRecoverySuggestion.confidence.charAt(0).toUpperCase() +
-                      jobRecoverySuggestion.confidence.slice(1)}{" "}
-                    confidence
-                  </span>
-                </div>
-                <p className="mt-3 text-slate-800">{jobRecoverySuggestion.summary}</p>
-                {jobRecoverySuggestion.explainWhy.length > 0 ? (
-                  <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                    <div className="font-semibold uppercase tracking-wide text-slate-700">
-                      Why this is the right next step
-                    </div>
-                    <ul className="mt-2 space-y-1">
-                      {jobRecoverySuggestion.explainWhy.slice(0, 3).map((item) => (
-                        <li key={item}>- {item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {jobRecoverySuggestion.blockers.length > 0 ? (
-                  <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                    <div className="font-semibold uppercase tracking-wide text-amber-700">
-                      Current blockers
-                    </div>
-                    <ul className="mt-2 space-y-1">
-                      {jobRecoverySuggestion.blockers.slice(0, 3).map((item) => (
-                        <li key={item}>- {item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {jobRecoverySuggestion.recommendedActions.length > 0 ? (
-                  <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
-                    <div className="font-semibold uppercase tracking-wide text-blue-700">
-                      Recommended next actions
-                    </div>
-                    <ul className="mt-2 space-y-1">
-                      {jobRecoverySuggestion.recommendedActions.slice(0, 3).map((item) => (
-                        <li key={item}>- {item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {!historyMode ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            {showStartButton ? (
+            {showStartButton && !hasCaptureToken ? (
               <button
                 type="button"
                 onClick={() => void startJob(job.id)}
@@ -918,7 +945,7 @@ export default function EmployeeJobsPage() {
               onClick={() => void completeJob(job.id)}
               className="rounded border border-emerald-300 px-3 py-1 text-xs text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitButtonLabel(normalizedStatus)}
+              {hasCaptureToken ? captureLinkSubmitButtonLabel(normalizedStatus) : submitButtonLabel(normalizedStatus)}
             </button>
             {helperText ? <span className="text-xs text-gray-500">{helperText}</span> : null}
           </div>
@@ -974,41 +1001,48 @@ export default function EmployeeJobsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-                Employee workspace
+                {hasCaptureToken ? "Job recording link" : "Employee workspace"}
               </div>
-              <h1 className="mt-4 text-2xl font-bold text-gray-900">Assigned Jobs</h1>
+              <h1 className="mt-4 text-2xl font-bold text-gray-900">
+                {hasCaptureToken ? "Record Service Videos" : "Assigned Jobs"}
+              </h1>
               <p className="mt-2 text-sm text-gray-600">
-                Mobile-friendly employee workflow for Starting Condition, Work in Progress, and Final Result videos.
+                {hasCaptureToken
+                  ? "Use this phone to record each short stage, preview it, then save it to the project."
+                  : "Mobile-friendly employee workflow for Starting Condition, Work in Progress, and Final Result videos."}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <TutorialEntryPoint guide={tutorialGuides.employeeJobs} surface="dark" />
-              <Link
-                href="/help"
-                className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
-              >
-                Support &amp; Help
-              </Link>
-              <Link
-                href="/logout"
-                className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
-              >
-                Sign Out
-              </Link>
-            </div>
+            {!hasCaptureToken ? (
+              <div className="flex flex-wrap gap-2">
+                <TutorialEntryPoint guide={tutorialGuides.employeeJobs} surface="dark" />
+                <Link
+                  href="/help"
+                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                >
+                  Support &amp; Help
+                </Link>
+                <Link
+                  href="/logout"
+                  className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                >
+                  Sign Out
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
 
         <GuidanceCallout
-          title="How the stage-video workflow progresses"
-          description="Employees capture Starting Condition, Work in Progress, and Final Result videos in order, then submit the full package for manager review."
+          title={hasCaptureToken ? "Record 3 short videos" : "How the stage-video workflow progresses"}
+          description={
+            hasCaptureToken
+              ? "Capture each stage in order. You can preview and retake before anything is saved."
+              : "Employees capture Starting Condition, Work in Progress, and Final Result videos in order, then submit the full package for manager review."
+          }
           bullets={[
             'Starting Condition video shows what the customer should see before work begins.',
             'Work in Progress video shows active work or progress while the service is happening.',
             'Final Result video shows the finished outcome customers will later understand.',
-            'Awaiting Manager Review means all stages are uploaded but the package is not approved yet.',
-            'Rejected states mean the package needs corrections before it can move forward again.',
-            'Completed means the full package has already been manager-approved and moved past employee action.',
           ]}
           tone="blue"
         />
