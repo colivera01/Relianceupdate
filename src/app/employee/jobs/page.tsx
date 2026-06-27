@@ -204,6 +204,12 @@ function captureLinkSubmitButtonLabel(status: string | null | undefined): string
   return "Send Videos to Manager";
 }
 
+function getCaptureLinkStepLabel(stage: (typeof STAGES)[number]["key"]): string {
+  if (stage === "INTRO") return "Before";
+  if (stage === "IN_PROGRESS") return "During";
+  return "Finished";
+}
+
 export default function EmployeeJobsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [jobs, setJobs] = useState<EmployeeJob[]>([]);
@@ -714,25 +720,31 @@ export default function EmployeeJobsPage() {
     return (
       <div
         key={job.id}
-        className={`rounded-lg border p-4 shadow-sm ${
-          openedFromAssignmentLink ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white"
+        className={`rounded-2xl border p-4 shadow-sm ${
+          openedFromAssignmentLink
+            ? "border-blue-400/35 bg-blue-950/45 text-blue-50"
+            : "border-slate-200 bg-white"
         }`}
       >
-        {openedFromAssignmentLink ? (
-          <div className="mb-3 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs text-blue-800">
-            Opened from your job assignment link. This is the job your manager sent to this employee account.
-          </div>
-        ) : null}
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-sm font-semibold text-gray-900">{job.title}</p>
-            <p className="text-xs text-gray-500">{job.vendorName}</p>
-            <p className="mt-1 text-xs text-gray-600">
+            {openedFromAssignmentLink ? (
+              <p className="mb-2 inline-flex rounded-full border border-blue-300/30 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-100">
+                Job assignment
+              </p>
+            ) : null}
+            <p className={`text-base font-semibold ${openedFromAssignmentLink ? "text-white" : "text-gray-900"}`}>
+              {job.title}
+            </p>
+            <p className={`text-xs ${openedFromAssignmentLink ? "text-blue-100/70" : "text-gray-500"}`}>
+              {job.vendorName}
+            </p>
+            <p className={`mt-1 text-xs ${openedFromAssignmentLink ? "text-blue-50/75" : "text-gray-600"}`}>
               Customer: {job.customer.name || "Unknown"}
               {job.customer.phone ? ` - ${job.customer.phone}` : ""}
             </p>
             {job.bookingDate ? (
-              <p className="mt-1 text-[11px] text-gray-500">
+              <p className={`mt-1 text-[11px] ${openedFromAssignmentLink ? "text-blue-100/60" : "text-gray-500"}`}>
                 Service date: {new Date(job.bookingDate).toLocaleString()}
               </p>
             ) : null}
@@ -760,9 +772,9 @@ export default function EmployeeJobsPage() {
             ))}
           </div>
         ) : (
-          <div className="mt-3 space-y-3">
+          <div className="mt-4 space-y-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {STAGES.map((stage) => {
+              {STAGES.map((stage, index) => {
                 const done = Boolean(job.stageProgress[stage.key]);
                 const selected = selectedStage.key === stage.key;
                 const canStartThisStage = canStartStageFromCard && !done;
@@ -780,59 +792,82 @@ export default function EmployeeJobsPage() {
                       }
                     }}
                     disabled={Boolean(hasCaptureToken && (isRecordingAnotherStage || uploadingKey))}
-                    className={`rounded border p-3 text-left text-xs transition ${
+                    className={`min-h-[92px] rounded-xl border p-3 text-left text-xs transition ${
                       selected
-                        ? "border-blue-500 bg-blue-50"
+                        ? "border-blue-400 bg-blue-600/25 shadow-sm"
                         : done
-                          ? "border-emerald-200 bg-emerald-50/60 hover:border-emerald-300"
-                          : "border-gray-200 bg-white hover:border-blue-200 hover:bg-blue-50/40"
+                          ? "border-emerald-400/35 bg-emerald-500/12 hover:border-emerald-300"
+                          : "border-white/10 bg-slate-950/55 hover:border-blue-300/60 hover:bg-blue-600/10"
                     } disabled:cursor-not-allowed disabled:opacity-60`}
                   >
-                    <p className="font-medium text-gray-900">{stage.label}</p>
-                    <p className="mt-1 text-[11px] text-gray-600">{stage.cue}</p>
-                    <p className={`mt-2 text-[11px] font-medium ${done ? "text-emerald-700" : "text-gray-500"}`}>
-                      {done ? "Recorded" : hasCaptureToken ? "Tap to record" : "Required"}
-                    </p>
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
+                          done
+                            ? "border-emerald-300 bg-emerald-400/20 text-emerald-100"
+                            : selected
+                              ? "border-blue-200 bg-blue-200 text-blue-950"
+                              : "border-blue-200/30 bg-white/5 text-blue-100"
+                        }`}
+                      >
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white">{stage.label}</p>
+                        <p className="mt-1 text-[11px] leading-4 text-blue-100/70">{stage.cue}</p>
+                        <p
+                          className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            done
+                              ? "bg-emerald-400/15 text-emerald-100"
+                              : hasCaptureToken
+                                ? "bg-blue-300/15 text-blue-100"
+                                : "bg-white/10 text-blue-100"
+                          }`}
+                        >
+                          {done ? "Recorded" : hasCaptureToken ? `Tap to record ${getCaptureLinkStepLabel(stage.key)}` : "Required"}
+                        </p>
+                      </div>
+                    </div>
                   </button>
                 );
               })}
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-200">
                     {stageProgressLabel}
                   </p>
-                  <h3 className="text-sm font-semibold text-gray-900">
+                  <h3 className="text-base font-semibold text-white">
                     {getEmployeeCaptureStageHeading(selectedStage.key)}
                   </h3>
-                  <p className="text-xs text-gray-600">{selectedStage.cue}</p>
+                  <p className="text-xs leading-5 text-blue-100/70">{selectedStage.cue}</p>
                 </div>
                 <div className="space-y-1 text-left sm:text-right">
-                  <p className="text-xs font-medium text-gray-700">
+                  <p className="text-xs font-semibold text-blue-50">
                     {completedStageCount} of {STAGES.length} stages uploaded
                   </p>
-                  <p className={`text-xs font-medium ${selectedStageDone ? "text-emerald-700" : "text-amber-700"}`}>
+                  <p className={`text-xs font-semibold ${selectedStageDone ? "text-emerald-200" : "text-amber-200"}`}>
                     {selectedStageDone ? "This stage already has a video." : "This stage still needs a video."}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-2 text-xs text-gray-700 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2 text-xs text-blue-100/80 sm:grid-cols-2">
                 <p>
-                  <span className="font-medium text-gray-900">Capture source:</span> {captureDeviceLabel}
+                  <span className="font-semibold text-white">Capture source:</span> {captureDeviceLabel}
                 </p>
-                <p className="font-medium text-blue-700">{getStageVideoLimitCopy()}</p>
+                <p className="font-semibold text-blue-200">{getStageVideoLimitCopy()}</p>
               </div>
-              <p className="mt-2 text-xs text-gray-600">
+              <p className="mt-2 text-xs leading-5 text-blue-100/70">
                 {hasCaptureToken
                   ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
                   : captureSupportCopy}
               </p>
 
               {selectedStageDone ? (
-                <p className="mt-2 text-xs text-amber-700">
+                <p className="mt-2 text-xs text-amber-200">
                   Retaking this stage replaces the current video for this step.
                 </p>
               ) : null}
@@ -846,12 +881,12 @@ export default function EmployeeJobsPage() {
                         autoPlay
                         muted
                         playsInline
-                        className="aspect-video w-full rounded-lg border border-blue-200 bg-black object-cover"
+                        className="aspect-video w-full rounded-xl border border-blue-300/30 bg-black object-cover"
                       />
                       <button
                         type="button"
                         onClick={stopCameraRecording}
-                        className="rounded border border-blue-300 bg-white px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-50"
+                        className="w-full rounded-xl border border-blue-300 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                       >
                         Stop and Preview
                       </button>
@@ -862,17 +897,17 @@ export default function EmployeeJobsPage() {
                         src={selectedDraft.previewUrl}
                         controls
                         playsInline
-                        className="aspect-video w-full rounded-lg border border-slate-200 bg-black object-contain"
+                        className="aspect-video w-full rounded-xl border border-blue-300/30 bg-black object-contain"
                       />
-                      <p className="text-[11px] text-gray-500">
+                      <p className="text-xs leading-5 text-blue-100/70">
                         Preview is temporary. This video is saved to the project only after you confirm.
                       </p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <button
                           type="button"
                           onClick={() => void confirmCapturedDraft(job)}
                           disabled={Boolean(uploadingKey)}
-                          className="rounded border border-emerald-300 bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-xl border border-emerald-300 bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {uploadingKey === selectedStageFeedbackKey ? "Saving..." : "Confirm and Save"}
                         </button>
@@ -883,14 +918,14 @@ export default function EmployeeJobsPage() {
                             void startCameraRecording(job, selectedStage.key);
                           }}
                           disabled={Boolean(uploadingKey)}
-                          className="rounded border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-blue-50 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Retake
                         </button>
                       </div>
                     </div>
                   ) : hasCaptureToken ? (
-                    <p className="text-[11px] text-gray-500">
+                    <p className="rounded-xl border border-blue-300/15 bg-blue-300/5 px-3 py-2 text-xs leading-5 text-blue-100/75">
                       Select a stage card above to record directly from this device. Nothing is saved until you confirm the preview.
                     </p>
                   ) : (
@@ -899,18 +934,18 @@ export default function EmployeeJobsPage() {
                         type="button"
                         onClick={() => void startCameraRecording(job, selectedStage.key)}
                         disabled={Boolean(uploadingKey) || isRecordingAnotherStage}
-                        className="rounded border border-blue-300 bg-white px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-xl border border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Record Live Camera
                       </button>
-                      <span className="text-[11px] text-gray-500">
+                      <span className="text-[11px] text-blue-100/60">
                         Record directly from this device. Nothing is saved until you confirm the preview.
                       </span>
                     </div>
                   )}
                 </div>
               ) : (
-                <p className="mt-3 text-[11px] text-gray-500">
+                <p className="mt-3 text-[11px] text-blue-100/60">
                   Uploads are locked while manager review is pending.
                 </p>
               )}
@@ -919,10 +954,10 @@ export default function EmployeeJobsPage() {
                 <p
                   className={`mt-2 text-[11px] ${
                     stageFeedback[selectedStageFeedbackKey].status === "error"
-                      ? "text-red-700"
+                      ? "text-red-200"
                       : stageFeedback[selectedStageFeedbackKey].status === "success"
-                      ? "text-emerald-700"
-                      : "text-blue-700"
+                      ? "text-emerald-200"
+                      : "text-blue-200"
                   }`}
                 >
                   {stageFeedback[selectedStageFeedbackKey].message}
@@ -948,7 +983,7 @@ export default function EmployeeJobsPage() {
         ) : null}
 
         {!historyMode ? (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {showStartButton && !hasCaptureToken ? (
               <button
                 type="button"
@@ -962,11 +997,19 @@ export default function EmployeeJobsPage() {
               type="button"
               disabled={!job.canMarkComplete || isAwaitingReviewStatus(normalizedStatus) || isCompletedStatus(normalizedStatus)}
               onClick={() => void completeJob(job.id)}
-              className="rounded border border-emerald-300 px-3 py-1 text-xs text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`rounded-xl border px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                hasCaptureToken
+                  ? "w-full border-emerald-300 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                  : "border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              }`}
             >
               {hasCaptureToken ? captureLinkSubmitButtonLabel(normalizedStatus) : submitButtonLabel(normalizedStatus)}
             </button>
-            {helperText ? <span className="text-xs text-gray-500">{helperText}</span> : null}
+            {helperText ? (
+              <span className={`text-xs ${hasCaptureToken ? "text-blue-100/70" : "text-gray-500"}`}>
+                {helperText}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -1051,20 +1094,25 @@ export default function EmployeeJobsPage() {
           </div>
         </div>
 
-        <GuidanceCallout
-          title={hasCaptureToken ? "Record 3 short videos" : "How the stage-video workflow progresses"}
-          description={
-            hasCaptureToken
-              ? "Capture each stage in order. You can preview and retake before anything is saved."
-              : "Employees capture Starting Condition, Work in Progress, and Final Result videos in order, then submit the full package for manager review."
-          }
-          bullets={[
-            'Starting Condition video shows what the customer should see before work begins.',
-            'Work in Progress video shows active work or progress while the service is happening.',
-            'Final Result video shows the finished outcome customers will later understand.',
-          ]}
-          tone="blue"
-        />
+        {hasCaptureToken ? (
+          <div className="rounded-2xl border border-blue-400/30 bg-blue-950/35 p-4 text-blue-50 shadow-sm">
+            <p className="text-sm font-semibold">3 short videos. Preview before saving.</p>
+            <p className="mt-1 text-xs leading-5 text-blue-100/80">
+              Tap a stage card, allow camera access if your phone asks, then confirm the preview before moving on.
+            </p>
+          </div>
+        ) : (
+          <GuidanceCallout
+            title="How the stage-video workflow progresses"
+            description="Employees capture Starting Condition, Work in Progress, and Final Result videos in order, then submit the full package for manager review."
+            bullets={[
+              'Starting Condition video shows what the customer should see before work begins.',
+              'Work in Progress video shows active work or progress while the service is happening.',
+              'Final Result video shows the finished outcome customers will later understand.',
+            ]}
+            tone="blue"
+          />
+        )}
 
         {error ? (
           <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>
