@@ -97,7 +97,7 @@ export default function HomePage() {
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] text-white">
       <section className="reliance-dark-shell reliance-grid-lines relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(53,214,165,0.14),transparent_20%)]" />
-        <div className="relative w-full px-4 pb-20 pt-6 sm:px-6 lg:px-6 lg:pb-24 xl:px-8 2xl:px-10">
+        <div className="relative w-full px-2 pb-20 pt-6 sm:px-6 lg:px-6 lg:pb-24 xl:px-8 2xl:px-10">
           <PublicSiteHeader
             tone="dark"
             links={[]}
@@ -108,11 +108,11 @@ export default function HomePage() {
 
           <div className="grid gap-8 lg:grid-cols-[minmax(620px,1fr)_minmax(620px,1fr)] lg:items-start xl:gap-10 2xl:grid-cols-[minmax(700px,1fr)_minmax(700px,1fr)]">
             <div className="flex w-full flex-col">
-              <div className="reliance-glass overflow-hidden rounded-[34px] border border-white/10 bg-[rgba(6,17,31,0.78)] p-2 shadow-[0_30px_90px_rgba(4,9,20,0.42)]">
+              <div className="reliance-glass -mx-1 overflow-hidden rounded-[26px] border border-white/10 bg-[rgba(6,17,31,0.78)] p-1 shadow-[0_30px_90px_rgba(4,9,20,0.42)] sm:mx-0 sm:rounded-[34px] sm:p-2">
                 <img
                   src="/homepage/hero-concepts/reliance-multitrade-collage-hero-v11.png"
                   alt="Reliance proof platform showing local professionals across electrical, plumbing, HVAC, cleaning, lawn care, beauty, auto, and appliance services."
-                  className="block w-full rounded-[28px]"
+                  className="block w-full rounded-[22px] sm:rounded-[28px]"
                 />
               </div>
 

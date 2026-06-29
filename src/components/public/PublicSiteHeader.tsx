@@ -41,10 +41,16 @@ export function PublicSiteHeader({
       ? "text-white hover:bg-white/10 hover:text-white"
       : "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
   );
-  const mobileSecondaryClassName = cn(secondaryClassName, "h-9 px-3 text-sm");
+  const mobileSecondaryClassName = cn(
+    "inline-flex h-10 items-center justify-center whitespace-nowrap rounded-full px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    dark
+      ? "text-white hover:bg-white/10 hover:text-white"
+      : "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
+  );
   const ctaClassName =
     "inline-flex h-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-8 text-lg font-semibold text-white shadow-[0_18px_40px_rgba(36,107,255,0.28)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:h-16 xl:px-10 xl:text-xl";
-  const mobileCtaClassName = cn(ctaClassName, "h-9 px-4");
+  const mobileCtaClassName =
+    "inline-flex h-10 items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-4 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(36,107,255,0.24)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
   return (
     <header
@@ -69,7 +75,7 @@ export function PublicSiteHeader({
               <img
                 src="/reliance-email-logo.png"
                 alt="Reliance"
-                className="h-16 w-36 rounded-2xl object-contain sm:h-20 sm:w-44 xl:h-24 xl:w-52"
+                className="h-10 w-24 rounded-xl object-contain sm:h-20 sm:w-44 sm:rounded-2xl xl:h-24 xl:w-52"
               />
             </Link>
           ) : (
