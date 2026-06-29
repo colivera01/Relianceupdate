@@ -47,6 +47,7 @@ model Vendor {
   bondingStatus       Boolean   @default(false)
   emergencyContact    String?
   responseTimeSettings String?
+  businessHoursJson   String?   @db.NVarChar(Max)
   profilePhoto        String?
   serviceTypes        String?   // Can be comma-separated for now
   specializations     String?   // Can be comma-separated for now

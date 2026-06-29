@@ -344,7 +344,7 @@ export default function EmployeesPage() {
 
   return (
     <div className="w-full text-slate-100">
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-white">Team Access</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-300">
@@ -429,12 +429,12 @@ export default function EmployeesPage() {
             <option value="MANAGER">Manager</option>
           </select>
         </div>
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <button
             type="button"
             onClick={() => void handleCreateInvite()}
             disabled={inviteSubmitting}
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
+            className="w-full rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
           >
             {inviteSubmitting ? "Creating..." : "Create Invite"}
           </button>
@@ -549,7 +549,7 @@ export default function EmployeesPage() {
             teamMembers.map((emp) => (
               <div
                 key={emp.membershipId}
-                className="flex items-center gap-4 p-4 hover:bg-slate-900/80"
+                className="flex flex-col gap-4 p-4 hover:bg-slate-900/80 sm:flex-row sm:items-center"
               >
                 <img
                   src={avatarUrlForName(emp.name)}
@@ -615,8 +615,8 @@ export default function EmployeesPage() {
         </div>
       </div>
       {editingMember ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-950 p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3 py-6 sm:items-center sm:p-4">
+          <div className="max-h-[calc(100dvh-3rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-white">Edit team member contact</h3>
@@ -670,12 +670,12 @@ export default function EmployeesPage() {
 
             {editMessage ? <p className="mt-3 text-sm text-amber-200">{editMessage}</p> : null}
 
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={closeEditMember}
                 disabled={Boolean(savingMembershipId)}
-                className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900 disabled:opacity-60"
+                className="w-full rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900 disabled:opacity-60 sm:w-auto"
               >
                 Cancel
               </button>
@@ -683,7 +683,7 @@ export default function EmployeesPage() {
                 type="button"
                 onClick={() => void handleSaveMember()}
                 disabled={savingMembershipId === editingMember.membershipId}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60 sm:w-auto"
               >
                 {savingMembershipId === editingMember.membershipId ? "Saving..." : "Save changes"}
               </button>

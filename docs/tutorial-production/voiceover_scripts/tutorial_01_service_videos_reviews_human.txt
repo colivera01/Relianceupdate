@@ -1,0 +1,11 @@
+Reliance is built to help customers understand what happened during a service without guessing.
+
+Start with the service record. This is where Reliance shows the current state of the work, the public service video status, and whether a review is available.
+
+Service videos are short approved stage previews. They are not full-job recordings. They help customers see the starting condition, the work in progress, and the final result when those clips are available.
+
+Customer reviews and Reliance Trust Score are separate. A customer review is feedback from the person who received the service. The Trust Score is based on verified platform activity.
+
+If a video is not available yet, Reliance should explain why. It may still need approval, access may not be granted, or the final-result clip may not exist yet.
+
+When in doubt, open the service record first. It should tell you what is complete, what is waiting, and what you can do next.

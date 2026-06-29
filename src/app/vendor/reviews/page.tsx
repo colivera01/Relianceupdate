@@ -217,8 +217,8 @@ export default function VendorReviewsPage() {
                 Reliance can attribute to assigned team members.
               </div>
             ) : (
-              <div className="overflow-hidden rounded-2xl border border-white/10">
-                <div className="grid grid-cols-[1.5fr,0.8fr,1fr] gap-3 border-b border-white/10 bg-slate-950/70 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-blue-100">
+              <div className="reliance-mobile-scroll overflow-x-auto rounded-2xl border border-white/10">
+                <div className="grid min-w-[42rem] grid-cols-[1.5fr,0.8fr,1fr] gap-3 border-b border-white/10 bg-slate-950/70 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-blue-100">
                   <span>Team member</span>
                   <span>Private rating</span>
                   <span>Attributed reviews</span>
@@ -229,7 +229,7 @@ export default function VendorReviewsPage() {
                   return (
                     <div
                       key={row.membershipId}
-                      className="grid grid-cols-[1.5fr,0.8fr,1fr] gap-3 border-b border-white/10 px-4 py-4 text-sm text-slate-200 last:border-b-0"
+                      className="grid min-w-[42rem] grid-cols-[1.5fr,0.8fr,1fr] gap-3 border-b border-white/10 px-4 py-4 text-sm text-slate-200 last:border-b-0"
                     >
                       <div>
                         <p className="font-semibold text-white">{row.displayName || "Team member"}</p>

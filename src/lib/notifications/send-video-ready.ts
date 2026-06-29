@@ -3,6 +3,7 @@ import { sendEmail } from '@/lib/email/resend';
 import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
 
 export type VideoReadyNotificationInput = {
   actorUserId: string;
@@ -52,14 +53,21 @@ export async function sendVideoReadyNotification(
   const message = `${vendorName} has shared your service video for ${serviceLabel}.`;
 
   if (env.emailEnabled && customerEmail) {
-    const html = `
-      <p>Hello${customerName ? ` ${customerName}` : ''},</p>
-      <p>${message}</p>
-      <p>You can now review the Starting Condition, Work in Progress, and Final Result service videos in Reliance.</p>
-      <p><a href="${input.videoUrl}">Watch service video</a></p>
-      <p>If the button does not open, paste this link into your browser:</p>
-      <p><code>${input.videoUrl}</code></p>
-    `.trim();
+    const html = buildRelianceEmailHtml({
+      eyebrow: 'Service videos ready',
+      headline: 'Your service video is ready',
+      greeting: `Hello${customerName ? ` ${customerName}` : ''},`,
+      bodyHtml: `
+        <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(message)}</p>
+        <p style="margin:0;">You can now review the Starting Condition, Work in Progress, and Final Result service videos in Reliance.</p>
+      `,
+      details: [
+        { label: 'Service', value: serviceLabel },
+        { label: 'Provider', value: vendorName },
+      ],
+      cta: { label: 'Watch Service Video', href: input.videoUrl },
+      fallbackHref: input.videoUrl,
+    });
     const text = [
       `Hello${customerName ? ` ${customerName}` : ''},`,
       '',
@@ -113,7 +121,7 @@ export async function sendVideoReadyNotification(
   }
 
   if (env.smsEnabled && customerPhone) {
-    const body = `${vendorName} via Reliance: your service video for ${serviceLabel} is ready. View Starting Condition, Work in Progress, and Final Result here: ${input.videoUrl} Reply STOP to opt out.`;
+    const body = `Reliance: Your ${serviceLabel} service video from ${vendorName} is ready. View Starting Condition, Work in Progress, and Final Result here: ${input.videoUrl} Reply STOP to opt out.`;
     const smsResult = await sendSms({ to: customerPhone, body });
     channels.push({
       channel: 'sms',

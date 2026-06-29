@@ -35,6 +35,7 @@ const VENDOR_PROFILE_SELECT = {
   bondingStatus: true,
   emergencyContact: true,
   responseTimeSettings: true,
+  businessHoursJson: true,
   profilePhoto: true,
   isPubliclyListed: true,
   publiclyListedAt: true,
@@ -185,6 +186,7 @@ export async function GET(request: Request) {
       bondingStatus: vendor.bondingStatus ?? false,
       emergencyContact: vendor.emergencyContact ?? null,
       responseTimeSettings: vendor.responseTimeSettings ?? null,
+      businessHoursJson: (vendor as any).businessHoursJson ?? null,
       profilePhoto: vendor.profilePhoto ?? null,
       membershipStatus,
       isPubliclyListed: Boolean((vendor as any).isPubliclyListed),
@@ -324,6 +326,7 @@ export async function PUT(request: Request) {
     if (body.bondingStatus !== undefined) updateData.bondingStatus = body.bondingStatus;
     if (body.emergencyContact !== undefined) updateData.emergencyContact = body.emergencyContact || null;
     if (body.responseTimeSettings !== undefined) updateData.responseTimeSettings = body.responseTimeSettings || null;
+    if (body.businessHoursJson !== undefined) updateData.businessHoursJson = body.businessHoursJson || null;
     if (body.profilePhoto !== undefined) updateData.profilePhoto = body.profilePhoto || null;
     // Convert arrays to comma-separated strings
     if (body.serviceTypes !== undefined) updateData.serviceTypes = body.serviceTypes.length > 0 ? body.serviceTypes.join(', ') : null;
@@ -453,6 +456,7 @@ export async function PUT(request: Request) {
       bondingStatus: updatedVendor.bondingStatus ?? false,
       emergencyContact: updatedVendor.emergencyContact ?? null,
       responseTimeSettings: updatedVendor.responseTimeSettings ?? null,
+      businessHoursJson: (updatedVendor as any).businessHoursJson ?? null,
       profilePhoto: updatedVendor.profilePhoto ?? null,
       membershipStatus,
       isPubliclyListed: Boolean((updatedVendor as any).isPubliclyListed),

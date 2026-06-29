@@ -361,22 +361,22 @@ export default function UserDiscoverPage() {
   };
 
   return (
-    <div className="pt-6">
-      <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="pt-4 sm:pt-6">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold mb-6 text-gray-900">Browse Vendor Services</h1>
           <p className="text-gray-600">Compare services, customer reviews, service videos, and provider details before choosing who to contact.</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex w-full items-center justify-center gap-2 sm:w-auto">
             <SlidersHorizontal className="h-4 w-4" />
             Filters
           </Button>
         </div>
       </div>
 
-      <div className="relative mb-10">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+      <div className="relative mb-10 flex flex-col gap-3 sm:block">
+        <Search className="absolute left-3 top-6 h-5 w-5 -translate-y-1/2 text-gray-400 sm:top-1/2" />
         <input
           type="text"
           placeholder="Search services, vendors, reviews, or videos..."
@@ -385,16 +385,16 @@ export default function UserDiscoverPage() {
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleSearchSubmit();
           }}
-          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full rounded-lg border border-gray-300 py-3 pl-10 pr-4 focus:border-transparent focus:ring-2 focus:ring-blue-500 sm:pr-24"
         />
-        <Button onClick={handleSearchSubmit} className="absolute right-2 top-1/2 -translate-y-1/2 h-8">
+        <Button onClick={handleSearchSubmit} className="h-10 w-full sm:absolute sm:right-2 sm:top-1/2 sm:h-8 sm:w-auto sm:-translate-y-1/2">
           Search
         </Button>
       </div>
 
       {showFilters && (
         <div className="bg-white rounded-lg shadow-sm p-4 border mb-10">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
             <button
               onClick={clearFilters}
@@ -446,7 +446,7 @@ export default function UserDiscoverPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-gray-600">
           {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount} services`}
         </div>
@@ -468,7 +468,7 @@ export default function UserDiscoverPage() {
             ) : null}
           </div>
           {effectiveLocationSource === 'none' ? (
-            <div className="flex flex-wrap gap-3">
+            <div className="reliance-mobile-actions flex flex-wrap gap-3 sm:flex-row">
               <Button
                 type="button"
                 onClick={handleUseCurrentLocation}
@@ -493,7 +493,7 @@ export default function UserDiscoverPage() {
             vendor services within 50 miles.
           </div>
         ) : nearbyLoading ? (
-          <div className="mt-4 grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[1, 2, 3, 4].map((idx) => (
               <div key={idx} className="rounded-2xl border border-blue-100 bg-white p-4 animate-pulse">
                 <div className="mb-3 h-32 rounded-lg bg-blue-100" />
@@ -512,14 +512,14 @@ export default function UserDiscoverPage() {
             {effectiveLocationSource === 'current' ? 'current location' : 'saved address'} yet.
           </div>
         ) : (
-          <div className="mt-4 grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {displayNearbyServices.map(renderServiceCard)}
           </div>
         )}
       </section>
 
       {isLoading ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+        <div className="mb-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <Card key={i} className="animate-pulse">
               <div className="h-48 bg-gray-200 rounded-t-lg" />
@@ -545,7 +545,7 @@ export default function UserDiscoverPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+        <div className="mb-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {displayResults.map(renderServiceCard)}
         </div>
       )}

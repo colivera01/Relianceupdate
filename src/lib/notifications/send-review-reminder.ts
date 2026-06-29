@@ -4,6 +4,7 @@ import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
 import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
 
 export type ReviewReminderInput = {
   reviewWindowId: string;
@@ -80,33 +81,32 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
   const subject = hasVendorName
     ? `How was your service with ${vendorName}?`
     : 'How was your recent service?';
-  const html = `
-    <p>Hello${input.customerName ? ` ${escapeHtml(String(input.customerName))}` : ''},</p>
-    <p>We would love your feedback on your recent service${hasVendorName ? ` with ${escapeHtml(vendorName)}` : ''}.</p>
-    <p>Your feedback helps future customers choose with confidence and helps providers improve their service.</p>
-    <p><strong>Service details</strong></p>
-    <ul>
-      <li>Service: ${escapeHtml(serviceLabel)}</li>
-      <li>Date: ${escapeHtml(scheduledDateLabel)}</li>
-    </ul>
-    <p>Your feedback window is open for a limited time.</p>
-    <p>You can watch your service video and leave feedback in one place.</p>
-    <p>
-      <a href="${escapeHtml(absoluteFallbackLink)}" style="display:inline-block;padding:10px 14px;border-radius:6px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;">
-        Review your service
-      </a>
-    </p>
-    <p>Quickly rate your experience:</p>
-    <p style="margin:0 0 6px 0;">
-      ${inlineRatingLinks
-        .map(
-          (item) =>
-            `<a href="${escapeHtml(item.url)}" aria-label="Rate ${item.rating} out of 5" style="text-decoration:none;display:inline-block;margin:0 10px 6px 0;">${'&#9733;'.repeat(item.rating)}</a>`
-        )
-        .join('')}
-    </p>
-    <p>If the button does not work, copy and paste this link into your browser: <code>${escapeHtml(absoluteFallbackLink)}</code></p>
-  `.trim();
+  const ratingHtml = inlineRatingLinks
+    .map(
+      (item) =>
+        `<a href="${escapeHtml(item.url)}" aria-label="Rate ${item.rating} out of 5" style="color:#facc15;text-decoration:none;display:inline-block;margin:0 10px 6px 0;font-size:22px;letter-spacing:1px;">${'&#9733;'.repeat(item.rating)}</a>`
+    )
+    .join('');
+  const html = buildRelianceEmailHtml({
+    eyebrow: 'Service feedback',
+    headline: 'How was your service?',
+    greeting: `Hello${input.customerName ? ` ${String(input.customerName)}` : ''},`,
+    bodyHtml: `
+      <p style="margin:0 0 14px;">We would love your feedback on your recent service${hasVendorName ? ` with <strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong>` : ''}.</p>
+      <p style="margin:0;">Your feedback helps future customers choose with confidence and helps providers improve their service.</p>
+    `,
+    details: [
+      { label: 'Service', value: serviceLabel },
+      { label: 'Date', value: scheduledDateLabel },
+    ],
+    cta: { label: 'Review Your Service', href: absoluteFallbackLink },
+    secondaryHtml: `
+      <p style="margin:0 0 8px;color:#ffffff;font-weight:800;">Quickly rate your experience:</p>
+      <p style="margin:0 0 14px;">${ratingHtml}</p>
+      <p style="margin:0;">Your feedback window is open for a limited time. You can watch your service video and leave feedback in one place.</p>
+    `,
+    fallbackHref: absoluteFallbackLink,
+  });
   const text = [
     `Hello${input.customerName ? ` ${String(input.customerName).trim()}` : ''},`,
     '',
@@ -159,8 +159,8 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
     const body = hasVendorName
-      ? `${vendorName} via Reliance: your feedback window is open for ${serviceLabel}. Watch the service video and review here: ${absoluteFallbackLink} Reply STOP to opt out.`
-      : `Reliance: your feedback window is open. Watch your service video and review your service here: ${absoluteFallbackLink} Reply STOP to opt out.`;
+      ? `Reliance: Your feedback window is open for ${serviceLabel} with ${vendorName}. Watch the service video and review here: ${absoluteFallbackLink} Reply STOP to opt out.`
+      : `Reliance: Your feedback window is open. Watch your service video and review your service here: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

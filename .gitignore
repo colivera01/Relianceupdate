@@ -6,3 +6,17 @@ node_modules/
 .DS_Store
 /src/generated/prisma
 e2e/smoke-fixture.json
+
+# Local Codex/dev scratch output
+.codex-*.log
+.codex-*.png
+codex-dev*.log
+tmp*/
+tmp-*
+*.zip
+*.tsbuildinfo
+CURSOR_AGENT_CONNECTION_TEST.txt
+`0`].{sku
+scripts/dev/.tmp/
+public/homepage/hero-concepts/reliance-multitrade-collage-hero*.png
+!public/homepage/hero-concepts/reliance-multitrade-collage-hero-v11.png

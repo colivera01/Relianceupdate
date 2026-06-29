@@ -66,7 +66,8 @@ describe("sendVideoReadyNotification", () => {
     expect(hoisted.sendSms.mock.calls[0][0]).toMatchObject({
       to: "+14075550199",
     });
-    expect(hoisted.sendSms.mock.calls[0][0].body).toContain("Metro Home Care Pros via Reliance");
+    expect(hoisted.sendSms.mock.calls[0][0].body).toContain("Reliance:");
+    expect(hoisted.sendSms.mock.calls[0][0].body).toContain("from Metro Home Care Pros");
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain("Starting Condition");
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain("Reply STOP to opt out");
     expect(result.channels).toEqual(

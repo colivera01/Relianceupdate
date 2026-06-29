@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, Clock3, ShieldCheck, Star, Video } from 'lucide-react';
+import { CheckCircle2, LocateFixed, MapPin, ShieldCheck, Star, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PublicHeroArtwork } from '@/components/public/PublicHeroArtwork';
@@ -13,6 +14,11 @@ import { useDiscoverServices } from '@/hooks/useServices';
 import { cleanPublicServiceDescription } from '@/lib/launch-content-cleanup';
 
 const HOME_MARKETPLACE_PREVIEW_LIMIT = 4;
+
+type BrowserLocationOrigin = {
+  latitude: number;
+  longitude: number;
+};
 
 const trustPillars = [
   {
@@ -32,93 +38,88 @@ const trustPillars = [
   },
 ];
 
-function isPlaceholderMarketplacePreview(url: string | null | undefined) {
-  const normalized = String(url || '').trim().toLowerCase();
-  if (!normalized) return true;
-  return normalized.includes('interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4');
-}
-
 export default function HomePage() {
+  const [browserLocationOrigin, setBrowserLocationOrigin] = useState<BrowserLocationOrigin | null>(null);
+  const [locationStatus, setLocationStatus] = useState<string>(
+    'Use your current location to see how close approved recent posts are.'
+  );
+  const hasBrowserLocationOrigin = Boolean(browserLocationOrigin);
   const {
     data: marketplaceData,
     isLoading: marketplaceLoading,
     isError: marketplaceError,
   } = useDiscoverServices({
-    sortBy: 'newest',
+    sortBy: browserLocationOrigin ? 'distance' : 'newest',
     limit: HOME_MARKETPLACE_PREVIEW_LIMIT,
+    onlyCompletedPublicProof: true,
+    ...(browserLocationOrigin
+      ? {
+          lat: browserLocationOrigin.latitude,
+          lng: browserLocationOrigin.longitude,
+          radiusMiles: 50,
+        }
+      : {}),
   });
 
   const marketplaceResults = marketplaceData?.results || [];
-  const featuredService =
-    marketplaceResults.find((item) => Boolean(item.previewMediaUrl) && Boolean(item.previewMediaType)) ||
-    marketplaceResults[0] ||
-    null;
+  const featuredService = marketplaceResults[0] || null;
   const totalPublicServices = marketplaceData?.pagination?.total ?? 0;
-  const hasCuratedHeroMedia =
-    Boolean(featuredService?.previewMediaUrl) &&
-    Boolean(featuredService?.previewMediaType) &&
-    !isPlaceholderMarketplacePreview(featuredService?.previewMediaUrl);
   const heroServiceName = featuredService?.serviceName || 'See trusted work before you choose';
   const heroVendorName = featuredService?.vendorName || 'Reliance proof platform';
   const hasMarketplaceResults = marketplaceResults.length > 0;
   const publicServicesLoading = marketplaceLoading && marketplaceResults.length === 0;
 
+  function handleUseCurrentLocation() {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocationStatus('Current location is not available in this browser.');
+      return;
+    }
+
+    setLocationStatus('Checking your location...');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          setLocationStatus('Reliance could not read a usable location from this browser.');
+          return;
+        }
+        setBrowserLocationOrigin({ latitude, longitude });
+        setLocationStatus('Showing approved recent posts within 50 miles of your current location.');
+      },
+      () => {
+        setLocationStatus('Location was not allowed. Recent posts are shown without distance.');
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 5 * 60 * 1000 }
+    );
+  }
+
   return (
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] text-white">
       <section className="reliance-dark-shell reliance-grid-lines relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(53,214,165,0.14),transparent_20%)]" />
-        <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-6 sm:px-6 lg:px-8 lg:pb-24">
+        <div className="relative w-full px-4 pb-20 pt-6 sm:px-6 lg:px-6 lg:pb-24 xl:px-8 2xl:px-10">
           <PublicSiteHeader
             tone="dark"
-            hideLogo
             links={[]}
             className="mb-10"
             ctaLabel="Create Account"
             ctaHref="/auth/register?type=user"
           />
 
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,1.04fr)_minmax(420px,0.96fr)] lg:items-start">
-            <div className="max-w-2xl">
-              <div className="mb-7 -mt-1">
-                <div className="flex h-[19rem] w-full max-w-[35rem] items-end justify-center overflow-visible sm:h-[20rem] lg:h-[21rem] lg:max-w-[37rem]">
-                  <div className="relative w-[25rem] max-w-full -translate-y-5 sm:w-[27rem] lg:w-[29rem]">
-                    <div className="aspect-[864/618] w-full">
-                      <div className="pointer-events-none absolute inset-[-8%] bg-[radial-gradient(circle_at_28%_24%,rgba(255,255,255,0.26),rgba(130,167,255,0.2)_34%,rgba(36,107,255,0.18)_58%,transparent_78%)] blur-2xl" />
-                      <div
-                        role="img"
-                        aria-label="Reliance"
-                        className="relative z-[1] h-full w-full bg-[linear-gradient(145deg,#ffffff_4%,#edf4ff_22%,#a8c6ff_48%,#5c95ff_74%,#246bff_100%)] [mask-image:url('/reliance-logo-tight.png')] [mask-repeat:no-repeat] [mask-position:center] [mask-size:contain] [-webkit-mask-image:url('/reliance-logo-tight.png')] [-webkit-mask-repeat:no-repeat] [-webkit-mask-position:center] [-webkit-mask-size:contain]"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.32em] text-white/48">
-                  Reviews + Service Videos + Trust Score
-                </div>
+          <div className="grid gap-8 lg:grid-cols-[minmax(620px,1fr)_minmax(620px,1fr)] lg:items-start xl:gap-10 2xl:grid-cols-[minmax(700px,1fr)_minmax(700px,1fr)]">
+            <div className="flex w-full flex-col">
+              <div className="reliance-glass overflow-hidden rounded-[34px] border border-white/10 bg-[rgba(6,17,31,0.78)] p-2 shadow-[0_30px_90px_rgba(4,9,20,0.42)]">
+                <img
+                  src="/homepage/hero-concepts/reliance-multitrade-collage-hero-v11.png"
+                  alt="Reliance proof platform showing local professionals across electrical, plumbing, HVAC, cleaning, lawn care, beauty, auto, and appliance services."
+                  className="block w-full rounded-[28px]"
+                />
               </div>
-              <h1 className="max-w-3xl font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl lg:text-7xl">
-                See local service proof before you <span className="text-[var(--reliance-blue-soft)]">choose</span>
-              </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-white/76 sm:text-xl">
-                Compare completed work, public service videos, customer reviews, and Trust Score
-                evidence before choosing a provider.
-              </p>
 
-              <div className="mt-8 max-w-[39rem]">
+              <div className="mt-8 w-full lg:mt-24">
                 <div className="reliance-glass rounded-[32px] border border-white/10 p-4 shadow-[0_30px_80px_rgba(4,9,20,0.38)]">
                   <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(6,17,31,0.55)]">
-                    {hasCuratedHeroMedia && featuredService ? (
-                      <PublicMediaPreview
-                        autoPlayVideo
-                        url={featuredService.previewMediaUrl}
-                        type={featuredService.previewMediaType}
-                        alt={featuredService.serviceName}
-                        className="h-60 w-full object-cover sm:h-64"
-                        videoLabel="Recent public service video"
-                      />
-                    ) : (
-                      <PublicHeroArtwork serviceName={heroServiceName} vendorName={heroVendorName} />
-                    )}
+                    <PublicHeroArtwork serviceName={heroServiceName} vendorName={heroVendorName} />
                   </div>
                 </div>
               </div>
@@ -131,50 +132,65 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <div className="reliance-kicker border border-[var(--reliance-border)] bg-white/5 text-white/62">
+      <section className="w-full px-4 py-28 sm:px-6 lg:px-6 xl:px-8 2xl:px-10">
+        <div className="mb-12">
+          <div className="inline-flex rounded-full border border-white/10 bg-white/6 px-5 py-2 text-sm font-semibold uppercase tracking-[0.26em] text-white/70">
             How Reliance helps you compare
           </div>
-          <h2 className="mt-4 font-display text-3xl font-semibold text-slate-950 sm:text-4xl">
+          <h2 className="mt-6 max-w-6xl font-display text-6xl font-semibold leading-tight text-white xl:text-7xl">
             See what matters before you choose
           </h2>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-3">
+        <div className="grid gap-8 lg:grid-cols-3">
           {trustPillars.map((item) => (
-            <div key={item.title} className="reliance-light-card rounded-[30px] px-6 py-6">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(36,107,255,0.15),rgba(53,214,165,0.16))] text-[var(--reliance-blue)]">
-                <item.icon className="h-5 w-5" />
+            <div key={item.title} className="reliance-light-card flex min-h-[18rem] flex-col justify-center rounded-[36px] px-12 py-12">
+              <div className="inline-flex h-20 w-20 items-center justify-center rounded-[28px] bg-[linear-gradient(135deg,rgba(36,107,255,0.22),rgba(53,214,165,0.2))] text-[var(--reliance-blue)]">
+                <item.icon className="h-9 w-9" />
               </div>
-              <h3 className="mt-5 font-display text-2xl font-semibold text-slate-950">{item.title}</h3>
-              <p className="mt-3 text-sm leading-7 text-slate-600">{item.description}</p>
+              <h3 className="mt-8 font-display text-5xl font-semibold leading-tight text-white">{item.title}</h3>
+              <p className="mt-6 max-w-2xl text-2xl leading-10 text-white/76">{item.description}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="reliance-light-card rounded-[32px] px-6 py-6">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <section className="w-full px-4 pb-20 sm:px-6 lg:px-6 xl:px-8 2xl:px-10">
+        <div className="reliance-light-card rounded-[38px] px-12 py-12">
+          <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-500">
-                Recent public examples
+              <div className="text-sm font-semibold uppercase tracking-[0.28em] text-white/62">
+                Recent posts
               </div>
-              <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">
-                Completed work customers can review
+              <h2 className="mt-5 max-w-6xl font-display text-6xl font-semibold leading-tight text-white">
+                Approved service posts customers can review
               </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                This preview highlights public examples currently visible on Reliance. When an
-                approved public service video is available, it appears on the card automatically.
+              <p className="mt-6 max-w-7xl text-2xl leading-10 text-white/76">
+                This preview only shows completed three-stage service video posts after manager
+                completion and public approval. Published services without an approved public video
+                package stay in Browse, not here.
               </p>
             </div>
-            <span className="text-sm text-slate-500">
-              {marketplaceLoading ? 'Loading services...' : `${totalPublicServices} public services live`}
-            </span>
+            <div className="flex shrink-0 flex-col items-start gap-4 xl:items-end">
+              <span className="text-2xl font-semibold text-white/72">
+                {marketplaceLoading ? 'Loading posts...' : `${totalPublicServices} recent posts live`}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleUseCurrentLocation}
+                className="h-14 rounded-full border-white/10 bg-white/8 px-6 text-lg font-semibold text-white hover:bg-white/12"
+              >
+                <LocateFixed className="mr-2 h-5 w-5" />
+                Use current location
+              </Button>
+            </div>
+          </div>
+          <div className="mt-8 rounded-3xl border border-white/10 bg-white/6 px-8 py-6 text-2xl leading-9 text-white/76">
+            {locationStatus}
           </div>
 
-          <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-7 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
             {publicServicesLoading ? (
               Array.from({ length: 4 }).map((_, index) => (
                 <Card key={index} className="overflow-hidden rounded-[26px] border-slate-200">
@@ -193,9 +209,9 @@ export default function HomePage() {
                 We could not load public service details right now. You can still open Browse Services.
               </div>
             ) : marketplaceResults.length === 0 ? (
-              <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-600">
-                Public examples will appear here as vendors finish approval and publish
-                customer-visible service videos, reviews, and Trust Score context.
+              <div className="md:col-span-2 xl:col-span-4 rounded-[30px] border border-white/10 bg-white/6 px-8 py-7 text-2xl leading-9 text-white/76">
+                Recent posts will appear here after vendors complete all three stage videos and the
+                public approval process finishes.
               </div>
             ) : (
               marketplaceResults.map((item) => (
@@ -213,9 +229,35 @@ export default function HomePage() {
                     <p className="line-clamp-2 text-sm leading-6 text-slate-600">
                       {cleanPublicServiceDescription(item.serviceDescription, item.vendorName) || 'Service offered with proof context pending'}
                     </p>
+                    <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                      {typeof item.distanceMiles === 'number' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+                          <MapPin className="h-3.5 w-3.5" />
+                          {item.distanceMiles.toFixed(1)} mi away
+                        </span>
+                      ) : hasBrowserLocationOrigin ? (
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
+                          Distance unavailable
+                        </span>
+                      ) : null}
+                      {item.businessHours ? (
+                        <span
+                          className={`rounded-full px-3 py-1 ${
+                            item.businessHours.openNow === true
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : item.businessHours.openNow === false
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-slate-100 text-slate-600'
+                          }`}
+                          title={item.businessHours.todayLabel || undefined}
+                        >
+                          {item.businessHours.openNow === true ? 'Open now' : item.businessHours.label}
+                        </span>
+                      ) : null}
+                    </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                        {item.publicListing.hasPublicMedia ? 'Public service video' : 'Service offered'}
+                        Recent post
                       </span>
                       <Link
                         href={`/service/${item.serviceId}?returnTo=%2F&returnLabel=Back%20to%20Home%20Page`}
@@ -232,58 +274,58 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="reliance-light-card rounded-[32px] px-6 py-7">
-            <div className="reliance-kicker border border-[var(--reliance-border)] bg-slate-50 text-slate-600">
+      <section className="w-full px-4 pb-24 sm:px-6 lg:px-6 xl:px-8 2xl:px-10">
+        <div className="grid gap-8 lg:grid-cols-2">
+          <div className="reliance-light-card rounded-[38px] px-12 py-12">
+            <div className="inline-flex rounded-full border border-white/10 bg-white/6 px-5 py-2 text-sm font-semibold uppercase tracking-[0.26em] text-white/64">
               For Customers
             </div>
-            <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">
+            <h3 className="mt-7 font-display text-5xl font-semibold leading-tight text-white">
               Choose providers with less guesswork
             </h3>
-            <ul className="mt-5 space-y-3 text-sm text-slate-600">
+            <ul className="mt-8 space-y-5 text-2xl leading-9 text-white/76">
               {[
                 'Compare completed work, public service videos, customer reviews, and provider details in one place.',
                 'Review vendor and service-offered pages before deciding who to contact.',
                 'Track service records, approved service videos, and reviews from one customer account.',
               ].map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-emerald)]" />
+                <li key={item} className="flex items-start gap-4">
+                  <CheckCircle2 className="mt-1 h-7 w-7 shrink-0 text-[var(--reliance-emerald)]" />
                   <span>{item}</span>
                 </li>
               ))}
             </ul>
-            <div className="mt-6">
+            <div className="mt-9">
               <Link href="/auth/register?type=user">
-                <Button className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
+                <Button className="h-14 rounded-full bg-[var(--reliance-blue)] px-7 text-lg font-semibold text-white hover:bg-[#1a58db]">
                   Join as Customer
                 </Button>
               </Link>
             </div>
           </div>
 
-          <div className="reliance-light-card rounded-[32px] px-6 py-7">
-            <div className="reliance-kicker border border-[var(--reliance-border)] bg-slate-50 text-slate-600">
+          <div className="reliance-light-card rounded-[38px] px-12 py-12">
+            <div className="inline-flex rounded-full border border-white/10 bg-white/6 px-5 py-2 text-sm font-semibold uppercase tracking-[0.26em] text-white/64">
               For Vendors
             </div>
-            <h3 className="mt-5 font-display text-3xl font-semibold text-slate-950">
+            <h3 className="mt-7 font-display text-5xl font-semibold leading-tight text-white">
               Turn completed work into proof customers can trust
             </h3>
-            <ul className="mt-5 space-y-3 text-sm text-slate-600">
+            <ul className="mt-8 space-y-5 text-2xl leading-9 text-white/76">
               {[
                 'Share approved public service videos instead of relying on text alone.',
                 'Let customer reviews and Trust Score evidence stay separate and clear.',
                 'Keep vendor, employee, moderation, and review workflows intact while building public credibility.',
               ].map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-[var(--reliance-blue)]" />
+                <li key={item} className="flex items-start gap-4">
+                  <CheckCircle2 className="mt-1 h-7 w-7 shrink-0 text-[var(--reliance-blue)]" />
                   <span>{item}</span>
                 </li>
               ))}
             </ul>
-            <div className="mt-6">
+            <div className="mt-9">
               <Link href="/auth/register?type=vendor">
-                <Button className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
+                <Button className="h-14 rounded-full bg-[var(--reliance-blue)] px-7 text-lg font-semibold text-white hover:bg-[#1a58db]">
                   Join as Vendor
                 </Button>
               </Link>

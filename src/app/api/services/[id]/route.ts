@@ -116,6 +116,19 @@ export async function GET(
       const videoAssets = proofSafeAssets.filter((asset: any) =>
         String(asset?.mimeType || '').startsWith('video/')
       );
+      const completedStageKeys = new Set(
+        videoAssets
+          .filter((asset: any) => isCompletedStageProofVideo(asset?.mediaSession || null))
+          .map((asset: any) => normalizeVendorJobVideoStage(asset?.mediaSession?.vendorJobVideoStage))
+          .filter(Boolean)
+      );
+      const hasCompletedPublicProofPackage =
+        completedStageKeys.has('INTRO') &&
+        completedStageKeys.has('IN_PROGRESS') &&
+        completedStageKeys.has('COMPLETED');
+      if (!hasCompletedPublicProofPackage) {
+        return NextResponse.json({ error: 'Service not found' }, { status: 404 });
+      }
       const primaryProofVideo = videoAssets.find((asset: any) =>
         isCompletedStageProofVideo(asset?.mediaSession || null)
       );

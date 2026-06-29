@@ -2,6 +2,7 @@ import { readNotificationEnv } from "@/lib/env/notification-config";
 import { sendEmail } from "@/lib/email/resend";
 import { sendSms } from "@/lib/sms/twilio";
 import { logNotificationAttempt } from "@/lib/notifications/notification-audit";
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
 
 export type JobAssignmentNotificationInput = {
   bookingId: string;
@@ -56,12 +57,13 @@ function formatScheduledFor(value: string | Date | null | undefined): string {
   });
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function normalizeServiceOrderTitle(jobTitle: string, customerName: string): string {
+  const title = String(jobTitle || "Assigned service").trim();
+  const customer = String(customerName || "").trim();
+  if (customer && title.toLowerCase().startsWith(`${customer.toLowerCase()} - `)) {
+    return title.slice(customer.length + 3).trim() || title;
+  }
+  return title;
 }
 
 export async function sendJobAssignmentNotification(
@@ -73,59 +75,63 @@ export async function sendJobAssignmentNotification(
   const email = String(input.employeeEmail || "").trim();
   const phone = normalizeE164ish(input.employeePhone);
   const vendorName = String(input.vendorName || "Reliance Vendor").trim();
-  const jobTitle = String(input.jobTitle || "Assigned job").trim();
   const customerName = String(input.customerName || "").trim();
+  const serviceOrderTitle = normalizeServiceOrderTitle(input.jobTitle || "", customerName);
   const scheduledFor = formatScheduledFor(input.scheduledFor);
   const link = input.employeeJobLink;
 
   if (env.emailEnabled && email) {
-    const subject = `New Reliance job assigned: ${jobTitle}`;
+    const subject = `Reliance service order link: ${serviceOrderTitle}`;
     const greeting = employeeName ? `Hi ${employeeName},` : "Hi,";
     const text = [
       greeting,
       "",
-      `${vendorName} assigned you a Reliance job.`,
+      `${vendorName} assigned you a service order.`,
       "",
-      `Job: ${jobTitle}`,
+      `Job: ${serviceOrderTitle}`,
       customerName ? `Customer: ${customerName}` : "",
       `Scheduled: ${scheduledFor}`,
       "",
-      "Open this on the phone you will use at the job site:",
+      "Open this service order link on the phone you will use at the job site:",
       link,
       "",
       "What to do next:",
-      "- Open the secure job link",
+      "- Open the secure service order link",
       "- Tap Start Job when work begins",
       "- Capture Starting Condition, Work in Progress, and Final Result clips",
       "- Keep each public stage clip to 30 seconds or less",
       "- Submit the completed package for manager review",
       "",
-      "This secure link only opens the Reliance job assigned to you.",
+      "This secure link only opens the Reliance service order assigned to you.",
       "",
       "- Reliance Team",
     ]
       .filter(Boolean)
       .join("\n");
-    const html = `
-      <p>${escapeHtml(greeting)}</p>
-      <p><strong>${escapeHtml(vendorName)}</strong> assigned you a Reliance job.</p>
-      <ul>
-        <li><strong>Job:</strong> ${escapeHtml(jobTitle)}</li>
-        ${customerName ? `<li><strong>Customer:</strong> ${escapeHtml(customerName)}</li>` : ""}
-        <li><strong>Scheduled:</strong> ${escapeHtml(scheduledFor)}</li>
-      </ul>
-      <p><a href="${escapeHtml(link)}">Open your assigned job on this phone</a></p>
-      <p><strong>What to do next:</strong></p>
-      <ol>
-        <li>Open the secure job link.</li>
-        <li>Tap Start Job when work begins.</li>
-        <li>Capture Starting Condition, Work in Progress, and Final Result clips.</li>
-        <li>Keep each public stage clip to 30 seconds or less.</li>
-        <li>Submit the completed package for manager review.</li>
-      </ol>
-      <p>This secure link only opens the Reliance job assigned to you.</p>
-      <p>- Reliance Team</p>
-    `.trim();
+    const html = buildRelianceEmailHtml({
+      eyebrow: "Service order link",
+      headline: serviceOrderTitle,
+      greeting,
+      bodyHtml: `<p style="margin:0 0 18px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> assigned you a service order.</p>`,
+      details: [
+        { label: "Assigned service", value: serviceOrderTitle },
+        ...(customerName ? [{ label: "Customer", value: customerName }] : []),
+        { label: "Scheduled", value: scheduledFor },
+      ],
+      cta: { label: "Open Service Order", href: link },
+      secondaryHtml: `
+        <p style="margin:0 0 10px;color:#ffffff;font-size:15px;font-weight:800;">What to do next:</p>
+        <ol style="margin:0 0 18px 20px;padding:0;">
+          <li>Open the secure service order link.</li>
+          <li>Tap Start Job when work begins.</li>
+          <li>Capture Starting Condition, Work in Progress, and Final Result clips.</li>
+          <li>Keep each public stage clip to 30 seconds or less.</li>
+          <li>Submit the completed package for manager review.</li>
+        </ol>
+        <p style="margin:0;">This secure link only opens the Reliance service order assigned to you.</p>
+      `,
+      fallbackHref: link,
+    });
     const result = await sendEmail({ to: email, subject, text, html });
     channels.push({
       channel: "email",
@@ -153,7 +159,7 @@ export async function sendJobAssignmentNotification(
   }
 
   if (env.smsEnabled && phone) {
-    const body = `Reliance: New job assigned for ${vendorName} - ${jobTitle}. Open your employee job queue: ${link} Reply STOP to opt out.`;
+    const body = `Reliance: Service order assigned for ${vendorName} - ${serviceOrderTitle}. Open your service order link: ${link} Reply STOP to opt out.`;
     const result = await sendSms({ to: phone, body });
     channels.push({
       channel: "sms",

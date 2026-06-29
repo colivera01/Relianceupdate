@@ -4,6 +4,7 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { mapMediaSessionCreateFailure } from "@/lib/media-session-create-errors";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { normalizeVendorJobVideoStage } from "@/lib/vendor-job-video-stages";
+import { distanceMeters, hasValidCoordinates } from "@/lib/distance";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -27,6 +28,28 @@ function getAssignedMembershipIdsFromMetadata(metadata: string | null | undefine
   if (!Array.isArray(raw)) return [];
   return raw.map((id) => String(id || "").trim()).filter(Boolean);
 }
+
+function asFiniteNumber(value: unknown): number | null {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function getLocationProof(body: Record<string, unknown>) {
+  const nested =
+    body.locationProof && typeof body.locationProof === "object" && !Array.isArray(body.locationProof)
+      ? (body.locationProof as Record<string, unknown>)
+      : {};
+  const latitude = asFiniteNumber(nested.latitude ?? body.latitude ?? body.geoLatitude);
+  const longitude = asFiniteNumber(nested.longitude ?? body.longitude ?? body.geoLongitude);
+  const accuracyMeters = asFiniteNumber(
+    nested.accuracyMeters ?? nested.accuracy ?? body.accuracyMeters ?? body.geoAccuracyMeters
+  );
+  const capturedAt = String(nested.capturedAt ?? body.locationCapturedAt ?? "").trim();
+  return { latitude, longitude, accuracyMeters, capturedAt };
+}
+
+const BUSINESS_LOCATION_RADIUS_METERS = 150;
+const BUSINESS_LOCATION_MAX_ACCURACY_METERS = 150;
 
 const ALLOWED_STATUSES = new Set([
   "CREATED",
@@ -79,16 +102,26 @@ export async function POST(
     // If bookingId is provided but not found for this vendor, ignore it instead of failing FK constraints.
     let validBookingId: string | null = null;
     let validBookingMetadata: string | null = null;
+    let validBookingVendorLocation: {
+      latitude: number | null;
+      longitude: number | null;
+      geocodedAt: Date | null;
+    } | null = null;
     if (bookingId) {
       const booking = await prisma.booking.findFirst({
         where: {
           id: String(bookingId),
           vendorId,
         },
-        select: { id: true, customerMetadata: true },
+        select: {
+          id: true,
+          customerMetadata: true,
+          vendor: { select: { latitude: true, longitude: true, geocodedAt: true } },
+        },
       });
       validBookingId = booking?.id ?? null;
       validBookingMetadata = booking?.customerMetadata ?? null;
+      validBookingVendorLocation = booking?.vendor ?? null;
     }
 
     if (status && !ALLOWED_STATUSES.has(status)) {
@@ -192,6 +225,62 @@ export async function POST(
               message: "Customer consent must be accepted before recording can proceed.",
             },
             { status: 409 }
+          );
+        }
+      }
+      if (normalizedLocationContext === "business") {
+        if (!validBookingVendorLocation?.geocodedAt || !hasValidCoordinates(validBookingVendorLocation)) {
+          return NextResponse.json(
+            {
+              success: false,
+              code: "BUSINESS_LOCATION_NOT_CONFIGURED",
+              message:
+                "The vendor registered business address must be geocoded before business-address recording can proceed.",
+            },
+            { status: 409 }
+          );
+        }
+        const locationProof = getLocationProof(body);
+        if (
+          locationProof.latitude == null ||
+          locationProof.longitude == null ||
+          locationProof.accuracyMeters == null
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              code: "BUSINESS_LOCATION_PROOF_REQUIRED",
+              message:
+                "Allow location access so Reliance can confirm this recording is happening at the registered business address.",
+            },
+            { status: 409 }
+          );
+        }
+        const distanceFromRegisteredAddress = distanceMeters(
+          { latitude: locationProof.latitude, longitude: locationProof.longitude },
+          {
+            latitude: validBookingVendorLocation.latitude,
+            longitude: validBookingVendorLocation.longitude,
+          }
+        );
+        if (
+          locationProof.accuracyMeters > BUSINESS_LOCATION_MAX_ACCURACY_METERS ||
+          distanceFromRegisteredAddress > BUSINESS_LOCATION_RADIUS_METERS
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              code: "BUSINESS_LOCATION_MISMATCH",
+              message:
+                "This device is not close enough to the registered business address to create a business-address service video.",
+              details: {
+                allowedRadiusMeters: BUSINESS_LOCATION_RADIUS_METERS,
+                maxAccuracyMeters: BUSINESS_LOCATION_MAX_ACCURACY_METERS,
+                distanceMeters: Math.round(distanceFromRegisteredAddress),
+                accuracyMeters: Math.round(locationProof.accuracyMeters),
+              },
+            },
+            { status: 403 }
           );
         }
       }

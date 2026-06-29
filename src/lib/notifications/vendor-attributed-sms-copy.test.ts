@@ -59,7 +59,7 @@ describe("vendor-attributed SMS copy", () => {
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Electro LLC via Reliance: service video consent request for Outlet Installation."
+      "Reliance: Video consent request for Outlet Installation with Electro LLC."
     );
   });
 
@@ -76,7 +76,7 @@ describe("vendor-attributed SMS copy", () => {
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Electro LLC via Reliance: your feedback window is open for Panel Inspection."
+      "Reliance: Your feedback window is open for Panel Inspection with Electro LLC."
     );
   });
 
@@ -92,7 +92,7 @@ describe("vendor-attributed SMS copy", () => {
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Electro LLC via Reliance: your feedback window has closed."
+      "Reliance: Your feedback window for Electro LLC has closed."
     );
   });
 
@@ -108,7 +108,7 @@ describe("vendor-attributed SMS copy", () => {
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Electro LLC via Reliance: employee invite to join their team."
+      "Reliance: Employee invite connected to Electro LLC."
     );
   });
 
@@ -125,7 +125,41 @@ describe("vendor-attributed SMS copy", () => {
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Electro LLC via Reliance: new job assigned - Outlet Installation."
+      "Reliance: Service order assigned for Electro LLC - Outlet Installation."
     );
+  });
+
+  it("keeps customer names out of employee service order email subjects", async () => {
+    hoisted.readNotificationEnv.mockReturnValue({
+      emailEnabled: true,
+      smsEnabled: false,
+      appBaseUrl: "https://relianceonline.org",
+    });
+    hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "email-1" });
+    const { sendJobAssignmentNotification } = await import("./send-job-assignment");
+
+    await sendJobAssignmentNotification({
+      bookingId: "booking-1",
+      actorUserId: "vendor-user-1",
+      employeeEmail: "employee@example.com",
+      employeeName: "Adrian Olivera",
+      employeeJobLink: "https://relianceonline.org/employee/jobs?jobId=booking-1",
+      vendorName: "Electro LLC",
+      jobTitle: "Ivan Olivera - Electrical Service Recording Test",
+      customerName: "Ivan Olivera",
+    });
+
+    expect(hoisted.sendEmail.mock.calls[0][0].subject).toBe(
+      "Reliance service order link: Electrical Service Recording Test"
+    );
+    expect(hoisted.sendEmail.mock.calls[0][0].text).toContain(
+      "Electro LLC assigned you a service order."
+    );
+    expect(hoisted.sendEmail.mock.calls[0][0].text).toContain(
+      "Job: Electrical Service Recording Test"
+    );
+    expect(hoisted.sendEmail.mock.calls[0][0].html).toContain('alt="Reliance"');
+    expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("background:#050a12");
+    expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("reliance-email-logo.png");
   });
 });

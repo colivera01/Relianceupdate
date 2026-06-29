@@ -96,6 +96,13 @@
     font-feature-settings: "ss01" 1, "cv02" 1, "cv03" 1;
   }
 
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+  }
+
   h1,
   h2,
   h3,
@@ -328,6 +335,7 @@
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%),
     radial-gradient(circle at top right, rgba(36, 107, 255, 0.08), transparent 22%);
+  min-width: 0;
 }
 
 .reliance-operator-sidebar {
@@ -381,6 +389,63 @@
     linear-gradient(135deg, rgba(36, 107, 255, 0.22), rgba(81, 191, 255, 0.14));
   color: #ffffff;
   box-shadow: inset 0 0 0 1px rgba(130, 167, 255, 0.26);
+}
+
+@media (max-width: 767px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .reliance-operator-shell {
+    min-width: 0;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .reliance-operator-main {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .reliance-operator-main table {
+    min-width: 42rem;
+  }
+
+  .reliance-mobile-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .reliance-mobile-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+  }
+
+  .reliance-mobile-actions > * {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .reliance-mobile-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .reliance-mobile-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .reliance-mobile-dialog {
+    width: calc(100vw - 1.5rem) !important;
+    max-height: calc(100dvh - 1.5rem) !important;
+    overflow-y: auto !important;
+  }
 }
 
 .reliance-operator-shell .text-slate-950,

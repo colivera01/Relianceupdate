@@ -446,7 +446,7 @@ export default function UserDashboardPage() {
 
   return (
     <div className="space-y-10">
-      <section className="reliance-operator-hero rounded-[32px] px-6 py-7">
+      <section className="reliance-operator-hero rounded-[28px] px-5 py-6 sm:rounded-[32px] sm:px-6 sm:py-7">
         <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
           Customer dashboard
         </div>
@@ -480,7 +480,7 @@ export default function UserDashboardPage() {
           </div>
         )}
 
-        <div className="mb-10 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
           {quickStats.map((stat) => (
             <div
               key={stat.label}
@@ -538,13 +538,13 @@ export default function UserDashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_18px_45px_rgba(7,16,38,0.06)]">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(7,16,38,0.06)] sm:p-6">
           <div className="mb-4 flex items-center gap-2">
             <Zap className="h-5 w-5 text-[var(--reliance-blue)]" />
             <h2 className="font-display text-2xl font-semibold text-slate-950">Need help getting started?</h2>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="flex h-full flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
                 <Search className="h-5 w-5 text-blue-700" />

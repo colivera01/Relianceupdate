@@ -929,7 +929,7 @@ export default function AdminMediaModerationClient({
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Media Moderation</h1>
           <p className="text-gray-600 mt-1">
-            Only complete 3-stage job packages appear here. Review Before, During, and Completed service videos together.
+            Only complete 3-stage job packages appear here. Review Starting Condition, Work in Progress, and Final Result videos together.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -979,7 +979,7 @@ export default function AdminMediaModerationClient({
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="text-sm font-semibold text-slate-900">Operator flow</div>
             <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
-              <p>1. Confirm the Before, During, and Completed service videos belong to the same finished job.</p>
+              <p>1. Confirm the Starting Condition, Work in Progress, and Final Result videos belong to the same finished job.</p>
               <p>2. Choose the package visibility before approving the full package.</p>
               <p>3. Use advanced stage controls only when a single stage needs different handling.</p>
             </div>

@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { prisma } from "@/server/db";
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
 
 const EMAIL_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24;
 
@@ -134,37 +135,25 @@ export async function sendOrPreviewEmailVerification(params: {
 
   const verificationLink = `${String(params.baseUrl || "").replace(/\/+$/, "")}/auth/verify-email?token=${issued.rawToken}`;
   const recipientName = String(params.recipientName || "").trim();
-  const logoUrl = `${String(params.baseUrl || "").replace(/\/+$/, "")}/reliance-logo-tight.png`;
   const copy = getVerificationEmailCopy(params.audience);
   const greeting = recipientName ? `Hi ${escapeHtml(recipientName)},` : "Hi there,";
-  const html = `
-    <div style="margin:0;background:#eef4ff;padding:32px 16px;font-family:Inter,Segoe UI,Arial,sans-serif;color:#0f172a;">
-      <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #dbe7ff;border-radius:24px;overflow:hidden;box-shadow:0 20px 60px rgba(15,23,42,0.12);">
-        <div style="padding:28px 32px;background:linear-gradient(135deg,#0b1327 0%,#142852 58%,#1f3f7a 100%);">
-          <img src="${escapeHtml(logoUrl)}" alt="Reliance" width="160" style="display:block;width:160px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
-          <p style="margin:24px 0 0;color:#9fbaf5;font-size:12px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;">Welcome to Reliance</p>
-          <h1 style="margin:10px 0 0;color:#ffffff;font-size:30px;line-height:1.18;font-weight:800;">${escapeHtml(copy.headline)}</h1>
-          <p style="margin:16px 0 0;color:#d8e4ff;font-size:16px;line-height:1.7;">${escapeHtml(copy.intro)}</p>
-        </div>
-        <div style="padding:32px;">
-          <p style="margin:0 0 18px;color:#0f172a;font-size:16px;line-height:1.7;">${greeting}</p>
-          <p style="margin:0 0 18px;color:#334155;font-size:16px;line-height:1.7;">${escapeHtml(copy.body)}</p>
-          <div style="margin:26px 0 28px;">
-            <a href="${escapeHtml(verificationLink)}" style="display:inline-block;padding:14px 22px;border-radius:12px;background:linear-gradient(90deg,#2563eb 0%,#1d4ed8 100%);color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;">
-              Verify email address
-            </a>
-          </div>
-          <div style="margin:0 0 24px;padding:18px 20px;border-radius:16px;background:#f8fbff;border:1px solid #dbe7ff;">
-            <p style="margin:0 0 8px;color:#0f172a;font-size:14px;font-weight:700;">What happens after you verify</p>
-            <p style="margin:0;color:#475569;font-size:14px;line-height:1.7;">${escapeHtml(copy.afterVerification)}</p>
-          </div>
-          <p style="margin:0 0 12px;color:#475569;font-size:14px;line-height:1.7;"><strong>This link expires in 24 hours.</strong></p>
-          <p style="margin:0 0 10px;color:#475569;font-size:14px;line-height:1.7;">If the button does not work, copy and paste this link into your browser:</p>
-          <p style="margin:0;padding:14px 16px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;color:#1e293b;font-size:13px;line-height:1.7;word-break:break-all;">${escapeHtml(verificationLink)}</p>
-        </div>
-      </div>
-    </div>
-  `.trim();
+  const html = buildRelianceEmailHtml({
+    eyebrow: "Welcome to Reliance",
+    headline: copy.headline,
+    greeting,
+    bodyHtml: `
+      <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(copy.intro)}</p>
+      <p style="margin:0;">${escapeRelianceEmailHtml(copy.body)}</p>
+    `,
+    cta: { label: "Verify Email Address", href: verificationLink },
+    secondaryHtml: `
+      <p style="margin:0 0 8px;color:#ffffff;font-weight:800;">What happens after you verify</p>
+      <p style="margin:0 0 16px;">${escapeRelianceEmailHtml(copy.afterVerification)}</p>
+      <p style="margin:0;"><strong style="color:#ffffff;">This link expires in 24 hours.</strong></p>
+    `,
+    fallbackHref: verificationLink,
+    baseUrl: params.baseUrl,
+  });
   const text = [
     "Welcome to Reliance",
     "",

@@ -22,7 +22,7 @@ export default function SmsPolicyPage() {
 
       <h3>Message Types</h3>
       <ul>
-        <li>Account access, verification, and security messages.</li>
+        <li>Account access and verification messages.</li>
         <li>Vendor, employee, or team invitation links.</li>
         <li>Service-record updates and customer video consent requests.</li>
         <li>Approved service-video availability notifications.</li>

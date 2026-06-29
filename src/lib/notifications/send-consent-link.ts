@@ -4,6 +4,7 @@ import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
 import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
 
 export type ConsentLinkDeliveryInput = {
   consentRecordId: string;
@@ -80,20 +81,23 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
   });
   const subject = `Review your service video request from ${vendorName}`;
   const label = formatConsentRequestLabel(input.consentTypeLabel || 'requested consent');
-  const greetingName = input.customerName ? ` ${escapeHtml(input.customerName)}` : '';
-  const serviceDateLine = serviceDate ? `<p><strong>Service date:</strong> ${escapeHtml(serviceDate)}</p>` : '';
-  const html = `
-    <p>Hello${greetingName},</p>
-    <p><strong>${escapeHtml(vendorName)}</strong> is asking for your permission to record and share service videos for this appointment through Reliance.</p>
-    <p><strong>Service:</strong> ${escapeHtml(serviceName)}</p>
-    ${serviceDateLine}
-    <p>If you approve, the provider can continue the Reliance service-video workflow and you will be able to review the videos afterward.</p>
-    <p><strong>Request type:</strong> ${escapeHtml(label)}.</p>
-    <p><a href="${escapeHtml(absoluteFallbackLink)}">Review video consent request</a></p>
-    <p>If the link above does not work, copy and paste this URL into your browser:<br/><code>${escapeHtml(absoluteFallbackLink)}</code></p>
-    <p>If you did not expect this request, you can ignore this message.</p>
-    <p>- ${escapeHtml(vendorName)} via Reliance</p>
-  `.trim();
+  const html = buildRelianceEmailHtml({
+    eyebrow: 'Video consent request',
+    headline: 'Review service video approval',
+    greeting: `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
+    bodyHtml: `
+      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> is asking for your permission to record and share service videos for this appointment through Reliance.</p>
+      <p style="margin:0;">If you approve, the provider can continue the Reliance service-video workflow and you will be able to review the videos afterward.</p>
+    `,
+    details: [
+      { label: 'Service', value: serviceName },
+      ...(serviceDate ? [{ label: 'Service date', value: serviceDate }] : []),
+      { label: 'Request type', value: label },
+    ],
+    cta: { label: 'Review Video Consent Request', href: absoluteFallbackLink },
+    fallbackHref: absoluteFallbackLink,
+    footerNote: 'If you did not expect this request, you can ignore this message.',
+  });
   const text = [
     `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
     '',
@@ -106,7 +110,7 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
     `Review video consent request: ${absoluteFallbackLink}`,
     '',
     'If you did not expect this request, you can ignore this message.',
-    `- ${vendorName} via Reliance`,
+    '- Reliance Team',
   ].join('\n');
 
   const email = (input.customerEmail || '').trim();
@@ -153,7 +157,7 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `${vendorName} via Reliance: service video consent request for ${serviceName}. Approve or decline here: ${absoluteFallbackLink} Reply STOP to opt out.`;
+    const body = `Reliance: Video consent request for ${serviceName} with ${vendorName}. Approve or decline here: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

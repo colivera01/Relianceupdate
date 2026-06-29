@@ -1013,7 +1013,7 @@ function BookingMediaDetailPageContent() {
                   ) : null}
                   <p className="text-sm">
                     {bypassConsent || hasConsent
-                      ? 'Watch the Before, During, and Completed stages in sequence, or use the stage buttons below to jump to one part.'
+                      ? 'Watch the Starting Condition, Work in Progress, and Final Result stages in sequence, or use the stage buttons below to jump to one part.'
                       : 'Approve video access first, then you can watch the full service story straight through or jump to one stage below.'}
                   </p>
                 </div>

@@ -36,14 +36,14 @@ export function PublicSiteHeader({
 }: PublicSiteHeaderProps) {
   const dark = tone === "dark";
   const secondaryClassName = cn(
-    "inline-flex h-10 items-center justify-center rounded-full px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    "inline-flex h-14 items-center justify-center rounded-full px-7 text-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:h-16 xl:px-9 xl:text-xl",
     dark
       ? "text-white hover:bg-white/10 hover:text-white"
       : "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
   );
   const mobileSecondaryClassName = cn(secondaryClassName, "h-9 px-3 text-sm");
   const ctaClassName =
-    "inline-flex h-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-5 text-sm font-medium text-white shadow-[0_18px_40px_rgba(36,107,255,0.28)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+    "inline-flex h-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-8 text-lg font-semibold text-white shadow-[0_18px_40px_rgba(36,107,255,0.28)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:h-16 xl:px-10 xl:text-xl";
   const mobileCtaClassName = cn(ctaClassName, "h-9 px-4");
 
   return (
@@ -55,7 +55,7 @@ export function PublicSiteHeader({
     >
       <div
         className={cn(
-          "mx-auto flex max-w-7xl flex-col gap-3 rounded-[30px] border px-4 py-3.5 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-4",
+          "flex w-full flex-col gap-3 rounded-[30px] border px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-4 xl:px-9 xl:py-5",
           dark
             ? "border-white/10 bg-white/6 backdrop-blur-xl"
             : "border-slate-200/80 bg-white/90 shadow-[0_16px_55px_rgba(10,36,99,0.08)] backdrop-blur-xl"
@@ -63,14 +63,21 @@ export function PublicSiteHeader({
       >
         <div className="flex w-full items-center justify-between gap-3 md:w-auto">
           {hideLogo ? (
-            <div aria-hidden="true" className="h-16 w-16 shrink-0 sm:h-[5.5rem] sm:w-[5.5rem]" />
+            <div aria-hidden="true" className="h-10 w-10 shrink-0 md:h-8 md:w-8" />
+          ) : dark ? (
+            <Link href="/" className="inline-flex shrink-0">
+              <img
+                src="/reliance-email-logo.png"
+                alt="Reliance"
+                className="h-16 w-36 rounded-2xl object-contain sm:h-20 sm:w-44 xl:h-24 xl:w-52"
+              />
+            </Link>
           ) : (
             <RelianceLogo
               href="/"
-              tone={dark ? "light" : "dark"}
+              tone="dark"
               compact
-              blend={dark}
-              frameClassName={dark ? "h-16 w-16 sm:h-[5.5rem] sm:w-[5.5rem]" : "h-16 w-16 sm:h-[5.5rem] sm:w-[5.5rem]"}
+              frameClassName="h-12 w-36 sm:h-14 sm:w-44 xl:h-16 xl:w-52"
             />
           )}
 

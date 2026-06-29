@@ -29,7 +29,7 @@ export default function PrivacyPage() {
         <li>Detect, prevent, and investigate fraud, abuse, and security incidents.</li>
         <li>Maintain compliance logs and support dispute protection workflows.</li>
         <li>Provide customer support, analytics, and service improvements.</li>
-        <li>Send account, invite, consent, service-record, review, security, and support communications.</li>
+        <li>Send account, invite, consent, service-record, review, and support communications.</li>
         <li>Operate moderation, public-proof, Trust Score, and launch-readiness controls.</li>
       </ul>
 
@@ -53,7 +53,7 @@ export default function PrivacyPage() {
       <p>
         Reliance may send transactional SMS messages for account verification, vendor or employee
         invitations, service-record updates, customer video consent requests, approved service
-        video notifications, review reminders, security alerts, and support-related account
+        video notifications, review reminders, and support-related account
         updates after you provide a mobile number and opt in. Message frequency varies based on
         your account, invite, consent, service-record, review, and support activity. Message and
         data rates may apply. Reply STOP to opt out and HELP for help where SMS replies are

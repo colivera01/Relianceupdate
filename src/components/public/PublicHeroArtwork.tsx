@@ -8,7 +8,7 @@ export function PublicHeroArtwork({
   vendorName = 'Video coming soon',
 }: PublicHeroArtworkProps) {
   return (
-    <div className="relative h-[17rem] overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#040913,#081120_52%,#0d1d36_100%)] sm:h-[18rem]">
+    <div className="relative h-[32rem] overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#040913,#081120_52%,#0d1d36_100%)] sm:h-[24rem] xl:h-[28rem]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(36,107,255,0.24),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(53,214,165,0.16),transparent_16%)]" />
 
       <svg
@@ -72,34 +72,34 @@ export function PublicHeroArtwork({
         <circle cx="496" cy="328" r="42" fill="#35d6a5" opacity="0.12" filter="url(#hero-blur)" />
       </svg>
 
-      <div className="absolute left-5 top-5 flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-white/72 backdrop-blur-md">
+      <div className="absolute left-6 top-6 flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.24em] text-white/72 backdrop-blur-md">
         Explainer Video
       </div>
 
-      <div className="absolute right-5 top-5 rounded-full border border-white/10 bg-[rgba(6,12,23,0.72)] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70 backdrop-blur-md">
+      <div className="absolute right-6 top-6 rounded-full border border-white/10 bg-[rgba(6,12,23,0.72)] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.22em] text-white/70 backdrop-blur-md">
         Coming Soon
       </div>
 
-      <div className="absolute left-5 top-[4.8rem] max-w-[48%] pr-2">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/52">
+      <div className="absolute left-6 right-6 top-[5.8rem] max-w-none pr-0 sm:right-auto sm:max-w-[52%] sm:pr-2 xl:left-8 xl:top-[6.5rem]">
+        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/52">
           See how Reliance works
         </div>
-        <div className="mt-2.5 font-display text-[1.18rem] font-semibold leading-[1.08] text-white sm:text-[1.34rem]">
+        <div className="mt-3 font-display text-2xl font-semibold leading-[1.08] text-white xl:text-[2rem]">
           A short guide will live here.
         </div>
-        <p className="mt-2.5 text-[13px] leading-5 text-white/68">
+        <p className="mt-4 text-base leading-7 text-white/70 xl:text-lg">
           This space is reserved for a future Reliance explainer video that shows customers how
           service videos, reviews, and Trust Score help them choose with confidence.
         </p>
       </div>
 
-      <div className="absolute bottom-5 right-5 w-[198px] rounded-[22px] border border-white/10 bg-[rgba(6,11,21,0.78)] p-4 text-white backdrop-blur-xl sm:w-[210px]">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/54">
+      <div className="absolute bottom-6 left-6 right-6 rounded-[26px] border border-white/10 bg-[rgba(6,11,21,0.78)] p-5 text-white backdrop-blur-xl sm:left-auto sm:w-[280px] xl:right-8 xl:w-[320px] xl:p-6">
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/54">
           Future video
         </div>
-        <div className="mt-2 text-base font-semibold leading-tight">{serviceName}</div>
-        <div className="mt-1 text-sm text-white/60">{vendorName}</div>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[11px] font-semibold text-white/76">
+        <div className="mt-3 text-xl font-semibold leading-tight xl:text-2xl">{serviceName}</div>
+        <div className="mt-2 text-base text-white/60">{vendorName}</div>
+        <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs font-semibold text-white/76">
           <div className="rounded-2xl border border-white/8 bg-white/6 px-2 py-2">
             Reviews
           </div>

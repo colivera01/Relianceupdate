@@ -127,14 +127,11 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
     children
   );
 
-  // TODO Future mobile: when the sidebar is hidden below `md`, replace it
-  // with a slide-out drawer or bottom-tab nav so the customer surface feels
-  // app-like on phones. Today the main column simply takes the full viewport.
   return (
     <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen">
       <UserSidebar />
-      <main className="reliance-operator-main flex-1 overflow-auto">
-        <div className="w-full max-w-6xl px-4 pt-10 pb-6 sm:px-6">
+      <main className="reliance-operator-main min-w-0 flex-1 overflow-auto">
+        <div className="w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 sm:pt-10 md:pb-6">
           {availableRoles.length > 1 ? (
             <div className="mb-6 rounded-[28px] border border-white/10 bg-white/6 px-5 py-4 shadow-[0_18px_60px_rgba(4,9,20,0.18)] backdrop-blur-xl">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

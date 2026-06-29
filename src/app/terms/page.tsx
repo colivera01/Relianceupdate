@@ -55,7 +55,7 @@ export default function TermsPage() {
 
       <h3>7. Communications</h3>
       <p>
-        Reliance may send account, verification, invite, consent, service-record, review, security,
+        Reliance may send account, verification, invite, consent, service-record, review,
         and support communications by email, SMS, or other available channels. Message delivery may
         depend on third-party providers, carrier filtering, contact accuracy, and user device
         settings.

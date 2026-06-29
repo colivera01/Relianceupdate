@@ -141,7 +141,19 @@ function UserSidebarContent() {
     [customerHelpHref]
   );
 
+  const mobileNavLinks = React.useMemo(
+    () => [
+      navLinks[0],
+      navLinks[1],
+      navLinks[2],
+      navLinks[3],
+      navLinks[5],
+    ],
+    []
+  );
+
   return (
+    <>
     <aside className="reliance-operator-sidebar hidden w-72 flex-col min-h-screen md:flex">
       {/* Logo area */}
       <div className="reliance-operator-sidebar-header flex items-center justify-center px-6 py-7">
@@ -249,6 +261,31 @@ function UserSidebarContent() {
         </div>
       </div>
     </aside>
+    <nav
+      aria-label="Customer mobile navigation"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[#050a13]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-18px_45px_rgba(2,6,14,0.42)] backdrop-blur-xl md:hidden"
+    >
+      <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+        {mobileNavLinks.map((link) => {
+          const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+          return (
+            <Link
+              key={link.label}
+              href={link.href}
+              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold leading-tight transition-colors ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-[0_10px_28px_rgba(36,107,255,0.32)]'
+                  : 'text-blue-100/72 hover:bg-white/8 hover:text-white'
+              }`}
+            >
+              <link.icon size={18} className={`shrink-0 ${isActive ? 'text-white' : link.iconClassName}`} />
+              <span className="max-w-full truncate">{link.label.replace('My ', '').replace(' & Settings', '')}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+    </>
   );
 }
 

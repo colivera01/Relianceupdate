@@ -14,6 +14,12 @@ export type TutorialGuide = {
   badge: string;
   title: string;
   summary: string;
+  video?: {
+    src: string;
+    title: string;
+    captionsSrc?: string;
+    captionsLabel?: string;
+  };
   steps: TutorialGuideStep[];
   reminders?: string[];
   relatedLinks?: TutorialGuideLink[];
@@ -26,6 +32,12 @@ export const tutorialGuides = {
     title: "How customer signup works",
     summary:
       "Create your account first, then sign in and continue browsing vendor services, contacting vendors, and tracking service records from your customer dashboard.",
+    video: {
+      src: "/tutorials/book-first-service.mp4?v=20260622-neural",
+      title: "How To Book Your First Service on Reliance",
+      captionsSrc: "/tutorials/book-first-service.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Create the account",
@@ -54,6 +66,12 @@ export const tutorialGuides = {
     title: "How vendor signup works",
     summary:
       "Create the vendor account, sign in, finish the business profile, add services offered, and wait for admin approval before public visibility.",
+    video: {
+      src: "/tutorials/launch-vendor-profile.mp4?v=20260622-neural",
+      title: "How To Launch Your Vendor Profile on Reliance",
+      captionsSrc: "/tutorials/launch-vendor-profile.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Create the vendor account",
@@ -82,6 +100,12 @@ export const tutorialGuides = {
     title: "How to compare providers on Reliance",
     summary:
       "Browse Services shows public service cards, public vendor pages, customer ratings, service videos, and the Reliance Trust Score side by side so customers can compare trust signals before choosing who to contact.",
+    video: {
+      src: "/tutorials/book-first-service.mp4?v=20260622-neural",
+      title: "How To Book Your First Service on Reliance",
+      captionsSrc: "/tutorials/book-first-service.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Search or filter first",
@@ -107,6 +131,12 @@ export const tutorialGuides = {
     title: "How service detail works",
     summary:
       "This page explains the service offered, the vendor, public review signals, and approved media before you contact or request service.",
+    video: {
+      src: "/tutorials/service-videos-and-reviews.mp4?v=20260622-neural",
+      title: "How Service Videos and Reviews Work on Reliance",
+      captionsSrc: "/tutorials/service-videos-and-reviews.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Review the service basics",
@@ -131,6 +161,12 @@ export const tutorialGuides = {
     title: "How My Service Records update over time",
     summary:
       "A service record can be completed before its customer-visible service video is approved. Reliance tracks work completion, video approval, customer access, and review eligibility as separate steps.",
+    video: {
+      src: "/tutorials/service-videos-and-reviews.mp4?v=20260622-neural",
+      title: "How Service Videos and Reviews Work on Reliance",
+      captionsSrc: "/tutorials/service-videos-and-reviews.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Check the service-record state row",
@@ -159,6 +195,12 @@ export const tutorialGuides = {
     title: "How review eligibility works",
     summary:
       "Reliance opens the review flow only after an approved final-result customer-visible video is available for the service record.",
+    video: {
+      src: "/tutorials/service-videos-and-reviews.mp4?v=20260622-neural",
+      title: "How Service Videos and Reviews Work on Reliance",
+      captionsSrc: "/tutorials/service-videos-and-reviews.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Use Ready to Review first",
@@ -184,6 +226,12 @@ export const tutorialGuides = {
     title: "How vendor profile setup works",
     summary:
       "This page is for signed-in users who are adding a vendor profile to an existing Reliance account, not for brand-new vendor account creation.",
+    video: {
+      src: "/tutorials/launch-vendor-profile.mp4?v=20260622-neural",
+      title: "How To Launch Your Vendor Profile on Reliance",
+      captionsSrc: "/tutorials/launch-vendor-profile.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Confirm this is the right entry point",
@@ -208,6 +256,12 @@ export const tutorialGuides = {
     title: "How vendor launch status works",
     summary:
       "The vendor dashboard keeps profile completion, saved services, admin approval, public listing, and published services separate so you always know the next step.",
+    video: {
+      src: "/tutorials/launch-vendor-profile.mp4?v=20260622-neural",
+      title: "How To Launch Your Vendor Profile on Reliance",
+      captionsSrc: "/tutorials/launch-vendor-profile.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Read the onboarding status first",
@@ -232,6 +286,12 @@ export const tutorialGuides = {
     title: "How your Services Offered menu and publishing work",
     summary:
       "Vendors manage customer-facing services offered, pricing, and service details here, while public publishing stays coordinated through admin review.",
+    video: {
+      src: "/tutorials/launch-vendor-profile.mp4?v=20260622-neural",
+      title: "How To Launch Your Vendor Profile on Reliance",
+      captionsSrc: "/tutorials/launch-vendor-profile.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Create the service with pricing",
@@ -256,6 +316,12 @@ export const tutorialGuides = {
     title: "How vendor jobs progress",
     summary:
       "Managers assign jobs, handle consent and location requirements, track stage videos, and move complete packages into review without changing the underlying lifecycle.",
+    video: {
+      src: "/tutorials/service-videos-and-reviews.mp4?v=20260622-neural",
+      title: "How Service Videos and Reviews Work on Reliance",
+      captionsSrc: "/tutorials/service-videos-and-reviews.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Assign first",
@@ -279,15 +345,21 @@ export const tutorialGuides = {
     badge: "Employee workflow",
     title: "How employee stage capture works",
     summary:
-      "Employees record Before, During, and Completed service videos in order, then submit the full package for manager review.",
+      "Employees capture Starting Condition, Work in Progress, and Final Result stage videos in order, then submit the full package for manager review.",
+    video: {
+      src: "/tutorials/service-videos-and-reviews.mp4?v=20260622-neural",
+      title: "How Service Videos and Reviews Work on Reliance",
+      captionsSrc: "/tutorials/service-videos-and-reviews.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
-        title: "Start with the Before video",
+        title: "Start with the Starting Condition video",
         detail: "Show the starting condition clearly before work begins.",
       },
       {
         title: "Capture progress and completion",
-        detail: "Use During to show active work and Completed to show the final result customers will later understand.",
+        detail: "Use Work in Progress to show active work and Final Result to show the finished outcome customers will later understand.",
       },
       {
         title: "Submit for manager review",
@@ -304,6 +376,12 @@ export const tutorialGuides = {
     title: "How vendor approval affects launch state",
     summary:
       "Approving the vendor account enables vendor access, but it does not automatically publish the vendor listing or any saved services.",
+    video: {
+      src: "/tutorials/launch-vendor-profile.mp4?v=20260622-neural",
+      title: "How To Launch Your Vendor Profile on Reliance",
+      captionsSrc: "/tutorials/launch-vendor-profile.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Review the business details",
@@ -327,7 +405,13 @@ export const tutorialGuides = {
     badge: "Admin moderation",
     title: "How service video moderation works",
     summary:
-      "This queue only shows complete job packages so admins can evaluate the Before, During, and Completed stages together before changing customer or public visibility.",
+      "This queue only shows complete job packages so admins can evaluate Starting Condition, Work in Progress, and Final Result stages together before changing customer or public visibility.",
+    video: {
+      src: "/tutorials/service-videos-and-reviews.mp4?v=20260622-neural",
+      title: "How Service Videos and Reviews Work on Reliance",
+      captionsSrc: "/tutorials/service-videos-and-reviews.vtt?v=20260622-neural",
+      captionsLabel: "English",
+    },
     steps: [
       {
         title: "Review the full package first",

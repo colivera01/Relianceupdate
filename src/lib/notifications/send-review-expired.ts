@@ -2,6 +2,7 @@ import { readNotificationEnv } from '@/lib/env/notification-config';
 import { sendEmail } from '@/lib/email/resend';
 import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
 
 export type ReviewExpiredInput = {
   reviewWindowId: string;
@@ -51,15 +52,20 @@ export async function sendReviewExpiredNotification(input: ReviewExpiredInput): 
   const hasVendorName = Boolean(vendorName);
 
   const subject = hasVendorName ? `Your feedback window for ${vendorName} has closed` : 'Your feedback window has closed';
-  const html = `
-    <p>Hello${input.customerName ? ` ${escapeHtml(String(input.customerName))}` : ''},</p>
-    <p>Your feedback window${hasVendorName ? ` for ${escapeHtml(vendorName)}` : ''} has ended without a submitted review.</p>
-    <p>If you still need help, open My Services in Reliance or contact support from the app.</p>
-    <p><a href="${escapeHtml(absoluteFallbackLink)}">Open My Services</a></p>
-  `.trim();
+  const html = buildRelianceEmailHtml({
+    eyebrow: 'Feedback window closed',
+    headline: 'Your feedback window has closed',
+    greeting: `Hello${input.customerName ? ` ${String(input.customerName)}` : ''},`,
+    bodyHtml: `
+      <p style="margin:0 0 14px;">Your feedback window${hasVendorName ? ` for <strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong>` : ''} has ended without a submitted review.</p>
+      <p style="margin:0;">If you still need help, open My Service Records in Reliance or contact support from the app.</p>
+    `,
+    cta: { label: 'Open My Service Records', href: absoluteFallbackLink },
+    fallbackHref: absoluteFallbackLink,
+  });
   const text = hasVendorName
-    ? `${vendorName} via Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink}`
-    : `Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink}`;
+    ? `Reliance: Your feedback window for ${vendorName} has closed. Open My Service Records: ${absoluteFallbackLink}`
+    : `Reliance: Your feedback window has closed. Open My Service Records: ${absoluteFallbackLink}`;
 
   const email = (input.customerEmail || '').trim();
   if (env.emailEnabled && email) {
@@ -92,8 +98,8 @@ export async function sendReviewExpiredNotification(input: ReviewExpiredInput): 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
     const body = hasVendorName
-      ? `${vendorName} via Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink} Reply STOP to opt out.`
-      : `Reliance: your feedback window has closed. Open My Services: ${absoluteFallbackLink} Reply STOP to opt out.`;
+      ? `Reliance: Your feedback window for ${vendorName} has closed. Open My Service Records: ${absoluteFallbackLink} Reply STOP to opt out.`
+      : `Reliance: Your feedback window has closed. Open My Service Records: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

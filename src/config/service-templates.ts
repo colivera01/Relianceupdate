@@ -34,6 +34,36 @@ export const SERVICE_TEMPLATES: Record<string, ServiceTemplate[]> = {
     { name: 'Beard Trim', defaultDuration: 20 },
     { name: 'Fade', defaultDuration: 40 },
   ],
+  'Hair/Nail Salon': [
+    { name: 'Classic Manicure', defaultDuration: 45 },
+    { name: 'Pedicure', defaultDuration: 60 },
+    { name: 'Hair Styling', defaultDuration: 60 },
+  ],
+  'Nail Salon': [
+    { name: 'Classic Manicure', defaultDuration: 45 },
+    { name: 'Pedicure', defaultDuration: 60 },
+    { name: 'Gel Polish Service', defaultDuration: 60 },
+  ],
+  'Pet Grooming': [
+    { name: 'Dog Bath and Brush', defaultDuration: 60 },
+    { name: 'Full Grooming Service', defaultDuration: 90 },
+    { name: 'Nail Trim', defaultDuration: 20 },
+  ],
+  'Pet Groomers': [
+    { name: 'Dog Bath and Brush', defaultDuration: 60 },
+    { name: 'Full Grooming Service', defaultDuration: 90 },
+    { name: 'Nail Trim', defaultDuration: 20 },
+  ],
+  Bakery: [
+    { name: 'Custom Cake Order', defaultDuration: 60 },
+    { name: 'Pastry Box Preparation', defaultDuration: 45 },
+    { name: 'Event Dessert Setup', defaultDuration: 90 },
+  ],
+  'Restaurant Owners': [
+    { name: 'Catering Order Preparation', defaultDuration: 120 },
+    { name: 'Private Dining Setup', defaultDuration: 90 },
+    { name: 'Kitchen Prep Walkthrough', defaultDuration: 60 },
+  ],
   Plumbing: [
     { name: 'Drain Cleaning', defaultDuration: 60 },
     { name: 'Faucet Repair', defaultDuration: 45 },

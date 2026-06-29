@@ -123,7 +123,8 @@ describe("auth email verification", () => {
 
     expect(hoisted.sendEmail).toHaveBeenCalledTimes(1);
     expect(hoisted.sendEmail.mock.calls[0][0].subject).toContain("Welcome to Reliance");
-    expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("reliance-logo-tight.png");
+    expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("reliance-email-logo.png");
+    expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("background:#050a12");
     expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("Finish setting up your customer account");
     expect(result.sendResult.ok).toBe(true);
     expect(result.verificationLink).toContain("/auth/verify-email?token=");

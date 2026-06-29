@@ -128,6 +128,7 @@ export interface VendorProfile {
   bondingStatus: boolean;
   emergencyContact: string | null;
   responseTimeSettings: string | null;
+  businessHoursJson?: string | null;
   profilePhoto: string | null;
   // Array fields (stored as comma-separated strings in DB)
   serviceTypes: string[];
@@ -198,6 +199,7 @@ export interface VendorProfileUpdateRequest {
   bondingStatus?: boolean;
   emergencyContact?: string;
   responseTimeSettings?: string;
+  businessHoursJson?: string | null;
   profilePhoto?: string;
   serviceTypes?: string[];
   specializations?: string[];

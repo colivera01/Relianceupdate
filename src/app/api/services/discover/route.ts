@@ -29,6 +29,7 @@ import {
   buildPublicTrustPresentationSummary,
 } from "@/lib/public-trust-score-presentation";
 import { cleanPublicServiceDescription } from "@/lib/launch-content-cleanup";
+import { getBusinessHoursStatus } from "@/lib/business-hours";
 import {
   isTransientDbConnectivityError,
   PUBLIC_DB_UNAVAILABLE_CODE,
@@ -130,6 +131,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const longitude = parseOptionalNumber(searchParams.get("lng"));
     const zipCode = String(searchParams.get("zipCode") || "").trim();
     const radiusMiles = parseOptionalNumber(searchParams.get("radiusMiles"));
+    const requestedOnlyCompletedPublicProof = parseBooleanQuery(searchParams.get("onlyCompletedPublicProof"));
+    const requireCompletedPublicProof = true;
     const origin: Coordinates | null =
       latitude != null && longitude != null ? { latitude, longitude } : null;
     const locationInputSource: LocationInputSource =
@@ -144,10 +147,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
     const skip = (page - 1) * limit;
     const proofFirstRankingRequested = sortBy === "newest" && !distanceProcessingRequested;
-    const sourceTake = proofFirstRankingRequested
+    const sourceTake = proofFirstRankingRequested || requireCompletedPublicProof
       ? Math.min(Math.max(skip + limit, limit * 4, 36), 100)
       : limit;
-    const sourceSkip = proofFirstRankingRequested ? 0 : skip;
+    const sourceSkip = proofFirstRankingRequested || requireCompletedPublicProof ? 0 : skip;
     const proofDemoMode =
       process.env.NODE_ENV !== "production" && String(searchParams.get("proofDemo") || "") === "1";
 
@@ -251,6 +254,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
                 latitude: true,
                 longitude: true,
                 geocodedAt: true,
+                businessHoursJson: true,
                 isPubliclyListed: true,
                 accountStatus: true,
               },
@@ -509,6 +513,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         location:
           [service.vendor.city, service.vendor.state].filter(Boolean).join(", ") || null,
         distanceMiles: distance,
+        businessHours: getBusinessHoursStatus((service.vendor as any).businessHoursJson || null, now),
         previewMediaUrl: previewMedia?.url || null,
         previewMediaType: previewMedia?.type || null,
         price: Number(service.price),
@@ -567,9 +572,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           endsAt: campaign.endAt instanceof Date ? campaign.endAt.toISOString() : new Date(campaign.endAt).toISOString(),
         },
       }));
-    const proofRankedResults = proofFirstRankingRequested
-      ? rankProofFirstResults(mappedResults)
+    const proofEligibleResults = requireCompletedPublicProof
+      ? mappedResults.filter(hasCompletedPublicProofPackage)
       : mappedResults;
+    const proofRankedResults = proofFirstRankingRequested
+      ? rankProofFirstResults(proofEligibleResults)
+      : proofEligibleResults;
     const radiusFilteredResults =
       origin && radiusFilterRequested
         ? proofRankedResults.filter(
@@ -592,13 +600,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       (result) => typeof result.distanceMiles === "number"
     ).length;
     const sortedResults = distanceSortedResults;
-    const results = distanceProcessingRequested || proofFirstRankingRequested
+    const results = distanceProcessingRequested || proofFirstRankingRequested || requireCompletedPublicProof
       ? distanceSortedResults.slice(skip, skip + limit)
       : sortedResults;
-    const responseTotal = distanceProcessingRequested ? distanceSortedResults.length : total;
+    const responseTotal =
+      distanceProcessingRequested || proofFirstRankingRequested || requireCompletedPublicProof
+        ? distanceSortedResults.length
+        : total;
     const distanceFilteringApplied = Boolean(origin && radiusFilterRequested);
     const distanceSortingApplied = Boolean(origin && distanceSortRequested && distanceResultCount > 0);
-    const promotedListings = applyPromotionInventoryRules(promotedCandidates, {
+    const proofEligiblePromotedCandidates = requireCompletedPublicProof
+      ? promotedCandidates.filter(hasCompletedPublicProofPackage)
+      : promotedCandidates;
+    const promotedListings = applyPromotionInventoryRules(proofEligiblePromotedCandidates, {
       zone: "BROWSE_FEATURED",
       organicResultCount: responseTotal,
       hasCategoryFilter: Boolean(category),
@@ -619,6 +633,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         category: category || null,
         sortBy,
         radiusMiles: radiusFilterRequested ? radiusMiles : null,
+        onlyCompletedPublicProof: requireCompletedPublicProof,
+        requestedOnlyCompletedPublicProof,
       },
       location: {
         inputAccepted: locationInputSource !== "none",
@@ -639,7 +655,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           "rating/reviewCount are vendor-level aggregates from reviews where moderationStatus=approved and visibilityStatus=public.",
         ranking:
           proofFirstRankingRequested
-            ? "Default discovery prioritizes completed work, public service videos, reviews, Trust Score maturity, and vendor credibility before service-only listings."
+            ? "Public discovery only returns completed public proof packages, then prioritizes public service videos, reviews, Trust Score maturity, and vendor credibility."
             : "Explicit sort and location filters preserve the selected ordering while cards still show proof context.",
       },
     });
@@ -668,4 +684,26 @@ function parseOptionalNumber(value: string | null): number | null {
   if (value == null || String(value).trim() === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseBooleanQuery(value: string | null): boolean {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function hasCompletedPublicProofPackage(result: {
+  previewMediaType?: "image" | "video" | null;
+  publicListing?: { hasPublicMedia?: boolean | null } | null;
+  proofCard?: {
+    stageAvailability?: Partial<ProofStageAvailability> | null;
+  } | null;
+}): boolean {
+  const stages = result.proofCard?.stageAvailability;
+  return Boolean(
+    result.publicListing?.hasPublicMedia &&
+      result.previewMediaType === "video" &&
+      stages?.startingCondition &&
+      stages?.workInProgress &&
+      stages?.finalResult
+  );
 }

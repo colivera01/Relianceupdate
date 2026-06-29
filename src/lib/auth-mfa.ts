@@ -4,6 +4,7 @@ import path from "node:path";
 import { prisma } from "@/server/db";
 import { sendEmail } from "@/lib/email/resend";
 import { getAuthSessionCookieOptions } from "@/lib/auth-session";
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
 
 const MFA_CODE_TTL_MS = 1000 * 60 * 10;
 const MFA_PURPOSE_LOGIN = "login";
@@ -230,13 +231,18 @@ export async function issueLoginMfaChallenge(params: {
 
   const recipientName = String(params.recipientName || "").trim();
   const subject = "Your Reliance sign-in code";
-  const html = `
-    <p>Hello${recipientName ? ` ${escapeHtml(recipientName)}` : ""},</p>
-    <p>Use this code to finish signing in to your Reliance account:</p>
-    <p style="font-size:24px;font-weight:700;letter-spacing:0.2em;">${escapeHtml(code)}</p>
-    <p>This code expires in 10 minutes.</p>
-    <p>If you did not try to sign in, you can ignore this message.</p>
-  `.trim();
+  const html = buildRelianceEmailHtml({
+    eyebrow: "Sign-in code",
+    headline: "Finish signing in",
+    greeting: `Hello${recipientName ? ` ${recipientName}` : ""},`,
+    bodyHtml: `
+      <p style="margin:0 0 14px;">Use this code to finish signing in to your Reliance account:</p>
+      <p style="margin:0;font-size:30px;font-weight:800;letter-spacing:0.18em;color:#ffffff;">${escapeRelianceEmailHtml(code)}</p>
+    `,
+    secondaryHtml: '<p style="margin:0;">This code expires in 10 minutes.</p>',
+    footerNote: "If you did not try to sign in, you can ignore this message.",
+    baseUrl: params.baseUrl,
+  });
   const text = [
     `Hello${recipientName ? ` ${recipientName}` : ""},`,
     "",

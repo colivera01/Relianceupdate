@@ -154,11 +154,27 @@ export function ProofFirstCard({
               {item.location}
             </p>
           ) : null}
-          {typeof item.distanceMiles === 'number' ? (
-            <span className="inline-flex w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-              {formatDistanceMiles(item.distanceMiles)}
-            </span>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {typeof item.distanceMiles === 'number' ? (
+              <span className="inline-flex w-fit rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                {formatDistanceMiles(item.distanceMiles)}
+              </span>
+            ) : null}
+            {item.businessHours ? (
+              <span
+                className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+                  item.businessHours.openNow === true
+                    ? 'bg-emerald-400/15 text-emerald-100'
+                    : item.businessHours.openNow === false
+                      ? 'bg-amber-400/15 text-amber-100'
+                      : 'bg-white/10 text-slate-200'
+                }`}
+                title={item.businessHours.todayLabel || undefined}
+              >
+                {item.businessHours.openNow === true ? 'Open now' : item.businessHours.label}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-auto pt-5">

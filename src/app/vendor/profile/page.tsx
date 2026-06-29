@@ -11,6 +11,15 @@ import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
 import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
+import {
+  defaultBusinessHours,
+  formatBusinessTime,
+  getBusinessHoursStatus,
+  normalizeBusinessHours,
+  serializeBusinessHours,
+  type BusinessHoursDayKey,
+  type BusinessHoursSchedule,
+} from '@/lib/business-hours';
 
 // BACKEND DEVELOPER NOTES:
 // - GET /api/vendor/profile: Fetch vendor profile and settings.
@@ -65,6 +74,16 @@ const notificationPreferenceCopy: Record<string, { label: string; description: s
   },
 };
 
+const businessHourDayLabels: Record<BusinessHoursDayKey, string> = {
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+  sun: 'Sunday',
+};
+
 type VendorCopySuggestion = {
   summary: string;
   confidence: 'low' | 'medium' | 'high';
@@ -108,6 +127,8 @@ export default function VendorProfilePage() {
   
   const [reminders, setReminders] = useState({ review: true, invoice: false, maintenance: true, followUp: true });
   const [showReminderToast, setShowReminderToast] = useState(false);
+  const [businessHours, setBusinessHours] = useState<BusinessHoursSchedule>(() => defaultBusinessHours());
+  const [showBusinessHoursToast, setShowBusinessHoursToast] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState({ job: true, review: true, payout: false, support: true, marketing: false, updates: true });
   const [showNotifToast, setShowNotifToast] = useState(false);
   const [securitySettings, setSecuritySettings] = useState({
@@ -164,7 +185,9 @@ export default function VendorProfilePage() {
         serviceTypes: profile.serviceTypes ?? [],
         specializations: profile.specializations ?? [],
         serviceAreas: profile.serviceAreas ?? [],
+        businessHoursJson: profile.businessHoursJson ?? null,
       });
+      setBusinessHours(normalizeBusinessHours(profile.businessHoursJson || null));
       
       // Initialize reminders from profile
       
@@ -289,6 +312,28 @@ export default function VendorProfilePage() {
     }
   };
 
+  const updateBusinessHourDay = (
+    dayKey: BusinessHoursDayKey,
+    updates: Partial<BusinessHoursSchedule['days'][number]>
+  ) => {
+    setBusinessHours((current) => ({
+      ...current,
+      days: current.days.map((day) => (day.day === dayKey ? { ...day, ...updates } : day)),
+    }));
+  };
+
+  const handleSaveBusinessHours = async () => {
+    try {
+      const serialized = serializeBusinessHours(businessHours);
+      await updateProfile({ businessHoursJson: serialized });
+      setLocalFormData((current) => ({ ...current, businessHoursJson: serialized }));
+      setShowBusinessHoursToast(true);
+      setTimeout(() => setShowBusinessHoursToast(false), 2000);
+    } catch (err) {
+      console.error('Error saving business hours:', err);
+    }
+  };
+
   const handleSaveNotifications = async () => {
     try {
       await updateProfile({
@@ -359,6 +404,8 @@ export default function VendorProfilePage() {
       ? `${Number(profile?.ratingCount || 0)} public customer reviews are visible.`
       : 'No public customer reviews are visible yet.',
   ].filter(Boolean) as string[];
+  const savedBusinessHoursStatus = getBusinessHoursStatus(localFormData.businessHoursJson ? businessHours : null);
+  const editedBusinessHoursStatus = getBusinessHoursStatus(businessHours);
 
   const requestVendorCopySuggestion = async () => {
     if (!vendorId) return;
@@ -946,6 +993,92 @@ export default function VendorProfilePage() {
                   )}
                 </Button>
               </form>
+            </CardContent>
+          </Card>
+          <Card className="order-3 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg border border-emerald-300/20 bg-emerald-500/12 p-2">
+                  <Settings className="h-6 w-6 text-emerald-100" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl text-white">Business Hours</CardTitle>
+                  <p className="text-sm text-slate-300">
+                    Set the weekly hours customers see on browse and provider cards.
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-slate-900/75 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">
+                  Current customer label
+                </p>
+                <p className="mt-2 text-lg font-semibold text-white">
+                  {savedBusinessHoursStatus.configured ? editedBusinessHoursStatus.label : savedBusinessHoursStatus.label}
+                </p>
+                {savedBusinessHoursStatus.configured && editedBusinessHoursStatus.todayLabel ? (
+                  <p className="mt-1 text-sm text-slate-300">{editedBusinessHoursStatus.todayLabel}</p>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-300">Customers will see that hours are not listed yet.</p>
+                )}
+              </div>
+              <div className="grid gap-3">
+                {businessHours.days.map((day) => (
+                  <div
+                    key={day.day}
+                    className="grid gap-3 rounded-xl border border-blue-300/20 bg-slate-900/75 p-3 sm:grid-cols-[1fr_auto_auto]"
+                  >
+                    <label className="flex cursor-pointer items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={day.enabled}
+                        onChange={(event) => updateBusinessHourDay(day.day, { enabled: event.target.checked })}
+                        className="h-4 w-4 accent-blue-500"
+                      />
+                      <span className="font-semibold text-white">{businessHourDayLabels[day.day]}</span>
+                      <span className="text-sm text-slate-400">
+                        {day.enabled ? `${formatBusinessTime(day.open)}-${formatBusinessTime(day.close)}` : 'Closed'}
+                      </span>
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-blue-100/60">Open</span>
+                      <input
+                        type="time"
+                        value={day.open}
+                        disabled={!day.enabled}
+                        onChange={(event) => updateBusinessHourDay(day.day, { open: event.target.value })}
+                        className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-white disabled:opacity-50 sm:w-32"
+                      />
+                    </label>
+                    <label className="text-sm text-slate-300">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-blue-100/60">Close</span>
+                      <input
+                        type="time"
+                        value={day.close}
+                        disabled={!day.enabled}
+                        onChange={(event) => updateBusinessHourDay(day.day, { close: event.target.value })}
+                        className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-white disabled:opacity-50 sm:w-32"
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  onClick={handleSaveBusinessHours}
+                  disabled={saving}
+                  className="bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]"
+                >
+                  Save Business Hours
+                </Button>
+                {showBusinessHoursToast ? (
+                  <span className="rounded-lg border border-emerald-300/25 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100">
+                    Hours saved.
+                  </span>
+                ) : null}
+              </div>
             </CardContent>
           </Card>
           {/* Enhanced Reminders & Notifications Card */}

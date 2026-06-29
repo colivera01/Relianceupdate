@@ -2,6 +2,7 @@ import { readNotificationEnv } from '@/lib/env/notification-config';
 import { sendEmail } from '@/lib/email/resend';
 import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
 
 export type EmployeeInviteNotificationInput = {
   inviteId: string;
@@ -76,20 +77,27 @@ export async function sendEmployeeInviteNotification(
       '',
       '- Reliance Team',
     ].join('\n');
-    const html = `
-      <p>Hi${inviteeName ? ` ${inviteeName}` : ''},</p>
-      <p>${vendorName} has invited you to join their team on Reliance as an employee.</p>
-      <p>Reliance is used to manage jobs, track service progress, and capture service videos for completed work.</p>
-      <p><strong>Accept your invite:</strong><br/><a href="${input.inviteLink}">${input.inviteLink}</a></p>
-      <p>Or copy and paste this link into your browser:<br/><code>${input.inviteLink}</code></p>
-      <p><strong>What happens next:</strong><br/>
-      - Create or confirm your account<br/>
-      - Access your assigned jobs<br/>
-      - Start completing and uploading service video stages</p>
-      <p>This invite may expire, so we recommend accepting it as soon as possible.</p>
-      <p>If you were not expecting this, you can safely ignore this email.</p>
-      <p>- Reliance Team</p>
-    `.trim();
+    const html = buildRelianceEmailHtml({
+      eyebrow: 'Team invite',
+      headline: `Join ${vendorName} on Reliance`,
+      greeting: `Hi${inviteeName ? ` ${inviteeName}` : ''},`,
+      bodyHtml: `
+        <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> invited you to join their team on Reliance as an employee.</p>
+        <p style="margin:0;">Reliance is used to manage jobs, track service progress, and capture service videos for completed work.</p>
+      `,
+      cta: { label: 'Accept Team Invite', href: input.inviteLink },
+      secondaryHtml: `
+        <p style="margin:0 0 10px;color:#ffffff;font-size:15px;font-weight:800;">What happens next:</p>
+        <ol style="margin:0 0 18px 20px;padding:0;">
+          <li>Confirm your name and contact details.</li>
+          <li>Access assigned jobs sent by email or SMS.</li>
+          <li>Complete service-video stages when work is assigned.</li>
+        </ol>
+        <p style="margin:0;">This invite may expire, so we recommend accepting it as soon as possible.</p>
+      `,
+      fallbackHref: input.inviteLink,
+      footerNote: 'If you were not expecting this, you can safely ignore this email.',
+    });
     const r = await sendEmail({ to: email, subject, text, html });
     channels.push({
       channel: 'email',
@@ -117,7 +125,7 @@ export async function sendEmployeeInviteNotification(
   }
 
   if (env.smsEnabled && phone) {
-    const body = `${vendorName} via Reliance: employee invite to join their team. Accept here: ${input.inviteLink} Reply STOP to opt out.`;
+    const body = `Reliance: Employee invite connected to ${vendorName}. Accept here: ${input.inviteLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

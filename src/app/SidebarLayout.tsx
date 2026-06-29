@@ -97,10 +97,17 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
       window.location.href = '/logout';
     }
   };
+  const mobileAdminNav = [
+    adminNav[0],
+    adminNav[1],
+    adminNav[2],
+    adminNav[4],
+    adminNav[8],
+  ];
 
   return (
     <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen">
-      <aside className="reliance-operator-sidebar flex w-72 min-h-screen flex-col">
+      <aside className="reliance-operator-sidebar hidden w-72 min-h-screen flex-col md:flex">
         <div className="reliance-operator-sidebar-header flex items-center justify-center px-6 py-7">
           <RelianceLogo
             tone="light"
@@ -135,8 +142,8 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
         </div>
       </aside>
 
-      <main className="reliance-operator-main flex-1 overflow-auto">
-        <div className="w-full max-w-6xl px-6 pt-10 pb-6">
+      <main className="reliance-operator-main min-w-0 flex-1 overflow-auto">
+        <div className="w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 sm:pt-10 md:pb-6">
           <div className="mb-6 flex items-center justify-end gap-4">
             {availableRoles.length > 1 ? (
               <ProfileToggle
@@ -272,6 +279,32 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
           {children}
         </div>
       </main>
+      <nav
+        aria-label="Admin mobile navigation"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[#050a13]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-18px_45px_rgba(2,6,14,0.42)] backdrop-blur-xl md:hidden"
+      >
+        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+          {mobileAdminNav.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold leading-tight transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-[0_10px_28px_rgba(36,107,255,0.32)]'
+                    : 'text-blue-100/72 hover:bg-white/8 hover:text-white'
+                }`}
+              >
+                <item.icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-white' : item.iconClassName}`} />
+                <span className="max-w-full truncate">
+                  {item.label.replace('Publish Management', 'Publish').replace('Media Moderation', 'Media').replace('AI Review Queue', 'AI Queue')}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

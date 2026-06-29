@@ -165,6 +165,12 @@ export interface DiscoverServiceResult {
   vendorBusinessType: string | null;
   location: string | null;
   distanceMiles?: number | null;
+  businessHours?: {
+    configured: boolean;
+    openNow: boolean | null;
+    label: string;
+    todayLabel: string | null;
+  };
   previewMediaUrl: string | null;
   previewMediaType: 'image' | 'video' | null;
   price: number;
@@ -228,6 +234,7 @@ export interface DiscoverServicesResponse {
     category: string | null;
     sortBy: string;
     radiusMiles?: number | null;
+    onlyCompletedPublicProof?: boolean;
   };
   location?: {
     inputAccepted: boolean;

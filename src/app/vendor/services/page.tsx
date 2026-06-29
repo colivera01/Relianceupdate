@@ -377,19 +377,19 @@ export default function VendorServicesPage() {
             <VendorOnboardingStatusPanel profile={vendorProfile} />
           </div>
         ) : null}
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Your Services Offered</h1>
             <p className="text-gray-600">
               Build the menu of work customers can understand before they request help from your business.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <TutorialEntryPoint guide={tutorialGuides.vendorServices} surface="light" />
             <button
               onClick={openCreateModal}
               disabled={!vendorId || vendorLoading}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-blue-300/40 bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:from-blue-700 hover:via-blue-600 hover:to-sky-600 hover:shadow-[0_18px_42px_rgba(37,99,235,0.36)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-blue-300/40 bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:from-blue-700 hover:via-blue-600 hover:to-sky-600 hover:shadow-[0_18px_42px_rgba(37,99,235,0.36)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 sm:w-auto"
             >
               <Plus className="w-4 h-4" />
               + Add Customer Service
@@ -574,8 +574,8 @@ export default function VendorServicesPage() {
         )}
 
         {showFormModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white mx-4">
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3 py-6 sm:items-center sm:p-4">
+            <div className="max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white sm:max-h-[90vh]">
               <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">
@@ -763,11 +763,11 @@ export default function VendorServicesPage() {
                 )}
               </div>
 
-              <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <div className="flex flex-col gap-3 border-t border-gray-200 p-6 sm:flex-row sm:justify-end">
                 <button
                   onClick={closeFormModal}
                   disabled={formSaving}
-                  className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  className="w-full rounded-lg border border-gray-300 px-5 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
                 >
                   Cancel
                 </button>
@@ -776,7 +776,7 @@ export default function VendorServicesPage() {
                     handleSaveService().catch(() => undefined);
                   }}
                   disabled={formSaving || !vendorId}
-                  className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-sky-500 px-5 py-2 text-white hover:from-blue-700 hover:to-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-sky-500 px-5 py-2 text-white hover:from-blue-700 hover:to-sky-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   {formSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   {editingService ? 'Update Service Offered' : 'Save Service Offered'}

@@ -79,6 +79,11 @@ describe("vendor media sessions consent enforcement integration", () => {
       customerMetadata: JSON.stringify({
         vendor_job_assigned_membership_ids: ["membership-1"],
       }),
+      vendor: {
+        latitude: 28.5383,
+        longitude: -81.3792,
+        geocodedAt: new Date("2026-06-27T12:00:00.000Z"),
+      },
     });
     hoisted.mediaSessionFindFirst.mockResolvedValue(null);
     hoisted.mediaSessionCreate.mockResolvedValue({
@@ -178,9 +183,46 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("does not require consent for business location", async () => {
+  it("blocks business location when geolocation proof is missing", async () => {
     const { req, ctx } = buildPostRequest({
       locationContext: "business",
+    });
+
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("BUSINESS_LOCATION_PROOF_REQUIRED");
+    expect(hoisted.consentRecordFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("blocks business location when the device is not near the registered address", async () => {
+    const { req, ctx } = buildPostRequest({
+      locationContext: "business",
+      locationProof: {
+        latitude: 29.7604,
+        longitude: -95.3698,
+        accuracyMeters: 25,
+      },
+    });
+
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(403);
+    expect(json.code).toBe("BUSINESS_LOCATION_MISMATCH");
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("allows business location without customer consent when verified near registered address", async () => {
+    const { req, ctx } = buildPostRequest({
+      locationContext: "business",
+      locationProof: {
+        latitude: 28.53831,
+        longitude: -81.37919,
+        accuracyMeters: 20,
+      },
     });
 
     const res = await POST(req, ctx as any);
@@ -189,5 +231,6 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect(res.status).toBe(200);
     expect((json.session as any)?.id).toBe("session-1");
     expect(hoisted.consentRecordFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
   });
 });

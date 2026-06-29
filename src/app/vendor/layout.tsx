@@ -92,6 +92,13 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
   const vendorSupportHref = buildVendorSupportHref(pathname);
   const hasCustomerVendorLinkedAccess =
     availableRoles.includes('customer') && availableRoles.includes('vendor');
+  const mobileVendorLinks = [
+    sidebarLinks[0],
+    sidebarLinks[4],
+    sidebarLinks[6],
+    sidebarLinks[7],
+    sidebarLinks[5],
+  ];
 
   if (isVendorOnboardingRoute) {
     return <div className="min-h-screen">{children}</div>;
@@ -329,9 +336,9 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
 
       {/* Main column - no top profile header anymore; identity lives in the
           sidebar, and the role toggle sits above the page content. */}
-      <main className="reliance-operator-main flex-1 flex flex-col overflow-auto">
+      <main className="reliance-operator-main min-w-0 flex-1 flex flex-col overflow-auto">
         <div className="flex-1 overflow-x-hidden">
-          <div className="w-full max-w-6xl px-6 pt-10 pb-6">
+          <div className="w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 sm:pt-10 md:pb-6">
             {availableRoles.length > 1 ? (
               <div className="mb-6 rounded-[28px] border border-white/10 bg-white/6 px-5 py-4 shadow-[0_18px_60px_rgba(4,9,20,0.18)] backdrop-blur-xl">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -363,6 +370,32 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
           </div>
         </div>
       </main>
+      <nav
+        aria-label="Vendor mobile navigation"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-white/10 bg-[#050a13]/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-18px_45px_rgba(2,6,14,0.42)] backdrop-blur-xl md:hidden"
+      >
+        <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+          {mobileVendorLinks.map((link) => {
+            const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+            return (
+              <Link
+                key={link.label}
+                href={link.href}
+                className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold leading-tight transition-colors ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-[0_10px_28px_rgba(36,107,255,0.32)]'
+                    : 'text-blue-100/72 hover:bg-white/8 hover:text-white'
+                }`}
+              >
+                <link.icon size={18} className={`shrink-0 ${isActive ? 'text-white' : link.iconClassName}`} />
+                <span className="max-w-full truncate">
+                  {link.label.replace('Service Video ', 'Videos ').replace('Profile & Settings', 'Profile')}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

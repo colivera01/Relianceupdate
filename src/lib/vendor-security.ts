@@ -1,6 +1,7 @@
 import type { AuthSessionClaims } from "@/lib/auth-session";
 import type { AuthLoginUserPayload } from "@/lib/auth-login-response";
 import { sendEmail } from "@/lib/email/resend";
+import { buildRelianceEmailHtml } from "@/lib/email/reliance-template";
 import { logNotificationAttempt } from "@/lib/notifications/notification-audit";
 import { prisma } from "@/server/db";
 
@@ -162,6 +163,7 @@ function buildVendorLoginAlertEmail(params: {
   ip: string;
   occurredAt: Date;
   dashboardUrl: string;
+  baseUrl: string;
 }) {
   const vendorList = params.vendorNames.map((name) => `- ${name}`).join("\n");
   const text = `Hello ${params.name},
@@ -178,21 +180,22 @@ Time: ${params.occurredAt.toLocaleString("en-US", { timeZoneName: "short" })}
 If this was you, no action is needed. If this was not you, change your password and review your Security Settings:
 ${params.dashboardUrl}`;
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
-      <h2 style="margin:0 0 12px">New Reliance vendor sign-in</h2>
-      <p>Hello ${escapeHtml(params.name)},</p>
-      <p>Reliance detected a sign-in to vendor tools for:</p>
-      <ul>${params.vendorNames.map((name) => `<li>${escapeHtml(name)}</li>`).join("")}</ul>
-      <div style="padding:14px 16px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff">
-        <p style="margin:0"><strong>Device:</strong> ${escapeHtml(params.device)}</p>
-        <p style="margin:4px 0 0"><strong>Approximate IP:</strong> ${escapeHtml(params.ip)}</p>
-        <p style="margin:4px 0 0"><strong>Time:</strong> ${escapeHtml(params.occurredAt.toLocaleString("en-US", { timeZoneName: "short" }))}</p>
-      </div>
-      <p>If this was you, no action is needed. If this was not you, change your password and review your Security Settings.</p>
-      <p><a href="${escapeHtml(params.dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 14px;border-radius:10px">Open Security Settings</a></p>
-    </div>
-  `;
+  const html = buildRelianceEmailHtml({
+    eyebrow: "Security alert",
+    headline: "New Reliance vendor sign-in",
+    greeting: `Hello ${params.name},`,
+    bodyHtml: '<p style="margin:0;">Reliance detected a sign-in to vendor tools.</p>',
+    details: [
+      { label: "Vendor account", value: params.vendorNames.join(", ") },
+      { label: "Device", value: params.device },
+      { label: "Approximate IP", value: params.ip },
+      { label: "Time", value: params.occurredAt.toLocaleString("en-US", { timeZoneName: "short" }) },
+    ],
+    cta: { label: "Open Security Settings", href: params.dashboardUrl },
+    fallbackHref: params.dashboardUrl,
+    footerNote: "If this was you, no action is needed. If this was not you, change your password and review your Security Settings.",
+    baseUrl: params.baseUrl,
+  });
 
   return { text, html };
 }
@@ -227,6 +230,7 @@ export async function sendVendorLoginAlert(params: {
     ip: getClientIp(params.request),
     occurredAt,
     dashboardUrl,
+    baseUrl: origin,
   });
 
   const result = await sendEmail({

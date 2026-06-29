@@ -791,7 +791,7 @@ const CITIES_BY_STATE: { [key: string]: string[] } = {
 // Service category options
 const serviceCategoryOptions = [
   'Automotive Repair', 'Automotive Detailing', 'Adjuster', 'Barber', 'Body Shop', 'Car Wash', 'Contractors', 'Dealership', 'Electrician', 'Electronic Device Repair',
-  'HVAC Heating and Air Conditioning', 'Home cleaners', 'Hair/Nail Salon', 'Landscaping', 'Locksmith', 'Medical Services', 'Moving Services', 'Pool Cleaning Services', 'Pet Grooming', 'Plumbing', 'Painting Services', 'Pest/Exterminating Services', 'Security Installation', 'Roofing Services', 'Towing', 'Tree Services', 'Other'
+  'HVAC Heating and Air Conditioning', 'Home cleaners', 'Hair/Nail Salon', 'Nail Salon', 'Landscaping', 'Locksmith', 'Medical Services', 'Moving Services', 'Pool Cleaning Services', 'Pet Grooming', 'Pet Groomers', 'Bakery', 'Restaurant Owners', 'Plumbing', 'Painting Services', 'Pest/Exterminating Services', 'Security Installation', 'Roofing Services', 'Towing', 'Tree Services', 'Other'
 ];
 
 // Service types by category
@@ -804,12 +804,16 @@ const serviceTypesByCategory: { [key: string]: string[] } = {
   'HVAC Heating and Air Conditioning': ['AC Installation', 'AC Repair', 'Heating Installation', 'Heating Repair', 'Maintenance', 'Duct Cleaning', 'Thermostat Installation'],
   'Home cleaners': ['Regular Cleaning', 'Deep Cleaning', 'Move-in/Move-out Cleaning', 'Post-construction Cleaning', 'Carpet Cleaning', 'Window Cleaning', 'Pressure Washing'],
   'Hair/Nail Salon': ['Haircuts', 'Hair Coloring', 'Hair Styling', 'Manicures', 'Pedicures', 'Nail Art', 'Hair Treatments', 'Extensions'],
+  'Nail Salon': ['Classic Manicure', 'Pedicure', 'Gel Polish Service', 'Acrylic Nails', 'Nail Art', 'Nail Repair', 'Dip Powder Nails'],
   'Landscaping': ['Lawn Maintenance', 'Landscape Design', 'Tree Planting', 'Irrigation Systems', 'Hardscaping', 'Garden Design', 'Seasonal Cleanup'],
   'Locksmith': ['Lock Installation', 'Lock Repair', 'Key Duplication', 'Emergency Services', 'Security Systems', 'Safe Services'],
   'Medical Services': ['Primary Care', 'Specialty Care', 'Diagnostic Services', 'Preventive Care', 'Emergency Services'],
   'Moving Services': ['Residential Moving', 'Commercial Moving', 'Packing Services', 'Storage Solutions', 'Furniture Assembly', 'Long-distance Moving'],
   'Pool Cleaning Services': ['Regular Cleaning', 'Chemical Balancing', 'Equipment Repair', 'Pool Opening/Closing', 'Algae Treatment', 'Filter Cleaning'],
   'Pet Grooming': ['Dog Grooming', 'Cat Grooming', 'Bathing', 'Haircuts', 'Nail Trimming', 'Ear Cleaning', 'Flea Treatment'],
+  'Pet Groomers': ['Dog Bath and Brush', 'Full Grooming Service', 'Cat Grooming', 'Nail Trimming', 'Ear Cleaning', 'De-shedding Treatment', 'Mobile Grooming'],
+  'Bakery': ['Custom Cake Order', 'Pastry Box Preparation', 'Cupcake Order', 'Bread Batch', 'Dessert Table Setup', 'Cookie Order', 'Event Dessert Setup'],
+  'Restaurant Owners': ['Catering Order Preparation', 'Private Dining Setup', 'Kitchen Prep Walkthrough', 'Family Meal Package', 'Event Food Service', 'Takeout Order Prep', 'Dining Room Setup'],
   'Plumbing': ['Pipe Repair', 'Fixture Installation', 'Drain Cleaning', 'Water Heater Services', 'Emergency Plumbing', 'Commercial Plumbing'],
   'Painting Services': ['Interior Painting', 'Exterior Painting', 'Commercial Painting', 'Cabinet Painting', 'Deck Staining', 'Wallpaper Installation'],
   'Pest/Exterminating Services': ['Pest Control', 'Termite Treatment', 'Rodent Control', 'Bed Bug Treatment', 'Preventive Services', 'Commercial Pest Control'],
@@ -834,12 +838,16 @@ const specializationsByCategory: { [key: string]: string[] } = {
   'HVAC Heating and Air Conditioning': ['Residential', 'Commercial', 'Industrial', 'Heat Pumps', 'Geothermal', 'Ductless Systems'],
   'Home cleaners': ['Residential', 'Commercial', 'Eco-friendly', 'Post-construction', 'Move-in/Move-out', 'Regular Maintenance'],
   'Hair/Nail Salon': ['Hair Color', 'Hair Extensions', 'Nail Art', 'Gel Manicures', 'Acrylic Nails', 'Hair Treatments'],
+  'Nail Salon': ['Gel Manicures', 'Acrylic Nails', 'Nail Art', 'Pedicures', 'Dip Powder', 'Natural Nail Care'],
   'Landscaping': ['Residential', 'Commercial', 'Sustainable Design', 'Water Features', 'Outdoor Lighting', 'Seasonal Maintenance'],
   'Locksmith': ['Residential', 'Commercial', 'Automotive', 'Emergency Services', 'Security Systems', 'Safe Services'],
   'Medical Services': ['Primary Care', 'Specialty Care', 'Preventive Medicine', 'Emergency Care', 'Telemedicine'],
   'Moving Services': ['Residential', 'Commercial', 'Long-distance', 'International', 'Storage Solutions', 'Specialty Items'],
   'Pool Cleaning Services': ['Residential', 'Commercial', 'Salt Water Pools', 'Fiberglass Pools', 'Concrete Pools', 'Hot Tubs'],
   'Pet Grooming': ['Dogs', 'Cats', 'Small Animals', 'Show Grooming', 'Mobile Services', 'Specialty Breeds'],
+  'Pet Groomers': ['Dogs', 'Cats', 'Small Animals', 'Show Grooming', 'Mobile Grooming', 'Specialty Breeds'],
+  'Bakery': ['Custom Cakes', 'Pastries', 'Cupcakes', 'Cookies', 'Bread', 'Event Desserts'],
+  'Restaurant Owners': ['Catering', 'Private Dining', 'Takeout', 'Family Meals', 'Event Service', 'Meal Prep'],
   'Plumbing': ['Residential', 'Commercial', 'Emergency Services', 'Water Heaters', 'Sewer Lines', 'Gas Lines'],
   'Painting Services': ['Interior', 'Exterior', 'Commercial', 'Residential', 'Cabinet Painting', 'Deck Staining'],
   'Pest/Exterminating Services': ['Residential', 'Commercial', 'Organic Methods', 'Emergency Services', 'Preventive Programs'],
@@ -1873,7 +1881,7 @@ function RegisterPageInner() {
                           </span>{' '}
                           Reliance may text me account access, service-record updates, invite links,
                           customer video consent requests, approved video availability, review reminders,
-                          security alerts, and support updates. Message frequency varies. Msg &amp; data
+                          support updates. Message frequency varies. Msg &amp; data
                           rates may apply. Reply STOP to opt out or HELP for help. Consent is not required
                           to create an account or request service. See{' '}
                           <Link href="/sms-policy" className="font-semibold text-blue-200 underline">

@@ -1,6 +1,7 @@
 import { sendEmail } from "@/lib/email/resend";
 import { sendSms } from "@/lib/sms/twilio";
 import { readNotificationEnv } from "@/lib/env/notification-config";
+import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
 
 export type DevicePairingInviteInput = {
   vendorName: string;
@@ -95,22 +96,20 @@ export async function sendDevicePairingInvite(
         "",
         "- Reliance",
       ].join("\n");
-      const html = `
-        <div style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.5">
-          <p>You have been invited to pair this phone with <strong>${escapeHtml(vendorName)}</strong> on Reliance.</p>
-          <p>Open this message on the phone you want to use for Reliance service videos, then tap the button below.</p>
-          <p style="margin:24px 0;">
-            <a href="${escapeHtml(input.pairingUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;">
-              Pair This Phone
-            </a>
-          </p>
-          <p><strong>Backup code:</strong> ${escapeHtml(input.pairingCode)}<br/>
-          <strong>Expires:</strong> ${escapeHtml(expiresText)}</p>
-          <p>If the button does not open, copy and paste this link into your mobile browser:</p>
-          <p><a href="${escapeHtml(input.pairingUrl)}">${escapeHtml(input.pairingUrl)}</a></p>
-          <p style="color:#6b7280;font-size:14px;">- Reliance</p>
-        </div>
-      `.trim();
+      const html = buildRelianceEmailHtml({
+        eyebrow: "Device pairing",
+        headline: "Pair this phone for service videos",
+        bodyHtml: `
+          <p style="margin:0 0 14px;">You have been invited to pair this phone with <strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> on Reliance.</p>
+          <p style="margin:0;">Open this message on the phone you want to use for Reliance service videos, then tap the button below.</p>
+        `,
+        details: [
+          { label: "Backup code", value: input.pairingCode },
+          { label: "Expires", value: expiresText },
+        ],
+        cta: { label: "Pair This Phone", href: input.pairingUrl },
+        fallbackHref: input.pairingUrl,
+      });
       const sendResult = await sendEmail({ to: email, subject, text, html });
       emailResult.success = sendResult.ok;
       emailResult.errorMessage = sendResult.errorMessage;
@@ -127,7 +126,7 @@ export async function sendDevicePairingInvite(
       smsResult.success = false;
       smsResult.errorMessage = "sms_disabled";
     } else {
-      const body = `${vendorName} via Reliance: pair this phone for service-video work. Link: ${input.pairingUrl} Backup code: ${input.pairingCode} Reply STOP to opt out.`;
+      const body = `Reliance: Pair this phone for service-video work with ${vendorName}. Link: ${input.pairingUrl} Backup code: ${input.pairingCode} Reply STOP to opt out.`;
       const sendResult = await sendSms({ to: phone, body });
       smsResult.success = sendResult.ok;
       smsResult.errorMessage = sendResult.errorMessage;

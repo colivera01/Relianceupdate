@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { GuidanceCallout } from "@/components/guidance/GuidanceCallout";
 import { TutorialEntryPoint } from "@/components/guidance/TutorialEntryPoint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -70,6 +70,15 @@ type CapturedVideoDraft = {
   file: File;
   previewUrl: string;
   durationSeconds: number;
+  locationProof: LocationProof | null;
+};
+
+type LocationProof = {
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number;
+  capturedAt: string;
+  source: "browser_geolocation";
 };
 
 const EMPLOYEE_JOBS_TIMEOUT_MS = 20000;
@@ -227,6 +236,8 @@ export default function EmployeeJobsPage() {
   const [focusedJobId, setFocusedJobId] = useState("");
   const [captureToken, setCaptureToken] = useState("");
   const [recordingKey, setRecordingKey] = useState<string | null>(null);
+  const [recordingStarted, setRecordingStarted] = useState(false);
+  const [recordingSecondsLeft, setRecordingSecondsLeft] = useState(STAGE_VIDEO_MAX_DURATION_SECONDS);
   const [activeCameraStream, setActiveCameraStream] = useState<MediaStream | null>(null);
   const [capturedDraft, setCapturedDraft] = useState<CapturedVideoDraft | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -234,11 +245,18 @@ export default function EmployeeJobsPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
   const recordingStopTimerRef = useRef<number | null>(null);
+  const recordingCountdownTimerRef = useRef<number | null>(null);
   const activeCameraStreamRef = useRef<MediaStream | null>(null);
+  const activeCameraContextRef = useRef<{
+    job: EmployeeJob;
+    stage: (typeof STAGES)[number]["key"];
+    locationProof: LocationProof;
+  } | null>(null);
   const capturedDraftUrlRef = useRef<string | null>(null);
   const fallbackCaptureRef = useRef<{
     job: EmployeeJob;
     stage: (typeof STAGES)[number]["key"];
+    locationProof: LocationProof | null;
   } | null>(null);
   const userId = useMemo(() => String(user?.id || "").trim(), [user?.id]);
   const hasCaptureToken = Boolean(captureToken);
@@ -322,6 +340,9 @@ export default function EmployeeJobsPage() {
     return () => {
       if (recordingStopTimerRef.current !== null) {
         window.clearTimeout(recordingStopTimerRef.current);
+      }
+      if (recordingCountdownTimerRef.current !== null) {
+        window.clearInterval(recordingCountdownTimerRef.current);
       }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
@@ -424,7 +445,8 @@ export default function EmployeeJobsPage() {
     job: EmployeeJob,
     stage: (typeof STAGES)[number]["key"],
     file: File,
-    durationSeconds: number
+    durationSeconds: number,
+    locationProof: LocationProof | null
   ) => {
     const uploadKey = `${job.id}:${stage}`;
     const hadExistingStageVideo = Boolean(job.stageProgress?.[stage]);
@@ -447,6 +469,7 @@ export default function EmployeeJobsPage() {
           sessionType: "JOB_SERVICE_VIDEO",
           replaceExisting: true,
           locationContext: "business",
+          locationProof,
           deviceId: deviceIdForUpload,
           deviceType: pairedDevice?.deviceType || "PHONE",
         }),
@@ -558,25 +581,88 @@ export default function EmployeeJobsPage() {
     if (!stream || activeCameraStreamRef.current === stream) {
       activeCameraStreamRef.current = null;
     }
+    activeCameraContextRef.current = null;
+    setRecordingStarted(false);
     setActiveCameraStream(null);
   };
 
-  const stopCameraRecording = () => {
+  const clearRecordingTimers = () => {
     if (recordingStopTimerRef.current !== null) {
       window.clearTimeout(recordingStopTimerRef.current);
       recordingStopTimerRef.current = null;
     }
+    if (recordingCountdownTimerRef.current !== null) {
+      window.clearInterval(recordingCountdownTimerRef.current);
+      recordingCountdownTimerRef.current = null;
+    }
+  };
+
+  const stopCameraRecording = () => {
+    clearRecordingTimers();
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
     }
   };
 
+  const closeCameraPreview = () => {
+    clearRecordingTimers();
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+      return;
+    }
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    setRecordingKey(null);
+    setRecordingStarted(false);
+    setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
+    stopActiveCameraStream();
+  };
+
+  const requestLocationProof = async (
+    job: EmployeeJob,
+    stage: (typeof STAGES)[number]["key"]
+  ): Promise<LocationProof> => {
+    const nextRecordingKey = `${job.id}:${stage}`;
+    if (!navigator.geolocation) {
+      throw new Error("This phone cannot verify location. Use a browser with location access enabled.");
+    }
+    setStageFeedback((prev) => ({
+      ...prev,
+      [nextRecordingKey]: {
+        status: "uploading",
+        message: "Allow location access so Reliance can confirm this recording is at the registered business address.",
+      },
+    }));
+    return new Promise<LocationProof>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude, accuracy } = position.coords;
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy)) {
+            reject(new Error("Location verification returned invalid coordinates. Try again from the job location."));
+            return;
+          }
+          resolve({
+            latitude,
+            longitude,
+            accuracyMeters: accuracy,
+            capturedAt: new Date(position.timestamp || Date.now()).toISOString(),
+            source: "browser_geolocation",
+          });
+        },
+        () => reject(new Error("Location access was blocked. Allow location access, then tap the stage again.")),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
+      );
+    });
+  };
+
   const prepareCapturedDraftFromFile = async (
     job: EmployeeJob,
     stage: (typeof STAGES)[number]["key"],
     file: File,
-    source: "native-camera" | "recorder" = "native-camera"
+    source: "native-camera" | "recorder" = "native-camera",
+    locationProof: LocationProof | null = null
   ) => {
     const nextRecordingKey = `${job.id}:${stage}`;
     let durationSeconds = 1;
@@ -601,7 +687,7 @@ export default function EmployeeJobsPage() {
     clearCapturedDraft();
     const previewUrl = URL.createObjectURL(file);
     capturedDraftUrlRef.current = previewUrl;
-    setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds });
+    setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds, locationProof });
     setStageFeedback((prev) => ({
       ...prev,
       [nextRecordingKey]: {
@@ -616,10 +702,11 @@ export default function EmployeeJobsPage() {
   const openNativeCameraFallback = (
     job: EmployeeJob,
     stage: (typeof STAGES)[number]["key"],
+    locationProof: LocationProof | null,
     message = "Opening the phone camera. After recording, preview it here before saving."
   ) => {
     const nextRecordingKey = `${job.id}:${stage}`;
-    fallbackCaptureRef.current = { job, stage };
+    fallbackCaptureRef.current = { job, stage, locationProof };
     setStageFeedback((prev) => ({
       ...prev,
       [nextRecordingKey]: {
@@ -641,15 +728,35 @@ export default function EmployeeJobsPage() {
       ...prev,
       [nextRecordingKey]: {
         status: "uploading",
-        message: `Recording live camera video. Recording stops automatically at ${formatStageVideoDuration(
+        message: "Checking location before opening the camera.",
+      },
+    }));
+    clearCapturedDraft();
+    let locationProof: LocationProof;
+    try {
+      locationProof = await requestLocationProof(job, stage);
+    } catch (error) {
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "error",
+          message: error instanceof Error ? error.message : "Location verification failed. Try again.",
+        },
+      }));
+      return;
+    }
+    setStageFeedback((prev) => ({
+      ...prev,
+      [nextRecordingKey]: {
+        status: "uploading",
+        message: `Opening the camera. Start recording when the shot is framed. Recording stops automatically at ${formatStageVideoDuration(
           STAGE_VIDEO_MAX_DURATION_SECONDS
         )}.`,
       },
     }));
-    clearCapturedDraft();
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      openNativeCameraFallback(job, stage, "Your browser needs the phone camera recorder. Record the clip, then preview it here before saving.");
+      openNativeCameraFallback(job, stage, locationProof, "Your browser needs the phone camera recorder. Record the clip, then preview it here before saving.");
       return;
     }
 
@@ -658,6 +765,48 @@ export default function EmployeeJobsPage() {
         video: { facingMode: { ideal: "environment" } },
         audio: false,
       });
+      activeCameraContextRef.current = { job, stage, locationProof };
+      activeCameraStreamRef.current = stream;
+      mediaRecorderRef.current = null;
+      recordingChunksRef.current = [];
+      setRecordingKey(nextRecordingKey);
+      setRecordingStarted(false);
+      setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
+      setActiveCameraStream(stream);
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "uploading",
+          message: "Camera is ready. Frame the shot, then tap Start Recording.",
+        },
+      }));
+    } catch (error) {
+      setRecordingKey(null);
+      setRecordingStarted(false);
+      setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
+      stopActiveCameraStream();
+      if (error instanceof Error && error.name === "NotAllowedError") {
+        setStageFeedback((prev) => ({
+          ...prev,
+          [nextRecordingKey]: {
+            status: "error",
+            message: "Camera access was blocked. Allow camera access in the browser and tap the stage again.",
+          },
+        }));
+      } else {
+        openNativeCameraFallback(job, stage, locationProof, "The in-page camera did not open on this phone. Use the phone camera recorder, then preview it here before saving.");
+      }
+    }
+  };
+
+  const beginCameraRecording = () => {
+    const context = activeCameraContextRef.current;
+    const stream = activeCameraStreamRef.current;
+    if (!context || !stream || !recordingKey) return;
+
+    const { job, stage, locationProof } = context;
+    const nextRecordingKey = `${job.id}:${stage}`;
+    try {
       const mimeType = [
         "video/webm;codecs=vp9,opus",
         "video/webm;codecs=vp8,opus",
@@ -668,9 +817,17 @@ export default function EmployeeJobsPage() {
       const startedAt = Date.now();
       recordingChunksRef.current = [];
       mediaRecorderRef.current = recorder;
-      activeCameraStreamRef.current = stream;
-      setRecordingKey(nextRecordingKey);
-      setActiveCameraStream(stream);
+      setRecordingStarted(true);
+      setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "uploading",
+          message: `Recording live camera video. Recording stops automatically at ${formatStageVideoDuration(
+            STAGE_VIDEO_MAX_DURATION_SECONDS
+          )}.`,
+        },
+      }));
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -687,12 +844,10 @@ export default function EmployeeJobsPage() {
         }));
         stopActiveCameraStream(stream);
         setRecordingKey(null);
+        setRecordingStarted(false);
       };
       recorder.onstop = () => {
-        if (recordingStopTimerRef.current !== null) {
-          window.clearTimeout(recordingStopTimerRef.current);
-          recordingStopTimerRef.current = null;
-        }
+        clearRecordingTimers();
         const durationSeconds = Math.max(
           1,
           Math.min(STAGE_VIDEO_MAX_DURATION_SECONDS, (Date.now() - startedAt) / 1000)
@@ -707,7 +862,8 @@ export default function EmployeeJobsPage() {
         capturedDraftUrlRef.current = previewUrl;
         stopActiveCameraStream(stream);
         setRecordingKey(null);
-        setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds });
+        setRecordingStarted(false);
+        setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds, locationProof });
         setStageFeedback((prev) => ({
           ...prev,
           [nextRecordingKey]: {
@@ -718,24 +874,26 @@ export default function EmployeeJobsPage() {
       };
 
       recorder.start();
+      recordingCountdownTimerRef.current = window.setInterval(() => {
+        const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+        setRecordingSecondsLeft(Math.max(0, STAGE_VIDEO_MAX_DURATION_SECONDS - elapsedSeconds));
+      }, 250);
       recordingStopTimerRef.current = window.setTimeout(
         () => stopCameraRecording(),
         STAGE_VIDEO_MAX_DURATION_SECONDS * 1000
       );
     } catch (error) {
       setRecordingKey(null);
+      setRecordingStarted(false);
+      setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
       stopActiveCameraStream();
-      if (error instanceof Error && error.name === "NotAllowedError") {
-        setStageFeedback((prev) => ({
-          ...prev,
-          [nextRecordingKey]: {
-            status: "error",
-            message: "Camera access was blocked. Allow camera access in the browser and tap the stage again.",
-          },
-        }));
-      } else {
-        openNativeCameraFallback(job, stage, "The in-page camera did not open on this phone. Use the phone camera recorder, then preview it here before saving.");
-      }
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "error",
+          message: error instanceof Error ? error.message : "Camera recording failed. Retake this stage from the camera.",
+        },
+      }));
     }
   };
 
@@ -747,7 +905,7 @@ export default function EmployeeJobsPage() {
       capturedDraftUrlRef.current = null;
     }
     URL.revokeObjectURL(draft.previewUrl);
-    await uploadStageVideo(job, draft.stage, draft.file, draft.durationSeconds);
+    await uploadStageVideo(job, draft.stage, draft.file, draft.durationSeconds, draft.locationProof);
   };
 
   const renderJobCard = (job: EmployeeJob, historyMode = false) => {
@@ -783,8 +941,130 @@ export default function EmployeeJobsPage() {
       !selectedDraft &&
       !recordingKey &&
       !uploadingKey;
+    const countdownIsUrgent = recordingSecondsLeft <= 10;
 
     return (
+      <Fragment key={job.id}>
+      {isRecordingSelectedStage ? (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-black text-white">
+          <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/30 to-transparent px-5 pb-10 pt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-100">
+              {recordingStarted ? "Recording stage" : "Camera ready"}
+            </p>
+            <h2 className="mt-1 text-2xl font-bold leading-tight">{selectedStage.label}</h2>
+            <p className="mt-1 text-sm leading-5 text-blue-50/85">{selectedStage.cue}</p>
+          </div>
+          <video
+            ref={liveVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="h-full w-full flex-1 bg-black object-cover"
+          />
+          {!recordingStarted ? (
+            <button
+              type="button"
+              onClick={closeCameraPreview}
+              className="absolute right-4 top-4 z-30 rounded-full border border-white/25 bg-black/75 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-black/40 transition active:scale-[0.98]"
+              aria-label="Cancel recording and choose another stage"
+            >
+              Cancel
+            </button>
+          ) : null}
+          {recordingStarted ? (
+            <div
+              className={`absolute right-4 top-4 z-20 rounded-full border px-4 py-2 text-lg font-black shadow-lg ${
+                countdownIsUrgent
+                  ? "border-red-300 bg-red-600 text-white"
+                  : "border-white/35 bg-black/70 text-white"
+              }`}
+            >
+              0:{String(recordingSecondsLeft).padStart(2, "0")}
+            </div>
+          ) : null}
+          <div
+            className="absolute bottom-0 left-0 right-0 z-20 space-y-3 bg-gradient-to-t from-black via-black/95 to-transparent px-5 pb-5 pt-16"
+            style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+          >
+            {!recordingStarted ? (
+              <p className="rounded-xl border border-blue-300/50 bg-blue-600/20 px-4 py-3 text-center text-base font-bold text-blue-50">
+                Frame the shot first. The 30-second timer starts after you tap Start Recording.
+              </p>
+            ) : countdownIsUrgent ? (
+              <p className="rounded-xl border border-red-300/60 bg-red-600/25 px-4 py-3 text-center text-base font-bold text-red-50">
+                Finish the shot. Recording stops soon.
+              </p>
+            ) : null}
+            {recordingStarted ? (
+              <button
+                type="button"
+                onClick={stopCameraRecording}
+                className="w-full rounded-2xl border border-blue-200 bg-blue-600 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-blue-950/40 transition active:scale-[0.99]"
+              >
+                Stop and Preview
+              </button>
+            ) : (
+              <div className="grid gap-3">
+                <button
+                  type="button"
+                  onClick={beginCameraRecording}
+                  className="w-full rounded-2xl border border-blue-200 bg-blue-600 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-blue-950/40 transition active:scale-[0.99]"
+                >
+                  Start Recording
+                </button>
+                <button
+                  type="button"
+                  onClick={closeCameraPreview}
+                  className="w-full rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-base font-bold text-white transition active:scale-[0.99]"
+                >
+                  Cancel and Choose Another Stage
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+      {selectedDraft ? (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-black text-white">
+          <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/30 to-transparent px-5 pb-10 pt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-100">Preview before saving</p>
+            <h2 className="mt-1 text-2xl font-bold leading-tight">{selectedStage.label}</h2>
+            <p className="mt-1 text-sm leading-5 text-blue-50/85">
+              Confirm to save this clip to the project, or retake it now.
+            </p>
+          </div>
+          <video
+            src={selectedDraft.previewUrl}
+            controls
+            playsInline
+            className="h-full w-full flex-1 bg-black object-contain"
+          />
+          <div
+            className="absolute bottom-0 left-0 right-0 z-20 space-y-3 bg-gradient-to-t from-black via-black/95 to-transparent px-5 pb-5 pt-16"
+            style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+          >
+            <button
+              type="button"
+              onClick={() => void confirmCapturedDraft(job)}
+              disabled={Boolean(uploadingKey)}
+              className="w-full rounded-2xl border border-emerald-200 bg-emerald-600 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-950/40 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {uploadingKey === selectedStageFeedbackKey ? "Saving..." : "Confirm and Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearCapturedDraft();
+                void startCameraRecording(job, selectedStage.key);
+              }}
+              disabled={Boolean(uploadingKey)}
+              className="w-full rounded-2xl border border-white/25 bg-white/10 px-5 py-4 text-lg font-bold text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Retake
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div
         key={job.id}
         className={`rounded-2xl border p-4 shadow-sm ${
@@ -840,7 +1120,7 @@ export default function EmployeeJobsPage() {
           </div>
         ) : (
           <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {STAGES.map((stage, index) => {
                 const done = Boolean(job.stageProgress[stage.key]);
                 const selected = selectedStage.key === stage.key;
@@ -859,9 +1139,9 @@ export default function EmployeeJobsPage() {
                       }
                     }}
                     disabled={Boolean(hasCaptureToken && (isRecordingAnotherStage || uploadingKey))}
-                    className={`min-h-[92px] rounded-xl border p-3 text-left text-xs transition ${
+                    className={`min-h-[128px] rounded-2xl border p-4 text-left transition ${
                       selected
-                        ? "border-blue-400 bg-blue-600/25 shadow-sm"
+                        ? "border-blue-300 bg-blue-600/35 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
                         : done
                           ? "border-emerald-400/35 bg-emerald-500/12 hover:border-emerald-300"
                           : "border-white/10 bg-slate-950/55 hover:border-blue-300/60 hover:bg-blue-600/10"
@@ -869,7 +1149,7 @@ export default function EmployeeJobsPage() {
                   >
                     <div className="flex items-start gap-3">
                       <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
+                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border text-base font-bold ${
                           done
                             ? "border-emerald-300 bg-emerald-400/20 text-emerald-100"
                             : selected
@@ -880,10 +1160,10 @@ export default function EmployeeJobsPage() {
                         {index + 1}
                       </span>
                       <div className="min-w-0">
-                        <p className="font-semibold text-white">{stage.label}</p>
-                        <p className="mt-1 text-[11px] leading-4 text-blue-100/70">{stage.cue}</p>
+                        <p className="text-lg font-bold leading-6 text-white">{stage.label}</p>
+                        <p className="mt-2 text-sm leading-6 text-blue-50/85">{stage.cue}</p>
                         <p
-                          className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          className={`mt-4 inline-flex rounded-full px-4 py-2 text-sm font-bold ${
                             done
                               ? "bg-emerald-400/15 text-emerald-100"
                               : hasCaptureToken
@@ -900,34 +1180,34 @@ export default function EmployeeJobsPage() {
               })}
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-200">
                     {stageProgressLabel}
                   </p>
-                  <h3 className="text-base font-semibold text-white">
+                  <h3 className="text-2xl font-bold leading-tight text-white">
                     {getEmployeeCaptureStageHeading(selectedStage.key)}
                   </h3>
-                  <p className="text-xs leading-5 text-blue-100/70">{selectedStage.cue}</p>
+                  <p className="text-base leading-7 text-blue-50/80">{selectedStage.cue}</p>
                 </div>
                 <div className="space-y-1 text-left sm:text-right">
-                  <p className="text-xs font-semibold text-blue-50">
+                  <p className="text-base font-bold text-blue-50">
                     {completedStageCount} of {STAGES.length} stages uploaded
                   </p>
-                  <p className={`text-xs font-semibold ${selectedStageDone ? "text-emerald-200" : "text-amber-200"}`}>
+                  <p className={`text-base font-bold ${selectedStageDone ? "text-emerald-200" : "text-amber-200"}`}>
                     {selectedStageDone ? "This stage already has a video." : "This stage still needs a video."}
                   </p>
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-2 text-xs text-blue-100/80 sm:grid-cols-2">
+              <div className="mt-4 grid gap-3 text-base text-blue-50/85 sm:grid-cols-2">
                 <p>
                   <span className="font-semibold text-white">Capture source:</span> {captureDeviceLabel}
                 </p>
                 <p className="font-semibold text-blue-200">{getStageVideoLimitCopy()}</p>
               </div>
-              <p className="mt-2 text-xs leading-5 text-blue-100/70">
+              <p className="mt-3 text-base leading-7 text-blue-50/75">
                 {hasCaptureToken
                   ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
                   : captureSupportCopy}
@@ -942,64 +1222,22 @@ export default function EmployeeJobsPage() {
               {showUploadControls ? (
                 <div className="mt-3 space-y-3">
                   {isRecordingSelectedStage ? (
-                    <div className="space-y-3">
-                      <video
-                        ref={liveVideoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="aspect-video w-full rounded-xl border border-blue-300/30 bg-black object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={stopCameraRecording}
-                        className="w-full rounded-xl border border-blue-300 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-                      >
-                        Stop and Preview
-                      </button>
-                    </div>
+                    <p className="rounded-xl border border-blue-300/20 bg-blue-300/10 px-4 py-3 text-base font-semibold text-blue-50">
+                      Camera is open full screen.
+                    </p>
                   ) : selectedDraft ? (
-                    <div className="space-y-3">
-                      <video
-                        src={selectedDraft.previewUrl}
-                        controls
-                        playsInline
-                        className="aspect-video w-full rounded-xl border border-blue-300/30 bg-black object-contain"
-                      />
-                      <p className="text-xs leading-5 text-blue-100/70">
-                        Preview is temporary. This video is saved to the project only after you confirm.
-                      </p>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <button
-                          type="button"
-                          onClick={() => void confirmCapturedDraft(job)}
-                          disabled={Boolean(uploadingKey)}
-                          className="rounded-xl border border-emerald-300 bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {uploadingKey === selectedStageFeedbackKey ? "Saving..." : "Confirm and Save"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            clearCapturedDraft();
-                            void startCameraRecording(job, selectedStage.key);
-                          }}
-                          disabled={Boolean(uploadingKey)}
-                          className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-blue-50 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Retake
-                        </button>
-                      </div>
-                    </div>
+                    <p className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-base font-semibold text-emerald-50">
+                      Preview is open full screen. Confirm to save it, or retake the clip.
+                    </p>
                   ) : hasCaptureToken ? (
                     <div className="space-y-2">
-                      <p className="rounded-xl border border-blue-300/15 bg-blue-300/5 px-3 py-2 text-xs leading-5 text-blue-100/75">
+                      <p className="rounded-xl border border-blue-300/15 bg-blue-300/5 px-4 py-3 text-base leading-7 text-blue-50/80">
                         Select a stage card above to record directly from this device. Nothing is saved until you confirm the preview.
                       </p>
                       {canOfferNativeCameraRetry ? (
                         <button
                           type="button"
-                          onClick={() => openNativeCameraFallback(job, selectedStage.key)}
+                          onClick={() => void startCameraRecording(job, selectedStage.key)}
                           className="w-full rounded-xl border border-blue-300 bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
                         >
                           Open Phone Camera
@@ -1028,9 +1266,9 @@ export default function EmployeeJobsPage() {
                 </p>
               )}
 
-              {selectedStageFeedback ? (
+              {selectedStageFeedback && !isRecordingSelectedStage && !selectedDraft ? (
                 <p
-                  className={`mt-2 text-[11px] ${
+                  className={`mt-3 text-sm font-semibold ${
                     selectedStageFeedback.status === "error"
                       ? "text-red-200"
                       : selectedStageFeedback.status === "success"
@@ -1091,10 +1329,11 @@ export default function EmployeeJobsPage() {
           </div>
         ) : null}
       </div>
+      </Fragment>
     );
   };
 
-  if (authLoading) {
+  if (authLoading && !hasCaptureToken) {
     return (
       <div className="reliance-operator-shell reliance-grid-lines min-h-screen p-4">
         <div className="mx-auto w-full max-w-2xl rounded-lg border bg-white p-4">
@@ -1153,7 +1392,8 @@ export default function EmployeeJobsPage() {
             fallbackCapture.job,
             fallbackCapture.stage,
             file,
-            "native-camera"
+            "native-camera",
+            fallbackCapture.locationProof
           );
         }}
       />
