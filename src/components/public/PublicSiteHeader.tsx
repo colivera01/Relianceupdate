@@ -71,12 +71,16 @@ export function PublicSiteHeader({
           {hideLogo ? (
             <div aria-hidden="true" className="h-10 w-10 shrink-0 md:h-8 md:w-8" />
           ) : dark ? (
-            <Link href="/" className="inline-flex shrink-0">
+            <Link href="/" className="inline-flex shrink-0 items-center gap-3">
               <img
-                src="/reliance-email-logo.png"
-                alt="Reliance"
-                className="h-10 w-24 rounded-xl object-contain sm:h-20 sm:w-44 sm:rounded-2xl xl:h-24 xl:w-52"
+                src="/reliance-mark.png"
+                alt=""
+                aria-hidden="true"
+                className="h-12 w-16 object-contain sm:h-16 sm:w-20 xl:h-20 xl:w-24"
               />
+              <span className="hidden font-display text-2xl font-semibold uppercase tracking-[0.22em] text-white sm:inline xl:text-3xl">
+                Reliance
+              </span>
             </Link>
           ) : (
             <RelianceLogo
