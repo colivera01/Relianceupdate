@@ -91,7 +91,7 @@ export function buildRelianceEmailHtml(input: RelianceEmailTemplateInput): strin
                   ${input.secondaryHtml ? `<div style="color:#c9d8ef;font-size:14px;line-height:1.65;">${input.secondaryHtml}</div>` : ""}
                   ${
                     fallbackHref
-                      ? `<p style="margin:20px 0 0;color:#92a8c7;font-size:12px;line-height:1.55;">If the button does not open, copy and paste this link into your browser:<br/><a href="${escapeRelianceEmailHtml(fallbackHref)}" style="color:#8fb9ff;word-break:break-all;">${escapeRelianceEmailHtml(fallbackHref)}</a></p>`
+                      ? `<div style="margin:20px 0 0;padding:12px 14px;border-radius:12px;background:#07111f;border:1px solid #162f54;color:#92a8c7;font-size:12px;line-height:1.55;"><strong style="color:#c9d8ef;">Backup link:</strong> If the button does not open, copy and paste this secure link into your browser.<br/><a href="${escapeRelianceEmailHtml(fallbackHref)}" style="color:#8fb9ff;word-break:break-all;">${escapeRelianceEmailHtml(fallbackHref)}</a></div>`
                       : ""
                   }
                   ${input.footerNote ? `<p style="margin:20px 0 0;color:#92a8c7;font-size:12px;line-height:1.55;">${escapeRelianceEmailHtml(input.footerNote)}</p>` : ""}

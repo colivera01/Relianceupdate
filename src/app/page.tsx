@@ -109,11 +109,13 @@ export default function HomePage() {
           <div className="grid gap-8 lg:grid-cols-[minmax(620px,1fr)_minmax(620px,1fr)] lg:items-start xl:gap-10 2xl:grid-cols-[minmax(700px,1fr)_minmax(700px,1fr)]">
             <div className="flex w-full flex-col">
               <div className="reliance-glass -mx-1 overflow-hidden rounded-[26px] border border-white/10 bg-[rgba(6,17,31,0.78)] p-1 shadow-[0_30px_90px_rgba(4,9,20,0.42)] sm:mx-0 sm:rounded-[34px] sm:p-2">
-                <img
-                  src="/homepage/hero-concepts/reliance-multitrade-collage-hero-v11.png"
-                  alt="Reliance proof platform showing local professionals across electrical, plumbing, HVAC, cleaning, lawn care, beauty, auto, and appliance services."
-                  className="block w-full rounded-[22px] sm:rounded-[28px]"
-                />
+                <div className="relative overflow-hidden rounded-[22px] bg-[#05101d] sm:rounded-[28px]">
+                  <img
+                    src="/homepage/hero-concepts/reliance-multitrade-collage-hero-v11.png"
+                    alt="Reliance proof platform showing local professionals across electrical, plumbing, HVAC, cleaning, lawn care, beauty, auto, and appliance services."
+                    className="block w-full"
+                  />
+                </div>
               </div>
 
               <div className="mt-8 w-full lg:mt-24">

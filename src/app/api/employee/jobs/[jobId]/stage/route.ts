@@ -39,7 +39,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         });
     const booking = await prisma.booking.findUnique({
       where: { id: jobId },
-      select: { id: true, vendorId: true, customerMetadata: true },
+      select: { id: true, vendorId: true, status: true, customerMetadata: true },
     });
     if (!booking) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     await ensureVendorAccountCanOperate(booking.vendorId);
@@ -97,8 +97,9 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       where: { id: booking.id },
       data: {
         customerMetadata: setStageProgressMetadata(booking.customerMetadata, stage as any),
+        ...(hasAllRequiredStages ? { status: "AWAITING_REVIEW" } : {}),
       },
-      select: { id: true, customerMetadata: true, updatedAt: true },
+      select: { id: true, status: true, customerMetadata: true, updatedAt: true },
     });
 
     await recordLifecycleAudit({
@@ -121,7 +122,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       success: true,
       stage,
       readyForManagerReview: hasAllRequiredStages,
-      awaitingReview: false,
+      awaitingReview: hasAllRequiredStages,
       job: updated,
     });
   } catch (error: any) {

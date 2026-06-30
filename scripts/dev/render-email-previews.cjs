@@ -79,7 +79,7 @@ function emailShell(input) {
                       ${input.secondaryHtml ? `<div style="color:#c9d8ef;font-size:14px;line-height:1.65;">${input.secondaryHtml}</div>` : ""}
                       ${
                         fallbackHref
-                          ? `<p style="margin:20px 0 0;color:#92a8c7;font-size:12px;line-height:1.55;">If the button does not open, copy and paste this link into your browser:<br/><a href="${escapeHtml(fallbackHref)}" style="color:#8fb9ff;word-break:break-all;">${escapeHtml(fallbackHref)}</a></p>`
+                          ? `<div style="margin:20px 0 0;padding:12px 14px;border-radius:12px;background:#07111f;border:1px solid #162f54;color:#92a8c7;font-size:12px;line-height:1.55;"><strong style="color:#c9d8ef;">Backup link:</strong> If the button does not open, copy and paste this secure link into your browser.<br/><a href="${escapeHtml(fallbackHref)}" style="color:#8fb9ff;word-break:break-all;">${escapeHtml(fallbackHref)}</a></div>`
                           : ""
                       }
                       ${input.footerNote ? `<p style="margin:20px 0 0;color:#92a8c7;font-size:12px;line-height:1.55;">${escapeHtml(input.footerNote)}</p>` : ""}
@@ -97,7 +97,7 @@ function emailShell(input) {
 
 const base = "https://beta.relianceonline.org";
 const serviceLink = `${base}/employee/jobs?jobId=cmqwvc2vr000bso843zn562dl&ct=sample-token`;
-const reviewLink = `${base}/reviews?bookingId=sample-booking`;
+const reviewLink = `${base}/my-bookings/sample-booking?returnTo=%2Freviews`;
 const recordsLink = `${base}/my-bookings`;
 const serviceName = "Electrical Service Recording Test";
 const vendorName = "Electro LLC";
@@ -176,15 +176,16 @@ const previews = [
     file: "04-customer-service-video-ready.png",
     title: "Customer service video ready",
     eyebrow: "Service videos ready",
-    headline: "Your service video is ready",
+    headline: `${vendorName} shared your service video proof`,
     greeting: `Hello ${customerName},`,
     bodyHtml: `
-      <p style="margin:0 0 14px;">${escapeHtml(vendorName)} has shared your service video for ${escapeHtml(serviceName)}.</p>
-      <p style="margin:0;">You can now review the Starting Condition, Work in Progress, and Final Result service videos in Reliance.</p>
+      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeHtml(vendorName)}</strong> completed the service-video package for your recent service.</p>
+      <p style="margin:0;">Open Reliance to review the Starting Condition, Work in Progress, and Final Result clips shared by your provider.</p>
     `,
     details: [
       { label: "Service", value: serviceName },
-      { label: "Provider", value: vendorName },
+      { label: "Service provider", value: vendorName },
+      { label: "Video package", value: "Starting Condition, Work in Progress, and Final Result" },
     ],
     cta: { label: "Watch Service Video", href: `${base}/my-bookings/sample-booking` },
     fallbackHref: `${base}/my-bookings/sample-booking`,
@@ -205,15 +206,15 @@ const previews = [
     ],
     cta: { label: "Review Your Service", href: reviewLink },
     secondaryHtml: `
-      <p style="margin:0 0 8px;color:#ffffff;font-weight:800;">Quickly rate your experience:</p>
+      <p style="margin:0 0 8px;color:#ffffff;font-weight:800;">Start with a quick rating:</p>
       <p style="margin:0 0 14px;">
-        <a href="${reviewLink}&rating=1" style="color:#facc15;text-decoration:none;display:inline-block;margin:0 10px 6px 0;font-size:22px;letter-spacing:1px;">&#9733;</a>
-        <a href="${reviewLink}&rating=2" style="color:#facc15;text-decoration:none;display:inline-block;margin:0 10px 6px 0;font-size:22px;letter-spacing:1px;">&#9733;&#9733;</a>
-        <a href="${reviewLink}&rating=3" style="color:#facc15;text-decoration:none;display:inline-block;margin:0 10px 6px 0;font-size:22px;letter-spacing:1px;">&#9733;&#9733;&#9733;</a>
-        <a href="${reviewLink}&rating=4" style="color:#facc15;text-decoration:none;display:inline-block;margin:0 10px 6px 0;font-size:22px;letter-spacing:1px;">&#9733;&#9733;&#9733;&#9733;</a>
-        <a href="${reviewLink}&rating=5" style="color:#facc15;text-decoration:none;display:inline-block;margin:0 10px 6px 0;font-size:22px;letter-spacing:1px;">&#9733;&#9733;&#9733;&#9733;&#9733;</a>
+        <a href="${reviewLink}&rating=1" aria-label="Start a 1 out of 5 star review" style="display:inline-block;margin:0 8px 8px 0;padding:9px 12px;border-radius:999px;border:1px solid #2b5aa5;background:#0d1b33;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;line-height:1;"><span style="display:inline-block;min-width:12px;text-align:center;">1</span><span style="color:#facc15;margin-left:4px;">&#9733;</span></a>
+        <a href="${reviewLink}&rating=2" aria-label="Start a 2 out of 5 star review" style="display:inline-block;margin:0 8px 8px 0;padding:9px 12px;border-radius:999px;border:1px solid #2b5aa5;background:#0d1b33;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;line-height:1;"><span style="display:inline-block;min-width:12px;text-align:center;">2</span><span style="color:#facc15;margin-left:4px;">&#9733;</span></a>
+        <a href="${reviewLink}&rating=3" aria-label="Start a 3 out of 5 star review" style="display:inline-block;margin:0 8px 8px 0;padding:9px 12px;border-radius:999px;border:1px solid #2b5aa5;background:#0d1b33;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;line-height:1;"><span style="display:inline-block;min-width:12px;text-align:center;">3</span><span style="color:#facc15;margin-left:4px;">&#9733;</span></a>
+        <a href="${reviewLink}&rating=4" aria-label="Start a 4 out of 5 star review" style="display:inline-block;margin:0 8px 8px 0;padding:9px 12px;border-radius:999px;border:1px solid #2b5aa5;background:#0d1b33;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;line-height:1;"><span style="display:inline-block;min-width:12px;text-align:center;">4</span><span style="color:#facc15;margin-left:4px;">&#9733;</span></a>
+        <a href="${reviewLink}&rating=5" aria-label="Start a 5 out of 5 star review" style="display:inline-block;margin:0 8px 8px 0;padding:9px 12px;border-radius:999px;border:1px solid #2b5aa5;background:#0d1b33;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;line-height:1;"><span style="display:inline-block;min-width:12px;text-align:center;">5</span><span style="color:#facc15;margin-left:4px;">&#9733;</span></a>
       </p>
-      <p style="margin:0;">Your feedback window is open for a limited time. You can watch your service video and leave feedback in one place.</p>
+      <p style="margin:0;">Your feedback window is open for a limited time. You can watch your service video, confirm the rating, and leave feedback in one place.</p>
     `,
     fallbackHref: reviewLink,
   },

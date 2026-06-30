@@ -50,20 +50,21 @@ export async function sendVideoReadyNotification(
     fallback: 'your service visit',
   });
   const subject = `Your service video from ${vendorName} is ready`;
-  const message = `${vendorName} has shared your service video for ${serviceLabel}.`;
+  const message = `${vendorName} has completed and shared your Reliance service video proof for ${serviceLabel}.`;
 
   if (env.emailEnabled && customerEmail) {
     const html = buildRelianceEmailHtml({
       eyebrow: 'Service videos ready',
-      headline: 'Your service video is ready',
+      headline: `${vendorName} shared your service video proof`,
       greeting: `Hello${customerName ? ` ${customerName}` : ''},`,
       bodyHtml: `
-        <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(message)}</p>
-        <p style="margin:0;">You can now review the Starting Condition, Work in Progress, and Final Result service videos in Reliance.</p>
+        <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> completed the service-video package for your recent service.</p>
+        <p style="margin:0;">Open Reliance to review the Starting Condition, Work in Progress, and Final Result clips shared by your provider.</p>
       `,
       details: [
         { label: 'Service', value: serviceLabel },
-        { label: 'Provider', value: vendorName },
+        { label: 'Service provider', value: vendorName },
+        { label: 'Video package', value: 'Starting Condition, Work in Progress, and Final Result' },
       ],
       cta: { label: 'Watch Service Video', href: input.videoUrl },
       fallbackHref: input.videoUrl,
@@ -73,7 +74,7 @@ export async function sendVideoReadyNotification(
       '',
       message,
       '',
-      'You can now review the Starting Condition, Work in Progress, and Final Result service videos in Reliance.',
+      'Open Reliance to review the Starting Condition, Work in Progress, and Final Result clips shared by your provider.',
       '',
       `Watch service video: ${input.videoUrl}`,
     ].join('\n');

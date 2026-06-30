@@ -39,11 +39,12 @@ export type ReviewReminderResult = {
 };
 
 function reviewsPath(bookingId: string, rating?: number): string {
-  const query = new URLSearchParams({ bookingId: String(bookingId) });
+  const safeBookingId = encodeURIComponent(String(bookingId));
+  const query = new URLSearchParams({ returnTo: '/reviews' });
   if (Number.isInteger(rating) && Number(rating) >= 1 && Number(rating) <= 5) {
     query.set('rating', String(rating));
   }
-  return `/reviews?${query.toString()}`;
+  return `/my-bookings/${safeBookingId}?${query.toString()}`;
 }
 
 function buildAbsoluteUrl(base: string, path: string): string {
@@ -84,7 +85,7 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
   const ratingHtml = inlineRatingLinks
     .map(
       (item) =>
-        `<a href="${escapeHtml(item.url)}" aria-label="Rate ${item.rating} out of 5" style="color:#facc15;text-decoration:none;display:inline-block;margin:0 10px 6px 0;font-size:22px;letter-spacing:1px;">${'&#9733;'.repeat(item.rating)}</a>`
+        `<a href="${escapeHtml(item.url)}" aria-label="Start a ${item.rating} out of 5 star review" style="display:inline-block;margin:0 8px 8px 0;padding:9px 12px;border-radius:999px;border:1px solid #2b5aa5;background:#0d1b33;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;line-height:1;"><span style="display:inline-block;min-width:12px;text-align:center;">${item.rating}</span><span style="color:#facc15;margin-left:4px;">&#9733;</span></a>`
     )
     .join('');
   const html = buildRelianceEmailHtml({
@@ -101,9 +102,9 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
     ],
     cta: { label: 'Review Your Service', href: absoluteFallbackLink },
     secondaryHtml: `
-      <p style="margin:0 0 8px;color:#ffffff;font-weight:800;">Quickly rate your experience:</p>
+      <p style="margin:0 0 8px;color:#ffffff;font-weight:800;">Start with a quick rating:</p>
       <p style="margin:0 0 14px;">${ratingHtml}</p>
-      <p style="margin:0;">Your feedback window is open for a limited time. You can watch your service video and leave feedback in one place.</p>
+      <p style="margin:0;">Your feedback window is open for a limited time. You can watch your service video, confirm the rating, and leave feedback in one place.</p>
     `,
     fallbackHref: absoluteFallbackLink,
   });
@@ -122,7 +123,7 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
     '',
     `Review your service: ${absoluteFallbackLink}`,
     '',
-    'Quickly rate your experience:',
+    'Start with a quick rating:',
     ...inlineRatingLinks.map((item) => `${item.rating} star${item.rating > 1 ? 's' : ''}: ${item.url}`),
     '',
     `If the button does not work, copy and paste this link into your browser: ${absoluteFallbackLink}`,

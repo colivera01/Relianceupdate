@@ -118,7 +118,6 @@ export async function GET(
       );
       const completedStageKeys = new Set(
         videoAssets
-          .filter((asset: any) => isCompletedStageProofVideo(asset?.mediaSession || null))
           .map((asset: any) => normalizeVendorJobVideoStage(asset?.mediaSession?.vendorJobVideoStage))
           .filter(Boolean)
       );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sendEmail } from '@/lib/email/resend';
 import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationEnvWarnings } from '@/lib/env/notification-config';
+import { buildRelianceEmailHtml } from '@/lib/email/reliance-template';
 
 /**
  * Dev-only: verify Resend + configured SMS provider wiring with explicit targets.
@@ -53,11 +54,17 @@ export async function POST(request: NextRequest) {
   const results: Record<string, unknown> = {};
 
   if (email) {
+    const html = buildRelianceEmailHtml({
+      eyebrow: 'Notification test',
+      headline: 'Reliance email test',
+      bodyHtml: '<p style="margin:0;">This is a Reliance dev-only test email from <code>/api/dev/notifications-test</code>.</p>',
+      footerNote: 'This message was generated from a local development test route.',
+    });
     results.email = await sendEmail({
       to: email,
       subject: 'Reliance notification test',
       text: 'This is a Reliance dev-only test email from /api/dev/notifications-test.',
-      html: '<p>This is a Reliance dev-only test email from <code>/api/dev/notifications-test</code>.</p>',
+      html,
     });
   }
 

@@ -135,6 +135,12 @@ function bookingStatusBadgeClass(status: string | null | undefined): string {
   return 'border-gray-200 bg-gray-50 text-gray-700';
 }
 
+function parseRatingParam(value: string | null | undefined): number | null {
+  const rating = Number(value);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return null;
+  return rating;
+}
+
 function BookingMediaDetailPageContent() {
   const params = useParams<{ bookingId: string }>();
   const router = useRouter();
@@ -146,6 +152,7 @@ function BookingMediaDetailPageContent() {
   const consentTokenFromReturn = String(searchParams?.get('consentToken') || '').trim();
   const consentedMediaSessionId = String(searchParams?.get('mediaSessionId') || '').trim();
   const requestedReturnTo = String(searchParams?.get('returnTo') || '').trim();
+  const quickRatingFromLink = parseRatingParam(searchParams?.get('rating'));
   const cleanedDetailHref =
     requestedReturnTo === '/reviews'
       ? `/my-bookings/${bookingId}?returnTo=${encodeURIComponent('/reviews')}`
@@ -583,6 +590,11 @@ function BookingMediaDetailPageContent() {
     setReviewStatusMessage(null);
     setReviewError(null);
   }, [activeVideoId]);
+
+  useEffect(() => {
+    if (!quickRatingFromLink || hasExistingCustomerReview) return;
+    setSelectedRating(quickRatingFromLink);
+  }, [hasExistingCustomerReview, quickRatingFromLink]);
 
   useEffect(() => {
     if (!canStartInlineReview || !activeVideo?.mediaSessionId || !booking?.vendor?.id || !userId) {

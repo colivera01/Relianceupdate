@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Flashlight, FlashlightOff } from "lucide-react";
 import { GuidanceCallout } from "@/components/guidance/GuidanceCallout";
 import { TutorialEntryPoint } from "@/components/guidance/TutorialEntryPoint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -239,6 +240,9 @@ export default function EmployeeJobsPage() {
   const [recordingStarted, setRecordingStarted] = useState(false);
   const [recordingSecondsLeft, setRecordingSecondsLeft] = useState(STAGE_VIDEO_MAX_DURATION_SECONDS);
   const [activeCameraStream, setActiveCameraStream] = useState<MediaStream | null>(null);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchError, setTorchError] = useState<string | null>(null);
   const [capturedDraft, setCapturedDraft] = useState<CapturedVideoDraft | null>(null);
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
   const fallbackCaptureInputRef = useRef<HTMLInputElement | null>(null);
@@ -582,8 +586,42 @@ export default function EmployeeJobsPage() {
       activeCameraStreamRef.current = null;
     }
     activeCameraContextRef.current = null;
+    setTorchSupported(false);
+    setTorchOn(false);
+    setTorchError(null);
     setRecordingStarted(false);
     setActiveCameraStream(null);
+  };
+
+  const getActiveVideoTrack = () => activeCameraStreamRef.current?.getVideoTracks()[0] || null;
+
+  const updateTorchSupport = (stream: MediaStream) => {
+    const track = stream.getVideoTracks()[0];
+    const capabilities =
+      typeof track?.getCapabilities === "function"
+        ? (track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean })
+        : null;
+    const nextTorchSupported = Boolean(capabilities?.torch);
+    setTorchSupported(nextTorchSupported);
+    setTorchOn(false);
+    setTorchError(nextTorchSupported ? null : "Flashlight is not available on this phone/browser.");
+  };
+
+  const toggleTorch = async () => {
+    const track = getActiveVideoTrack();
+    if (!track) return;
+    const nextTorchOn = !torchOn;
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: nextTorchOn } as MediaTrackConstraintSet],
+      });
+      setTorchOn(nextTorchOn);
+      setTorchError(null);
+    } catch {
+      setTorchSupported(false);
+      setTorchOn(false);
+      setTorchError("Flashlight is not available from this browser.");
+    }
   };
 
   const clearRecordingTimers = () => {
@@ -773,6 +811,7 @@ export default function EmployeeJobsPage() {
       setRecordingStarted(false);
       setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
       setActiveCameraStream(stream);
+      updateTorchSupport(stream);
       setStageFeedback((prev) => ({
         ...prev,
         [nextRecordingKey]: {
@@ -995,6 +1034,19 @@ export default function EmployeeJobsPage() {
                 Finish the shot. Recording stops soon.
               </p>
             ) : null}
+            {torchSupported ? (
+              <button
+                type="button"
+                onClick={() => void toggleTorch()}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-base font-bold text-white transition active:scale-[0.99]"
+                aria-pressed={torchOn}
+              >
+                {torchOn ? <FlashlightOff className="h-5 w-5" /> : <Flashlight className="h-5 w-5" />}
+                {torchOn ? "Turn Flashlight Off" : "Turn Flashlight On"}
+              </button>
+            ) : torchError ? (
+              <p className="text-center text-xs font-semibold text-white/55">{torchError}</p>
+            ) : null}
             {recordingStarted ? (
               <button
                 type="button"
@@ -1171,7 +1223,11 @@ export default function EmployeeJobsPage() {
                                 : "bg-white/10 text-blue-100"
                           }`}
                         >
-                          {done ? "Recorded" : hasCaptureToken ? `Tap to record ${getCaptureLinkStepLabel(stage.key)}` : "Required"}
+                          {done
+                            ? "Recorded - tap to edit"
+                            : hasCaptureToken
+                              ? `Tap to record ${getCaptureLinkStepLabel(stage.key)}`
+                              : "Required"}
                         </p>
                       </div>
                     </div>
@@ -1214,9 +1270,14 @@ export default function EmployeeJobsPage() {
               </p>
 
               {selectedStageDone ? (
-                <p className="mt-2 text-xs text-amber-200">
-                  Retaking this stage replaces the current video for this step.
-                </p>
+                <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3">
+                  <p className="text-sm font-semibold text-amber-100">
+                    This stage is saved. You can replace it before sending all videos to the manager.
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-100/75">
+                    Retaking this stage replaces the current video for this step after you confirm the new preview.
+                  </p>
+                </div>
               ) : null}
 
               {showUploadControls ? (
@@ -1232,8 +1293,20 @@ export default function EmployeeJobsPage() {
                   ) : hasCaptureToken ? (
                     <div className="space-y-2">
                       <p className="rounded-xl border border-blue-300/15 bg-blue-300/5 px-4 py-3 text-base leading-7 text-blue-50/80">
-                        Select a stage card above to record directly from this device. Nothing is saved until you confirm the preview.
+                        {selectedStageDone
+                          ? "This saved stage can be replaced if the video needs to be fixed. Nothing changes until you confirm the new preview."
+                          : "Select a stage card above to record directly from this device. Nothing is saved until you confirm the preview."}
                       </p>
+                      {selectedStageDone ? (
+                        <button
+                          type="button"
+                          onClick={() => void startCameraRecording(job, selectedStage.key)}
+                          disabled={Boolean(uploadingKey) || isRecordingAnotherStage}
+                          className="w-full rounded-xl border border-amber-200 bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Retake Saved Video
+                        </button>
+                      ) : null}
                       {canOfferNativeCameraRetry ? (
                         <button
                           type="button"
