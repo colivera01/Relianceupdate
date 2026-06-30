@@ -595,6 +595,21 @@ export default function EmployeeJobsPage() {
 
   const getActiveVideoTrack = () => activeCameraStreamRef.current?.getVideoTracks()[0] || null;
 
+  const mediaTrackSupportsTorch = (track: MediaStreamTrack | null | undefined) => {
+    const capabilities =
+      typeof track?.getCapabilities === "function"
+        ? (track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean })
+        : null;
+    return Boolean(capabilities?.torch);
+  };
+
+  const mediaStreamSupportsTorch = (stream: MediaStream) =>
+    mediaTrackSupportsTorch(stream.getVideoTracks()[0]);
+
+  const stopMediaStream = (stream: MediaStream | null | undefined) => {
+    stream?.getTracks().forEach((track) => track.stop());
+  };
+
   const requestRearCameraStream = async () => {
     const baseVideoConstraints = {
       width: { ideal: 1920 },
@@ -619,26 +634,74 @@ export default function EmployeeJobsPage() {
     ];
 
     let lastError: unknown = null;
+    let fallbackStream: MediaStream | null = null;
     for (const constraints of preferredConstraints) {
       try {
-        return await navigator.mediaDevices.getUserMedia(constraints);
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (mediaStreamSupportsTorch(stream)) {
+          stopMediaStream(fallbackStream);
+          return stream;
+        }
+        if (!fallbackStream) {
+          fallbackStream = stream;
+        } else {
+          stopMediaStream(stream);
+        }
       } catch (error) {
         lastError = error;
       }
     }
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((device) => device.kind === "videoinput" && device.deviceId);
+      const sortedVideoInputs = [...videoInputs].sort((a, b) => {
+        const aLabel = a.label.toLowerCase();
+        const bLabel = b.label.toLowerCase();
+        const aRear = /(back|rear|environment)/i.test(aLabel) ? 0 : 1;
+        const bRear = /(back|rear|environment)/i.test(bLabel) ? 0 : 1;
+        return aRear - bRear;
+      });
+
+      for (const device of sortedVideoInputs) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              ...baseVideoConstraints,
+              deviceId: { exact: device.deviceId },
+            },
+            audio: false,
+          });
+          if (mediaStreamSupportsTorch(stream)) {
+            stopMediaStream(fallbackStream);
+            return stream;
+          }
+          if (!fallbackStream) {
+            fallbackStream = stream;
+          } else {
+            stopMediaStream(stream);
+          }
+        } catch {
+          // Some mobile browsers expose camera ids that cannot be reopened directly.
+        }
+      }
+    } catch {
+      // Device enumeration is a best-effort step after camera permission.
+    }
+
+    if (fallbackStream) return fallbackStream;
     throw lastError instanceof Error ? lastError : new Error("Camera access failed.");
   };
 
   const updateTorchSupport = (stream: MediaStream) => {
-    const track = stream.getVideoTracks()[0];
-    const capabilities =
-      typeof track?.getCapabilities === "function"
-        ? (track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean })
-        : null;
-    const nextTorchSupported = Boolean(capabilities?.torch);
+    const nextTorchSupported = mediaStreamSupportsTorch(stream);
     setTorchSupported(nextTorchSupported);
     setTorchOn(false);
-    setTorchError(nextTorchSupported ? null : "Flashlight is not available on this phone/browser.");
+    setTorchError(
+      nextTorchSupported
+        ? null
+        : "Flashlight is not exposed by this browser/camera. Try opening this link in Chrome if your phone has a rear flash."
+    );
   };
 
   const toggleTorch = async () => {
