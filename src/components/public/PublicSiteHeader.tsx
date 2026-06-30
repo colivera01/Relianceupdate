@@ -42,7 +42,7 @@ export function PublicSiteHeader({
       : "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
   );
   const mobileSecondaryClassName = cn(
-    "inline-flex h-10 items-center justify-center whitespace-nowrap rounded-full px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
     dark
       ? "text-white hover:bg-white/10 hover:text-white"
       : "border border-slate-300 bg-white text-slate-900 hover:bg-slate-50"
@@ -50,7 +50,7 @@ export function PublicSiteHeader({
   const ctaClassName =
     "inline-flex h-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-8 text-lg font-semibold text-white shadow-[0_18px_40px_rgba(36,107,255,0.28)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 xl:h-16 xl:px-10 xl:text-xl";
   const mobileCtaClassName =
-    "inline-flex h-10 items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-4 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(36,107,255,0.24)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+    "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#246BFF,#0F4BFF_60%,#2DAAFB)] px-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(36,107,255,0.24)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:px-4";
 
   return (
     <header
@@ -61,20 +61,20 @@ export function PublicSiteHeader({
     >
       <div
         className={cn(
-          "flex w-full flex-col gap-3 rounded-[30px] border px-4 py-4 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-4 xl:px-9 xl:py-5",
+          "flex w-full flex-col gap-3 rounded-[26px] border px-3 py-4 sm:rounded-[30px] sm:px-6 md:flex-row md:items-center md:justify-between md:gap-4 xl:px-9 xl:py-5",
           dark
             ? "border-white/10 bg-white/6 backdrop-blur-xl"
             : "border-slate-200/80 bg-white/90 shadow-[0_16px_55px_rgba(10,36,99,0.08)] backdrop-blur-xl"
         )}
       >
-        <div className="flex w-full items-center justify-between gap-3 md:w-auto">
+        <div className="flex w-full flex-wrap items-center justify-between gap-2 md:w-auto">
           {hideLogo ? (
             <div aria-hidden="true" className="h-10 w-10 shrink-0 md:h-8 md:w-8" />
           ) : dark ? (
-            <Link href="/" className="relative inline-flex h-24 w-44 shrink-0 items-center justify-center sm:h-28 sm:w-52 xl:h-32 xl:w-60">
-              <span className="pointer-events-none absolute inset-[-10%] rounded-[28px] bg-[radial-gradient(circle_at_40%_38%,rgba(141,178,255,0.20),rgba(45,107,255,0.13)_42%,transparent_72%)] blur-xl" />
+            <Link href="/" className="relative inline-flex h-20 w-36 shrink-0 items-center justify-center sm:h-24 sm:w-44 xl:h-28 xl:w-52">
+              <span className="pointer-events-none absolute inset-[-8%] rounded-[28px] bg-[radial-gradient(circle_at_40%_38%,rgba(141,178,255,0.18),rgba(45,107,255,0.11)_42%,transparent_72%)] blur-xl" />
               <img
-                src="/reliance-logo.png"
+                src="/reliance-email-logo.png"
                 alt="Reliance"
                 className="relative z-[1] h-full w-full object-contain opacity-95 drop-shadow-[0_0_24px_rgba(72,128,255,0.34)]"
               />
@@ -88,7 +88,7 @@ export function PublicSiteHeader({
             />
           )}
 
-          <div className="flex items-center gap-2 sm:gap-3 md:hidden">
+          <div className="ml-auto flex w-full min-w-0 shrink-0 items-center justify-end gap-1.5 sm:w-auto sm:gap-3 md:hidden">
             <Link href={secondaryHref} className={mobileSecondaryClassName}>
               {secondaryLabel}
             </Link>

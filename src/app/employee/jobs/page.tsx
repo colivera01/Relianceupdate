@@ -595,6 +595,40 @@ export default function EmployeeJobsPage() {
 
   const getActiveVideoTrack = () => activeCameraStreamRef.current?.getVideoTracks()[0] || null;
 
+  const requestRearCameraStream = async () => {
+    const baseVideoConstraints = {
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    };
+    const preferredConstraints: MediaStreamConstraints[] = [
+      {
+        video: {
+          ...baseVideoConstraints,
+          facingMode: { exact: "environment" },
+        },
+        audio: false,
+      },
+      {
+        video: {
+          ...baseVideoConstraints,
+          facingMode: { ideal: "environment" },
+        },
+        audio: false,
+      },
+      { video: true, audio: false },
+    ];
+
+    let lastError: unknown = null;
+    for (const constraints of preferredConstraints) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Camera access failed.");
+  };
+
   const updateTorchSupport = (stream: MediaStream) => {
     const track = stream.getVideoTracks()[0];
     const capabilities =
@@ -799,10 +833,7 @@ export default function EmployeeJobsPage() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: false,
-      });
+      const stream = await requestRearCameraStream();
       activeCameraContextRef.current = { job, stage, locationProof };
       activeCameraStreamRef.current = stream;
       mediaRecorderRef.current = null;
