@@ -236,6 +236,7 @@ export default function EmployeeJobsPage() {
   const [focusedStageByJobId, setFocusedStageByJobId] = useState<Record<string, (typeof STAGES)[number]["key"]>>({});
   const [focusedJobId, setFocusedJobId] = useState("");
   const [captureToken, setCaptureToken] = useState("");
+  const [recordingOpeningKey, setRecordingOpeningKey] = useState<string | null>(null);
   const [recordingKey, setRecordingKey] = useState<string | null>(null);
   const [recordingStarted, setRecordingStarted] = useState(false);
   const [recordingSecondsLeft, setRecordingSecondsLeft] = useState(STAGE_VIDEO_MAX_DURATION_SECONDS);
@@ -842,6 +843,7 @@ export default function EmployeeJobsPage() {
   ) => {
     const nextRecordingKey = `${job.id}:${stage}`;
     fallbackCaptureRef.current = { job, stage, locationProof };
+    setRecordingOpeningKey(null);
     setStageFeedback((prev) => ({
       ...prev,
       [nextRecordingKey]: {
@@ -876,6 +878,7 @@ export default function EmployeeJobsPage() {
     const nextRecordingKey = `${job.id}:${stage}`;
     setError(null);
     setActionMessage(null);
+    setRecordingOpeningKey(nextRecordingKey);
     setStageFeedback((prev) => ({
       ...prev,
       [nextRecordingKey]: {
@@ -895,6 +898,7 @@ export default function EmployeeJobsPage() {
           message: error instanceof Error ? error.message : "Location verification failed. Try again.",
         },
       }));
+      setRecordingOpeningKey(null);
       return;
     }
     setStageFeedback((prev) => ({
@@ -919,6 +923,7 @@ export default function EmployeeJobsPage() {
       mediaRecorderRef.current = null;
       recordingChunksRef.current = [];
       setRecordingKey(nextRecordingKey);
+      setRecordingOpeningKey(null);
       setRecordingStarted(false);
       setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
       setActiveCameraStream(stream);
@@ -932,6 +937,7 @@ export default function EmployeeJobsPage() {
       }));
     } catch (error) {
       setRecordingKey(null);
+      setRecordingOpeningKey(null);
       setRecordingStarted(false);
       setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
       stopActiveCameraStream();
@@ -1078,6 +1084,7 @@ export default function EmployeeJobsPage() {
     const selectedRecordingKey = `${job.id}:${selectedStage.key}`;
     const isRecordingSelectedStage = recordingKey === selectedRecordingKey;
     const isRecordingAnotherStage = Boolean(recordingKey && recordingKey !== selectedRecordingKey);
+    const isOpeningSelectedStage = recordingOpeningKey === selectedRecordingKey;
     const selectedStageFeedback = stageFeedback[selectedStageFeedbackKey] || null;
     const canOfferNativeCameraRetry =
       hasCaptureToken &&
@@ -1090,6 +1097,7 @@ export default function EmployeeJobsPage() {
       showUploadControls &&
       !selectedDraft &&
       !recordingKey &&
+      !recordingOpeningKey &&
       !uploadingKey;
     const countdownIsUrgent = recordingSecondsLeft <= 10;
 
@@ -1298,6 +1306,8 @@ export default function EmployeeJobsPage() {
               {STAGES.map((stage, index) => {
                 const done = Boolean(job.stageProgress[stage.key]);
                 const selected = selectedStage.key === stage.key;
+                const stageActionKey = `${job.id}:${stage.key}`;
+                const isOpeningThisStage = recordingOpeningKey === stageActionKey;
                 const canStartThisStage = canStartStageFromCard;
                 return (
                   <button
@@ -1312,7 +1322,7 @@ export default function EmployeeJobsPage() {
                         void startCameraRecording(job, stage.key);
                       }
                     }}
-                    disabled={Boolean(hasCaptureToken && (isRecordingAnotherStage || uploadingKey))}
+                    disabled={Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))}
                     className={`min-h-[128px] rounded-2xl border p-4 text-left transition ${
                       selected
                         ? "border-blue-300 bg-blue-600/35 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
@@ -1324,7 +1334,9 @@ export default function EmployeeJobsPage() {
                     <div className="flex items-start gap-3">
                       <span
                         className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border text-base font-bold ${
-                          done
+                            isOpeningThisStage
+                              ? "border-blue-200 bg-blue-200 text-blue-950"
+                              : done
                             ? "border-emerald-300 bg-emerald-400/20 text-emerald-100"
                             : selected
                               ? "border-blue-200 bg-blue-200 text-blue-950"
@@ -1338,14 +1350,18 @@ export default function EmployeeJobsPage() {
                         <p className="mt-2 text-sm leading-6 text-blue-50/85">{stage.cue}</p>
                         <p
                           className={`mt-4 inline-flex rounded-full px-4 py-2 text-sm font-bold ${
-                            done
+                            isOpeningThisStage
+                              ? "bg-blue-300/25 text-blue-50"
+                              : done
                               ? "bg-emerald-400/15 text-emerald-100"
                               : hasCaptureToken
                                 ? "bg-blue-300/15 text-blue-100"
                                 : "bg-white/10 text-blue-100"
                           }`}
                         >
-                          {done
+                          {isOpeningThisStage
+                            ? "Opening camera..."
+                            : done
                             ? "Recorded - tap to edit"
                             : hasCaptureToken
                               ? `Tap to record ${getCaptureLinkStepLabel(stage.key)}`
@@ -1408,6 +1424,10 @@ export default function EmployeeJobsPage() {
                     <p className="rounded-xl border border-blue-300/20 bg-blue-300/10 px-4 py-3 text-base font-semibold text-blue-50">
                       Camera is open full screen.
                     </p>
+                  ) : isOpeningSelectedStage ? (
+                    <p className="rounded-xl border border-blue-300/25 bg-blue-300/10 px-4 py-3 text-base font-semibold text-blue-50">
+                      Opening camera. Allow location or camera access if your phone asks.
+                    </p>
                   ) : selectedDraft ? (
                     <p className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-base font-semibold text-emerald-50">
                       Preview is open full screen. Confirm to save it, or retake the clip.
@@ -1423,7 +1443,7 @@ export default function EmployeeJobsPage() {
                         <button
                           type="button"
                           onClick={() => void startCameraRecording(job, selectedStage.key)}
-                          disabled={Boolean(uploadingKey) || isRecordingAnotherStage}
+                          disabled={Boolean(uploadingKey) || Boolean(recordingOpeningKey) || isRecordingAnotherStage}
                           className="w-full rounded-xl border border-amber-200 bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Retake Saved Video
@@ -1444,7 +1464,7 @@ export default function EmployeeJobsPage() {
                       <button
                         type="button"
                         onClick={() => void startCameraRecording(job, selectedStage.key)}
-                        disabled={Boolean(uploadingKey) || isRecordingAnotherStage}
+                        disabled={Boolean(uploadingKey) || Boolean(recordingOpeningKey) || isRecordingAnotherStage}
                         className="rounded-xl border border-blue-300 bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Record Live Camera
@@ -1579,6 +1599,7 @@ export default function EmployeeJobsPage() {
         aria-hidden="true"
         tabIndex={-1}
         onChange={(event) => {
+          setRecordingOpeningKey(null);
           const file = event.currentTarget.files?.[0];
           const fallbackCapture = fallbackCaptureRef.current;
           event.currentTarget.value = "";
