@@ -80,6 +80,34 @@ describe("vendor-attributed SMS copy", () => {
     );
   });
 
+  it("uses clear quick-rating links in customer review reminder email", async () => {
+    hoisted.readNotificationEnv.mockReturnValue({
+      emailEnabled: true,
+      smsEnabled: false,
+      appBaseUrl: "https://relianceonline.org",
+    });
+    hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "email-1" });
+    const { sendReviewReminderNotification } = await import("./send-review-reminder");
+
+    await sendReviewReminderNotification({
+      reviewWindowId: "review-window-1",
+      actorUserId: "system",
+      bookingId: "booking-1",
+      customerEmail: "customer@example.com",
+      vendorName: "Electro LLC",
+      serviceName: "Panel Inspection",
+    });
+
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    expect(email.html).toContain("Start with a quick rating:");
+    expect(email.html).toContain("/reviews/quick?token=");
+    expect(email.html).toContain("&amp;rating=5");
+    expect(email.html).toContain("Start a 5 out of 5 star review");
+    expect(email.html).not.toContain("&#9733;&#9733;");
+    expect(email.text).toContain("5 stars: https://relianceonline.org/reviews/quick?token=");
+    expect(email.text).toContain("&rating=5");
+  });
+
   it("identifies the vendor when a review window closes", async () => {
     const { sendReviewExpiredNotification } = await import("./send-review-expired");
 

@@ -5,6 +5,7 @@ import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
 import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
+import { createReviewEmailToken } from '@/lib/review-email-token';
 
 export type ReviewReminderInput = {
   reviewWindowId: string;
@@ -53,6 +54,15 @@ function buildAbsoluteUrl(base: string, path: string): string {
   return `${base}${p}`;
 }
 
+function quickReviewPath(reviewWindowId: string, rating: number): string {
+  const token = createReviewEmailToken({ reviewWindowId });
+  const query = new URLSearchParams({
+    token,
+    rating: String(rating),
+  });
+  return `/reviews/quick?${query.toString()}`;
+}
+
 /**
  * Immediate reminder (scheduler is not wired). Uses email/SMS when enabled and contact exists.
  */
@@ -62,7 +72,7 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
   const absoluteFallbackLink = buildAbsoluteUrl(env.appBaseUrl, path);
   const inlineRatingLinks = [1, 2, 3, 4, 5].map((rating) => ({
     rating,
-    url: buildAbsoluteUrl(env.appBaseUrl, reviewsPath(input.bookingId, rating)),
+    url: buildAbsoluteUrl(env.appBaseUrl, quickReviewPath(input.reviewWindowId, rating)),
   }));
   const channels: ChannelDelivery[] = [];
   const vendorName = String(input.vendorName || '').trim();
