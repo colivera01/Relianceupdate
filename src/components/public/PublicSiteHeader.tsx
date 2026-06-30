@@ -72,11 +72,11 @@ export function PublicSiteHeader({
             <div aria-hidden="true" className="h-10 w-10 shrink-0 md:h-8 md:w-8" />
           ) : dark ? (
             <Link href="/" className="relative inline-flex h-20 w-36 shrink-0 items-center justify-center sm:h-24 sm:w-44 xl:h-28 xl:w-52">
-              <span className="pointer-events-none absolute inset-[-8%] rounded-[28px] bg-[radial-gradient(circle_at_40%_38%,rgba(141,178,255,0.18),rgba(45,107,255,0.11)_42%,transparent_72%)] blur-xl" />
+              <span className="pointer-events-none absolute inset-[-14%] rounded-full bg-[radial-gradient(circle_at_42%_48%,rgba(141,178,255,0.18),rgba(45,107,255,0.08)_45%,transparent_72%)] blur-2xl" />
               <img
-                src="/reliance-email-logo.png"
+                src="/reliance-home-logo-transparent.png"
                 alt="Reliance"
-                className="relative z-[1] h-full w-full object-contain opacity-95 drop-shadow-[0_0_24px_rgba(72,128,255,0.34)]"
+                className="relative z-[1] h-full w-full object-contain opacity-95 drop-shadow-[0_0_22px_rgba(72,128,255,0.30)]"
               />
             </Link>
           ) : (
