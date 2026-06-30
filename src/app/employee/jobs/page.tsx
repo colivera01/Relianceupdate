@@ -1207,7 +1207,7 @@ export default function EmployeeJobsPage() {
               {STAGES.map((stage, index) => {
                 const done = Boolean(job.stageProgress[stage.key]);
                 const selected = selectedStage.key === stage.key;
-                const canStartThisStage = canStartStageFromCard && !done;
+                const canStartThisStage = canStartStageFromCard;
                 return (
                   <button
                     key={stage.key}
