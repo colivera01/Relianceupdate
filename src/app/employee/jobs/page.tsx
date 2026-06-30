@@ -1156,8 +1156,7 @@ export default function EmployeeJobsPage() {
                 {torchOn ? "Turn Flashlight Off" : "Turn Flashlight On"}
               </button>
             ) : torchError ? (
-              <div className="space-y-2">
-                <p className="text-center text-xs font-semibold text-white/55">{torchError}</p>
+              <div>
                 {!recordingStarted ? (
                   <button
                     type="button"
