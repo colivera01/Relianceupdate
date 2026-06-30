@@ -852,6 +852,23 @@ export default function EmployeeJobsPage() {
     fallbackCaptureInputRef.current?.click();
   };
 
+  const openNativeCameraForFlash = () => {
+    const context = activeCameraContextRef.current;
+    if (!context) return;
+    const { job, stage, locationProof } = context;
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    setRecordingKey(null);
+    setRecordingSecondsLeft(STAGE_VIDEO_MAX_DURATION_SECONDS);
+    stopActiveCameraStream();
+    openNativeCameraFallback(
+      job,
+      stage,
+      locationProof,
+      "Opening your phone camera. Use the phone flash if needed, then preview it here before saving."
+    );
+  };
+
   const startCameraRecording = async (
     job: EmployeeJob,
     stage: (typeof STAGES)[number]["key"]
@@ -1139,7 +1156,19 @@ export default function EmployeeJobsPage() {
                 {torchOn ? "Turn Flashlight Off" : "Turn Flashlight On"}
               </button>
             ) : torchError ? (
-              <p className="text-center text-xs font-semibold text-white/55">{torchError}</p>
+              <div className="space-y-2">
+                <p className="text-center text-xs font-semibold text-white/55">{torchError}</p>
+                {!recordingStarted ? (
+                  <button
+                    type="button"
+                    onClick={openNativeCameraForFlash}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200/70 bg-white/12 px-5 py-3 text-base font-bold text-white shadow-lg shadow-black/35 transition active:scale-[0.99]"
+                  >
+                    <Flashlight className="h-5 w-5" />
+                    Use Phone Camera With Flash
+                  </button>
+                ) : null}
+              </div>
             ) : null}
             {recordingStarted ? (
               <button
