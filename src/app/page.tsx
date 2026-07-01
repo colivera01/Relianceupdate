@@ -114,6 +114,19 @@ export default function HomePage() {
                 </div>
               </div>
 
+              <div className="mt-8 w-full lg:mt-24">
+                <div className="reliance-glass rounded-[32px] border border-white/10 bg-[rgba(6,17,31,0.72)] px-8 py-10 shadow-[0_30px_80px_rgba(4,9,20,0.32)] sm:px-10 sm:py-12">
+                  <div className="inline-flex rounded-full border border-white/10 bg-white/6 px-5 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-white/64">
+                    Promotional Video
+                  </div>
+                  <h2 className="mt-6 font-display text-4xl font-semibold leading-tight text-white sm:text-5xl">
+                    Future promotional video coming soon
+                  </h2>
+                  <p className="mt-4 max-w-3xl text-xl leading-8 text-white/68">
+                    This space is reserved for a Reliance promotional video.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-5 lg:pt-2">
