@@ -222,6 +222,20 @@ function getCaptureLinkStepLabel(stage: (typeof STAGES)[number]["key"]): string 
   return "Finished";
 }
 
+function getStageCardActionLabel(input: {
+  isOpening: boolean;
+  isSaved: boolean;
+  hasDraft: boolean;
+  hasCaptureToken: boolean;
+  stage: (typeof STAGES)[number]["key"];
+}): string {
+  if (input.isOpening) return "Opening camera...";
+  if (input.hasDraft) return "Preview open - finish or retake";
+  if (input.isSaved) return "Recorded - tap to edit";
+  if (input.hasCaptureToken) return `Tap to record ${getCaptureLinkStepLabel(input.stage)}`;
+  return "Required";
+}
+
 export default function EmployeeJobsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [jobs, setJobs] = useState<EmployeeJob[]>([]);
@@ -358,6 +372,35 @@ export default function EmployeeJobsPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const overlayOpen = Boolean(recordingKey || capturedDraft);
+    if (!overlayOpen) return;
+
+    const scrollY = window.scrollY;
+    const { documentElement, body } = document;
+    const previousHtmlOverflow = documentElement.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyWidth = body.style.width;
+
+    documentElement.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+
+    return () => {
+      documentElement.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.width = previousBodyWidth;
+      window.scrollTo(0, scrollY);
+    };
+  }, [recordingKey, capturedDraft]);
 
   useEffect(() => {
     if (captureToken) return;
@@ -1359,13 +1402,13 @@ export default function EmployeeJobsPage() {
                                 : "bg-white/10 text-blue-100"
                           }`}
                         >
-                          {isOpeningThisStage
-                            ? "Opening camera..."
-                            : done
-                            ? "Recorded - tap to edit"
-                            : hasCaptureToken
-                              ? `Tap to record ${getCaptureLinkStepLabel(stage.key)}`
-                              : "Required"}
+                          {getStageCardActionLabel({
+                            isOpening: isOpeningThisStage,
+                            isSaved: done,
+                            hasDraft: Boolean(capturedDraft?.jobId === job.id && capturedDraft.stage === stage.key),
+                            hasCaptureToken,
+                            stage: stage.key,
+                          })}
                         </p>
                       </div>
                     </div>
