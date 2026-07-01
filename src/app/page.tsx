@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { CheckCircle2, LocateFixed, MapPin, ShieldCheck, Star, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { PublicHeroArtwork } from '@/components/public/PublicHeroArtwork';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
 import { PublicSiteFooter } from '@/components/public/PublicSiteFooter';
 import { PublicSiteHeader } from '@/components/public/PublicSiteHeader';
@@ -62,10 +61,7 @@ export default function HomePage() {
   });
 
   const marketplaceResults = marketplaceData?.results || [];
-  const featuredService = marketplaceResults[0] || null;
   const totalPublicServices = marketplaceData?.pagination?.total ?? 0;
-  const heroServiceName = featuredService?.serviceName || 'See trusted work before you choose';
-  const heroVendorName = featuredService?.vendorName || 'Reliance proof platform';
   const hasMarketplaceResults = marketplaceResults.length > 0;
   const publicServicesLoading = marketplaceLoading && marketplaceResults.length === 0;
 
@@ -118,13 +114,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="mt-8 w-full lg:mt-24">
-                <div className="reliance-glass rounded-[32px] border border-white/10 p-4 shadow-[0_30px_80px_rgba(4,9,20,0.38)]">
-                  <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[rgba(6,17,31,0.55)]">
-                    <PublicHeroArtwork serviceName={heroServiceName} vendorName={heroVendorName} />
-                  </div>
-                </div>
-              </div>
             </div>
 
             <div className="grid gap-5 lg:pt-2">
