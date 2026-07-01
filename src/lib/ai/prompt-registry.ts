@@ -10,6 +10,7 @@ export const PROMOTIONS_ASSISTANT_PROMPT_VERSION = "promotion-readiness-v1";
 export const VENDOR_COPY_ASSISTANT_PROMPT_VERSION = "vendor-copy-v1";
 export const JOB_RECOVERY_ASSISTANT_PROMPT_VERSION = "job-recovery-v1";
 export const SUPPORT_INBOX_TRIAGE_PROMPT_VERSION = "support-inbox-triage-v1";
+export const ADMIN_NOTIFICATION_EMAIL_SUMMARY_PROMPT_VERSION = "admin-notification-email-summary-v1";
 
 export type AiPromptCatalogEntry = {
   feature: AiFeatureKey;
@@ -120,6 +121,15 @@ export const AI_PROMPT_CATALOG: AiPromptCatalogEntry[] = [
     scope: "ai_assistant",
     adminSurface: "/admin/notifications",
     notes: "Admin triage summary for current unread internal support and alert notifications.",
+  },
+  {
+    feature: "support_inbox_triage",
+    label: "Admin Alert Email Summary",
+    operation: "summarize_single_admin_alert_email",
+    promptVersion: ADMIN_NOTIFICATION_EMAIL_SUMMARY_PROMPT_VERSION,
+    scope: "ai_assistant",
+    adminSurface: "/admin/notifications",
+    notes: "Concise owner-facing AI summary embedded in admin alert emails. AI suggests context only; admins still decide.",
   },
 ];
 

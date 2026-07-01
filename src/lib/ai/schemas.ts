@@ -141,6 +141,14 @@ export const supportInboxTriageAssistantResultSchema = z.object({
   recommendedActions: z.array(z.string().min(1).max(220)).max(6).default([]),
 });
 
+export const adminNotificationEmailSummaryResultSchema = z.object({
+  summary: z.string().min(1).max(700),
+  riskLevel: z.enum(["low", "medium", "high"]),
+  whyItMatters: z.string().min(1).max(320),
+  suggestedNextAction: z.string().min(1).max(260),
+  confidence: aiConfidenceSchema,
+});
+
 export type ModerationAssistantResult = z.infer<typeof moderationAssistantResultSchema>;
 export type DisputeSummaryResult = z.infer<typeof disputeSummaryResultSchema>;
 export type VendorCoachingSummaryResult = z.infer<typeof vendorCoachingSummaryResultSchema>;
@@ -151,3 +159,6 @@ export type PromotionsAssistantResult = z.infer<typeof promotionsAssistantResult
 export type VendorCopyAssistantResult = z.infer<typeof vendorCopyAssistantResultSchema>;
 export type JobRecoveryAssistantResult = z.infer<typeof jobRecoveryAssistantResultSchema>;
 export type SupportInboxTriageAssistantResult = z.infer<typeof supportInboxTriageAssistantResultSchema>;
+export type AdminNotificationEmailSummaryResult = z.infer<
+  typeof adminNotificationEmailSummaryResultSchema
+>;

@@ -5,6 +5,8 @@ const hoisted = vi.hoisted(() => {
   const sendEmail = vi.fn();
   const logNotificationAttempt = vi.fn();
   const readNotificationEnv = vi.fn();
+  const isAiFeatureEnabled = vi.fn();
+  const getAdminNotificationEmailSummary = vi.fn();
 
   return {
     prisma: {
@@ -16,6 +18,8 @@ const hoisted = vi.hoisted(() => {
     sendEmail,
     logNotificationAttempt,
     readNotificationEnv,
+    isAiFeatureEnabled,
+    getAdminNotificationEmailSummary,
   };
 });
 
@@ -35,15 +39,26 @@ vi.mock("@/lib/env/notification-config", () => ({
   readNotificationEnv: hoisted.readNotificationEnv,
 }));
 
+vi.mock("@/lib/ai/feature-flags", () => ({
+  isAiFeatureEnabled: hoisted.isAiFeatureEnabled,
+}));
+
+vi.mock("@/lib/ai/admin-notification-email-summary", () => ({
+  getAdminNotificationEmailSummary: hoisted.getAdminNotificationEmailSummary,
+}));
+
 describe("createAdminNotificationWithEmail", () => {
   beforeEach(() => {
     hoisted.adminNotificationCreate.mockReset();
     hoisted.sendEmail.mockReset();
     hoisted.logNotificationAttempt.mockReset();
     hoisted.readNotificationEnv.mockReset();
+    hoisted.isAiFeatureEnabled.mockReset();
+    hoisted.getAdminNotificationEmailSummary.mockReset();
     hoisted.readNotificationEnv.mockReturnValue({
       appBaseUrl: "https://beta.relianceonline.org",
     });
+    hoisted.isAiFeatureEnabled.mockReturnValue(false);
   });
 
   it("creates the dashboard notification and emails the owner admin", async () => {
@@ -99,5 +114,62 @@ describe("createAdminNotificationWithEmail", () => {
       notification: { id: "admin-notification-1" },
       emailSent: true,
     });
+  });
+
+  it("adds an AI summary block to admin action emails when support triage AI is enabled", async () => {
+    hoisted.adminNotificationCreate.mockResolvedValue({
+      id: "admin-notification-ai-1",
+    });
+    hoisted.sendEmail.mockResolvedValue({
+      ok: true,
+      providerMessageId: "email-message-ai-1",
+    });
+    hoisted.isAiFeatureEnabled.mockReturnValue(true);
+    hoisted.getAdminNotificationEmailSummary.mockResolvedValue({
+      summary: "A customer quick review is ready for admin moderation.",
+      riskLevel: "medium",
+      whyItMatters: "The rating should not affect public metrics until you approve it.",
+      suggestedNextAction: "Open the review moderation queue and confirm whether it should be approved.",
+      confidence: "medium",
+    });
+
+    const { createAdminNotificationWithEmail } = await import("./admin-notifications");
+
+    await createAdminNotificationWithEmail({
+      vendorId: "vendor-1",
+      type: "QUICK_REVIEW_MODERATION_REQUIRED",
+      title: "Customer quick review waiting for moderation",
+      message: "A customer submitted a 5-star quick review from email.",
+      metadata: {
+        reviewId: "review-quick-1",
+        rating: 5,
+      },
+      surfaceHref: "/admin/reviews",
+      actorUserId: "customer-1",
+    });
+
+    expect(hoisted.getAdminNotificationEmailSummary).toHaveBeenCalledWith(
+      {
+        notificationId: "admin-notification-ai-1",
+        type: "QUICK_REVIEW_MODERATION_REQUIRED",
+        title: "Customer quick review waiting for moderation",
+        message: "A customer submitted a 5-star quick review from email.",
+        details: [
+          { label: "Notification Type", value: "QUICK_REVIEW_MODERATION_REQUIRED" },
+          { label: "Notification ID", value: "admin-notification-ai-1" },
+          { label: "Review Id", value: "review-quick-1" },
+          { label: "Rating", value: "5" },
+        ],
+        adminUrl: "https://beta.relianceonline.org/admin/reviews",
+      },
+      "customer-1"
+    );
+
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    expect(email.html).toContain("AI Admin Summary");
+    expect(email.html).toContain("A customer quick review is ready for admin moderation.");
+    expect(email.html).toContain("Risk level:");
+    expect(email.text).toContain("AI admin summary:");
+    expect(email.text).toContain("Suggested next action: Open the review moderation queue");
   });
 });

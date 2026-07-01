@@ -7,6 +7,7 @@ import {
   PROMOTIONS_ASSISTANT_PROMPT_VERSION,
   PUBLISH_READINESS_ASSISTANT_PROMPT_VERSION,
   REVIEW_MODERATION_ASSISTANT_PROMPT_VERSION,
+  ADMIN_NOTIFICATION_EMAIL_SUMMARY_PROMPT_VERSION,
   SUPPORT_INBOX_TRIAGE_PROMPT_VERSION,
   VENDOR_APPROVAL_ASSISTANT_PROMPT_VERSION,
   VENDOR_COPY_ASSISTANT_PROMPT_VERSION,
@@ -28,6 +29,7 @@ describe("AI prompt registry", () => {
       "vendor_copy_assistant",
       "job_recovery_assistant",
       "support_inbox_triage",
+      "support_inbox_triage",
     ]);
   });
 
@@ -42,11 +44,12 @@ describe("AI prompt registry", () => {
     expect(VENDOR_COPY_ASSISTANT_PROMPT_VERSION).toBe("vendor-copy-v1");
     expect(JOB_RECOVERY_ASSISTANT_PROMPT_VERSION).toBe("job-recovery-v1");
     expect(SUPPORT_INBOX_TRIAGE_PROMPT_VERSION).toBe("support-inbox-triage-v1");
+    expect(ADMIN_NOTIFICATION_EMAIL_SUMMARY_PROMPT_VERSION).toBe("admin-notification-email-summary-v1");
   });
 
   it("returns a copy of the prompt catalog", () => {
     const catalog = readAiPromptCatalog();
-    expect(catalog).toHaveLength(11);
+    expect(catalog).toHaveLength(12);
     expect(catalog).not.toBe(AI_PROMPT_CATALOG);
   });
 });
