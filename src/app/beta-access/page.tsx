@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getBetaGateConfig, sanitizeBetaReturnTo } from "@/lib/beta-gate";
+import { BetaAccessForm } from "./BetaAccessForm";
 
 export const metadata: Metadata = {
   title: "Reliance Private Beta Access",
@@ -59,36 +60,7 @@ export default async function BetaAccessPage({ searchParams }: BetaAccessPagePro
                 </p>
               </div>
             ) : (
-              <form action="/api/beta-gate" method="post" className="space-y-5">
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <div>
-                  <label htmlFor="password" className="block text-sm font-semibold text-blue-50">
-                    Beta access password
-                  </label>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    className="mt-2 w-full rounded-2xl border border-white/12 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-500/20"
-                    placeholder="Enter beta password"
-                  />
-                </div>
-
-                {hasError ? (
-                  <div className="rounded-2xl border border-red-300/35 bg-red-500/12 p-4 text-sm text-red-50">
-                    Incorrect beta password. Try again or ask the Reliance beta owner for access.
-                  </div>
-                ) : null}
-
-                <button
-                  type="submit"
-                  className="w-full rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_42px_rgba(37,99,235,0.32)] transition hover:bg-blue-500"
-                >
-                  Continue to Reliance
-                </button>
-              </form>
+              <BetaAccessForm returnTo={returnTo} hasError={hasError} />
             )}
           </div>
         </div>
