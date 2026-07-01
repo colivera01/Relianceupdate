@@ -4,6 +4,7 @@ import { requireVendorManager } from "@/lib/membership-auth";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 import { TRUST_OUTCOME_TYPES, tryRecordFinalizedOperationalOutcome } from "@/lib/trust-score-outcome-foundation";
 import { tryRecalculateVendorTrustScore } from "@/lib/trust-score-calculator";
 
@@ -155,6 +156,27 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     // Internal-only, non-blocking Trust Score recalculation.
     await tryRecalculateVendorTrustScore(prisma as any, vendorId, "job_approved", "job_approve");
+
+    try {
+      await createAdminNotificationWithEmail({
+        vendorId,
+        type: "MEDIA_MODERATION_REQUIRED",
+        title: "Service video package waiting for admin review",
+        message:
+          "A manager approved a completed three-stage service video package. Admin moderation is required before customer or public visibility.",
+        metadata: {
+          bookingId: booking.id,
+          vendorId,
+          moderationQueuedAssets: updated.moderationUpdateCount,
+          source: "POST /api/vendors/[vendorId]/jobs/[jobId]/approve",
+        },
+        surfaceHref: "/admin/media-moderation",
+        baseUrl: new URL(request.url).origin,
+        actorUserId: manager.userId,
+      });
+    } catch (notificationError) {
+      console.error("[vendor/jobs/approve] admin media notification failed:", notificationError);
+    }
 
     return NextResponse.json({
       success: true,

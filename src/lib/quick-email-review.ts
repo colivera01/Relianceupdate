@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db";
+import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 import { createAdminAuditLog } from "@/lib/admin-audit";
 import { verifyReviewEmailToken } from "@/lib/review-email-token";
 
@@ -175,6 +176,28 @@ export async function submitQuickEmailReviewRating(input: {
       visibilityStatus: "private",
     },
   });
+
+  try {
+    await createAdminNotificationWithEmail({
+      vendorId: String(window.vendorId),
+      type: "REVIEW_MODERATION_REQUIRED",
+      title: "Customer quick review waiting for moderation",
+      message: `A customer submitted a ${rating}-star quick review from email. It needs admin review before it affects public review metrics or Trust Score.`,
+      metadata: {
+        reviewId: created.id,
+        bookingId: window.bookingId,
+        vendorId: window.vendorId,
+        reviewWindowId: window.id,
+        rating,
+        submittedVia: "email_link",
+        source: "email_star_click",
+      },
+      surfaceHref: "/admin/reviews",
+      actorUserId: String(window.booking.userId),
+    });
+  } catch (error) {
+    console.error("[quick-email-review] admin moderation notification failed:", error);
+  }
 
   return {
     status: "created",

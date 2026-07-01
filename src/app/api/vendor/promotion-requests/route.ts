@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { createAdminAuditLog } from "@/lib/admin-audit";
+import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import {
   createPromotionPackageSnapshot,
@@ -313,19 +314,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
     });
 
-    await (prisma as any).adminNotification.create({
-      data: {
-        vendorId,
-        type: "PROMOTION_REQUEST",
-        title: "Vendor promotion request",
-        message: `${businessName} requested admin review for ${packageDefinition.name}.`,
-        metadata: JSON.stringify({
-          promotionCampaignId: campaign.id,
-          packageKey,
-          serviceId,
-          source: "POST /api/vendor/promotion-requests",
-        }),
+    await createAdminNotificationWithEmail({
+      vendorId,
+      type: "PROMOTION_REQUEST",
+      title: "Vendor promotion request",
+      message: `${businessName} requested admin review for ${packageDefinition.name}.`,
+      metadata: {
+        promotionCampaignId: campaign.id,
+        packageKey,
+        serviceId,
+        packageName: packageDefinition.name,
+        source: "POST /api/vendor/promotion-requests",
       },
+      surfaceHref: "/admin/promoted-listings",
+      baseUrl: new URL(request.url).origin,
+      actorUserId: membership.userId,
     });
 
     await createAdminAuditLog({

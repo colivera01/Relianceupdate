@@ -9,6 +9,7 @@ import {
 } from '@/lib/account-status';
 import { assertReviewWindowActive, isValidSubmittedVia } from '@/lib/review-capture';
 import { createAdminAuditLog } from '@/lib/admin-audit';
+import { createAdminNotificationWithEmail } from '@/lib/admin-notifications';
 import { parseAssignmentMetadata } from '@/lib/job-assignment';
 import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
 import {
@@ -237,6 +238,30 @@ export async function POST(request: NextRequest) {
         employeeAttributionApplied: Boolean(assignedMembershipId),
       },
     });
+
+    try {
+      await createAdminNotificationWithEmail({
+        vendorId,
+        type: 'REVIEW_MODERATION_REQUIRED',
+        title: 'Customer review waiting for moderation',
+        message: `A customer submitted a ${rating}-star review that needs admin review before public visibility.`,
+        metadata: {
+          reviewId: created.id,
+          bookingId,
+          vendorId,
+          reviewWindowId,
+          rating,
+          submittedVia,
+          reviewAttributionTarget,
+          employeeAttributionApplied: Boolean(assignedMembershipId),
+        },
+        surfaceHref: '/admin/reviews',
+        baseUrl: request.nextUrl.origin,
+        actorUserId: String(userId),
+      });
+    } catch (notificationError) {
+      console.error('[reviews/create] admin moderation notification failed:', notificationError);
+    }
 
     return NextResponse.json({
       success: true,

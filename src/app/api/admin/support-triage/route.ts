@@ -23,6 +23,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({
       success: true,
+      aiEnabled: isAiFeatureEnabled("support_inbox_triage"),
       counts: {
         unreadCount: context.unreadCount,
         totalCount: context.totalCount,

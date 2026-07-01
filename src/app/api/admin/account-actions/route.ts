@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { createAdminAuditLog } from "@/lib/admin-audit";
+import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 
 const ACCOUNT_TYPES = new Set(["user", "vendor"]);
 const ACCOUNT_STATUSES = new Set([
@@ -208,21 +209,22 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
 
     if (nextStatus === "suspended" || nextStatus === "banned" || nextStatus === "deactivated") {
-      await (prisma as any).adminNotification.create({
-        data: {
-          vendorId: targetType === "vendor" ? targetId : null,
-          type: "ACCOUNT_ACTION",
-          title: `${targetType === "vendor" ? "Vendor" : "User"} account ${nextStatus}`,
-          message: `Admin changed ${targetType} ${targetId} to ${nextStatus}. Reason: ${reasonCategory}.`,
-          metadata: JSON.stringify({
-            targetType,
-            targetId,
-            status: nextStatus,
-            action: action || "set_status",
-            reasonCategory,
-            actorUserId,
-          }),
+      await createAdminNotificationWithEmail({
+        vendorId: targetType === "vendor" ? targetId : null,
+        type: "ACCOUNT_ACTION",
+        title: `${targetType === "vendor" ? "Vendor" : "User"} account ${nextStatus}`,
+        message: `Admin changed ${targetType} ${targetId} to ${nextStatus}. Reason: ${reasonCategory}.`,
+        metadata: {
+          targetType,
+          targetId,
+          status: nextStatus,
+          action: action || "set_status",
+          reasonCategory,
+          actorUserId,
         },
+        surfaceHref: "/admin/accounts",
+        baseUrl: new URL(request.url).origin,
+        actorUserId,
       });
     }
 

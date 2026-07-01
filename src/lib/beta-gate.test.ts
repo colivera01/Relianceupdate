@@ -24,7 +24,7 @@ function resetBetaEnv() {
 
 function setEnabledBetaGate() {
   process.env.BETA_GATE_ENABLED = "true";
-  process.env.BETA_GATE_PASSWORD = "private-beta-secret";
+  process.env.BETA_GATE_PASSWORD = "Reliance123";
   process.env.BETA_GATE_COOKIE_NAME = "reliance_beta_access";
   process.env.BETA_GATE_COOKIE_MAX_AGE_DAYS = "14";
 }
@@ -56,6 +56,16 @@ describe("private beta gate", () => {
     expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 
+  it("defaults to private beta protection with the shared Reliance password", () => {
+    resetBetaEnv();
+    const config = getBetaGateConfig();
+
+    expect(config.enabled).toBe(true);
+    expect(config.password).toBe("Reliance123");
+    expect(config.cookieName).toBe("reliance_beta_access");
+    expect(config.cookieMaxAgeDays).toBe(14);
+  });
+
   it("allows access when the signed beta cookie is valid", async () => {
     const config = getBetaGateConfig();
     const token = await createBetaGateToken(config);
@@ -73,7 +83,7 @@ describe("private beta gate", () => {
         accept: "application/json",
       },
       body: JSON.stringify({
-        password: "private-beta-secret",
+        password: "Reliance123",
         returnTo: "/vendor/dashboard",
       }),
     });

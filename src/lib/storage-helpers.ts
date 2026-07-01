@@ -2,6 +2,7 @@
 // Storage calculation and alert helpers
 
 import { prisma } from "@/server/db";
+import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 
 export interface StorageUsage {
@@ -127,20 +128,19 @@ export async function checkAndCreateStorageAlerts(
         type = "STORAGE_ALERT";
       }
 
-      await (prisma as any).adminNotification.create({
-        data: {
-          vendorId,
-          type,
-          title,
-          message,
-          metadata: JSON.stringify({
-            threshold,
-            percentUsed: usage.percentUsed,
-            usedBytes: usage.usedBytes.toString(),
-            limitBytes: usage.limitBytes.toString(),
-          }),
-          read: false,
+      await createAdminNotificationWithEmail({
+        vendorId,
+        type,
+        title,
+        message,
+        metadata: {
+          threshold,
+          percentUsed: usage.percentUsed,
+          usedBytes: usage.usedBytes.toString(),
+          limitBytes: usage.limitBytes.toString(),
         },
+        surfaceHref: "/admin/notifications",
+        actorUserId: "system",
       });
     }
   }

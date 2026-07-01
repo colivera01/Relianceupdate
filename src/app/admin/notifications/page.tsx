@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   UserX,
   Sparkles,
+  ClipboardCheck,
 } from 'lucide-react';
 import { getAdminRequestHeaders } from '@/lib/admin-client';
 
@@ -50,11 +51,23 @@ interface SupportTriageRecommendation {
 }
 
 interface SupportTriageState {
+  aiEnabled: boolean;
   counts: {
     unreadCount: number;
     totalCount: number;
   };
   latestRecommendation: SupportTriageRecommendation | null;
+}
+
+const APPROVAL_NOTIFICATION_TYPES = new Set([
+  'VENDOR_APPROVAL_REQUIRED',
+  'MEDIA_MODERATION_REQUIRED',
+  'REVIEW_MODERATION_REQUIRED',
+  'PROMOTION_REQUEST',
+]);
+
+function isApprovalNotification(type: string) {
+  return APPROVAL_NOTIFICATION_TYPES.has(type);
 }
 
 function prettyConfidence(value: 'low' | 'medium' | 'high') {
@@ -69,7 +82,7 @@ export default function AdminNotificationsPage() {
   const [error, setError] = useState('');
   const [triageError, setTriageError] = useState('');
   const [triageMessage, setTriageMessage] = useState('');
-  const [filter, setFilter] = useState<'all' | 'unread' | 'storage' | 'safety' | 'reports' | 'accounts'>('all');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'approvals' | 'storage' | 'safety' | 'reports' | 'accounts'>('all');
 
   const fetchNotificationsData = async () => {
     const res = await fetch('/api/admin/notifications', {
@@ -93,6 +106,7 @@ export default function AdminNotificationsPage() {
       throw new Error(json?.error || json?.message || `Status ${res.status}`);
     }
     return {
+      aiEnabled: Boolean(json?.aiEnabled),
       counts: {
         unreadCount: Number(json?.counts?.unreadCount || 0),
         totalCount: Number(json?.counts?.totalCount || 0),
@@ -207,6 +221,7 @@ export default function AdminNotificationsPage() {
 
   const filteredNotifications = notifications.filter((n) => {
     if (filter === 'unread') return !n.read;
+    if (filter === 'approvals') return isApprovalNotification(n.type);
     if (filter === 'storage') return n.type.startsWith('STORAGE');
     if (filter === 'safety') return n.type === 'ACCOUNT_ACTION' || n.type === 'CONTENT_REPORT';
     if (filter === 'reports') return n.type === 'CONTENT_REPORT';
@@ -215,6 +230,7 @@ export default function AdminNotificationsPage() {
   });
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+  const approvalAlerts = notifications.filter((n) => !n.read && isApprovalNotification(n.type)).length;
   const storageAlerts = notifications.filter((n) => n.type.startsWith('STORAGE') && !n.read).length;
   const safetyAlerts = notifications.filter(
     (n) => !n.read && (n.type === 'ACCOUNT_ACTION' || n.type === 'CONTENT_REPORT')
@@ -234,6 +250,7 @@ export default function AdminNotificationsPage() {
   };
 
   const getNotificationIcon = (type: string) => {
+    if (isApprovalNotification(type)) return <ClipboardCheck className="w-5 h-5 text-blue-600" />;
     if (type === 'STORAGE_LIMIT_REACHED') return <XCircle className="w-5 h-5 text-red-600" />;
     if (type === 'STORAGE_ALERT') return <AlertTriangle className="w-5 h-5 text-orange-600" />;
     if (type === 'CONTENT_REPORT') return <ShieldAlert className="w-5 h-5 text-red-600" />;
@@ -242,6 +259,7 @@ export default function AdminNotificationsPage() {
   };
 
   const getNotificationColor = (type: string) => {
+    if (isApprovalNotification(type)) return 'bg-blue-50 border-blue-200';
     if (type === 'STORAGE_LIMIT_REACHED') return 'bg-red-50 border-red-200';
     if (type === 'STORAGE_ALERT') return 'bg-orange-50 border-orange-200';
     if (type === 'CONTENT_REPORT') return 'bg-red-50 border-red-200';
@@ -280,6 +298,12 @@ export default function AdminNotificationsPage() {
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-orange-600">{unreadCount}</div>
             <div className="text-sm text-gray-600">Unread</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-2xl font-bold text-blue-600">{approvalAlerts}</div>
+            <div className="text-sm text-gray-600">Need Approval</div>
           </CardContent>
         </Card>
         <Card>
@@ -323,18 +347,30 @@ export default function AdminNotificationsPage() {
               >
                 Refresh AI State
               </Button>
-              <Button type="button" onClick={() => void runSupportTriage()} disabled={triageLoading}>
-                {triageLoading
-                  ? 'Running AI triage...'
-                  : latestSuggestion
-                    ? 'Refresh AI Triage'
-                    : 'Run AI Triage'}
+              <Button
+                type="button"
+                onClick={() => void runSupportTriage()}
+                disabled={triageLoading || !supportTriage?.aiEnabled}
+              >
+                {!supportTriage?.aiEnabled
+                  ? 'AI Triage Disabled'
+                  : triageLoading
+                    ? 'Running AI triage...'
+                    : latestSuggestion
+                      ? 'Refresh AI Triage'
+                      : 'Run AI Triage'}
               </Button>
               <Button asChild type="button" variant="outline" className="bg-white">
                 <Link href="/admin/ai-review-queue">Open AI Review Queue</Link>
               </Button>
             </div>
           </div>
+
+          {!supportTriage?.aiEnabled ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              AI support inbox triage is currently disabled for this environment. Admin approval emails and dashboard alerts still work.
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="rounded-lg border border-blue-100 bg-white p-4">
@@ -462,6 +498,9 @@ export default function AdminNotificationsPage() {
         <Button variant={filter === 'unread' ? 'default' : 'outline'} onClick={() => setFilter('unread')} size="sm">
           Unread ({unreadCount})
         </Button>
+        <Button variant={filter === 'approvals' ? 'default' : 'outline'} onClick={() => setFilter('approvals')} size="sm">
+          Approvals ({approvalAlerts})
+        </Button>
         <Button variant={filter === 'storage' ? 'default' : 'outline'} onClick={() => setFilter('storage')} size="sm">
           Storage Alerts
         </Button>
@@ -545,6 +584,58 @@ export default function AdminNotificationsPage() {
                                   className="inline-flex text-[#204080] font-medium hover:underline"
                                 >
                                   Open account controls
+                                </Link>
+                              </div>
+                            )}
+                            {notification.type === 'VENDOR_APPROVAL_REQUIRED' && (
+                              <div className="space-y-1">
+                                {metadata.businessName && <div>Vendor: {metadata.businessName}</div>}
+                                {metadata.category && <div>Category: {metadata.category}</div>}
+                                <Link
+                                  href="/admin/vendors/approval-queue"
+                                  className="inline-flex text-[#204080] font-medium hover:underline"
+                                >
+                                  Open vendor approval queue
+                                </Link>
+                              </div>
+                            )}
+                            {notification.type === 'MEDIA_MODERATION_REQUIRED' && (
+                              <div className="space-y-1">
+                                {metadata.bookingId && <div>Booking ID: {metadata.bookingId}</div>}
+                                {metadata.moderationQueuedAssets && (
+                                  <div>Queued assets: {metadata.moderationQueuedAssets}</div>
+                                )}
+                                <Link
+                                  href="/admin/media-moderation"
+                                  className="inline-flex text-[#204080] font-medium hover:underline"
+                                >
+                                  Open media moderation
+                                </Link>
+                              </div>
+                            )}
+                            {notification.type === 'REVIEW_MODERATION_REQUIRED' && (
+                              <div className="space-y-1">
+                                {metadata.reviewId && <div>Review ID: {metadata.reviewId}</div>}
+                                {metadata.rating && <div>Rating: {metadata.rating} stars</div>}
+                                <Link
+                                  href="/admin/reviews"
+                                  className="inline-flex text-[#204080] font-medium hover:underline"
+                                >
+                                  Open review moderation
+                                </Link>
+                              </div>
+                            )}
+                            {notification.type === 'PROMOTION_REQUEST' && (
+                              <div className="space-y-1">
+                                {metadata.packageName && <div>Package: {metadata.packageName}</div>}
+                                {metadata.promotionCampaignId && (
+                                  <div>Campaign ID: {metadata.promotionCampaignId}</div>
+                                )}
+                                <Link
+                                  href="/admin/promoted-listings"
+                                  className="inline-flex text-[#204080] font-medium hover:underline"
+                                >
+                                  Open promoted listings
                                 </Link>
                               </div>
                             )}

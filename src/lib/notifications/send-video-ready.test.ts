@@ -62,6 +62,17 @@ describe("sendVideoReadyNotification", () => {
 
     expect(result.ok).toBe(true);
     expect(hoisted.sendEmail).toHaveBeenCalledTimes(1);
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    expect(email.subject).toBe("Your service video from Metro Home Care Pros is ready");
+    expect(email.html).toContain("Metro Home Care Pros shared your service video proof");
+    expect(email.html).toContain("completed the service-video package for your recent service");
+    expect(email.html).toContain("Service provider");
+    expect(email.html).toContain("Video package");
+    expect(email.html).toContain("Backup link:");
+    expect(email.html).toContain("reliance-email-logo.png");
+    expect(email.text).toContain(
+      "Metro Home Care Pros has completed and shared your Reliance service video proof for Apartment Cleaning."
+    );
     expect(hoisted.sendSms).toHaveBeenCalledTimes(1);
     expect(hoisted.sendSms.mock.calls[0][0]).toMatchObject({
       to: "+14075550199",

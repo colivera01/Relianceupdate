@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest, getVendorIdFromRequest } from "@/lib/auth";
+import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 import {
   accountStatusErrorBody,
   AccountStatusError,
@@ -34,10 +35,6 @@ function normalizeTargetType(value: unknown): string {
     return "media_asset";
   }
   return normalized;
-}
-
-function jsonMetadata(value: Record<string, unknown>): string {
-  return JSON.stringify(value);
 }
 
 async function resolveReporter(request: Request, body: any) {
@@ -189,25 +186,26 @@ export async function POST(request: Request): Promise<NextResponse> {
       },
     });
 
-    const notification = await (prisma as any).adminNotification.create({
-      data: {
+    const notificationResult = await createAdminNotificationWithEmail({
+      vendorId: resolvedTarget.vendorId,
+      type: "CONTENT_REPORT",
+      title: `New ${targetType.replace("_", " ")} report`,
+      message: `${reporter.reporterRole} reported ${targetType} ${targetId} for ${reasonCategory}.`,
+      metadata: {
+        reportId: report.id,
+        targetType,
+        targetId,
+        reasonCategory,
+        severity,
+        reporterRole: reporter.reporterRole,
+        reporterUserId: reporter.reporterUserId,
+        reporterVendorId: reporter.reporterVendorId,
+        bookingId: resolvedTarget.bookingId,
         vendorId: resolvedTarget.vendorId,
-        type: "CONTENT_REPORT",
-        title: `New ${targetType.replace("_", " ")} report`,
-        message: `${reporter.reporterRole} reported ${targetType} ${targetId} for ${reasonCategory}.`,
-        metadata: jsonMetadata({
-          reportId: report.id,
-          targetType,
-          targetId,
-          reasonCategory,
-          severity,
-          reporterRole: reporter.reporterRole,
-          reporterUserId: reporter.reporterUserId,
-          reporterVendorId: reporter.reporterVendorId,
-          bookingId: resolvedTarget.bookingId,
-          vendorId: resolvedTarget.vendorId,
-        }),
       },
+      surfaceHref: "/admin/reported-content",
+      baseUrl: new URL(request.url).origin,
+      actorUserId: reporter.reporterUserId || reporter.reporterVendorId || "system",
     });
 
     const reportWithNotification = await (prisma as any).contentReport.update({
@@ -239,7 +237,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         success: true,
         message: "Content report submitted for admin review",
         report: reportWithNotification,
-        notificationId: notification.id,
+        notificationId: notificationResult.notification?.id,
       },
       { status: 201 }
     );

@@ -7,10 +7,12 @@ export type BetaGateConfig = {
 
 export const DEFAULT_BETA_GATE_COOKIE_NAME = "reliance_beta_access";
 export const DEFAULT_BETA_GATE_COOKIE_MAX_AGE_DAYS = 14;
+export const DEFAULT_BETA_GATE_PASSWORD = "Reliance123";
 const TOKEN_VERSION = 1;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-function parseBoolean(value: string | undefined): boolean {
+function parseBoolean(value: string | undefined, fallback = false): boolean {
+  if (value === undefined || value === "") return fallback;
   const normalized = String(value || "").trim().toLowerCase();
   return ["1", "true", "yes", "on"].includes(normalized);
 }
@@ -25,8 +27,8 @@ export function getBetaGateConfig(
   env: Partial<Record<string, string | undefined>> = process.env
 ): BetaGateConfig {
   return {
-    enabled: parseBoolean(env.BETA_GATE_ENABLED),
-    password: String(env.BETA_GATE_PASSWORD || "").trim(),
+    enabled: parseBoolean(env.BETA_GATE_ENABLED, true),
+    password: String(env.BETA_GATE_PASSWORD || DEFAULT_BETA_GATE_PASSWORD).trim(),
     cookieName:
       String(env.BETA_GATE_COOKIE_NAME || "").trim() || DEFAULT_BETA_GATE_COOKIE_NAME,
     cookieMaxAgeDays: parsePositiveInteger(

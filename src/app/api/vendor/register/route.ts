@@ -9,6 +9,7 @@ import { addRegisteredUser, findRegisteredUserByEmail } from "@/lib/dev-register
 import { hashPassword } from "@/lib/auth-password";
 import { findDbCredentialByEmail, upsertDbCredential } from "@/lib/auth-credentials";
 import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
+import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 import { isAiFeatureEnabled } from "@/lib/ai/feature-flags";
 import {
   generateVendorApprovalAiStoredResult,
@@ -365,6 +366,29 @@ export async function POST(request: NextRequest) {
 
     await trySetVendorApprovalStatus(vendorId, "PENDING");
     await upsertVendorServicesFromRegistration(vendorId, body, primaryCategory);
+
+    try {
+      await createAdminNotificationWithEmail({
+        vendorId,
+        type: "VENDOR_APPROVAL_REQUIRED",
+        title: "New vendor approval request",
+        message: `${businessName} submitted a vendor profile and needs admin approval before public launch.`,
+        metadata: {
+          vendorId,
+          membershipId,
+          businessName,
+          businessType,
+          category: primaryCategory || businessType,
+          city,
+          state,
+        },
+        surfaceHref: "/admin/vendors/approval-queue",
+        baseUrl: request.nextUrl.origin,
+        actorUserId: resolvedUserId,
+      });
+    } catch (notificationError) {
+      console.error("[vendor/register] admin approval notification failed:", notificationError);
+    }
 
     if (isAiFeatureEnabled("vendor_approval_assistant")) {
       void generateVendorApprovalAiStoredResult(vendorId, {
