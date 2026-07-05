@@ -26,7 +26,7 @@ export type TutorialGuide = {
   futureVideoNote?: string;
 };
 
-const APPROVED_TUTORIAL_VERSION = "20260701-approved-audio";
+const APPROVED_TUTORIAL_VERSION = "20260705-approved-legal-copy";
 
 const SERVICE_VIDEOS_AND_REVIEWS_TUTORIAL: TutorialGuide["video"] = {
   src: `/tutorials/service-videos-and-reviews.mp4?v=${APPROVED_TUTORIAL_VERSION}`,

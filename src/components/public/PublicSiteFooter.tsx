@@ -29,18 +29,18 @@ const PUBLIC_OPERATOR_NAME = process.env.NEXT_PUBLIC_RELIANCE_OPERATOR_NAME || "
 
 export function PublicSiteFooter() {
   return (
-    <footer className="border-t border-white/8 bg-[linear-gradient(180deg,#04070d,#02050b)]">
-      <div className="w-full px-4 py-20 sm:px-6 lg:px-6 xl:px-8 2xl:px-10">
+    <footer className="overflow-hidden border-t border-white/8 bg-[linear-gradient(180deg,#04070d,#02050b)]">
+      <div className="w-full max-w-full px-4 py-14 sm:px-6 sm:py-20 lg:px-6 xl:px-8 2xl:px-10">
         <div className="grid gap-12 lg:grid-cols-[1.3fr_0.7fr_0.8fr_1.2fr]">
-          <div>
+          <div className="min-w-0">
             <RelianceLogo
               href="/"
               tone="light"
               compact
               blend
-              frameClassName="h-[8rem] w-[8rem]"
+              frameClassName="h-[6rem] w-[6rem] sm:h-[8rem] sm:w-[8rem]"
             />
-            <p className="mt-7 max-w-2xl text-2xl leading-10 text-white/66">
+            <p className="mt-7 max-w-2xl text-xl leading-9 text-white/66 sm:text-2xl sm:leading-10">
               Reliance helps customers compare completed work, public service videos, reviews, and
               Trust Score evidence before choosing a provider.
             </p>
@@ -78,22 +78,22 @@ export function PublicSiteFooter() {
 
           <div>
             <div className="text-sm font-semibold uppercase tracking-[0.28em] text-white/48">Support</div>
-            <div className="mt-6 rounded-[30px] border border-white/10 bg-white/6 px-8 py-8">
+            <div className="mt-6 min-w-0 rounded-[26px] border border-white/10 bg-white/6 px-5 py-6 sm:rounded-[30px] sm:px-8 sm:py-8">
               {HAS_LAUNCH_SUPPORT_EMAIL ? (
                 <>
-                  <p className="text-xl font-semibold text-white">Support email</p>
+                  <p className="text-lg font-semibold text-white sm:text-xl">Support email</p>
                   <a
                     href={LAUNCH_SUPPORT_MAILTO}
-                    className="mt-3 block text-xl font-semibold text-[var(--reliance-blue-soft)] transition hover:text-white"
+                    className="mt-3 block break-all text-lg font-semibold text-[var(--reliance-blue-soft)] transition hover:text-white sm:text-xl"
                   >
                     {LAUNCH_SUPPORT_EMAIL}
                   </a>
-                  <p className="mt-5 text-xl leading-8 text-white/64">
+                  <p className="mt-5 text-lg leading-8 text-white/64 sm:text-xl">
                     Reliance aims to respond {LAUNCH_SUPPORT_RESPONSE_TIME}. Email is the current support channel.
                   </p>
                 </>
               ) : (
-                <p className="text-xl leading-8 text-white/64">
+                <p className="text-lg leading-8 text-white/64 sm:text-xl">
                   Publish a dedicated support inbox before wider rollout so customers and vendors always have a clear contact path.
                 </p>
               )}
@@ -101,10 +101,10 @@ export function PublicSiteFooter() {
           </div>
         </div>
 
-        <div className="mt-14 flex flex-col gap-5 border-t border-white/8 pt-8 text-lg text-white/48 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+        <div className="mt-14 flex min-w-0 flex-col gap-5 border-t border-white/8 pt-8 text-base text-white/48 sm:flex-row sm:items-start sm:justify-between sm:text-lg">
+          <div className="min-w-0">
             <p>&copy; {new Date().getFullYear()} Reliance.</p>
-            <p className="mt-3 max-w-5xl text-base leading-7 text-white/40">
+            <p className="mt-3 max-w-5xl text-sm leading-7 text-white/40 sm:text-base">
               Reliance is operated by {PUBLIC_OPERATOR_NAME}. Transactional SMS may be sent for account,
               invite, service-record, consent, review, and support workflows; message frequency varies and
               users can reply STOP to opt out or HELP for help.

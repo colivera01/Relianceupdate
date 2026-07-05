@@ -19,7 +19,7 @@ const triggerClasses = {
   light:
     "border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50",
   dark:
-    "border-white/12 bg-white/6 text-white hover:bg-white/10",
+    "border-blue-300/45 bg-blue-600/18 text-white shadow-[0_0_28px_rgba(47,109,246,0.22)] hover:border-blue-200/70 hover:bg-blue-500/24",
 } as const;
 
 export function TutorialEntryPoint({
@@ -35,7 +35,7 @@ export function TutorialEntryPoint({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${triggerClasses[surface]} ${className}`.trim()}
+        className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-bold transition ${triggerClasses[surface]} ${className}`.trim()}
       >
         <PlayCircle className="h-4 w-4" />
         {triggerLabel}

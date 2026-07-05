@@ -4,8 +4,8 @@ import { sendEmail } from "@/lib/email/resend";
 import {
   buildRelianceEmailHtml,
   escapeRelianceEmailHtml,
+  getPublicEmailBaseUrl,
 } from "@/lib/email/reliance-template";
-import { readNotificationEnv } from "@/lib/env/notification-config";
 import { logNotificationAttempt } from "@/lib/notifications/notification-audit";
 import {
   getAdminNotificationEmailSummary,
@@ -42,11 +42,18 @@ function normalizeMetadata(metadata: AdminNotificationInput["metadata"]): string
 
 function buildAbsoluteUrl(pathOrUrl: string, baseUrl?: string | null): string {
   const normalized = String(pathOrUrl || "/admin/notifications").trim() || "/admin/notifications";
-  if (/^https?:\/\//i.test(normalized)) return normalized;
+  const base = getPublicEmailBaseUrl(baseUrl);
 
-  const env = readNotificationEnv();
-  const base = String(baseUrl || env.appBaseUrl || "").trim().replace(/\/+$/, "");
-  if (!base) return normalized;
+  if (/^https?:\/\//i.test(normalized)) {
+    try {
+      const url = new URL(normalized);
+      const publicOrigin = getPublicEmailBaseUrl(url.origin);
+      return `${publicOrigin}${url.pathname}${url.search}${url.hash}`;
+    } catch {
+      return `${base}/admin/notifications`;
+    }
+  }
+
   return `${base}${normalized.startsWith("/") ? normalized : `/${normalized}`}`;
 }
 

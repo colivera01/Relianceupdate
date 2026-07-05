@@ -1128,12 +1128,17 @@ function RegisterPageInner() {
     if (!formData.email.trim()) newErrors.email = 'Email address is required';
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Please enter a valid email address (e.g., user@example.com)';
     
-    if (userType === 'vendor' && !formData.phone.trim()) newErrors.phone = 'Phone number is required for vendor account access and launch support.';
+    if (!formData.phone.trim()) {
+      newErrors.phone =
+        userType === 'vendor'
+          ? 'Phone number is required for vendor account access and launch support.'
+          : 'Phone number is required for customer account access and service notifications.';
+    }
     else if (formData.phone.trim() && !/^[\+]?[1-9][\d]{0,15}$/.test(formData.phone.replace(/[\s\-\(\)]/g, ''))) {
       newErrors.phone = 'Please enter a valid phone number (e.g., 555-123-4567)';
     }
     if (formData.phone.trim() && !formData.smsConsent) {
-      newErrors.smsConsent = 'Check the SMS consent box before adding a mobile phone number, or leave the phone field blank.';
+      newErrors.smsConsent = 'Check the SMS consent box before continuing with a mobile phone number.';
     }
 
     if (!formData.password) newErrors.password = 'Password is required';
@@ -1200,6 +1205,11 @@ function RegisterPageInner() {
     
     console.log('Starting registration process...');
     
+    if (!validateStep1()) {
+      console.log('Step 1 validation failed');
+      return;
+    }
+
     if (!validateStep2()) {
       console.log('Step 2 validation failed');
       return;
@@ -1714,7 +1724,7 @@ function RegisterPageInner() {
               <div className="mb-5 flex justify-end">
                 <TutorialEntryPoint
                   guide={userType === 'vendor' ? tutorialGuides.vendorRegistration : tutorialGuides.customerRegistration}
-                  surface="light"
+                  surface="dark"
                 />
               </div>
                              <form onSubmit={handleSubmit} className="space-y-4">
@@ -1838,7 +1848,7 @@ function RegisterPageInner() {
                     
                     <div>
                       <Label htmlFor="phone">
-                        Phone Number {userType === 'vendor' ? '*' : <span className="text-gray-500">(optional)</span>}
+                        Phone Number *
                       </Label>
                       <Input
                         id="phone"
@@ -1847,11 +1857,11 @@ function RegisterPageInner() {
                         onChange={(e) => handleInputChange('phone', e.target.value)}
                         className={errors.phone ? 'border-red-500' : ''}
                         placeholder="(555) 123-4567"
-                        required={userType === 'vendor'}
+                        required
                       />
                       {userType === 'user' && (
                         <p className="text-xs text-gray-500 mt-1">
-                          Leave this blank if you do not want SMS updates.
+                          Required for account and service notifications. Email is active now; SMS will be used after SMS approval is live.
                         </p>
                       )}
                       {errors.phone && (
@@ -1882,8 +1892,7 @@ function RegisterPageInner() {
                           Reliance may text me account access, service-record updates, invite links,
                           customer video consent requests, approved video availability, review reminders,
                           support updates. Message frequency varies. Msg &amp; data
-                          rates may apply. Reply STOP to opt out or HELP for help. Consent is not required
-                          to create an account or request service. See{' '}
+                          rates may apply. Reply STOP to opt out or HELP for help. This SMS consent is required when a mobile phone number is provided. See{' '}
                           <Link href="/sms-policy" className="font-semibold text-blue-200 underline">
                             SMS Policy
                           </Link>
@@ -2165,6 +2174,7 @@ function RegisterPageInner() {
                       onClick={handleNextStep} 
                       className="w-full"
                       disabled={!formData.firstName || !formData.lastName || !formData.email || 
+                               !formData.phone || !formData.smsConsent ||
                                !formData.password || !formData.confirmPassword || !passwordStrength.meetsRequirements}
                     >
                       {userType === 'vendor' ? 'Next: Business Information' : 'Next Step'}

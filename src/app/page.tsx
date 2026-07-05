@@ -136,61 +136,61 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="w-full px-4 py-28 sm:px-6 lg:px-6 xl:px-8 2xl:px-10">
+      <section className="w-full overflow-hidden px-4 py-20 sm:px-6 sm:py-28 lg:px-6 xl:px-8 2xl:px-10">
         <div className="mb-12">
-          <div className="inline-flex rounded-full border border-white/10 bg-white/6 px-5 py-2 text-sm font-semibold uppercase tracking-[0.26em] text-white/70">
+          <div className="inline-flex max-w-full rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white/70 sm:px-5 sm:text-sm sm:tracking-[0.26em]">
             How Reliance helps you compare
           </div>
-          <h2 className="mt-6 max-w-6xl font-display text-6xl font-semibold leading-tight text-white xl:text-7xl">
+          <h2 className="mt-6 max-w-6xl font-display text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl xl:text-7xl">
             See what matters before you choose
           </h2>
         </div>
 
         <div className="grid gap-8 lg:grid-cols-3">
           {trustPillars.map((item) => (
-            <div key={item.title} className="reliance-light-card flex min-h-[18rem] flex-col justify-center rounded-[36px] px-12 py-12">
-              <div className="inline-flex h-20 w-20 items-center justify-center rounded-[28px] bg-[linear-gradient(135deg,rgba(36,107,255,0.22),rgba(53,214,165,0.2))] text-[var(--reliance-blue)]">
-                <item.icon className="h-9 w-9" />
+            <div key={item.title} className="reliance-light-card flex min-h-[13rem] flex-col justify-center rounded-[28px] px-6 py-8 sm:min-h-[18rem] sm:rounded-[36px] sm:px-12 sm:py-12">
+              <div className="inline-flex h-14 w-14 items-center justify-center rounded-[20px] bg-[linear-gradient(135deg,rgba(36,107,255,0.22),rgba(53,214,165,0.2))] text-[var(--reliance-blue)] sm:h-20 sm:w-20 sm:rounded-[28px]">
+                <item.icon className="h-7 w-7 sm:h-9 sm:w-9" />
               </div>
-              <h3 className="mt-8 font-display text-5xl font-semibold leading-tight text-white">{item.title}</h3>
-              <p className="mt-6 max-w-2xl text-2xl leading-10 text-white/76">{item.description}</p>
+              <h3 className="mt-6 font-display text-3xl font-semibold leading-tight text-white sm:mt-8 sm:text-5xl">{item.title}</h3>
+              <p className="mt-4 max-w-2xl text-lg leading-8 text-white/76 sm:mt-6 sm:text-2xl sm:leading-10">{item.description}</p>
             </div>
           ))}
         </div>
       </section>
 
-      <section className="w-full px-4 pb-20 sm:px-6 lg:px-6 xl:px-8 2xl:px-10">
-        <div className="reliance-light-card rounded-[38px] px-12 py-12">
+      <section className="w-full overflow-hidden px-4 pb-20 sm:px-6 lg:px-6 xl:px-8 2xl:px-10">
+        <div className="reliance-light-card rounded-[28px] px-6 py-8 sm:rounded-[38px] sm:px-12 sm:py-12">
           <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <div className="text-sm font-semibold uppercase tracking-[0.28em] text-white/62">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/62 sm:text-sm sm:tracking-[0.28em]">
                 Recent posts
               </div>
-              <h2 className="mt-5 max-w-6xl font-display text-6xl font-semibold leading-tight text-white">
+              <h2 className="mt-5 max-w-6xl font-display text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
                 Approved service posts customers can review
               </h2>
-              <p className="mt-6 max-w-7xl text-2xl leading-10 text-white/76">
+              <p className="mt-6 max-w-7xl text-lg leading-8 text-white/76 sm:text-2xl sm:leading-10">
                 This preview only shows completed three-stage service video posts after manager
                 completion and public approval. Published services without an approved public video
                 package stay in Browse, not here.
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-start gap-4 xl:items-end">
-              <span className="text-2xl font-semibold text-white/72">
+              <span className="text-lg font-semibold text-white/72 sm:text-2xl">
                 {marketplaceLoading ? 'Loading posts...' : `${totalPublicServices} recent posts live`}
               </span>
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleUseCurrentLocation}
-                className="h-14 rounded-full border-white/10 bg-white/8 px-6 text-lg font-semibold text-white hover:bg-white/12"
+                className="h-12 rounded-full border-white/10 bg-white/8 px-5 text-base font-semibold text-white hover:bg-white/12 sm:h-14 sm:px-6 sm:text-lg"
               >
                 <LocateFixed className="mr-2 h-5 w-5" />
                 Use current location
               </Button>
             </div>
           </div>
-          <div className="mt-8 rounded-3xl border border-white/10 bg-white/6 px-8 py-6 text-2xl leading-9 text-white/76">
+          <div className="mt-8 rounded-3xl border border-white/10 bg-white/6 px-5 py-5 text-lg leading-8 text-white/76 sm:px-8 sm:py-6 sm:text-2xl sm:leading-9">
             {locationStatus}
           </div>
 
@@ -213,7 +213,7 @@ export default function HomePage() {
                 We could not load public service details right now. You can still open Browse Services.
               </div>
             ) : marketplaceResults.length === 0 ? (
-              <div className="md:col-span-2 xl:col-span-4 rounded-[30px] border border-white/10 bg-white/6 px-8 py-7 text-2xl leading-9 text-white/76">
+              <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-white/10 bg-white/6 px-5 py-6 text-lg leading-8 text-white/76 sm:rounded-[30px] sm:px-8 sm:py-7 sm:text-2xl sm:leading-9">
                 Recent posts will appear here after vendors complete all three stage videos and the
                 public approval process finishes.
               </div>

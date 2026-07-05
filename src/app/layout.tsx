@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${manrope.variable} ${sora.variable} ${manrope.className}`}>
+      <body className={`${manrope.variable} ${sora.variable} ${manrope.className} overflow-x-hidden`}>
         <QueryProvider>
           <ClientProviders>
             {children}

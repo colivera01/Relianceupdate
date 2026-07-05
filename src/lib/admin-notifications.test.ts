@@ -116,6 +116,38 @@ describe("createAdminNotificationWithEmail", () => {
     });
   });
 
+  it("rejects internal deployment hosts when building admin email links and logos", async () => {
+    hoisted.adminNotificationCreate.mockResolvedValue({
+      id: "admin-notification-internal-host-1",
+    });
+    hoisted.sendEmail.mockResolvedValue({
+      ok: true,
+      providerMessageId: "email-message-internal-host-1",
+    });
+
+    const { createAdminNotificationWithEmail } = await import("./admin-notifications");
+
+    await createAdminNotificationWithEmail({
+      type: "VENDOR_APPROVAL_REQUIRED",
+      title: "New vendor approval request",
+      message: "A vendor profile needs admin approval.",
+      metadata: {
+        vendorId: "vendor-1",
+        businessName: "Test Vendor",
+      },
+      surfaceHref: "/admin/vendors/approval-queue",
+      baseUrl: "https://4a63f37da1dd:8080",
+    });
+
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    expect(email.html).toContain("https://beta.relianceonline.org/reliance-email-logo.png");
+    expect(email.html).toContain("https://beta.relianceonline.org/admin/vendors/approval-queue");
+    expect(email.html).not.toContain("4a63f37da1dd");
+    expect(hoisted.logNotificationAttempt.mock.calls[0][2].fallbackLink).toBe(
+      "https://beta.relianceonline.org/admin/vendors/approval-queue"
+    );
+  });
+
   it("adds an AI summary block to admin action emails when support triage AI is enabled", async () => {
     hoisted.adminNotificationCreate.mockResolvedValue({
       id: "admin-notification-ai-1",

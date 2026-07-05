@@ -31,10 +31,44 @@ export function escapeRelianceEmailHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export function getRelianceEmailLogoUrl(baseUrl?: string | null): string {
+const DEFAULT_PUBLIC_APP_BASE_URL = "https://beta.relianceonline.org";
+
+export function normalizePublicEmailBaseUrl(value?: string | null): string {
+  const raw = String(value || "").trim().replace(/\/+$/, "");
+  if (!raw) return "";
+
+  try {
+    const url = new URL(raw);
+    const hostname = url.hostname.toLowerCase();
+    const isLocalHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".local");
+    const isInternalContainerHost =
+      /^[a-f0-9]{12,}$/i.test(hostname) ||
+      (url.port === "8080" && !hostname.includes("relianceonline.org"));
+
+    if (isLocalHost || isInternalContainerHost) return "";
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return "";
+  }
+}
+
+export function getPublicEmailBaseUrl(baseUrl?: string | null): string {
   const env = readNotificationEnv();
-  const normalizedBase = String(baseUrl || env.appBaseUrl || "").trim().replace(/\/+$/, "");
-  return normalizedBase ? `${normalizedBase}/reliance-email-logo.png` : "";
+  return (
+    normalizePublicEmailBaseUrl(baseUrl) ||
+    normalizePublicEmailBaseUrl(env.appBaseUrl) ||
+    normalizePublicEmailBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ||
+    normalizePublicEmailBaseUrl(process.env.NEXT_PUBLIC_BASE_URL) ||
+    DEFAULT_PUBLIC_APP_BASE_URL
+  );
+}
+
+export function getRelianceEmailLogoUrl(baseUrl?: string | null): string {
+  return `${getPublicEmailBaseUrl(baseUrl)}/reliance-email-logo.png`;
 }
 
 export function buildRelianceEmailHtml(input: RelianceEmailTemplateInput): string {
