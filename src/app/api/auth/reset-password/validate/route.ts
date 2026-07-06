@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate the reset token
-    const resetToken = validateResetToken(token);
+    const resetToken = await validateResetToken(token);
 
     if (!resetToken) {
       console.log('Invalid or expired reset token');
@@ -41,4 +41,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

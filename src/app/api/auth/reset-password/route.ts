@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate the reset token
-    const resetToken = validateResetToken(token);
+    const resetToken = await validateResetToken(token);
 
     if (!resetToken) {
       console.log('Invalid or expired reset token');
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Mark the token as used
-    markTokenAsUsed(token);
+    await markTokenAsUsed(token);
 
     console.log('Password reset successful for:', resetToken.email);
 
