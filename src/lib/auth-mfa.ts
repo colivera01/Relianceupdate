@@ -7,6 +7,7 @@ import { getAuthSessionCookieOptions } from "@/lib/auth-session";
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
 
 const MFA_CODE_TTL_MS = 1000 * 60 * 10;
+const MFA_REUSE_WINDOW_MS = 1000 * 30;
 const MFA_PURPOSE_LOGIN = "login";
 const TRUSTED_DEVICE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const TRUSTED_DEVICE_COOKIE = "reliance_trusted_device";
@@ -149,6 +150,7 @@ export async function issueLoginMfaChallenge(params: {
   email: string;
   recipientName?: string | null;
   baseUrl: string;
+  forceNew?: boolean;
   userSnapshot?: {
     name: string;
     email: string;
@@ -164,9 +166,52 @@ export async function issueLoginMfaChallenge(params: {
     throw new Error("Missing MFA challenge fields");
   }
 
-  const code = generateSixDigitCode();
-  const expiresAt = new Date(Date.now() + MFA_CODE_TTL_MS);
   const now = new Date();
+  const reuseCreatedAfter = new Date(now.getTime() - MFA_REUSE_WINDOW_MS);
+
+  if (!params.forceNew) {
+    try {
+      const reusable = await (prisma as any).authMfaChallenge?.findFirst?.({
+        where: {
+          userId: params.userId,
+          email,
+          purpose: MFA_PURPOSE_LOGIN,
+          consumedAt: null,
+          expiresAt: {
+            gt: now,
+          },
+          createdAt: {
+            gte: reuseCreatedAfter,
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          id: true,
+          expiresAt: true,
+        },
+      });
+
+      if (reusable?.id) {
+        return {
+          challengeId: String(reusable.id),
+          expiresAt: new Date(reusable.expiresAt),
+          sendResult: {
+            ok: true,
+            providerMessageId: "reused-recent-challenge",
+          },
+          reused: true,
+        };
+      }
+    } catch (error) {
+      if (!IS_DEV) throw error;
+      console.warn("[auth-mfa] Recent MFA challenge lookup skipped:", error);
+    }
+  }
+
+  const code = generateSixDigitCode();
+  const expiresAt = new Date(now.getTime() + MFA_CODE_TTL_MS);
 
   let challenge: {
     id: string;
@@ -259,6 +304,7 @@ export async function issueLoginMfaChallenge(params: {
     challengeId: String(challenge.id),
     expiresAt: challenge.expiresAt,
     sendResult,
+    reused: false,
     codePreview: process.env.NODE_ENV !== "production" ? code : undefined,
   };
 }
@@ -350,6 +396,7 @@ export async function resendLoginMfaChallenge(params: {
     recipientName:
       String(existing.credential?.user?.name || existing.userSnapshot?.name || "").trim() || null,
     baseUrl: params.baseUrl,
+    forceNew: true,
     userSnapshot: existing.userSnapshot,
   });
 

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const hoisted = vi.hoisted(() => {
   const updateMany = vi.fn();
   const create = vi.fn();
+  const findFirst = vi.fn();
   const findUnique = vi.fn();
   const update = vi.fn();
   const transaction = vi.fn(async (callback: (tx: any) => Promise<any>) =>
@@ -20,9 +21,15 @@ const hoisted = vi.hoisted(() => {
   );
   const sendEmail = vi.fn();
   return {
-    prisma: { $transaction: transaction },
+    prisma: {
+      $transaction: transaction,
+      authMfaChallenge: {
+        findFirst,
+      },
+    },
     updateMany,
     create,
+    findFirst,
     findUnique,
     update,
     transaction,
@@ -42,6 +49,7 @@ describe("auth-mfa", () => {
   beforeEach(() => {
     hoisted.updateMany.mockReset();
     hoisted.create.mockReset();
+    hoisted.findFirst.mockReset();
     hoisted.findUnique.mockReset();
     hoisted.update.mockReset();
     hoisted.transaction.mockClear();
@@ -63,6 +71,7 @@ describe("auth-mfa", () => {
 
   it("issues a login challenge and sends email", async () => {
     const { issueLoginMfaChallenge } = await import("./auth-mfa");
+    hoisted.findFirst.mockResolvedValue(null);
     hoisted.create.mockResolvedValue({
       id: "challenge-1",
       userId: "user-1",
@@ -86,8 +95,34 @@ describe("auth-mfa", () => {
     expect(result.codePreview).toMatch(/^\d{6}$/);
   });
 
+  it("reuses a very recent login challenge without sending a duplicate code email", async () => {
+    const { issueLoginMfaChallenge } = await import("./auth-mfa");
+    const expiresAt = new Date(Date.now() + 60_000);
+    hoisted.findFirst.mockResolvedValue({
+      id: "challenge-reuse",
+      expiresAt,
+    });
+
+    const result = await issueLoginMfaChallenge({
+      credentialId: "cred-1",
+      userId: "user-1",
+      email: "vendor@example.net",
+      recipientName: "Vendor User",
+      baseUrl: "http://localhost:3000",
+    });
+
+    expect(result).toMatchObject({
+      challengeId: "challenge-reuse",
+      reused: true,
+    });
+    expect(hoisted.updateMany).not.toHaveBeenCalled();
+    expect(hoisted.create).not.toHaveBeenCalled();
+    expect(hoisted.sendEmail).not.toHaveBeenCalled();
+  });
+
   it("verifies a valid code and rejects reused challenges", async () => {
     const { issueLoginMfaChallenge, verifyLoginMfaChallenge } = await import("./auth-mfa");
+    hoisted.findFirst.mockResolvedValue(null);
     hoisted.create.mockResolvedValue({
       id: "challenge-2",
       userId: "user-2",
@@ -134,6 +169,7 @@ describe("auth-mfa", () => {
   });
 
   it("falls back to the local dev challenge store when Prisma is unavailable", async () => {
+    hoisted.findFirst.mockRejectedValue(new Error("db unavailable"));
     hoisted.transaction.mockRejectedValue(new Error("db unavailable"));
     const { issueLoginMfaChallenge, verifyLoginMfaChallenge } = await import("./auth-mfa");
     hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "msg-dev" });

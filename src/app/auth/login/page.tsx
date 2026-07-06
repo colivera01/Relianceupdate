@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { startAuthentication } from '@simplewebauthn/browser';
@@ -54,10 +54,11 @@ function LoginPageContent() {
   const [mfaChallengeId, setMfaChallengeId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [mfaEmail, setMfaEmail] = useState('');
-  const [rememberDevice, setRememberDevice] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(true);
   const [supportsPasskeys, setSupportsPasskeys] = useState(false);
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
   const [formMessage, setFormMessage] = useState<FormMessage | null>(registrationMessageFromQuery);
+  const submitInFlightRef = useRef(false);
   const forgotPasswordHref = appendAuthNext('/auth/forgot-password', safeNextPath);
   const registerHref = appendAuthNext('/auth/register', safeNextPath);
   const entryBackHref = getAuthEntryBackHref(safeNextPath);
@@ -188,6 +189,8 @@ function LoginPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setIsLoading(true);
     setFormMessage(null);
 
@@ -234,7 +237,7 @@ function LoginPageContent() {
           setMfaChallengeId(String(data.challengeId || ''));
           setMfaEmail(String(data.email || formData.email));
           setMfaCode('');
-          setRememberDevice(false);
+          setRememberDevice(true);
           setFormMessage({
             tone: 'success',
             text: 'A sign-in code was sent to your email.',
@@ -275,6 +278,7 @@ function LoginPageContent() {
       });
     } finally {
       setIsLoading(false);
+      submitInFlightRef.current = false;
     }
   };
 
@@ -360,6 +364,7 @@ function LoginPageContent() {
                     onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     inputMode="numeric"
                     autoComplete="one-time-code"
+                    autoFocus
                     maxLength={6}
                     required
                   />
@@ -389,7 +394,7 @@ function LoginPageContent() {
                       setMfaChallengeId('');
                       setMfaCode('');
                       setMfaEmail('');
-                      setRememberDevice(false);
+                      setRememberDevice(true);
                     }}
                   >
                     Start over
@@ -407,6 +412,7 @@ function LoginPageContent() {
                         value={formData.email}
                         onChange={(e) => handleInputChange('email', e.target.value)}
                         className="h-12 rounded-2xl border-slate-200 bg-white pl-10 shadow-sm"
+                        autoComplete="username email"
                         required
                       />
                     </div>
@@ -422,6 +428,7 @@ function LoginPageContent() {
                         value={formData.password}
                         onChange={(e) => handleInputChange('password', e.target.value)}
                         className="h-12 rounded-2xl border-slate-200 bg-white pl-10 pr-10 shadow-sm"
+                        autoComplete="current-password"
                         required
                       />
                       <button
