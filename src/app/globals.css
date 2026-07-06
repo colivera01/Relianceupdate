@@ -642,6 +642,23 @@
   color: #eef4ff;
 }
 
+.reliance-marketplace-shell input:-webkit-autofill,
+.reliance-marketplace-shell input:-webkit-autofill:hover,
+.reliance-marketplace-shell input:-webkit-autofill:focus,
+.reliance-light-card input:-webkit-autofill,
+.reliance-light-card input:-webkit-autofill:hover,
+.reliance-light-card input:-webkit-autofill:focus {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  -webkit-text-fill-color: #f8fbff !important;
+  caret-color: #f8fbff !important;
+  box-shadow: 0 0 0 1000px #0f172a inset !important;
+  -webkit-box-shadow: 0 0 0 1000px #0f172a inset !important;
+  color-scheme: dark;
+  transition:
+    background-color 9999s ease-in-out 0s,
+    color 9999s ease-in-out 0s;
+}
+
 .reliance-operator-shell .reliance-operator-muted {
   color: rgba(229, 236, 248, 0.68);
 }
