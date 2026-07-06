@@ -875,6 +875,10 @@ function RegisterPageInner() {
     price: string;
     description: string;
   };
+  type TemplateServiceCardState = {
+    saved: boolean;
+    editing: boolean;
+  };
   const searchParams = useSearchParams();
   const router = useRouter();
   const type = searchParams?.get('type') as 'vendor' | 'user';
@@ -897,6 +901,8 @@ function RegisterPageInner() {
   const [otherBusinessType, setOtherBusinessType] = useState('');
   const [serviceTypeCustomNames, setServiceTypeCustomNames] = useState<Record<string, string>>({});
   const [serviceTypeDetails, setServiceTypeDetails] = useState<Record<string, TemplateServiceDetailDraft>>({});
+  const [templateServiceCardStates, setTemplateServiceCardStates] = useState<Record<string, TemplateServiceCardState>>({});
+  const [templateServicesError, setTemplateServicesError] = useState('');
   const [customServices, setCustomServices] = useState<CustomServiceDraft[]>([]);
   const [customServicesError, setCustomServicesError] = useState('');
   const registerIntroCopy =
@@ -927,6 +933,7 @@ function RegisterPageInner() {
     () => (formData.category ? getServiceTypesForCategory(formData.category) : []),
     [formData.category]
   );
+  const selectedServiceTypes = Array.isArray(formData.serviceTypes) ? formData.serviceTypes : [];
   // Error state
   const [errors, setErrors] = useState<{[key: string]: string}>({});
 
@@ -965,6 +972,8 @@ function RegisterPageInner() {
     setOtherBusinessType('');
     setServiceTypeCustomNames({});
     setServiceTypeDetails({});
+    setTemplateServiceCardStates({});
+    setTemplateServicesError('');
     setCustomServices([]);
     setCustomServicesError('');
     setCitySuggestions([]);
@@ -1020,6 +1029,70 @@ function RegisterPageInner() {
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+  };
+
+  const removeTemplateServiceCard = (serviceType: string) => {
+    handleInputChange('serviceTypes', selectedServiceTypes.filter(type => type !== serviceType));
+    setServiceTypeCustomNames((prev) => {
+      const next = { ...prev };
+      delete next[serviceType];
+      return next;
+    });
+    setServiceTypeDetails((prev) => {
+      const next = { ...prev };
+      delete next[serviceType];
+      return next;
+    });
+    setTemplateServiceCardStates((prev) => {
+      const next = { ...prev };
+      delete next[serviceType];
+      return next;
+    });
+    setTemplateServicesError('');
+  };
+
+  const markTemplateServiceEditing = (serviceType: string) => {
+    setTemplateServiceCardStates((prev) => ({
+      ...prev,
+      [serviceType]: { saved: false, editing: true },
+    }));
+    setTemplateServicesError('');
+  };
+
+  const saveTemplateServiceCard = (serviceType: string) => {
+    const draft = serviceTypeDetails[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType);
+    const serviceName = String(serviceTypeCustomNames[serviceType] || serviceType).trim();
+    const durationText = String(draft.defaultDuration || '').trim();
+    const priceText = String(draft.price || '').trim();
+    const duration = durationText ? Number(durationText) : undefined;
+    const price = priceText ? Number(priceText) : undefined;
+
+    if (!serviceName) {
+      setTemplateServicesError(`Add a service name before saving ${serviceType}.`);
+      return;
+    }
+    if (durationText && (!Number.isFinite(duration) || Number(duration) <= 0)) {
+      setTemplateServicesError(`Use a positive duration for ${serviceType}.`);
+      return;
+    }
+    if (priceText && (!Number.isFinite(price) || Number(price) < 0)) {
+      setTemplateServicesError(`Use a valid starting price for ${serviceType}.`);
+      return;
+    }
+
+    setServiceTypeDetails((prev) =>
+      prev[serviceType]
+        ? prev
+        : {
+            ...prev,
+            [serviceType]: draft,
+          }
+    );
+    setTemplateServiceCardStates((prev) => ({
+      ...prev,
+      [serviceType]: { saved: true, editing: false },
+    }));
+    setTemplateServicesError('');
   };
 
   const handleCityInput = (value: string) => {
@@ -1170,6 +1243,19 @@ function RegisterPageInner() {
     if (!validateStep2()) {
       console.log('Step 2 validation failed');
       return;
+    }
+
+    if (userType === 'vendor') {
+      const unsavedTemplateServices = selectedServiceTypes.filter(
+        (serviceType) => !templateServiceCardStates[serviceType]?.saved
+      );
+
+      if (unsavedTemplateServices.length > 0) {
+        const message = `Save each selected starter service before creating your account: ${unsavedTemplateServices.join(', ')}.`;
+        setTemplateServicesError(message);
+        setSubmitError('Save each selected starter service before creating your account.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -2237,6 +2323,8 @@ function RegisterPageInner() {
                             handleInputChange('specializations', []);
                             setServiceTypeCustomNames({});
                             setServiceTypeDetails({});
+                            setTemplateServiceCardStates({});
+                            setTemplateServicesError('');
                             setCustomServices([]);
                             setCustomServicesError('');
                           }}
@@ -2282,7 +2370,10 @@ function RegisterPageInner() {
                                   onChange={(e) => {
                                     const currentTypes = Array.isArray(formData.serviceTypes) ? formData.serviceTypes : [];
                                     if (e.target.checked) {
-                                      handleInputChange('serviceTypes', [...currentTypes, serviceType]);
+                                      handleInputChange(
+                                        'serviceTypes',
+                                        currentTypes.includes(serviceType) ? currentTypes : [...currentTypes, serviceType]
+                                      );
                                       setServiceTypeDetails((prev) =>
                                         prev[serviceType]
                                           ? prev
@@ -2291,13 +2382,13 @@ function RegisterPageInner() {
                                               [serviceType]: getTemplateServiceDefaultDetail(formData.category, serviceType),
                                             }
                                       );
+                                      setTemplateServiceCardStates((prev) => ({
+                                        ...prev,
+                                        [serviceType]: { saved: false, editing: true },
+                                      }));
+                                      setTemplateServicesError('');
                                     } else {
-                                      handleInputChange('serviceTypes', currentTypes.filter(type => type !== serviceType));
-                                      setServiceTypeDetails((prev) => {
-                                        const next = { ...prev };
-                                        delete next[serviceType];
-                                        return next;
-                                      });
+                                      removeTemplateServiceCard(serviceType);
                                     }
                                   }}
                                   className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
@@ -2323,16 +2414,44 @@ function RegisterPageInner() {
                       {Array.isArray(formData.serviceTypes) && formData.serviceTypes.length > 0 ? (
                         <div className={`mt-3 space-y-3 ${vendorPanelClass}`}>
                           <p className="text-xs text-white/62">
-                            Optional: rename selected starter services and confirm the service name, estimated duration, starting price, and customer-facing description before saving.
+                            Each selected starter service becomes its own menu card. Save each card before creating the account; after registration, you can edit or delete services from your vendor services/profile area.
                           </p>
-                          {formData.serviceTypes.map((serviceType) => (
+                          {templateServicesError ? (
+                            <p className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+                              {templateServicesError}
+                            </p>
+                          ) : null}
+                          {formData.serviceTypes.map((serviceType) => {
+                            const cardState = templateServiceCardStates[serviceType] || { saved: false, editing: true };
+                            const locked = cardState.saved && !cardState.editing;
+
+                            return (
                             <div key={`rename-${serviceType}`} className={vendorSubpanelClass}>
-                              <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">{serviceType}</Label>
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">{serviceType}</Label>
+                                  <p className="mt-1 text-xs text-white/48">
+                                    {locked
+                                      ? 'Saved to your starter service menu. Use Edit to make changes before creating the account.'
+                                      : 'Review the details, then save this service card.'}
+                                  </p>
+                                </div>
+                                <span
+                                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                                    locked
+                                      ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-100'
+                                      : 'border-amber-300/35 bg-amber-400/12 text-amber-100'
+                                  }`}
+                                >
+                                  {locked ? 'Saved' : 'Unsaved'}
+                                </span>
+                              </div>
                               <div className="mt-3 grid gap-3 md:grid-cols-2">
                                 <div className="space-y-1">
                                   <Label className="text-xs text-white/46">Service Name</Label>
                                   <Input
                                     value={serviceTypeCustomNames[serviceType] || serviceType}
+                                    disabled={locked}
                                     onChange={(e) =>
                                       setServiceTypeCustomNames((prev) => ({
                                         ...prev,
@@ -2349,6 +2468,7 @@ function RegisterPageInner() {
                                     type="number"
                                     min="1"
                                     value={serviceTypeDetails[serviceType]?.defaultDuration || ''}
+                                    disabled={locked}
                                     onChange={(e) =>
                                       setServiceTypeDetails((prev) => ({
                                         ...prev,
@@ -2369,6 +2489,7 @@ function RegisterPageInner() {
                                     min="0"
                                     step="0.01"
                                     value={serviceTypeDetails[serviceType]?.price || ''}
+                                    disabled={locked}
                                     onChange={(e) =>
                                       setServiceTypeDetails((prev) => ({
                                         ...prev,
@@ -2386,6 +2507,7 @@ function RegisterPageInner() {
                                   <Label className="text-xs text-white/46">Customer-Facing Description</Label>
                                   <textarea
                                     value={serviceTypeDetails[serviceType]?.description || ''}
+                                    disabled={locked}
                                     onChange={(e) =>
                                       setServiceTypeDetails((prev) => ({
                                         ...prev,
@@ -2397,12 +2519,40 @@ function RegisterPageInner() {
                                     }
                                     rows={3}
                                     placeholder="Describe what the customer can expect from this service."
-                                    className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${vendorFieldClass}`}
+                                    className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70 ${vendorFieldClass}`}
                                   />
                                 </div>
                               </div>
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {locked ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => markTemplateServiceEditing(serviceType)}
+                                  >
+                                    Edit service
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    onClick={() => saveTemplateServiceCard(serviceType)}
+                                    className="bg-emerald-600 text-white hover:bg-emerald-500"
+                                  >
+                                    Save service
+                                  </Button>
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="border-red-300/30 text-red-100 hover:bg-red-500/10"
+                                  onClick={() => removeTemplateServiceCard(serviceType)}
+                                >
+                                  Delete service
+                                </Button>
+                              </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : null}
                       <div className={`mt-3 ${vendorPanelClass}`}>

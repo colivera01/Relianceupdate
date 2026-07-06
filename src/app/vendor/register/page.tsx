@@ -58,6 +58,16 @@ export default function VendorRegisterPage() {
     price: string;
     description: string;
   };
+  type TemplateServiceDraft = {
+    templateKey: string;
+    name: string;
+    defaultDuration?: number;
+    price?: number;
+    description?: string;
+    source?: string;
+    saved: boolean;
+    editing: boolean;
+  };
   const router = useRouter();
   const { user, isAuthenticated, isLoading } = useAuth();
   const darkFieldClass = 'border-white/12 bg-slate-900/90 text-white placeholder:text-white/40';
@@ -69,11 +79,10 @@ export default function VendorRegisterPage() {
   const [state, setState] = useState('');
   const [zipCode, setZipCode] = useState('');
   const [primaryServiceCategory, setPrimaryServiceCategory] = useState('');
-  const [selectedTemplateServices, setSelectedTemplateServices] = useState<
-    Array<{ templateKey: string; name: string; defaultDuration?: number; price?: number; description?: string; source?: string }>
-  >([]);
+  const [selectedTemplateServices, setSelectedTemplateServices] = useState<TemplateServiceDraft[]>([]);
   const [customServices, setCustomServices] = useState<CustomServiceDraft[]>([]);
   const [customServiceError, setCustomServiceError] = useState('');
+  const [templateServiceError, setTemplateServiceError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [pendingRequest, setPendingRequest] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,6 +99,15 @@ export default function VendorRegisterPage() {
     if (businessType === 'Other' && !customBusinessType.trim()) return;
     if (primaryServiceCategory && selectedTemplateServices.length === 0) {
       setError('Select at least one service you offer.');
+      return;
+    }
+    const unsavedTemplateServices = selectedTemplateServices.filter((service) => !service.saved);
+    if (unsavedTemplateServices.length > 0) {
+      setTemplateServiceError(
+        `Save each selected starter service before submitting: ${unsavedTemplateServices
+          .map((service) => service.name || 'Unnamed service')
+          .join(', ')}.`
+      );
       return;
     }
 
@@ -126,6 +144,7 @@ export default function VendorRegisterPage() {
       return;
     }
     setCustomServiceError('');
+    setTemplateServiceError('');
 
     const selectedServicesPayload = [...selectedTemplateServices, ...customServicesPayload]
       .map((service) => ({
@@ -178,6 +197,38 @@ export default function VendorRegisterPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const updateTemplateService = (templateKey: string, updates: Partial<TemplateServiceDraft>) => {
+    setSelectedTemplateServices((prev) =>
+      prev.map((item) => (item.templateKey === templateKey ? { ...item, ...updates } : item))
+    );
+    setTemplateServiceError('');
+  };
+
+  const saveTemplateService = (templateKey: string) => {
+    const service = selectedTemplateServices.find((item) => item.templateKey === templateKey);
+    if (!service) return;
+
+    if (!service.name.trim()) {
+      setTemplateServiceError('Service name is required before saving a starter service.');
+      return;
+    }
+    if (service.defaultDuration !== undefined && (!Number.isFinite(service.defaultDuration) || service.defaultDuration <= 0)) {
+      setTemplateServiceError('Estimated duration must be a positive number.');
+      return;
+    }
+    if (service.price !== undefined && (!Number.isFinite(service.price) || service.price < 0)) {
+      setTemplateServiceError('Starting price cannot be negative.');
+      return;
+    }
+
+    updateTemplateService(templateKey, { saved: true, editing: false });
+  };
+
+  const deleteTemplateService = (templateKey: string) => {
+    setSelectedTemplateServices((prev) => prev.filter((item) => item.templateKey !== templateKey));
+    setTemplateServiceError('');
   };
 
   const alreadyVendorEnabled =
@@ -337,12 +388,10 @@ export default function VendorRegisterPage() {
                   onChange={(e) => {
                     const category = e.target.value;
                     setPrimaryServiceCategory(category);
-                    const templates = getServiceTemplatesForCategory(category);
-                    setSelectedTemplateServices(
-                      templates.map((t, idx) => ({ templateKey: `${idx}-${t.name}`, ...t }))
-                    );
+                    setSelectedTemplateServices([]);
                     setCustomServices([]);
                     setCustomServiceError('');
+                    setTemplateServiceError('');
                   }}
                 >
                   <option value="">Select a primary service category</option>
@@ -361,10 +410,16 @@ export default function VendorRegisterPage() {
                 </p>
                 {primaryServiceCategory && availableTemplates.length > 0 ? (
                   <div className="space-y-2 rounded border border-white/12 bg-white/5 p-3">
+                    {templateServiceError ? (
+                      <p className="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+                        {templateServiceError}
+                      </p>
+                    ) : null}
                     {availableTemplates.map((template, idx) => {
                       const templateKey = `${idx}-${template.name}`;
                       const selected = selectedTemplateServices.some((s) => s.templateKey === templateKey);
                       const selectedService = selectedTemplateServices.find((s) => s.templateKey === templateKey);
+                      const locked = Boolean(selectedService?.saved && !selectedService?.editing);
                       return (
                         <div key={`${template.name}-${template.defaultDuration}`} className="rounded-2xl border border-white/10 bg-slate-950/60 p-3">
                           <label className="flex items-center gap-2 text-sm font-medium">
@@ -375,13 +430,21 @@ export default function VendorRegisterPage() {
                                 if (e.target.checked) {
                                   setSelectedTemplateServices((prev) => [
                                     ...prev,
-                                    { templateKey, ...template },
+                                    {
+                                      templateKey,
+                                      name: template.name,
+                                      defaultDuration:
+                                        Number(getTemplateServiceDefaultDetail(primaryServiceCategory, template.name).defaultDuration) ||
+                                        template.defaultDuration,
+                                      source: 'template',
+                                      saved: false,
+                                      editing: true,
+                                    },
                                   ]);
+                                  setTemplateServiceError('');
                                   return;
                                 }
-                                setSelectedTemplateServices((prev) =>
-                                  prev.filter((item) => item.templateKey !== templateKey)
-                                );
+                                deleteTemplateService(templateKey);
                               }}
                             />
                             <span className="flex flex-wrap items-center gap-2">
@@ -392,84 +455,108 @@ export default function VendorRegisterPage() {
                             </span>
                           </label>
                           {selected ? (
-                            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                              <div className="space-y-1">
-                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Service Name</label>
-                                <Input
-                                  value={selectedService?.name || template.name}
-                                  onChange={(e) => {
-                                    const nextName = e.target.value;
-                                    setSelectedTemplateServices((prev) =>
-                                      prev.map((item) =>
-                                        item.templateKey === templateKey
-                                          ? { ...item, name: nextName }
-                                          : item
-                                      )
-                                    );
-                                  }}
-                                  placeholder="Service name"
-                                  className={darkFieldClass}
-                                />
+                            <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                                <p className="text-xs text-white/56">
+                                  {locked
+                                    ? 'Saved to your starter service menu. Use Edit to change it before submitting.'
+                                    : 'Fill out this service card, then save it before submitting.'}
+                                </p>
+                                <span
+                                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                                    locked
+                                      ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-100'
+                                      : 'border-amber-300/35 bg-amber-400/12 text-amber-100'
+                                  }`}
+                                >
+                                  {locked ? 'Saved' : 'Unsaved'}
+                                </span>
                               </div>
-                              <div className="space-y-1">
-                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Estimated Duration (minutes)</label>
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  value={selectedService?.defaultDuration ?? getTemplateServiceDefaultDetail(primaryServiceCategory, template.name).defaultDuration}
-                                  onChange={(e) => {
-                                    const nextDuration = e.target.value ? Number(e.target.value) : undefined;
-                                    setSelectedTemplateServices((prev) =>
-                                      prev.map((item) =>
-                                        item.templateKey === templateKey
-                                          ? { ...item, defaultDuration: nextDuration }
-                                          : item
-                                      )
-                                    );
-                                  }}
-                                  placeholder="Estimated duration"
-                                  className={darkFieldClass}
-                                />
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div className="space-y-1">
+                                  <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Service Name</label>
+                                  <Input
+                                    value={selectedService?.name || template.name}
+                                    disabled={locked}
+                                    onChange={(e) => updateTemplateService(templateKey, { name: e.target.value })}
+                                    placeholder="Service name"
+                                    className={darkFieldClass}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Estimated Duration (minutes)</label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={
+                                      selectedService?.defaultDuration ??
+                                      getTemplateServiceDefaultDetail(primaryServiceCategory, template.name).defaultDuration
+                                    }
+                                    disabled={locked}
+                                    onChange={(e) =>
+                                      updateTemplateService(templateKey, {
+                                        defaultDuration: e.target.value ? Number(e.target.value) : undefined,
+                                      })
+                                    }
+                                    placeholder="Estimated duration"
+                                    className={darkFieldClass}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Starting Price (optional)</label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={selectedService?.price ?? ''}
+                                    disabled={locked}
+                                    onChange={(e) =>
+                                      updateTemplateService(templateKey, {
+                                        price: e.target.value ? Number(e.target.value) : undefined,
+                                      })
+                                    }
+                                    placeholder="Starting price"
+                                    className={darkFieldClass}
+                                  />
+                                </div>
+                                <div className="space-y-1 md:col-span-2">
+                                  <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Customer-Facing Description</label>
+                                  <textarea
+                                    value={selectedService?.description || ''}
+                                    disabled={locked}
+                                    onChange={(e) => updateTemplateService(templateKey, { description: e.target.value })}
+                                    rows={3}
+                                    placeholder="Describe what the customer can expect from this service."
+                                    className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70 ${darkFieldClass}`}
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-1">
-                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Starting Price (optional)</label>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={selectedService?.price ?? ''}
-                                  onChange={(e) => {
-                                    const nextPrice = e.target.value ? Number(e.target.value) : undefined;
-                                    setSelectedTemplateServices((prev) =>
-                                      prev.map((item) =>
-                                        item.templateKey === templateKey
-                                          ? { ...item, price: nextPrice }
-                                          : item
-                                      )
-                                    );
-                                  }}
-                                  placeholder="Starting price"
-                                  className={darkFieldClass}
-                                />
-                              </div>
-                              <div className="space-y-1 md:col-span-2">
-                                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">Customer-Facing Description</label>
-                                <textarea
-                                  value={selectedService?.description || ''}
-                                  onChange={(e) => {
-                                    const nextDescription = e.target.value;
-                                    setSelectedTemplateServices((prev) =>
-                                      prev.map((item) =>
-                                        item.templateKey === templateKey
-                                          ? { ...item, description: nextDescription }
-                                          : item
-                                      )
-                                    );
-                                  }}
-                                  rows={3}
-                                  placeholder="Describe what the customer can expect from this service."
-                                  className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkFieldClass}`}
-                                />
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {locked ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => updateTemplateService(templateKey, { saved: false, editing: true })}
+                                  >
+                                    Edit service
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    className="bg-emerald-600 text-white hover:bg-emerald-500"
+                                    onClick={() => saveTemplateService(templateKey)}
+                                  >
+                                    Save service
+                                  </Button>
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="border-red-300/30 text-red-100 hover:bg-red-500/10"
+                                  onClick={() => deleteTemplateService(templateKey)}
+                                >
+                                  Delete service
+                                </Button>
                               </div>
                             </div>
                           ) : null}
