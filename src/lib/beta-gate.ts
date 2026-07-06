@@ -7,7 +7,7 @@ export type BetaGateConfig = {
 
 export const DEFAULT_BETA_GATE_COOKIE_NAME = "reliance_beta_access";
 export const DEFAULT_BETA_GATE_COOKIE_MAX_AGE_DAYS = 14;
-export const DEFAULT_BETA_GATE_PASSWORD = "Reliance123";
+export const DEFAULT_BETA_GATE_PASSWORD = "Reliance2026";
 const TOKEN_VERSION = 1;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 

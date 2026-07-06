@@ -24,7 +24,7 @@ function resetBetaEnv() {
 
 function setEnabledBetaGate() {
   process.env.BETA_GATE_ENABLED = "true";
-  process.env.BETA_GATE_PASSWORD = "Reliance123";
+  process.env.BETA_GATE_PASSWORD = "Reliance2026";
   process.env.BETA_GATE_COOKIE_NAME = "reliance_beta_access";
   process.env.BETA_GATE_COOKIE_MAX_AGE_DAYS = "14";
 }
@@ -61,7 +61,7 @@ describe("private beta gate", () => {
     const config = getBetaGateConfig();
 
     expect(config.enabled).toBe(true);
-    expect(config.password).toBe("Reliance123");
+    expect(config.password).toBe("Reliance2026");
     expect(config.cookieName).toBe("reliance_beta_access");
     expect(config.cookieMaxAgeDays).toBe(14);
   });
@@ -83,7 +83,7 @@ describe("private beta gate", () => {
         accept: "application/json",
       },
       body: JSON.stringify({
-        password: "Reliance123",
+        password: "Reliance2026",
         returnTo: "/vendor/dashboard",
       }),
     });
