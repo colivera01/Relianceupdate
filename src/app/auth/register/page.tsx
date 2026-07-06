@@ -2085,13 +2085,14 @@ function RegisterPageInner() {
                           type={showPassword ? 'text' : 'password'}
                           value={formData.password}
                           onChange={(e) => handleInputChange('password', e.target.value)}
-                          className={errors.password ? 'border-red-500 pr-10' : 'pr-10'}
+                          className={`reliance-password-input pr-12 ${errors.password ? 'border-red-500' : ''}`}
                           required
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white/78 hover:bg-white/10 hover:text-white"
                         >
                           {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
@@ -2140,13 +2141,14 @@ function RegisterPageInner() {
                           type={showConfirmPassword ? 'text' : 'password'}
                           value={formData.confirmPassword}
                           onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                          className={errors.confirmPassword ? 'border-red-500 pr-10' : 'pr-10'}
+                          className={`reliance-password-input pr-12 ${errors.confirmPassword ? 'border-red-500' : ''}`}
                           required
                         />
                         <button
                           type="button"
                           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                          className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white/78 hover:bg-white/10 hover:text-white"
                         >
                           {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
