@@ -2222,7 +2222,7 @@ export default function VendorJobs() {
             name: manualServiceName,
             description: descriptionWithEstimatedDuration(
               manualServiceDescription,
-              manualServiceDuration === null ? '' : String(manualServiceDuration)
+              String(manualServiceDuration)
             ),
             price: manualServicePrice,
           }),
@@ -2293,6 +2293,13 @@ export default function VendorJobs() {
       setJobModalMode('create');
       setJobFormTargetId(null);
       setShowCreateJob(false);
+      setJobActionFeedback({
+        type: 'success',
+        message:
+          addingServiceFromJob && resolvedServiceName
+            ? `Created "${resolvedServiceName}" in Services Offered and added the work record for ${client}. Next time, choose "${resolvedServiceName}" from the Service Offered / Work Type dropdown.`
+            : `Added the work record for ${client}.`,
+      });
     } catch (error) {
       setCreateJobError(error instanceof Error ? error.message : 'Failed to create job');
     } finally {
@@ -4810,7 +4817,10 @@ export default function VendorJobs() {
                 <div className="mb-3">
                   <p className="text-sm font-semibold text-blue-950">Add this to Services Offered</p>
                   <p className="mt-1 text-xs leading-5 text-blue-800">
-                    This creates a customer-facing menu item first, then links this manual work record to it. All fields below are required.
+                    This will save a reusable Services Offered menu item and create this work record now. The service will appear in the Service Offered / Work Type dropdown for future records. All fields below are required.
+                  </p>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-blue-950">
+                    To only edit your service menu without creating a work record, use Services Offered from the left menu.
                   </p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
@@ -4893,7 +4903,17 @@ export default function VendorJobs() {
               Cancel
             </Button>
             <Button onClick={handleCreateJob} disabled={!canCreateJob}>
-              {isCreatingJob ? (jobModalMode === 'edit' ? 'Saving...' : 'Creating...') : (jobModalMode === 'edit' ? 'Save Work' : 'Add Work Record')}
+              {isCreatingJob
+                ? jobModalMode === 'edit'
+                  ? 'Saving...'
+                  : isAddingServiceFromJob
+                    ? 'Creating Service and Work...'
+                    : 'Creating...'
+                : jobModalMode === 'edit'
+                  ? 'Save Work'
+                  : isAddingServiceFromJob
+                    ? 'Create Service and Work Record'
+                    : 'Add Work Record'}
             </Button>
           </DialogFooter>
         </DialogContent>
