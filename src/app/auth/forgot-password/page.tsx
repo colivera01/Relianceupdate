@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AuthExperienceShell } from '@/components/auth/AuthExperienceShell';
 import { appendAuthNext, getAuthContinuationPhrase, sanitizeAuthNextPath } from '@/lib/auth-next';
-import { Mail, CheckCircle, AlertCircle } from 'lucide-react';
+import { Mail, CheckCircle, AlertCircle, Copy, ExternalLink } from 'lucide-react';
 import { HAS_LAUNCH_SUPPORT_EMAIL, LAUNCH_SUPPORT_EMAIL, LAUNCH_SUPPORT_MAILTO } from '@/lib/support';
 
 function ForgotPasswordPageContent() {
@@ -22,6 +22,25 @@ function ForgotPasswordPageContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [supportEmailCopied, setSupportEmailCopied] = useState(false);
+  const supportEmailSubject = encodeURIComponent("Reliance password reset support");
+  const supportEmailBody = encodeURIComponent(
+    `Hi Reliance Support,\n\nI requested a password reset for ${email || "my account"}, but I need help accessing the reset email.\n`
+  );
+  const supportGmailHref = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+    LAUNCH_SUPPORT_EMAIL
+  )}&su=${supportEmailSubject}&body=${supportEmailBody}`;
+
+  const copySupportEmail = async () => {
+    if (!HAS_LAUNCH_SUPPORT_EMAIL) return;
+    try {
+      await navigator.clipboard.writeText(LAUNCH_SUPPORT_EMAIL);
+      setSupportEmailCopied(true);
+      window.setTimeout(() => setSupportEmailCopied(false), 2500);
+    } catch {
+      setSupportEmailCopied(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,18 +129,52 @@ function ForgotPasswordPageContent() {
                 </Button>
               </div>
 
-              <div className="text-xs text-gray-500">
+              <div className="space-y-3 text-xs text-gray-500">
                 <p>Didn't receive the email? Check your spam folder.</p>
-                <p>
-                  Still having trouble?{' '}
-                  {HAS_LAUNCH_SUPPORT_EMAIL ? (
-                    <a href={LAUNCH_SUPPORT_MAILTO} className="font-medium text-blue-700 underline">
-                      Contact {LAUNCH_SUPPORT_EMAIL}
-                    </a>
-                  ) : (
-                    'Contact support.'
-                  )}
-                </p>
+                {HAS_LAUNCH_SUPPORT_EMAIL ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white/75 p-3 text-left">
+                    <p className="text-center">
+                      Still having trouble? Contact{' '}
+                      <span className="font-semibold text-slate-700">{LAUNCH_SUPPORT_EMAIL}</span>.
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="h-10 rounded-xl border-slate-200 bg-white text-slate-700"
+                      >
+                        <a href={LAUNCH_SUPPORT_MAILTO}>
+                          <Mail className="mr-2 h-4 w-4" />
+                          Email
+                        </a>
+                      </Button>
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="h-10 rounded-xl border-slate-200 bg-white text-slate-700"
+                      >
+                        <a href={supportGmailHref} target="_blank" rel="noreferrer">
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Gmail
+                        </a>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={copySupportEmail}
+                        className="h-10 rounded-xl border-slate-200 bg-white text-slate-700"
+                      >
+                        <Copy className="mr-2 h-4 w-4" />
+                        {supportEmailCopied ? 'Copied' : 'Copy'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p>Still having trouble? Contact support.</p>
+                )}
               </div>
             </CardContent>
           </Card>
