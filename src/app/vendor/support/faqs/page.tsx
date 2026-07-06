@@ -88,14 +88,14 @@ const faqCategories: FaqCategory[] = [
   },
   {
     id: 'jobs',
-    title: 'Scheduled Work',
+    title: 'Manage Jobs',
     icon: Briefcase,
     faqs: [
       {
         id: 'jobs-1',
-        question: 'How do I accept or decline scheduled work requests?',
+        question: 'How do I manage work records?',
         answer:
-          'Use Manage Scheduled Work to review current requests and available actions. The launch workflow focuses on accepting, declining, completing required video stages, and manager review; live in-app customer messaging is not available on this launch.',
+          'Use Manage Jobs to review work records and available actions. The launch workflow focuses on employee assignment, customer consent when needed, required video stages, and manager review; live in-app customer messaging is not available on this launch.',
       },
       {
         id: 'jobs-2',

@@ -1096,6 +1096,17 @@ export default function VendorJobs() {
     ...getClientSessionHeaders(authUserId),
   } as Record<string, string>);
 
+  const formatEmployeeLoadError = (error: unknown) => {
+    const message = error instanceof Error && error.message ? error.message : '';
+    if (message.includes('Manager access required')) {
+      return 'Employee assignment requires an active vendor manager session. If you are signed in as admin, use the admin dashboard for approvals or sign into the vendor manager account for this business.';
+    }
+    if (message.includes('Active membership required')) {
+      return 'Employee assignment becomes available after this vendor profile is approved and your manager access is active.';
+    }
+    return message ? `Could not load employees: ${message}` : 'Could not load employees.';
+  };
+
   useEffect(() => {
     const loadTeamMembers = async () => {
       if (!vendorId) {
@@ -1107,28 +1118,19 @@ export default function VendorJobs() {
       setEmployeesLoadError('');
       try {
         const members = await fetchVendorTeamMembers(String(vendorId), () => getRequestHeaders(), {
-          includePending: true,
           timeoutMs: VENDOR_TEAM_TIMEOUT_MS,
         });
         setTeamMembers(members);
       } catch (error) {
         setTeamMembers([]);
-        setEmployeesLoadError(
-          error instanceof Error && error.message
-            ? `Could not load employees: ${error.message}`
-            : 'Could not load employees.'
-        );
+        setEmployeesLoadError(formatEmployeeLoadError(error));
       } finally {
         setEmployeesLoading(false);
       }
     };
     loadTeamMembers().catch((error) => {
       setTeamMembers([]);
-      setEmployeesLoadError(
-        error instanceof Error && error.message
-          ? `Could not load employees: ${error.message}`
-          : 'Could not load employees.'
-      );
+      setEmployeesLoadError(formatEmployeeLoadError(error));
       setEmployeesLoading(false);
     });
   }, [vendorId, authUserId]);
@@ -3016,7 +3018,33 @@ export default function VendorJobs() {
       applyConsentStatusFromBackend(consentPayload?.consent?.status || 'REQUESTED', {
         consentToken: token,
       });
-      setGeoInfo('Customer consent request sent. The customer can now accept from their email or text link.');
+      const notification = consentPayload?.notification;
+      const deliveryConfirmed = notification?.anySuccess === true;
+      const fallbackConsentLink = String(consentPayload?.consentAbsoluteUrl || '').trim();
+      if (deliveryConfirmed) {
+        const sentChannels = Array.isArray(notification?.channels)
+          ? notification.channels
+              .filter((channel: any) => channel?.attempted && channel?.success)
+              .map((channel: any) => String(channel?.channel || '').toUpperCase())
+              .filter(Boolean)
+              .join(' and ')
+          : '';
+        setGeoInfo(
+          sentChannels
+            ? `Customer consent request sent by ${sentChannels}. Waiting for customer response.`
+            : 'Customer consent request sent. Waiting for customer response.'
+        );
+      } else {
+        const deliveryReason =
+          consentPayload?.notificationError ||
+          consentPayload?.message ||
+          'Email/SMS delivery was not confirmed.';
+        setGeoInfo(
+          fallbackConsentLink
+            ? `Consent link was created, but delivery was not confirmed: ${deliveryReason} Share this link with the customer: ${fallbackConsentLink}`
+            : `Consent link was created, but delivery was not confirmed: ${deliveryReason}`
+        );
+      }
       const bookingKey = selectedJobSnapshot?.bookingId
         ? String(selectedJobSnapshot.bookingId)
         : String(selectedJobSnapshot?.id || '');
@@ -3943,12 +3971,13 @@ export default function VendorJobs() {
             <Info className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold mb-1">Manage scheduled work</h3>
+            <h3 className="text-lg font-semibold mb-1">Manage jobs and scheduled work</h3>
             <p className="text-blue-100 text-sm leading-relaxed">
-              This page is for customer work that is already scheduled or needs to be tracked manually.
-              To create the services customers can request, use <strong>Services Offered</strong>. Use
-              <strong> Add Manual Work Record</strong> here for work scheduled outside Reliance, beta/demo
-              jobs, or jobs an admin asks you to enter.
+              <strong>Services Offered</strong> is your customer-facing menu. This page is where you create
+              the actual customer work record, assign employees, request customer consent when needed, and
+              track the Starting Condition, Work in Progress, and Final Result videos.
+              Use <strong> Add Work Record</strong> for scheduled work, beta/demo jobs, or jobs an admin asks
+              you to enter.
               Hover over any <span className="inline-flex align-text-bottom"><Info className="inline w-4 h-4" /></span>{' '}
               info icon for detailed help.
             </p>
@@ -4021,10 +4050,10 @@ export default function VendorJobs() {
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-800 sm:text-3xl">
-              {isEmployeeView ? 'My Assigned Work' : 'Manage Scheduled Work'}
+              {isEmployeeView ? 'My Assigned Work' : 'Manage Jobs & Work Records'}
             </h2>
             <p className="text-gray-600 text-sm mt-1">
-              {isEmployeeView ? 'Work assigned to you' : 'Track customer service records, manual work entries, and service video progress'}
+              {isEmployeeView ? 'Work assigned to you' : 'Create customer work records, assign employees, and track service video progress'}
             </p>
           </div>
         </div>
@@ -4094,7 +4123,7 @@ export default function VendorJobs() {
                 className="action-button w-full justify-center bg-blue-600 hover:bg-blue-700 sm:w-auto"
               >
                 <Plus className="w-5 h-5 mr-2" />
-                Add Manual Work Record
+                Add Work Record
               </Button>
             </>
           )}
@@ -4670,7 +4699,7 @@ export default function VendorJobs() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Manual Booking Modal */}
+      {/* Add Work Record Modal */}
       <Dialog
         open={showCreateJob}
         onOpenChange={(open) => {
@@ -4684,13 +4713,20 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{jobModalMode === 'edit' ? 'Edit Scheduled Work' : 'Add Manual Work Record'}</DialogTitle>
+            <DialogTitle>{jobModalMode === 'edit' ? 'Edit Work Record' : 'Add Work Record'}</DialogTitle>
             <DialogDescription>
               {jobModalMode === 'edit'
                 ? 'Update saved work details.'
-                : 'Use this when work was scheduled outside Reliance or you need a test/demo work record. Choose the service offered this work belongs to, or add a new service offered while you create the record.'}
+                : 'Create the customer work record that can later be assigned to employees, sent for customer consent, and moved through the three video stages. Choose an existing Services Offered item, or create one new reusable service while you create this work record.'}
             </DialogDescription>
           </DialogHeader>
+          {jobModalMode !== 'edit' ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+              <span className="font-semibold text-slate-950">What happens after saving:</span>{' '}
+              Reliance creates the work record, returns you to Manage Jobs, and the selected service becomes
+              available for assignment, consent, employee recording, manager review, and admin approval.
+            </div>
+          ) : null}
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -4815,9 +4851,9 @@ export default function VendorJobs() {
             {newJob.serviceId === ADD_NEW_SERVICE_VALUE ? (
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <div className="mb-3">
-                  <p className="text-sm font-semibold text-blue-950">Add this to Services Offered</p>
+                  <p className="text-sm font-semibold text-blue-950">Create a new Services Offered item for this job</p>
                   <p className="mt-1 text-xs leading-5 text-blue-800">
-                    This will save a reusable Services Offered menu item and create this work record now. The service will appear in the Service Offered / Work Type dropdown for future records. All fields below are required.
+                    This saves one reusable service menu item and creates this work record now. Next time, the service will appear in the Service Offered / Work Type dropdown. All fields below are required.
                   </p>
                   <p className="mt-2 text-xs font-semibold leading-5 text-blue-950">
                     To only edit your service menu without creating a work record, use Services Offered from the left menu.
@@ -4923,7 +4959,7 @@ export default function VendorJobs() {
       <Dialog open={showSelectJobModal} onOpenChange={setShowSelectJobModal}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Select Scheduled Work</DialogTitle>
+            <DialogTitle>Select Work Record</DialogTitle>
             <DialogDescription>
               Select the service record or manual work item this service video belongs to.
             </DialogDescription>
@@ -4937,7 +4973,7 @@ export default function VendorJobs() {
               </div>
             ) : filteredJobs.length === 0 ? (
               <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-                No scheduled work yet. Add a manual work record before uploading videos here.
+                No work records yet. Add a work record before uploading videos here.
               </div>
             ) : (
               filteredJobs.map((job) => {
@@ -6121,7 +6157,7 @@ export default function VendorJobs() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold text-green-800 flex items-center gap-2">
               <Users className="w-5 h-5" />
-              Available Employees
+              Available Employees for Assignment
             </h3>
             <Badge className="bg-green-100 text-green-800">
               {getAvailableEmployees().length} available
@@ -6154,7 +6190,7 @@ export default function VendorJobs() {
             </div>
           ) : (
             <div className="text-center py-4">
-              <p className="text-gray-600">No available employees for assignment.</p>
+              <p className="text-gray-600">No active employees are available for assignment yet.</p>
             </div>
           )}
         </div>

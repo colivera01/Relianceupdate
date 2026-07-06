@@ -382,7 +382,7 @@ export default function EmployeesPage() {
           {[
             "Send an invite with the team member's contact details.",
             "They accept the invite and sign in with the same email or phone.",
-            "A manager assigns scheduled work from Manage Scheduled Work.",
+            "A manager assigns scheduled work from Manage Jobs.",
             "The employee opens Employee Jobs to record Starting Condition, Work in Progress, and Final Result clips.",
           ].map((step, index) => (
             <div key={step} className="rounded-xl border border-white/10 bg-slate-950/50 p-3 text-sm leading-6 text-slate-200">

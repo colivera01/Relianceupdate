@@ -47,7 +47,7 @@ const categories: Category[] = [
   { id: 'all', name: 'All Articles', icon: BookOpen },
   { id: 'getting-started', name: 'Getting Started', icon: Rocket },
   { id: 'profile', name: 'Profile & Settings', icon: User },
-  { id: 'jobs', name: 'Scheduled Work', icon: Briefcase },
+  { id: 'jobs', name: 'Manage Jobs', icon: Briefcase },
   { id: 'free-launch', name: 'Free Launch', icon: Wallet },
   { id: 'marketing', name: 'Marketing & Growth', icon: Megaphone },
   { id: 'best-practices', name: 'Best Practices', icon: Star },
@@ -69,16 +69,16 @@ const articles: Article[] = [
   },
   {
     id: 'first-job',
-    title: 'Managing Your First Scheduled Work Item',
+    title: 'Managing Your First Work Record',
     category: 'jobs',
-    categoryName: 'Scheduled Work',
+    categoryName: 'Manage Jobs',
     description:
-      'Use Manage Scheduled Work to review service records, required video stages, and manager approval status.',
+      'Use Manage Jobs to review service records, required video stages, employee assignment, and manager approval status.',
     readTime: '8 min read',
     difficulty: 'Beginner',
     tags: ['first job', 'acceptance', 'completion'],
     actionHref: '/vendor/jobs',
-    actionLabel: 'View Scheduled Work',
+    actionLabel: 'View Manage Jobs',
   },
   {
     id: 'pricing-strategy',
@@ -104,7 +104,7 @@ const articles: Article[] = [
     difficulty: 'Intermediate',
     tags: ['communication', 'customers', 'professionalism'],
     actionHref: '/vendor/jobs',
-    actionLabel: 'View Scheduled Work',
+    actionLabel: 'View Manage Jobs',
   },
   {
     id: 'reviews-success',
@@ -123,7 +123,7 @@ const articles: Article[] = [
     id: 'availability-management',
     title: 'Managing Your Availability and Schedule',
     category: 'jobs',
-    categoryName: 'Scheduled Work',
+    categoryName: 'Manage Jobs',
     description:
       'Use the current vendor tools to keep team access and job ownership clear.',
     readTime: '6 min read',
