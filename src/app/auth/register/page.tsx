@@ -2926,8 +2926,14 @@ function RegisterPageInner() {
                                   type="checkbox"
                                   checked={day.enabled}
                                   onChange={(event) => updateBusinessHourDay(day.day, { enabled: event.target.checked })}
-                                  className="h-4 w-4 accent-blue-500"
+                                  className="peer sr-only"
                                 />
+                                <span
+                                  aria-hidden="true"
+                                  className="grid h-5 w-5 shrink-0 place-items-center rounded border border-blue-200/50 bg-slate-950/80 shadow-inner transition peer-checked:border-blue-200 peer-checked:bg-blue-500 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-300/50"
+                                >
+                                  {day.enabled ? <span className="h-2 w-2 rounded-sm bg-white" /> : null}
+                                </span>
                                 <span className="font-semibold text-white">{businessHourDayLabels[day.day]}</span>
                                 <span className="text-sm text-white/54">
                                   {day.enabled ? `${formatBusinessTime(day.open)}-${formatBusinessTime(day.close)}` : 'Closed'}
@@ -2940,7 +2946,7 @@ function RegisterPageInner() {
                                   value={day.open}
                                   disabled={!day.enabled}
                                   onChange={(event) => updateBusinessHourDay(day.day, { open: event.target.value })}
-                                  className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-white disabled:opacity-50 sm:w-32"
+                                  className="h-11 w-full min-w-[9.75rem] rounded-lg border border-white/10 bg-slate-950/80 px-3 pr-4 text-base leading-none text-white disabled:opacity-50 sm:w-[9.75rem]"
                                 />
                               </label>
                               <label className="text-sm text-white/72">
@@ -2950,7 +2956,7 @@ function RegisterPageInner() {
                                   value={day.close}
                                   disabled={!day.enabled}
                                   onChange={(event) => updateBusinessHourDay(day.day, { close: event.target.value })}
-                                  className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-white disabled:opacity-50 sm:w-32"
+                                  className="h-11 w-full min-w-[9.75rem] rounded-lg border border-white/10 bg-slate-950/80 px-3 pr-4 text-base leading-none text-white disabled:opacity-50 sm:w-[9.75rem]"
                                 />
                               </label>
                             </div>
