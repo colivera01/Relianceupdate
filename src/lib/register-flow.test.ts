@@ -5,6 +5,40 @@ import {
   createInitialRegisterFormData,
   getRegisterFormDataForRoleSwitch,
 } from './register-flow';
+import { getServiceTemplatesForCategory } from '@/config/service-templates';
+
+const PRIMARY_VENDOR_CATEGORIES = [
+  'Automotive Repair',
+  'Automotive Detailing',
+  'Adjuster',
+  'Barber',
+  'Body Shop',
+  'Car Wash',
+  'Contractors',
+  'Dealership',
+  'Electrician',
+  'Electronic Device Repair',
+  'HVAC Heating and Air Conditioning',
+  'Home cleaners',
+  'Hair/Nail Salon',
+  'Nail Salon',
+  'Landscaping',
+  'Locksmith',
+  'Medical Services',
+  'Moving Services',
+  'Pool Cleaning Services',
+  'Pet Grooming',
+  'Pet Groomers',
+  'Bakery',
+  'Restaurant Owners',
+  'Plumbing',
+  'Painting Services',
+  'Pest/Exterminating Services',
+  'Security Installation',
+  'Roofing Services',
+  'Towing',
+  'Tree Services',
+];
 
 describe('register-flow helpers', () => {
   it('resets vendor-only registration state when switching to the customer flow', () => {
@@ -90,5 +124,13 @@ describe('register-flow helpers', () => {
         source: 'template',
       },
     ]);
+  });
+
+  it('provides starter service menu templates for each primary vendor category', () => {
+    const categoriesWithoutTemplates = PRIMARY_VENDOR_CATEGORIES.filter(
+      (category) => getServiceTemplatesForCategory(category).length === 0,
+    );
+
+    expect(categoriesWithoutTemplates).toEqual([]);
   });
 });

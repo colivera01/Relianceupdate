@@ -823,49 +823,11 @@ const serviceTypesByCategory: { [key: string]: string[] } = {
   'Tree Services': ['Tree Removal', 'Tree Trimming', 'Stump Grinding', 'Emergency Tree Services', 'Tree Planting', 'Arborist Services']
 };
 
-// Specializations by category
-const specializationsByCategory: { [key: string]: string[] } = {
-  'Adjuster': ['Property Claims', 'Auto Claims', 'Liability Claims', 'Public Adjusting', 'Catastrophe Response', 'Appraisal Support'],
-  'Automotive Repair': ['German Cars', 'Japanese Cars', 'American Cars', 'Hybrid/Electric', 'Classic Cars', 'Performance Tuning', 'Diesel Engines'],
-  'Automotive Detailing': ['Luxury Vehicles', 'Classic Cars', 'Motorcycles', 'Boats', 'RVs', 'Commercial Vehicles'],
-  'Barber': ['Classic Cuts', 'Modern Styles', 'Beard Specialist', 'Hair Color Specialist', 'Kids Cuts', 'Senior Cuts'],
-  'Body Shop': ['Collision Repair', 'Paint Matching', 'Dent Removal', 'Frame Straightening', 'Insurance Repair', 'Bumper Repair'],
-  'Car Wash': ['Exterior Wash', 'Interior Cleaning', 'Mobile Service', 'Fleet Service', 'Wax and Protect', 'Ceramic Coating'],
-  'Contractors': ['Kitchen Specialist', 'Bathroom Specialist', 'Outdoor Living', 'Historic Restoration', 'Green Building', 'Accessibility'],
-  'Dealership': ['New Vehicles', 'Used Vehicles', 'Trade-In Appraisals', 'Finance Support', 'Commercial Sales', 'Service Department'],
-  'Electrician': ['Residential', 'Commercial', 'Industrial', 'Emergency Services', 'Smart Home', 'Solar Installation'],
-  'Electronic Device Repair': ['Phone Repair', 'Tablet Repair', 'Laptop Repair', 'Screen Replacement', 'Battery Service', 'Data Recovery'],
-  'HVAC Heating and Air Conditioning': ['Residential', 'Commercial', 'Industrial', 'Heat Pumps', 'Geothermal', 'Ductless Systems'],
-  'Home cleaners': ['Residential', 'Commercial', 'Eco-friendly', 'Post-construction', 'Move-in/Move-out', 'Regular Maintenance'],
-  'Hair/Nail Salon': ['Hair Color', 'Hair Extensions', 'Nail Art', 'Gel Manicures', 'Acrylic Nails', 'Hair Treatments'],
-  'Nail Salon': ['Gel Manicures', 'Acrylic Nails', 'Nail Art', 'Pedicures', 'Dip Powder', 'Natural Nail Care'],
-  'Landscaping': ['Residential', 'Commercial', 'Sustainable Design', 'Water Features', 'Outdoor Lighting', 'Seasonal Maintenance'],
-  'Locksmith': ['Residential', 'Commercial', 'Automotive', 'Emergency Services', 'Security Systems', 'Safe Services'],
-  'Medical Services': ['Primary Care', 'Specialty Care', 'Preventive Medicine', 'Emergency Care', 'Telemedicine'],
-  'Moving Services': ['Residential', 'Commercial', 'Long-distance', 'International', 'Storage Solutions', 'Specialty Items'],
-  'Pool Cleaning Services': ['Residential', 'Commercial', 'Salt Water Pools', 'Fiberglass Pools', 'Concrete Pools', 'Hot Tubs'],
-  'Pet Grooming': ['Dogs', 'Cats', 'Small Animals', 'Show Grooming', 'Mobile Services', 'Specialty Breeds'],
-  'Pet Groomers': ['Dogs', 'Cats', 'Small Animals', 'Show Grooming', 'Mobile Grooming', 'Specialty Breeds'],
-  'Bakery': ['Custom Cakes', 'Pastries', 'Cupcakes', 'Cookies', 'Bread', 'Event Desserts'],
-  'Restaurant Owners': ['Catering', 'Private Dining', 'Takeout', 'Family Meals', 'Event Service', 'Meal Prep'],
-  'Plumbing': ['Residential', 'Commercial', 'Emergency Services', 'Water Heaters', 'Sewer Lines', 'Gas Lines'],
-  'Painting Services': ['Interior', 'Exterior', 'Commercial', 'Residential', 'Cabinet Painting', 'Deck Staining'],
-  'Pest/Exterminating Services': ['Residential', 'Commercial', 'Organic Methods', 'Emergency Services', 'Preventive Programs'],
-  'Security Installation': ['Residential', 'Commercial', 'CCTV', 'Access Control', 'Monitoring', 'Emergency Systems'],
-  'Roofing Services': ['Asphalt Shingles', 'Metal Roofing', 'Tile Roofing', 'Flat Roofs', 'Emergency Repairs', 'Maintenance'],
-  'Towing': ['Light Duty', 'Heavy Duty', 'Emergency Services', 'Long Distance', 'Specialty Vehicles', 'Roadside Assistance'],
-  'Tree Services': ['Tree Removal', 'Tree Trimming', 'Emergency Services', 'Arborist Services', 'Stump Grinding', 'Tree Planting']
-};
-
 // Helper functions
 const getServiceTypesForCategory = (category: string) => {
   const configured = getServiceTemplatesForCategory(category).map((template) => template.name);
   if (configured.length > 0) return configured;
   return serviceTypesByCategory[category] || [];
-};
-
-const getSpecializationsForCategory = (category: string) => {
-  return specializationsByCategory[category] || [];
 };
 
 // Benefits lists
@@ -965,11 +927,6 @@ function RegisterPageInner() {
     () => (formData.category ? getServiceTypesForCategory(formData.category) : []),
     [formData.category]
   );
-  const availableSpecializations = useMemo(
-    () => (formData.category ? getSpecializationsForCategory(formData.category) : []),
-    [formData.category]
-  );
-
   // Error state
   const [errors, setErrors] = useState<{[key: string]: string}>({});
 
@@ -2169,8 +2126,8 @@ function RegisterPageInner() {
                       <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                         <h4 className="font-medium text-blue-900 mb-2">Next: Business Information</h4>
                         <p className="text-sm text-blue-700">
-                          You'll need to provide: Business Name, Service Types, Business Description, 
-                          Specializations, Service Areas, and more details about your business.
+                          You'll need to provide: Business Name, starter services, Business Description,
+                          Service Areas, and more details about your business.
                         </p>
                       </div>
                     )}
@@ -2673,55 +2630,6 @@ function RegisterPageInner() {
                           placeholder="(555) 987-6543"
                         />
                       </div>
-                    </div>
-
-                    {/* Specializations */}
-                    <div>
-                      <Label>Specializations</Label>
-                      <p className="text-sm text-gray-600 mb-3">
-                        {formData.category ? 
-                          `Select your ${formData.category.toLowerCase()} business specializations` : 
-                          'Select your primary service category first to see relevant specializations'
-                        }
-                      </p>
-                      {formData.category ? (
-                        availableSpecializations.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
-                            {availableSpecializations.map((specialization: string) => (
-                              <div key={specialization} className="flex items-center space-x-2">
-                                <input
-                                  type="checkbox"
-                                  id={specialization}
-                                  checked={Array.isArray(formData.specializations) ? formData.specializations.includes(specialization) : false}
-                                  onChange={(e) => {
-                                    const currentSpecs = Array.isArray(formData.specializations) ? formData.specializations : [];
-                                    if (e.target.checked) {
-                                      handleInputChange('specializations', [...currentSpecs, specialization]);
-                                    } else {
-                                      handleInputChange('specializations', currentSpecs.filter(spec => spec !== specialization));
-                                    }
-                                  }}
-                                  className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <label htmlFor={specialization} className="text-sm text-gray-700 cursor-pointer">
-                                  {specialization}
-                                </label>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                            <p className="text-amber-800 text-sm">
-                              Starter specializations are not configured yet for this category. You can keep onboarding moving without selecting any here.
-                            </p>
-                          </div>
-                        )
-                      ) : (
-                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                          <p className="text-gray-500 text-sm">Please select a service category above to see available specializations</p>
-                        </div>
-                      )}
-                      <p className="text-sm text-gray-500 mt-2">Selected: {Array.isArray(formData.specializations) ? formData.specializations.length : 0} specializations</p>
                     </div>
 
                     {/* Business Bio */}
