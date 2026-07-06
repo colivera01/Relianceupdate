@@ -1764,9 +1764,11 @@ function RegisterPageInner() {
                 {/* Step Indicator */}
                 <div className="mb-6">
                   <div className="flex items-center justify-center space-x-4">
-                    <div className={`flex items-center ${step >= 1 ? 'text-blue-600' : 'text-gray-400'}`}>
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                        step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+                    <div className={`flex items-center ${step >= 1 ? 'text-blue-100' : 'text-slate-300'}`}>
+                      <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold border ${
+                        step >= 1
+                          ? 'border-blue-400 bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                          : 'border-blue-300/40 bg-slate-950/90 text-blue-100'
                       }`}>
                         1
                       </div>
@@ -1774,10 +1776,12 @@ function RegisterPageInner() {
                     </div>
                     {userType === 'vendor' && (
                       <>
-                        <div className="w-8 h-1 bg-gray-200 rounded"></div>
-                        <div className={`flex items-center ${step >= 2 ? 'text-blue-600' : 'text-gray-400'}`}>
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                            step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+                        <div className={`w-8 h-1 shrink-0 rounded ${step >= 2 ? 'bg-blue-500' : 'bg-blue-300/50'}`}></div>
+                        <div className={`flex items-center ${step >= 2 ? 'text-blue-100' : 'text-slate-300'}`}>
+                          <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold border ${
+                            step >= 2
+                              ? 'border-blue-400 bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                              : 'border-blue-300/40 bg-slate-950/90 text-blue-100'
                           }`}>
                             2
                           </div>
