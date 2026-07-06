@@ -1001,17 +1001,19 @@ export default function VendorJobs() {
   const selectedServiceForWorkRecord = serviceOptions.find((service) => service.id === selectedServiceId);
   const newServiceName = newServiceForJob.name.trim();
   const newServiceDescription = newServiceForJob.description.trim();
-  const newServicePrice = Number(newServiceForJob.price);
-  const newServiceDuration = newServiceForJob.estimatedDuration.trim()
-    ? Number(newServiceForJob.estimatedDuration)
-    : null;
+  const newServicePriceText = newServiceForJob.price.trim();
+  const newServicePrice = newServicePriceText ? Number(newServicePriceText) : NaN;
+  const newServiceDurationText = newServiceForJob.estimatedDuration.trim();
+  const newServiceDuration = newServiceDurationText ? Number(newServiceDurationText) : NaN;
   const newServiceIsValid = Boolean(
     newServiceName &&
     newServiceDescription &&
+    newServicePriceText &&
     Number.isFinite(newServicePrice) &&
     newServicePrice >= 0 &&
-    (newServiceDuration === null ||
-      (Number.isFinite(newServiceDuration) && newServiceDuration > 0))
+    newServiceDurationText &&
+    Number.isFinite(newServiceDuration) &&
+    newServiceDuration > 0
   );
   const isCreateJobEmailValid = trimmedEmail.includes('@') && trimmedEmail.includes('.');
   const isEditMode = jobModalMode === 'edit';
@@ -2110,10 +2112,10 @@ export default function VendorJobs() {
     const addingServiceFromJob = serviceId === ADD_NEW_SERVICE_VALUE;
     const manualServiceName = newServiceForJob.name.trim();
     const manualServiceDescription = newServiceForJob.description.trim();
-    const manualServicePrice = Number(newServiceForJob.price);
-    const manualServiceDuration = newServiceForJob.estimatedDuration.trim()
-      ? Number(newServiceForJob.estimatedDuration)
-      : null;
+    const manualServicePriceText = newServiceForJob.price.trim();
+    const manualServicePrice = manualServicePriceText ? Number(manualServicePriceText) : NaN;
+    const manualServiceDurationText = newServiceForJob.estimatedDuration.trim();
+    const manualServiceDuration = manualServiceDurationText ? Number(manualServiceDurationText) : NaN;
     const isValidEmail = email.includes('@') && email.includes('.');
     const requiresContactValidation = jobModalMode !== 'edit';
     const nextJobErrors = {
@@ -2148,19 +2150,16 @@ export default function VendorJobs() {
       if (
         !manualServiceName ||
         !manualServiceDescription ||
+        !manualServicePriceText ||
         !Number.isFinite(manualServicePrice) ||
-        manualServicePrice < 0
+        manualServicePrice < 0 ||
+        !manualServiceDurationText ||
+        !Number.isFinite(manualServiceDuration) ||
+        manualServiceDuration <= 0
       ) {
         setCreateJobError(
-          'Add the service name, customer-facing description, and non-negative reference price before creating the work record.'
+          'Add the service name, estimated duration, non-negative reference price, and customer-facing description before creating the work record.'
         );
-        return;
-      }
-      if (
-        manualServiceDuration !== null &&
-        (!Number.isFinite(manualServiceDuration) || manualServiceDuration <= 0)
-      ) {
-        setCreateJobError('Estimated service duration must be a positive number of minutes.');
         return;
       }
     }
@@ -4811,13 +4810,13 @@ export default function VendorJobs() {
                 <div className="mb-3">
                   <p className="text-sm font-semibold text-blue-950">Add this to Services Offered</p>
                   <p className="mt-1 text-xs leading-5 text-blue-800">
-                    This creates a customer-facing menu item first, then links this manual work record to it.
+                    This creates a customer-facing menu item first, then links this manual work record to it. All fields below are required.
                   </p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-900">
-                      Service name
+                      Service name <span aria-hidden="true">*</span>
                     </label>
                     <Input
                       value={newServiceForJob.name}
@@ -4825,11 +4824,12 @@ export default function VendorJobs() {
                         setNewServiceForJob((current) => ({ ...current, name: event.target.value }))
                       }
                       placeholder="Example: Outlet installation"
+                      required
                     />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-900">
-                      Estimated duration
+                      Estimated duration <span aria-hidden="true">*</span>
                     </label>
                     <Input
                       type="number"
@@ -4842,11 +4842,12 @@ export default function VendorJobs() {
                         }))
                       }
                       placeholder="Minutes, example: 60"
+                      required
                     />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-900">
-                      Reference price
+                      Reference price <span aria-hidden="true">*</span>
                     </label>
                     <Input
                       type="number"
@@ -4857,11 +4858,12 @@ export default function VendorJobs() {
                         setNewServiceForJob((current) => ({ ...current, price: event.target.value }))
                       }
                       placeholder="0.00"
+                      required
                     />
                   </div>
                   <div className="md:col-span-2">
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.16em] text-blue-900">
-                      Customer-facing description
+                      Customer-facing description <span aria-hidden="true">*</span>
                     </label>
                     <textarea
                       value={newServiceForJob.description}
@@ -4874,6 +4876,7 @@ export default function VendorJobs() {
                       rows={3}
                       className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200"
                       placeholder="Describe what customers can expect from this service."
+                      required
                     />
                   </div>
                 </div>
