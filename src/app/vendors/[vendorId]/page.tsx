@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import { PUBLIC_DB_UNAVAILABLE_CODE, PUBLIC_DB_UNAVAILABLE_MESSAGE } from '@/lib/transient-db-errors';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
-import { ArrowLeft, Building2, MapPin, ShieldCheck, Star, Video } from 'lucide-react';
+import { ArrowLeft, Building2, Clock, MapPin, ShieldCheck, Star, Video } from 'lucide-react';
 
 interface PublicService {
   serviceId: string;
@@ -50,6 +50,12 @@ interface PublicVendorPayload {
     bio: string | null;
     location: string | null;
     serviceAreas: string[];
+    businessHours?: {
+      configured: boolean;
+      openNow: boolean | null;
+      label: string;
+      todayLabel: string | null;
+    };
     profilePhoto: string | null;
     rating?: number | null;
     reviewCount?: number | null;
@@ -285,6 +291,21 @@ export default function PublicVendorProfilePage() {
                       {vendor.location}
                     </Badge>
                   ) : null}
+                  {vendor.businessHours ? (
+                    <Badge
+                      className={`rounded-full px-4 py-2 text-white hover:bg-white/10 ${
+                        vendor.businessHours.openNow === true
+                          ? 'bg-emerald-500/22'
+                          : vendor.businessHours.openNow === false
+                            ? 'bg-amber-500/18'
+                            : 'bg-white/10'
+                      }`}
+                      title={vendor.businessHours.todayLabel || undefined}
+                    >
+                      <Clock className="mr-1 h-3.5 w-3.5" />
+                      {vendor.businessHours.openNow === true ? 'Open now' : vendor.businessHours.label}
+                    </Badge>
+                  ) : null}
                 </div>
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -374,6 +395,20 @@ export default function PublicVendorProfilePage() {
                       Service Footprint
                     </div>
                     <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Where this vendor works</h2>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+                  <div className="flex items-start gap-3">
+                    <Clock className="mt-0.5 h-4 w-4 text-slate-500" />
+                    <div>
+                      <p className="font-semibold text-slate-950">
+                        {vendor.businessHours?.openNow === true ? 'Open now' : vendor.businessHours?.label || 'Hours not listed'}
+                      </p>
+                      <p className="mt-1 text-slate-600">
+                        {vendor.businessHours?.todayLabel || 'This provider has not listed weekly service hours yet.'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 

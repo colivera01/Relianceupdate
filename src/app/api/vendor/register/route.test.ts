@@ -215,6 +215,12 @@ describe("POST /api/vendor/register", () => {
         specializations: "Leak detection, Drain cleaning",
         serviceAreas: "Orlando, Winter Park",
         serviceTypes: "Drain Cleaning, Leak Repair",
+        businessHoursJson: JSON.stringify({
+          days: [
+            { day: "mon", enabled: true, open: "08:30", close: "16:30" },
+            { day: "sat", enabled: false, open: "09:00", close: "17:00" },
+          ],
+        }),
         selectedServices: [
           { name: "Leak Repair", price: 125, description: "Fix leaks", source: "template" },
           { name: "Drain Cleaning", price: 95, source: "vendor_custom" },
@@ -247,8 +253,16 @@ describe("POST /api/vendor/register", () => {
           specializations: "Leak detection, Drain cleaning",
           serviceAreas: "Orlando, Winter Park",
           serviceTypes: "Drain Cleaning, Leak Repair",
+          businessHoursJson: expect.any(String),
         }),
       })
+    );
+    const savedHours = JSON.parse(hoisted.vendorCreate.mock.calls[0][0].data.businessHoursJson);
+    expect(savedHours.days).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ day: "mon", enabled: true, open: "08:30", close: "16:30" }),
+        expect.objectContaining({ day: "sat", enabled: false, open: "09:00", close: "17:00" }),
+      ])
     );
     expect(hoisted.serviceCreateMany).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -15,6 +15,7 @@ import {
   generateVendorApprovalAiStoredResult,
   VENDOR_APPROVAL_AI_SYSTEM_ACTOR,
 } from "@/lib/ai/vendor-approval-review-store";
+import { normalizeBusinessHours, serializeBusinessHours } from "@/lib/business-hours";
 
 type SelectedServiceInput = {
   name: string;
@@ -58,6 +59,11 @@ function parseCommaSeparatedText(value: unknown) {
   return normalized.length > 0 ? normalized.join(", ") : null;
 }
 
+function parseBusinessHoursJson(value: unknown) {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  return serializeBusinessHours(normalizeBusinessHours(value));
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -72,6 +78,10 @@ export async function POST(request: NextRequest) {
     const zipCode = String(body?.zipCode || "").trim();
     const businessType =
       rawBusinessType.toLowerCase() === "other" ? customBusinessType : rawBusinessType;
+    const hasBusinessHoursPayload =
+      Object.prototype.hasOwnProperty.call(body || {}, "businessHoursJson") ||
+      Object.prototype.hasOwnProperty.call(body || {}, "businessHours");
+    const businessHoursJson = parseBusinessHoursJson(body?.businessHoursJson ?? body?.businessHours);
     const vendorProfileData = {
       foundedYear: parseOptionalInteger(body?.foundedYear),
       bio: parseOptionalString(body?.businessBio),
@@ -84,6 +94,7 @@ export async function POST(request: NextRequest) {
       serviceTypes: parseCommaSeparatedText(body?.serviceTypes),
       specializations: parseCommaSeparatedText(body?.specializations),
       serviceAreas: parseCommaSeparatedText(body?.serviceAreas),
+      ...(hasBusinessHoursPayload ? { businessHoursJson } : {}),
     };
 
     if (!businessName || !businessType) {

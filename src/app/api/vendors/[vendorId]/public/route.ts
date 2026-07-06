@@ -21,6 +21,7 @@ import {
   VENDOR_JOB_VIDEO_STAGE_LABELS,
   normalizeVendorJobVideoStage,
 } from "@/lib/vendor-job-video-stages";
+import { getBusinessHoursStatus } from "@/lib/business-hours";
 import {
   isTransientDbConnectivityError,
   PUBLIC_DB_UNAVAILABLE_CODE,
@@ -53,6 +54,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
           city: true,
           state: true,
           serviceAreas: true,
+          businessHoursJson: true,
         },
       })
     );
@@ -238,6 +240,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
         bio: vendor.bio || null,
         location: [vendor.city, vendor.state].filter(Boolean).join(", ") || null,
         serviceAreas,
+        businessHours: getBusinessHoursStatus((vendor as any).businessHoursJson || null),
         profilePhoto: null, // Intentionally omitted until profile-photo public visibility governance exists.
         rating: vendorReviewAgg?.rating ?? null,
         reviewCount: vendorReviewAgg?.reviewCount ?? null,

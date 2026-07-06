@@ -18,6 +18,13 @@ import {
   type TemplateServiceDetailDraft,
 } from '@/lib/register-flow';
 import {
+  defaultBusinessHours,
+  formatBusinessTime,
+  serializeBusinessHours,
+  type BusinessHoursDayKey,
+  type BusinessHoursSchedule,
+} from '@/lib/business-hours';
+import {
   appendAuthNext,
   getAuthEntryBackHref,
   getAuthEntryBackLabel,
@@ -860,6 +867,16 @@ const responseTimeOptions = [
   'Within 1 week'
 ];
 
+const businessHourDayLabels: Record<BusinessHoursDayKey, string> = {
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+  sun: 'Sunday',
+};
+
 // Generate reCAPTCHA token function
 const generateRecaptchaToken = () => {
   // For development, return a mock token
@@ -921,6 +938,7 @@ function RegisterPageInner() {
 
   // Form data state
   const [formData, setFormData] = useState(createInitialRegisterFormData);
+  const [businessHours, setBusinessHours] = useState<BusinessHoursSchedule>(() => defaultBusinessHours());
   const yearsInBusinessPreview = useMemo(() => {
     const foundedYear = Number.parseInt(String(formData.foundedYear || '').trim(), 10);
     const currentYear = new Date().getFullYear();
@@ -976,6 +994,7 @@ function RegisterPageInner() {
     setTemplateServicesError('');
     setCustomServices([]);
     setCustomServicesError('');
+    setBusinessHours(defaultBusinessHours());
     setCitySuggestions([]);
     setShowCitySuggestions(false);
     setSelectedCityIndex(-1);
@@ -1029,6 +1048,16 @@ function RegisterPageInner() {
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+  };
+
+  const updateBusinessHourDay = (
+    dayKey: BusinessHoursDayKey,
+    updates: Partial<BusinessHoursSchedule['days'][number]>
+  ) => {
+    setBusinessHours((current) => ({
+      ...current,
+      days: current.days.map((day) => (day.day === dayKey ? { ...day, ...updates } : day)),
+    }));
   };
 
   const removeTemplateServiceCard = (serviceType: string) => {
@@ -1314,6 +1343,7 @@ function RegisterPageInner() {
         specializations: Array.isArray(formData.specializations) ? formData.specializations.join(', ') : formData.specializations,
         serviceAreas: Array.isArray(formData.serviceAreas) ? formData.serviceAreas.join(', ') : formData.serviceAreas,
         selectedServices: [...selectedTemplateServices, ...selectedCustomServices],
+        businessHoursJson: userType === 'vendor' ? serializeBusinessHours(businessHours) : undefined,
         // Convert booleans to strings
         insuranceStatus: String(formData.insuranceStatus),
         bondingStatus: String(formData.bondingStatus),
@@ -2874,21 +2904,61 @@ function RegisterPageInner() {
 
                       {/* Availability Section */}
                       <div className={vendorPanelClass}>
-                        <Label className="text-white/88">Service Availability</Label>
-                        <p className="mb-3 text-sm text-white/72">
-                          Weekly operating days and daily open/close hours are not part of the live vendor registration save model yet.
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <Label className="text-white/88">Service Availability</Label>
+                            <p className="mt-1 text-sm text-white/72">
+                              Set the weekly hours customers see on browse, service, and provider cards.
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100">
+                            Saved with profile
+                          </span>
+                        </div>
+                        <div className="mt-4 grid gap-3">
+                          {businessHours.days.map((day) => (
+                            <div
+                              key={day.day}
+                              className={`${vendorSubpanelClass} grid gap-3 sm:grid-cols-[1fr_auto_auto]`}
+                            >
+                              <label className="flex cursor-pointer items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={day.enabled}
+                                  onChange={(event) => updateBusinessHourDay(day.day, { enabled: event.target.checked })}
+                                  className="h-4 w-4 accent-blue-500"
+                                />
+                                <span className="font-semibold text-white">{businessHourDayLabels[day.day]}</span>
+                                <span className="text-sm text-white/54">
+                                  {day.enabled ? `${formatBusinessTime(day.open)}-${formatBusinessTime(day.close)}` : 'Closed'}
+                                </span>
+                              </label>
+                              <label className="text-sm text-white/72">
+                                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-100/60">Open</span>
+                                <input
+                                  type="time"
+                                  value={day.open}
+                                  disabled={!day.enabled}
+                                  onChange={(event) => updateBusinessHourDay(day.day, { open: event.target.value })}
+                                  className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-white disabled:opacity-50 sm:w-32"
+                                />
+                              </label>
+                              <label className="text-sm text-white/72">
+                                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-100/60">Close</span>
+                                <input
+                                  type="time"
+                                  value={day.close}
+                                  disabled={!day.enabled}
+                                  onChange={(event) => updateBusinessHourDay(day.day, { close: event.target.value })}
+                                  className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-white disabled:opacity-50 sm:w-32"
+                                />
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-xs leading-5 text-white/56">
+                          You can edit these hours later from Vendor Profile. Customers will see whether the business is open now when hours are listed.
                         </p>
-                        <div className="mb-4 rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
-                          Why you cannot set open and close times here yet: Reliance does not currently persist or enforce a real weekly-hours schedule across vendor onboarding, service-request availability, and service matching. We avoid showing fake hours controls until that schema, API, and request logic are live.
-                        </div>
-                        <div className="rounded-lg border border-white/10 bg-slate-950/60 p-3 text-sm text-white/70">
-                          <p className="font-medium text-white/88">Current beta behavior</p>
-                          <ul className="mt-2 list-disc space-y-1 pl-5">
-                            <li>Weekly day selection is not saved in this registration flow yet.</li>
-                            <li>Daily open and close times are not available yet.</li>
-                            <li>For now, use your business description to mention typical availability if customers should know it.</li>
-                          </ul>
-                        </div>
                       </div>
                     </div>
 
