@@ -14,6 +14,7 @@ const hoisted = vi.hoisted(() => {
   const mediaSessionUpdateMany = vi.fn();
   const mediaAssetCount = vi.fn();
   const mediaAssetUpdateMany = vi.fn();
+  const consentRecordFindFirst = vi.fn();
   const txMediaSessionUpdateMany = vi.fn();
   const txMediaAssetUpdateMany = vi.fn();
   const txBookingDelete = vi.fn();
@@ -43,6 +44,9 @@ const hoisted = vi.hoisted(() => {
       count: mediaAssetCount,
       updateMany: mediaAssetUpdateMany,
     },
+    consentRecord: {
+      findFirst: consentRecordFindFirst,
+    },
     $transaction: transaction,
   };
 
@@ -56,6 +60,7 @@ const hoisted = vi.hoisted(() => {
     mediaSessionUpdateMany,
     mediaAssetCount,
     mediaAssetUpdateMany,
+    consentRecordFindFirst,
     txMediaSessionUpdateMany,
     txMediaAssetUpdateMany,
     txBookingDelete,
@@ -151,6 +156,7 @@ describe("vendor job actions integration", () => {
     hoisted.mediaSessionUpdateMany.mockReset();
     hoisted.mediaAssetCount.mockReset();
     hoisted.mediaAssetUpdateMany.mockReset();
+    hoisted.consentRecordFindFirst.mockReset();
     hoisted.txMediaSessionUpdateMany.mockReset();
     hoisted.txMediaAssetUpdateMany.mockReset();
     hoisted.txBookingDelete.mockReset();
@@ -374,7 +380,7 @@ describe("vendor job actions integration", () => {
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("PATCH ASSIGN_JOB stores primary employee attribution and notifies newly assigned employee", async () => {
+  it("PATCH ASSIGN_JOB stores primary employee attribution and defers the service order email", async () => {
     const previousMetadata = JSON.stringify({
       vendor_job_assigned_membership_ids: ["old-member"],
       vendor_job_assigned_employees: ["Old Employee"],
@@ -447,6 +453,66 @@ describe("vendor job actions integration", () => {
         }),
       })
     );
+    expect(sendJobAssignmentNotification).not.toHaveBeenCalled();
+    expect(json.notifications).toMatchObject({
+      newlyAssignedCount: 1,
+      sentCount: 0,
+      deferred: true,
+    });
+  });
+
+  it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER sends business-address jobs for employee phone location verification", async () => {
+    const metadata = JSON.stringify({
+      vendor_job_assigned_membership_ids: ["member-1"],
+      vendor_job_assigned_employees: ["Peter Parker"],
+      vendor_job_primary_membership_id: "member-1",
+      vendor_job_primary_employee: "Peter Parker",
+      vendor_job_recording_location: "business",
+      vendor_job_location_verified: false,
+      reliance_ops: { operational_phase: "ASSIGNED" },
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: metadata,
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      scheduledFor: new Date("2026-06-20T15:00:00.000Z"),
+      date: null,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      status: "PENDING",
+      customerMetadata: metadata,
+    });
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "member-1",
+        user: {
+          name: "Peter Parker",
+          email: "peter@example.com",
+          phone: "4075550123",
+        },
+      },
+    ]);
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      id: "job1",
+      status: "PENDING",
+      customerMetadata: args.data.customerMetadata,
+      updatedAt: new Date("2026-06-11T12:10:00.000Z"),
+    }));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "RELEASE_EMPLOYEE_SERVICE_ORDER",
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(200);
     expect(sendJobAssignmentNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         bookingId: "job1",
@@ -462,8 +528,88 @@ describe("vendor job actions integration", () => {
         customerName: "Carmen Customer",
       })
     );
+    const updateArg = hoisted.bookingUpdate.mock.calls[0][0];
+    const savedMetadata = JSON.parse(updateArg.data.customerMetadata);
+    expect(savedMetadata.vendor_job_location_verified).toBe(false);
+    expect(savedMetadata.vendor_job_service_order_released_membership_ids).toEqual(["member-1"]);
     expect(json.notifications).toMatchObject({
-      newlyAssignedCount: 1,
+      sentCount: 1,
+    });
+  });
+
+  it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER sends the service order after business location verification", async () => {
+    const metadata = JSON.stringify({
+      vendor_job_assigned_membership_ids: ["member-1"],
+      vendor_job_assigned_employees: ["Peter Parker"],
+      vendor_job_primary_membership_id: "member-1",
+      vendor_job_primary_employee: "Peter Parker",
+      vendor_job_recording_location: "business",
+      vendor_job_location_verified: true,
+      vendor_job_location_verified_at: "2026-06-11T12:00:00.000Z",
+      reliance_ops: { operational_phase: "ASSIGNED" },
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: metadata,
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      scheduledFor: new Date("2026-06-20T15:00:00.000Z"),
+      date: null,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      status: "PENDING",
+      customerMetadata: metadata,
+    });
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "member-1",
+        user: {
+          name: "Peter Parker",
+          email: "peter@example.com",
+          phone: "4075550123",
+        },
+      },
+    ]);
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      id: "job1",
+      status: "PENDING",
+      customerMetadata: args.data.customerMetadata,
+      updatedAt: new Date("2026-06-11T12:10:00.000Z"),
+    }));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "RELEASE_EMPLOYEE_SERVICE_ORDER",
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(sendJobAssignmentNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "job1",
+        actorUserId: "manager-1",
+        employeeName: "Peter Parker",
+        employeeEmail: "peter@example.com",
+        employeePhone: "4075550123",
+        employeeJobLink: expect.stringMatching(
+          /^http:\/\/localhost\/employee\/jobs\?jobId=job1&ct=.+/
+        ),
+        vendorName: "Electro LLC",
+        jobTitle: "Outlet Installation",
+        customerName: "Carmen Customer",
+      })
+    );
+    const updateArg = hoisted.bookingUpdate.mock.calls[0][0];
+    const savedMetadata = JSON.parse(updateArg.data.customerMetadata);
+    expect(savedMetadata.vendor_job_service_order_released_membership_ids).toEqual(["member-1"]);
+    expect(savedMetadata.vendor_job_service_order_released_at).toEqual(expect.any(String));
+    expect(json.notifications).toMatchObject({
       sentCount: 1,
     });
   });

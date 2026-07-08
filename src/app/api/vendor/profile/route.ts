@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { getRestrictedAccountMessage } from "@/lib/account-status";
-import { addressChanged, geocodeAddress } from "@/lib/geocoding";
+import { addressChanged, geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
 import { isVendorContextDbTimeoutError, resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { getVendorRatingStats } from "@/lib/review-attribution-aggregates";
 import { buildVendorOnboardingState } from "@/lib/vendor-onboarding-state";
@@ -64,6 +64,10 @@ const VENDOR_PROFILE_SELECT = {
     },
   },
 } as const;
+
+function normalizeRequiredText(value: unknown): string {
+  return String(value ?? "").trim();
+}
 
 export async function GET(request: Request) {
   try {
@@ -366,22 +370,75 @@ export async function PUT(request: Request) {
     const currentVendor = await prisma.vendor.findUnique({
       where: { id: vendorId },
       select: {
+        businessName: true,
+        businessType: true,
+        category: true,
+        email: true,
+        phone: true,
         address: true,
         city: true,
         state: true,
         zipCode: true,
       },
     });
+    if (!currentVendor) {
+      return NextResponse.json({ error: "Vendor profile not found" }, { status: 404 });
+    }
+
+    const nextRequiredProfile = {
+      businessName:
+        body.businessName !== undefined ? body.businessName : currentVendor.businessName,
+      businessType:
+        body.businessType !== undefined ? body.businessType : currentVendor.businessType,
+      category: body.category !== undefined ? body.category : currentVendor.category,
+      email: body.email !== undefined ? body.email : currentVendor.email,
+      phone: body.phone !== undefined ? body.phone : currentVendor.phone,
+      address: body.address !== undefined ? body.address : currentVendor.address,
+      city: body.city !== undefined ? body.city : currentVendor.city,
+      state: body.state !== undefined ? body.state : currentVendor.state,
+      zipCode: body.zipCode !== undefined ? body.zipCode : currentVendor.zipCode,
+    };
+    const missingRequiredProfileFields = Object.entries(nextRequiredProfile)
+      .filter(([, value]) => !normalizeRequiredText(value))
+      .map(([key]) => key);
+    if (missingRequiredProfileFields.length) {
+      return NextResponse.json(
+        {
+          error: "Required business profile fields cannot be blank.",
+          fields: missingRequiredProfileFields,
+        },
+        { status: 422 }
+      );
+    }
+
+    if (
+      body.businessType !== undefined &&
+      normalizeRequiredText(currentVendor.businessType) &&
+      normalizeRequiredText(body.businessType) !== normalizeRequiredText(currentVendor.businessType)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Business type is locked after approval. Register a new business profile if the legal business type changes.",
+          fields: ["businessType"],
+        },
+        { status: 422 }
+      );
+    }
+
     const nextAddress = {
       address: body.address !== undefined ? body.address : currentVendor?.address,
       city: body.city !== undefined ? body.city : currentVendor?.city,
       state: body.state !== undefined ? body.state : currentVendor?.state,
       zipCode: body.zipCode !== undefined ? body.zipCode : currentVendor?.zipCode,
     };
+    const addressFieldsSubmitted = ["address", "city", "state", "zipCode"].some(
+      (key) => (body as any)?.[key] !== undefined
+    );
     const shouldRefreshCoordinates =
       Boolean(currentVendor) &&
-      ["address", "city", "state", "zipCode"].some((key) => (body as any)?.[key] !== undefined) &&
-      addressChanged(currentVendor, nextAddress);
+      addressFieldsSubmitted &&
+      (addressChanged(currentVendor, nextAddress) || hasCompleteAddress(nextAddress));
     if (shouldRefreshCoordinates) {
       const geocodeResult = await geocodeAddress(nextAddress);
       if (geocodeResult.status === "success") {

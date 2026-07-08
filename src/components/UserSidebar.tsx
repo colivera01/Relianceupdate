@@ -172,11 +172,11 @@ function UserSidebarContent() {
         <div className="flex flex-col items-center mb-8 px-2">
           <div className="relative mb-4">
             {visibleUser.avatar ? (
-              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-white/20 bg-slate-950/85 p-1 shadow-md">
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-white/20 bg-slate-950/85 p-1.5 shadow-md ring-1 ring-blue-300/10">
                 <img
                   src={visibleUser.avatar}
                   alt={visibleUser.name}
-                  className="h-full w-full rounded-full object-cover"
+                  className="h-full w-full rounded-full object-contain"
                 />
               </div>
             ) : (
@@ -194,9 +194,6 @@ function UserSidebarContent() {
             <div className="font-semibold text-lg mb-1 truncate">
               {isResolvingIdentity ? 'Loading account...' : visibleUser.name}
             </div>
-            {!isResolvingIdentity && visibleUser.email && !/@reliance\.test$/i.test(visibleUser.email) ? (
-              <div className="text-blue-100 text-sm break-all">{visibleUser.email}</div>
-            ) : null}
             <div className="mt-2">
               <span className="px-2 py-1 bg-white/20 text-white text-xs rounded-full">
                 {isResolvingIdentity ? 'Loading' : isSignedIn ? 'Customer' : 'Guest'}

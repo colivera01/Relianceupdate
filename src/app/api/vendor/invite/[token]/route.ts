@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { sendTeamInviteAcceptedNotification } from "@/lib/notifications/send-team-invite-accepted";
 
 interface RouteParams {
   params: Promise<{ token: string }>;
@@ -55,6 +56,14 @@ async function withTimeout<T>(promise: Promise<T>, label: string, ms = 7000): Pr
       setTimeout(() => reject(new Error(`timeout:${label}:${ms}ms`)), ms)
     ),
   ]);
+}
+
+function requestBaseUrl(request: Request): string | null {
+  try {
+    return new URL(request.url).origin;
+  } catch {
+    return null;
+  }
 }
 
 async function getInviteWithVendor(token: string): Promise<InviteWithVendorLookup> {
@@ -380,9 +389,30 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       },
     });
 
+    step = "notify_vendor_invite_accepted";
+    let vendorNotification: Awaited<ReturnType<typeof sendTeamInviteAcceptedNotification>> | null = null;
+    try {
+      const vendorName = lookup.vendor?.businessName || lookup.vendor?.name || "Reliance Vendor";
+      vendorNotification = await sendTeamInviteAcceptedNotification({
+        inviteId: String(invite.id),
+        vendorId: String(invite.vendorId),
+        actorUserId: String(user.id),
+        vendorName,
+        vendorEmail: lookup.vendor?.email || null,
+        employeeName: String(user.name || name),
+        employeeEmail: String(user.email || email || ""),
+        employeePhone: String(user.phone || phone || ""),
+        employeeRole: String(membership.role || "EMPLOYEE"),
+        baseUrl: requestBaseUrl(request),
+      });
+    } catch (notificationError) {
+      console.error("[vendor-invite] failed to send team invite accepted notification", notificationError);
+    }
+
     return NextResponse.json({
       success: true,
       devTestModeAliasUserCreated: createdDevAlias,
+      vendorNotification,
       membership: {
         id: membership.id,
         vendorId: membership.vendorId,

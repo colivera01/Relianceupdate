@@ -1,14 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Loader2, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
-import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
+import { AlertCircle, ChevronDown, Loader2, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
 import { tutorialGuides } from '@/lib/user-guidance';
 import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
-import { getServiceTemplatesForCategory, type ServiceTemplate } from '@/config/service-templates';
 
 type ServiceRow = {
   id: string;
@@ -133,14 +131,6 @@ export default function VendorServicesPage() {
       }),
     [vendorId, vendorProfile]
   );
-  const serviceCategory = String(
-    vendorProfile?.category || vendorProfile?.businessType || ''
-  ).trim();
-  const serviceTemplates = useMemo(
-    () => getServiceTemplatesForCategory(serviceCategory),
-    [serviceCategory]
-  );
-
   const reloadServices = useCallback(async () => {
     if (!vendorId) return;
     setServicesLoading(true);
@@ -179,21 +169,6 @@ export default function VendorServicesPage() {
   const openCreateModal = () => {
     setEditingService(null);
     setFormData({ name: '', description: '', price: '', estimatedDuration: '' });
-    setFormError('');
-    setCopySuggestion(null);
-    setCopyError('');
-    setCopyMessage('');
-    setShowFormModal(true);
-  };
-
-  const openCreateModalFromTemplate = (template: ServiceTemplate) => {
-    setEditingService(null);
-    setFormData({
-      name: template.name,
-      description: '',
-      price: '',
-      estimatedDuration: String(template.defaultDuration || ''),
-    });
     setFormError('');
     setCopySuggestion(null);
     setCopyError('');
@@ -374,14 +349,14 @@ export default function VendorServicesPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {vendorProfile?.onboarding ? (
           <div className="mb-6">
-            <VendorOnboardingStatusPanel profile={vendorProfile} />
+            <VendorOnboardingStatusPanel profile={vendorProfile} compact />
           </div>
         ) : null}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Your Services Offered</h1>
             <p className="text-gray-600">
-              Build the menu of work customers can understand before they request help from your business.
+              Create the services customers can search for, compare, and request from your business.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -392,93 +367,46 @@ export default function VendorServicesPage() {
               className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-blue-300/40 bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:from-blue-700 hover:via-blue-600 hover:to-sky-600 hover:shadow-[0_18px_42px_rgba(37,99,235,0.36)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 sm:w-auto"
             >
               <Plus className="w-4 h-4" />
-              Add Service Offered
+              Add Service
             </button>
           </div>
         </div>
 
-        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
-          <p className="font-semibold text-blue-950">This is your customer-facing Services Offered menu</p>
-          <p className="mt-1">
-            Think of each service offered as a menu item customers can compare before requesting help. Clear names,
-            simple descriptions, estimated duration, and honest reference pricing help customers
-            understand what you provide. Saving a service offered here does not create a service
-            record or service video by itself; it prepares the service customers can request after Reliance publishes it.
-          </p>
-          <p className="mt-2 text-blue-900/80">
-            If you selected starter services during registration, this is where you refine them into polished public-facing options.
+        <div className="mb-4 rounded-2xl border border-blue-300/25 bg-blue-500/10 p-5 text-blue-50">
+          <p className="text-sm font-semibold text-blue-100">Build your service menu</p>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-blue-100/85">
+            Each service you create becomes an option customers can search for and request. When you later
+            create a work record or job, you can attach it to one of these saved services.
           </p>
         </div>
 
-        {serviceCategory ? (
-          <section className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
-                  Common service starters
-                </p>
-                <h2 className="mt-1 text-lg font-semibold">
-                  Choose common services for {serviceCategory}
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-blue-900/78">
-                  Start with a common service, then edit the name, duration, price, and description
-                  before saving it to your Services Offered menu.
-                </p>
-              </div>
-            </div>
+        <div className="mb-4 grid gap-3 lg:grid-cols-2">
+          <details className="group rounded-2xl border border-white/10 bg-slate-950/65 p-4 text-white">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-blue-100">
+              <span>Why your Services Offered may still not be public</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-blue-200 transition group-open:rotate-180" />
+            </summary>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              Saving a service stores it for your business first. Customers see it after your vendor
+              profile is approved, your business is listed, and Reliance publishes the service for public discovery.
+            </p>
+          </details>
 
-            {serviceTemplates.length > 0 ? (
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                {serviceTemplates.map((template) => (
-                  <button
-                    key={template.name}
-                    type="button"
-                    onClick={() => openCreateModalFromTemplate(template)}
-                    disabled={!vendorId || vendorLoading}
-                    className="rounded-xl border border-blue-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <p className="font-semibold text-slate-950">{template.name}</p>
-                    <p className="mt-2 text-sm text-slate-600">
-                      Typical time: {template.defaultDuration} min
-                    </p>
-                    <span className="mt-3 inline-flex rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
-                      Use template
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm text-blue-900/78">
-                No starter templates are configured for {serviceCategory} yet. Use Add Service Offered above
-                to create one manually.
-              </div>
-            )}
-          </section>
-        ) : null}
-
-        <GuidanceCallout
-          title="What customers can see"
-          description="Services offered here are saved internally first. Customers only see them after Reliance publishes them."
-          bullets={[
-            `${growthSummary.metrics[1].value} published service${growthSummary.metrics[1].value === '1' ? '' : 's'} offered currently help customers find the business.`,
-            'Not-public services stay internal until Reliance finishes the publishing step.',
-            'Stronger service copy improves discovery and helps customers understand what they can request.',
-          ]}
-          tone="slate"
-          className="mb-4"
-        />
-
-        <GuidanceCallout
-          title="Why your Services Offered may still not be public"
-          description="Saving a service prepares it for review, but customer discovery still depends on vendor approval, public vendor listing, and admin publishing."
-          bullets={[
-            'Service saved: Reliance stores the service internally for review.',
-            'Vendor approved and listed: customers can find the business profile.',
-            'Service published: the service becomes publicly discoverable and request-ready.',
-          ]}
-          tone="blue"
-          className="mb-4"
-        />
+          <details className="group rounded-2xl border border-white/10 bg-slate-950/65 p-4 text-white">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-blue-100">
+              <span>What customers can see</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-blue-200 transition group-open:rotate-180" />
+            </summary>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              Published services can appear on your public profile, browse/search results, and future
+              customer request flows. Customers use them to understand what you offer before a work
+              record or service video is created.
+            </p>
+            <p className="mt-2 text-xs text-slate-400">
+              Currently published: {growthSummary.metrics[1].value} service{growthSummary.metrics[1].value === '1' ? '' : 's'}.
+            </p>
+          </details>
+        </div>
 
         {approvalPending && (
           <div className="p-4 mb-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
@@ -564,9 +492,6 @@ export default function VendorServicesPage() {
                     {deleteLoadingId === service.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   </button>
                 </div>
-                <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-                  Publishing stays admin-managed for this launch. Use delete only for services you no longer want Reliance to keep on file.
-                </div>
               </div>
               );
             })}
@@ -574,52 +499,42 @@ export default function VendorServicesPage() {
         )}
 
         {showFormModal && (
-          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3 py-6 sm:items-center sm:p-4">
-            <div className="max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white sm:max-h-[90vh]">
-              <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 p-3 py-5 sm:items-center sm:p-4">
+            <div className="flex max-h-[calc(100dvh-2.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-blue-300/20 bg-slate-950 text-white shadow-2xl sm:max-h-[88vh]">
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    {editingService ? 'Edit Service Offered' : 'Add Service to Your Menu'}
+                  <h2 className="text-2xl font-bold text-white">
+                    {editingService ? 'Edit Service' : 'Add Service'}
                   </h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    This saves one reusable customer-facing service menu item. It does not create a job or service video by itself.
+                  <p className="mt-1 max-w-xl text-sm leading-5 text-slate-300">
+                    Save one service customers can choose later. Jobs and videos are created separately.
                   </p>
                 </div>
                 <button
                   onClick={closeFormModal}
                   disabled={formSaving}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50"
+                  className="rounded-full border border-white/10 p-2 text-slate-300 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-6 space-y-4">
+              <div className="space-y-4 overflow-y-auto px-5 py-5 sm:px-6">
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_190px]">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Service Name *</label>
+                  <label className="mb-2 block text-sm font-medium text-slate-100">Service Name *</label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full rounded-xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                     placeholder="Example: Outlet installation"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Description *</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                    rows={4}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Explain what customers can expect, what is included, and what may affect the final scope."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Estimated Duration (minutes)
+                  <label className="mb-2 block text-sm font-medium text-slate-100">
+                    Time Estimate
                   </label>
                   <input
                     type="number"
@@ -629,68 +544,93 @@ export default function VendorServicesPage() {
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, estimatedDuration: e.target.value }))
                     }
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Example: 60"
+                    className="w-full rounded-xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    placeholder="Minutes"
                   />
-                  <p className="mt-2 text-xs text-gray-500">
-                    Shown as a customer-facing estimate so people understand the typical time involved.
+                  <p className="mt-2 text-xs text-slate-400">
+                    Minutes customers can expect.
                   </p>
                 </div>
+                </div>
 
-                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 text-blue-700">
-                        <Sparkles className="h-4 w-4" />
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em]">AI Copy Assist</p>
-                      </div>
-                      <p className="mt-2 text-sm text-blue-950">
-                        Use AI to turn rough service details into clearer customer language. It can suggest a stronger title, simpler description, trust points, and claims to avoid before the service appears publicly.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void requestServiceCopySuggestion()}
-                      disabled={copyLoading || !vendorId}
-                      className="rounded-lg border border-blue-300 bg-white px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {copyLoading
-                        ? 'Generating...'
-                        : copySuggestion
-                          ? 'Refresh AI Suggestion'
-                          : 'Improve Service Copy'}
-                    </button>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-100">Description *</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                    className="min-h-[104px] w-full resize-y rounded-xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    placeholder="Tell customers what is included and what they can expect."
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-100">
+                      Price Estimate ($) *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.price}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
+                      className="w-full rounded-xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      placeholder="0.00"
+                    />
+                    <p className="mt-2 text-xs text-slate-400">Shown as a reference estimate.</p>
                   </div>
 
+                  <div className="rounded-xl border border-blue-300/25 bg-blue-500/10 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-blue-100">
+                          <Sparkles className="h-4 w-4" />
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em]">Need help wording it?</p>
+                        </div>
+                        <p className="mt-1 text-sm text-blue-100/80">
+                          AI can clean up the name and description before customers see it.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void requestServiceCopySuggestion()}
+                        disabled={copyLoading || !vendorId}
+                        className="shrink-0 rounded-xl border border-blue-300/40 bg-slate-950 px-4 py-2 text-sm font-semibold text-blue-100 transition hover:bg-blue-950 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {copyLoading ? 'Checking...' : copySuggestion ? 'Try Again' : 'Improve Text'}
+                      </button>
+                    </div>
+
                   {copyMessage ? (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                    <div className="mt-3 rounded-lg border border-emerald-300/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
                       {copyMessage}
                     </div>
                   ) : null}
                   {copyError ? (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    <div className="mt-3 rounded-lg border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
                       {copyError}
                     </div>
                   ) : null}
 
                   {copySuggestion ? (
-                    <div className="rounded-lg border border-blue-100 bg-white p-4 space-y-3">
+                    <div className="mt-3 space-y-3 rounded-xl border border-white/10 bg-slate-950/80 p-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-700">
+                        <span className="rounded-full border border-slate-600 px-2 py-1 text-xs text-slate-300">
                           {copySuggestion.confidence.charAt(0).toUpperCase() + copySuggestion.confidence.slice(1)} confidence
                         </span>
                       </div>
-                      <p className="text-sm text-slate-800">{copySuggestion.summary}</p>
-                      <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Suggested service title</p>
-                        <p className="mt-2 text-sm font-semibold text-slate-950">{copySuggestion.recommendedHeadline}</p>
-                        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Suggested description</p>
-                        <p className="mt-2 text-sm leading-6 text-slate-700">{copySuggestion.recommendedDescription}</p>
+                      <p className="text-sm text-slate-300">{copySuggestion.summary}</p>
+                      <div className="rounded-lg border border-blue-300/20 bg-blue-500/10 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">Suggested service title</p>
+                        <p className="mt-2 text-sm font-semibold text-white">{copySuggestion.recommendedHeadline}</p>
+                        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Suggested description</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-300">{copySuggestion.recommendedDescription}</p>
                       </div>
                       {copySuggestion.recommendedBullets.length > 0 ? (
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Suggested trust points</p>
-                          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Suggested trust points</p>
+                          <ul className="mt-2 space-y-1 text-sm text-slate-300">
                             {copySuggestion.recommendedBullets.map((item) => (
                               <li key={item}>- {item}</li>
                             ))}
@@ -698,9 +638,9 @@ export default function VendorServicesPage() {
                         </div>
                       ) : null}
                       {copySuggestion.trustGaps.length > 0 ? (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">What customers may still question</p>
-                          <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                        <div className="rounded-lg border border-amber-300/30 bg-amber-500/10 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200">What customers may still question</p>
+                          <ul className="mt-2 space-y-1 text-sm text-amber-100">
                             {copySuggestion.trustGaps.map((item) => (
                               <li key={item}>- {item}</li>
                             ))}
@@ -708,9 +648,9 @@ export default function VendorServicesPage() {
                         </div>
                       ) : null}
                       {copySuggestion.riskyClaims.length > 0 ? (
-                        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Claims to avoid or soften</p>
-                          <ul className="mt-2 space-y-1 text-sm text-red-800">
+                        <div className="rounded-lg border border-red-300/30 bg-red-500/10 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-200">Claims to avoid or soften</p>
+                          <ul className="mt-2 space-y-1 text-sm text-red-100">
                             {copySuggestion.riskyClaims.map((item) => (
                               <li key={item}>- {item}</li>
                             ))}
@@ -729,45 +669,27 @@ export default function VendorServicesPage() {
                           }
                           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
                         >
-                          Use Suggested Title and Description
+                          Use This Text
                         </button>
                       </div>
                     </div>
                   ) : null}
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Reference Price ($) *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="0.00"
-                  />
-                  <p className="mt-2 text-xs text-gray-500">
-                    Required for service records, but shown as a customer-facing estimate/reference
-                    until in-app billing tools are introduced.
-                  </p>
                 </div>
 
                 {formError && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-red-300/30 bg-red-500/10 p-3 text-sm text-red-100">
                     <AlertCircle className="w-4 h-4" />
                     {formError}
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-gray-200 p-6 sm:flex-row sm:justify-end">
+              <div className="flex flex-col gap-3 border-t border-white/10 bg-slate-950 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
                 <button
                   onClick={closeFormModal}
                   disabled={formSaving}
-                  className="w-full rounded-lg border border-gray-300 px-5 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
+                  className="w-full rounded-xl border border-white/15 px-5 py-2.5 text-slate-200 hover:bg-white/10 disabled:opacity-50 sm:w-auto"
                 >
                   Cancel
                 </button>
@@ -776,10 +698,10 @@ export default function VendorServicesPage() {
                     handleSaveService().catch(() => undefined);
                   }}
                   disabled={formSaving || !vendorId}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-sky-500 px-5 py-2 text-white hover:from-blue-700 hover:to-sky-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 px-5 py-2.5 font-semibold text-white hover:from-blue-700 hover:to-sky-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   {formSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {editingService ? 'Update Service Offered' : 'Save Service Offered'}
+                  Save Service
                 </button>
               </div>
             </div>

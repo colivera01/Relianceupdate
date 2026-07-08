@@ -201,14 +201,11 @@ export default function HelpArticlesPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Need direct launch help?</h2>
                 <p className="text-sm text-gray-600">
-                  These guides are self-service. Use the support hub for launch workflows, or reach
-                  out if you need help with login, jobs, approvals, or media.
+                  These guides are self-service. Email launch support if you need help with login,
+                  jobs, approvals, or media.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Button variant="outline" asChild>
-                  <Link href="/vendor/support">Open Support Hub</Link>
-                </Button>
                 {HAS_LAUNCH_SUPPORT_EMAIL ? (
                   <Button asChild>
                     <a href={LAUNCH_SUPPORT_MAILTO}>{LAUNCH_SUPPORT_EMAIL}</a>

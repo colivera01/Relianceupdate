@@ -1,4 +1,4 @@
-export type GeocodingProvider = 'disabled' | 'mapbox';
+export type GeocodingProvider = 'disabled' | 'mapbox' | 'census';
 
 export type GeocodableAddress = {
   address?: string | null;
@@ -31,14 +31,28 @@ type MapboxResponse = {
   features?: MapboxFeature[];
 };
 
+type CensusResponse = {
+  result?: {
+    addressMatches?: Array<{
+      matchedAddress?: string;
+      coordinates?: {
+        x?: number;
+        y?: number;
+      };
+    }>;
+  };
+};
+
 function clean(value: string | null | undefined): string {
   return String(value || '').trim();
 }
 
 export function getGeocodingProvider(): GeocodingProvider {
   const provider = clean(process.env.GEOCODING_PROVIDER).toLowerCase();
+  if (provider === 'disabled') return 'disabled';
   if (provider === 'mapbox') return 'mapbox';
-  return 'disabled';
+  if (provider === 'census') return 'census';
+  return 'census';
 }
 
 export function hasCompleteAddress(input: GeocodableAddress): boolean {
@@ -82,6 +96,10 @@ export async function geocodeAddress(input: GeocodableAddress): Promise<GeocodeR
 
   if (provider === 'mapbox') {
     return geocodeWithMapbox(input);
+  }
+
+  if (provider === 'census') {
+    return geocodeWithCensus(input);
   }
 
   return {
@@ -141,6 +159,60 @@ async function geocodeWithMapbox(input: GeocodableAddress): Promise<GeocodeResul
       longitude,
       geocodedAt: new Date(),
       formattedAddress: feature?.place_name,
+    };
+  } catch (error) {
+    return {
+      status: 'error',
+      provider,
+      message: error instanceof Error ? error.message : 'Unknown geocoding error.',
+    };
+  }
+}
+
+async function geocodeWithCensus(input: GeocodableAddress): Promise<GeocodeResult> {
+  const provider: GeocodingProvider = 'census';
+
+  try {
+    const baseUrl =
+      clean(process.env.CENSUS_GEOCODING_ENDPOINT) ||
+      'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress';
+    const params = new URLSearchParams({
+      address: formatAddress(input),
+      benchmark: clean(process.env.CENSUS_GEOCODING_BENCHMARK) || 'Public_AR_Current',
+      format: 'json',
+    });
+    const response = await fetch(`${baseUrl}?${params.toString()}`, {
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    if (!response.ok) {
+      return {
+        status: 'error',
+        provider,
+        message: `Census geocoding failed with HTTP ${response.status}.`,
+      };
+    }
+
+    const payload = (await response.json()) as CensusResponse;
+    const match = payload.result?.addressMatches?.[0];
+    const longitude = match?.coordinates?.x;
+    const latitude = match?.coordinates?.y;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      return {
+        status: 'not_found',
+        provider,
+        message: 'No geocoding result found for this address.',
+      };
+    }
+
+    return {
+      status: 'success',
+      provider,
+      latitude,
+      longitude,
+      geocodedAt: new Date(),
+      formattedAddress: match?.matchedAddress,
     };
   } catch (error) {
     return {

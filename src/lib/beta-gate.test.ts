@@ -29,9 +29,12 @@ function setEnabledBetaGate() {
   process.env.BETA_GATE_COOKIE_MAX_AGE_DAYS = "14";
 }
 
-function betaRequest(path: string, cookie?: string): NextRequest {
+function betaRequest(path: string, cookie?: string, extraHeaders: Record<string, string> = {}): NextRequest {
   const headers = new Headers();
   if (cookie) headers.set("cookie", cookie);
+  for (const [key, value] of Object.entries(extraHeaders)) {
+    headers.set(key, value);
+  }
   return new NextRequest(`https://beta.relianceonline.org${path}`, { headers });
 }
 
@@ -143,6 +146,31 @@ describe("private beta gate", () => {
       expect(response.headers.get("location")).toBeNull();
       expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     }
+  });
+
+  it("does not block secure employee service-order links with capture tokens", async () => {
+    const pageResponse = await middleware(betaRequest("/employee/jobs?jobId=job-1&ct=capture-token-1"));
+
+    expect(pageResponse.headers.get("location")).toBeNull();
+    expect(pageResponse.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+
+    const apiResponse = await middleware(
+      betaRequest("/api/employee/jobs/job-1/stage", undefined, {
+        "x-employee-capture-token": "capture-token-1",
+      })
+    );
+
+    expect(apiResponse.headers.get("location")).toBeNull();
+    expect(apiResponse.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+  });
+
+  it("keeps employee job pages gated when no capture token is present", async () => {
+    const response = await middleware(betaRequest("/employee/jobs?jobId=job-1"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://beta.relianceonline.org/beta-access?returnTo=%2Femployee%2Fjobs%3FjobId%3Djob-1"
+    );
   });
 
   it("allows normal behavior when the beta gate is disabled", async () => {

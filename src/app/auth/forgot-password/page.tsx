@@ -135,7 +135,10 @@ function ForgotPasswordPageContent() {
                   <div className="rounded-2xl border border-slate-200 bg-white/75 p-3 text-left">
                     <p className="text-center">
                       Still having trouble? Contact{' '}
-                      <span className="font-semibold text-slate-700">{LAUNCH_SUPPORT_EMAIL}</span>.
+                      <a className="font-semibold text-blue-700 underline" href={LAUNCH_SUPPORT_MAILTO}>
+                        {LAUNCH_SUPPORT_EMAIL}
+                      </a>
+                      .
                     </p>
                     <div className="mt-3 grid gap-2 sm:grid-cols-3">
                       <Button

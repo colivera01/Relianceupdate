@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "./[token]/route";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { sendTeamInviteAcceptedNotification } from "@/lib/notifications/send-team-invite-accepted";
 
 const hoisted = vi.hoisted(() => {
   const vendorInviteFindFirst = vi.fn();
@@ -54,6 +55,10 @@ vi.mock("@/lib/lifecycle-audit", () => ({
   recordLifecycleAudit: vi.fn(),
 }));
 
+vi.mock("@/lib/notifications/send-team-invite-accepted", () => ({
+  sendTeamInviteAcceptedNotification: vi.fn(),
+}));
+
 const INVITE_TOKEN = "e2e-vendor-invite-token";
 const EXPIRES_AT = new Date("2026-12-01T12:00:00.000Z");
 
@@ -105,6 +110,13 @@ describe("vendor invite token routes", () => {
     hoisted.vendorMembershipFindUnique.mockReset();
     hoisted.vendorMembershipUpsert.mockReset();
     vi.mocked(recordLifecycleAudit).mockReset();
+    vi.mocked(sendTeamInviteAcceptedNotification).mockReset();
+    vi.mocked(sendTeamInviteAcceptedNotification).mockResolvedValue({
+      attempted: 1,
+      sent: 1,
+      recipients: ["vendor-invite@reliance.test"],
+      errors: [],
+    });
   });
 
   it("loads a valid active vendor invite", async () => {
@@ -244,6 +256,20 @@ describe("vendor invite token routes", () => {
         entityType: "membership",
         entityId: "membership-1",
         actorUserId: "employee-user-1",
+      })
+    );
+    expect(sendTeamInviteAcceptedNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inviteId: "invite-1",
+        vendorId: "vendor-1",
+        actorUserId: "employee-user-1",
+        vendorName: "E2E Invite Vendor LLC",
+        vendorEmail: "vendor-invite@reliance.test",
+        employeeName: "E2E Employee",
+        employeeEmail: "e2e-employee@reliance.test",
+        employeePhone: "555-0198",
+        employeeRole: "EMPLOYEE",
+        baseUrl: "http://localhost",
       })
     );
   });

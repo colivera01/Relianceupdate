@@ -215,14 +215,10 @@ export default function FAQsPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Need direct launch help?</h2>
                 <p className="text-sm text-gray-600">
-                  Use the vendor support hub for guided actions, or contact launch support for login,
-                  jobs, media, consent, and approval questions.
+                  Contact launch support for login, jobs, media, consent, and approval questions.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Button variant="outline" asChild>
-                  <Link href="/vendor/support">Open Support Hub</Link>
-                </Button>
                 {HAS_LAUNCH_SUPPORT_EMAIL ? (
                   <Button asChild>
                     <a href={LAUNCH_SUPPORT_MAILTO}>{LAUNCH_SUPPORT_EMAIL}</a>
@@ -286,28 +282,6 @@ export default function FAQsPage() {
           ))}
         </div>
 
-        <Card className="mt-8">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <h3 className="mb-2 text-lg font-semibold">Still need help?</h3>
-              <p className="mb-4 text-gray-600">
-                Start with the live vendor pages below. Direct chat, phone support, and ticket
-                handling are deferred.
-              </p>
-              <div className="flex flex-wrap justify-center gap-4">
-                <Button asChild>
-                  <Link href="/vendor/profile">Open Profile</Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link href="/vendor/jobs">View Jobs</Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link href="/vendor/support/help-articles">Browse Articles</Link>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

@@ -43,6 +43,7 @@ vi.mock("@/lib/review-attribution-aggregates", () => ({
 
 vi.mock("@/lib/geocoding", () => ({
   addressChanged: vi.fn(() => false),
+  hasCompleteAddress: vi.fn(() => true),
   geocodeAddress: vi.fn(),
 }));
 

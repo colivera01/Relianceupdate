@@ -96,8 +96,9 @@ export async function sendJobAssignmentNotification(
       link,
       "",
       "What to do next:",
-      "- Open the secure service order link",
-      "- Tap Start Job when work begins",
+      "- Open the secure service order link on the phone you will use at the job site",
+      "- Allow camera, microphone, and location access if Reliance asks",
+      "- Reliance verifies the required location before the camera opens",
       "- Capture Starting Condition, Work in Progress, and Final Result clips",
       "- Keep each public stage clip to 30 seconds or less",
       "- Submit the completed package for manager review",
@@ -122,8 +123,9 @@ export async function sendJobAssignmentNotification(
       secondaryHtml: `
         <p style="margin:0 0 10px;color:#ffffff;font-size:15px;font-weight:800;">What to do next:</p>
         <ol style="margin:0 0 18px 20px;padding:0;">
-          <li>Open the secure service order link.</li>
-          <li>Tap Start Job when work begins.</li>
+          <li>Open the secure service order link on the phone you will use at the job site.</li>
+          <li>Allow camera, microphone, and location access if Reliance asks.</li>
+          <li>Reliance verifies the required location before the camera opens.</li>
           <li>Capture Starting Condition, Work in Progress, and Final Result clips.</li>
           <li>Keep each public stage clip to 30 seconds or less.</li>
           <li>Submit the completed package for manager review.</li>

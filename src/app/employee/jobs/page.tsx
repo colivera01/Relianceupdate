@@ -35,8 +35,21 @@ type EmployeeJob = {
   bookingDate: string | null;
   rejectionReason?: string | null;
   rejectedAt?: string | null;
+  recordingCompliance?: RecordingComplianceState | null;
   stageProgress: { INTRO: boolean; IN_PROGRESS: boolean; COMPLETED: boolean };
   canMarkComplete: boolean;
+};
+
+type RecordingLocationChoice = "business" | "residence" | "customer-business";
+
+type RecordingComplianceState = {
+  location: RecordingLocationChoice | null;
+  consentAccepted: boolean;
+  consentToken: string;
+  locationVerified: boolean;
+  locationVerifiedAt: string | null;
+  serviceOrderReleasedAt: string | null;
+  releasedMembershipIds: string[];
 };
 
 type StageFeedbackState = {
@@ -81,6 +94,17 @@ type LocationProof = {
   capturedAt: string;
   source: "browser_geolocation";
 };
+
+function getRecordingLocation(job: EmployeeJob): RecordingLocationChoice {
+  const value = String(job.recordingCompliance?.location || "").trim().toLowerCase();
+  if (value === "residence" || value === "customer-business") return value;
+  return "business";
+}
+
+function employeePhoneLocationRequired(job: EmployeeJob): boolean {
+  const location = getRecordingLocation(job);
+  return location === "business" || location === "customer-business";
+}
 
 const EMPLOYEE_JOBS_TIMEOUT_MS = 20000;
 const EMPLOYEE_PAIR_TIMEOUT_MS = 15000;
@@ -241,6 +265,7 @@ export default function EmployeeJobsPage() {
   const [jobs, setJobs] = useState<EmployeeJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingServiceOrderMessage, setPendingServiceOrderMessage] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [stageFeedback, setStageFeedback] = useState<Record<string, StageFeedbackState>>({});
@@ -269,7 +294,7 @@ export default function EmployeeJobsPage() {
   const activeCameraContextRef = useRef<{
     job: EmployeeJob;
     stage: (typeof STAGES)[number]["key"];
-    locationProof: LocationProof;
+    locationProof: LocationProof | null;
   } | null>(null);
   const capturedDraftUrlRef = useRef<string | null>(null);
   const fallbackCaptureRef = useRef<{
@@ -315,6 +340,14 @@ export default function EmployeeJobsPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to load assigned jobs.");
       setJobs(Array.isArray(json?.jobs) ? json.jobs : []);
+      setPendingServiceOrderMessage(
+        json?.pendingServiceOrder
+          ? String(
+              json?.message ||
+                "This service order is assigned, but it is not ready for recording yet. Your manager still needs to send the service order or finish any required customer-consent check."
+            )
+          : null
+      );
     } catch (e) {
       const message =
         e instanceof Error && e.message === "Request timed out"
@@ -324,6 +357,7 @@ export default function EmployeeJobsPage() {
             : "Failed to load jobs";
       setError(message);
       setJobs([]);
+      setPendingServiceOrderMessage(null);
     } finally {
       setLoading(false);
     }
@@ -507,6 +541,8 @@ export default function EmployeeJobsPage() {
     }));
     try {
       const deviceIdForUpload = pairedDevice?.deviceId || null;
+      const recordingLocation = getRecordingLocation(job);
+      const compliance = job.recordingCompliance || null;
 
       const createSessionRes = await fetch(`/api/vendors/${job.vendorId}/media/sessions`, {
         method: "POST",
@@ -516,7 +552,9 @@ export default function EmployeeJobsPage() {
           vendorJobVideoStage: stage,
           sessionType: "JOB_SERVICE_VIDEO",
           replaceExisting: true,
-          locationContext: "business",
+          locationContext: recordingLocation,
+          consentAccepted: Boolean(compliance?.consentAccepted),
+          consentToken: String(compliance?.consentToken || "").trim(),
           locationProof,
           deviceId: deviceIdForUpload,
           deviceType: pairedDevice?.deviceType || "PHONE",
@@ -922,27 +960,32 @@ export default function EmployeeJobsPage() {
     setError(null);
     setActionMessage(null);
     setRecordingOpeningKey(nextRecordingKey);
+    const needsLocationProof = employeePhoneLocationRequired(job);
     setStageFeedback((prev) => ({
       ...prev,
       [nextRecordingKey]: {
         status: "uploading",
-        message: "Checking location before opening the camera.",
+        message: needsLocationProof
+          ? "Checking location before opening the camera."
+          : "Opening the camera.",
       },
     }));
     clearCapturedDraft();
-    let locationProof: LocationProof;
-    try {
-      locationProof = await requestLocationProof(job, stage);
-    } catch (error) {
-      setStageFeedback((prev) => ({
-        ...prev,
-        [nextRecordingKey]: {
-          status: "error",
-          message: error instanceof Error ? error.message : "Location verification failed. Try again.",
-        },
-      }));
-      setRecordingOpeningKey(null);
-      return;
+    let locationProof: LocationProof | null = null;
+    if (needsLocationProof) {
+      try {
+        locationProof = await requestLocationProof(job, stage);
+      } catch (error) {
+        setStageFeedback((prev) => ({
+          ...prev,
+          [nextRecordingKey]: {
+            status: "error",
+            message: error instanceof Error ? error.message : "Location verification failed. Try again.",
+          },
+        }));
+        setRecordingOpeningKey(null);
+        return;
+      }
     }
     setStageFeedback((prev) => ({
       ...prev,
@@ -1744,18 +1787,32 @@ export default function EmployeeJobsPage() {
 
         {!loading && !error && jobs.length === 0 ? (
           <div className="rounded-lg border bg-white p-4 shadow-sm">
-            <p className="text-sm font-semibold text-gray-900">Welcome to your work view</p>
-            <p className="mt-1 text-sm text-gray-600">
-              You do not have any jobs assigned yet. When your manager assigns one, it will appear here.
-            </p>
-            <ul className="mt-3 space-y-2 text-xs text-gray-700">
-              <li>1. Open the assigned job link on the phone you will use on-site.</li>
-              <li>2. Keep the page open while you capture each short service-video stage.</li>
-              <li>
-                3. When a job appears, tap <span className="font-semibold">Start Job</span>, capture Starting
-                Condition / Work in Progress / Final Result, then submit for manager review.
-              </li>
-            </ul>
+            {pendingServiceOrderMessage ? (
+              <>
+                <p className="text-sm font-semibold text-gray-900">Service order not ready yet</p>
+                <p className="mt-1 text-sm text-gray-600">{pendingServiceOrderMessage}</p>
+                <ul className="mt-3 space-y-2 text-xs text-gray-700">
+                  <li>1. Keep this email link.</li>
+                  <li>2. Wait for your manager to finish the required checks.</li>
+                  <li>3. Open the link again when your manager confirms the order is ready.</li>
+                </ul>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-gray-900">Welcome to your work view</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  You do not have any jobs assigned yet. When your manager assigns one, it will appear here.
+                </p>
+                <ul className="mt-3 space-y-2 text-xs text-gray-700">
+                  <li>1. Open the assigned job link on the phone you will use on-site.</li>
+                  <li>2. Keep the page open while you capture each short service-video stage.</li>
+                  <li>
+                    3. When a job appears, tap <span className="font-semibold">Start Job</span>, capture Starting
+                    Condition / Work in Progress / Final Result, then submit for manager review.
+                  </li>
+                </ul>
+              </>
+            )}
           </div>
         ) : null}
 

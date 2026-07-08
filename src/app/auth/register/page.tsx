@@ -891,11 +891,23 @@ function RegisterPageInner() {
     defaultDuration: string;
     price: string;
     description: string;
+    saved: boolean;
+    editing: boolean;
   };
   type TemplateServiceCardState = {
     saved: boolean;
     editing: boolean;
   };
+
+  const createCustomServiceDraft = (): CustomServiceDraft => ({
+    id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: '',
+    defaultDuration: '',
+    price: '',
+    description: '',
+    saved: false,
+    editing: true,
+  });
   const searchParams = useSearchParams();
   const router = useRouter();
   const type = searchParams?.get('type') as 'vendor' | 'user';
@@ -1088,6 +1100,62 @@ function RegisterPageInner() {
     setTemplateServicesError('');
   };
 
+  const markCustomServiceEditing = (serviceId: string) => {
+    setCustomServices((prev) =>
+      prev.map((service) =>
+        service.id === serviceId ? { ...service, saved: false, editing: true } : service
+      )
+    );
+    setCustomServicesError('');
+  };
+
+  const updateCustomServiceDraft = (
+    serviceId: string,
+    updates: Partial<Pick<CustomServiceDraft, 'name' | 'defaultDuration' | 'price' | 'description'>>
+  ) => {
+    setCustomServices((prev) =>
+      prev.map((service) =>
+        service.id === serviceId
+          ? { ...service, ...updates, saved: false, editing: true }
+          : service
+      )
+    );
+    setCustomServicesError('');
+  };
+
+  const removeCustomServiceDraft = (serviceId: string) => {
+    setCustomServices((prev) => prev.filter((service) => service.id !== serviceId));
+    setCustomServicesError('');
+  };
+
+  const saveCustomServiceCard = (service: CustomServiceDraft) => {
+    const serviceName = service.name.trim();
+    const durationText = service.defaultDuration.trim();
+    const priceText = service.price.trim();
+    const duration = durationText ? Number(durationText) : undefined;
+    const price = priceText ? Number(priceText) : undefined;
+
+    if (!serviceName) {
+      setCustomServicesError('Add a service name before saving the custom service.');
+      return;
+    }
+    if (durationText && (!Number.isFinite(duration) || Number(duration) <= 0)) {
+      setCustomServicesError(`Use a positive duration for ${serviceName}.`);
+      return;
+    }
+    if (priceText && (!Number.isFinite(price) || Number(price) < 0)) {
+      setCustomServicesError(`Use a valid starting price for ${serviceName}.`);
+      return;
+    }
+
+    setCustomServices((prev) =>
+      prev.map((item) =>
+        item.id === service.id ? { ...item, saved: true, editing: false } : item
+      )
+    );
+    setCustomServicesError('');
+  };
+
   const saveTemplateServiceCard = (serviceType: string) => {
     const draft = serviceTypeDetails[serviceType] || getTemplateServiceDefaultDetail(formData.category, serviceType);
     const serviceName = String(serviceTypeCustomNames[serviceType] || serviceType).trim();
@@ -1254,8 +1322,19 @@ function RegisterPageInner() {
   };
 
   const handleNextStep = () => {
+    goToRegistrationStep(2);
+  };
+
+  const goToRegistrationStep = (targetStep: 1 | 2) => {
+    if (targetStep === 1) {
+      setStep(1);
+      setSubmitError('');
+      return;
+    }
+
     if (validateStep1()) {
       setStep(2);
+      setSubmitError('');
     }
   };
 
@@ -1283,6 +1362,13 @@ function RegisterPageInner() {
         const message = `Save each selected starter service before creating your account: ${unsavedTemplateServices.join(', ')}.`;
         setTemplateServicesError(message);
         setSubmitError('Save each selected starter service before creating your account.');
+        return;
+      }
+
+      const unsavedCustomServices = customServices.filter((service) => !service.saved);
+      if (unsavedCustomServices.length > 0) {
+        setCustomServicesError('Save each custom service card or delete unfinished custom services before creating your account.');
+        setSubmitError('Save each custom service before creating your account.');
         return;
       }
     }
@@ -1837,7 +1923,11 @@ function RegisterPageInner() {
                 {/* Step Indicator */}
                 <div className="mb-6">
                   <div className="flex items-center justify-center space-x-4">
-                    <div className={`flex items-center ${step >= 1 ? 'text-blue-100' : 'text-slate-300'}`}>
+                    <button
+                      type="button"
+                      onClick={() => goToRegistrationStep(1)}
+                      className={`flex items-center rounded-full px-2 py-1 text-left transition hover:bg-white/8 ${step >= 1 ? 'text-blue-100' : 'text-slate-300'}`}
+                    >
                       <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold border ${
                         step >= 1
                           ? 'border-blue-400 bg-blue-600 text-white shadow-lg shadow-blue-500/20'
@@ -1846,11 +1936,15 @@ function RegisterPageInner() {
                         1
                       </div>
                       <span className="ml-2 text-sm font-medium">Personal Information</span>
-                    </div>
+                    </button>
                     {userType === 'vendor' && (
                       <>
                         <div className={`w-8 h-1 shrink-0 rounded ${step >= 2 ? 'bg-blue-500' : 'bg-blue-300/50'}`}></div>
-                        <div className={`flex items-center ${step >= 2 ? 'text-blue-100' : 'text-slate-300'}`}>
+                        <button
+                          type="button"
+                          onClick={() => goToRegistrationStep(2)}
+                          className={`flex items-center rounded-full px-2 py-1 text-left transition hover:bg-white/8 ${step >= 2 ? 'text-blue-100' : 'text-slate-300'}`}
+                        >
                           <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold border ${
                             step >= 2
                               ? 'border-blue-400 bg-blue-600 text-white shadow-lg shadow-blue-500/20'
@@ -1859,7 +1953,7 @@ function RegisterPageInner() {
                             2
                           </div>
                           <span className="ml-2 text-sm font-medium">Business Information</span>
-                        </div>
+                        </button>
                       </>
                     )}
                   </div>
@@ -1873,10 +1967,12 @@ function RegisterPageInner() {
                         <Label htmlFor="firstName">First Name *</Label>
                         <Input
                           id="firstName"
+                          name="registration_first_name"
                           type="text"
                           value={formData.firstName}
                           onChange={(e) => handleInputChange('firstName', e.target.value)}
-                          className={errors.firstName ? 'border-red-500' : ''}
+                          autoComplete="given-name"
+                          className={`reliance-registration-input ${errors.firstName ? 'border-red-500' : ''}`}
                           required
                         />
                         {errors.firstName && (
@@ -1890,10 +1986,12 @@ function RegisterPageInner() {
                         <Label htmlFor="lastName">Last Name *</Label>
                         <Input
                           id="lastName"
+                          name="registration_last_name"
                           type="text"
                           value={formData.lastName}
                           onChange={(e) => handleInputChange('lastName', e.target.value)}
-                          className={errors.lastName ? 'border-red-500' : ''}
+                          autoComplete="family-name"
+                          className={`reliance-registration-input ${errors.lastName ? 'border-red-500' : ''}`}
                           required
                         />
                         {errors.lastName && (
@@ -1906,13 +2004,15 @@ function RegisterPageInner() {
                     </div>
                     
                     <div>
-                      <Label htmlFor="email">Email *</Label>
+                      <Label htmlFor="registrationContactEmail">Email *</Label>
                       <Input
-                        id="email"
+                        id="registrationContactEmail"
+                        name="registration_contact_email"
                         type="email"
                         value={formData.email}
                         onChange={(e) => handleInputChange('email', e.target.value)}
-                        className={errors.email ? 'border-red-500' : ''}
+                        autoComplete="new-email"
+                        className={`reliance-registration-input ${errors.email ? 'border-red-500' : ''}`}
                         required
                       />
                       {errors.email && (
@@ -1927,15 +2027,17 @@ function RegisterPageInner() {
                       <Label htmlFor="phone">
                         Phone Number *
                       </Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        value={formData.phone}
-                        onChange={(e) => handleInputChange('phone', e.target.value)}
-                        className={errors.phone ? 'border-red-500' : ''}
-                        placeholder="(555) 123-4567"
-                        required
-                      />
+                        <Input
+                          id="phone"
+                          name="registration_phone"
+                          type="tel"
+                          value={formData.phone}
+                          onChange={(e) => handleInputChange('phone', e.target.value)}
+                          autoComplete="tel"
+                          className={`reliance-registration-input ${errors.phone ? 'border-red-500' : ''}`}
+                          placeholder="(555) 123-4567"
+                          required
+                        />
                       {userType === 'user' && (
                         <p className="text-xs text-gray-500 mt-1">
                           Required for account and service notifications. Email is active now; SMS will be used after SMS approval is live.
@@ -1999,10 +2101,12 @@ function RegisterPageInner() {
                       </Label>
                       <Input
                         id="address"
+                        name="registration_street_address"
                         type="text"
                         value={formData.address}
                         onChange={(e) => handleInputChange('address', e.target.value)}
-                        className={errors.address ? 'border-red-500' : ''}
+                        autoComplete="street-address"
+                        className={`reliance-registration-input ${errors.address ? 'border-red-500' : ''}`}
                         placeholder={addressRequired ? '123 Main St' : 'Optional at signup'}
                         required={addressRequired}
                       />
@@ -2026,6 +2130,7 @@ function RegisterPageInner() {
                         </Label>
                         <Input
                           id="city"
+                          name="registration_city"
                           type="text"
                           value={formData.city}
                           onChange={(e) => handleCityInput(e.target.value)}
@@ -2046,7 +2151,8 @@ function RegisterPageInner() {
                           }}
                           disabled={!formData.state}
                           placeholder={formData.state ? "Type to search cities..." : addressRequired ? "Select state first" : "Optional"}
-                          className={errors.city ? 'border-red-500' : ''}
+                          autoComplete="address-level2"
+                          className={`reliance-registration-input ${errors.city ? 'border-red-500' : ''}`}
                         />
                         
                         {/* City suggestions dropdown */}
@@ -2118,10 +2224,12 @@ function RegisterPageInner() {
                         </Label>
                         <Input
                           id="zipCode"
+                          name="registration_zip_code"
                           type="text"
                           value={formData.zipCode}
                           onChange={(e) => handleInputChange('zipCode', e.target.value)}
-                          className={errors.zipCode ? 'border-red-500' : ''}
+                          autoComplete="postal-code"
+                          className={`reliance-registration-input ${errors.zipCode ? 'border-red-500' : ''}`}
                           required={addressRequired}
                         />
                         {errors.zipCode && (
@@ -2133,35 +2241,33 @@ function RegisterPageInner() {
                       </div>
                     </div>
 
-                    {/* Bio for both users and vendors */}
-                    <div>
-                      <Label htmlFor="bio">Bio</Label>
-                      <textarea
-                        id="bio"
-                        value={formData.bio}
-                        onChange={(e) => handleInputChange('bio', e.target.value)}
-                        rows={3}
-                        className={`w-full rounded-md border px-3 py-2 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 ${vendorFieldClass}`}
-                        placeholder={userType === 'user' ? 
-                          "Tell us about yourself and what services you're looking for..." : 
-                          "Tell customers about your business, experience, and what makes you unique..."
-                        }
-                      />
-                      {userType === 'user' && (
+                    {userType === 'user' && (
+                      <div>
+                        <Label htmlFor="bio">Bio</Label>
+                        <textarea
+                          id="bio"
+                          value={formData.bio}
+                          onChange={(e) => handleInputChange('bio', e.target.value)}
+                          rows={3}
+                          className={`w-full rounded-md border px-3 py-2 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 ${vendorFieldClass}`}
+                          placeholder="Tell us about yourself and what services you're looking for..."
+                        />
                         <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-900">
                           Customer photo upload is not part of signup yet. Reliance uses initials for customer profiles until customer photo controls are added.
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     
                     <div>
-                      <Label htmlFor="password">Password *</Label>
+                      <Label htmlFor="registrationPassword">Password *</Label>
                       <div className="relative">
                         <Input
-                          id="password"
+                          id="registrationPassword"
+                          name="new_password"
                           type={showPassword ? 'text' : 'password'}
                           value={formData.password}
                           onChange={(e) => handleInputChange('password', e.target.value)}
+                          autoComplete="new-password"
                           className={`reliance-password-input pr-12 ${errors.password ? 'border-red-500' : ''}`}
                           required
                         />
@@ -2211,13 +2317,15 @@ function RegisterPageInner() {
                     </div>
                     
                     <div>
-                      <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                      <Label htmlFor="registrationConfirmPassword">Confirm Password *</Label>
                       <div className="relative">
                         <Input
-                          id="confirmPassword"
+                          id="registrationConfirmPassword"
+                          name="confirm_new_password"
                           type={showConfirmPassword ? 'text' : 'password'}
                           value={formData.confirmPassword}
                           onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                          autoComplete="new-password"
                           className={`reliance-password-input pr-12 ${errors.confirmPassword ? 'border-red-500' : ''}`}
                           required
                         />
@@ -2254,7 +2362,8 @@ function RegisterPageInner() {
                       className="w-full"
                       disabled={!formData.firstName || !formData.lastName || !formData.email || 
                                !formData.phone || !formData.smsConsent ||
-                               !formData.password || !formData.confirmPassword || !passwordStrength.meetsRequirements}
+                               !formData.password || !formData.confirmPassword || !passwordStrength.meetsRequirements ||
+                               (addressRequired && (!formData.address || !formData.city || !formData.state || !formData.zipCode))}
                     >
                       {userType === 'vendor' ? 'Next: Business Information' : 'Next Step'}
                     </Button>
@@ -2587,45 +2696,58 @@ function RegisterPageInner() {
                       ) : null}
                       <div className={`mt-3 ${vendorPanelClass}`}>
                         <div className="mb-2 flex items-center justify-between">
-                          <Label className="text-sm font-medium text-white/88">Custom Services</Label>
+                          <div>
+                            <Label className="text-sm font-medium text-white/88">Custom Services</Label>
+                            <p className="mt-1 text-xs text-white/48">
+                              Add services not covered by templates. Each custom service gets its own saveable card.
+                            </p>
+                          </div>
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() =>
-                              setCustomServices((prev) => [
-                                ...prev,
-                                {
-                                  id: `custom-${Date.now()}-${prev.length}`,
-                                  name: '',
-                                  defaultDuration: '',
-                                  price: '',
-                                  description: '',
-                                },
-                              ])
-                            }
+                            onClick={() => setCustomServices((prev) => [...prev, createCustomServiceDraft()])}
                           >
                             + Add custom service
                           </Button>
                         </div>
                         {customServices.length === 0 ? (
-                          <p className="text-xs text-white/48">Add services not covered by templates.</p>
+                          <p className="text-xs text-white/48">No custom services added yet.</p>
                         ) : (
                           <div className="space-y-3">
-                            {customServices.map((service) => (
+                            {customServices.map((service, index) => {
+                              const locked = service.saved && !service.editing;
+
+                              return (
                               <div key={service.id} className={vendorSubpanelClass}>
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-white/46">
+                                      {service.name.trim() || `Custom service ${index + 1}`}
+                                    </Label>
+                                    <p className="mt-1 text-xs text-white/48">
+                                      {locked
+                                        ? 'Saved to your starter service menu. Use Edit to make changes before creating the account.'
+                                        : 'Review the details, then save this custom service card.'}
+                                    </p>
+                                  </div>
+                                  <span
+                                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                                      locked
+                                        ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-100'
+                                        : 'border-amber-300/35 bg-amber-400/12 text-amber-100'
+                                    }`}
+                                  >
+                                    {locked ? 'Saved' : 'Unsaved'}
+                                  </span>
+                                </div>
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                   <div className="space-y-1">
                                     <Label className="text-xs text-white/46">Service Name</Label>
                                     <Input
                                       placeholder="Service name *"
                                       value={service.name}
-                                      onChange={(e) =>
-                                        setCustomServices((prev) =>
-                                          prev.map((item) =>
-                                            item.id === service.id ? { ...item, name: e.target.value } : item
-                                          )
-                                        )
-                                      }
+                                      disabled={locked}
+                                      onChange={(e) => updateCustomServiceDraft(service.id, { name: e.target.value })}
                                       className={vendorFieldClass}
                                     />
                                   </div>
@@ -2636,15 +2758,8 @@ function RegisterPageInner() {
                                       min="1"
                                       placeholder="Estimated duration"
                                       value={service.defaultDuration}
-                                      onChange={(e) =>
-                                        setCustomServices((prev) =>
-                                          prev.map((item) =>
-                                            item.id === service.id
-                                              ? { ...item, defaultDuration: e.target.value }
-                                              : item
-                                          )
-                                        )
-                                      }
+                                      disabled={locked}
+                                      onChange={(e) => updateCustomServiceDraft(service.id, { defaultDuration: e.target.value })}
                                       className={vendorFieldClass}
                                     />
                                   </div>
@@ -2656,13 +2771,8 @@ function RegisterPageInner() {
                                       step="0.01"
                                       placeholder="Starting price"
                                       value={service.price}
-                                      onChange={(e) =>
-                                        setCustomServices((prev) =>
-                                          prev.map((item) =>
-                                            item.id === service.id ? { ...item, price: e.target.value } : item
-                                          )
-                                        )
-                                      }
+                                      disabled={locked}
+                                      onChange={(e) => updateCustomServiceDraft(service.id, { price: e.target.value })}
                                       className={vendorFieldClass}
                                     />
                                   </div>
@@ -2672,30 +2782,42 @@ function RegisterPageInner() {
                                       placeholder="Describe what the customer can expect from this service."
                                       value={service.description}
                                       rows={3}
-                                      onChange={(e) =>
-                                        setCustomServices((prev) =>
-                                          prev.map((item) =>
-                                            item.id === service.id
-                                              ? { ...item, description: e.target.value }
-                                              : item
-                                          )
-                                        )
-                                      }
-                                      className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${vendorFieldClass}`}
+                                      disabled={locked}
+                                      onChange={(e) => updateCustomServiceDraft(service.id, { description: e.target.value })}
+                                      className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70 ${vendorFieldClass}`}
                                     />
                                   </div>
                                 </div>
-                                <button
-                                  type="button"
-                                  className="mt-2 text-xs text-red-300 hover:text-red-200"
-                                  onClick={() =>
-                                    setCustomServices((prev) => prev.filter((item) => item.id !== service.id))
-                                  }
-                                >
-                                  Remove
-                                </button>
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  {locked ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() => markCustomServiceEditing(service.id)}
+                                    >
+                                      Edit service
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      onClick={() => saveCustomServiceCard(service)}
+                                      className="bg-emerald-600 text-white hover:bg-emerald-500"
+                                    >
+                                      Save service
+                                    </Button>
+                                  )}
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="border-red-300/30 text-red-100 hover:bg-red-500/10"
+                                    onClick={() => removeCustomServiceDraft(service.id)}
+                                  >
+                                    Delete service
+                                  </Button>
+                                </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                         {customServicesError ? (

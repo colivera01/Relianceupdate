@@ -87,7 +87,6 @@ function formatTimeUtc(value: string | number | Date | null | undefined): string
 // - NEW: Employee assignments should POST to /api/vendor/jobs/:jobId/assignments
 // - NEW: Job notes should POST to /api/vendor/jobs/:jobId/notes
 
-const BUSINESS_ADDRESS = { lat: 28.5383, lng: -81.3792 }; // Example: Orlando, FL
 const LOCATION_RADIUS_METERS = 100;
 
 // Helper function to calculate distance between two points
@@ -270,13 +269,14 @@ export default function VendorJobs() {
       };
     }
     if (locationChoice === 'business') {
+      const serviceOrderSent = Boolean(snapshot?.serviceOrderReleasedAt);
       return {
-        label: snapshot?.locationVerified
-          ? `Consent not required - start ${stageLabel} video`
-          : 'Consent not required - verify location',
-        detail: 'Business-address recordings use location verification instead of customer consent.',
-        actionLabel: snapshot?.locationVerified ? `Start ${stageLabel}` : 'Verify Location',
-        tone: snapshot?.locationVerified ? 'green' : 'blue',
+        label: serviceOrderSent
+          ? `Service order sent - employee verifies location`
+          : 'Consent not required - send service order',
+        detail: 'The employee phone verifies the business address before the camera opens.',
+        actionLabel: serviceOrderSent ? 'Open Job' : 'Send Service Order',
+        tone: serviceOrderSent ? 'green' : 'blue',
       };
     }
     if (requiresConsent && !hasCustomerContactForJob(job)) {
@@ -527,6 +527,8 @@ export default function VendorJobs() {
         consentToken: string;
         locationVerified: boolean;
         savedAt: string;
+        serviceOrderReleasedAt?: string | null;
+        releasedMembershipIds?: string[];
       }
     >
   >({});
@@ -710,6 +712,22 @@ export default function VendorJobs() {
       }
       const mapped = mapConsentStatusPayloadToUiState(payload);
       applyConsentStatusFromBackend(mapped.status, { consentToken: mapped.latestToken });
+      if (selectedJob && mapped.status === CONSENT_STATE.ACCEPTED) {
+        const selectedLocation = String(location || '').trim().toLowerCase();
+        if (selectedLocation === 'residence' || selectedLocation === 'customer-business') {
+          const snapshot = buildRecordingComplianceSnapshot(selectedJob, {
+            location: selectedLocation as 'residence' | 'customer-business',
+            consentAccepted: true,
+            consentToken: mapped.latestToken || activeConsentToken,
+            locationVerified:
+              selectedLocation === 'customer-business'
+                ? Boolean(locationVerified || getSavedRecordingComplianceForJob(selectedJob)?.locationVerified)
+                : Boolean(locationVerified),
+          });
+          await persistRecordingComplianceToBackend(selectedJob, snapshot);
+          await releaseEmployeeServiceOrderWhenReady(selectedJob, snapshot);
+        }
+      }
     } catch (error) {
       setConsentRefreshError(error instanceof Error ? error.message : 'Failed to refresh consent status');
     } finally {
@@ -718,10 +736,10 @@ export default function VendorJobs() {
   };
 
   const getCanContinueCompliance = () => {
-    if (location === 'business') return locationVerified;
+    if (location === 'business') return true;
     if (location === 'residence') return customerConsentReceived;
     if (location === 'customer-business') {
-      return customerConsentReceived && locationVerified;
+      return customerConsentReceived;
     }
     return false;
   };
@@ -805,7 +823,7 @@ export default function VendorJobs() {
   const consentSatisfiedForCompliance = !consentRequiredForCompliance || customerConsentReceived;
   const locationRequiredForCompliance =
     location === 'business' || location === 'customer-business';
-  const locationSatisfiedForCompliance = !locationRequiredForCompliance || locationVerified;
+  const locationSatisfiedForCompliance = true;
   const allComplianceChecksPassed =
     assignmentSatisfiedForCompliance &&
     consentSatisfiedForCompliance &&
@@ -825,8 +843,8 @@ export default function VendorJobs() {
     ) {
       return 'Job assigned. Customer consent is still required before recording.';
     }
-    if (assignmentSatisfiedForCompliance && consentSatisfiedForCompliance && !locationSatisfiedForCompliance) {
-      return 'Job assigned. Location verification is still required before recording.';
+    if (assignmentSatisfiedForCompliance && consentSatisfiedForCompliance && locationRequiredForCompliance) {
+      return 'Ready to send. The employee phone will verify the required location before the camera opens.';
     }
     if (allComplianceChecksPassed) {
       return 'All compliance checks passed. You may proceed.';
@@ -1373,6 +1391,8 @@ export default function VendorJobs() {
       consentToken: string;
       locationVerified: boolean;
       savedAt: string;
+      serviceOrderReleasedAt?: string | null;
+      releasedMembershipIds?: string[];
     }>
   ) => {
     const keys = getRecordingComplianceKeys(job);
@@ -1405,6 +1425,16 @@ export default function VendorJobs() {
             ? Boolean(partial.locationVerified)
             : Boolean(existing?.locationVerified),
         savedAt: partial.savedAt || new Date().toISOString(),
+        serviceOrderReleasedAt:
+          partial.serviceOrderReleasedAt !== undefined
+            ? partial.serviceOrderReleasedAt || null
+            : existing?.serviceOrderReleasedAt || null,
+        releasedMembershipIds:
+          partial.releasedMembershipIds !== undefined
+            ? (Array.isArray(partial.releasedMembershipIds) ? partial.releasedMembershipIds : [])
+            : Array.isArray(existing?.releasedMembershipIds)
+            ? existing.releasedMembershipIds
+            : [],
       };
       const next = { ...prev };
       keys.forEach((key) => {
@@ -1422,6 +1452,8 @@ export default function VendorJobs() {
       consentToken: string;
       locationVerified: boolean;
       savedAt: string;
+      serviceOrderReleasedAt?: string | null;
+      releasedMembershipIds?: string[];
     }
   ) => {
     const keys = getRecordingComplianceKeys(job);
@@ -1469,6 +1501,34 @@ export default function VendorJobs() {
         savedAt: hit.savedAt,
       });
       return hit;
+    }
+    const serverSnapshot = (job as any)?.recordingCompliance;
+    const serverLocation = String(serverSnapshot?.location || '').trim().toLowerCase();
+    if (
+      serverLocation === 'business' ||
+      serverLocation === 'residence' ||
+      serverLocation === 'customer-business'
+    ) {
+      const hydrated = {
+        location: serverLocation as 'business' | 'residence' | 'customer-business',
+        consentAccepted: Boolean(serverSnapshot?.consentAccepted),
+        consentToken: String(serverSnapshot?.consentToken || '').trim(),
+        locationVerified: Boolean(serverSnapshot?.locationVerified),
+        savedAt:
+          String(serverSnapshot?.locationVerifiedAt || serverSnapshot?.serviceOrderReleasedAt || job?.updatedAt || '').trim() ||
+          new Date().toISOString(),
+        serviceOrderReleasedAt: serverSnapshot?.serviceOrderReleasedAt || null,
+        releasedMembershipIds: Array.isArray(serverSnapshot?.releasedMembershipIds)
+          ? serverSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+          : [],
+      };
+      console.info('[recording-compliance] hydrated snapshot from backend job data', {
+        requestedKeys: keys,
+        location: hydrated.location,
+        consentAccepted: hydrated.consentAccepted,
+        locationVerified: hydrated.locationVerified,
+      });
+      return hydrated;
     }
     console.info('[recording-compliance] no saved snapshot', { requestedKeys: keys });
     return null;
@@ -1529,10 +1589,6 @@ export default function VendorJobs() {
       locationChoice === 'residence' || locationChoice === 'customer-business'
         ? Boolean(snapshot.consentAccepted && String(snapshot.consentToken || '').trim())
         : true;
-    const locationSatisfied =
-      locationChoice === 'business' || locationChoice === 'customer-business'
-        ? Boolean(snapshot.locationVerified)
-        : true;
     if (!consentSatisfied) {
       console.info('[recording-compliance] unsatisfied: consent requirement not met', {
         locationChoice,
@@ -1540,13 +1596,7 @@ export default function VendorJobs() {
         hasConsentToken: Boolean(String(snapshot.consentToken || '').trim()),
       });
     }
-    if (!locationSatisfied) {
-      console.info('[recording-compliance] unsatisfied: location verification not met', {
-        locationChoice,
-        locationVerified: snapshot.locationVerified,
-      });
-    }
-    return consentSatisfied && locationSatisfied;
+    return consentSatisfied;
   };
 
   const refreshRecordingComplianceSnapshot = async (
@@ -1603,6 +1653,127 @@ export default function VendorJobs() {
         message: error instanceof Error ? error.message : String(error),
       });
       return snapshot;
+    }
+  };
+
+  const buildRecordingComplianceSnapshot = (
+    job: any,
+    overrides: Partial<{
+      location: 'business' | 'residence' | 'customer-business';
+      consentAccepted: boolean;
+      consentToken: string;
+      locationVerified: boolean;
+      savedAt: string;
+    }> = {}
+  ) => {
+    const existingSnapshot = getSavedRecordingComplianceForJob(job);
+    const normalizedLocation = String(overrides.location || location || existingSnapshot?.location || '')
+      .trim()
+      .toLowerCase();
+    const locationChoice =
+      normalizedLocation === 'business' ||
+      normalizedLocation === 'residence' ||
+      normalizedLocation === 'customer-business'
+        ? (normalizedLocation as 'business' | 'residence' | 'customer-business')
+        : 'business';
+    return {
+      location: locationChoice,
+      consentAccepted:
+        overrides.consentAccepted !== undefined
+          ? Boolean(overrides.consentAccepted)
+          : Boolean(customerConsentReceived || existingSnapshot?.consentAccepted),
+      consentToken:
+        overrides.consentToken !== undefined
+          ? String(overrides.consentToken || '').trim()
+          : String(activeConsentToken || existingSnapshot?.consentToken || '').trim(),
+      locationVerified:
+        overrides.locationVerified !== undefined
+          ? Boolean(overrides.locationVerified)
+          : Boolean(locationVerified || existingSnapshot?.locationVerified),
+      savedAt: overrides.savedAt || new Date().toISOString(),
+      serviceOrderReleasedAt: existingSnapshot?.serviceOrderReleasedAt || null,
+      releasedMembershipIds: Array.isArray(existingSnapshot?.releasedMembershipIds)
+        ? existingSnapshot.releasedMembershipIds
+        : [],
+    };
+  };
+
+  const persistRecordingComplianceToBackend = async (
+    job: any,
+    snapshot: ReturnType<typeof buildRecordingComplianceSnapshot>,
+    locationVerification?: Record<string, unknown>
+  ) => {
+    const payload = await runPersistedJobAction(job, 'UPDATE_RECORDING_COMPLIANCE', {
+      recordingCompliance: snapshot,
+      ...(locationVerification ? { locationVerification } : {}),
+    });
+    const backendSnapshot = payload?.job?.recordingCompliance || payload?.recordingCompliance || null;
+    if (backendSnapshot) {
+      mergeRecordingComplianceForJob(job, {
+        location: snapshot.location,
+        consentAccepted: Boolean(backendSnapshot.consentAccepted),
+        consentToken: String(backendSnapshot.consentToken || snapshot.consentToken || '').trim(),
+        locationVerified: Boolean(backendSnapshot.locationVerified),
+        savedAt:
+          String(backendSnapshot.locationVerifiedAt || backendSnapshot.serviceOrderReleasedAt || '').trim() ||
+          snapshot.savedAt,
+        serviceOrderReleasedAt: backendSnapshot.serviceOrderReleasedAt || null,
+        releasedMembershipIds: Array.isArray(backendSnapshot.releasedMembershipIds)
+          ? backendSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+          : snapshot.releasedMembershipIds,
+      });
+    }
+    return payload;
+  };
+
+  const releaseEmployeeServiceOrderForJob = async (
+    job: any,
+    snapshot: ReturnType<typeof buildRecordingComplianceSnapshot>
+  ) => {
+    const payload = await runPersistedJobAction(job, 'RELEASE_EMPLOYEE_SERVICE_ORDER', {
+      recordingCompliance: snapshot,
+    });
+    const backendSnapshot = payload?.job?.recordingCompliance || payload?.recordingCompliance || null;
+    if (backendSnapshot) {
+      mergeRecordingComplianceForJob(job, {
+        location: snapshot.location,
+        consentAccepted: Boolean(backendSnapshot.consentAccepted),
+        consentToken: String(backendSnapshot.consentToken || snapshot.consentToken || '').trim(),
+        locationVerified: Boolean(backendSnapshot.locationVerified),
+        savedAt:
+          String(backendSnapshot.locationVerifiedAt || backendSnapshot.serviceOrderReleasedAt || '').trim() ||
+          snapshot.savedAt,
+        serviceOrderReleasedAt: backendSnapshot.serviceOrderReleasedAt || null,
+        releasedMembershipIds: Array.isArray(backendSnapshot.releasedMembershipIds)
+          ? backendSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+          : snapshot.releasedMembershipIds,
+      });
+    }
+    return payload;
+  };
+
+  const releaseEmployeeServiceOrderWhenReady = async (
+    job: any,
+    snapshot: ReturnType<typeof buildRecordingComplianceSnapshot>
+  ) => {
+    if (!isComplianceSatisfiedForRecording(job, snapshot)) return null;
+    try {
+      const payload = await releaseEmployeeServiceOrderForJob(job, snapshot);
+      await reloadJobsFromBackend();
+      setJobActionFeedback({
+        type: 'success',
+        message: payload?.message || 'Employee service order sent.',
+      });
+      return payload;
+    } catch (error) {
+      setJobActionFeedback({
+        type: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'The required checks passed, but the employee service order could not be sent.',
+      });
+      throw error;
     }
   };
 
@@ -1790,9 +1961,78 @@ export default function VendorJobs() {
       latestConsentToken: String(job?.latestConsentToken || '').trim(),
       consentAcceptedAt: job?.consentAcceptedAt || null,
       consentDeclinedAt: job?.consentDeclinedAt || null,
+      recordingCompliance: job?.recordingCompliance || null,
       archivedAt: status === 'archived' ? (job?.date || new Date().toISOString()) : null,
       archiveReason: status === 'archived' ? 'Archived job' : '',
     };
+  };
+
+  const mergeJobsForReload = (
+    backendJobs: any[],
+    preservedJobs: any[] = [],
+    removedJobIds: Set<string> = new Set()
+  ) => {
+    const normalizedBackendJobs = backendJobs.filter(
+      (job) => job?.id && !removedJobIds.has(String(job.id))
+    );
+    const backendIds = new Set(normalizedBackendJobs.map((job) => String(job.id)));
+    const optimisticJobs = preservedJobs.filter((job) => {
+      const id = String(job?.id || '');
+      return id && !backendIds.has(id) && !removedJobIds.has(id);
+    });
+
+    return [...optimisticJobs, ...normalizedBackendJobs];
+  };
+
+  const upsertJobLocally = (job: any) => {
+    const id = String(job?.id || '');
+    if (!id) return;
+    setJobs((current) => mergeJobsForReload(current, [job]));
+    setArchivedJobs((current) => current.filter((existing: any) => String(existing?.id || '') !== id));
+  };
+
+  const removeJobLocally = (jobId: unknown) => {
+    const normalizedId = String(jobId || '');
+    if (!normalizedId) return;
+    setJobs((current) => current.filter((job) => String(job?.id || '') !== normalizedId));
+    setArchivedJobs((current) => current.filter((job: any) => String(job?.id || '') !== normalizedId));
+  };
+
+  const adaptCreatedBookingToUiJob = (
+    booking: any,
+    fallback: {
+      serviceId: string;
+      serviceName: string;
+      client: string;
+      phone: string;
+      email: string;
+    }
+  ) => {
+    const metadata = booking?.customer_metadata && typeof booking.customer_metadata === 'object'
+      ? booking.customer_metadata
+      : {};
+    const bookingDate =
+      booking?.booking_date && booking?.booking_time
+        ? `${booking.booking_date}T${booking.booking_time}.000Z`
+        : booking?.created_at || new Date().toISOString();
+
+    return adaptRecentJobToUiJob({
+      id: booking?.id,
+      serviceId: booking?.service_id || fallback.serviceId,
+      serviceName: booking?.service?.name || fallback.serviceName,
+      serviceType: booking?.service?.name || fallback.serviceName,
+      title: booking?.title || booking?.service?.name || fallback.serviceName || 'Work record',
+      client: booking?.client_name || fallback.client,
+      customerEmail: metadata?.client_email || fallback.email,
+      customerPhone: metadata?.client_phone || fallback.phone,
+      email: metadata?.client_email || fallback.email,
+      phone: metadata?.client_phone || fallback.phone,
+      status: booking?.status || 'pending',
+      createdAt: booking?.created_at || bookingDate,
+      updatedAt: booking?.updated_at || booking?.created_at || bookingDate,
+      date: bookingDate,
+      source: 'vendor_created_job',
+    });
   };
 
   // Memory tracking state
@@ -1911,7 +2151,17 @@ export default function VendorJobs() {
     setJobs(mergedJobs);
   };
 
-  const reloadJobsFromBackend = useCallback(async () => {
+  const reloadJobsFromBackend = useCallback(async (
+    options: {
+      preserveJobs?: any[];
+      removeJobIds?: Array<string | number>;
+      silent?: boolean;
+    } = {}
+  ) => {
+    const preservedJobs = Array.isArray(options.preserveJobs) ? options.preserveJobs : [];
+    const removedJobIds = new Set((options.removeJobIds || []).map((id) => String(id || '')).filter(Boolean));
+    const shouldShowLoading = !options.silent;
+
     if (!vendorId) {
       if (vendorProfileLoading) {
         setJobsLoadError('');
@@ -1924,7 +2174,9 @@ export default function VendorJobs() {
       return;
     }
 
-    setJobsLoading(true);
+    if (shouldShowLoading) {
+      setJobsLoading(true);
+    }
     setJobsLoadError('');
     try {
       const fetchDashboardOnce = async (targetVendorId: string) => {
@@ -1982,9 +2234,13 @@ export default function VendorJobs() {
         : [];
       const adaptedJobs = recentJobs.map(adaptRecentJobToUiJob);
       const adaptedArchivedJobs = archivedFromApi.map(adaptRecentJobToUiJob);
-      setJobs(adaptedJobs);
-      setArchivedJobs(adaptedArchivedJobs);
-      void hydratePersistedVideos(adaptedJobs);
+      const nextJobs = mergeJobsForReload(adaptedJobs, preservedJobs, removedJobIds);
+      const nextArchivedJobs = adaptedArchivedJobs.filter(
+        (job: any) => !removedJobIds.has(String(job?.id || ''))
+      );
+      setJobs(nextJobs);
+      setArchivedJobs(nextArchivedJobs);
+      void hydratePersistedVideos(nextJobs);
     } catch (error) {
       const message =
         error instanceof Error && error.message === 'Request timed out'
@@ -1992,11 +2248,20 @@ export default function VendorJobs() {
           : error instanceof Error
             ? error.message
             : 'Failed to load jobs';
-      setJobs([]);
-      setArchivedJobs([]);
+      if (preservedJobs.length > 0 || removedJobIds.size > 0) {
+        setJobs((current) => mergeJobsForReload(current, preservedJobs, removedJobIds));
+        setArchivedJobs((current) =>
+          current.filter((job: any) => !removedJobIds.has(String(job?.id || '')))
+        );
+      } else {
+        setJobs([]);
+        setArchivedJobs([]);
+      }
       setJobsLoadError(message);
     } finally {
-      setJobsLoading(false);
+      if (shouldShowLoading) {
+        setJobsLoading(false);
+      }
     }
   }, [vendorId, vendorProfileLoading, dashboardDebug, vendorProfile?.id]);
 
@@ -2195,6 +2460,7 @@ export default function VendorJobs() {
           }
         );
         await reloadJobsFromBackend();
+        router.refresh();
         setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
         setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
         setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
@@ -2287,7 +2553,16 @@ export default function VendorJobs() {
       if (!persistedId) {
         throw new Error("Booking create response did not include an id.");
       }
-      await reloadJobsFromBackend();
+      const optimisticJob = adaptCreatedBookingToUiJob(booking, {
+        serviceId: resolvedServiceId,
+        serviceName: resolvedServiceName || 'Work record',
+        client,
+        phone: formattedPhone || normalizedPhoneDigits,
+        email,
+      });
+      upsertJobLocally(optimisticJob);
+      await reloadJobsFromBackend({ preserveJobs: [optimisticJob], silent: true });
+      router.refresh();
       setJobsLoadError('');
       setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
       setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
@@ -2820,13 +3095,26 @@ export default function VendorJobs() {
         const endTime = Date.now();
         const responseTime = endTime - startTime;
         
-        // Mock backend validation with enhanced security
-        const dist = getDistanceMeters(latitude, longitude, BUSINESS_ADDRESS.lat, BUSINESS_ADDRESS.lng);
+        const expectedLat = Number((vendorProfile as any)?.latitude);
+        const expectedLng = Number((vendorProfile as any)?.longitude);
+        if (!Number.isFinite(expectedLat) || !Number.isFinite(expectedLng)) {
+          setGeoError(
+            'Your business address is saved, but it has not been geocoded yet. Save Profile & Settings, then retry location verification.'
+          );
+          setGeoLoading(false);
+          return;
+        }
+
+        const dist = getDistanceMeters(latitude, longitude, expectedLat, expectedLng);
+        const acceptableRadiusMeters = Math.max(
+          LOCATION_RADIUS_METERS,
+          Math.min(Math.max(Number(accuracy) || 0, 0) + 75, 500)
+        );
         
         // Enhanced validation checks
-        const isValidLocation = dist <= LOCATION_RADIUS_METERS;
-        const isGoodAccuracy = accuracy <= 50;
-        const isAcceptableAccuracy = accuracy <= 150;
+        const isValidLocation = dist <= acceptableRadiusMeters;
+        const isGoodAccuracy = accuracy <= 75;
+        const isAcceptableAccuracy = accuracy <= 500;
         const isValidResponseTime = responseTime > 100 && responseTime < 10000; // Prevent spoofing
         const isDevBypass = process.env.NODE_ENV === 'development';
         
@@ -2848,6 +3136,9 @@ export default function VendorJobs() {
             longitude,
             accuracy,
             distance: dist,
+            expectedLatitude: expectedLat,
+            expectedLongitude: expectedLng,
+            acceptableRadiusMeters,
             timestamp,
             responseTime,
             userAgent,
@@ -2861,15 +3152,49 @@ export default function VendorJobs() {
           
           // POST to backend for logging
           console.log('Location verification successful:', verificationData);
+          if (selectedJob) {
+            const snapshot = buildRecordingComplianceSnapshot(selectedJob, {
+              location:
+                location === 'business' || location === 'residence' || location === 'customer-business'
+                  ? (location as 'business' | 'residence' | 'customer-business')
+                  : 'business',
+              locationVerified: true,
+              consentAccepted: Boolean(customerConsentReceived),
+              consentToken: String(activeConsentToken || '').trim(),
+            });
+            mergeRecordingComplianceForJob(selectedJob, snapshot);
+            void persistRecordingComplianceToBackend(selectedJob, snapshot, verificationData)
+              .then(() => releaseEmployeeServiceOrderWhenReady(selectedJob, snapshot))
+              .catch((error) => {
+                setGeoInfo(
+                  error instanceof Error
+                    ? `Location verified, but service-order release needs attention: ${error.message}`
+                    : 'Location verified, but service-order release needs attention.'
+                );
+              });
+          }
           
           setShowConsent(true);
           setConsentStatus('granted');
         } else {
+          const distanceLabel =
+            dist >= 1609
+              ? `${(dist / 1609.344).toFixed(1)} miles`
+              : `${Math.round(dist * 3.28084)} feet`;
+          const radiusLabel =
+            acceptableRadiusMeters >= 1609
+              ? `${(acceptableRadiusMeters / 1609.344).toFixed(1)} miles`
+              : `${Math.round(acceptableRadiusMeters * 3.28084)} feet`;
+          const accuracyLabel = Number.isFinite(Number(accuracy))
+            ? `${Math.round(Number(accuracy))} meters`
+            : 'unknown';
           let errorMessage = 'Location verification failed. ';
-          if (!isValidLocation) errorMessage += 'You are not at the registered business address. ';
+          if (!isValidLocation) {
+            errorMessage += `Your browser reported you about ${distanceLabel} from the saved business address. Allowed range is about ${radiusLabel}; GPS accuracy was ${accuracyLabel}. `;
+          }
           if (!isAcceptableAccuracy) errorMessage += 'GPS accuracy is too weak; move to an open area and try again. ';
           if (!isValidResponseTime) errorMessage += 'Response time indicates potential spoofing. ';
-          errorMessage += 'Please try again at the correct location or contact support.';
+          errorMessage += 'If you recently changed the business address, save Profile & Settings first to refresh the saved coordinate, then try again.';
           
           setGeoError(errorMessage);
           setGeoLoading(false);
@@ -2882,6 +3207,9 @@ export default function VendorJobs() {
             longitude,
             accuracy,
             distance: dist,
+            expectedLatitude: expectedLat,
+            expectedLongitude: expectedLng,
+            acceptableRadiusMeters,
             timestamp,
             responseTime,
             userAgent,
@@ -3014,6 +3342,15 @@ export default function VendorJobs() {
           locationVerified,
           savedAt: new Date().toISOString(),
         });
+        const snapshot = buildRecordingComplianceSnapshot(selectedJobSnapshot, {
+          location: selectedLocation as 'business' | 'residence' | 'customer-business',
+          consentAccepted: false,
+          consentToken: token,
+          locationVerified,
+        });
+        void persistRecordingComplianceToBackend(selectedJobSnapshot, snapshot).catch((error) => {
+          console.warn('[Vendor Compliance] Failed to persist consent token', error);
+        });
       }
       applyConsentStatusFromBackend(consentPayload?.consent?.status || 'REQUESTED', {
         consentToken: token,
@@ -3071,7 +3408,59 @@ export default function VendorJobs() {
     }
   };
 
-  const handleContinue = () => {
+  const handleSendEmployeeServiceOrder = async () => {
+    if (!selectedJob) {
+      setGeoError('Please select a job before sending a service order.');
+      return;
+    }
+    if (!isJobAssignedForVideoUpload(selectedJob)) {
+      setGeoError(videoAssignmentRequiredCopy);
+      setJobActionFeedback({ type: 'error', message: videoAssignmentRequiredCopy });
+      return;
+    }
+    const complianceLocation = String(location || '').trim().toLowerCase();
+    if (
+      complianceLocation !== 'business' &&
+      complianceLocation !== 'residence' &&
+      complianceLocation !== 'customer-business'
+    ) {
+      setGeoError('Choose where the service recording will happen before sending a service order.');
+      return;
+    }
+    if (
+      (complianceLocation === 'residence' || complianceLocation === 'customer-business') &&
+      !customerConsentReceived
+    ) {
+      setGeoError('Customer consent must be accepted before sending the employee service order.');
+      return;
+    }
+
+    setGeoError('');
+    setGeoInfo('Sending the service order to the assigned employee...');
+    const snapshot = buildRecordingComplianceSnapshot(selectedJob, {
+      location: complianceLocation as 'business' | 'residence' | 'customer-business',
+      consentAccepted: Boolean(customerConsentReceived),
+      consentToken: String(
+        activeConsentToken || getSavedRecordingComplianceForJob(selectedJob)?.consentToken || ''
+      ).trim(),
+      locationVerified: Boolean(locationVerified),
+    });
+    persistRecordingComplianceForJob(selectedJob, snapshot);
+    try {
+      await persistRecordingComplianceToBackend(selectedJob, snapshot);
+      await releaseEmployeeServiceOrderWhenReady(selectedJob, snapshot);
+      setShowComplianceModal(false);
+      setPreferredNextVideoStage('');
+      setPreferredReplaceStage(false);
+      setGeoInfo('');
+    } catch (error) {
+      setGeoError(
+        error instanceof Error ? error.message : 'Could not send the employee service order.'
+      );
+    }
+  };
+
+  const handleContinue = async () => {
     // Enhanced validation before proceeding
     if (!selectedJob) {
       console.error('No job selected for video creation');
@@ -3090,11 +3479,11 @@ export default function VendorJobs() {
 
     if (!getCanContinueCompliance()) {
       if (location === 'business') {
-        setGeoError('Please verify your location before continuing.');
+        setGeoError('Assign an employee before sending the service order.');
       } else if (location === 'residence') {
-        setGeoError('Customer consent must be accepted before continuing.');
+        setGeoError('Customer consent must be accepted before sending the employee service order.');
       } else if (location === 'customer-business') {
-        setGeoError('Customer consent acceptance and location verification are both required before continuing.');
+        setGeoError('Customer consent must be accepted before sending the employee service order.');
       }
       return;
     }
@@ -3165,14 +3554,19 @@ export default function VendorJobs() {
       complianceLocation === 'residence' ||
       complianceLocation === 'customer-business'
     ) {
-      const existingSnapshot = getSavedRecordingComplianceForJob(selectedJob);
-      persistRecordingComplianceForJob(selectedJob, {
+      const snapshot = buildRecordingComplianceSnapshot(selectedJob, {
         location: complianceLocation as 'business' | 'residence' | 'customer-business',
         consentAccepted: Boolean(customerConsentReceived),
-        consentToken: String(activeConsentToken || existingSnapshot?.consentToken || '').trim(),
+        consentToken: String(activeConsentToken || getSavedRecordingComplianceForJob(selectedJob)?.consentToken || '').trim(),
         locationVerified: Boolean(locationVerified),
-        savedAt: new Date().toISOString(),
       });
+      persistRecordingComplianceForJob(selectedJob, snapshot);
+      try {
+        await persistRecordingComplianceToBackend(selectedJob, snapshot);
+        await releaseEmployeeServiceOrderWhenReady(selectedJob, snapshot);
+      } catch (error) {
+        console.warn('[Vendor Compliance] Service order release after continue failed', error);
+      }
     }
     setNewVideo({
       title: '',
@@ -3507,6 +3901,8 @@ export default function VendorJobs() {
       | "UNARCHIVE_JOB"
       | "UPDATE_JOB"
       | "ASSIGN_JOB"
+      | "UPDATE_RECORDING_COMPLIANCE"
+      | "RELEASE_EMPLOYEE_SERVICE_ORDER"
       | "UPDATE_STATUS"
       | "APPROVE_JOB_COMPLETION",
     extra: Record<string, unknown> = {}
@@ -3733,7 +4129,9 @@ export default function VendorJobs() {
     if (!res.ok) {
       throw new Error(payload?.error || payload?.message || `Delete failed (${res.status})`);
     }
-    await reloadJobsFromBackend();
+    removeJobLocally(job.id);
+    await reloadJobsFromBackend({ removeJobIds: [job.id], silent: true });
+    router.refresh();
     return payload;
   };
 
@@ -4017,12 +4415,14 @@ export default function VendorJobs() {
               <li><strong>Assign an employee</strong> before starting consent or staged video work.</li>
               <li>
                 <strong>Choose the recording location.</strong> Business address recordings require location
-                verification only. Customer residence recordings require customer consent. Customer business
-                recordings require both customer consent and location verification.
+                verification from the employee phone before recording. Customer residence recordings require
+                customer consent. Customer business recordings require customer consent and employee phone
+                location verification.
               </li>
               <li><strong>Send customer consent if required</strong> and wait for the customer to accept it.</li>
-              <li><strong>Verify location if required</strong> before the recording workflow continues.</li>
-              <li><strong>Start the Starting Condition video</strong> once the required consent/location steps are complete.</li>
+              <li><strong>Send the employee service order</strong> after assignment and any required customer consent.</li>
+              <li><strong>The employee verifies location if required</strong> from the phone they use to record.</li>
+              <li><strong>Start the Starting Condition video</strong> once the employee phone passes any required location check.</li>
               <li><strong>Continue with Work in Progress and Final Result videos</strong> so the job has the full video package.</li>
             </ol>
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
@@ -5670,7 +6070,7 @@ export default function VendorJobs() {
                       ? 'Not required for selected location'
                       : locationVerified
                       ? 'Verified'
-                      : 'Location verification required'}
+                      : 'Employee phone will verify before recording'}
                   </div>
                 </div>
                 {consentRequiredForCompliance && (
@@ -5715,9 +6115,9 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <MapPin className="w-5 h-5 text-blue-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-blue-900">Location Verification Required</h4>
+                          <h4 className="font-medium text-blue-900">Employee phone verifies the address</h4>
                           <p className="text-sm text-blue-700 mt-1">
-                            You must be at the registered business address to proceed. Your location will be verified.
+                            Send the service order to the assigned employee. When they open it on-site, Reliance will ask their phone for location before the camera opens.
                           </p>
                         </div>
                       </div>
@@ -5729,26 +6129,11 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-yellow-900">Legal Notice</h4>
                           <p className="text-sm text-yellow-700 mt-1">
-                            By proceeding, you confirm you are present at the business address. Falsifying your location may result in account suspension and legal action. Your location and device info will be logged for compliance and security.
+                            Business-address recordings are blocked unless the employee phone reports a location near the registered business address. Location and device details are logged for compliance and security.
                           </p>
                         </div>
                       </div>
                     </div>
-
-                    <Button onClick={handleGeoLocationCheck} disabled={geoLoading} className="w-full">
-                      {geoLoading ? 'Verifying Location...' : 'Verify My Location'}
-                    </Button>
-                    
-                    {geoError && (
-                      <div className="mt-2 p-2 bg-red-50 text-red-700 rounded text-sm">
-                        {geoError}
-                      </div>
-                    )}
-                    {geoInfo && (
-                      <div className="mt-2 p-2 bg-amber-50 text-amber-700 rounded text-sm">
-                        {geoInfo}
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -5878,7 +6263,7 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-blue-900">Customer Consent & Location Verification</h4>
                           <p className="text-sm text-blue-700 mt-1">
-                            Recording at a customer's business address requires both customer consent and location verification. The customer will receive a secure link to review and agree to the terms before you can proceed. You may also be asked to verify your location.
+                            Recording at a customer's business address requires customer consent first. After consent is accepted, the employee opens the service order on-site and Reliance asks their phone for location before the camera opens.
                           </p>
                         </div>
                       </div>
@@ -5890,7 +6275,7 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-yellow-900">Legal Notice</h4>
                           <p className="text-sm text-yellow-700 mt-1">
-                            By proceeding, you confirm you have informed the customer and will only record after receiving their consent. Your location and device info may be logged for compliance and security.
+                            By proceeding, you confirm you have informed the customer and will only record after receiving their consent. Employee phone location and device info may be logged for compliance and security.
                           </p>
                         </div>
                       </div>
@@ -5929,15 +6314,6 @@ export default function VendorJobs() {
                       </div>
                     ) : null}
 
-                    <Button
-                      onClick={handleGeoLocationCheck}
-                      disabled={geoLoading}
-                      className="w-full mt-3"
-                      variant="outline"
-                    >
-                      {geoLoading ? 'Verifying Location...' : 'Verify My Location'}
-                    </Button>
-                    
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
                         <div>Customer consent request sent. Waiting for customer response.</div>
@@ -5992,9 +6368,6 @@ export default function VendorJobs() {
                         ) : null}
                       </div>
                     )}
-                    {locationVerified && (
-                      <div className="mt-2 text-sm text-green-600">Location verified for customer business scenario.</div>
-                    )}
                     {geoError && (
                       <div className="mt-2 p-2 bg-red-50 text-red-700 rounded text-sm">
                         {geoError}
@@ -6024,26 +6397,26 @@ export default function VendorJobs() {
                   {compliancePrerequisiteMessage}
                 </div>
                 
-                {/* Business Address - Show after location verification */}
-                {location === 'business' && locationVerified && assignmentSatisfiedForCompliance && (
+                {/* Business Address - send employee service order */}
+                {location === 'business' && assignmentSatisfiedForCompliance && (
                   <div>
                     <div className="mb-4 p-3 bg-green-50 rounded-lg">
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-green-900">Location Verified</h4>
+                          <h4 className="font-medium text-green-900">Ready to send to employee</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Your location has been verified. You may proceed to create the service video.
+                            The employee will verify the business address from their phone before recording starts.
                           </p>
                         </div>
                       </div>
                     </div>
                     <Button
-                      onClick={handleContinue}
+                      onClick={handleSendEmployeeServiceOrder}
                       disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      Continue to Video Creation
+                      Send Service Order to Employee
                     </Button>
                   </div>
                 )}
@@ -6063,17 +6436,17 @@ export default function VendorJobs() {
                       </div>
                     </div>
                     <Button
-                      onClick={handleContinue}
+                      onClick={handleSendEmployeeServiceOrder}
                       disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      Continue to Video Creation
+                      Send Service Order to Employee
                     </Button>
                   </div>
                 )}
 
                 {/* Customer Business - Show after consent */}
-                {location === 'customer-business' && customerConsentRequested && customerConsentReceived && locationVerified && assignmentSatisfiedForCompliance && (
+                {location === 'customer-business' && customerConsentRequested && customerConsentReceived && assignmentSatisfiedForCompliance && (
                   <div>
                     <div className="mb-4 p-3 bg-green-50 rounded-lg">
                       <div className="flex items-start gap-2">
@@ -6081,17 +6454,17 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-green-900">Customer Consent Accepted</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Customer consent has been accepted. You may proceed to create the service video.
+                            Customer consent has been accepted. Send the service order so the employee can verify location from their phone and record.
                           </p>
                         </div>
                       </div>
                     </div>
                     <Button
-                      onClick={handleContinue}
+                      onClick={handleSendEmployeeServiceOrder}
                       disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      Continue to Video Creation
+                      Send Service Order to Employee
                     </Button>
                   </div>
                 )}
@@ -6647,7 +7020,7 @@ export default function VendorJobs() {
                     </Button>
                     {activeJobActionMenuId === String(job.id) && (
                       <div
-                        className="absolute right-0 mt-2 w-56 rounded-md border bg-white shadow-lg z-20"
+                        className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 py-1 text-white shadow-2xl shadow-black/35"
                         onClick={(e) => e.stopPropagation()}
                         role="menu"
                       >
@@ -6663,7 +7036,7 @@ export default function VendorJobs() {
                             return (
                               <>
                                 <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                                   onClick={() => {
                                     openJobDetails(job);
                                     setActiveJobActionMenuId(null);
@@ -6672,7 +7045,7 @@ export default function VendorJobs() {
                                   View Details
                                 </button>
                                 <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                                   onClick={() => {
                                     setActiveJobActionMenuId(null);
                                     openJobActionConfirm(job, "ARCHIVE_JOB");
@@ -6689,7 +7062,7 @@ export default function VendorJobs() {
                           if (isArchived) {
                             return (
                               <button
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                                 onClick={() => {
                                   openJobDetails(job);
                                   setActiveJobActionMenuId(null);
@@ -6704,7 +7077,7 @@ export default function VendorJobs() {
                             return (
                               <>
                                 <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                                   onClick={() => {
                                     openJobDetails(job);
                                     setActiveJobActionMenuId(null);
@@ -6713,7 +7086,7 @@ export default function VendorJobs() {
                                   View Details
                                 </button>
                                 <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                                   onClick={() => {
                                     openEditModal(job);
                                     setActiveJobActionMenuId(null);
@@ -6730,7 +7103,7 @@ export default function VendorJobs() {
                             return (
                               <>
                                 <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                                   onClick={() => {
                                     openJobDetails(job);
                                     setActiveJobActionMenuId(null);
@@ -6739,7 +7112,7 @@ export default function VendorJobs() {
                                   View Details
                                 </button>
                                 <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                                   onClick={() => {
                                     openEditModal(job);
                                     setActiveJobActionMenuId(null);
@@ -6749,7 +7122,7 @@ export default function VendorJobs() {
                                   Edit
                                 </button>
                                 <button
-                                  className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"
                                   onClick={() => {
                                     setActiveJobActionMenuId(null);
                                     openJobActionConfirm(job, "DELETE_PERMANENTLY");
@@ -6766,7 +7139,7 @@ export default function VendorJobs() {
                           // Legacy fallback: view-only for unexpected status values.
                           return (
                             <button
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                              className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                               onClick={() => {
                                 openJobDetails(job);
                                 setActiveJobActionMenuId(null);

@@ -459,6 +459,7 @@ export default function EmployeesPage() {
               const isExpanded = Boolean(expandedInviteIds[invite.id]);
               const recipientName = invite.recipient?.name || "Pending team invite";
               const recipientRole = roleLabel(invite.recipient?.role || "EMPLOYEE");
+              const recipientEmail = invite.recipient?.email || "Not provided";
               const recipientPhone = invite.recipient?.phone || "Not provided";
               return (
                 <div key={invite.id} className="rounded-2xl border border-slate-700 bg-slate-900/70 p-3 text-sm text-slate-300">
@@ -474,6 +475,8 @@ export default function EmployeesPage() {
                         Sent {formatDateTime(invite.sentAt)} · {recipientRole}
                       </p>
                       <p className="mt-1 text-xs text-slate-300">
+                        Email: <span className="text-slate-100">{recipientEmail}</span>
+                        <span className="mx-2 text-slate-600">|</span>
                         Phone: <span className="text-slate-100">{recipientPhone}</span>
                       </p>
                     </div>

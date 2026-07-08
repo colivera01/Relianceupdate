@@ -683,7 +683,8 @@
   text-transform: uppercase;
 }
 
-.reliance-password-input {
+.reliance-password-input,
+.reliance-registration-input {
   border-color: rgba(255, 255, 255, 0.12) !important;
   background: rgba(15, 23, 42, 0.9) !important;
   color: #f8fbff !important;
@@ -691,13 +692,17 @@
   color-scheme: dark;
 }
 
-.reliance-password-input::placeholder {
+.reliance-password-input::placeholder,
+.reliance-registration-input::placeholder {
   color: rgba(229, 236, 248, 0.46) !important;
 }
 
 .reliance-password-input:-webkit-autofill,
 .reliance-password-input:-webkit-autofill:hover,
-.reliance-password-input:-webkit-autofill:focus {
+.reliance-password-input:-webkit-autofill:focus,
+.reliance-registration-input:-webkit-autofill,
+.reliance-registration-input:-webkit-autofill:hover,
+.reliance-registration-input:-webkit-autofill:focus {
   -webkit-text-fill-color: #f8fbff !important;
   caret-color: #f8fbff;
   box-shadow: 0 0 0 1000px #0f172a inset !important;

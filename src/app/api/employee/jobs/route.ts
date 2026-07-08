@@ -8,7 +8,7 @@ import {
   isVendorAccountRestricted,
 } from "@/lib/account-status";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
-import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import { parseAssignmentMetadata, parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 
 type StageKey = "INTRO" | "IN_PROGRESS" | "COMPLETED";
@@ -70,7 +70,24 @@ export async function GET(request: Request): Promise<NextResponse> {
       const allowedMembershipIds = byVendor.get(booking.vendorId) || [];
       return assigned.assignedMembershipIds.some((id) => allowedMembershipIds.includes(id));
     });
-    const bookingIds = assignedBookings.map((b) => b.id);
+    const releasedBookings = assignedBookings.filter((booking) => {
+      const compliance = parseRecordingComplianceMetadata(booking.customerMetadata);
+      const allowedMembershipIds = byVendor.get(booking.vendorId) || [];
+      return allowedMembershipIds.some((id) => compliance.releasedMembershipIds.includes(id));
+    });
+
+    if (tokenAccess && assignedBookings.length > 0 && releasedBookings.length === 0) {
+      return NextResponse.json({
+        jobs: [],
+        membership: activeVendorMemberships[0],
+        placeholderData: false,
+        pendingServiceOrder: true,
+        message:
+          "This service order has been assigned, but it is not ready for recording yet. Your manager still needs to send the service order or finish any required customer-consent check.",
+      });
+    }
+
+    const bookingIds = releasedBookings.map((b) => b.id);
 
     const sessions = bookingIds.length
       ? await (prisma as any).mediaSession.findMany({
@@ -89,7 +106,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       : [];
 
     const stageByBooking = new Map<string, Record<StageKey, boolean>>();
-    for (const booking of assignedBookings) {
+    for (const booking of releasedBookings) {
       stageByBooking.set(booking.id, emptyStageProgress());
     }
     for (const row of sessions) {
@@ -104,8 +121,9 @@ export async function GET(request: Request): Promise<NextResponse> {
       });
     }
 
-    const jobs = assignedBookings.map((booking) => {
+    const jobs = releasedBookings.map((booking) => {
       const stageProgress = stageByBooking.get(booking.id) || emptyStageProgress();
+      const recordingCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
       const normalizedStatus = String(booking.status || "").trim().toUpperCase();
       const canMarkComplete =
         stageProgress.INTRO &&
@@ -128,6 +146,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         bookingDate: booking.scheduledFor || booking.date || null,
         rejectionReason: (booking as any).rejectionReason || null,
         rejectedAt: (booking as any).rejectedAt || null,
+        recordingCompliance,
         stageProgress,
         canMarkComplete,
       };

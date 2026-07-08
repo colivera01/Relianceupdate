@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   betaNoIndexHeaders,
   getBetaGateConfig,
-  isBetaGateBypassPath,
+  isBetaGateBypassRequest,
   sanitizeBetaReturnTo,
   verifyBetaGateToken,
 } from "@/lib/beta-gate";
@@ -23,7 +23,7 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  if (isBetaGateBypassPath(pathname)) {
+  if (isBetaGateBypassRequest(pathname, request.nextUrl.searchParams, request.headers)) {
     return withBetaNoIndex(NextResponse.next(), true);
   }
 

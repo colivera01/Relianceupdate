@@ -599,35 +599,42 @@ export default function VendorProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Business Name</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">Business Name *</label>
                     <Input 
                       name="businessName" 
                       value={localFormData.businessName || ''} 
                       onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      required
+                      className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Business Type</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">Business Type *</label>
                     <Input 
                       name="businessType" 
                       value={localFormData.businessType || ''} 
                       onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      required
+                      disabled={Boolean(profile.businessType)}
+                      className="border-slate-700 bg-slate-950 text-white disabled:cursor-not-allowed disabled:opacity-70 focus:border-blue-500 focus:ring-blue-500"
                     />
+                    <p className="mt-1 text-xs text-slate-400">
+                      Locked after approval so public records stay tied to the correct business.
+                    </p>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700">Service Category</label>
+                  <label className="block text-sm font-medium mb-2 text-slate-100">Service Category *</label>
                   <Input 
                     name="category" 
                     value={localFormData.category || ''} 
                     onChange={handleChange}
                     placeholder="e.g., Cleaning, Landscaping, Plumbing"
-                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    required
+                    className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                   />
-                  <p className="text-xs text-gray-500 mt-1">The primary category for your business</p>
+                  <p className="text-xs text-slate-400 mt-1">The primary category for your business.</p>
                 </div>
 
                 {/* Business Bio Section */}
@@ -774,56 +781,60 @@ export default function VendorProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700">Business Address</label>
+                  <label className="block text-sm font-medium mb-2 text-slate-100">Business Address *</label>
                   <Input
                     name="address"
                     value={localFormData.address || ''}
                     onChange={handleAddressInput}
                     autoComplete="street-address"
-                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                    required
+                    className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     placeholder="Enter your business street address"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-slate-400 mt-1">
                     Enter the address manually and save it to your profile. Street autocomplete is not connected in this environment yet.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">City</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">City *</label>
                     <Input 
                       name="city" 
                       value={localFormData.city || ''} 
                       onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      required
+                      className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">State</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">State *</label>
                     <Input 
                       name="state" 
                       value={localFormData.state || ''} 
                       onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      required
+                      className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">ZIP Code</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">ZIP Code *</label>
                     <Input 
                       name="zipCode" 
                       value={localFormData.zipCode || ''} 
                       onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      required
+                      className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Founded Year</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">Founded Year</label>
                     <Input 
                       name="foundedYear" 
                       type="number"
                       value={localFormData.foundedYear || ''} 
                       onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -843,33 +854,35 @@ export default function VendorProfilePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Email</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">Email *</label>
                     <Input 
                       name="email" 
                       type="email"
                       value={localFormData.email || ''} 
                       onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      required
+                      className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Phone</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">Phone *</label>
                     <Input 
                       name="phone" 
                       value={localFormData.phone || ''} 
                       onChange={handleChange}
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      required
+                      className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700">Website</label>
+                    <label className="block text-sm font-medium mb-2 text-slate-100">Website</label>
                     <Input 
                       name="website" 
                       type="url"
                       value={localFormData.website || ''} 
                       onChange={handleChange}
                       placeholder="https://example.com"
-                      className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
                   </div>
                 </div>

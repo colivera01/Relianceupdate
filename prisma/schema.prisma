@@ -558,6 +558,10 @@ model VendorInvite {
   usesCount     Int      @default(0)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
+  inviteeName    String?
+  inviteeEmail   String?
+  inviteePhone   String?
+  inviteeRole    String?
 
   vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   createdBy User @relation("InvitesCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)

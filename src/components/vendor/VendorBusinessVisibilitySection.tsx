@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { VendorGrowthSummary } from "@/lib/vendor-growth-summary";
-import { Eye, Megaphone, ShieldCheck, Star, Video } from "lucide-react";
+import { Eye, ShieldCheck, Star, Video } from "lucide-react";
 
 const toneClasses: Record<
   "success" | "warning" | "neutral",
@@ -28,8 +28,6 @@ export function VendorBusinessVisibilitySection({
 }: {
   summary: VendorGrowthSummary;
 }) {
-  const promotionTone = toneClasses[summary.promotionStatus.tone];
-
   return (
     <section className="mb-8 rounded-[32px] border border-white/10 bg-slate-950/65 p-6 shadow-[0_22px_70px_rgba(2,6,14,0.28)]">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -55,7 +53,7 @@ export function VendorBusinessVisibilitySection({
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summary.metrics.map((metric, index) => {
           const Icon = metricIcons[index] || Eye;
           const tone = toneClasses[metric.tone];
@@ -72,21 +70,6 @@ export function VendorBusinessVisibilitySection({
             </div>
           );
         })}
-
-        <div className={`rounded-3xl border p-4 ${promotionTone.card}`}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-100/62">
-              Promotion eligibility
-            </div>
-            <Megaphone className="h-4 w-4 text-blue-100/55" />
-          </div>
-          <div className="mt-3">
-            <Badge variant="outline" className={promotionTone.badge}>
-              {summary.promotionStatus.label}
-            </Badge>
-          </div>
-          <p className="mt-3 text-sm leading-6 text-slate-300">{summary.promotionStatus.detail}</p>
-        </div>
       </div>
 
       <div className="mt-6 rounded-3xl border border-blue-400/20 bg-blue-500/10 p-5">

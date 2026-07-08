@@ -111,6 +111,15 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
           matchedMembershipIndex >= 0
             ? unusedPendingMemberships.splice(matchedMembershipIndex, 1)[0]
             : null;
+        const storedRecipient = {
+          name: invite.inviteeName || null,
+          email: invite.inviteeEmail || null,
+          phone: invite.inviteePhone || null,
+          role: invite.inviteeRole || null,
+        };
+        const hasStoredRecipient = Boolean(
+          storedRecipient.name || storedRecipient.email || storedRecipient.phone || storedRecipient.role
+        );
 
         return {
           id: invite.id,
@@ -123,7 +132,9 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
           usesCount: invite.usesCount,
           canCancel: Boolean(invite.isActive),
           inviteUrl: `${inviteBaseUrl}/vendor/invite/${invite.token}`,
-          recipient: matchedMembership
+          recipient: hasStoredRecipient
+            ? storedRecipient
+            : matchedMembership
             ? {
                 name: matchedMembership.user?.name || null,
                 email: matchedMembership.user?.email || null,
@@ -299,6 +310,10 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         maxUses: 1,
         usesCount: 0,
         isActive: true,
+        inviteeName: name || null,
+        inviteeEmail: email || null,
+        inviteePhone: phone || null,
+        inviteeRole: role === "MANAGER" ? "MANAGER" : "EMPLOYEE",
       },
     });
 

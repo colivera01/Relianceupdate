@@ -5,6 +5,18 @@ export type AssignmentMetadata = {
   primaryEmployeeName: string | null;
 };
 
+export type RecordingLocationChoice = "business" | "residence" | "customer-business";
+
+export type RecordingComplianceMetadata = {
+  location: RecordingLocationChoice | null;
+  consentAccepted: boolean;
+  consentToken: string;
+  locationVerified: boolean;
+  locationVerifiedAt: string | null;
+  serviceOrderReleasedAt: string | null;
+  releasedMembershipIds: string[];
+};
+
 export function parseCustomerMetadata(value: string | null | undefined): Record<string, unknown> {
   if (!value) return {};
   try {
@@ -38,6 +50,48 @@ export function parseAssignmentMetadata(value: string | null | undefined): Assig
     assignedEmployees[0] ||
     null;
   return { assignedMembershipIds, assignedEmployees, primaryMembershipId, primaryEmployeeName };
+}
+
+export function normalizeRecordingLocationChoice(value: unknown): RecordingLocationChoice | null {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "business") return "business";
+  if (normalized === "residence") return "residence";
+  if (normalized === "customer-business" || normalized === "customer_business") {
+    return "customer-business";
+  }
+  return null;
+}
+
+export function parseRecordingComplianceMetadata(
+  value: string | null | undefined
+): RecordingComplianceMetadata {
+  const parsed = parseCustomerMetadata(value);
+  const releasedMembershipIds = Array.isArray(parsed.vendor_job_service_order_released_membership_ids)
+    ? parsed.vendor_job_service_order_released_membership_ids
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    : [];
+
+  return {
+    location: normalizeRecordingLocationChoice(parsed.vendor_job_recording_location),
+    consentAccepted: parsed.vendor_job_consent_accepted === true,
+    consentToken: String(parsed.vendor_job_consent_token || "").trim(),
+    locationVerified: parsed.vendor_job_location_verified === true,
+    locationVerifiedAt: String(parsed.vendor_job_location_verified_at || "").trim() || null,
+    serviceOrderReleasedAt:
+      String(parsed.vendor_job_service_order_released_at || "").trim() || null,
+    releasedMembershipIds: Array.from(new Set(releasedMembershipIds)),
+  };
+}
+
+export function isServiceOrderReleasedForMembership(
+  value: string | null | undefined,
+  membershipId: string | null | undefined
+): boolean {
+  const normalizedMembershipId = String(membershipId || "").trim();
+  if (!normalizedMembershipId) return false;
+  const compliance = parseRecordingComplianceMetadata(value);
+  return compliance.releasedMembershipIds.includes(normalizedMembershipId);
 }
 
 export function setStageProgressMetadata(

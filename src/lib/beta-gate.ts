@@ -81,6 +81,31 @@ export function isBetaGateBypassPath(pathname: string): boolean {
   return /\/[^/]+\.[a-zA-Z0-9]{2,8}$/.test(path);
 }
 
+function hasEmployeeCaptureToken(searchParams: URLSearchParams, headers: Headers): boolean {
+  return Boolean(
+    (searchParams.get("ct") || "").trim() ||
+      (searchParams.get("captureToken") || "").trim() ||
+      (headers.get("x-employee-capture-token") || "").trim()
+  );
+}
+
+export function isBetaGateBypassRequest(
+  pathname: string,
+  searchParams: URLSearchParams = new URLSearchParams(),
+  headers: Headers = new Headers()
+): boolean {
+  const path = pathname || "/";
+
+  if (isBetaGateBypassPath(path)) return true;
+
+  if (!hasEmployeeCaptureToken(searchParams, headers)) return false;
+
+  if (path === "/employee/jobs") return true;
+  if (path === "/api/employee/jobs" || path.startsWith("/api/employee/jobs/")) return true;
+
+  return false;
+}
+
 export function sanitizeBetaReturnTo(value: string | null | undefined): string {
   const normalized = String(value || "").trim();
   if (!normalized || !normalized.startsWith("/") || normalized.startsWith("//")) return "/";

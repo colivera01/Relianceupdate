@@ -119,6 +119,9 @@ export interface VendorProfile {
   state: string | null;
   address: string | null;
   zipCode: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  geocodedAt?: string | null;
   bio: string | null;
   website: string | null;
   licenseNumber: string | null;

@@ -57,6 +57,7 @@ function LoginPageContent() {
   const [rememberDevice, setRememberDevice] = useState(true);
   const [supportsPasskeys, setSupportsPasskeys] = useState(false);
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [formMessage, setFormMessage] = useState<FormMessage | null>(registrationMessageFromQuery);
   const submitInFlightRef = useRef(false);
   const forgotPasswordHref = appendAuthNext('/auth/forgot-password', safeNextPath);
@@ -64,6 +65,10 @@ function LoginPageContent() {
   const entryBackHref = getAuthEntryBackHref(safeNextPath);
   const entryBackLabel = getAuthEntryBackLabel(safeNextPath);
   const entryDescription = getAuthEntryDescription('login', safeNextPath);
+  const showVerificationRecovery =
+    !mfaChallengeId &&
+    formData.email.trim().length > 0 &&
+    (searchParams?.get('registered') === '1' || /verify your email/i.test(formMessage?.text || ''));
 
   useEffect(() => {
     setSupportsPasskeys(typeof window !== 'undefined' && window.PublicKeyCredential !== undefined);
@@ -319,6 +324,53 @@ function LoginPageContent() {
     }
   };
 
+  const handleResendVerification = async () => {
+    const email = formData.email.trim();
+    if (!email) {
+      setFormMessage({
+        tone: 'info',
+        text: 'Enter your email first, then send another verification email.',
+      });
+      return;
+    }
+
+    setIsResendingVerification(true);
+    try {
+      const response = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+      const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+      if (!response.ok) {
+        setFormMessage({
+          tone: 'error',
+          text: String(data.error || 'We could not send another verification email right now.'),
+        });
+        return;
+      }
+
+      setFormMessage({
+        tone: 'success',
+        text:
+          data.alreadyVerified === true
+            ? 'This email is already verified. You can sign in now.'
+            : 'A new verification email was sent. Check your Inbox, Spam, and All Mail folders.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFormMessage({
+        tone: 'error',
+        text: `We could not send another verification email: ${message}`,
+      });
+    } finally {
+      setIsResendingVerification(false);
+    }
+  };
+
   return (
     <AuthExperienceShell
       backHref={entryBackHref}
@@ -353,6 +405,23 @@ function LoginPageContent() {
                   }`}
                 >
                   {formMessage.text}
+                </div>
+              ) : null}
+              {showVerificationRecovery ? (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50/80 px-3 py-3 text-sm text-slate-700">
+                  <p className="leading-5">
+                    No verification email yet? Send a fresh link to{' '}
+                    <strong className="text-slate-900">{formData.email.trim()}</strong>.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 h-10 rounded-xl border-blue-200 bg-white text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                    onClick={handleResendVerification}
+                    disabled={isResendingVerification}
+                  >
+                    {isResendingVerification ? 'Sending...' : 'Resend verification email'}
+                  </Button>
                 </div>
               ) : null}
               {mfaChallengeId ? (

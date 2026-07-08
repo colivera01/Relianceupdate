@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, BarChart3, HelpCircle } from 'lucide-react';
+import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, BarChart3, HelpCircle, ShieldCheck } from 'lucide-react';
 import { useVendorDashboard } from '@/hooks/useVendorDashboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
@@ -55,6 +55,7 @@ type PromotionBrowseReadiness = {
 const DEFAULT_PROMOTION_LAUNCH_AVAILABILITY_NOTE =
   'Only currently live promoted placements are requestable here. Homepage spotlight inventory will appear after the public homepage rollout is launched.';
 const PROMOTION_REQUEST_OPTIONS_TIMEOUT_MS = 30000;
+const PROMOTIONS_ENABLED = false;
 const VENDOR_SUPPORT_HREF =
   '/vendor/support?returnTo=%2Fvendor%2Fdashboard&returnLabel=Back%20to%20Vendor%20Dashboard';
 
@@ -86,7 +87,7 @@ export default function VendorDashboard() {
   const vendorIdForPromotion = data?.profile?.id || null;
 
   useEffect(() => {
-    if (!vendorIdForPromotion) return;
+    if (!PROMOTIONS_ENABLED || !vendorIdForPromotion) return;
     let cancelled = false;
     const controller = new AbortController();
     const timeoutHandle = window.setTimeout(() => controller.abort(), PROMOTION_REQUEST_OPTIONS_TIMEOUT_MS);
@@ -190,7 +191,7 @@ export default function VendorDashboard() {
           <div className="flex justify-end">
             <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="light" />
           </div>
-          {vendorProfile ? <VendorOnboardingStatusPanel profile={vendorProfile} showActions /> : null}
+          {vendorProfile ? <VendorOnboardingStatusPanel profile={vendorProfile} showActions compact /> : null}
           <Card className="bg-white">
             <CardHeader>
               <CardTitle>What happens next</CardTitle>
@@ -251,11 +252,11 @@ export default function VendorDashboard() {
             </Card>
             <Card className="bg-white">
               <CardHeader>
-                <CardTitle>Promote my business</CardTitle>
+                <CardTitle>Trust signals</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-sm text-gray-600">
-                  Promotion tools are loading along with your dashboard summary.
+                  Loading reviews, service videos, and public visibility.
                 </p>
                 <div className="h-9 w-40 rounded bg-gray-200 animate-pulse" />
               </CardContent>
@@ -338,6 +339,14 @@ export default function VendorDashboard() {
   const pendingModerationProofs = Number(data.pendingModerationProofs || 0);
   const approvedProofs = Number(data.approvedProofs || 0);
   const archivedProofs = Number(data.archivedProofs || 0);
+  const trustScoreRaw = Number(
+    (dashboardStats as any)?.trustScore ??
+      (data as any)?.trustScore ??
+      (data?.profile as any)?.trustScore ??
+      (vendorProfile as any)?.trustScore ??
+      0
+  );
+  const trustScoreValue = Number.isFinite(trustScoreRaw) ? Math.round(trustScoreRaw) : 0;
   const storageUsedBytes = BigInt(String(data.storageUsedBytes || '0'));
   const storageLimitBytesRaw = BigInt(String(data.storageLimitBytes || '0'));
   const storageLimitBytes = storageLimitBytesRaw > BigInt(0) ? storageLimitBytesRaw : BigInt(1);
@@ -375,9 +384,9 @@ export default function VendorDashboard() {
     onboarding: vendorProfile?.onboarding || null,
     publishedReviewCount: ratingCount,
     approvedServiceVideoCount: approvedProofs,
-    promotionBrowseReadiness,
-    promotionServices,
-    promotionRecentRequests,
+    promotionBrowseReadiness: PROMOTIONS_ENABLED ? promotionBrowseReadiness : null,
+    promotionServices: PROMOTIONS_ENABLED ? promotionServices : [],
+    promotionRecentRequests: PROMOTIONS_ENABLED ? promotionRecentRequests : [],
   });
   const heroMetricCards = [
     {
@@ -419,6 +428,14 @@ export default function VendorDashboard() {
       icon: Star,
       color: 'yellow' as keyof typeof colorMap,
       route: '/vendor/reviews',
+    },
+    {
+      label: 'Trust Score',
+      value: trustScoreValue.toString(),
+      detail: 'Reliance trust signal from completed proof, reviews, and reliability.',
+      icon: ShieldCheck,
+      color: 'blue' as keyof typeof colorMap,
+      route: '/vendor/analytics',
     },
     {
       label: 'Approved videos',
@@ -486,7 +503,9 @@ export default function VendorDashboard() {
   return (
     <div className={pageShellClass}>
       <div className={pageContentClass}>
-        {vendorProfile?.onboarding ? <VendorOnboardingStatusPanel profile={vendorProfile} /> : null}
+        {vendorProfile?.onboarding ? (
+          <VendorOnboardingStatusPanel profile={vendorProfile} showActions compact />
+        ) : null}
         <section className="reliance-operator-hero mb-8 rounded-[32px] px-6 py-7">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
             <div>
@@ -500,7 +519,7 @@ export default function VendorDashboard() {
                   </h1>
                   <p className="mt-4 max-w-3xl text-sm leading-7 text-white/72 sm:text-base">
                     Start with business status, customer visibility, and trust signals, then move into
-                    the jobs, reviews, and promotion steps that help more customers choose you.
+                    the jobs and reviews that help more customers choose you.
                   </p>
                 </div>
                 <TutorialEntryPoint guide={tutorialGuides.vendorDashboard} surface="dark" className="self-start" />
@@ -587,6 +606,7 @@ export default function VendorDashboard() {
           </CardContent>
         </Card>
 
+        {PROMOTIONS_ENABLED ? (
         <Card className="mb-8 border-blue-100 bg-blue-50">
           <CardContent className="space-y-5 p-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -822,6 +842,7 @@ export default function VendorDashboard() {
             ) : null}
           </CardContent>
         </Card>
+        ) : null}
 
         {/* 3) Performance */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

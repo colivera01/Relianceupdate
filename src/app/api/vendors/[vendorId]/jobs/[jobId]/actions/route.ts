@@ -12,6 +12,10 @@ import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
 import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
+import {
+  normalizeRecordingLocationChoice,
+  parseRecordingComplianceMetadata,
+} from "@/lib/job-assignment";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -23,6 +27,8 @@ type JobAction =
   | "UNARCHIVE_JOB"
   | "UPDATE_JOB"
   | "ASSIGN_JOB"
+  | "UPDATE_RECORDING_COMPLIANCE"
+  | "RELEASE_EMPLOYEE_SERVICE_ORDER"
   | "UPDATE_STATUS"
   | "APPROVE_JOB_COMPLETION";
 
@@ -59,6 +65,69 @@ function parseCustomerMetadata(value: string | null | undefined): Record<string,
   } catch {
     return {};
   }
+}
+
+function stringifyCustomerMetadata(metadata: Record<string, unknown>) {
+  return JSON.stringify(metadata);
+}
+
+function mergeRecordingComplianceMetadata(
+  value: string | null | undefined,
+  input: Record<string, unknown>,
+  locationVerification?: Record<string, unknown>
+) {
+  const metadata = parseCustomerMetadata(value);
+  const location = normalizeRecordingLocationChoice(input.location);
+  if (location) {
+    metadata.vendor_job_recording_location = location;
+  }
+  if (input.consentAccepted !== undefined) {
+    metadata.vendor_job_consent_accepted = input.consentAccepted === true;
+  }
+  if (input.consentToken !== undefined) {
+    const token = String(input.consentToken || "").trim();
+    if (token) metadata.vendor_job_consent_token = token;
+    else delete metadata.vendor_job_consent_token;
+  }
+  if (input.locationVerified !== undefined) {
+    const verified = input.locationVerified === true;
+    metadata.vendor_job_location_verified = verified;
+    if (verified) {
+      metadata.vendor_job_location_verified_at =
+        String(input.locationVerifiedAt || "").trim() || new Date().toISOString();
+    }
+  }
+  if (locationVerification && typeof locationVerification === "object") {
+    metadata.vendor_job_location_verification = {
+      ...locationVerification,
+      recordedAt: new Date().toISOString(),
+    };
+  }
+  return metadata;
+}
+
+function releaseFailureForCompliance(value: string | null | undefined, consentRecord: any) {
+  const compliance = parseRecordingComplianceMetadata(value);
+  if (!compliance.location) {
+    return {
+      code: "RECORDING_LOCATION_REQUIRED",
+      message: "Choose where the service recording will happen before sending the employee service order.",
+    };
+  }
+  const requiresConsent =
+    compliance.location === "residence" || compliance.location === "customer-business";
+
+  if (requiresConsent) {
+    const consentStatus = String(consentRecord?.status || "").trim().toUpperCase();
+    if (consentStatus !== "ACCEPTED") {
+      return {
+        code: "CUSTOMER_CONSENT_REQUIRED",
+        message: "Customer consent must be accepted before sending the employee service order.",
+      };
+    }
+  }
+
+  return null;
 }
 
 function displayNameForMembershipUser(
@@ -385,7 +454,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       if (!resolved.ok) {
         return resolved.response;
       }
-      const { membershipIds, displayNames, members } = resolved;
+      const { membershipIds, displayNames } = resolved;
       const existing = await prisma.booking.findUnique({
         where: { id: booking.id },
         select: { customerMetadata: true, status: true },
@@ -437,54 +506,6 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const newlyAssignedIds = new Set(
         membershipIds.filter((id) => !previouslyAssignedIds.includes(id))
       );
-      const notificationResults = [];
-      if (newlyAssignedIds.size > 0) {
-        const baseUrl = resolveJobLinkBaseUrl(request);
-        const vendorName = String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor");
-        const jobTitle = String(booking.title || booking.service?.name || "Assigned job");
-        const customerName = String(booking.clientName || booking.user?.name || "").trim() || null;
-
-        for (const assignmentMember of members) {
-          if (!newlyAssignedIds.has(assignmentMember.id)) continue;
-          try {
-            const employeeJobLink = appendEmployeeCaptureToken(
-              `${baseUrl}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`,
-              createEmployeeCaptureToken({
-                vendorId,
-                bookingId: booking.id,
-                membershipId: assignmentMember.id,
-              })
-            );
-            const notification = await sendJobAssignmentNotification({
-              bookingId: booking.id,
-              actorUserId: member.userId,
-              employeeName: assignmentMember.displayName,
-              employeeEmail: assignmentMember.user?.email || null,
-              employeePhone: assignmentMember.user?.phone || null,
-              employeeJobLink,
-              vendorName,
-              jobTitle,
-              customerName,
-              scheduledFor: booking.scheduledFor || booking.date || null,
-            });
-            notificationResults.push({
-              membershipId: assignmentMember.id,
-              employeeName: assignmentMember.displayName,
-              anySuccess: notification.anySuccess,
-              phoneNumberUsed: notification.phoneNumberUsed,
-              channels: notification.channels,
-            });
-          } catch (error) {
-            notificationResults.push({
-              membershipId: assignmentMember.id,
-              employeeName: assignmentMember.displayName,
-              anySuccess: false,
-              errorMessage: error instanceof Error ? error.message : String(error),
-              channels: [],
-            });
-          }
-        }
-      }
 
       return NextResponse.json({
         success: true,
@@ -500,10 +521,229 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         },
         notifications: {
           newlyAssignedCount: newlyAssignedIds.size,
-          sentCount: notificationResults.filter((item) => item.anySuccess).length,
+          sentCount: 0,
+          deferred: true,
+          results: [],
+        },
+        message:
+          "Job assignment saved. Complete the required location or customer-consent check to send the employee service order.",
+      });
+    }
+
+    if (action === "UPDATE_RECORDING_COMPLIANCE") {
+      const input =
+        body?.recordingCompliance && typeof body.recordingCompliance === "object"
+          ? (body.recordingCompliance as Record<string, unknown>)
+          : (body as Record<string, unknown>);
+      const locationVerification =
+        body?.locationVerification && typeof body.locationVerification === "object"
+          ? (body.locationVerification as Record<string, unknown>)
+          : undefined;
+      const existing = await prisma.booking.findUnique({
+        where: { id: booking.id },
+        select: { customerMetadata: true },
+      });
+      const metadata = mergeRecordingComplianceMetadata(
+        existing?.customerMetadata || booking.customerMetadata,
+        input,
+        locationVerification
+      );
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: { customerMetadata: stringifyCustomerMetadata(metadata) },
+        select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+      });
+
+      await recordLifecycleAudit({
+        actionType: "recording_compliance_updated",
+        entityType: "booking",
+        entityId: booking.id,
+        actorUserId: member.userId,
+        newValue: parseRecordingComplianceMetadata(updated.customerMetadata),
+        metadata: { vendorId },
+      });
+
+      return NextResponse.json({
+        success: true,
+        action,
+        job: {
+          id: updated.id,
+          status: updated.status,
+          recordingCompliance: parseRecordingComplianceMetadata(updated.customerMetadata),
+          updatedAt: updated.updatedAt,
+        },
+        message: "Recording compliance saved.",
+      });
+    }
+
+    if (action === "RELEASE_EMPLOYEE_SERVICE_ORDER") {
+      const existing = await prisma.booking.findUnique({
+        where: { id: booking.id },
+        select: { customerMetadata: true, status: true },
+      });
+      let metadata = existing?.customerMetadata || booking.customerMetadata || null;
+      if (body?.recordingCompliance && typeof body.recordingCompliance === "object") {
+        metadata = stringifyCustomerMetadata(
+          mergeRecordingComplianceMetadata(
+            metadata,
+            body.recordingCompliance as Record<string, unknown>,
+            body?.locationVerification && typeof body.locationVerification === "object"
+              ? (body.locationVerification as Record<string, unknown>)
+              : undefined
+          )
+        );
+      }
+
+      const assignmentMetadata = parseCustomerMetadata(metadata);
+      const assignedMembershipIds = Array.isArray(assignmentMetadata.vendor_job_assigned_membership_ids)
+        ? assignmentMetadata.vendor_job_assigned_membership_ids
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+        : [];
+      if (assignedMembershipIds.length === 0) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "EMPLOYEE_ASSIGNMENT_REQUIRED",
+            "Assign at least one employee before sending a service order."
+          ),
+          { status: 409 }
+        );
+      }
+
+      const latestConsentRecord = await (prisma as any).consentRecord.findFirst({
+        where: { bookingId: booking.id },
+        orderBy: { requestedAt: "desc" },
+      });
+      const complianceFailure = releaseFailureForCompliance(metadata, latestConsentRecord);
+      if (complianceFailure) {
+        return NextResponse.json(
+          apiResponse(false, complianceFailure.code, complianceFailure.message, {
+            recordingCompliance: parseRecordingComplianceMetadata(metadata),
+          }),
+          { status: 409 }
+        );
+      }
+
+      const resolved = await resolveJobAssignmentForVendor(
+        vendorId,
+        assignedMembershipIds,
+        assignmentMetadata.vendor_job_assigned_employees
+      );
+      if (!resolved.ok) return resolved.response;
+
+      const compliance = parseRecordingComplianceMetadata(metadata);
+      const unreleasedMembers = resolved.members.filter(
+        (assignmentMember) => !compliance.releasedMembershipIds.includes(assignmentMember.id)
+      );
+      if (unreleasedMembers.length === 0) {
+        return NextResponse.json({
+          success: true,
+          action,
+          notifications: { sentCount: 0, alreadyReleased: true, results: [] },
+          recordingCompliance: compliance,
+          message: "Employee service order was already sent for this assignment.",
+        });
+      }
+
+      const baseUrl = resolveJobLinkBaseUrl(request);
+      const vendorName = String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor");
+      const jobTitle = String(booking.title || booking.service?.name || "Assigned job");
+      const customerName = String(booking.clientName || booking.user?.name || "").trim() || null;
+      const notificationResults = [];
+      const successfulMembershipIds: string[] = [];
+
+      for (const assignmentMember of unreleasedMembers) {
+        try {
+          const employeeJobLink = appendEmployeeCaptureToken(
+            `${baseUrl}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`,
+            createEmployeeCaptureToken({
+              vendorId,
+              bookingId: booking.id,
+              membershipId: assignmentMember.id,
+            })
+          );
+          const notification = await sendJobAssignmentNotification({
+            bookingId: booking.id,
+            actorUserId: member.userId,
+            employeeName: assignmentMember.displayName,
+            employeeEmail: assignmentMember.user?.email || null,
+            employeePhone: assignmentMember.user?.phone || null,
+            employeeJobLink,
+            vendorName,
+            jobTitle,
+            customerName,
+            scheduledFor: booking.scheduledFor || booking.date || null,
+          });
+          if (notification.anySuccess) successfulMembershipIds.push(assignmentMember.id);
+          notificationResults.push({
+            membershipId: assignmentMember.id,
+            employeeName: assignmentMember.displayName,
+            anySuccess: notification.anySuccess,
+            phoneNumberUsed: notification.phoneNumberUsed,
+            channels: notification.channels,
+          });
+        } catch (error) {
+          notificationResults.push({
+            membershipId: assignmentMember.id,
+            employeeName: assignmentMember.displayName,
+            anySuccess: false,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            channels: [],
+          });
+        }
+      }
+
+      if (successfulMembershipIds.length === 0) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "SERVICE_ORDER_NOTIFICATION_FAILED",
+            "The employee service order was ready, but the notification could not be delivered.",
+            { notifications: notificationResults }
+          ),
+          { status: 502 }
+        );
+      }
+
+      const updatedMetadata = parseCustomerMetadata(metadata);
+      const releasedIds = Array.from(
+        new Set([...compliance.releasedMembershipIds, ...successfulMembershipIds])
+      );
+      updatedMetadata.vendor_job_service_order_released_membership_ids = releasedIds;
+      updatedMetadata.vendor_job_service_order_released_at = new Date().toISOString();
+      const updated = await prisma.booking.update({
+        where: { id: booking.id },
+        data: { customerMetadata: stringifyCustomerMetadata(updatedMetadata) },
+        select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+      });
+
+      await recordLifecycleAudit({
+        actionType: "employee_service_order_released",
+        entityType: "booking",
+        entityId: booking.id,
+        actorUserId: member.userId,
+        newValue: {
+          releasedMembershipIds: releasedIds,
+          notificationResults,
+        },
+        metadata: { vendorId },
+      });
+
+      return NextResponse.json({
+        success: true,
+        action,
+        job: {
+          id: updated.id,
+          status: updated.status,
+          recordingCompliance: parseRecordingComplianceMetadata(updated.customerMetadata),
+          updatedAt: updated.updatedAt,
+        },
+        notifications: {
+          sentCount: successfulMembershipIds.length,
           results: notificationResults,
         },
-        message: "Job assignment updated successfully",
+        message: "Employee service order sent.",
       });
     }
 

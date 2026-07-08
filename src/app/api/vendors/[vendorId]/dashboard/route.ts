@@ -16,6 +16,7 @@ import {
   countableReviewWhere,
   vendorOperationalBookingWhere,
 } from "@/lib/metrics-exclusion";
+import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -620,6 +621,7 @@ export async function GET(
         assignedEmployees: assignedEmployeesRaw,
         assignedMembershipIds,
         uploadedVideoStages,
+        recordingCompliance: parseRecordingComplianceMetadata(booking.customerMetadata),
         consentStatus: mapConsentRecordToVendorUiState(latestConsentRecord),
         latestConsentToken: latestConsentRecord?.token || null,
         consentAcceptedAt: latestConsentRecord?.acceptedAt?.toISOString?.() || null,
