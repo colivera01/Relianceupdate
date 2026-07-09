@@ -1,5 +1,4 @@
 'use client';
-import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,7 +9,6 @@ import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/u
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
-import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
 import {
   defaultBusinessHours,
   formatBusinessTime,
@@ -383,13 +381,6 @@ export default function VendorProfilePage() {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() || '')
     .join('') || 'RB';
-  const growthSummary = buildVendorGrowthSummary({
-    vendorId: profile?.id || null,
-    businessName: profile?.businessName || null,
-    onboarding: profile?.onboarding || null,
-    publishedReviewCount: Number(profile?.ratingCount || 0),
-    approvedServiceVideoCount: 0,
-  });
   const vendorCopyTrustSignals = [
     profile?.membershipStatus === 'ACTIVE'
       ? 'Vendor account is approved on Reliance.'
@@ -488,40 +479,6 @@ export default function VendorProfilePage() {
         <main className="flex flex-col xl:flex-row gap-8">
         {/* Profile Form */}
         <section className="flex flex-1 max-w-2xl flex-col gap-6">
-          <Card className="order-2 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-xl text-white">What customers see</CardTitle>
-              <p className="text-sm leading-6 text-slate-300">
-                Use this summary to understand whether customers can find your business and which public signals are helping them trust you.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                {growthSummary.metrics.slice(0, 4).map((metric) => (
-                  <div key={metric.label} className="min-w-0 rounded-xl border border-blue-300/20 bg-slate-900/78 p-4">
-                    <p className="break-words text-xs font-semibold uppercase tracking-[0.14em] text-blue-100/70">{metric.label}</p>
-                    <p className="mt-2 break-words text-lg font-semibold text-white">{metric.value}</p>
-                    <p className="mt-2 break-words text-sm leading-6 text-slate-300">{metric.detail}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="rounded-xl border border-blue-300/20 bg-slate-900/78 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100/70">Public profile status</p>
-                <p className="mt-2 text-lg font-semibold text-white">{growthSummary.visibilityTitle}</p>
-                <p className="mt-2 text-sm leading-6 text-slate-300">{growthSummary.visibilityDetail}</p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {growthSummary.publicProfileHref ? (
-                    <Button asChild size="sm" className="bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
-                      <Link href={growthSummary.publicProfileHref}>Open Public Profile</Link>
-                    </Button>
-                  ) : null}
-                  <Button asChild size="sm" variant="outline">
-                    <Link href="/vendor/services">Manage public services</Link>
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
           {/* Enhanced Profile Information Card */}
           <Card className="order-1 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)] [&_input]:border-white/10 [&_input]:bg-slate-900/75 [&_input]:text-white [&_input]:placeholder:text-slate-500 [&_label]:!text-blue-100 [&_p]:!text-slate-300 [&_select]:border-white/10 [&_select]:bg-slate-900/75 [&_select]:text-white [&_textarea]:border-white/10 [&_textarea]:bg-slate-900/75 [&_textarea]:text-white [&_textarea]:placeholder:text-slate-500">
             <CardHeader className="pb-4">
