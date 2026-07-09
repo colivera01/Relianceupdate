@@ -196,25 +196,25 @@ export default function FAQsPage() {
             <div className="flex items-center gap-4">
               <Link
                 href="/vendor/support"
-                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800"
+                className="inline-flex items-center gap-2 text-blue-100/78 transition-colors hover:text-white"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back to Support
               </Link>
             </div>
           </div>
-          <h1 className="mb-2 text-3xl font-bold text-gray-900">Frequently Asked Questions</h1>
-          <p className="text-gray-600">
+          <h1 className="mb-2 text-3xl font-bold text-white">Frequently Asked Questions</h1>
+          <p className="text-blue-100/72">
             Find answers to common questions about using the Reliance vendor tools.
           </p>
         </div>
 
-        <Card className="mb-6 border-blue-200 bg-blue-50">
+        <Card className="reliance-operator-surface mb-6 rounded-[28px] border-white/10">
           <CardContent className="pt-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Need direct launch help?</h2>
-                <p className="text-sm text-gray-600">
+                <h2 className="text-lg font-semibold text-white">Need direct launch help?</h2>
+                <p className="text-sm text-blue-100/70">
                   Contact launch support for login, jobs, media, consent, and approval questions.
                 </p>
               </div>
@@ -231,23 +231,23 @@ export default function FAQsPage() {
 
         <div className="mb-6">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-blue-100/56" />
             <input
               type="text"
               placeholder="Search FAQs..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              className="w-full rounded-lg border border-gray-300 py-3 pl-10 pr-4 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-2xl border border-white/12 bg-white/6 py-3 pl-10 pr-4 text-white placeholder:text-blue-100/44 focus:border-blue-300/70 focus:outline-none focus:ring-2 focus:ring-blue-400/55"
             />
           </div>
         </div>
 
         <div className="space-y-6">
           {filteredCategories.map((category) => (
-            <Card key={category.id}>
+            <Card key={category.id} className="reliance-operator-surface rounded-[28px] border-white/10">
               <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  <category.icon className="h-5 w-5 text-blue-600" />
+                <CardTitle className="flex items-center gap-3 text-white">
+                  <category.icon className="h-5 w-5 text-blue-200" />
                   {category.title}
                 </CardTitle>
               </CardHeader>
@@ -256,22 +256,22 @@ export default function FAQsPage() {
                   {category.faqs.map((faq) => (
                     <div
                       key={faq.id}
-                      className="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0"
+                      className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0"
                     >
                       <button
                         onClick={() => toggleItem(faq.id)}
-                        className="flex w-full items-center justify-between rounded-lg p-3 text-left transition-colors hover:bg-gray-50"
+                        className="flex w-full items-center justify-between rounded-2xl p-3 text-left transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/70"
                       >
-                        <h3 className="pr-4 font-medium text-gray-900">{faq.question}</h3>
+                        <h3 className="pr-4 font-medium text-white">{faq.question}</h3>
                         {expandedItems.has(faq.id) ? (
-                          <ChevronUp className="h-5 w-5 flex-shrink-0 text-gray-500" />
+                          <ChevronUp className="h-5 w-5 flex-shrink-0 text-blue-100/72" />
                         ) : (
-                          <ChevronDown className="h-5 w-5 flex-shrink-0 text-gray-500" />
+                          <ChevronDown className="h-5 w-5 flex-shrink-0 text-blue-100/72" />
                         )}
                       </button>
                       {expandedItems.has(faq.id) ? (
                         <div className="px-3 pb-3">
-                          <p className="leading-relaxed text-gray-600">{faq.answer}</p>
+                          <p className="leading-relaxed text-blue-100/70">{faq.answer}</p>
                         </div>
                       ) : null}
                     </div>
