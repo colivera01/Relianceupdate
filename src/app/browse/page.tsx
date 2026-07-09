@@ -477,14 +477,24 @@ export default function PublicBrowsePage() {
                   setSelectedCategory(e.target.value);
                   setPage(1);
                 }}
+                style={{ colorScheme: 'light' }}
                 className="w-full appearance-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3.5 text-slate-900 focus:border-[var(--reliance-blue)] focus:ring-2 focus:ring-[var(--reliance-blue)]/15"
               >
-                <option value="all">All Services Offered</option>
+                <option value="all" className="bg-white text-slate-950" style={{ backgroundColor: '#ffffff', color: '#020617' }}>
+                  All Services Offered
+                </option>
                 {!hasSelectedCategoryOption && selectedCategory !== 'all' ? (
-                  <option value={selectedCategory}>{selectedCategory}</option>
+                  <option value={selectedCategory} className="bg-white text-slate-950" style={{ backgroundColor: '#ffffff', color: '#020617' }}>
+                    {selectedCategory}
+                  </option>
                 ) : null}
                 {categories.map((category) => (
-                  <option key={category.key} value={category.label}>
+                  <option
+                    key={category.key}
+                    value={category.label}
+                    className="bg-white text-slate-950"
+                    style={{ backgroundColor: '#ffffff', color: '#020617' }}
+                  >
                     {category.label} ({category.serviceCount})
                   </option>
                 ))}
