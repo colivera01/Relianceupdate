@@ -497,11 +497,13 @@ export default function VendorProfilePage() {
                     name="category" 
                     value={localFormData.category || ''} 
                     onChange={handleChange}
-                    placeholder="e.g., Cleaning, Landscaping, Plumbing"
                     required
-                    className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
+                    disabled={Boolean(profile.category)}
+                    className="border-slate-700 bg-slate-950 text-white disabled:cursor-not-allowed disabled:opacity-70 focus:border-blue-500 focus:ring-blue-500"
                   />
-                  <p className="text-xs text-slate-400 mt-1">The primary category for your business.</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Locked after approval so public records stay tied to the correct service category.
+                  </p>
                 </div>
 
                 {/* Business Bio Section */}
