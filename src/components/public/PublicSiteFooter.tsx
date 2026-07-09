@@ -3,6 +3,7 @@ import { RelianceLogo } from "@/components/public/RelianceLogo";
 import {
   HAS_LAUNCH_SUPPORT_EMAIL,
   LAUNCH_SUPPORT_EMAIL,
+  LAUNCH_SUPPORT_GMAIL_COMPOSE_URL,
   LAUNCH_SUPPORT_MAILTO,
   LAUNCH_SUPPORT_RESPONSE_TIME,
 } from "@/lib/support";
@@ -83,11 +84,29 @@ export function PublicSiteFooter() {
                 <>
                   <p className="text-lg font-semibold text-white sm:text-xl">Support email</p>
                   <a
-                    href={LAUNCH_SUPPORT_MAILTO}
+                    href={LAUNCH_SUPPORT_GMAIL_COMPOSE_URL}
+                    target="_blank"
+                    rel="noreferrer"
                     className="mt-3 block break-all text-lg font-semibold text-[var(--reliance-blue-soft)] transition hover:text-white sm:text-xl"
                   >
                     {LAUNCH_SUPPORT_EMAIL}
                   </a>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <a
+                      href={LAUNCH_SUPPORT_MAILTO}
+                      className="rounded-full border border-white/14 px-4 py-2 text-sm font-semibold text-white/80 transition hover:border-white/30 hover:text-white"
+                    >
+                      Open email app
+                    </a>
+                    <a
+                      href={LAUNCH_SUPPORT_GMAIL_COMPOSE_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-[var(--reliance-blue-soft)]/40 bg-[var(--reliance-blue-soft)]/10 px-4 py-2 text-sm font-semibold text-[var(--reliance-blue-soft)] transition hover:bg-[var(--reliance-blue-soft)]/18 hover:text-white"
+                    >
+                      Open in Gmail
+                    </a>
+                  </div>
                   <p className="mt-5 text-lg leading-8 text-white/64 sm:text-xl">
                     Reliance aims to respond {LAUNCH_SUPPORT_RESPONSE_TIME}. Email is the current support channel.
                   </p>
