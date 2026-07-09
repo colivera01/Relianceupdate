@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Settings, CheckCircle, XCircle, Info, User, Shield, Bell, Camera, Sparkles } from 'lucide-react';
+import { Settings, CheckCircle, XCircle, User, Shield, Camera, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
@@ -43,34 +43,6 @@ import {
 // All endpoints require authentication and should validate employee/vendor relationship.
 //
 // End DEVELOPER NOTES
-
-const notificationPreferenceCopy: Record<string, { label: string; description: string; disabled?: boolean }> = {
-  job: {
-    label: 'Job requests',
-    description: 'New job requests and service-record updates',
-  },
-  review: {
-    label: 'Customer reviews',
-    description: 'New video-backed customer reviews',
-  },
-  payout: {
-    label: 'Payment updates',
-    description: 'Billing and payout tools will be announced before they go live',
-    disabled: true,
-  },
-  support: {
-    label: 'Support messages',
-    description: 'Important support conversations',
-  },
-  marketing: {
-    label: 'Marketing updates',
-    description: 'Optional product and promotional updates',
-  },
-  updates: {
-    label: 'System updates',
-    description: 'Reliance platform announcements',
-  },
-};
 
 const businessHourDayLabels: Record<BusinessHoursDayKey, string> = {
   mon: 'Monday',
@@ -123,12 +95,8 @@ export default function VendorProfilePage() {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   
-  const [reminders, setReminders] = useState({ review: true, invoice: false, maintenance: true, followUp: true });
-  const [showReminderToast, setShowReminderToast] = useState(false);
   const [businessHours, setBusinessHours] = useState<BusinessHoursSchedule>(() => defaultBusinessHours());
   const [showBusinessHoursToast, setShowBusinessHoursToast] = useState(false);
-  const [notificationSettings, setNotificationSettings] = useState({ job: true, review: true, payout: false, support: true, marketing: false, updates: true });
-  const [showNotifToast, setShowNotifToast] = useState(false);
   const [securitySettings, setSecuritySettings] = useState({
     twoFactorEnabled: false,
     loginNotifications: true,
@@ -187,31 +155,9 @@ export default function VendorProfilePage() {
       });
       setBusinessHours(normalizeBusinessHours(profile.businessHoursJson || null));
       
-      // Initialize reminders from profile
-      
       // Refresh storage when profile loads
       if (profile.id) {
         fetchStorage();
-      }
-      if (profile.reminders) {
-        setReminders({
-          review: profile.reminders.review ?? true,
-          invoice: profile.reminders.invoice ?? false,
-          maintenance: profile.reminders.maintenance ?? true,
-          followUp: profile.reminders.followUp ?? true,
-        });
-      }
-      
-      // Initialize notificationSettings from profile
-      if (profile.notificationSettings) {
-        setNotificationSettings({
-          job: profile.notificationSettings.job ?? true,
-          review: profile.notificationSettings.review ?? true,
-          payout: profile.notificationSettings.payout ?? false,
-          support: profile.notificationSettings.support ?? true,
-          marketing: profile.notificationSettings.marketing ?? false,
-          updates: profile.notificationSettings.updates ?? true,
-        });
       }
       
       // Initialize securitySettings from profile
@@ -293,23 +239,6 @@ export default function VendorProfilePage() {
     }
   };
 
-  const handleSaveReminders = async () => {
-    try {
-      await updateProfile({
-        reminders: {
-          review: reminders.review,
-          invoice: reminders.invoice,
-          maintenance: reminders.maintenance,
-          followUp: reminders.followUp,
-        },
-      });
-      setShowReminderToast(true);
-      setTimeout(() => setShowReminderToast(false), 2000);
-    } catch (err) {
-      console.error('Error saving reminders:', err);
-    }
-  };
-
   const updateBusinessHourDay = (
     dayKey: BusinessHoursDayKey,
     updates: Partial<BusinessHoursSchedule['days'][number]>
@@ -332,25 +261,6 @@ export default function VendorProfilePage() {
     }
   };
 
-  const handleSaveNotifications = async () => {
-    try {
-      await updateProfile({
-        notificationSettings: {
-          job: notificationSettings.job,
-          review: notificationSettings.review,
-          payout: notificationSettings.payout,
-          support: notificationSettings.support,
-          marketing: notificationSettings.marketing,
-          updates: notificationSettings.updates,
-        },
-      });
-      setShowNotifToast(true);
-      setTimeout(() => setShowNotifToast(false), 2000);
-    } catch (err) {
-      console.error('Error saving notifications:', err);
-    }
-  };
-  
   const handleSaveSecuritySettings = async () => {
     try {
       const normalizedSessionTimeout = Math.min(
@@ -1055,148 +965,6 @@ export default function VendorProfilePage() {
                   </span>
                 ) : null}
               </div>
-            </CardContent>
-          </Card>
-          {/* Enhanced Reminders & Notifications Card */}
-          <Card className="order-4 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
-                  <Bell className="h-6 w-6 text-blue-100" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl text-white">Reminder Preferences</CardTitle>
-                  <p className="text-sm text-slate-300">Save communication preferences for supported launch workflows</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <p className="mb-4 text-sm leading-6 text-slate-300">
-                  These preferences are saved to your profile. Reliance only sends supported launch communications; delayed automation may be limited.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors hover:bg-slate-800">
-                    <input 
-                      type="checkbox" 
-                      checked={reminders.review} 
-                      onChange={e => setReminders(r => ({ ...r, review: e.target.checked }))}
-                      className="h-4 w-4 accent-blue-500"
-                    />
-                    <div>
-                      <div className="font-medium text-white">Review Requests</div>
-                      <div className="text-sm text-slate-300">Request reviews after eligible completed jobs.</div>
-                    </div>
-                    <Info className="ml-auto h-4 w-4 text-blue-100/55" />
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors hover:bg-slate-800">
-                    <input 
-                      type="checkbox" 
-                      checked={reminders.invoice} 
-                      onChange={e => setReminders(r => ({ ...r, invoice: e.target.checked }))}
-                      className="h-4 w-4 accent-blue-500"
-                    />
-                    <div>
-                      <div className="font-medium text-white">Follow-up Reminders</div>
-                      <div className="text-sm text-slate-300">Save your preference for future post-service follow-up reminders.</div>
-                    </div>
-                    <Info className="ml-auto h-4 w-4 text-blue-100/55" />
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors hover:bg-slate-800">
-                    <input 
-                      type="checkbox" 
-                      checked={reminders.maintenance} 
-                      onChange={e => setReminders(r => ({ ...r, maintenance: e.target.checked }))}
-                      className="h-4 w-4 accent-blue-500"
-                    />
-                    <div>
-                      <div className="font-medium text-white">Maintenance Alerts</div>
-                      <div className="text-sm text-slate-300">Save your preference for future maintenance follow-up prompts.</div>
-                    </div>
-                    <Info className="ml-auto h-4 w-4 text-blue-100/55" />
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors hover:bg-slate-800">
-                    <input 
-                      type="checkbox" 
-                      checked={reminders.followUp} 
-                      onChange={e => setReminders(r => ({ ...r, followUp: e.target.checked }))}
-                      className="h-4 w-4 accent-blue-500"
-                    />
-                    <div>
-                      <div className="font-medium text-white">Follow-up Calls</div>
-                      <div className="text-sm text-slate-300">Save your preference for post-service call reminders.</div>
-                    </div>
-                    <Info className="ml-auto h-4 w-4 text-blue-100/55" />
-                  </label>
-                </div>
-                <Button 
-                  onClick={handleSaveReminders} 
-                  className="w-fit bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]"
-                >
-                  Save Reminder Settings
-                </Button>
-                {showReminderToast && (
-                  <div className="mt-2 p-3 bg-green-100 border border-green-300 rounded-lg text-green-700 font-medium">
-                    ✓ Reminder settings saved successfully!
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Enhanced Notification Settings Card */}
-          <Card className="order-5 border border-blue-400/20 bg-slate-950/75 text-white shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg border border-blue-300/20 bg-blue-500/12 p-2">
-                  <Bell className="h-6 w-6 text-blue-100" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl text-white">Notification Preferences</CardTitle>
-                  <p className="text-sm text-slate-300">Manage saved notification settings for active launch features</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(notificationSettings).map(([key, value]) => {
-                  const copy = notificationPreferenceCopy[key] ?? {
-                    label: key.replace(/([A-Z])/g, ' $1').trim(),
-                    description: 'Notification preference',
-                  };
-                  return (
-                  <label
-                    key={key}
-                    className={`flex items-center gap-3 rounded-lg border border-blue-300/20 bg-slate-900/75 p-3 transition-colors ${
-                      copy.disabled ? 'cursor-not-allowed opacity-55 grayscale' : 'cursor-pointer hover:bg-slate-800'
-                    }`}
-                  >
-                    <input 
-                      type="checkbox" 
-                      checked={value} 
-                      onChange={e => setNotificationSettings(s => ({ ...s, [key]: e.target.checked }))}
-                      disabled={copy.disabled}
-                      className="h-4 w-4 accent-blue-500"
-                    />
-                    <div>
-                      <div className="font-medium text-white">{copy.label}</div>
-                      <div className="text-sm text-slate-300">{copy.description}</div>
-                    </div>
-                  </label>
-                  );
-                })}
-              </div>
-              <Button 
-                onClick={handleSaveNotifications} 
-                className="mt-4 w-fit bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]"
-              >
-                Save Notification Settings
-              </Button>
-              {showNotifToast && (
-                <div className="mt-2 p-3 bg-green-100 border border-green-300 rounded-lg text-green-700 font-medium">
-                  ✓ Notification settings saved successfully!
-                </div>
-              )}
             </CardContent>
           </Card>
 
