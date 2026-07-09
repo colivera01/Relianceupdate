@@ -4403,31 +4403,30 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>How scheduled work becomes customer-visible evidence</DialogTitle>
+            <DialogTitle>How a work record becomes customer-visible proof</DialogTitle>
             <DialogDescription>
-              A quick guide for moving a service record or manual work item through employee assignment,
-              customer consent, and service video stages.
+              Create the work record, assign the employee, handle consent and location rules, then complete
+              the three service video stages.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-gray-700">
-              <li><strong>Add or receive the service record</strong> with the customer and service details.</li>
-              <li><strong>Assign an employee</strong> before starting consent or staged video work.</li>
+              <li><strong>Create or receive the work record</strong> with the customer and selected service.</li>
+              <li><strong>Assign the employee</strong> who will record on-site. The employee must already be on your team.</li>
               <li>
-                <strong>Choose the recording location.</strong> Business address recordings require location
-                verification from the employee phone before recording. Customer residence recordings require
-                customer consent. Customer business recordings require customer consent and employee phone
-                location verification.
+                <strong>Choose where the recording happens.</strong> Business address requires employee phone
+                location verification. Customer residence requires customer consent. Customer business requires
+                customer consent and employee phone location verification.
               </li>
-              <li><strong>Send customer consent if required</strong> and wait for the customer to accept it.</li>
-              <li><strong>Send the employee service order</strong> after assignment and any required customer consent.</li>
-              <li><strong>The employee verifies location if required</strong> from the phone they use to record.</li>
-              <li><strong>Start the Starting Condition video</strong> once the employee phone passes any required location check.</li>
-              <li><strong>Continue with Work in Progress and Final Result videos</strong> so the job has the full video package.</li>
+              <li><strong>If customer consent is required, send the consent request</strong> and wait for approval before recording is allowed.</li>
+              <li><strong>Send the employee service order link</strong> so the employee can open it on the phone they will use to record.</li>
+              <li><strong>If location is required, the employee verifies location</strong> from that phone before recording unlocks.</li>
+              <li><strong>The employee records all three stages</strong>: Starting Condition, Work in Progress, and Final Result. Each stage can be previewed, saved, or retaken.</li>
+              <li><strong>The employee sends the finished package to the manager</strong>. Manager and admin approval happen before customers or public pages can see the videos.</li>
             </ol>
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-              Each work card shows its current <strong>Next step</strong>, including whether consent is not required,
-              waiting for customer acceptance, or ready for the next video stage.
+              Each work card shows its current <strong>Next step</strong>: assign employee, wait for customer consent,
+              send/open the service order link, verify employee location, record the next stage, or review completed videos.
             </div>
             <label className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
               <Checkbox
