@@ -26,8 +26,6 @@ const legalLinks = [
   { href: "/sms-policy", label: "SMS Policy" },
 ];
 
-const PUBLIC_OPERATOR_NAME = process.env.NEXT_PUBLIC_RELIANCE_OPERATOR_NAME || "Cesar Olivera";
-
 export function PublicSiteFooter() {
   return (
     <footer className="overflow-hidden border-t border-white/8 bg-[linear-gradient(180deg,#04070d,#02050b)]">
@@ -123,11 +121,6 @@ export function PublicSiteFooter() {
         <div className="mt-14 flex min-w-0 flex-col gap-5 border-t border-white/8 pt-8 text-base text-white/48 sm:flex-row sm:items-start sm:justify-between sm:text-lg">
           <div className="min-w-0">
             <p>&copy; {new Date().getFullYear()} Reliance.</p>
-            <p className="mt-3 max-w-5xl text-sm leading-7 text-white/40 sm:text-base">
-              Reliance is operated by {PUBLIC_OPERATOR_NAME}. Transactional SMS may be sent for account,
-              invite, service-record, consent, review, and support workflows; message frequency varies and
-              users can reply STOP to opt out or HELP for help.
-            </p>
           </div>
           <div className="flex flex-wrap gap-6">
             {legalLinks.map((link) => (
