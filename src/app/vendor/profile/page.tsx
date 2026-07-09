@@ -408,36 +408,33 @@ export default function VendorProfilePage() {
               </div>
               <form className="space-y-6">
                 {/* Profile Photo Section */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium mb-2 text-gray-700">Business Profile Photo</label>
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                <div className="mb-6 rounded-2xl border border-blue-300/20 bg-slate-900/55 p-5">
+                  <label className="mb-4 block text-base font-semibold text-white">Business Profile Photo</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={handlePhotoSelected}
+                  />
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                     <div className="relative shrink-0">
                       {localFormData.profilePhoto || profile.profilePhoto ? (
-                        <div className="flex h-80 w-full max-w-[260px] items-center justify-center overflow-hidden rounded-3xl border border-blue-300/25 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-2 shadow-[0_18px_40px_rgba(3,8,20,0.28)]">
+                        <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-blue-300/25 bg-slate-950/90 p-2 shadow-sm ring-1 ring-blue-200/20">
                           <img
                             src={localFormData.profilePhoto || profile.profilePhoto || ''}
                             alt="Business Profile"
-                            className="h-full w-full rounded-2xl object-contain"
+                            className="h-full w-full rounded-xl object-contain"
                           />
                         </div>
                       ) : (
-                        <div className="flex h-80 w-full max-w-[260px] items-center justify-center rounded-3xl border border-blue-300/25 bg-gradient-to-br from-slate-800 to-blue-950 text-4xl font-semibold text-blue-100 shadow-[0_18px_40px_rgba(3,8,20,0.28)]">
+                        <div className="flex h-28 w-28 items-center justify-center rounded-2xl border border-blue-300/25 bg-gradient-to-br from-blue-600 to-cyan-500 text-2xl font-bold text-white shadow-sm">
                           {businessInitials}
                         </div>
                       )}
-
-                      {/* Hidden file input */}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        ref={fileInputRef}
-                        className="hidden"
-                        onChange={handlePhotoSelected}
-                      />
-
                       <button
                         type="button"
-                        className="absolute -bottom-3 -right-3 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploadingPhoto || (storage?.isOverLimit ?? false)}
                         title={storage?.isOverLimit ? 'Storage limit reached. Delete existing media to upload new files.' : undefined}
@@ -446,19 +443,26 @@ export default function VendorProfilePage() {
                       </button>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="mb-2 text-sm leading-6 text-slate-300">Upload a professional photo of your business, team, or workspace. Customers will use it as a first impression when your public profile is live.</p>
-                      <p className="mb-3 text-xs leading-5 text-slate-400">Vertical job-site photos work well here. Reliance fits the full image inside a polished preview instead of cutting off important details.</p>
-                      <button
-                        type="button"
-                        className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingPhoto || (storage?.isOverLimit ?? false)}
-                        title={storage?.isOverLimit ? 'Storage limit reached. Delete existing media to upload new files.' : undefined}
-                      >
-                        {uploadingPhoto ? 'Uploading...' : 'Change Photo'}
-                      </button>
+                      <div className="inline-flex rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-blue-100">
+                        {localFormData.profilePhoto || profile.profilePhoto ? 'Photo visible on your public profile' : 'Initials shown until you upload a photo'}
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                        Upload a business, team, or workspace photo. Customers see it on your public profile and vendor cards.
+                      </p>
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingPhoto || (storage?.isOverLimit ?? false)}
+                          title={storage?.isOverLimit ? 'Storage limit reached. Delete existing media to upload new files.' : undefined}
+                        >
+                          <Camera className="h-4 w-4" />
+                          {uploadingPhoto ? 'Uploading...' : localFormData.profilePhoto || profile.profilePhoto ? 'Change Photo' : 'Upload Photo'}
+                        </button>
+                      </div>
                       {storage?.isOverLimit && (
-                        <p className="text-xs text-red-600 mt-1">Uploads disabled - storage full</p>
+                        <p className="mt-2 text-xs text-red-300">Uploads disabled - storage full</p>
                       )}
                     </div>
                   </div>
