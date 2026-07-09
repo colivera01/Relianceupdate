@@ -416,16 +416,6 @@ export default function PublicBrowsePage() {
               <p className="mt-5 max-w-xl text-lg leading-8 text-white/72">
                 Search services, compare providers, and see available trust signals before you decide who to contact.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                {['Customer Reviews', 'Public Service Videos', 'Clear Promoted Labels'].map((label) => (
-                  <span
-                    key={label}
-                    className="rounded-full border border-white/10 bg-white/8 px-4 py-2 text-sm font-semibold text-white/82 backdrop-blur-md"
-                  >
-                    {label}
-                  </span>
-                ))}
-              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
