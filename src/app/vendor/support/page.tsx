@@ -49,11 +49,6 @@ function SupportPageContent() {
             <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
               Help your team manage services, jobs, and service videos without leaving the launch flow
             </h1>
-            <p className="text-sm leading-7 text-white/72 sm:text-base">
-              Support stays inside the same premium Reliance workspace: practical launch guidance,
-              clear routes back into vendor tools, and published help channels when an operator
-              action still needs a human follow-up.
-            </p>
           </div>
         </header>
 
