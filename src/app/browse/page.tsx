@@ -437,7 +437,7 @@ export default function PublicBrowsePage() {
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Categories</div>
                 <div className="mt-3 text-3xl font-semibold">{categoryCardsLoading ? 'Loading' : categories.length}</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Service groups with customer-visible examples.</p>
+                <p className="mt-2 text-sm leading-6 text-white/68">Groups with approved public proof.</p>
               </div>
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">What you can compare</div>
@@ -706,7 +706,7 @@ export default function PublicBrowsePage() {
             </div>
           ) : categories.length === 0 ? (
             <div className="rounded-2xl border bg-white p-4 text-sm text-gray-600">
-              No public categories are available yet. Check back as vendors publish more approved public content.
+              No public service categories are available yet. Categories appear after vendors complete all three staged videos and Reliance approves the proof for public view.
             </div>
           ) : (
             <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4">

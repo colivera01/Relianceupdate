@@ -1,5 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
+import {
+  isCompletedStageProofVideo,
+  shouldIncludeAssetForCustomerPublicProof,
+} from "@/lib/proof-media-policy";
+import { resolveVendorJobVideoStageFromSession } from "@/lib/vendor-job-video-stages";
+import {
+  countableMediaAssetWhere,
+  countableServiceWhere,
+  countableVendorWhere,
+} from "@/lib/metrics-exclusion";
 import {
   isTransientDbConnectivityError,
   PUBLIC_DB_UNAVAILABLE_CODE,
@@ -9,25 +20,32 @@ import {
 
 const FALLBACK_CATEGORY_LABEL = "Other Services";
 
+type ProofStageAvailability = {
+  startingCondition: boolean;
+  workInProgress: boolean;
+  finalResult: boolean;
+};
+
 /**
  * GET /api/services/categories
  * Public-safe category aggregation for browse.
  *
- * Counts only services that are currently eligible for public discovery:
- * - vendor is publicly listed
+ * Counts only services that are currently visible in public discovery:
+ * - vendor is publicly listed and active
  * - service is explicitly published
+ * - service has approved, active, public videos for all three proof stages
  */
 export async function GET(): Promise<NextResponse> {
   try {
     const services = await withTransientDbRetry(() =>
       prisma.service.findMany({
-        where: {
+        where: countableServiceWhere({
           isPublished: true,
-          vendor: {
+          vendor: countableVendorWhere({
             isPubliclyListed: true,
             accountStatus: "active",
-          },
-        },
+          }),
+        }),
         select: {
           id: true,
           name: true,
@@ -53,6 +71,89 @@ export async function GET(): Promise<NextResponse> {
       });
     }
 
+    const serviceIds = services.map((service) => service.id);
+    const publicAssets = await withTransientDbRetry<any[]>(() =>
+      (prisma as any).mediaAsset.findMany({
+        where: countableMediaAssetWhere({
+          ...getApprovedActiveBaseWhere(),
+          visibilityStatus: {
+            in: getVisibilityStatusesForAudience("public"),
+          },
+          mediaSession: {
+            serviceId: { in: serviceIds },
+          },
+        }),
+        select: {
+          mimeType: true,
+          blobUrl: true,
+          mediaSession: {
+            select: {
+              serviceId: true,
+              vendorJobVideoStage: true,
+              sessionType: true,
+            },
+          },
+        },
+      })
+    );
+
+    const stageAvailabilityByServiceId = new Map<string, ProofStageAvailability>();
+    const completedPublicPreviewServiceIds = new Set<string>();
+
+    const ensureStageAvailability = (serviceId: string): ProofStageAvailability => {
+      const existing = stageAvailabilityByServiceId.get(serviceId);
+      if (existing) return existing;
+      const next = {
+        startingCondition: false,
+        workInProgress: false,
+        finalResult: false,
+      };
+      stageAvailabilityByServiceId.set(serviceId, next);
+      return next;
+    };
+
+    for (const asset of publicAssets) {
+      const mediaSession = asset?.mediaSession || null;
+      if (!shouldIncludeAssetForCustomerPublicProof(mediaSession)) continue;
+      if (!String(asset?.mimeType || "").startsWith("video/")) continue;
+
+      const serviceId = String(mediaSession?.serviceId || "");
+      if (!serviceId) continue;
+
+      if (String(asset?.blobUrl || "").trim() && isCompletedStageProofVideo(mediaSession)) {
+        completedPublicPreviewServiceIds.add(serviceId);
+      }
+
+      const stage = resolveVendorJobVideoStageFromSession(mediaSession);
+      const availability = ensureStageAvailability(serviceId);
+      if (stage === "INTRO") availability.startingCondition = true;
+      if (stage === "IN_PROGRESS") availability.workInProgress = true;
+      if (stage === "COMPLETED") availability.finalResult = true;
+    }
+
+    const proofEligibleServices = services.filter((service) => {
+      const availability = stageAvailabilityByServiceId.get(service.id);
+      return Boolean(
+        completedPublicPreviewServiceIds.has(service.id) &&
+          availability?.startingCondition &&
+          availability?.workInProgress &&
+          availability?.finalResult
+      );
+    });
+
+    if (proofEligibleServices.length === 0) {
+      return NextResponse.json({
+        success: true,
+        categories: [],
+        meta: {
+          countedServices: 0,
+          scannedPublishedServices: services.length,
+          eligibilityRule:
+            "No service categories are shown until a published service has approved, active, public videos for Starting Condition, Work in Progress, and Final Result.",
+        },
+      });
+    }
+
     const categoryMap = new Map<
       string,
       {
@@ -64,7 +165,7 @@ export async function GET(): Promise<NextResponse> {
       }
     >();
 
-    for (const service of services) {
+    for (const service of proofEligibleServices) {
       const rawCategory = String(service.vendor.category || service.vendor.businessType || "").trim();
       const categoryLabel = rawCategory || FALLBACK_CATEGORY_LABEL;
       const categoryKey = categoryLabel.toLowerCase().replace(/\s+/g, "-");
@@ -101,9 +202,10 @@ export async function GET(): Promise<NextResponse> {
       success: true,
       categories,
       meta: {
-        countedServices: services.length,
+        countedServices: proofEligibleServices.length,
+        scannedPublishedServices: services.length,
         eligibilityRule:
-          "Only services where vendor.accountStatus=active, vendor.isPubliclyListed=true, and service.isPublished=true are counted.",
+          "Only published services from active public vendors with approved public Starting Condition, Work in Progress, and Final Result videos are counted.",
       },
     });
   } catch (error: any) {
