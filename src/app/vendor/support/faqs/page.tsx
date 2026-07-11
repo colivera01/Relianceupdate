@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   HAS_LAUNCH_SUPPORT_EMAIL,
   LAUNCH_SUPPORT_EMAIL,
+  LAUNCH_SUPPORT_GMAIL_COMPOSE_URL,
   LAUNCH_SUPPORT_MAILTO,
 } from '@/lib/support';
 
@@ -221,7 +222,13 @@ export default function FAQsPage() {
               <div className="flex flex-wrap gap-3">
                 {HAS_LAUNCH_SUPPORT_EMAIL ? (
                   <Button asChild>
-                    <a href={LAUNCH_SUPPORT_MAILTO}>{LAUNCH_SUPPORT_EMAIL}</a>
+                    <a
+                      href={LAUNCH_SUPPORT_GMAIL_COMPOSE_URL || LAUNCH_SUPPORT_MAILTO}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {LAUNCH_SUPPORT_EMAIL}
+                    </a>
                   </Button>
                 ) : null}
               </div>

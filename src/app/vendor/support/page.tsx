@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   HAS_LAUNCH_SUPPORT_EMAIL,
   LAUNCH_SUPPORT_EMAIL,
+  LAUNCH_SUPPORT_GMAIL_COMPOSE_URL,
   LAUNCH_SUPPORT_MAILTO,
   LAUNCH_SUPPORT_RESPONSE_TIME,
 } from '@/lib/support';
@@ -88,7 +89,12 @@ function SupportPageContent() {
             <CardContent>
               <div className="grid md:grid-cols-3 gap-4 text-sm">
                 {HAS_LAUNCH_SUPPORT_EMAIL ? (
-                <a href={LAUNCH_SUPPORT_MAILTO} className="block rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-blue-300/35 hover:bg-blue-500/10">
+                <a
+                  href={LAUNCH_SUPPORT_GMAIL_COMPOSE_URL || LAUNCH_SUPPORT_MAILTO}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-blue-300/35 hover:bg-blue-500/10"
+                >
                   <h4 className="font-semibold mb-1">Launch Follow-up</h4>
                   <p className="text-gray-600">
                     Email <span className="text-[var(--reliance-blue-soft)]">{LAUNCH_SUPPORT_EMAIL}</span> for account access, jobs, media, consent, or approval questions.

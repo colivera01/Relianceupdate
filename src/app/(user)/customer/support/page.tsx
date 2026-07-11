@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   HAS_LAUNCH_SUPPORT_EMAIL,
   LAUNCH_SUPPORT_EMAIL,
+  LAUNCH_SUPPORT_GMAIL_COMPOSE_URL,
   LAUNCH_SUPPORT_MAILTO,
   LAUNCH_SUPPORT_RESPONSE_TIME,
 } from '@/lib/support';
@@ -54,7 +55,12 @@ export default async function CustomerSupportPage({
           {HAS_LAUNCH_SUPPORT_EMAIL ? (
             <p className="mt-3 text-sm leading-7 text-[#dbe7ff]">
               Email{' '}
-              <a href={LAUNCH_SUPPORT_MAILTO} className="font-semibold text-white underline underline-offset-4">
+              <a
+                href={LAUNCH_SUPPORT_GMAIL_COMPOSE_URL || LAUNCH_SUPPORT_MAILTO}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-white underline underline-offset-4"
+              >
                 {LAUNCH_SUPPORT_EMAIL}
               </a>
               . Include the service record, vendor, review, or page involved when you can. Reliance aims

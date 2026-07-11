@@ -6,6 +6,7 @@ import { getAuthSessionCookieName, verifyAuthSessionCookie } from '@/lib/auth-se
 import {
   HAS_LAUNCH_SUPPORT_EMAIL,
   LAUNCH_SUPPORT_EMAIL,
+  LAUNCH_SUPPORT_GMAIL_COMPOSE_URL,
   LAUNCH_SUPPORT_MAILTO,
   LAUNCH_SUPPORT_RESPONSE_TIME,
 } from '@/lib/support';
@@ -228,7 +229,12 @@ export default async function PublicHelpPage({
               {HAS_LAUNCH_SUPPORT_EMAIL ? (
                 <p className="mt-3 text-sm leading-7 text-[#dbe7ff]">
                   For customer and account support, email{' '}
-                  <a href={LAUNCH_SUPPORT_MAILTO} className="font-semibold text-white underline underline-offset-4">
+                  <a
+                    href={LAUNCH_SUPPORT_GMAIL_COMPOSE_URL || LAUNCH_SUPPORT_MAILTO}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-white underline underline-offset-4"
+                  >
                     {LAUNCH_SUPPORT_EMAIL}
                   </a>
                   . Use this for account access, service-record questions, vendor approval, video or media concerns,
