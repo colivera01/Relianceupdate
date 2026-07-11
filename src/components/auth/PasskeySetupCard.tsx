@@ -156,10 +156,10 @@ export function PasskeySetupCard(props: {
 
   if (isSupported === null) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-100 flex items-center justify-center">
+      <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
-          <p className="mt-4 text-gray-600">Checking browser support...</p>
+          <p className="mt-4 text-slate-300">Checking browser support...</p>
         </div>
       </div>
     );
@@ -167,10 +167,10 @@ export function PasskeySetupCard(props: {
 
   if (!isSupported) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-100 flex items-center justify-center">
-        <Card className="max-w-xl w-full mx-4">
+      <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white">
+        <Card className="reliance-light-card max-w-xl w-full mx-4">
           <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+            <div className="mx-auto w-12 h-12 bg-red-500/15 rounded-full flex items-center justify-center mb-4">
               <XCircle className="w-6 h-6 text-red-600" />
             </div>
             <CardTitle className="text-xl">Passkeys Not Supported</CardTitle>
@@ -190,10 +190,10 @@ export function PasskeySetupCard(props: {
 
   if (setupComplete) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-100 flex items-center justify-center">
-        <Card className="max-w-xl w-full mx-4">
+      <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white">
+        <Card className="reliance-light-card max-w-xl w-full mx-4">
           <CardHeader className="text-center">
-            <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
+            <div className="mx-auto w-12 h-12 bg-green-500/15 rounded-full flex items-center justify-center mb-4">
               <CheckCircle className="w-6 h-6 text-green-600" />
             </div>
             <CardTitle className="text-xl">Passkey Added</CardTitle>
@@ -207,22 +207,22 @@ export function PasskeySetupCard(props: {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-100 flex items-center justify-center py-12">
-      <Card className="max-w-2xl w-full mx-4 shadow-xl">
+    <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 py-12 text-white">
+      <Card className="reliance-light-card max-w-2xl w-full mx-4 shadow-xl">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+          <div className="mx-auto w-12 h-12 bg-blue-500/15 rounded-full flex items-center justify-center mb-4">
             <Shield className="w-6 h-6 text-blue-600" />
           </div>
           <CardTitle className="text-2xl">{props.title}</CardTitle>
           <CardDescription>{props.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="rounded-lg border border-blue-300/25 bg-blue-500/10 p-4">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
               <div>
-                <h4 className="font-medium text-blue-900 mb-1">What this adds</h4>
-                <p className="text-sm text-blue-800">
+                <h4 className="font-medium text-blue-100 mb-1">What this adds</h4>
+                <p className="text-sm text-blue-100/80">
                   A passkey lets this account sign in with your device security instead of typing a password. On supported devices it can replace the password plus email-code step.
                 </p>
               </div>
@@ -230,12 +230,12 @@ export function PasskeySetupCard(props: {
           </div>
 
           {error ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="rounded-lg border border-red-300/25 bg-red-500/10 p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-medium text-red-900 mb-1">Passkey setup failed</h4>
-                  <p className="text-sm text-red-800">{error}</p>
+                  <h4 className="font-medium text-red-100 mb-1">Passkey setup failed</h4>
+                  <p className="text-sm text-red-100/80">{error}</p>
                 </div>
               </div>
             </div>
@@ -251,7 +251,7 @@ export function PasskeySetupCard(props: {
             {passkeys.length ? (
               <div className="space-y-3">
                 {passkeys.map((passkey) => (
-                  <div key={passkey.id} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div key={passkey.id} className="rounded-lg border border-white/10 bg-white/5 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="font-medium text-slate-900">{passkey.label}</p>
@@ -308,7 +308,7 @@ export function PasskeySetupCard(props: {
                 ))}
               </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+              <div className="rounded-lg border border-dashed border-white/15 bg-white/5 p-4 text-sm text-slate-300">
                 No passkeys are registered for this account yet.
               </div>
             )}

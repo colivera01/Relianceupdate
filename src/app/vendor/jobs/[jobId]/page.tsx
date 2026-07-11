@@ -505,13 +505,13 @@ export default function VendorJobDetailPage() {
                     const latestAsset = stageSession?.mediaAssets?.[0];
                     const hasUpload = Boolean(latestAsset?.id);
                     const stageIsNext = nextMissingStage === stage.key;
-                    const isCompletedStage = stage.key === "COMPLETED";
+                    const stageCardClass = hasUpload
+                      ? "border-emerald-300 bg-emerald-50/50"
+                      : "border-gray-200 bg-white";
                     return (
                       <div
                         key={stage.key}
-                        className={`rounded-lg border p-4 ${
-                          isCompletedStage ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white"
-                        }`}
+                        className={`rounded-lg border p-4 ${stageCardClass}`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-semibold text-gray-900">{stage.label}</p>

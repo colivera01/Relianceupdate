@@ -2764,6 +2764,12 @@ export default function VendorJobs() {
     if (jobMutationLoadingId) return;
     setJobMutationLoadingId(`assign:${String(job?.id || '')}`);
     setJobActionFeedback(null);
+    const previousCompliance = getSavedRecordingComplianceForJob(job);
+    const serviceOrderWasReleased = Boolean(
+      previousCompliance?.serviceOrderReleasedAt ||
+        (Array.isArray(previousCompliance?.releasedMembershipIds) &&
+          previousCompliance.releasedMembershipIds.length > 0)
+    );
     const assignedNames = nextMembershipIds
       .map((membershipId) => {
         const member = teamMembers.find((row) => row.membershipId === membershipId);
@@ -2787,11 +2793,35 @@ export default function VendorJobs() {
       setSelectedJob((prev) =>
         prev && String((prev as any)?.id || '') === String(job?.id || '') ? assignedJob : prev
       );
+      let feedbackType: 'success' | 'error' = 'success';
+      let feedbackMessage = payload?.message || 'Job assignment updated.';
+      if (
+        nextMembershipIds.length > 0 &&
+        serviceOrderWasReleased &&
+        previousCompliance &&
+        isComplianceSatisfiedForRecording(assignedJob, previousCompliance)
+      ) {
+        try {
+          const releasePayload = await releaseEmployeeServiceOrderForJob(assignedJob, previousCompliance);
+          feedbackMessage =
+            releasePayload?.notifications?.sentCount > 0
+              ? 'Job reassigned and the service order was sent to the newly assigned team member.'
+              : releasePayload?.message || 'Job reassigned. The service order was already current for this assignment.';
+        } catch (releaseError) {
+          feedbackType = 'error';
+          feedbackMessage =
+            releaseError instanceof Error
+              ? `Job reassigned, but the service order could not be resent: ${releaseError.message}`
+              : 'Job reassigned, but the service order could not be resent.';
+        }
+      }
       await reloadJobsFromBackend();
-      setJobActionFeedback({ type: 'success', message: payload?.message || 'Job assignment updated.' });
+      setJobActionFeedback({ type: feedbackType, message: feedbackMessage });
       setShowAssignmentModal(false);
       setSelectedAssignmentMembershipIds([]);
-      openComplianceForNextStage(assignedJob);
+      if (!serviceOrderWasReleased && nextMembershipIds.length > 0) {
+        openComplianceForNextStage(assignedJob);
+      }
     } catch (error) {
       setJobActionFeedback({
         type: 'error',
@@ -7036,6 +7066,16 @@ export default function VendorJobs() {
                                   disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
                                 >
                                   Edit
+                                </button>
+                                <button
+                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                  onClick={() => {
+                                    setActiveJobActionMenuId(null);
+                                    openAssignmentModal(job);
+                                  }}
+                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                >
+                                  {isJobAssignedForVideoUpload(job) ? 'Reassign Job' : 'Assign Employee'}
                                 </button>
                                 <button
                                   className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"

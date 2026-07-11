@@ -10,10 +10,10 @@ export default async function CustomerSecureAccountPage() {
 
   if (!session?.userId) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-100 flex items-center justify-center px-4">
-        <div className="w-full max-w-xl rounded-2xl border border-blue-200 bg-white p-8 shadow-sm">
-          <h1 className="text-2xl font-bold text-slate-900">Secure Account</h1>
-          <p className="mt-3 text-slate-700">
+      <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white">
+        <div className="reliance-light-card w-full max-w-xl rounded-2xl p-8 shadow-sm">
+          <h1 className="text-2xl font-bold text-white">Secure Account</h1>
+          <p className="mt-3 text-slate-300">
             Sign in to manage passkeys and sign-in protection for your customer account.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -25,7 +25,7 @@ export default async function CustomerSecureAccountPage() {
             </Link>
             <Link
               href="/profile-settings"
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-white/15 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/10"
             >
               Back to Profile Settings
             </Link>

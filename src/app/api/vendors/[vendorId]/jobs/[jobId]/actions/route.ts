@@ -474,6 +474,20 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         delete metadata.vendor_job_primary_membership_id;
         delete metadata.vendor_job_primary_employee;
       }
+      const releasedMembershipIds = Array.isArray(metadata.vendor_job_service_order_released_membership_ids)
+        ? metadata.vendor_job_service_order_released_membership_ids
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+        : [];
+      if (releasedMembershipIds.length > 0) {
+        const retainedReleasedIds = releasedMembershipIds.filter((id) => membershipIds.includes(id));
+        if (retainedReleasedIds.length > 0) {
+          metadata.vendor_job_service_order_released_membership_ids = retainedReleasedIds;
+        } else {
+          delete metadata.vendor_job_service_order_released_membership_ids;
+          delete metadata.vendor_job_service_order_released_at;
+        }
+      }
       const bookingUpper = normalizeBookingStatus(existing?.status);
       if (bookingUpper === "PENDING" && displayNames.length > 0) {
         const ops = getRelianceOps(metadata);
