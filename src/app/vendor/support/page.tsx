@@ -55,55 +55,6 @@ function SupportPageContent() {
         <div className="grid gap-6">
           <Card className="reliance-operator-surface rounded-[28px] border-white/10">
             <CardHeader>
-              <CardTitle>Current Vendor Actions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <h3 className="font-semibold mb-2">Profile Setup</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Keep your business details, address, reminders, and security preferences current.
-                  </p>
-                  <Link href="/vendor/profile" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
-                    Open Profile
-                  </Link>
-                </div>
-                
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <h3 className="font-semibold mb-2">Service Catalog</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Prepare service details and reference prices while publishing remains coordinated for launch.
-                  </p>
-                  <Link href="/vendor/services" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
-                    Manage Services Offered
-                  </Link>
-                </div>
-                
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <h3 className="font-semibold mb-2">Manage Jobs</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Review active work, service-record details, video stages, and manager approval steps.
-                  </p>
-                  <Link href="/vendor/jobs" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
-                    View Manage Jobs
-                  </Link>
-                </div>
-                
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <h3 className="font-semibold mb-2">Team Access</h3>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Manage employee access and invite status for the launch workflow.
-                  </p>
-                  <Link href="/vendor/employees" className="text-[var(--reliance-blue-soft)] text-sm hover:text-white">
-                    Manage Employees
-                  </Link>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="reliance-operator-surface rounded-[28px] border-white/10">
-            <CardHeader>
               <CardTitle>Launch Help Resources</CardTitle>
             </CardHeader>
             <CardContent>
@@ -136,28 +87,23 @@ function SupportPageContent() {
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-3 gap-4 text-sm">
+                {HAS_LAUNCH_SUPPORT_EMAIL ? (
+                <a href={LAUNCH_SUPPORT_MAILTO} className="block rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-blue-300/35 hover:bg-blue-500/10">
+                  <h4 className="font-semibold mb-1">Launch Follow-up</h4>
+                  <p className="text-gray-600">
+                    Email <span className="text-[var(--reliance-blue-soft)]">{LAUNCH_SUPPORT_EMAIL}</span> for account access, jobs, media, consent, or approval questions.
+                  </p>
+                  <p className="text-gray-500">Expected follow-up is {LAUNCH_SUPPORT_RESPONSE_TIME}. Use the published launch support path while the in-app ticket form remains offline.</p>
+                </a>
+                ) : (
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <h4 className="font-semibold mb-1">Launch Follow-up</h4>
-                  {HAS_LAUNCH_SUPPORT_EMAIL ? (
-                    <>
-                      <p className="text-gray-600">
-                        Email{' '}
-                        <a href={LAUNCH_SUPPORT_MAILTO} className="text-[var(--reliance-blue-soft)] hover:text-white">
-                          {LAUNCH_SUPPORT_EMAIL}
-                        </a>{' '}
-                        for account access, jobs, media, consent, or approval questions.
-                      </p>
-                      <p className="text-gray-500">Expected follow-up is {LAUNCH_SUPPORT_RESPONSE_TIME}. Use the published launch support path while the in-app ticket form remains offline.</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-gray-600">
-                        A dedicated vendor launch inbox has not been published yet.
-                      </p>
-                      <p className="text-gray-500">Set a support email before wider vendor onboarding so operational questions do not route to a personal inbox.</p>
-                    </>
-                  )}
+                  <p className="text-gray-600">
+                    A dedicated vendor launch inbox has not been published yet.
+                  </p>
+                  <p className="text-gray-500">Set a support email before wider vendor onboarding so operational questions do not route to a personal inbox.</p>
                 </div>
+                )}
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <h4 className="font-semibold mb-1">Phone Support</h4>
                   <p className="text-gray-600">Not available in this launch.</p>

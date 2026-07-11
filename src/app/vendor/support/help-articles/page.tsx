@@ -314,25 +314,6 @@ export default function HelpArticlesPage() {
           </Card>
         ) : null}
 
-        <Card className="mt-8 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <h3 className="mb-2 text-lg font-semibold">New to Reliance?</h3>
-              <p className="mb-4 text-gray-600">
-                Start by completing your vendor profile and service catalog so your business details
-                are ready for launch review.
-              </p>
-              <div className="flex flex-wrap justify-center gap-4">
-                <Button asChild>
-                  <Link href="/vendor/profile">Open Vendor Profile</Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link href="/vendor/support/faqs">Read FAQs</Link>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

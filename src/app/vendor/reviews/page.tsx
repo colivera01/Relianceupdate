@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { LockKeyhole, MessageSquare, RefreshCcw, ShieldCheck, Star, Users } from "lucide-react";
 import { useVendorDashboard } from "@/hooks/useVendorDashboard";
 import { Button } from "@/components/ui/button";
@@ -49,9 +48,6 @@ export default function VendorReviewsPage() {
             <p>
               Customer reviews will appear here once your vendor account is approved and your dashboard is available.
             </p>
-            <Button asChild variant="outline">
-              <Link href="/vendor/dashboard">Back to Dashboard</Link>
-            </Button>
           </CardContent>
         </Card>
       </div>
@@ -83,9 +79,6 @@ export default function VendorReviewsPage() {
               <Button type="button" onClick={refetch}>
                 <RefreshCcw className="mr-2 h-4 w-4" />
                 Try Again
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/vendor/dashboard">Back to Dashboard</Link>
               </Button>
             </div>
           </CardContent>
@@ -127,14 +120,6 @@ export default function VendorReviewsPage() {
                 and only uses reviews Reliance can attribute to a specific assigned team member. Reliance
                 Trust Score remains separate from customer star ratings.
               </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button asChild>
-                <Link href="/vendor/dashboard">Back to Dashboard</Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/vendor/jobs?filter=completed">View Completed Jobs</Link>
-              </Button>
             </div>
           </CardContent>
         </Card>

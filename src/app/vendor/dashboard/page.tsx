@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, BarChart3, HelpCircle, ShieldCheck } from 'lucide-react';
+import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, ShieldCheck } from 'lucide-react';
 import { useVendorDashboard } from '@/hooks/useVendorDashboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
@@ -56,8 +56,6 @@ const DEFAULT_PROMOTION_LAUNCH_AVAILABILITY_NOTE =
   'Only currently live promoted placements are requestable here. Homepage spotlight inventory will appear after the public homepage rollout is launched.';
 const PROMOTION_REQUEST_OPTIONS_TIMEOUT_MS = 30000;
 const PROMOTIONS_ENABLED = false;
-const VENDOR_SUPPORT_HREF =
-  '/vendor/support?returnTo=%2Fvendor%2Fdashboard&returnLabel=Back%20to%20Vendor%20Dashboard';
 
 export default function VendorDashboard() {
   const { data, loading, error, refetch, approvalPending } = useVendorDashboard();
@@ -336,9 +334,7 @@ export default function VendorDashboard() {
   const completionRate = Number(dashboardStats.totalBookings || 0) > 0
     ? Math.round((jobsCompleted / Number(dashboardStats.totalBookings || 1)) * 100)
     : 0;
-  const pendingModerationProofs = Number(data.pendingModerationProofs || 0);
   const approvedProofs = Number(data.approvedProofs || 0);
-  const archivedProofs = Number(data.archivedProofs || 0);
   const trustScoreRaw = Number(
     (dashboardStats as any)?.trustScore ??
       (data as any)?.trustScore ??
@@ -357,11 +353,6 @@ export default function VendorDashboard() {
     Math.min(100, Number.isFinite(Number(data.storagePercentUsed)) ? Number(data.storagePercentUsed) : (Number(storageUsedBytes * BigInt(100)) / Number(storageLimitBytes)))
   );
 
-  const videoTiles = [
-    { label: 'Awaiting moderation', value: pendingModerationProofs, route: '/vendor/media?filter=pending', highlight: pendingModerationProofs > 0 },
-    { label: 'Approved videos', value: approvedProofs, route: '/vendor/media?filter=approved', highlight: false },
-    { label: 'Archived videos', value: archivedProofs, route: '/vendor/media?filter=archived', highlight: false },
-  ];
   const selectedPromotionPackage = promotionPackages.find((pkg) => pkg.packageKey === promotionPackageKey);
   const selectedPromotionService = promotionServices.find((service) => service.id === promotionServiceId);
   const effectivePromotionLaunchAvailabilityNote =
@@ -571,40 +562,6 @@ export default function VendorDashboard() {
         </section>
 
         <VendorBusinessVisibilitySection summary={growthSummary} />
-
-        {/* 2) Build Trust */}
-        <Card className="mb-8 bg-white">
-          <CardHeader className="space-y-1">
-            <CardTitle>Build customer trust with service videos</CardTitle>
-            <p className="text-sm text-gray-600">
-              Track which stage videos still need moderation, which trust-building clips are already approved,
-              and what has been archived for your records.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {videoTiles.map((tile) => (
-                <button
-                  key={tile.label}
-                  type="button"
-                  onClick={() => router.push(tile.route)}
-                  className={`rounded-lg border p-5 text-left transition-all hover:shadow-sm ${
-                    tile.highlight ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
-                  }`}
-                >
-                  <p className="text-sm text-gray-600">{tile.label}</p>
-                  <p className={`mt-2 text-4xl font-bold ${tile.highlight ? 'text-amber-700' : 'text-gray-900'}`}>
-                    {tile.value}
-                  </p>
-                </button>
-              ))}
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-              Approved service videos help first-time customers feel like your business is real before they know you.
-              If clips are waiting for moderation, clearing that step is one of the fastest ways to strengthen public trust.
-            </div>
-          </CardContent>
-        </Card>
 
         {PROMOTIONS_ENABLED ? (
         <Card className="mb-8 border-blue-100 bg-blue-50">
@@ -1005,74 +962,6 @@ export default function VendorDashboard() {
           </CardContent>
         </Card>
 
-        {/* 5) Action Layer */}
-        <Card className="bg-white">
-          <CardHeader className="space-y-1">
-            <CardTitle>Go where you need next</CardTitle>
-            <p className="text-sm text-gray-600">
-              Use these shortcuts to manage work, improve trust signals, and keep your business moving.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => router.push('/vendor/jobs')}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
-              >
-                <Calendar className="h-5 w-5 text-blue-600" />
-                <p className="mt-3 font-semibold text-gray-900">Manage Jobs</p>
-                <p className="mt-1 text-sm text-gray-600">Create jobs, send consent, and review service video progress.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push('/vendor/employees')}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
-              >
-                <TrendingUp className="h-5 w-5 text-blue-600" />
-                <p className="mt-3 font-semibold text-gray-900">Employees</p>
-                <p className="mt-1 text-sm text-gray-600">Assign jobs, monitor participation, and manage team access.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push('/vendor/analytics')}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
-              >
-                <BarChart3 className="h-5 w-5 text-blue-600" />
-                <p className="mt-3 font-semibold text-gray-900">Analytics &amp; Trust</p>
-                <p className="mt-1 text-sm text-gray-600">Review Trust Score signals, coaching guidance, and launch-facing performance.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push('/vendor/reviews')}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
-              >
-                <Star className="h-5 w-5 text-blue-600" />
-                <p className="mt-3 font-semibold text-gray-900">Customer Reviews</p>
-                <p className="mt-1 text-sm text-gray-600">Review published feedback, rating history, and moderation status.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push('/vendor/telemetry')}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
-              >
-                <Activity className="h-5 w-5 text-blue-600" />
-                <p className="mt-3 font-semibold text-gray-900">Service Video Activity</p>
-                <p className="mt-1 text-sm text-gray-600">Review incoming service-video activity for assigned work.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push(VENDOR_SUPPORT_HREF)}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50"
-              >
-                <HelpCircle className="h-5 w-5 text-blue-600" />
-                <p className="mt-3 font-semibold text-gray-900">Support &amp; Help</p>
-                <p className="mt-1 text-sm text-gray-600">Open launch guidance, support resources, and the published help email.</p>
-              </button>
-            </div>
-
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

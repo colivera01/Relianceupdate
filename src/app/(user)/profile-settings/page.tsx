@@ -4,13 +4,9 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientAuthHeaders } from '@/lib/client-session';
 import { 
-  ChevronLeft,
   MapPin,
   Shield,
-  Calendar,
   LogOut,
-  Home,
-  Grid,
   CheckCircle,
   AlertCircle,
   Info,
@@ -53,6 +49,31 @@ const emptyProfile: CustomerProfile = {
   zipCode: '',
   memberSince: 'Not available',
 };
+
+function trimProfileForSave(profile: CustomerProfile): CustomerProfile {
+  return {
+    ...profile,
+    firstName: profile.firstName.trim(),
+    lastName: profile.lastName.trim(),
+    email: profile.email.trim(),
+    phone: profile.phone.trim(),
+    address: profile.address.trim(),
+    city: profile.city.trim(),
+    state: profile.state.trim(),
+    zipCode: profile.zipCode.trim(),
+  };
+}
+
+function validateCustomerProfile(profile: CustomerProfile): string | null {
+  if (!profile.firstName.trim()) return 'First name is required.';
+  if (!profile.lastName.trim()) return 'Last name is required.';
+  if (!profile.email.trim()) return 'Email address is required.';
+  if (!/\S+@\S+\.\S+/.test(profile.email.trim())) return 'Enter a valid email address.';
+  if (!profile.phone.trim()) return 'Phone number is required.';
+  const normalizedPhone = profile.phone.replace(/[\s\-\(\)]/g, '');
+  if (!/^[\+]?[1-9][\d]{0,15}$/.test(normalizedPhone)) return 'Enter a valid phone number.';
+  return null;
+}
 
 function formatProfileDate(value: unknown) {
   if (!value) return 'Not available';
@@ -157,6 +178,7 @@ export default function ProfileSettingsPage() {
   const [tempProfile, setTempProfile] = useState(userProfile);
   const customerInitials = useMemo(() => profileInitials(tempProfile), [tempProfile]);
   const customerPhotoUrl = tempProfile.profilePhoto || userProfile.profilePhoto || '';
+  const profileValidationMessage = isEditing ? validateCustomerProfile(tempProfile) : null;
 
   // Fetch user profile data on component mount
   useEffect(() => {
@@ -296,10 +318,21 @@ export default function ProfileSettingsPage() {
   };
 
   const handleSaveProfile = async () => {
+    const profileToSave = trimProfileForSave(tempProfile);
+    const validationMessage = validateCustomerProfile(profileToSave);
+    if (validationMessage) {
+      setFeedback({
+        type: 'error',
+        title: 'Required profile details missing',
+        message: validationMessage,
+      });
+      return;
+    }
+
     setSaving(true);
     setFeedback(null);
     try {
-      const savedProfile = await saveProfileToApi(tempProfile, locationEnabled);
+      const savedProfile = await saveProfileToApi(profileToSave, locationEnabled);
       setUserProfile(savedProfile);
       setTempProfile(savedProfile);
       updateLocalUserData(savedProfile, locationEnabled, savedProfile.profilePhoto);
@@ -518,26 +551,19 @@ export default function ProfileSettingsPage() {
 
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button 
-                onClick={() => router.back()}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-                <span>Back</span>
-              </button>
-              <h1 className="text-2xl font-bold text-gray-900">Profile & Settings</h1>
+              <h1 className="text-2xl font-bold text-white">Profile & Settings</h1>
             </div>
             {isEditing && (
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleCancelEdit}
-                  className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-slate-300 transition-colors hover:text-white"
                 >
                   <X className="w-4 h-4" />
                   Cancel
@@ -603,7 +629,7 @@ export default function ProfileSettingsPage() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Profile Information */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">Profile Information</h2>
                 {!isEditing && (
@@ -621,17 +647,17 @@ export default function ProfileSettingsPage() {
                 {/* Profile Picture */}
                 <div className="relative">
                   {customerPhotoUrl ? (
-                    <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-slate-950/90 p-1.5 ring-2 ring-blue-200">
+                    <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-blue-300/25 bg-slate-950/90 p-2 shadow-sm ring-1 ring-blue-200/20">
                       <img
                         src={customerPhotoUrl}
                         alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
-                        className="h-full w-full rounded-full object-cover"
+                        className="h-full w-full rounded-xl object-cover"
                       />
                     </div>
                   ) : (
-                    <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400">
+                    <div className="flex h-28 w-28 items-center justify-center rounded-2xl border border-blue-300/25 bg-gradient-to-br from-blue-600 to-cyan-500">
                       <span className="text-white font-semibold text-2xl">
-                        {(tempProfile.firstName[0] || '').toUpperCase()}{(tempProfile.lastName[0] || '').toUpperCase()}
+                        {customerInitials}
                       </span>
                     </div>
                   )}
@@ -641,46 +667,50 @@ export default function ProfileSettingsPage() {
               {/* Profile Form */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
                   <input
                     type="text"
                     value={isEditing ? tempProfile.firstName : userProfile.firstName}
                     onChange={(e) => handleProfileChange('firstName', e.target.value)}
                     disabled={!isEditing}
+                    required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
                   <input
                     type="text"
                     value={isEditing ? tempProfile.lastName : userProfile.lastName}
                     onChange={(e) => handleProfileChange('lastName', e.target.value)}
                     disabled={!isEditing}
+                    required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                   <div className="relative">
                     <input
                       type="email"
                       value={isEditing ? tempProfile.email : userProfile.email}
                       onChange={(e) => handleProfileChange('email', e.target.value)}
                       disabled={!isEditing}
+                      required
                       className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
                     <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
                   <div className="relative">
                     <input
                       type="tel"
                       value={isEditing ? tempProfile.phone : userProfile.phone}
                       onChange={(e) => handleProfileChange('phone', e.target.value)}
                       disabled={!isEditing}
+                      required
                       className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
                     <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
@@ -732,6 +762,12 @@ export default function ProfileSettingsPage() {
                   </div>
                 </div>
               </div>
+
+              {profileValidationMessage ? (
+                <div className="mt-4 rounded-lg border border-red-400/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                  {profileValidationMessage}
+                </div>
+              ) : null}
 
               {/* Account Info (Read-only) */}
               <div className="mt-6 pt-6 border-t border-gray-200">
@@ -876,7 +912,7 @@ export default function ProfileSettingsPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Image</h2>
               <input
                 ref={fileInputRef}
@@ -885,29 +921,40 @@ export default function ProfileSettingsPage() {
                 className="hidden"
                 onChange={handlePhotoSelected}
               />
-              <div className="flex items-center gap-4">
-                {customerPhotoUrl ? (
-                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950/90 p-1 shadow-sm ring-2 ring-blue-200">
-                    <img
-                      src={customerPhotoUrl}
-                      alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
-                      className="h-full w-full rounded-full object-cover"
-                    />
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center lg:flex-col lg:items-start xl:flex-row xl:items-center">
+                <div className="relative shrink-0">
+                  {customerPhotoUrl ? (
+                    <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-blue-300/25 bg-slate-950/90 p-2 shadow-sm ring-1 ring-blue-200/20">
+                      <img
+                        src={customerPhotoUrl}
+                        alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
+                        className="h-full w-full rounded-xl object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-28 w-28 items-center justify-center rounded-2xl border border-blue-300/25 bg-gradient-to-br from-blue-600 to-cyan-500 text-2xl font-bold text-white shadow-sm">
+                      {customerInitials}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingPhoto || removingPhoto}
+                    className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Change customer profile photo"
+                  >
+                    <Camera className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-w-0">
+                  <div className="inline-flex rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-blue-100">
+                    {customerPhotoUrl ? 'Photo visible on your customer profile' : 'Initials shown until you upload a photo'}
                   </div>
-                ) : (
-                  <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 text-xl font-bold text-white shadow-sm">
-                    {customerInitials}
-                  </div>
-                )}
-                <div>
-                  <div className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                    {customerPhotoUrl ? 'Photo visible on your signed-in account' : 'Initials shown until you upload a photo'}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-gray-600">
-                    Upload a customer profile photo here to personalize your signed-in Reliance pages. If you remove it, Reliance falls back to your initials.
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    Upload a customer profile photo here to personalize your signed-in Reliance pages.
                   </p>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    Customer photos are managed here after sign-in. They are not part of signup, and Edit Profile Details still only updates your saved contact and address information.
+                  <p className="mt-2 text-xs leading-5 text-slate-400">
+                    If you remove it, Reliance falls back to your initials.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-3">
                     <button
@@ -936,7 +983,7 @@ export default function ProfileSettingsPage() {
             </div>
 
             {/* Account Status */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Status</h2>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -964,54 +1011,8 @@ export default function ProfileSettingsPage() {
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-              <div className="space-y-3">
-                <button
-                  onClick={() => router.push('/user-dashboard')}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <Home className="w-5 h-5" />
-                  <span>Go to Dashboard</span>
-                </button>
-                <button
-                  onClick={() => router.push('/my-bookings')}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <Calendar className="w-5 h-5" />
-                  <span>View My Service Records</span>
-                </button>
-                <button
-                  onClick={() => router.push('/discover')}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <Grid className="w-5 h-5" />
-                  <span>Browse Services</span>
-                </button>
-                <button
-                  onClick={() => router.push('/customer/secure-account')}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <Shield className="w-5 h-5" />
-                  <span>Open Secure Account</span>
-                </button>
-                <button
-                  onClick={() =>
-                    router.push(
-                      '/customer/support?returnTo=%2Fprofile-settings&returnLabel=Back%20to%20Profile%20Settings'
-                    )
-                  }
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <Info className="w-5 h-5" />
-                  <span>Open Help Center</span>
-                </button>
-              </div>
-            </div>
-
             {/* Account Actions */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Actions</h2>
               <div className="space-y-3">
                 <button
