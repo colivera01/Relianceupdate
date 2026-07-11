@@ -14,23 +14,11 @@ import Link from 'next/link';
 import { useRouter } from "next/navigation";
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import {
-  runVendorJobMediaUpload,
-  type VendorJobMediaLifecycleState,
-} from '@/lib/vendor-job-media';
-import {
   VENDOR_JOB_VIDEO_STAGE_LABELS,
   normalizeVendorJobVideoStage,
   resolveVendorJobVideoStageFromSession,
   type VendorJobVideoStage,
 } from '@/lib/vendor-job-video-stages';
-import {
-  STAGE_VIDEO_MAX_DURATION_SECONDS,
-  formatStageVideoDuration,
-  getStageVideoGuidance,
-  getStageVideoLimitCopy,
-  getVideoFileDurationSeconds,
-  isOverStageVideoLimit,
-} from '@/lib/stage-video-guidance';
 import {
   ARCHIVE_ARCHIVED,
   MODERATION_APPROVED,
@@ -344,7 +332,6 @@ export default function VendorJobs() {
   const [showCreateJob, setShowCreateJob] = useState(false);
   const [jobModalMode, setJobModalMode] = useState<'create' | 'edit'>('create');
   const [jobFormTargetId, setJobFormTargetId] = useState<string | null>(null);
-  const [showVideoUpload, setShowVideoUpload] = useState(false);
   const [showSelectJobModal, setShowSelectJobModal] = useState(false);
   const [selectedJobForVideoId, setSelectedJobForVideoId] = useState<string>('');
   const [selectedJob, setSelectedJob] = useState(null);
@@ -380,26 +367,8 @@ export default function VendorJobs() {
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const emailInputRef = useRef<HTMLInputElement | null>(null);
   const serviceTypeSelectRef = useRef<HTMLSelectElement | null>(null);
-  const [newVideo, setNewVideo] = useState<{
-    title: string;
-    description: string;
-    file: File | null;
-    videoStage: '' | VendorJobVideoStage;
-    replaceStage: boolean;
-  }>({ title: '', description: '', file: null, videoStage: '', replaceStage: false });
-  const [selectedVideoDurationSeconds, setSelectedVideoDurationSeconds] = useState<number | null>(null);
   const [preferredNextVideoStage, setPreferredNextVideoStage] = useState<'' | VendorJobVideoStage>('');
   const [preferredReplaceStage, setPreferredReplaceStage] = useState(false);
-  const [videoFieldErrors, setVideoFieldErrors] = useState({
-    title: '',
-    description: '',
-    file: '',
-    videoStage: '',
-  });
-  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
-  const [videoUploadError, setVideoUploadError] = useState('');
-  const activeUploadKeyRef = useRef<string | null>(null);
-  const [uploadLifecycleState, setUploadLifecycleState] = useState<VendorJobMediaLifecycleState>('idle');
   const [search, setSearch] = useState('');
   const [isEmployeeView, setIsEmployeeView] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -816,7 +785,7 @@ export default function VendorJobs() {
     });
   };
 
-  const videoAssignmentRequiredCopy = 'Assign this job before uploading service videos.';
+  const videoAssignmentRequiredCopy = 'Assign this job before sending the employee recording link.';
   const assignmentSatisfiedForCompliance = Boolean(selectedJob && isJobAssignedForVideoUpload(selectedJob));
   const consentRequiredForCompliance =
     location === 'residence' || location === 'customer-business';
@@ -1045,26 +1014,6 @@ export default function VendorJobs() {
     !isCreatingJob &&
     !servicesLoading
   );
-  const hasSelectedJob = Boolean(selectedJob);
-  const trimmedVideoTitle = newVideo.title.trim();
-  const trimmedVideoDescription = newVideo.description.trim();
-  const hasVideoTitle = Boolean(trimmedVideoTitle);
-  const hasVideoDescription = Boolean(trimmedVideoDescription);
-  const hasVideoFile = Boolean(newVideo.file);
-  const hasVideoStage = Boolean(normalizeVendorJobVideoStage(newVideo.videoStage));
-  const hasSelectedJobAssigned = Boolean(selectedJob && isJobAssignedForVideoUpload(selectedJob));
-  const selectedStageGuidance = getStageVideoGuidance(normalizeVendorJobVideoStage(newVideo.videoStage));
-  const canUploadVideo = Boolean(
-    hasSelectedJob &&
-    hasSelectedJobAssigned &&
-    hasVideoTitle &&
-    hasVideoDescription &&
-    hasVideoFile &&
-    hasVideoStage &&
-    vendorId &&
-    !isUploadingVideo
-  );
-
   useEffect(() => {
     const loadServiceOptions = async () => {
       if (!vendorId) {
@@ -1777,42 +1726,6 @@ export default function VendorJobs() {
     }
   };
 
-  const openUploadModalDirect = (
-    job: any,
-    snapshot: {
-      location: 'business' | 'residence' | 'customer-business';
-      consentAccepted: boolean;
-      consentToken: string;
-      locationVerified: boolean;
-    },
-    stage: '' | VendorJobVideoStage,
-    replaceExisting: boolean
-  ) => {
-    setSelectedJob(job);
-    setLocation(snapshot.location);
-    setLocationVerified(Boolean(snapshot.locationVerified));
-    setCustomerConsentReceived(Boolean(snapshot.consentAccepted));
-    setCustomerConsentRequested(Boolean(snapshot.consentAccepted));
-    setCustomerConsentStatus(
-      snapshot.consentAccepted ? CONSENT_STATE.ACCEPTED : CONSENT_STATE.NOT_REQUESTED
-    );
-    setActiveConsentToken(String(snapshot.consentToken || '').trim());
-    setPreferredNextVideoStage('');
-    setPreferredReplaceStage(false);
-    setShowComplianceModal(false);
-    setNewVideo({
-      title: '',
-      description: '',
-      file: null,
-      videoStage: stage,
-      replaceStage: Boolean(replaceExisting),
-    });
-    setSelectedVideoDurationSeconds(null);
-    setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
-    setVideoUploadError('');
-    setShowModal(true);
-  };
-
   const startRecordingFlow = async (
     job: any,
     options?: {
@@ -1843,11 +1756,23 @@ export default function VendorJobs() {
       snapshot: refreshed,
     });
     if (isComplianceSatisfiedForRecording(job, refreshed)) {
-      console.info('[recording-compliance] opening upload directly', {
+      console.info('[recording-compliance] sending employee service order', {
         stage,
         replaceExisting,
       });
-      openUploadModalDirect(job, refreshed!, stage, replaceExisting);
+      setSelectedJob(job);
+      setLocation(refreshed!.location);
+      setLocationVerified(Boolean(refreshed!.locationVerified));
+      setCustomerConsentReceived(Boolean(refreshed!.consentAccepted));
+      setCustomerConsentRequested(Boolean(refreshed!.consentAccepted));
+      setCustomerConsentStatus(
+        refreshed!.consentAccepted ? CONSENT_STATE.ACCEPTED : CONSENT_STATE.NOT_REQUESTED
+      );
+      setActiveConsentToken(String(refreshed!.consentToken || '').trim());
+      setPreferredNextVideoStage('');
+      setPreferredReplaceStage(false);
+      setShowComplianceModal(false);
+      await releaseEmployeeServiceOrderWhenReady(job, refreshed!);
       return;
     }
     console.info('[recording-compliance] opening compliance modal', {
@@ -3542,10 +3467,10 @@ export default function VendorJobs() {
       return;
     }
     
-    // Close compliance modal and open video upload modal
+    // Close compliance modal and release the employee recording link.
     setShowComplianceModal(false);
     if (!selectedJob) {
-      setGeoError('Please select a job before continuing to video upload.');
+      setGeoError('Please select a job before sending the employee recording link.');
       return;
     }
     const complianceLocation = String(location || '').trim().toLowerCase();
@@ -3568,21 +3493,11 @@ export default function VendorJobs() {
         console.warn('[Vendor Compliance] Service order release after continue failed', error);
       }
     }
-    setNewVideo({
-      title: '',
-      description: '',
-      file: null,
-      videoStage: preferredNextVideoStage || '',
-      replaceStage: preferredReplaceStage,
-    });
-    setVideoFieldErrors({ title: '', description: '', file: '', videoStage: '' });
-    setVideoUploadError('');
     setPreferredNextVideoStage('');
     setPreferredReplaceStage(false);
-    setShowModal(true);
     setJobActionFeedback({
       type: 'success',
-      message: 'Compliance completed. Upload the selected stage video to continue.',
+      message: 'Compliance completed. The employee recording link is ready for the assigned worker.',
     });
   };
 
@@ -5360,7 +5275,7 @@ export default function VendorJobs() {
           <DialogHeader>
             <DialogTitle>Select Work Record</DialogTitle>
             <DialogDescription>
-              Select the service record or manual work item this service video belongs to.
+              Select the service record or manual work item for the employee recording link.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 max-h-[50vh] overflow-y-auto">
@@ -5372,7 +5287,7 @@ export default function VendorJobs() {
               </div>
             ) : filteredJobs.length === 0 ? (
               <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-                No work records yet. Add a work record before uploading videos here.
+                No work records yet. Add a work record before sending an employee recording link.
               </div>
             ) : (
               filteredJobs.map((job) => {
@@ -5437,7 +5352,8 @@ export default function VendorJobs() {
         </DialogContent>
       </Dialog>
 
-      {/* Video Upload Modal */}
+      {false ? (
+      /* Legacy vendor upload modal intentionally disabled: stage videos must come from employee recording links. */
       <Dialog
         open={showModal}
         onOpenChange={(open) => {
@@ -5627,6 +5543,7 @@ export default function VendorJobs() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      ) : null}
 
       {/* Bulk Assignment Modal */}
       <Dialog
@@ -6382,10 +6299,10 @@ export default function VendorJobs() {
               </div>
             )}
 
-            {/* Step 3: Proceed to Video Creation */}
+            {/* Step 3: Send employee recording link */}
             {location && (
               <div className="border rounded-lg p-4">
-                <h3 className="font-semibold text-lg mb-3">Step 3: Proceed to Video Creation</h3>
+                <h3 className="font-semibold text-lg mb-3">Step 3: Send Employee Recording Link</h3>
                 <div
                   className={`mb-4 rounded-lg p-3 text-sm ${
                     allComplianceChecksPassed
@@ -6429,7 +6346,7 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-green-900">Customer Consent Accepted</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Customer consent has been accepted. You may proceed to create the service video.
+                            Customer consent has been accepted. Send the service order so the employee can record from their job link.
                           </p>
                         </div>
                       </div>

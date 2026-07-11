@@ -535,11 +535,9 @@ export default function VendorJobDetailPage() {
                             <Button size="sm" variant="outline" onClick={() => void watchStage(stage.key)}>
                               Watch
                             </Button>
-                            {isEmployee ? (
-                              <p className="text-xs text-amber-700">
-                                Retake supported: uploading again replaces this stage video.
-                              </p>
-                            ) : null}
+                            <p className="text-xs text-gray-600">
+                              Retakes happen from the employee recording workspace.
+                            </p>
                           </div>
                         ) : (
                           <p className="mt-3 text-sm text-gray-500">
@@ -551,29 +549,16 @@ export default function VendorJobDetailPage() {
                           </p>
                         )}
                         <div className="mt-3">
-                          {isEmployee ? (
-                            <label className="inline-flex cursor-pointer items-center text-sm text-blue-700 hover:underline">
-                              Upload
-                              <input
-                                type="file"
-                                accept="video/*"
-                                className="hidden"
-                                disabled={Boolean(uploadingStage)}
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  void validateAndUploadStage(stage.key, file);
-                                  e.currentTarget.value = "";
-                                }}
-                              />
-                            </label>
-                          ) : (
-                            <p className="mt-1 text-xs text-gray-500">Employee upload action only.</p>
-                          )}
-                          {stageIsNext && isEmployee ? (
-                            <p className="mt-1 text-xs font-medium text-blue-700">Next required stage</p>
+                          <Button asChild size="sm" variant={stageIsNext ? "default" : "outline"}>
+                            <Link href={`/employee/jobs?jobId=${encodeURIComponent(jobId)}`}>
+                              {stageIsNext ? "Open Employee Recording" : "Employee Recording"}
+                            </Link>
+                          </Button>
+                          {stageIsNext ? (
+                            <p className="mt-1 text-xs font-medium text-blue-700">
+                              Next required stage. The assigned employee records this from their job link.
+                            </p>
                           ) : null}
-                          {uploadingStage === stage.key ? <p className="mt-1 text-xs text-blue-700">Uploading...</p> : null}
                         </div>
                       </div>
                     );
