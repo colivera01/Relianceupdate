@@ -91,7 +91,7 @@ function hasEmployeeCaptureToken(searchParams: URLSearchParams, headers: Headers
 
 function isEmployeeCaptureMediaPath(pathname: string): boolean {
   return /^\/api\/vendors\/[^/]+\/media\/sessions(?:\/[^/]+)?$/.test(pathname)
-    || /^\/api\/vendors\/[^/]+\/media\/upload\/(?:init|complete)$/.test(pathname);
+    || /^\/api\/vendors\/[^/]+\/media\/upload\/(?:init|complete|proxy)$/.test(pathname);
 }
 
 export function isBetaGateBypassRequest(

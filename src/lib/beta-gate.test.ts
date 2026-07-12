@@ -170,6 +170,7 @@ describe("private beta gate", () => {
       "/api/vendors/vendor-1/media/sessions/session-1",
       "/api/vendors/vendor-1/media/upload/init",
       "/api/vendors/vendor-1/media/upload/complete",
+      "/api/vendors/vendor-1/media/upload/proxy",
     ]) {
       const response = await middleware(
         betaRequest(path, undefined, {

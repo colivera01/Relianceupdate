@@ -108,6 +108,7 @@ function employeePhoneLocationRequired(job: EmployeeJob): boolean {
 
 const EMPLOYEE_JOBS_TIMEOUT_MS = 20000;
 const EMPLOYEE_PAIR_TIMEOUT_MS = 15000;
+const EMPLOYEE_DIRECT_UPLOAD_TIMEOUT_MS = 45000;
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
@@ -523,6 +524,55 @@ export default function EmployeeJobsPage() {
     await loadJobs();
   };
 
+  const uploadStageBlob = async (input: {
+    job: EmployeeJob;
+    file: File;
+    assetId: string;
+    blobKey: string;
+    sasUrl: string;
+  }) => {
+    const contentType = input.file.type || "video/mp4";
+    let directUploadError = "";
+
+    try {
+      const putRes = await fetchWithTimeout(
+        String(input.sasUrl),
+        {
+          method: "PUT",
+          headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": contentType },
+          body: input.file,
+        },
+        EMPLOYEE_DIRECT_UPLOAD_TIMEOUT_MS
+      );
+      if (putRes.ok) return "direct";
+      directUploadError = `Direct upload failed (${putRes.status})`;
+    } catch (error) {
+      directUploadError = error instanceof Error ? error.message : "Direct upload failed";
+    }
+
+    const proxyRes = await fetch(`/api/vendors/${input.job.vendorId}/media/upload/proxy`, {
+      method: "POST",
+      headers: {
+        ...employeeRequestHeaders(false),
+        "Content-Type": contentType,
+        "x-reliance-asset-id": input.assetId,
+        "x-reliance-blob-key": input.blobKey,
+        "x-reliance-booking-id": input.job.id,
+      },
+      body: input.file,
+    });
+    const proxyJson = await proxyRes.json().catch(() => ({}));
+    if (!proxyRes.ok || !proxyJson?.success) {
+      throw new Error(
+        proxyJson?.message ||
+          proxyJson?.error ||
+          `${directUploadError || "Direct upload failed"}; fallback upload failed`
+      );
+    }
+
+    return "proxy";
+  };
+
   const uploadStageVideo = async (
     job: EmployeeJob,
     stage: (typeof STAGES)[number]["key"],
@@ -583,14 +633,13 @@ export default function EmployeeJobsPage() {
         throw new Error(initJson?.error || "Failed to initialize upload");
       }
 
-      const putRes = await fetch(String(initJson.sasUrl), {
-        method: "PUT",
-        headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": file.type || "video/mp4" },
-        body: file,
+      await uploadStageBlob({
+        job,
+        file,
+        assetId: String(initJson.assetId),
+        blobKey: String(initJson.blobKey),
+        sasUrl: String(initJson.sasUrl),
       });
-      if (!putRes.ok) {
-        throw new Error(`Upload failed (${putRes.status})`);
-      }
 
       const completeRes = await fetch(`/api/vendors/${job.vendorId}/media/upload/complete`, {
         method: "POST",
