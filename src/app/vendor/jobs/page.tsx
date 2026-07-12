@@ -6898,7 +6898,11 @@ export default function VendorJobs() {
                     ) : null}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap justify-end">
+                <div
+                  className="flex items-center gap-2 flex-wrap justify-end"
+                  data-no-card-open
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {!isEmployeeView && getPrimaryJobCtaLabel(job) ? (
                     <Button
                       size="sm"

@@ -97,7 +97,6 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       where: { id: booking.id },
       data: {
         customerMetadata: setStageProgressMetadata(booking.customerMetadata, stage as any),
-        ...(hasAllRequiredStages ? { status: "AWAITING_REVIEW" } : {}),
       },
       select: { id: true, status: true, customerMetadata: true, updatedAt: true },
     });
@@ -109,7 +108,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       actorUserId: userId || tokenAccess!.userId,
       newValue: {
         stage,
-        awaitingReview: hasAllRequiredStages,
+        readyForManagerReview: hasAllRequiredStages,
       },
       metadata: {
         vendorId: booking.vendorId,
@@ -122,7 +121,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       success: true,
       stage,
       readyForManagerReview: hasAllRequiredStages,
-      awaitingReview: hasAllRequiredStages,
+      awaitingReview: false,
       job: updated,
     });
   } catch (error: any) {

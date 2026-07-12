@@ -166,6 +166,60 @@ describe("employee job lifecycle routes", () => {
       id: "job-1",
       title: "Breaker Replacement",
       stageProgress: { INTRO: true, IN_PROGRESS: false, COMPLETED: false },
+      canMarkComplete: false,
+    });
+  });
+
+  it("enables manual manager submission for in-progress jobs with all three videos", async () => {
+    const { GET } = await import("./route");
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
+      vendorId: "vendor-1",
+      bookingId: "job-1",
+      membershipId: "membership-1",
+      userId: "employee-from-token",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      employeeName: "Tech One",
+      token: {},
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "membership-1",
+        vendorId: "vendor-1",
+        vendor: { name: "Electro LLC", businessName: "Electro LLC", accountStatus: "ACTIVE" },
+      },
+    ]);
+    hoisted.bookingFindMany.mockResolvedValue([
+      {
+        id: "job-1",
+        vendorId: "vendor-1",
+        title: "Outlet Installation",
+        status: "IN_PROGRESS",
+        customerMetadata: "{}",
+        scheduledFor: null,
+        date: null,
+        service: { id: "svc-1", name: "Outlet Installation" },
+        user: { id: "customer-1", name: "Brandon Sims", email: null, phone: "4074861397" },
+        vendor: { id: "vendor-1", name: "Electro LLC", businessName: "Electro LLC" },
+      },
+    ]);
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      { bookingId: "job-1", vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "asset-1" }] },
+      { bookingId: "job-1", vendorJobVideoStage: "IN_PROGRESS", mediaAssets: [{ id: "asset-2" }] },
+      { bookingId: "job-1", vendorJobVideoStage: "COMPLETED", mediaAssets: [{ id: "asset-3" }] },
+    ]);
+
+    const response = await GET(
+      new Request("http://localhost/api/employee/jobs?ct=signed-token", { method: "GET" })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.jobs[0]).toMatchObject({
+      id: "job-1",
+      status: "IN_PROGRESS",
+      stageProgress: { INTRO: true, IN_PROGRESS: true, COMPLETED: true },
+      canMarkComplete: true,
     });
   });
 
@@ -213,6 +267,59 @@ describe("employee job lifecycle routes", () => {
     expect(response.status).toBe(200);
     expect(hoisted.vendorMembershipFindMany).not.toHaveBeenCalled();
     expect(hoisted.bookingUpdate).toHaveBeenCalled();
+  });
+
+  it("does not auto-submit to manager review when the final stage is saved", async () => {
+    const { POST } = await import("./[jobId]/stage/route");
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
+      vendorId: "vendor-1",
+      bookingId: "job-1",
+      membershipId: "membership-1",
+      userId: "employee-from-token",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      employeeName: "Tech One",
+      token: {},
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "job-1",
+      vendorId: "vendor-1",
+      status: "IN_PROGRESS",
+      customerMetadata: "{}",
+    });
+    hoisted.mediaSessionFindFirst.mockResolvedValue({
+      id: "session-3",
+      mediaAssets: [{ id: "asset-3" }],
+    });
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      { vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "asset-1" }] },
+      { vendorJobVideoStage: "IN_PROGRESS", mediaAssets: [{ id: "asset-2" }] },
+      { vendorJobVideoStage: "COMPLETED", mediaAssets: [{ id: "asset-3" }] },
+    ]);
+    hoisted.bookingUpdate.mockResolvedValue({
+      id: "job-1",
+      status: "IN_PROGRESS",
+      customerMetadata: "{}",
+      updatedAt: new Date("2026-07-12T00:00:00.000Z"),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/employee/jobs/job-1/stage?ct=signed-token", {
+        method: "POST",
+        body: JSON.stringify({ stage: "COMPLETED" }),
+      }),
+      { params: Promise.resolve({ jobId: "job-1" }) }
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
+      where: { id: "job-1" },
+      data: { customerMetadata: "{}" },
+      select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+    });
+    expect(json.readyForManagerReview).toBe(true);
+    expect(json.awaitingReview).toBe(false);
   });
 
   it("blocks start when the job is no longer pending", async () => {

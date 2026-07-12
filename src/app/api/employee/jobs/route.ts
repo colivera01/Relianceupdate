@@ -129,7 +129,9 @@ export async function GET(request: Request): Promise<NextResponse> {
         stageProgress.INTRO &&
         stageProgress.IN_PROGRESS &&
         stageProgress.COMPLETED &&
-        (normalizedStatus === "PENDING" || normalizedStatus === "CONFIRMED");
+        (normalizedStatus === "PENDING" ||
+          normalizedStatus === "CONFIRMED" ||
+          normalizedStatus === "IN_PROGRESS");
       return {
         id: booking.id,
         vendorId: booking.vendorId,
