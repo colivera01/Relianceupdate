@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { PasskeySetupCard } from '@/components/auth/PasskeySetupCard';
+import UserSidebar from '@/components/UserSidebar';
 import { getAuthSessionCookieName, verifyAuthSessionCookie } from '@/lib/auth-session';
 
 export default async function CustomerSecureAccountPage() {
@@ -36,18 +37,20 @@ export default async function CustomerSecureAccountPage() {
   }
 
   return (
-    <PasskeySetupCard
-      title="Secure Your Account"
-      description="Add a passkey so you can sign in with your device security instead of typing a password."
-      redirectPath="/profile-settings"
-      skipLabel="Back to Profile Settings"
-      secondaryActions={[
-        {
-          label: "Open Help Center",
-          href: "/customer/support?returnTo=%2Fcustomer%2Fsecure-account&returnLabel=Back%20to%20Secure%20Account",
-        },
-        { label: "Go to Dashboard", href: "/user-dashboard" },
-      ]}
-    />
+    <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen">
+      <UserSidebar />
+      <main className="reliance-operator-main min-w-0 flex-1 overflow-auto">
+        <div className="w-full px-4 pb-28 pt-6 sm:px-6 sm:pt-10 md:pb-6">
+          <PasskeySetupCard
+            title="Secure Your Account"
+            description="Add a passkey so you can sign in with your device security instead of typing a password."
+            redirectPath="/profile-settings"
+            skipLabel="Back to Profile Settings"
+            embedded
+            showSkipAction={false}
+          />
+        </div>
+      </main>
+    </div>
   );
 }

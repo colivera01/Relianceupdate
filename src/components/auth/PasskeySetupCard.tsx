@@ -28,6 +28,8 @@ export function PasskeySetupCard(props: {
   description: string;
   redirectPath: string;
   skipLabel: string;
+  embedded?: boolean;
+  showSkipAction?: boolean;
   secondaryActions?: Array<{
     label: string;
     href: string;
@@ -42,6 +44,13 @@ export function PasskeySetupCard(props: {
   const [isLoadingPasskeys, setIsLoadingPasskeys] = useState(true);
   const [revokingPasskeyId, setRevokingPasskeyId] = useState<string | null>(null);
   const [pendingRemovalPasskeyId, setPendingRemovalPasskeyId] = useState<string | null>(null);
+  const shellClassName = props.embedded
+    ? 'flex min-h-[calc(100vh-8rem)] items-center justify-center px-4 py-8 text-white'
+    : 'reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white';
+  const mainShellClassName = props.embedded
+    ? 'flex min-h-[calc(100vh-8rem)] items-center justify-center px-4 py-8 text-white'
+    : 'reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 py-12 text-white';
+  const showSkipAction = props.showSkipAction !== false;
 
   const loadPasskeys = async () => {
     setIsLoadingPasskeys(true);
@@ -156,7 +165,7 @@ export function PasskeySetupCard(props: {
 
   if (isSupported === null) {
     return (
-      <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white">
+      <div className={shellClassName}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
           <p className="mt-4 text-slate-300">Checking browser support...</p>
@@ -167,7 +176,7 @@ export function PasskeySetupCard(props: {
 
   if (!isSupported) {
     return (
-      <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white">
+      <div className={shellClassName}>
         <Card className="reliance-light-card max-w-xl w-full mx-4">
           <CardHeader className="text-center">
             <div className="mx-auto w-12 h-12 bg-red-500/15 rounded-full flex items-center justify-center mb-4">
@@ -178,11 +187,13 @@ export function PasskeySetupCard(props: {
               This browser cannot create or use passkeys. You can keep using your password and email code sign-in.
             </CardDescription>
           </CardHeader>
-          <CardContent className="text-center">
-            <Button onClick={skipPasskey} className="w-full">
-              {props.skipLabel}
-            </Button>
-          </CardContent>
+          {showSkipAction ? (
+            <CardContent className="text-center">
+              <Button onClick={skipPasskey} className="w-full">
+                {props.skipLabel}
+              </Button>
+            </CardContent>
+          ) : null}
         </Card>
       </div>
     );
@@ -190,7 +201,7 @@ export function PasskeySetupCard(props: {
 
   if (setupComplete) {
     return (
-      <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 text-white">
+      <div className={shellClassName}>
         <Card className="reliance-light-card max-w-xl w-full mx-4">
           <CardHeader className="text-center">
             <div className="mx-auto w-12 h-12 bg-green-500/15 rounded-full flex items-center justify-center mb-4">
@@ -207,7 +218,7 @@ export function PasskeySetupCard(props: {
   }
 
   return (
-    <div className="reliance-operator-shell reliance-grid-lines flex min-h-screen items-center justify-center px-4 py-12 text-white">
+    <div className={mainShellClassName}>
       <Card className="reliance-light-card max-w-2xl w-full mx-4 shadow-xl">
         <CardHeader className="text-center">
           <div className="mx-auto w-12 h-12 bg-blue-500/15 rounded-full flex items-center justify-center mb-4">
@@ -328,9 +339,11 @@ export function PasskeySetupCard(props: {
                 </>
               )}
             </Button>
-            <Button variant="outline" onClick={skipPasskey} className="w-full" disabled={isSettingUp}>
-              {props.skipLabel}
-            </Button>
+            {showSkipAction ? (
+              <Button variant="outline" onClick={skipPasskey} className="w-full" disabled={isSettingUp}>
+                {props.skipLabel}
+              </Button>
+            ) : null}
             {props.secondaryActions?.length ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {props.secondaryActions.map((action) => (
