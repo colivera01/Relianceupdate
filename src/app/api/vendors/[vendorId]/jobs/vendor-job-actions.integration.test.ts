@@ -17,13 +17,12 @@ const hoisted = vi.hoisted(() => {
   const consentRecordFindFirst = vi.fn();
   const txMediaSessionUpdateMany = vi.fn();
   const txMediaAssetUpdateMany = vi.fn();
-  const txBookingUpdate = vi.fn();
   const txBookingDelete = vi.fn();
   const transaction = vi.fn(async (cb: any) =>
     cb({
       mediaSession: { updateMany: txMediaSessionUpdateMany },
       mediaAsset: { updateMany: txMediaAssetUpdateMany },
-      booking: { update: txBookingUpdate, delete: txBookingDelete },
+      booking: { delete: txBookingDelete },
     })
   );
 
@@ -64,7 +63,6 @@ const hoisted = vi.hoisted(() => {
     consentRecordFindFirst,
     txMediaSessionUpdateMany,
     txMediaAssetUpdateMany,
-    txBookingUpdate,
     txBookingDelete,
     transaction,
   };
@@ -161,7 +159,6 @@ describe("vendor job actions integration", () => {
     hoisted.consentRecordFindFirst.mockReset();
     hoisted.txMediaSessionUpdateMany.mockReset();
     hoisted.txMediaAssetUpdateMany.mockReset();
-    hoisted.txBookingUpdate.mockReset();
     hoisted.txBookingDelete.mockReset();
     hoisted.transaction.mockClear();
   });
@@ -383,92 +380,47 @@ describe("vendor job actions integration", () => {
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("PATCH DELETE_JOB_STAGE_VIDEO archives the selected stage and returns awaiting-review jobs to in-progress", async () => {
-    const metadata = JSON.stringify({
-      vendor_job_stage_progress: {
-        INTRO: "uploaded",
-        IN_PROGRESS: "uploaded",
-        COMPLETED: "uploaded",
-      },
-      reliance_ops: { operational_phase: "AWAITING_VENDOR_REVIEW" },
-    });
-    hoisted.bookingFindFirst.mockResolvedValue({
-      id: "job1",
-      vendorId: "v1",
-      status: "AWAITING_REVIEW",
-      customerMetadata: metadata,
-    });
-    hoisted.mediaSessionFindMany.mockResolvedValue([
-      {
-        id: "session-completed",
-        mediaAssets: [{ id: "asset-completed" }],
-      },
-    ]);
-    hoisted.txMediaAssetUpdateMany.mockResolvedValue({ count: 1 });
-    hoisted.txMediaSessionUpdateMany.mockResolvedValue({ count: 1 });
-    hoisted.txBookingUpdate.mockImplementation(async (args: any) => ({
-      id: "job1",
-      status: args.data.status,
-      customerMetadata: args.data.customerMetadata,
-      updatedAt: new Date("2026-07-12T13:00:00.000Z"),
-    }));
-
-    const { req, ctx } = patchReqBody("v1", "job1", {
-      action: "DELETE_JOB_STAGE_VIDEO",
-      videoStage: "COMPLETED",
-    });
-    const res = await PATCH(req, ctx as any);
-    const json = await toJson(res);
+  it("GET marks awaiting-review jobs as vendor-deletable service orders", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "AWAITING_REVIEW" });
+    hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }]);
+    hoisted.mediaAssetCount.mockResolvedValue(3);
+    const { req, ctx } = getReq("v1", "job1");
+    const res = await GET(req, ctx as any);
+    const j = await toJson(res);
 
     expect(res.status).toBe(200);
-    expect(requireVendorManager).toHaveBeenCalled();
-    expect(hoisted.mediaSessionFindMany).toHaveBeenCalledWith({
-      where: {
-        vendorId: "v1",
-        bookingId: "job1",
-        sessionType: "JOB_SERVICE_VIDEO",
-        vendorJobVideoStage: "COMPLETED",
-        status: { not: "ARCHIVED" },
-      },
-      select: {
-        id: true,
-        mediaAssets: {
-          where: { deletedAt: null },
-          select: { id: true },
-        },
-      },
+    expect(j.canVendorDelete).toBe(true);
+    expect(j.linkedSessionCount).toBe(1);
+    expect(j.linkedAssetCount).toBe(3);
+  });
+
+  it("DELETE allows awaiting-review service orders and archives linked media before deleting", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "AWAITING_REVIEW" });
+    hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }, { id: "s2" }]);
+    hoisted.mediaAssetCount.mockResolvedValue(2);
+
+    const { req, ctx } = deleteReq("v1", "job1");
+    const res = await DELETE(req, ctx as any);
+    const j = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(hoisted.txMediaSessionUpdateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["s1", "s2"] } },
+      data: { status: "ARCHIVED", endedAt: expect.any(Date) },
     });
     expect(hoisted.txMediaAssetUpdateMany).toHaveBeenCalledWith({
-      where: {
-        id: { in: ["asset-completed"] },
-        vendorId: "v1",
-        deletedAt: null,
-      },
+      where: { mediaSessionId: { in: ["s1", "s2"] }, deletedAt: null },
       data: { deletedAt: expect.any(Date) },
     });
     expect(hoisted.txMediaSessionUpdateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["session-completed"] } },
-      data: { status: "ARCHIVED", endedAt: expect.any(Date) },
+      where: { id: { in: ["s1", "s2"] } },
+      data: { bookingId: null },
     });
-    const savedMetadata = JSON.parse(hoisted.txBookingUpdate.mock.calls[0][0].data.customerMetadata);
-    expect(savedMetadata.vendor_job_stage_progress.COMPLETED).toBeUndefined();
-    expect(savedMetadata.vendor_job_stage_progress.INTRO).toBe("uploaded");
-    expect(savedMetadata.reliance_ops.operational_phase).toBe("IN_PROGRESS");
-    expect(hoisted.txBookingUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "job1" },
-        data: expect.objectContaining({
-          status: "CONFIRMED",
-          customerMetadata: expect.any(String),
-        }),
-      })
-    );
-    expect(json).toMatchObject({
-      success: true,
-      videoStage: "COMPLETED",
-      deletedAssetCount: 1,
-      archivedSessionCount: 1,
+    expect(hoisted.txBookingDelete).toHaveBeenCalledWith({
+      where: { id: "job1" },
     });
+    expect(j.hardDeleted).toBe(true);
+    expect(j.code).toBe("JOB_DELETE_SUCCESS_WITH_LINKED_CONTENT_ARCHIVED");
   });
 
   it("PATCH ASSIGN_JOB stores primary employee attribution and defers the service order email", async () => {

@@ -963,10 +963,9 @@ export default function VendorJobs() {
   const [activeJobActionMenuId, setActiveJobActionMenuId] = useState<string | null>(null);
   const [showJobActionConfirmModal, setShowJobActionConfirmModal] = useState(false);
   const [pendingJobAction, setPendingJobAction] = useState<
-    "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "DELETE_PERMANENTLY" | "DELETE_STAGE_VIDEO" | null
+    "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "DELETE_PERMANENTLY" | null
   >(null);
   const [jobActionTarget, setJobActionTarget] = useState<any>(null);
-  const [jobActionStageTarget, setJobActionStageTarget] = useState<VendorJobVideoStage | null>(null);
   const [jobActionFeedback, setJobActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [jobActionLoading, setJobActionLoading] = useState(false);
   const [showRejectJobModal, setShowRejectJobModal] = useState(false);
@@ -3871,8 +3870,7 @@ export default function VendorJobs() {
       | "UPDATE_RECORDING_COMPLIANCE"
       | "RELEASE_EMPLOYEE_SERVICE_ORDER"
       | "UPDATE_STATUS"
-      | "APPROVE_JOB_COMPLETION"
-      | "DELETE_JOB_STAGE_VIDEO",
+      | "APPROVE_JOB_COMPLETION",
     extra: Record<string, unknown> = {}
   ) => {
     if (!vendorId) {
@@ -3899,12 +3897,6 @@ export default function VendorJobs() {
 
   const moveContentToArchive = async (job: any) => {
     const payload = await runPersistedJobAction(job, "MOVE_CONTENT_TO_ARCHIVE");
-    await reloadJobsFromBackend();
-    return payload;
-  };
-
-  const deleteStageVideo = async (job: any, videoStage: VendorJobVideoStage) => {
-    const payload = await runPersistedJobAction(job, "DELETE_JOB_STAGE_VIDEO", { videoStage });
     await reloadJobsFromBackend();
     return payload;
   };
@@ -4151,12 +4143,10 @@ export default function VendorJobs() {
 
   const openJobActionConfirm = (
     job: any,
-    action: "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "DELETE_PERMANENTLY" | "DELETE_STAGE_VIDEO",
-    videoStage?: VendorJobVideoStage
+    action: "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "DELETE_PERMANENTLY"
   ) => {
     setJobActionTarget(job);
     setPendingJobAction(action);
-    setJobActionStageTarget(videoStage || null);
     setShowJobActionConfirmModal(true);
     setActiveJobActionMenuId(null);
     if (action === "DELETE_PERMANENTLY" && vendorId) {
@@ -4217,18 +4207,11 @@ export default function VendorJobs() {
         });
       } else if (pendingJobAction === "DELETE_PERMANENTLY") {
         const payload = await deleteJobPermanently(jobActionTarget);
-        setJobActionFeedback({ type: "success", message: payload?.message || "Job permanently deleted." });
-      } else if (pendingJobAction === "DELETE_STAGE_VIDEO") {
-        if (!jobActionStageTarget) {
-          throw new Error("Choose which stage video to delete.");
-        }
-        const payload = await deleteStageVideo(jobActionTarget, jobActionStageTarget);
-        setJobActionFeedback({ type: "success", message: payload?.message || "Video deleted." });
+        setJobActionFeedback({ type: "success", message: payload?.message || "Service order deleted." });
       }
       setShowJobActionConfirmModal(false);
       setPendingJobAction(null);
       setJobActionTarget(null);
-      setJobActionStageTarget(null);
       setDeleteImpactPreview(null);
     } catch (error) {
       setJobActionFeedback({
@@ -4246,9 +4229,7 @@ export default function VendorJobs() {
       : pendingJobAction === "MOVE_CONTENT_TO_ARCHIVE"
       ? "Move Content to Archive"
       : pendingJobAction === "DELETE_PERMANENTLY"
-      ? "Delete Job"
-      : pendingJobAction === "DELETE_STAGE_VIDEO"
-      ? `Delete ${formatVideoStageLabel(jobActionStageTarget)} Video`
+      ? "Delete Service Order"
       : "Confirm Action";
 
   const pendingJobActionDescription = (() => {
@@ -4263,15 +4244,12 @@ export default function VendorJobs() {
         return "Checking whether this job can be deleted safely...";
       }
       if (deleteImpactPreview?.status === "COMPLETED") {
-        return "Completed jobs cannot be deleted by vendors. Please contact an admin if further action is needed.";
+        return "Completed service orders cannot be deleted by vendors. Please contact an admin if further action is needed.";
       }
       if ((deleteImpactPreview?.linkedSessionCount || 0) > 0) {
-        return "This job has linked media. Deleting this job will also archive related media/session records so nothing is orphaned.";
+        return "This service order has linked media. Deleting it will archive related media/session records so nothing is orphaned.";
       }
-      return "Permanently delete this job? Pending and in-progress jobs only. Completed jobs must be archived.";
-    }
-    if (pendingJobAction === "DELETE_STAGE_VIDEO") {
-      return `This will remove the ${formatVideoStageLabel(jobActionStageTarget).toLowerCase()} video from this job and mark that stage as missing. The employee can upload a replacement stage video afterward.`;
+      return "Permanently delete this service order? Completed service orders must be archived.";
     }
     return "Please confirm this job action.";
   })();
@@ -7120,27 +7098,19 @@ export default function VendorJobs() {
                                     >
                                       Reject Video
                                     </button>
-                                    {([
-                                      { key: 'INTRO' as const, label: 'Delete Starting Condition Video' },
-                                      { key: 'IN_PROGRESS' as const, label: 'Delete Work in Progress Video' },
-                                      { key: 'COMPLETED' as const, label: 'Delete Final Result Video' },
-                                    ]).map((stage) =>
-                                      jobHasVideoForStage(job, stage.key) ? (
-                                        <button
-                                          key={`${job.id}-${stage.key}-delete-video`}
-                                          className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                          onClick={() => {
-                                            setActiveJobActionMenuId(null);
-                                            openJobActionConfirm(job, "DELETE_STAGE_VIDEO", stage.key);
-                                          }}
-                                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                        >
-                                          {stage.label}
-                                        </button>
-                                      ) : null
-                                    )}
                                   </>
                                 ) : null}
+                                <button
+                                  className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                  onClick={() => {
+                                    setActiveJobActionMenuId(null);
+                                    openJobActionConfirm(job, "DELETE_PERMANENTLY");
+                                  }}
+                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                  title="Delete this service order and archive any linked media safely."
+                                >
+                                  Delete Service Order
+                                </button>
                               </>
                             );
                           }
@@ -7177,27 +7147,6 @@ export default function VendorJobs() {
                                 >
                                   {isJobAssignedForVideoUpload(job) ? 'Reassign Job' : 'Assign Employee'}
                                 </button>
-                                {isActiveManager
-                                  ? ([
-                                      { key: 'INTRO' as const, label: 'Delete Starting Condition Video' },
-                                      { key: 'IN_PROGRESS' as const, label: 'Delete Work in Progress Video' },
-                                      { key: 'COMPLETED' as const, label: 'Delete Final Result Video' },
-                                    ]).map((stage) =>
-                                      jobHasVideoForStage(job, stage.key) ? (
-                                        <button
-                                          key={`${job.id}-${stage.key}-delete-video`}
-                                          className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                          onClick={() => {
-                                            setActiveJobActionMenuId(null);
-                                            openJobActionConfirm(job, "DELETE_STAGE_VIDEO", stage.key);
-                                          }}
-                                          disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                        >
-                                          {stage.label}
-                                        </button>
-                                      ) : null
-                                    )
-                                  : null}
                                 <button
                                   className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"
                                   onClick={() => {
@@ -7205,9 +7154,9 @@ export default function VendorJobs() {
                                     openJobActionConfirm(job, "DELETE_PERMANENTLY");
                                   }}
                                   disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                  title="Permanently delete this pending or in-progress job."
+                                  title="Delete this service order and archive any linked media safely."
                                 >
-                                  Delete Job
+                                  Delete Service Order
                                 </button>
                               </>
                             );
@@ -7282,7 +7231,6 @@ export default function VendorJobs() {
               onClick={() => {
                 setShowJobActionConfirmModal(false);
                 setDeleteImpactPreview(null);
-                setJobActionStageTarget(null);
               }}
               disabled={jobActionLoading}
             >
@@ -7296,11 +7244,7 @@ export default function VendorJobs() {
                 (pendingJobAction === "DELETE_PERMANENTLY" &&
                   (deleteImpactPreview?.loading || deleteImpactPreview?.canVendorDelete === false))
               }
-              className={
-                pendingJobAction === "DELETE_PERMANENTLY" || pendingJobAction === "DELETE_STAGE_VIDEO"
-                  ? "bg-red-600 hover:bg-red-700"
-                  : ""
-              }
+              className={pendingJobAction === "DELETE_PERMANENTLY" ? "bg-red-600 hover:bg-red-700" : ""}
             >
               {jobActionLoading ? "Processing..." : pendingJobActionTitle}
             </Button>

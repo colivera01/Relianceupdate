@@ -111,19 +111,3 @@ export function setStageProgressMetadata(
   };
   return JSON.stringify(parsed);
 }
-
-export function clearStageProgressMetadata(
-  value: string | null | undefined,
-  stage: "INTRO" | "IN_PROGRESS" | "COMPLETED"
-): string {
-  const parsed = parseCustomerMetadata(value);
-  const current = parsed.vendor_job_stage_progress;
-  const normalizedCurrent =
-    current && typeof current === "object" && !Array.isArray(current)
-      ? { ...(current as Record<string, unknown>) }
-      : {};
-  delete normalizedCurrent[stage];
-  normalizedCurrent.updatedAt = new Date().toISOString();
-  parsed.vendor_job_stage_progress = normalizedCurrent;
-  return JSON.stringify(parsed);
-}

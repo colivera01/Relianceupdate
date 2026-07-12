@@ -13,15 +13,9 @@ import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
 import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
 import {
-  clearStageProgressMetadata,
   normalizeRecordingLocationChoice,
   parseRecordingComplianceMetadata,
 } from "@/lib/job-assignment";
-import {
-  normalizeVendorJobVideoStage,
-  VENDOR_JOB_VIDEO_STAGE_LABELS,
-  type VendorJobVideoStage,
-} from "@/lib/vendor-job-video-stages";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -36,8 +30,7 @@ type JobAction =
   | "UPDATE_RECORDING_COMPLIANCE"
   | "RELEASE_EMPLOYEE_SERVICE_ORDER"
   | "UPDATE_STATUS"
-  | "APPROVE_JOB_COMPLETION"
-  | "DELETE_JOB_STAGE_VIDEO";
+  | "APPROVE_JOB_COMPLETION";
 
 type ResolvedAssignmentMember = {
   id: string;
@@ -311,10 +304,6 @@ async function getVendorJobPackageState(vendorId: string, bookingId: string) {
     },
   });
   return evaluateVendorJobPackageState(sessions);
-}
-
-function stageLabel(stage: VendorJobVideoStage) {
-  return VENDOR_JOB_VIDEO_STAGE_LABELS[stage] || "Stage";
 }
 
 export async function PATCH(request: Request, context: RouteParams): Promise<NextResponse> {
@@ -873,112 +862,6 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       });
     }
 
-    if (action === "DELETE_JOB_STAGE_VIDEO") {
-      await requireVendorManager(request, vendorId);
-      const stage = normalizeVendorJobVideoStage(body?.videoStage);
-      if (!stage) {
-        return NextResponse.json(
-          apiResponse(false, "VIDEO_STAGE_REQUIRED", "Choose which stage video to delete."),
-          { status: 422 }
-        );
-      }
-
-      const sessions = await (prisma as any).mediaSession.findMany({
-        where: {
-          vendorId,
-          bookingId: booking.id,
-          sessionType: "JOB_SERVICE_VIDEO",
-          vendorJobVideoStage: stage,
-          status: { not: "ARCHIVED" },
-        },
-        select: {
-          id: true,
-          mediaAssets: {
-            where: { deletedAt: null },
-            select: { id: true },
-          },
-        },
-      });
-      const sessionIds = sessions.map((session: any) => String(session.id)).filter(Boolean);
-      const activeAssetIds = sessions
-        .flatMap((session: any) => (Array.isArray(session.mediaAssets) ? session.mediaAssets : []))
-        .map((asset: any) => String(asset.id))
-        .filter(Boolean);
-
-      if (activeAssetIds.length === 0) {
-        return NextResponse.json(
-          apiResponse(
-            false,
-            "STAGE_VIDEO_NOT_FOUND",
-            `${stageLabel(stage)} video was not found or is already deleted.`
-          ),
-          { status: 404 }
-        );
-      }
-
-      const nextCustomerMetadata = clearStageProgressMetadata(booking.customerMetadata, stage);
-      const bookingUpdateData: Record<string, unknown> = {
-        customerMetadata: setOperationalPhaseOnMetadataJson(nextCustomerMetadata, "IN_PROGRESS"),
-      };
-      if (normalizeBookingStatus(booking.status) === "AWAITING_REVIEW") {
-        bookingUpdateData.status = "CONFIRMED";
-      }
-
-      const [assetUpdateResult, sessionUpdateResult, updatedBooking] = await prisma.$transaction(
-        async (tx) => {
-          const deletedAssets = await (tx as any).mediaAsset.updateMany({
-            where: {
-              id: { in: activeAssetIds },
-              vendorId,
-              deletedAt: null,
-            },
-            data: { deletedAt: new Date() },
-          });
-          const archivedSessions = await (tx as any).mediaSession.updateMany({
-            where: { id: { in: sessionIds } },
-            data: {
-              status: "ARCHIVED",
-              endedAt: new Date(),
-            },
-          });
-          const updated = await tx.booking.update({
-            where: { id: booking.id },
-            data: bookingUpdateData,
-            select: { id: true, status: true, customerMetadata: true, updatedAt: true },
-          });
-          return [deletedAssets, archivedSessions, updated];
-        }
-      );
-
-      await recordLifecycleAudit({
-        actionType: "job_stage_video_deleted",
-        entityType: "booking",
-        entityId: booking.id,
-        actorUserId: member.userId,
-        newValue: {
-          stage,
-          deletedAssetCount: assetUpdateResult?.count || 0,
-          archivedSessionCount: sessionUpdateResult?.count || 0,
-          status: updatedBooking.status,
-        },
-        metadata: { vendorId },
-      });
-
-      return NextResponse.json({
-        success: true,
-        action,
-        job: {
-          id: updatedBooking.id,
-          status: updatedBooking.status,
-          updatedAt: updatedBooking.updatedAt,
-        },
-        videoStage: stage,
-        deletedAssetCount: assetUpdateResult?.count || 0,
-        archivedSessionCount: sessionUpdateResult?.count || 0,
-        message: `${stageLabel(stage)} video deleted. The job is back in progress until the employee uploads that stage again.`,
-      });
-    }
-
     if (action === "MOVE_CONTENT_TO_ARCHIVE") {
       const sessions = await (prisma as any).mediaSession.findMany({
         where: {
@@ -1070,7 +953,7 @@ export async function DELETE(request: Request, context: RouteParams): Promise<Ne
     }
 
     // UI "in progress" maps to Prisma CONFIRMED (legacy check used IN_PROGRESS which never matched).
-    const allowedVendorDeleteStatuses = new Set(["PENDING", "CONFIRMED"]);
+    const allowedVendorDeleteStatuses = new Set(["PENDING", "CONFIRMED", "AWAITING_REVIEW"]);
     if (!allowedVendorDeleteStatuses.has(normalizedStatus)) {
       return NextResponse.json(
         apiResponse(
@@ -1193,7 +1076,9 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
     const { linkedSessionCount, linkedAssetCount } = await getLinkedMediaSummary(vendorId, booking.id);
 
     const canVendorDelete =
-      normalizedStatus === "PENDING" || normalizedStatus === "CONFIRMED";
+      normalizedStatus === "PENDING" ||
+      normalizedStatus === "CONFIRMED" ||
+      normalizedStatus === "AWAITING_REVIEW";
 
     return NextResponse.json({
       jobId: booking.id,
