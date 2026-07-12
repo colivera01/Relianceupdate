@@ -12,9 +12,9 @@ interface RouteParams {
 
 export async function POST(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
-    const userId = await getUserIdFromRequest(request);
     const { jobId } = await context.params;
-    const tokenAccess = userId ? null : await resolveEmployeeCaptureAccess(request, { bookingId: jobId });
+    const userId = await getUserIdFromRequest(request);
+    const tokenAccess = await resolveEmployeeCaptureAccess(request, { bookingId: jobId });
     if (!userId && !tokenAccess) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const memberships = tokenAccess

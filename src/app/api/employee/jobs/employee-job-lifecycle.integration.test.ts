@@ -2,14 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => {
   const vendorMembershipFindMany = vi.fn();
+  const bookingFindMany = vi.fn();
   const bookingFindUnique = vi.fn();
   const bookingUpdate = vi.fn();
+  const mediaSessionFindFirst = vi.fn();
   const mediaSessionFindMany = vi.fn();
+  const resolveEmployeeCaptureAccess = vi.fn();
   return {
     vendorMembershipFindMany,
+    bookingFindMany,
     bookingFindUnique,
     bookingUpdate,
+    mediaSessionFindFirst,
     mediaSessionFindMany,
+    resolveEmployeeCaptureAccess,
   };
 });
 
@@ -19,10 +25,12 @@ vi.mock("@/server/db", () => ({
       findMany: hoisted.vendorMembershipFindMany,
     },
     booking: {
+      findMany: hoisted.bookingFindMany,
       findUnique: hoisted.bookingFindUnique,
       update: hoisted.bookingUpdate,
     },
     mediaSession: {
+      findFirst: hoisted.mediaSessionFindFirst,
       findMany: hoisted.mediaSessionFindMany,
     },
   },
@@ -36,6 +44,20 @@ vi.mock("@/lib/job-assignment", () => ({
   parseAssignmentMetadata: vi.fn(() => ({
     assignedMembershipIds: ["membership-1"],
   })),
+  parseRecordingComplianceMetadata: vi.fn(() => ({
+    location: "business",
+    consentAccepted: false,
+    consentToken: "",
+    locationVerified: true,
+    locationVerifiedAt: "2026-07-12T00:00:00.000Z",
+    serviceOrderReleasedAt: "2026-07-12T00:00:00.000Z",
+    releasedMembershipIds: ["membership-1"],
+  })),
+  setStageProgressMetadata: vi.fn(() => "{}"),
+}));
+
+vi.mock("@/lib/employee-capture-token", () => ({
+  resolveEmployeeCaptureAccess: hoisted.resolveEmployeeCaptureAccess,
 }));
 
 vi.mock("@/lib/lifecycle-audit", () => ({
@@ -45,6 +67,7 @@ vi.mock("@/lib/lifecycle-audit", () => ({
 vi.mock("@/lib/account-status", () => ({
   ensureUserAccountCanAct: vi.fn(async () => undefined),
   ensureVendorAccountCanOperate: vi.fn(async () => undefined),
+  isVendorAccountRestricted: vi.fn(() => false),
   accountStatusErrorBody: vi.fn(() => ({ error: "account blocked" })),
   AccountStatusError: class AccountStatusError extends Error {
     statusCode = 403;
@@ -61,9 +84,13 @@ vi.mock("@/lib/employee-runtime-errors", () => ({
 describe("employee job lifecycle routes", () => {
   beforeEach(() => {
     hoisted.vendorMembershipFindMany.mockReset();
+    hoisted.bookingFindMany.mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.mediaSessionFindFirst.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
+    hoisted.resolveEmployeeCaptureAccess.mockReset();
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue(null);
 
     hoisted.vendorMembershipFindMany.mockResolvedValue([
       {
@@ -73,6 +100,119 @@ describe("employee job lifecycle routes", () => {
         status: "ACTIVE",
       },
     ]);
+  });
+
+  it("uses the capture token assignment even when the browser has another signed-in user", async () => {
+    const { GET } = await import("./route");
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
+      vendorId: "vendor-1",
+      bookingId: "job-1",
+      membershipId: "membership-1",
+      userId: "employee-from-token",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      employeeName: "Tech One",
+      token: {},
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "membership-1",
+        vendorId: "vendor-1",
+        vendor: { name: "Electro LLC", businessName: "Electro LLC", accountStatus: "ACTIVE" },
+      },
+    ]);
+    hoisted.bookingFindMany.mockResolvedValue([
+      {
+        id: "job-1",
+        vendorId: "vendor-1",
+        title: "Breaker Replacement",
+        status: "IN_PROGRESS",
+        customerMetadata: "{}",
+        scheduledFor: null,
+        date: null,
+        service: { id: "svc-1", name: "Breaker Replacement" },
+        user: { id: "customer-1", name: "Bradley Coopers", email: null, phone: "4079148888" },
+        vendor: { id: "vendor-1", name: "Electro LLC", businessName: "Electro LLC" },
+      },
+    ]);
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      {
+        bookingId: "job-1",
+        vendorJobVideoStage: "INTRO",
+        mediaAssets: [{ id: "asset-1" }],
+      },
+    ]);
+
+    const response = await GET(
+      new Request("http://localhost/api/employee/jobs?ct=signed-token", { method: "GET" })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(hoisted.vendorMembershipFindMany).toHaveBeenCalledWith({
+      where: { id: "membership-1" },
+      select: { id: true, vendorId: true, vendor: { select: { name: true, businessName: true, accountStatus: true } } },
+    });
+    expect(hoisted.bookingFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "job-1",
+          vendorId: { in: ["vendor-1"] },
+        }),
+      })
+    );
+    expect(json.jobs).toHaveLength(1);
+    expect(json.jobs[0]).toMatchObject({
+      id: "job-1",
+      title: "Breaker Replacement",
+      stageProgress: { INTRO: true, IN_PROGRESS: false, COMPLETED: false },
+    });
+  });
+
+  it("uses the capture token assignment when saving a replacement stage", async () => {
+    const { POST } = await import("./[jobId]/stage/route");
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
+      vendorId: "vendor-1",
+      bookingId: "job-1",
+      membershipId: "membership-1",
+      userId: "employee-from-token",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      employeeName: "Tech One",
+      token: {},
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "job-1",
+      vendorId: "vendor-1",
+      status: "IN_PROGRESS",
+      customerMetadata: "{}",
+    });
+    hoisted.mediaSessionFindFirst.mockResolvedValue({
+      id: "session-1",
+      mediaAssets: [{ id: "asset-1" }],
+    });
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      { vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "asset-1" }] },
+      { vendorJobVideoStage: "IN_PROGRESS", mediaAssets: [{ id: "asset-2" }] },
+    ]);
+    hoisted.bookingUpdate.mockResolvedValue({
+      id: "job-1",
+      status: "IN_PROGRESS",
+      customerMetadata: "{}",
+      updatedAt: new Date("2026-07-12T00:00:00.000Z"),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/employee/jobs/job-1/stage?ct=signed-token", {
+        method: "POST",
+        body: JSON.stringify({ stage: "INTRO" }),
+      }),
+      { params: Promise.resolve({ jobId: "job-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(hoisted.vendorMembershipFindMany).not.toHaveBeenCalled();
+    expect(hoisted.bookingUpdate).toHaveBeenCalled();
   });
 
   it("blocks start when the job is no longer pending", async () => {

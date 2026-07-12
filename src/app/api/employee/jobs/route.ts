@@ -24,11 +24,11 @@ function emptyStageProgress() {
 export async function GET(request: Request): Promise<NextResponse> {
   try {
     const userId = await getUserIdFromRequest(request);
-    const tokenAccess = userId ? null : await resolveEmployeeCaptureAccess(request);
-    if (!userId) {
-      if (!tokenAccess) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const tokenAccess = await resolveEmployeeCaptureAccess(request);
+    if (!userId && !tokenAccess) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (userId) {
+    if (userId && !tokenAccess) {
       await ensureUserAccountCanAct(userId);
     }
 
