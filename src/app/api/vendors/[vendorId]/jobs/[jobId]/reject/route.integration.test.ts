@@ -5,11 +5,16 @@ import { requireVendorManager } from "@/lib/membership-auth";
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
   const bookingUpdate = vi.fn();
+  const vendorMembershipFindMany = vi.fn();
+  const sendJobRejectionNotification = vi.fn();
 
   const prisma = {
     booking: {
       findFirst: bookingFindFirst,
       update: bookingUpdate,
+    },
+    vendorMembership: {
+      findMany: vendorMembershipFindMany,
     },
   };
 
@@ -17,6 +22,8 @@ const hoisted = vi.hoisted(() => {
     prisma,
     bookingFindFirst,
     bookingUpdate,
+    vendorMembershipFindMany,
+    sendJobRejectionNotification,
   };
 });
 
@@ -26,6 +33,10 @@ vi.mock("@/server/db", () => ({
 
 vi.mock("@/lib/membership-auth", () => ({
   requireVendorManager: vi.fn(),
+}));
+
+vi.mock("@/lib/notifications/send-job-rejection", () => ({
+  sendJobRejectionNotification: hoisted.sendJobRejectionNotification,
 }));
 
 function postReq(vendorId: string, jobId: string, body?: Record<string, unknown>) {
@@ -52,6 +63,14 @@ describe("vendor job reject integration", () => {
     } as any);
     hoisted.bookingFindFirst.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.vendorMembershipFindMany.mockReset();
+    hoisted.sendJobRejectionNotification.mockReset();
+    hoisted.vendorMembershipFindMany.mockResolvedValue([]);
+    hoisted.sendJobRejectionNotification.mockResolvedValue({
+      anySuccess: true,
+      phoneNumberUsed: "+14075550123",
+      channels: [{ channel: "sms", attempted: true, success: true }],
+    });
   });
 
   it("returns 403 when manager auth is forbidden", async () => {
@@ -85,6 +104,10 @@ describe("vendor job reject integration", () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",
       status: "AWAITING_REVIEW",
+      title: "Breaker Replacement",
+      customerMetadata: null,
+      service: { name: "Breaker Replacement" },
+      vendor: { businessName: "Electro LLC", name: "Electro LLC" },
     });
     hoisted.bookingUpdate.mockResolvedValue({
       id: "job1",
@@ -105,5 +128,65 @@ describe("vendor job reject integration", () => {
     const json = await toJson(res);
     expect(json.code).toBe("JOB_REJECTED");
     expect(json.success).toBe(true);
+  });
+
+  it("notifies assigned employees with a correction link when rejected", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      status: "AWAITING_REVIEW",
+      title: "Breaker Replacement",
+      customerMetadata: JSON.stringify({
+        vendor_job_assigned_membership_ids: ["member-1"],
+        vendor_job_assigned_employees: ["Tech One"],
+      }),
+      service: { name: "Breaker Replacement" },
+      vendor: { businessName: "Electro LLC", name: "Electro LLC" },
+    });
+    hoisted.bookingUpdate.mockResolvedValue({
+      id: "job1",
+      status: "IN_PROGRESS",
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "member-1",
+        user: {
+          name: "Tech One",
+          email: "tech@example.com",
+          phone: "4075550123",
+        },
+      },
+    ]);
+
+    const { req, ctx } = postReq("v1", "job1", { rejectionReason: "Final result needs a clear wide shot." });
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(hoisted.vendorMembershipFindMany).toHaveBeenCalledWith({
+      where: {
+        vendorId: "v1",
+        id: { in: ["member-1"] },
+        status: { in: ["ACTIVE", "active", "PENDING", "pending"] },
+      },
+      include: {
+        user: { select: { name: true, email: true, phone: true } },
+      },
+    });
+    expect(hoisted.sendJobRejectionNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "job1",
+        actorUserId: "manager-1",
+        employeeName: "Tech One",
+        employeeEmail: "tech@example.com",
+        employeePhone: "4075550123",
+        vendorName: "Electro LLC",
+        jobTitle: "Breaker Replacement",
+        rejectionReason: "Final result needs a clear wide shot.",
+      })
+    );
+    expect(hoisted.sendJobRejectionNotification.mock.calls[0][0].employeeJobLink).toContain(
+      "/employee/jobs?jobId=job1&ct="
+    );
+    expect((json.details as any).notifications.sentCount).toBe(1);
   });
 });

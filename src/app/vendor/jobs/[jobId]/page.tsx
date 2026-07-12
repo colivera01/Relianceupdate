@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
@@ -44,6 +44,7 @@ type SessionDetails = {
     createdAt?: string | null;
     blobUrl?: string | null;
     moderationStatus?: string | null;
+    title?: string | null;
   }>;
 };
 
@@ -74,6 +75,20 @@ function statusBadgeClass(status: string) {
   return "bg-gray-100 text-gray-700";
 }
 
+function isRealAzureBlobHostUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && parsed.hostname.toLowerCase().endsWith(".blob.core.windows.net");
+  } catch {
+    return false;
+  }
+}
+
+function stageVideoTitle(stageKey: string) {
+  const stage = STAGE_ORDER.find((item) => item.key === stageKey);
+  return stage ? `${stage.label} Video` : "Stage Video";
+}
+
 export default function VendorJobDetailPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = String(params?.jobId || "").trim();
@@ -101,6 +116,11 @@ export default function VendorJobDetailPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadingStage, setUploadingStage] = useState<string | null>(null);
+  const [playbackUrl, setPlaybackUrl] = useState("");
+  const [playbackTitle, setPlaybackTitle] = useState("");
+  const [playbackError, setPlaybackError] = useState("");
+  const [playbackOpen, setPlaybackOpen] = useState(false);
+  const [resolvingPlaybackStage, setResolvingPlaybackStage] = useState<string | null>(null);
   const headers = useMemo(() => getClientSessionHeaders(userId), [userId]);
   const effectiveVendorId = String(vendorId || "").trim();
   const normalizedStatus = normalizeStatus(job?.status);
@@ -229,11 +249,27 @@ export default function VendorJobDetailPage() {
     const session = stageMap.get(stageKey);
     const asset = session?.mediaAssets?.[0];
     if (!asset?.id) return;
-    window.open(
-      `/api/vendors/${effectiveVendorId}/media/${asset.id}/download`,
-      "_blank",
-      "noopener,noreferrer"
-    );
+    try {
+      if (resolvingPlaybackStage === stageKey) return;
+      setResolvingPlaybackStage(stageKey);
+      setPlaybackError("");
+      const res = await fetch(
+        `/api/vendors/${effectiveVendorId}/media/${encodeURIComponent(asset.id)}/download`,
+        { method: "GET", headers, cache: "no-store" }
+      );
+      const json = await res.json().catch(() => ({}));
+      const downloadUrl = String(json?.downloadUrl || json?.url || "").trim();
+      if (!res.ok || !downloadUrl || !isRealAzureBlobHostUrl(downloadUrl)) {
+        throw new Error(String(json?.error || "Video preview could not be loaded."));
+      }
+      setPlaybackUrl(downloadUrl);
+      setPlaybackTitle(stageVideoTitle(stageKey));
+      setPlaybackOpen(true);
+    } catch (e) {
+      setPlaybackError(e instanceof Error ? e.message : "Unable to open this video.");
+    } finally {
+      setResolvingPlaybackStage(null);
+    }
   };
 
   const uploadStage = async (stageKey: string, file: File, durationSeconds: number) => {
@@ -533,7 +569,7 @@ export default function VendorJobDetailPage() {
                                 : "Unknown"}
                             </p>
                             <Button size="sm" variant="outline" onClick={() => void watchStage(stage.key)}>
-                              Watch
+                              {resolvingPlaybackStage === stage.key ? "Opening..." : "Watch"}
                             </Button>
                             <p className="text-xs text-gray-600">
                               Retakes happen from the employee recording workspace.
@@ -548,18 +584,11 @@ export default function VendorJobDetailPage() {
                                 : "No video yet — upload the completion video."}
                           </p>
                         )}
-                        <div className="mt-3">
-                          <Button asChild size="sm" variant={stageIsNext ? "default" : "outline"}>
-                            <Link href={`/employee/jobs?jobId=${encodeURIComponent(jobId)}`}>
-                              {stageIsNext ? "Open Employee Recording" : "Employee Recording"}
-                            </Link>
-                          </Button>
-                          {stageIsNext ? (
-                            <p className="mt-1 text-xs font-medium text-blue-700">
-                              Next required stage. The assigned employee records this from their job link.
-                            </p>
-                          ) : null}
-                        </div>
+                        {stageIsNext ? (
+                          <p className="mt-3 text-xs font-medium text-blue-700">
+                            Next required stage. The assigned employee records this from their secure job link.
+                          </p>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -633,6 +662,45 @@ export default function VendorJobDetailPage() {
               <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
               <Button className="bg-amber-600 hover:bg-amber-700" onClick={rejectCompletion} disabled={submitting}>
                 {submitting ? "Submitting..." : "Reject Completion"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={playbackOpen}
+          onOpenChange={(open) => {
+            setPlaybackOpen(open);
+            if (!open) {
+              setPlaybackUrl("");
+              setPlaybackTitle("");
+            }
+          }}
+        >
+          <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] flex-col overflow-hidden sm:max-w-3xl">
+            <DialogHeader className="flex-shrink-0">
+              <DialogTitle>{playbackTitle || "Stage Video"}</DialogTitle>
+              <DialogDescription>
+                Playback for this stage video. Use the video controls to expand full screen.
+              </DialogDescription>
+            </DialogHeader>
+            {playbackUrl ? (
+              <video
+                className="max-h-[60dvh] w-full rounded-lg border border-slate-700 bg-black object-contain"
+                controls
+                autoPlay
+                src={playbackUrl}
+              >
+                Your browser does not support HTML5 video playback.
+              </video>
+            ) : (
+              <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {playbackError || "Video preview is temporarily unavailable."}
+              </div>
+            )}
+            <DialogFooter className="flex-shrink-0">
+              <Button variant="outline" onClick={() => setPlaybackOpen(false)}>
+                Close
               </Button>
             </DialogFooter>
           </DialogContent>

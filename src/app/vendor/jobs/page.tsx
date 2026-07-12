@@ -739,7 +739,7 @@ export default function VendorJobs() {
   const getPrimaryJobCtaLabel = (job: any): string => {
     const normalizedStatus = String(job?.status || '').trim().toLowerCase();
     if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') {
-      return 'Review & Approve';
+      return '';
     }
     if (normalizedStatus === 'completed' || normalizedStatus === 'complete') {
       return 'View Job';
@@ -1241,7 +1241,8 @@ export default function VendorJobs() {
       setPlaybackError('');
       const resolvedUrl = await resolvePlaybackUrl(video);
       setPlaybackUrl(resolvedUrl);
-      setPlaybackTitle(video?.title || 'Service Video');
+      const stageLabel = formatVideoStageLabel(video?.vendorJobVideoStage);
+      setPlaybackTitle(stageLabel && stageLabel !== 'Other' ? `${stageLabel} Video` : (video?.title || 'Stage Video'));
       setShowVideoPlayerModal(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to open this video.';
@@ -4827,17 +4828,17 @@ export default function VendorJobs() {
           }
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1rem)] flex-col overflow-hidden sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>{playbackTitle || 'Watch Service Video'}</DialogTitle>
+            <DialogTitle>{playbackTitle || 'Stage Video'}</DialogTitle>
             <DialogDescription>
-              Playback for the selected service video.
+              Playback for this stage video. Use the video controls to expand full screen.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="min-h-0 space-y-3">
             {playbackUrl ? (
               <video
-                className="w-full rounded border bg-black"
+                className="max-h-[60dvh] w-full rounded border bg-black object-contain"
                 controls
                 autoPlay
                 src={playbackUrl}
@@ -6898,7 +6899,7 @@ export default function VendorJobs() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
-                  {!isEmployeeView ? (
+                  {!isEmployeeView && getPrimaryJobCtaLabel(job) ? (
                     <Button
                       size="sm"
                       className="bg-blue-600 hover:bg-blue-700"
@@ -6912,6 +6913,11 @@ export default function VendorJobs() {
                       {getPrimaryJobCtaLabel(job)}
                     </Button>
                   ) : null}
+                  {getJobMediaModerationSummary(job) && (
+                    <Badge className={getJobMediaModerationSummary(job)?.className}>
+                      {getJobMediaModerationSummary(job)?.label}
+                    </Badge>
+                  )}
                   <Badge className={getJobListBadgeColor(job)}>
                     {formatJobStatusLabel(job.status, job.operationalPhase)}
                   </Badge>
@@ -6946,11 +6952,6 @@ export default function VendorJobs() {
                       Awaiting Admin Review
                     </Badge>
                   ) : null}
-                  {getJobMediaModerationSummary(job) && (
-                    <Badge className={getJobMediaModerationSummary(job)?.className}>
-                      {getJobMediaModerationSummary(job)?.label}
-                    </Badge>
-                  )}
                   <div className="relative" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
@@ -7029,18 +7030,41 @@ export default function VendorJobs() {
                                     setActiveJobActionMenuId(null);
                                   }}
                                 >
-                                  View Details
+                                  View Review Package
                                 </button>
-                                <button
-                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
-                                  onClick={() => {
-                                    openEditModal(job);
-                                    setActiveJobActionMenuId(null);
-                                  }}
-                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                >
-                                  Edit
-                                </button>
+                                {isActiveManager ? (
+                                  <>
+                                    <button
+                                      className="w-full px-3 py-2.5 text-left text-sm text-emerald-100 transition hover:bg-emerald-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                      onClick={() => {
+                                        setActiveJobActionMenuId(null);
+                                        openApproveConfirmModal(job);
+                                      }}
+                                      disabled={
+                                        !(
+                                          jobHasVideoForStage(job, 'INTRO') &&
+                                          jobHasVideoForStage(job, 'IN_PROGRESS') &&
+                                          jobHasVideoForStage(job, 'COMPLETED')
+                                        ) ||
+                                        Boolean(jobMutationLoadingId) ||
+                                        jobActionLoading ||
+                                        approveJobSubmitting
+                                      }
+                                    >
+                                      Approve Completion
+                                    </button>
+                                    <button
+                                      className="w-full px-3 py-2.5 text-left text-sm text-amber-100 transition hover:bg-amber-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                      onClick={() => {
+                                        setActiveJobActionMenuId(null);
+                                        openRejectJobModal(job);
+                                      }}
+                                      disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
+                                    >
+                                      Reject Video
+                                    </button>
+                                  </>
+                                ) : null}
                               </>
                             );
                           }
