@@ -443,7 +443,51 @@ describe('POST /api/bookings', () => {
     });
   });
 
-  it('returns 400 CLIENT_EMAIL_REQUIRED when vendor staff omits client_email', async () => {
+  it('creates an unclaimed booking placeholder when vendor staff provides only client_phone', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userCreate.mockResolvedValue({ id: 'placeholder-customer-phone' });
+    hoisted.bookingCreate.mockResolvedValue({ id: 'book-phone-only' });
+    hoisted.bookingFindUnique.mockResolvedValue(
+      baseHydratedBooking({
+        id: 'book-phone-only',
+        userId: 'placeholder-customer-phone',
+        customerMetadata: JSON.stringify({
+          client_name: 'Alex Rivera',
+          client_phone: '4079148888',
+          claim_status: 'UNCLAIMED',
+        }),
+      })
+    );
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          booking_date: '2024-09-02',
+          booking_time: '10:00:00',
+          title: 'Walk-in',
+          client_name: 'Alex Rivera',
+          client_phone: '4079148888',
+        },
+        'POST'
+      )
+    );
+    expect(res.status).toBe(200);
+    expect(hoisted.userCreate).toHaveBeenCalled();
+    expect(hoisted.bookingCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'placeholder-customer-phone',
+        customerMetadata: expect.stringContaining('"client_phone":"4079148888"'),
+      }),
+    });
+  });
+
+  it('returns 400 CLIENT_CONTACT_REQUIRED when vendor staff omits client_email and client_phone', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
     hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
@@ -458,14 +502,14 @@ describe('POST /api/bookings', () => {
           booking_date: '2024-09-02',
           booking_time: '10:00:00',
           title: 'Walk-in',
-          client_name: 'Alex',
+          client_name: 'Alex Rivera',
         },
         'POST'
       )
     );
     expect(res.status).toBe(400);
     const j = await readJson(res);
-    expect(j.code).toBe('CLIENT_EMAIL_REQUIRED');
+    expect(j.code).toBe('CLIENT_CONTACT_REQUIRED');
     expect(hoisted.bookingCreate).not.toHaveBeenCalled();
   });
 });

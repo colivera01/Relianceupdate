@@ -204,6 +204,34 @@ export default function VendorJobs() {
     return parts.length > 0 ? parts.join(' / ') : 'Missing customer email or phone';
   };
 
+  const splitCustomerName = (value: unknown) => {
+    const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+    return {
+      customerFirstName: parts[0] || '',
+      customerLastName: parts.slice(1).join(' '),
+    };
+  };
+
+  const getEmptyJobForm = () => ({
+    title: '',
+    client: '',
+    customerFirstName: '',
+    customerLastName: '',
+    phone: '',
+    email: '',
+    serviceId: '',
+  });
+
+  const getEmptyJobFieldErrors = () => ({
+    title: '',
+    customerFirstName: '',
+    customerLastName: '',
+    contact: '',
+    phone: '',
+    email: '',
+    serviceId: '',
+  });
+
   const getConsentStatusForJob = (job: any, snapshot?: any) => {
     const bookingKey = String(job?.bookingId || job?.id || '').trim();
     const explicit = String(bookingKey ? consentStatusByBookingId[bookingKey] || '' : '').trim();
@@ -364,7 +392,15 @@ export default function VendorJobs() {
   const [showSelectJobModal, setShowSelectJobModal] = useState(false);
   const [selectedJobForVideoId, setSelectedJobForVideoId] = useState<string>('');
   const [selectedJob, setSelectedJob] = useState(null);
-  const [newJob, setNewJob] = useState({ title: '', client: '', phone: '', email: '', serviceId: '' });
+  const [newJob, setNewJob] = useState({
+    title: '',
+    client: '',
+    customerFirstName: '',
+    customerLastName: '',
+    phone: '',
+    email: '',
+    serviceId: '',
+  });
   const [newServiceForJob, setNewServiceForJob] = useState({
     name: '',
     description: '',
@@ -375,7 +411,9 @@ export default function VendorJobs() {
   const [isCreatingJob, setIsCreatingJob] = useState(false);
   const [jobFieldErrors, setJobFieldErrors] = useState({
     title: '',
-    client: '',
+    customerFirstName: '',
+    customerLastName: '',
+    contact: '',
     phone: '',
     email: '',
     serviceId: '',
@@ -393,6 +431,7 @@ export default function VendorJobs() {
       String(member?.role || '').trim().toUpperCase() === 'MANAGER'
   );
   const clientNameInputRef = useRef<HTMLInputElement | null>(null);
+  const clientLastNameInputRef = useRef<HTMLInputElement | null>(null);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const emailInputRef = useRef<HTMLInputElement | null>(null);
   const serviceTypeSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -1020,7 +1059,8 @@ export default function VendorJobs() {
     if (selectedCalendarDate) return;
     setSelectedCalendarDate(new Date().toISOString().split('T')[0]);
   }, [selectedCalendarDate]);
-  const trimmedClientName = newJob.client.trim();
+  const trimmedCustomerFirstName = newJob.customerFirstName.trim();
+  const trimmedCustomerLastName = newJob.customerLastName.trim();
   const phoneDigits = getPhoneDigits(newJob.phone);
   const trimmedEmail = newJob.email.trim();
   const selectedServiceId = newJob.serviceId.trim();
@@ -1042,12 +1082,17 @@ export default function VendorJobs() {
     Number.isFinite(newServiceDuration) &&
     newServiceDuration > 0
   );
-  const isCreateJobEmailValid = trimmedEmail.includes('@') && trimmedEmail.includes('.');
+  const hasPhoneInput = Boolean(newJob.phone.trim());
+  const hasEmailInput = Boolean(trimmedEmail);
+  const isCreateJobPhoneValid = !hasPhoneInput || phoneDigits.length === 10;
+  const isCreateJobEmailValid = !hasEmailInput || (trimmedEmail.includes('@') && trimmedEmail.includes('.'));
+  const hasCustomerDeliveryContact =
+    phoneDigits.length === 10 || (trimmedEmail.includes('@') && trimmedEmail.includes('.'));
   const isEditMode = jobModalMode === 'edit';
   const canCreateJob = Boolean(
-    trimmedClientName &&
-    (isEditMode || phoneDigits.length === 10) &&
-    (isEditMode || isCreateJobEmailValid) &&
+    trimmedCustomerFirstName &&
+    trimmedCustomerLastName &&
+    (isEditMode || (hasCustomerDeliveryContact && isCreateJobPhoneValid && isCreateJobEmailValid)) &&
     selectedServiceId &&
     (isAddingServiceFromJob ? newServiceIsValid : Boolean(selectedServiceForWorkRecord)) &&
     vendorId &&
@@ -2387,7 +2432,9 @@ export default function VendorJobs() {
       return;
     }
 
-    const client = newJob.client.trim();
+    const customerFirstName = newJob.customerFirstName.trim();
+    const customerLastName = newJob.customerLastName.trim();
+    const client = `${customerFirstName} ${customerLastName}`.trim();
     const normalizedPhoneDigits = getPhoneDigits(newJob.phone);
     const formattedPhone = formatPhoneNumber(normalizedPhoneDigits);
     const email = newJob.email.trim();
@@ -2400,26 +2447,39 @@ export default function VendorJobs() {
     const manualServicePrice = manualServicePriceText ? Number(manualServicePriceText) : NaN;
     const manualServiceDurationText = newServiceForJob.estimatedDuration.trim();
     const manualServiceDuration = manualServiceDurationText ? Number(manualServiceDurationText) : NaN;
-    const isValidEmail = email.includes('@') && email.includes('.');
+    const hasPhoneInputForJob = Boolean(newJob.phone.trim());
+    const hasEmailInputForJob = Boolean(email);
+    const isValidPhone = !hasPhoneInputForJob || normalizedPhoneDigits.length === 10;
+    const isValidEmail = !hasEmailInputForJob || (email.includes('@') && email.includes('.'));
+    const hasDeliveryContact =
+      normalizedPhoneDigits.length === 10 || (email.includes('@') && email.includes('.'));
     const requiresContactValidation = jobModalMode !== 'edit';
     const nextJobErrors = {
       title: '',
-      client: client ? '' : 'Client name is required',
-      phone: !requiresContactValidation || normalizedPhoneDigits.length === 10 ? '' : 'Valid phone number is required',
-      email: !requiresContactValidation || isValidEmail ? '' : 'Valid email is required',
+      customerFirstName: customerFirstName ? '' : 'Customer first name is required',
+      customerLastName: customerLastName ? '' : 'Customer last name is required',
+      contact: !requiresContactValidation || hasDeliveryContact ? '' : 'Enter a customer phone number or email address.',
+      phone: !requiresContactValidation || isValidPhone ? '' : 'Enter a valid 10-digit phone number, or leave phone blank.',
+      email: !requiresContactValidation || isValidEmail ? '' : 'Enter a valid email address, or leave email blank.',
       serviceId: serviceId ? '' : 'Service type is required',
     };
     setJobFieldErrors(nextJobErrors);
 
     if (
       nextJobErrors.title ||
-      nextJobErrors.client ||
+      nextJobErrors.customerFirstName ||
+      nextJobErrors.customerLastName ||
+      nextJobErrors.contact ||
       nextJobErrors.phone ||
       nextJobErrors.email ||
       nextJobErrors.serviceId
     ) {
-      if (nextJobErrors.client) {
+      if (nextJobErrors.customerFirstName) {
         clientNameInputRef.current?.focus();
+      } else if (nextJobErrors.customerLastName) {
+        clientLastNameInputRef.current?.focus();
+      } else if (nextJobErrors.contact) {
+        phoneInputRef.current?.focus();
       } else if (nextJobErrors.phone) {
         phoneInputRef.current?.focus();
       } else if (nextJobErrors.email) {
@@ -2478,9 +2538,9 @@ export default function VendorJobs() {
         );
         await reloadJobsFromBackend();
         router.refresh();
-        setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
+        setNewJob(getEmptyJobForm());
         setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
-        setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
+        setJobFieldErrors(getEmptyJobFieldErrors());
         setJobModalMode('create');
         setJobFormTargetId(null);
         setShowCreateJob(false);
@@ -2581,9 +2641,9 @@ export default function VendorJobs() {
       await reloadJobsFromBackend({ preserveJobs: [optimisticJob], silent: true });
       router.refresh();
       setJobsLoadError('');
-      setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
+      setNewJob(getEmptyJobForm());
       setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
-      setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
+      setJobFieldErrors(getEmptyJobFieldErrors());
       setJobModalMode('create');
       setJobFormTargetId(null);
       setShowCreateJob(false);
@@ -2839,15 +2899,18 @@ export default function VendorJobs() {
   const openEditModal = (job: any) => {
     setJobModalMode('edit');
     setJobFormTargetId(String(job?.id || ''));
+    const splitName = splitCustomerName(job?.client || job?.clientName || '');
     setNewJob({
       title: String(job?.title || ''),
       client: String(job?.client || job?.clientName || ''),
+      customerFirstName: splitName.customerFirstName,
+      customerLastName: splitName.customerLastName,
       phone: String(job?.phone || ''),
       email: String(job?.email || ''),
       serviceId: String(job?.serviceId || ''),
     });
     setCreateJobError('');
-    setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
+    setJobFieldErrors(getEmptyJobFieldErrors());
     setShowCreateJob(true);
   };
 
@@ -4597,10 +4660,10 @@ export default function VendorJobs() {
                 onClick={() => {
                   setJobModalMode('create');
                   setJobFormTargetId(null);
-                  setNewJob({ title: '', client: '', phone: '', email: '', serviceId: '' });
+                  setNewJob(getEmptyJobForm());
                   setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
                   setCreateJobError('');
-                  setJobFieldErrors({ title: '', client: '', phone: '', email: '', serviceId: '' });
+                  setJobFieldErrors(getEmptyJobFieldErrors());
                   setShowCreateJob(true);
                 }} 
                 disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
@@ -5296,72 +5359,111 @@ export default function VendorJobs() {
                 <p className="mt-1 text-xs text-amber-700">{servicesLoadError}</p>
               )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Customer Name <span aria-hidden="true">*</span>
-              </label>
-              <Input
-                ref={clientNameInputRef}
-                placeholder="Enter customer name"
-                value={newJob.client}
-                required
-                aria-invalid={Boolean(jobFieldErrors.client)}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setNewJob({ ...newJob, client: value });
-                  if (value.trim()) {
-                    setJobFieldErrors((prev) => ({ ...prev, client: '' }));
-                  }
-                }}
-              />
-              {jobFieldErrors.client && (
-                <p className="mt-1 text-sm text-red-600">{jobFieldErrors.client}</p>
-              )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Customer First Name <span aria-hidden="true">*</span>
+                </label>
+                <Input
+                  ref={clientNameInputRef}
+                  placeholder="First name"
+                  value={newJob.customerFirstName}
+                  required
+                  aria-invalid={Boolean(jobFieldErrors.customerFirstName)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const nextFirstName = value;
+                    const nextClient = `${nextFirstName.trim()} ${newJob.customerLastName.trim()}`.trim();
+                    setNewJob({ ...newJob, customerFirstName: nextFirstName, client: nextClient });
+                    if (value.trim()) {
+                      setJobFieldErrors((prev) => ({ ...prev, customerFirstName: '' }));
+                    }
+                  }}
+                />
+                {jobFieldErrors.customerFirstName && (
+                  <p className="mt-1 text-sm text-red-600">{jobFieldErrors.customerFirstName}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Customer Last Name <span aria-hidden="true">*</span>
+                </label>
+                <Input
+                  ref={clientLastNameInputRef}
+                  placeholder="Last name"
+                  value={newJob.customerLastName}
+                  required
+                  aria-invalid={Boolean(jobFieldErrors.customerLastName)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const nextLastName = value;
+                    const nextClient = `${newJob.customerFirstName.trim()} ${nextLastName.trim()}`.trim();
+                    setNewJob({ ...newJob, customerLastName: nextLastName, client: nextClient });
+                    if (value.trim()) {
+                      setJobFieldErrors((prev) => ({ ...prev, customerLastName: '' }));
+                    }
+                  }}
+                />
+                {jobFieldErrors.customerLastName && (
+                  <p className="mt-1 text-sm text-red-600">{jobFieldErrors.customerLastName}</p>
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number {jobModalMode === 'edit' ? null : <span aria-hidden="true">*</span>}
+                Phone Number
               </label>
               <Input
                 ref={phoneInputRef}
                 placeholder="Enter phone number"
                 value={newJob.phone}
-                required
                 aria-invalid={Boolean(jobFieldErrors.phone)}
                 onChange={(e) => {
                   const formattedPhone = formatPhoneNumber(e.target.value);
                   const digits = getPhoneDigits(formattedPhone);
                   setNewJob({ ...newJob, phone: formattedPhone });
-                  if (digits.length === 10) {
-                    setJobFieldErrors((prev) => ({ ...prev, phone: '' }));
+                  if (!formattedPhone.trim() || digits.length === 10) {
+                    setJobFieldErrors((prev) => ({
+                      ...prev,
+                      phone: '',
+                      contact: digits.length === 10 || newJob.email.trim() ? '' : prev.contact,
+                    }));
                   }
                 }}
                 inputMode="numeric"
               />
+              <p className="mt-1 text-xs text-gray-500">Enter phone or email. Both are not required.</p>
               {jobFieldErrors.phone && (
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.phone}</p>
               )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email {jobModalMode === 'edit' ? null : <span aria-hidden="true">*</span>}
+                Email
               </label>
               <Input
                 ref={emailInputRef}
                 placeholder="Enter email address"
                 value={newJob.email}
-                required
                 aria-invalid={Boolean(jobFieldErrors.email)}
                 onChange={(e) => {
                   const value = e.target.value;
                   setNewJob({ ...newJob, email: value });
-                  if (value.trim().includes('@') && value.trim().includes('.')) {
-                    setJobFieldErrors((prev) => ({ ...prev, email: '' }));
+                  const trimmed = value.trim();
+                  if (!trimmed || (trimmed.includes('@') && trimmed.includes('.'))) {
+                    setJobFieldErrors((prev) => ({
+                      ...prev,
+                      email: '',
+                      contact: trimmed || getPhoneDigits(newJob.phone).length === 10 ? '' : prev.contact,
+                    }));
                   }
                 }}
               />
               {jobFieldErrors.email && (
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.email}</p>
+              )}
+              {jobFieldErrors.contact && (
+                <p className="mt-1 text-sm text-red-600">{jobFieldErrors.contact}</p>
               )}
             </div>
             {newJob.serviceId === ADD_NEW_SERVICE_VALUE ? (
@@ -6283,12 +6385,12 @@ export default function VendorJobs() {
                     </div>
 
                     <div className="mb-4 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                      <div className="font-medium text-gray-900">Consent recipient</div>
+                      <div className="font-medium text-gray-900">Customer consent contact</div>
                       <div className={hasCustomerContactForJob(selectedJob) ? 'text-gray-700' : 'text-red-700'}>
                         {formatCustomerConsentRecipient(selectedJob)}
                       </div>
                       <div className="mt-1 text-xs text-gray-500">
-                        Uses the job customer/client contact only. Assigned employee contact is never used for consent.
+                        Reliance sends the consent request to the customer contact saved on this work record.
                       </div>
                     </div>
 
@@ -6400,12 +6502,12 @@ export default function VendorJobs() {
                     </div>
 
                     <div className="mb-4 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                      <div className="font-medium text-gray-900">Consent recipient</div>
+                      <div className="font-medium text-gray-900">Customer consent contact</div>
                       <div className={hasCustomerContactForJob(selectedJob) ? 'text-gray-700' : 'text-red-700'}>
                         {formatCustomerConsentRecipient(selectedJob)}
                       </div>
                       <div className="mt-1 text-xs text-gray-500">
-                        Uses the job customer/client contact only. Assigned employee contact is never used for consent.
+                        Reliance sends the consent request to the customer contact saved on this work record.
                       </div>
                     </div>
 
@@ -6839,11 +6941,6 @@ export default function VendorJobs() {
                         >
                           <div className="font-semibold">Next step: {workflow.label}</div>
                           <div className="mt-1 text-xs">{workflow.detail}</div>
-                          {!isJobPendingEmployeeCorrection(job) ? (
-                            <div className="mt-1 text-xs">
-                              Consent recipient: {formatCustomerConsentRecipient(job)}
-                            </div>
-                          ) : null}
                         </div>
                       );
                     })()}

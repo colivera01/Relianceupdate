@@ -331,6 +331,10 @@ export async function POST(request: NextRequest) {
       (typeof client_email === 'string' && client_email.trim()) ||
       (typeof body.clientEmail === 'string' && String(body.clientEmail).trim()) ||
       '';
+    const clientPhoneCombined =
+      (typeof client_phone === 'string' && client_phone.trim()) ||
+      (typeof body.clientPhone === 'string' && String(body.clientPhone).trim()) ||
+      '';
 
     let isVendorStaffForThisVendor = false;
     if (authUserId) {
@@ -345,17 +349,19 @@ export async function POST(request: NextRequest) {
     let linkedToExistingCustomerAccount = false;
 
     if (isVendorStaffForThisVendor) {
-      if (!clientEmailCombined) {
+      if (!clientEmailCombined && !clientPhoneCombined) {
         return NextResponse.json(
           {
             error:
-              'Client email is required for vendor-created jobs so the booking is linked to the customer\'s Reliance account (My Services).',
-            code: 'CLIENT_EMAIL_REQUIRED',
+              'Customer phone or email is required for vendor-created jobs so Reliance can send completed service updates.',
+            code: 'CLIENT_CONTACT_REQUIRED',
           },
           { status: 400 }
         );
       }
-      const customerId = await findUserIdByEmailCaseInsensitive(prisma, clientEmailCombined);
+      const customerId = clientEmailCombined
+        ? await findUserIdByEmailCaseInsensitive(prisma, clientEmailCombined)
+        : null;
       if (customerId) {
         bookingUserId = customerId;
         linkedToExistingCustomerAccount = true;
