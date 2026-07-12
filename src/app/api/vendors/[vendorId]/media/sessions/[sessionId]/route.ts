@@ -51,6 +51,7 @@ export async function GET(
       where: { id: sessionId, vendorId },
       include: {
         mediaAssets: {
+          where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
         },
       },

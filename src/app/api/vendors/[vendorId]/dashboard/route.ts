@@ -508,6 +508,7 @@ export async function GET(
               sessionType: true,
               _count: { select: { mediaAssets: true } },
               mediaAssets: {
+                where: { deletedAt: null },
                 select: { id: true, moderationStatus: true, createdAt: true },
                 orderBy: { createdAt: "desc" },
                 take: 1,
