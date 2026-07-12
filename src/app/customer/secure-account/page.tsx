@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { PasskeySetupCard } from '@/components/auth/PasskeySetupCard';
 import UserSidebar from '@/components/UserSidebar';
+import { LinkedAccountAccessBanner } from '@/components/LinkedAccountAccessBanner';
 import { getAuthSessionCookieName, verifyAuthSessionCookie } from '@/lib/auth-session';
 
 export default async function CustomerSecureAccountPage() {
@@ -41,6 +42,9 @@ export default async function CustomerSecureAccountPage() {
       <UserSidebar />
       <main className="reliance-operator-main min-w-0 flex-1 overflow-auto">
         <div className="w-full px-4 pb-28 pt-6 sm:px-6 sm:pt-10 md:pb-6">
+          <div className="mx-auto w-full max-w-6xl">
+            <LinkedAccountAccessBanner currentProfile="customer" />
+          </div>
           <PasskeySetupCard
             title="Secure Your Account"
             description="Add a passkey so you can sign in with your device security instead of typing a password."

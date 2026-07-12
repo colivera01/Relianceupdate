@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Settings, CheckCircle, XCircle, User, Shield, Camera, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
+import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
+import type { AddressAutocompleteSuggestion } from '@/lib/address-autocomplete';
 import { useVendorProfile } from '@/hooks/useVendorProfile';
 import { useVendorStorage } from '@/hooks/useVendorStorage';
 import { VendorProfileUpdateRequest } from '@/types/vendor';
@@ -182,9 +184,14 @@ export default function VendorProfilePage() {
     }));
   };
 
-  const handleAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setLocalFormData(prev => ({ ...prev, address: value }));
+  const handleAddressSuggestion = (suggestion: AddressAutocompleteSuggestion) => {
+    setLocalFormData(prev => ({
+      ...prev,
+      address: suggestion.address,
+      city: suggestion.city,
+      state: suggestion.state,
+      zipCode: suggestion.zipCode,
+    }));
   };
 
   const handlePhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -655,18 +662,15 @@ export default function VendorProfilePage() {
 
                 <div>
                   <label className="block text-sm font-medium mb-2 text-slate-100">Business Address *</label>
-                  <Input
+                  <AddressAutocompleteInput
                     name="address"
                     value={localFormData.address || ''}
-                    onChange={handleAddressInput}
-                    autoComplete="street-address"
+                    onChange={(value) => setLocalFormData(prev => ({ ...prev, address: value }))}
+                    onSelectAddress={handleAddressSuggestion}
                     required
-                    className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
+                    inputClassName="border-slate-700 bg-slate-950 pr-10 text-white focus:border-blue-500 focus:ring-blue-500"
                     placeholder="Enter your business street address"
                   />
-                  <p className="text-xs text-slate-400 mt-1">
-                    Enter the address manually and save it to your profile. Street autocomplete is not connected in this environment yet.
-                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

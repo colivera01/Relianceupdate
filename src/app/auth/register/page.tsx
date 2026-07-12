@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
+import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
+import type { AddressAutocompleteSuggestion } from '@/lib/address-autocomplete';
 import {
   buildSelectedTemplateServices,
   createInitialRegisterFormData,
@@ -65,6 +67,64 @@ const US_STATES = [
   'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia',
   'Wisconsin', 'Wyoming'
 ];
+
+const STATE_ABBREVIATIONS: Record<string, string> = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+};
+
+function normalizeRegistrationState(value: string): string {
+  const trimmed = value.trim();
+  return STATE_ABBREVIATIONS[trimmed.toUpperCase()] || trimmed;
+}
 
 // Cities organized by state
 const CITIES_BY_STATE: { [key: string]: string[] } = {
@@ -1242,6 +1302,27 @@ function RegisterPageInner() {
     setSelectedCityIndex(-1);
   };
 
+  const handleAddressSuggestion = (suggestion: AddressAutocompleteSuggestion) => {
+    const state = normalizeRegistrationState(suggestion.state);
+    setFormData(prev => ({
+      ...prev,
+      address: suggestion.address,
+      city: suggestion.city,
+      state,
+      zipCode: suggestion.zipCode,
+    }));
+    setErrors(prev => ({
+      ...prev,
+      address: '',
+      city: '',
+      state: '',
+      zipCode: '',
+    }));
+    setCitySuggestions([]);
+    setShowCitySuggestions(false);
+    setSelectedCityIndex(-1);
+  };
+
   const getCitiesForState = (state: string) => {
     return CITIES_BY_STATE[state] || [];
   };
@@ -2099,14 +2180,13 @@ function RegisterPageInner() {
                       <Label htmlFor="address">
                         Street Address {addressRequired ? '*' : <span className="text-gray-500">(optional)</span>}
                       </Label>
-                      <Input
+                      <AddressAutocompleteInput
                         id="address"
                         name="registration_street_address"
-                        type="text"
                         value={formData.address}
-                        onChange={(e) => handleInputChange('address', e.target.value)}
-                        autoComplete="street-address"
-                        className={`reliance-registration-input ${errors.address ? 'border-red-500' : ''}`}
+                        onChange={(value) => handleInputChange('address', value)}
+                        onSelectAddress={handleAddressSuggestion}
+                        inputClassName={`reliance-registration-input pr-10 ${errors.address ? 'border-red-500' : ''}`}
                         placeholder={addressRequired ? '123 Main St' : 'Optional at signup'}
                         required={addressRequired}
                       />

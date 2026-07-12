@@ -3,6 +3,8 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientAuthHeaders } from '@/lib/client-session';
+import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
+import type { AddressAutocompleteSuggestion } from '@/lib/address-autocomplete';
 import { 
   MapPin,
   Shield,
@@ -248,6 +250,16 @@ export default function ProfileSettingsPage() {
 
   const handleProfileChange = (field: string, value: string) => {
     setTempProfile(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddressSuggestion = (suggestion: AddressAutocompleteSuggestion) => {
+    setTempProfile(prev => ({
+      ...prev,
+      address: suggestion.address,
+      city: suggestion.city,
+      state: suggestion.state,
+      zipCode: suggestion.zipCode,
+    }));
   };
 
   const parseProfileSaveError = async (response: Response) => {
@@ -719,14 +731,14 @@ export default function ProfileSettingsPage() {
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
                   <div className="relative">
-                    <input
-                      type="text"
+                    <AddressAutocompleteInput
                       value={isEditing ? tempProfile.address : userProfile.address}
-                      onChange={(e) => handleProfileChange('address', e.target.value)}
+                      onChange={(value) => handleProfileChange('address', value)}
+                      onSelectAddress={handleAddressSuggestion}
                       disabled={!isEditing}
-                      className="w-full px-3 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
+                      inputClassName="w-full border border-gray-300 px-3 py-2 pl-10 pr-10 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-600"
                     />
-                    <LocationIcon className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                    <LocationIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   </div>
                 </div>
                 <div>

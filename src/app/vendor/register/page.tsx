@@ -11,6 +11,8 @@ import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
+import type { AddressAutocompleteSuggestion } from '@/lib/address-autocomplete';
 import { getServiceTemplatesForCategory } from '@/config/service-templates';
 import { useAuth } from '@/contexts/AuthContext';
 import { tutorialGuides } from '@/lib/user-guidance';
@@ -106,6 +108,13 @@ export default function VendorRegisterPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const availableTemplates = getServiceTemplatesForCategory(primaryServiceCategory);
+
+  const handleAddressSuggestion = (suggestion: AddressAutocompleteSuggestion) => {
+    setAddress(suggestion.address);
+    setCity(suggestion.city);
+    setState(suggestion.state);
+    setZipCode(suggestion.zipCode);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -393,7 +402,14 @@ export default function VendorRegisterPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium mb-1 text-white/88">Street Address</label>
-                  <Input value={address} onChange={(e) => setAddress(e.target.value)} required className={darkFieldClass} />
+                  <AddressAutocompleteInput
+                    value={address}
+                    onChange={setAddress}
+                    onSelectAddress={handleAddressSuggestion}
+                    required
+                    inputClassName={`${darkFieldClass} pr-10`}
+                    placeholder="Start typing your business address"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-white/88">City</label>

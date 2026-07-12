@@ -9,40 +9,12 @@ import {
   LAUNCH_SUPPORT_RESPONSE_TIME,
 } from '@/lib/support';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-
-function sanitizeReturnPath(value: string | null): string | null {
-  if (!value) return null;
-  if (!value.startsWith('/')) return null;
-  if (value.startsWith('//')) return null;
-  return value;
-}
-
-function sanitizeReturnLabel(value: string | null): string | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  return trimmed || null;
-}
 
 function SupportPageContent() {
-  const searchParams = useSearchParams();
-  const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
-  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Vendor Dashboard';
-
   return (
     <div className="space-y-8 px-4 py-8 md:px-8">
       <div className="mx-auto max-w-5xl space-y-8">
         <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
-          {returnTo ? (
-            <div className="mb-5">
-              <Link
-                href={returnTo}
-                className="text-sm font-medium text-[var(--reliance-blue-soft)] hover:text-white"
-              >
-                {returnLabel}
-              </Link>
-            </div>
-          ) : null}
           <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
             Vendor support
           </div>
