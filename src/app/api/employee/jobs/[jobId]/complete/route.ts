@@ -75,7 +75,13 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     }
 
     const normalizedStatus = String(booking.status || "").trim().toUpperCase();
-    if (!["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(normalizedStatus)) {
+    const hadManagerRejection = Boolean(String(booking.rejectionReason || "").trim());
+    const canSubmitCorrectionFromStaleReviewState =
+      normalizedStatus === "AWAITING_REVIEW" && hadManagerRejection;
+    if (
+      !["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(normalizedStatus) &&
+      !canSubmitCorrectionFromStaleReviewState
+    ) {
       return NextResponse.json(
         {
           error: "Only active assigned jobs can be submitted for manager review.",
@@ -120,12 +126,14 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
           booking.customerMetadata,
           "AWAITING_ADMIN_REVIEW"
         ),
+        rejectionReason: null,
+        rejectedAt: null,
+        rejectedBy: null,
       },
       select: { id: true, status: true, date: true },
     });
 
     const notificationResults = [];
-    const hadManagerRejection = Boolean(String(booking.rejectionReason || "").trim());
     if (hadManagerRejection) {
       const managers = await prisma.vendorMembership.findMany({
         where: {

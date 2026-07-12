@@ -214,12 +214,18 @@ function isAwaitingReviewStatus(status: string | null | undefined): boolean {
   return String(status || "").trim().toUpperCase() === "AWAITING_REVIEW";
 }
 
+function isCorrectionRequested(job: Pick<EmployeeJob, "status" | "rejectionReason">): boolean {
+  const normalized = String(job.status || "").trim().toUpperCase();
+  return normalized !== "COMPLETED" && Boolean(String(job.rejectionReason || "").trim());
+}
+
 function shouldAllowStageUpload(status: string | null | undefined): boolean {
   const normalized = String(status || "").trim().toUpperCase();
   return normalized !== "AWAITING_REVIEW" && normalized !== "COMPLETED";
 }
 
-function submitButtonLabel(status: string | null | undefined): string {
+function submitButtonLabel(status: string | null | undefined, correctionRequested = false): string {
+  if (correctionRequested) return "Send Corrected Videos to Manager";
   const normalized = String(status || "").trim().toUpperCase();
   if (normalized === "AWAITING_REVIEW") return "Awaiting Manager Review";
   if (normalized === "COMPLETED") return "Completed";
@@ -227,14 +233,18 @@ function submitButtonLabel(status: string | null | undefined): string {
 }
 
 function submitHelperText(job: EmployeeJob): string | null {
+  const correctionRequested = isCorrectionRequested(job);
   const normalized = String(job.status || "").trim().toUpperCase();
+  if (correctionRequested && job.canMarkComplete) return "Send the corrected video package back to your manager.";
+  if (correctionRequested) return "Manager requested changes. Retake the needed stage, then send the videos back.";
   if (normalized === "AWAITING_REVIEW") return "All 3 stage videos are uploaded. Manager review is in progress.";
   if (normalized === "COMPLETED") return "All 3 stage videos are complete and manager-approved.";
   if (!job.canMarkComplete) return "Complete all 3 stage videos first.";
   return null;
 }
 
-function captureLinkSubmitButtonLabel(status: string | null | undefined): string {
+function captureLinkSubmitButtonLabel(status: string | null | undefined, correctionRequested = false): string {
+  if (correctionRequested) return "Send Corrected Videos to Manager";
   const normalized = String(status || "").trim().toUpperCase();
   if (normalized === "AWAITING_REVIEW") return "Sent to Manager";
   if (normalized === "COMPLETED") return "Completed";
@@ -1202,7 +1212,8 @@ export default function EmployeeJobsPage() {
   const renderJobCard = (job: EmployeeJob, historyMode = false) => {
     const openedFromAssignmentLink = !historyMode && focusedJobId === job.id;
     const normalizedStatus = String(job.status || "").trim().toUpperCase();
-    const showUploadControls = !historyMode && shouldAllowStageUpload(normalizedStatus);
+    const correctionRequested = isCorrectionRequested(job);
+    const showUploadControls = !historyMode && (shouldAllowStageUpload(normalizedStatus) || correctionRequested);
     const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
     const helperText = historyMode ? null : submitHelperText(job);
     const selectedStageKey =
@@ -1437,6 +1448,20 @@ export default function EmployeeJobsPage() {
           </div>
         ) : (
           <div className="mt-4 space-y-3">
+            {correctionRequested ? (
+              <div className="rounded-2xl border border-amber-300/35 bg-amber-300/12 px-4 py-3 text-amber-50">
+                <p className="text-sm font-bold">Manager requested changes</p>
+                <p className="mt-1 text-base leading-6 text-amber-50/95">{job.rejectionReason}</p>
+                <p className="mt-2 text-xs leading-5 text-amber-100/80">
+                  Retake the stage your manager called out, then send the corrected videos back for review.
+                </p>
+                {job.rejectedAt ? (
+                  <p className="mt-1 text-[11px] text-amber-100/70">
+                    Requested on {new Date(job.rejectedAt).toLocaleString()}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {STAGES.map((stage, index) => {
                 const done = Boolean(job.stageProgress[stage.key]);
@@ -1633,21 +1658,6 @@ export default function EmployeeJobsPage() {
           </div>
         )}
 
-        {job.rejectionReason && normalizedStatus === "IN_PROGRESS" ? (
-          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            <p className="font-semibold">Manager requested changes</p>
-            <p className="mt-1">{job.rejectionReason}</p>
-            <p className="mt-2 text-[11px] text-amber-900">
-              Review the requested changes, re-upload the needed video stage, then submit again.
-            </p>
-            {job.rejectedAt ? (
-              <p className="mt-1 text-[11px] text-amber-700">
-                Rejected on {new Date(job.rejectedAt).toLocaleString()}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
         {!historyMode ? (
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {showStartButton && !hasCaptureToken ? (
@@ -1661,7 +1671,11 @@ export default function EmployeeJobsPage() {
             ) : null}
             <button
               type="button"
-              disabled={!job.canMarkComplete || isAwaitingReviewStatus(normalizedStatus) || isCompletedStatus(normalizedStatus)}
+              disabled={
+                !job.canMarkComplete ||
+                (isAwaitingReviewStatus(normalizedStatus) && !correctionRequested) ||
+                isCompletedStatus(normalizedStatus)
+              }
               onClick={() => void completeJob(job.id)}
               className={`rounded-xl border px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 hasCaptureToken
@@ -1669,7 +1683,9 @@ export default function EmployeeJobsPage() {
                   : "border-emerald-300 text-emerald-700 hover:bg-emerald-50"
               }`}
             >
-              {hasCaptureToken ? captureLinkSubmitButtonLabel(normalizedStatus) : submitButtonLabel(normalizedStatus)}
+              {hasCaptureToken
+                ? captureLinkSubmitButtonLabel(normalizedStatus, correctionRequested)
+                : submitButtonLabel(normalizedStatus, correctionRequested)}
             </button>
             {helperText ? (
               <span className={`text-xs ${hasCaptureToken ? "text-blue-100/70" : "text-gray-500"}`}>

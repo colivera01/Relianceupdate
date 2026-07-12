@@ -125,13 +125,16 @@ export async function GET(request: Request): Promise<NextResponse> {
       const stageProgress = stageByBooking.get(booking.id) || emptyStageProgress();
       const recordingCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
       const normalizedStatus = String(booking.status || "").trim().toUpperCase();
+      const correctionRequested =
+        normalizedStatus !== "COMPLETED" && Boolean(String((booking as any).rejectionReason || "").trim());
       const canMarkComplete =
         stageProgress.INTRO &&
         stageProgress.IN_PROGRESS &&
         stageProgress.COMPLETED &&
         (normalizedStatus === "PENDING" ||
           normalizedStatus === "CONFIRMED" ||
-          normalizedStatus === "IN_PROGRESS");
+          normalizedStatus === "IN_PROGRESS" ||
+          (normalizedStatus === "AWAITING_REVIEW" && correctionRequested));
       return {
         id: booking.id,
         vendorId: booking.vendorId,

@@ -235,6 +235,62 @@ describe("employee job lifecycle routes", () => {
     });
   });
 
+  it("keeps rejected correction links submittable even when status is still awaiting review", async () => {
+    const { GET } = await import("./route");
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
+      vendorId: "vendor-1",
+      bookingId: "job-1",
+      membershipId: "membership-1",
+      userId: "employee-from-token",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      employeeName: "Tech One",
+      token: {},
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "membership-1",
+        vendorId: "vendor-1",
+        vendor: { name: "Electro LLC", businessName: "Electro LLC", accountStatus: "ACTIVE" },
+      },
+    ]);
+    hoisted.bookingFindMany.mockResolvedValue([
+      {
+        id: "job-1",
+        vendorId: "vendor-1",
+        title: "Outlet Installation",
+        status: "AWAITING_REVIEW",
+        rejectionReason: "Redo stage 3",
+        rejectedAt: new Date("2026-07-12T13:00:00.000Z"),
+        customerMetadata: "{}",
+        scheduledFor: null,
+        date: null,
+        service: { id: "svc-1", name: "Outlet Installation" },
+        user: { id: "customer-1", name: "Brandon Sims", email: null, phone: "4074861397" },
+        vendor: { id: "vendor-1", name: "Electro LLC", businessName: "Electro LLC" },
+      },
+    ]);
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      { bookingId: "job-1", vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "asset-1" }] },
+      { bookingId: "job-1", vendorJobVideoStage: "IN_PROGRESS", mediaAssets: [{ id: "asset-2" }] },
+      { bookingId: "job-1", vendorJobVideoStage: "COMPLETED", mediaAssets: [{ id: "asset-3" }] },
+    ]);
+
+    const response = await GET(
+      new Request("http://localhost/api/employee/jobs?ct=signed-token", { method: "GET" })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.jobs[0]).toMatchObject({
+      id: "job-1",
+      status: "AWAITING_REVIEW",
+      rejectionReason: "Redo stage 3",
+      stageProgress: { INTRO: true, IN_PROGRESS: true, COMPLETED: true },
+      canMarkComplete: true,
+    });
+  });
+
   it("uses the capture token assignment when saving a replacement stage", async () => {
     const { POST } = await import("./[jobId]/stage/route");
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
@@ -373,6 +429,80 @@ describe("employee job lifecycle routes", () => {
     expect(json.code).toBe("INVALID_COMPLETE_STATUS");
     expect(hoisted.mediaSessionFindMany).not.toHaveBeenCalled();
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("allows corrected rejected jobs to be resent from a stale awaiting-review state", async () => {
+    const { POST } = await import("./[jobId]/complete/route");
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
+      vendorId: "vendor-1",
+      bookingId: "job-1",
+      membershipId: "membership-1",
+      userId: "employee-from-token",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      employeeName: "Tech One",
+      token: {},
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValueOnce([
+      {
+        id: "manager-1",
+        vendorId: "vendor-1",
+        role: "MANAGER",
+        user: {
+          name: "Manager One",
+          email: "manager@example.com",
+          phone: "4075550199",
+        },
+      },
+    ]);
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "job-1",
+      vendorId: "vendor-1",
+      status: "AWAITING_REVIEW",
+      title: "Outlet Installation",
+      customerMetadata: "{}",
+      rejectionReason: "Redo stage 3",
+      service: { name: "Outlet Installation" },
+      vendor: { name: "Electro LLC", businessName: "Electro LLC" },
+    });
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      { vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "asset-1" }] },
+      { vendorJobVideoStage: "IN_PROGRESS", mediaAssets: [{ id: "asset-2" }] },
+      { vendorJobVideoStage: "COMPLETED", mediaAssets: [{ id: "asset-3" }] },
+    ]);
+    hoisted.bookingUpdate.mockResolvedValue({
+      id: "job-1",
+      status: "AWAITING_REVIEW",
+      date: null,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/employee/jobs/job-1/complete?ct=signed-token", { method: "POST" }),
+      { params: Promise.resolve({ jobId: "job-1" }) }
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "job-1" },
+        data: expect.objectContaining({
+          status: "AWAITING_REVIEW",
+          customerMetadata: expect.any(String),
+          rejectionReason: null,
+          rejectedAt: null,
+          rejectedBy: null,
+        }),
+        select: { id: true, status: true, date: true },
+      })
+    );
+    expect(JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata)).toMatchObject({
+      reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" },
+    });
+    expect(json.notifications).toMatchObject({
+      correctionReady: true,
+      sentCount: 1,
+    });
   });
 
   it("notifies managers when a rejected job is fixed and resubmitted", async () => {
