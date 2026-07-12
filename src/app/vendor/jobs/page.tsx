@@ -484,6 +484,7 @@ export default function VendorJobs() {
   const [selectedJobIds, setSelectedJobIds] = useState<(string | number)[]>([]);
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [showBulkAssignmentModal, setShowBulkAssignmentModal] = useState(false);
+  const locallyDeletedJobIdsRef = useRef<Set<string>>(new Set());
   
   // Legal compliance state
   const CONSENT_STATE = {
@@ -1935,13 +1936,14 @@ export default function VendorJobs() {
     preservedJobs: any[] = [],
     removedJobIds: Set<string> = new Set()
   ) => {
+    const suppressedJobIds = new Set([...Array.from(locallyDeletedJobIdsRef.current), ...Array.from(removedJobIds)]);
     const normalizedBackendJobs = backendJobs.filter(
-      (job) => job?.id && !removedJobIds.has(String(job.id))
+      (job) => job?.id && !suppressedJobIds.has(String(job.id))
     );
     const backendIds = new Set(normalizedBackendJobs.map((job) => String(job.id)));
     const optimisticJobs = preservedJobs.filter((job) => {
       const id = String(job?.id || '');
-      return id && !backendIds.has(id) && !removedJobIds.has(id);
+      return id && !backendIds.has(id) && !suppressedJobIds.has(id);
     });
 
     return [...optimisticJobs, ...normalizedBackendJobs];
@@ -1957,8 +1959,15 @@ export default function VendorJobs() {
   const removeJobLocally = (jobId: unknown) => {
     const normalizedId = String(jobId || '');
     if (!normalizedId) return;
-    setJobs((current) => current.filter((job) => String(job?.id || '') !== normalizedId));
-    setArchivedJobs((current) => current.filter((job: any) => String(job?.id || '') !== normalizedId));
+    locallyDeletedJobIdsRef.current.add(normalizedId);
+    const keepJob = (job: any) =>
+      String(job?.id || '') !== normalizedId && String(job?.bookingId || '') !== normalizedId;
+    setJobs((current) => current.filter(keepJob));
+    setArchivedJobs((current) => current.filter(keepJob));
+    setSelectedJob((current: any) => (current && keepJob(current) ? current : null));
+    setSelectedJobForVideoId((current) => (String(current || '') === normalizedId ? '' : current));
+    setSelectedJobIds((current) => current.filter((id) => String(id || '') !== normalizedId));
+    setActiveJobActionMenuId((current) => (String(current || '') === normalizedId ? null : current));
   };
 
   const adaptCreatedBookingToUiJob = (
@@ -4123,7 +4132,6 @@ export default function VendorJobs() {
     }
     removeJobLocally(job.id);
     await reloadJobsFromBackend({ removeJobIds: [job.id], silent: true });
-    router.refresh();
     return payload;
   };
 
