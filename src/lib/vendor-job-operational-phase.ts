@@ -79,6 +79,9 @@ export function resolveOperationalPhase(params: {
   const storedRaw = getRelianceOps(meta).operational_phase;
 
   if (bookingUpper === "COMPLETED") {
+    if (params.hasCompleteStagedPackage && !params.hasAdminApprovedStagedPackage) {
+      return "AWAITING_ADMIN_REVIEW";
+    }
     return "COMPLETED";
   }
 

@@ -82,7 +82,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         data: {
           status: "COMPLETED",
           date: completedAt,
-          customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "COMPLETED"),
+          customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "AWAITING_ADMIN_REVIEW"),
         },
         select: { id: true, status: true, date: true, updatedAt: true },
       });

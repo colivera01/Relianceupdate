@@ -226,6 +226,15 @@ export default function VendorJobs() {
   };
 
   const getVendorWorkflowStateForJob = (job: any) => {
+    const phase = String(job?.operationalPhase || '').trim().toUpperCase();
+    if (phase === 'AWAITING_ADMIN_REVIEW') {
+      return {
+        label: 'Pending moderator approval',
+        detail: 'Manager approved this video package. Reliance moderation must approve it before it becomes public.',
+        actionLabel: 'View Job',
+        tone: 'blue',
+      };
+    }
     if (isJobPendingEmployeeCorrection(job)) {
       return {
         label: 'Pending employee corrections',
@@ -392,6 +401,7 @@ export default function VendorJobs() {
   const [search, setSearch] = useState('');
   const [isEmployeeView, setIsEmployeeView] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [workflowFilter, setWorkflowFilter] = useState('all');
   const [showJobWorkflowGuide, setShowJobWorkflowGuide] = useState(false);
   const [dontShowJobWorkflowGuideAgain, setDontShowJobWorkflowGuideAgain] = useState(false);
 
@@ -758,6 +768,10 @@ export default function VendorJobs() {
   };
 
   const getPrimaryJobCtaLabel = (job: any): string => {
+    const phase = String(job?.operationalPhase || '').trim().toUpperCase();
+    if (phase === 'AWAITING_ADMIN_REVIEW') {
+      return 'View Job';
+    }
     const normalizedStatus = String(job?.status || '').trim().toLowerCase();
     if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') {
       return '';
@@ -772,6 +786,11 @@ export default function VendorJobs() {
   };
 
   const handlePrimaryJobAction = (job: any) => {
+    const phase = String(job?.operationalPhase || '').trim().toUpperCase();
+    if (phase === 'AWAITING_ADMIN_REVIEW') {
+      openJobDetails(job);
+      return;
+    }
     const normalizedStatus = String(job?.status || '').trim().toLowerCase();
     if (normalizedStatus === 'awaiting_review' || normalizedStatus === 'awaiting review') {
       openJobDetails(job);
@@ -2294,12 +2313,38 @@ export default function VendorJobs() {
     };
   }, [jobs, jobsLoading, consentStatusByBookingId]);
 
+  const getJobWorkflowBucket = (job: any) => {
+    const phase = String(job?.operationalPhase || '').trim().toUpperCase();
+    const status = String(job?.status || '').trim().toLowerCase();
+    if (phase === 'AWAITING_ADMIN_REVIEW') return 'moderator_review';
+    if (phase === 'COMPLETED' || status === 'completed') return 'public_approved';
+    if (status === 'awaiting_review' || status === 'awaiting review') return 'manager_review';
+    return 'active';
+  };
+
+  const workflowTabs = [
+    { value: 'all', label: 'All' },
+    { value: 'active', label: 'Active Work' },
+    { value: 'manager_review', label: 'Manager Review' },
+    { value: 'moderator_review', label: 'Moderator Review' },
+    { value: 'public_approved', label: 'Public / Approved' },
+  ];
+
+  const workflowTabCounts = jobs.reduce((counts: Record<string, number>, job: any) => {
+    if (String(job.status).toLowerCase() === 'archived') return counts;
+    const bucket = getJobWorkflowBucket(job);
+    counts.all = (counts.all || 0) + 1;
+    counts[bucket] = (counts[bucket] || 0) + 1;
+    return counts;
+  }, {});
+
   // Filter jobs based on view mode and search
   const filteredJobs = jobs.filter(job => {
     if (String(job.status).toLowerCase() === 'archived') {
       return false;
     }
     const matchesStatus = statusFilter === 'all' || job.status === statusFilter;
+    const matchesWorkflow = workflowFilter === 'all' || getJobWorkflowBucket(job) === workflowFilter;
     const matchesSearch = job.title.toLowerCase().includes(search.toLowerCase()) || 
                          job.client.toLowerCase().includes(search.toLowerCase());
     
@@ -2322,10 +2367,10 @@ export default function VendorJobs() {
       } else if (currentEmployeeName) {
         isAssignedToMe = assignedNames.includes(currentEmployeeName);
       }
-      return matchesStatus && matchesSearch && isAssignedToMe;
+      return matchesStatus && matchesWorkflow && matchesSearch && isAssignedToMe;
     }
     
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesWorkflow && matchesSearch;
   });
   const jobsEligibleForVideoUpload = filteredJobs.filter((job) => isJobAssignedForVideoUpload(job));
   const hasAnyEligibleVideoJob = jobsEligibleForVideoUpload.length > 0;
@@ -3632,7 +3677,10 @@ export default function VendorJobs() {
 
   const getOperationalPhaseBadgeClass = (phase: string | null | undefined) => {
     const p = String(phase || '').trim().toUpperCase();
-    if (p === 'AWAITING_ADMIN_REVIEW' || p === 'AWAITING_VENDOR_REVIEW') {
+    if (p === 'AWAITING_ADMIN_REVIEW') {
+      return 'bg-indigo-100 text-indigo-900 border-indigo-200';
+    }
+    if (p === 'AWAITING_VENDOR_REVIEW') {
       return 'bg-amber-100 text-amber-900 border-amber-200';
     }
     if (p === 'ASSIGNED') return 'bg-sky-100 text-sky-900 border-sky-200';
@@ -3647,7 +3695,10 @@ export default function VendorJobs() {
 
   const getJobListBadgeColor = (job: any) => {
     const phase = String(job?.operationalPhase || '').toUpperCase();
-    if (phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW') {
+    if (phase === 'AWAITING_ADMIN_REVIEW') {
+      return 'bg-indigo-100 text-indigo-900';
+    }
+    if (phase === 'AWAITING_VENDOR_REVIEW') {
       return 'bg-amber-100 text-amber-900';
     }
     return getStatusColor(job.status);
@@ -3655,8 +3706,11 @@ export default function VendorJobs() {
 
   const formatJobStatusLabel = (status: string | null | undefined, operationalPhase?: string | null) => {
     const phase = String(operationalPhase || '').trim().toUpperCase();
-    if (phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW') {
-      return 'Job: Awaiting Admin Review';
+    if (phase === 'AWAITING_ADMIN_REVIEW') {
+      return 'Job: Pending Moderator Approval';
+    }
+    if (phase === 'AWAITING_VENDOR_REVIEW') {
+      return 'Job: Awaiting Manager Review';
     }
     if (phase === 'ASSIGNED') {
       return 'Job: Assigned';
@@ -3980,6 +4034,11 @@ export default function VendorJobs() {
       throw new Error(payload?.error || payload?.message || `Approval failed (${res.status})`);
     }
     await reloadJobsFromBackend();
+    applyJobPatchLocally(job, {
+      ...(payload?.job || {}),
+      status: 'completed',
+      operationalPhase: 'AWAITING_ADMIN_REVIEW',
+    });
     return payload;
   };
 
@@ -4555,6 +4614,38 @@ export default function VendorJobs() {
         </div>
       </div>
       </div>
+
+      {!isEmployeeView ? (
+        <div className="mb-6 overflow-x-auto">
+          <div className="inline-flex min-w-full gap-2 rounded-2xl border border-white/10 bg-slate-950/55 p-2">
+            {workflowTabs.map((tab) => {
+              const active = workflowFilter === tab.value;
+              const count = Number(workflowTabCounts[tab.value] || 0);
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setWorkflowFilter(tab.value)}
+                  className={`flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                    active
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/25'
+                      : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${
+                      active ? 'bg-white/18 text-white' : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       {!isEmployeeView && moderationUpdateCount > 0 && (
         <div className="mb-6 p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
