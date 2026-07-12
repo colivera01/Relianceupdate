@@ -100,13 +100,18 @@ export async function getJobRecoveryAssistantSuggestion(
 
   return {
     ...result,
-    data: normalizeJobRecoveryAssistantResult(result.data),
+    data: normalizeJobRecoveryAssistantResult(result.data, context),
   };
 }
 
 function normalizeJobRecoveryAssistantResult(
-  result: JobRecoveryAssistantResult
+  result: JobRecoveryAssistantResult,
+  context: JobRecoveryAssistantRequest
 ): JobRecoveryAssistantResult {
+  const rejectionReason = String(context.rejectionReason || "").trim();
+  if (rejectionReason) {
+    return buildRejectedJobRecoveryResult(context, rejectionReason);
+  }
   if (result.confidence === "high") {
     return {
       ...result,
@@ -114,4 +119,33 @@ function normalizeJobRecoveryAssistantResult(
     };
   }
   return result;
+}
+
+function buildRejectedJobRecoveryResult(
+  context: JobRecoveryAssistantRequest,
+  rejectionReason: string
+): JobRecoveryAssistantResult {
+  const isEmployee = context.role === "employee";
+  return {
+    summary: isEmployee
+      ? `Manager requested changes: ${rejectionReason}. Retake the requested video stage, save it, then send the corrected videos back to the manager.`
+      : `Changes are already requested: ${rejectionReason}. The assigned employee needs to retake the requested video stage and send the corrected package back for manager review.`,
+    decision: isEmployee ? "retry_step" : "needs_vendor_follow_up",
+    confidence: "medium",
+    blockers: [`Manager requested changes: ${rejectionReason}`],
+    recommendedActions: isEmployee
+      ? [
+          "Open the service order link and select the stage your manager called out.",
+          "Retake and save that stage video.",
+          "Use Send Corrected Videos to Manager after the corrected stage is saved.",
+        ]
+      : [
+          "Wait for the assigned employee to retake the stage described in the rejection reason.",
+          "After the employee resubmits, review the corrected video package before approving completion.",
+        ],
+    explainWhy: [
+      "A rejection reason is present on this job, so the next step is correction, not a new review decision.",
+      "The corrected package should come back through manager review after the employee resubmits it.",
+    ],
+  };
 }

@@ -655,24 +655,71 @@ export default function ProfileSettingsPage() {
                 )}
               </div>
 
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoSelected}
+              />
               <div className="flex items-start gap-6 mb-6">
-                {/* Profile Picture */}
-                <div className="relative">
-                  {customerPhotoUrl ? (
-                    <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-blue-300/25 bg-slate-950/90 p-2 shadow-sm ring-1 ring-blue-200/20">
-                      <img
-                        src={customerPhotoUrl}
-                        alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
-                        className="h-full w-full rounded-xl object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-28 w-28 items-center justify-center rounded-2xl border border-blue-300/25 bg-gradient-to-br from-blue-600 to-cyan-500">
-                      <span className="text-white font-semibold text-2xl">
-                        {customerInitials}
-                      </span>
-                    </div>
-                  )}
+                <div className="relative shrink-0">
+                  <div className="relative">
+                    {customerPhotoUrl ? (
+                      <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-blue-300/25 bg-slate-950/90 p-2 shadow-sm ring-1 ring-blue-200/20">
+                        <img
+                          src={customerPhotoUrl}
+                          alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
+                          className="h-full w-full rounded-xl object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex h-28 w-28 items-center justify-center rounded-2xl border border-blue-300/25 bg-gradient-to-br from-blue-600 to-cyan-500">
+                        <span className="text-white font-semibold text-2xl">
+                          {customerInitials}
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingPhoto || removingPhoto}
+                      className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Change customer profile photo"
+                    >
+                      <Camera className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="min-w-0 pt-1">
+                  <p className="text-sm font-semibold text-gray-900">Customer profile photo</p>
+                  <p className="mt-1 text-sm leading-6 text-gray-600">
+                    {customerPhotoUrl
+                      ? 'This photo is visible on your signed-in customer profile.'
+                      : 'Initials are shown until you upload a profile photo.'}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingPhoto || removingPhoto}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+                    >
+                      <Camera className="h-4 w-4" />
+                      {uploadingPhoto ? 'Uploading...' : customerPhotoUrl ? 'Change Photo' : 'Upload Photo'}
+                    </button>
+                    {customerPhotoUrl ? (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        disabled={uploadingPhoto || removingPhoto}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {removingPhoto ? 'Removing...' : 'Remove Photo'}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 
@@ -924,76 +971,6 @@ export default function ProfileSettingsPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile Image</h2>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handlePhotoSelected}
-              />
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center lg:flex-col lg:items-start xl:flex-row xl:items-center">
-                <div className="relative shrink-0">
-                  {customerPhotoUrl ? (
-                    <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-blue-300/25 bg-slate-950/90 p-2 shadow-sm ring-1 ring-blue-200/20">
-                      <img
-                        src={customerPhotoUrl}
-                        alt={`${tempProfile.firstName || userProfile.firstName || 'Customer'} profile photo`}
-                        className="h-full w-full rounded-xl object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-28 w-28 items-center justify-center rounded-2xl border border-blue-300/25 bg-gradient-to-br from-blue-600 to-cyan-500 text-2xl font-bold text-white shadow-sm">
-                      {customerInitials}
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingPhoto || removingPhoto}
-                    className="absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-950/30 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Change customer profile photo"
-                  >
-                    <Camera className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="min-w-0">
-                  <div className="inline-flex rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-blue-100">
-                    {customerPhotoUrl ? 'Photo visible on your customer profile' : 'Initials shown until you upload a photo'}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    Upload a customer profile photo here to personalize your signed-in Reliance pages.
-                  </p>
-                  <p className="mt-2 text-xs leading-5 text-slate-400">
-                    If you remove it, Reliance falls back to your initials.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingPhoto || removingPhoto}
-                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
-                    >
-                      <Camera className="h-4 w-4" />
-                      {uploadingPhoto ? 'Uploading...' : customerPhotoUrl ? 'Change Photo' : 'Upload Photo'}
-                    </button>
-                    {customerPhotoUrl ? (
-                      <button
-                        type="button"
-                        onClick={handleRemovePhoto}
-                        disabled={uploadingPhoto || removingPhoto}
-                        className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        {removingPhoto ? 'Removing...' : 'Remove Photo'}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Account Status */}
             <div className="rounded-2xl border border-white/10 bg-slate-950/75 p-6 shadow-[0_20px_70px_rgba(3,8,20,0.22)]">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Status</h2>
