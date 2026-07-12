@@ -2832,14 +2832,17 @@ export default function VendorJobs() {
       const payload = await runPersistedJobAction(job, "ASSIGN_JOB", {
         assignedMembershipIds: nextMembershipIds,
       });
-      setJobs((prev) =>
-        prev.map((existing) =>
-          String(existing?.id || '') === String(job?.id || '') ? { ...existing, ...assignedJob } : existing
-        )
-      );
-      setSelectedJob((prev) =>
-        prev && String((prev as any)?.id || '') === String(job?.id || '') ? assignedJob : prev
-      );
+      const persistedAssignedJob = {
+        ...assignedJob,
+        ...(payload?.job || {}),
+        assignedMembershipIds: Array.isArray(payload?.job?.assignedMembershipIds)
+          ? payload.job.assignedMembershipIds
+          : assignedJob.assignedMembershipIds,
+        assignedEmployees: Array.isArray(payload?.job?.assignedEmployees)
+          ? payload.job.assignedEmployees
+          : assignedJob.assignedEmployees,
+      };
+      applyJobPatchLocally(job, persistedAssignedJob);
       let feedbackType: 'success' | 'error' = 'success';
       let feedbackMessage = payload?.message || 'Job assignment updated.';
       let releasedRecordingCompliance: any = null;
@@ -2864,20 +2867,43 @@ export default function VendorJobs() {
               ? `Job reassigned, but the service order could not be resent: ${releaseError.message}`
               : 'Job reassigned, but the service order could not be resent.';
         }
+      } else if (nextMembershipIds.length > 0) {
+        const autoReleaseSnapshot = buildRecordingComplianceSnapshot(persistedAssignedJob, {
+          location: 'business',
+          consentAccepted: false,
+          consentToken: '',
+          locationVerified: false,
+        });
+        mergeRecordingComplianceForJob(persistedAssignedJob, autoReleaseSnapshot);
+        try {
+          const releasePayload = await releaseEmployeeServiceOrderForJob(
+            persistedAssignedJob,
+            autoReleaseSnapshot
+          );
+          releasedRecordingCompliance =
+            releasePayload?.job?.recordingCompliance || releasePayload?.recordingCompliance || null;
+          feedbackMessage =
+            releasePayload?.notifications?.sentCount > 0
+              ? 'Job assigned and the service order was sent to the assigned team member.'
+              : releasePayload?.message || 'Job assigned. The service order is ready for the assigned team member.';
+        } catch (releaseError) {
+          feedbackType = 'error';
+          feedbackMessage =
+            releaseError instanceof Error
+              ? `Job assigned, but the service order could not be sent: ${releaseError.message}`
+              : 'Job assigned, but the service order could not be sent.';
+        }
       }
       await reloadJobsFromBackend();
       applyJobPatchLocally(
-        assignedJob,
+        persistedAssignedJob,
         releasedRecordingCompliance
-          ? { ...assignedJob, recordingCompliance: releasedRecordingCompliance }
-          : assignedJob
+          ? { ...persistedAssignedJob, recordingCompliance: releasedRecordingCompliance }
+          : persistedAssignedJob
       );
       setJobActionFeedback({ type: feedbackType, message: feedbackMessage });
       setShowAssignmentModal(false);
       setSelectedAssignmentMembershipIds([]);
-      if (!serviceOrderWasReleased && nextMembershipIds.length > 0) {
-        openComplianceForNextStage(assignedJob);
-      }
     } catch (error) {
       setJobActionFeedback({
         type: 'error',
