@@ -52,13 +52,13 @@ function formatDateOnlyUtc(value: string | number | Date | null | undefined): st
 function formatDateTimeUtc(value: string | number | Date | null | undefined): string {
   const parsed = parseDate(value);
   if (!parsed) return '-';
-  return parsed.toLocaleString('en-US', { timeZone: 'UTC' });
+  return parsed.toLocaleString('en-US');
 }
 
 function formatTimeUtc(value: string | number | Date | null | undefined): string {
   const parsed = parseDate(value);
   if (!parsed) return '-';
-  return parsed.toLocaleTimeString('en-US', { timeZone: 'UTC' });
+  return parsed.toLocaleTimeString('en-US');
 }
 
 // BACKEND DEVELOPER NOTES:
@@ -1414,6 +1414,19 @@ export default function VendorJobs() {
     });
   };
 
+  const applyJobPatchLocally = (job: any, patch: Record<string, unknown>) => {
+    const jobId = String(job?.id || patch?.id || '').trim();
+    if (!jobId) return;
+    setJobs((prev) =>
+      prev.map((existing) =>
+        String(existing?.id || '') === jobId ? { ...existing, ...patch } : existing
+      )
+    );
+    setSelectedJob((prev) =>
+      prev && String((prev as any)?.id || '') === jobId ? { ...(prev as any), ...patch } : prev
+    );
+  };
+
   const persistRecordingComplianceForJob = (
     job: any,
     snapshot: {
@@ -1717,6 +1730,10 @@ export default function VendorJobs() {
         releasedMembershipIds: Array.isArray(backendSnapshot.releasedMembershipIds)
           ? backendSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
           : snapshot.releasedMembershipIds,
+      });
+      applyJobPatchLocally(job, {
+        ...(payload?.job || {}),
+        recordingCompliance: backendSnapshot,
       });
     }
     return payload;
@@ -2816,6 +2833,7 @@ export default function VendorJobs() {
       );
       let feedbackType: 'success' | 'error' = 'success';
       let feedbackMessage = payload?.message || 'Job assignment updated.';
+      let releasedRecordingCompliance: any = null;
       if (
         nextMembershipIds.length > 0 &&
         serviceOrderWasReleased &&
@@ -2824,6 +2842,8 @@ export default function VendorJobs() {
       ) {
         try {
           const releasePayload = await releaseEmployeeServiceOrderForJob(assignedJob, previousCompliance);
+          releasedRecordingCompliance =
+            releasePayload?.job?.recordingCompliance || releasePayload?.recordingCompliance || null;
           feedbackMessage =
             releasePayload?.notifications?.sentCount > 0
               ? 'Job reassigned and the service order was sent to the newly assigned team member.'
@@ -2837,6 +2857,12 @@ export default function VendorJobs() {
         }
       }
       await reloadJobsFromBackend();
+      applyJobPatchLocally(
+        assignedJob,
+        releasedRecordingCompliance
+          ? { ...assignedJob, recordingCompliance: releasedRecordingCompliance }
+          : assignedJob
+      );
       setJobActionFeedback({ type: feedbackType, message: feedbackMessage });
       setShowAssignmentModal(false);
       setSelectedAssignmentMembershipIds([]);

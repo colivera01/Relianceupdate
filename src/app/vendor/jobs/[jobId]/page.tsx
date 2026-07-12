@@ -64,7 +64,7 @@ function formatDateTimeUtc(value: string | null | undefined) {
   if (!value) return "Unknown";
   const parsed = new Date(String(value));
   if (Number.isNaN(parsed.getTime())) return "Unknown";
-  return parsed.toLocaleString("en-US", { timeZone: "UTC" });
+  return parsed.toLocaleString("en-US");
 }
 
 function statusBadgeClass(status: string) {
