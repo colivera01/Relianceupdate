@@ -280,15 +280,15 @@ export default function UserDashboardPage() {
         <div className="reliance-dark-shell overflow-hidden rounded-[28px] p-6 text-white shadow-[0_30px_80px_rgba(7,16,38,0.18)]">
           <div className="mb-4 flex items-center gap-4">
             {profileAvatar ? (
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-slate-950/75 p-1 shadow-md">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[1.15rem] border border-white/20 bg-white p-1.5 shadow-md">
                 <img
                   src={profileAvatar}
                   alt={`${profile.firstName || 'Customer'} profile`}
-                  className="h-full w-full rounded-full object-cover"
+                  className="h-full w-full rounded-[0.85rem] object-contain"
                 />
               </div>
             ) : (
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 text-lg font-bold text-white">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.15rem] bg-gradient-to-r from-blue-500 to-cyan-400 text-lg font-bold text-white">
                 {initials}
               </div>
             )}
