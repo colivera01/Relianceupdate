@@ -89,6 +89,11 @@ function hasEmployeeCaptureToken(searchParams: URLSearchParams, headers: Headers
   );
 }
 
+function isEmployeeCaptureMediaPath(pathname: string): boolean {
+  return /^\/api\/vendors\/[^/]+\/media\/sessions(?:\/[^/]+)?$/.test(pathname)
+    || /^\/api\/vendors\/[^/]+\/media\/upload\/(?:init|complete)$/.test(pathname);
+}
+
 export function isBetaGateBypassRequest(
   pathname: string,
   searchParams: URLSearchParams = new URLSearchParams(),
@@ -102,6 +107,7 @@ export function isBetaGateBypassRequest(
 
   if (path === "/employee/jobs") return true;
   if (path === "/api/employee/jobs" || path.startsWith("/api/employee/jobs/")) return true;
+  if (isEmployeeCaptureMediaPath(path)) return true;
 
   return false;
 }

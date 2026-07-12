@@ -164,6 +164,33 @@ describe("private beta gate", () => {
     expect(apiResponse.headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 
+  it("does not block employee capture media upload calls with capture token headers", async () => {
+    for (const path of [
+      "/api/vendors/vendor-1/media/sessions",
+      "/api/vendors/vendor-1/media/sessions/session-1",
+      "/api/vendors/vendor-1/media/upload/init",
+      "/api/vendors/vendor-1/media/upload/complete",
+    ]) {
+      const response = await middleware(
+        betaRequest(path, undefined, {
+          "x-employee-capture-token": "capture-token-1",
+        })
+      );
+
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    }
+  });
+
+  it("keeps vendor media upload calls gated when no capture token is present", async () => {
+    const response = await middleware(betaRequest("/api/vendors/vendor-1/media/sessions"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://beta.relianceonline.org/beta-access?returnTo=%2Fapi%2Fvendors%2Fvendor-1%2Fmedia%2Fsessions"
+    );
+  });
+
   it("keeps employee job pages gated when no capture token is present", async () => {
     const response = await middleware(betaRequest("/employee/jobs?jobId=job-1"));
 
