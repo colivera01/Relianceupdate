@@ -8,6 +8,7 @@ const hoisted = vi.hoisted(() => {
   const mediaSessionFindFirst = vi.fn();
   const mediaSessionFindMany = vi.fn();
   const resolveEmployeeCaptureAccess = vi.fn();
+  const sendJobCorrectionReadyNotification = vi.fn();
   return {
     vendorMembershipFindMany,
     bookingFindMany,
@@ -16,6 +17,7 @@ const hoisted = vi.hoisted(() => {
     mediaSessionFindFirst,
     mediaSessionFindMany,
     resolveEmployeeCaptureAccess,
+    sendJobCorrectionReadyNotification,
   };
 });
 
@@ -60,6 +62,10 @@ vi.mock("@/lib/employee-capture-token", () => ({
   resolveEmployeeCaptureAccess: hoisted.resolveEmployeeCaptureAccess,
 }));
 
+vi.mock("@/lib/notifications/send-job-correction-ready", () => ({
+  sendJobCorrectionReadyNotification: hoisted.sendJobCorrectionReadyNotification,
+}));
+
 vi.mock("@/lib/lifecycle-audit", () => ({
   recordLifecycleAudit: vi.fn(async () => undefined),
 }));
@@ -90,7 +96,13 @@ describe("employee job lifecycle routes", () => {
     hoisted.mediaSessionFindFirst.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockReset();
+    hoisted.sendJobCorrectionReadyNotification.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue(null);
+    hoisted.sendJobCorrectionReadyNotification.mockResolvedValue({
+      anySuccess: true,
+      phoneNumberUsed: "+14075550199",
+      channels: [{ channel: "sms", attempted: true, success: true }],
+    });
 
     hoisted.vendorMembershipFindMany.mockResolvedValue([
       {
@@ -361,5 +373,89 @@ describe("employee job lifecycle routes", () => {
     expect(json.code).toBe("INVALID_COMPLETE_STATUS");
     expect(hoisted.mediaSessionFindMany).not.toHaveBeenCalled();
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("notifies managers when a rejected job is fixed and resubmitted", async () => {
+    const { POST } = await import("./[jobId]/complete/route");
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
+      vendorId: "vendor-1",
+      bookingId: "job-1",
+      membershipId: "membership-1",
+      userId: "employee-from-token",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      employeeName: "Tech One",
+      token: {},
+    });
+    hoisted.vendorMembershipFindMany
+      .mockResolvedValueOnce([
+        {
+          id: "manager-1",
+          vendorId: "vendor-1",
+          role: "MANAGER",
+          user: {
+            name: "Manager One",
+            email: "manager@example.com",
+            phone: "4075550199",
+          },
+        },
+      ]);
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "job-1",
+      vendorId: "vendor-1",
+      status: "IN_PROGRESS",
+      title: "Outlet Installation",
+      customerMetadata: "{}",
+      rejectionReason: "Redo final result video.",
+      service: { name: "Outlet Installation" },
+      vendor: { name: "Electro LLC", businessName: "Electro LLC" },
+    });
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      { vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "asset-1" }] },
+      { vendorJobVideoStage: "IN_PROGRESS", mediaAssets: [{ id: "asset-2" }] },
+      { vendorJobVideoStage: "COMPLETED", mediaAssets: [{ id: "asset-3" }] },
+    ]);
+    hoisted.bookingUpdate.mockResolvedValue({
+      id: "job-1",
+      status: "AWAITING_REVIEW",
+      date: null,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/employee/jobs/job-1/complete?ct=signed-token", { method: "POST" }),
+      { params: Promise.resolve({ jobId: "job-1" }) }
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(hoisted.vendorMembershipFindMany).toHaveBeenCalledWith({
+      where: {
+        vendorId: "vendor-1",
+        role: "MANAGER",
+        status: { in: ["ACTIVE", "active", "PENDING", "pending"] },
+      },
+      include: {
+        user: { select: { name: true, email: true, phone: true } },
+      },
+    });
+    expect(hoisted.sendJobCorrectionReadyNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "job-1",
+        actorUserId: "employee-from-token",
+        managerName: "Manager One",
+        managerEmail: "manager@example.com",
+        managerPhone: "4075550199",
+        vendorName: "Electro LLC",
+        jobTitle: "Outlet Installation",
+        employeeName: "Tech One",
+      })
+    );
+    expect(hoisted.sendJobCorrectionReadyNotification.mock.calls[0][0].managerReviewLink).toContain(
+      "/vendor/jobs/job-1"
+    );
+    expect(json.notifications).toMatchObject({
+      correctionReady: true,
+      sentCount: 1,
+    });
   });
 });

@@ -622,6 +622,8 @@ export async function GET(
         assignedMembershipIds,
         uploadedVideoStages,
         recordingCompliance: parseRecordingComplianceMetadata(booking.customerMetadata),
+        rejectionReason: booking.rejectionReason || null,
+        rejectedAt: booking.rejectedAt?.toISOString?.() || null,
         consentStatus: mapConsentRecordToVendorUiState(latestConsentRecord),
         latestConsentToken: latestConsentRecord?.token || null,
         consentAcceptedAt: latestConsentRecord?.acceptedAt?.toISOString?.() || null,

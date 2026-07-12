@@ -10,10 +10,23 @@ import {
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import { sendJobCorrectionReadyNotification } from "@/lib/notifications/send-job-correction-ready";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
+}
+
+function resolveJobLinkBaseUrl(request: Request): string {
+  const appBaseUrl = String(process.env.APP_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (appBaseUrl) return appBaseUrl;
+  const origin = String(request.headers.get("origin") || "").trim().replace(/\/+$/, "");
+  if (origin) return origin;
+  try {
+    return new URL(request.url).origin.replace(/\/+$/, "");
+  } catch {
+    return "http://localhost:3000";
+  }
 }
 
 export async function POST(request: Request, context: RouteParams): Promise<NextResponse> {
@@ -33,7 +46,16 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         });
     const booking = await prisma.booking.findUnique({
       where: { id: jobId },
-      select: { id: true, vendorId: true, status: true, customerMetadata: true },
+      select: {
+        id: true,
+        vendorId: true,
+        status: true,
+        title: true,
+        customerMetadata: true,
+        rejectionReason: true,
+        service: { select: { name: true } },
+        vendor: { select: { name: true, businessName: true } },
+      },
     });
     if (!booking) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     await ensureVendorAccountCanOperate(booking.vendorId);
@@ -101,7 +123,65 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       },
       select: { id: true, status: true, date: true },
     });
-    return NextResponse.json({ success: true, job: updated });
+
+    const notificationResults = [];
+    const hadManagerRejection = Boolean(String(booking.rejectionReason || "").trim());
+    if (hadManagerRejection) {
+      const managers = await prisma.vendorMembership.findMany({
+        where: {
+          vendorId: booking.vendorId,
+          role: "MANAGER",
+          status: { in: ["ACTIVE", "active", "PENDING", "pending"] },
+        },
+        include: {
+          user: { select: { name: true, email: true, phone: true } },
+        },
+      });
+      const reviewLink = `${resolveJobLinkBaseUrl(request)}/vendor/jobs/${encodeURIComponent(booking.id)}`;
+      const vendorName = String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor");
+      const jobTitle = String(booking.title || booking.service?.name || "Service order");
+      const employeeName = tokenAccess?.employeeName || "The assigned employee";
+      for (const manager of managers) {
+        try {
+          const notification = await sendJobCorrectionReadyNotification({
+            bookingId: booking.id,
+            actorUserId: tokenAccess?.userId || userId || "employee-capture-link",
+            managerName: manager.user?.name || null,
+            managerEmail: manager.user?.email || null,
+            managerPhone: manager.user?.phone || null,
+            managerReviewLink: reviewLink,
+            vendorName,
+            jobTitle,
+            employeeName,
+          });
+          notificationResults.push({
+            membershipId: manager.id,
+            managerName: manager.user?.name || manager.user?.email || "Manager",
+            anySuccess: notification.anySuccess,
+            phoneNumberUsed: notification.phoneNumberUsed,
+            channels: notification.channels,
+          });
+        } catch (error) {
+          notificationResults.push({
+            membershipId: manager.id,
+            managerName: manager.user?.name || manager.user?.email || "Manager",
+            anySuccess: false,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            channels: [],
+          });
+        }
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      job: updated,
+      notifications: {
+        correctionReady: hadManagerRejection,
+        sentCount: notificationResults.filter((result) => result.anySuccess).length,
+        results: notificationResults,
+      },
+    });
   } catch (error: any) {
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });

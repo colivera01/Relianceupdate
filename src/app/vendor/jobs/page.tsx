@@ -215,7 +215,27 @@ export default function VendorJobs() {
     return CONSENT_STATE.NOT_REQUESTED;
   };
 
+  const isJobPendingEmployeeCorrection = (job: any) => {
+    const status = String(job?.status || '').trim().toLowerCase();
+    const activeStatus =
+      status === 'in progress' ||
+      status === 'in-progress' ||
+      status === 'confirmed' ||
+      status === 'pending';
+    return activeStatus && Boolean(String(job?.rejectionReason || '').trim());
+  };
+
   const getVendorWorkflowStateForJob = (job: any) => {
+    if (isJobPendingEmployeeCorrection(job)) {
+      return {
+        label: 'Pending employee corrections',
+        detail: job?.rejectionReason
+          ? `Changes requested: ${String(job.rejectionReason).trim()}`
+          : 'Changes were requested. The assigned employee needs to replace the requested stage and send the videos back to manager review.',
+        actionLabel: 'View Job',
+        tone: 'amber',
+      };
+    }
     const nextStage = getNextMissingVideoStageForJob(job);
     if (!isJobAssignedForVideoUpload(job)) {
       return {
@@ -6668,9 +6688,11 @@ export default function VendorJobs() {
                         >
                           <div className="font-semibold">Next step: {workflow.label}</div>
                           <div className="mt-1 text-xs">{workflow.detail}</div>
-                          <div className="mt-1 text-xs">
-                            Consent recipient: {formatCustomerConsentRecipient(job)}
-                          </div>
+                          {!isJobPendingEmployeeCorrection(job) ? (
+                            <div className="mt-1 text-xs">
+                              Consent recipient: {formatCustomerConsentRecipient(job)}
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })()}
@@ -6917,14 +6939,23 @@ export default function VendorJobs() {
                       {getPrimaryJobCtaLabel(job)}
                     </Button>
                   ) : null}
-                  {getJobMediaModerationSummary(job) && (
-                    <Badge className={getJobMediaModerationSummary(job)?.className}>
-                      {getJobMediaModerationSummary(job)?.label}
-                    </Badge>
+                  {isJobPendingEmployeeCorrection(job) ? (
+                    <>
+                      <Badge className="bg-amber-100 text-amber-900">Media: Changes Requested</Badge>
+                      <Badge className="bg-amber-100 text-amber-900">Job: Pending Fix</Badge>
+                    </>
+                  ) : (
+                    <>
+                      {getJobMediaModerationSummary(job) && (
+                        <Badge className={getJobMediaModerationSummary(job)?.className}>
+                          {getJobMediaModerationSummary(job)?.label}
+                        </Badge>
+                      )}
+                      <Badge className={getJobListBadgeColor(job)}>
+                        {formatJobStatusLabel(job.status, job.operationalPhase)}
+                      </Badge>
+                    </>
                   )}
-                  <Badge className={getJobListBadgeColor(job)}>
-                    {formatJobStatusLabel(job.status, job.operationalPhase)}
-                  </Badge>
                   {(() => {
                     const consentState = String(
                       consentStatusByBookingId[String(job.bookingId || job.id || '')] || ''
