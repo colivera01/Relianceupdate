@@ -5,6 +5,7 @@ import { mapMediaSessionCreateFailure } from "@/lib/media-session-create-errors"
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { normalizeVendorJobVideoStage } from "@/lib/vendor-job-video-stages";
 import { distanceMeters, hasValidCoordinates } from "@/lib/distance";
+import { geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -46,6 +47,41 @@ function getLocationProof(body: Record<string, unknown>) {
   );
   const capturedAt = String(nested.capturedAt ?? body.locationCapturedAt ?? "").trim();
   return { latitude, longitude, accuracyMeters, capturedAt };
+}
+
+type VendorBusinessLocation = {
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zipCode?: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocodedAt: Date | null;
+};
+
+async function ensureVendorBusinessLocation(vendorId: string, location: VendorBusinessLocation | null) {
+  if (!location) return null;
+  if (location.geocodedAt && hasValidCoordinates(location)) return location;
+  if (!hasCompleteAddress(location)) return location;
+
+  const geocodeResult = await geocodeAddress(location);
+  if (geocodeResult.status !== "success") return location;
+
+  await prisma.vendor.update({
+    where: { id: vendorId },
+    data: {
+      latitude: geocodeResult.latitude,
+      longitude: geocodeResult.longitude,
+      geocodedAt: geocodeResult.geocodedAt,
+    },
+  });
+
+  return {
+    ...location,
+    latitude: geocodeResult.latitude,
+    longitude: geocodeResult.longitude,
+    geocodedAt: geocodeResult.geocodedAt,
+  };
 }
 
 const BUSINESS_LOCATION_RADIUS_METERS = 150;
@@ -102,11 +138,7 @@ export async function POST(
     // If bookingId is provided but not found for this vendor, ignore it instead of failing FK constraints.
     let validBookingId: string | null = null;
     let validBookingMetadata: string | null = null;
-    let validBookingVendorLocation: {
-      latitude: number | null;
-      longitude: number | null;
-      geocodedAt: Date | null;
-    } | null = null;
+    let validBookingVendorLocation: VendorBusinessLocation | null = null;
     if (bookingId) {
       const booking = await prisma.booking.findFirst({
         where: {
@@ -116,7 +148,17 @@ export async function POST(
         select: {
           id: true,
           customerMetadata: true,
-          vendor: { select: { latitude: true, longitude: true, geocodedAt: true } },
+          vendor: {
+            select: {
+              address: true,
+              city: true,
+              state: true,
+              zipCode: true,
+              latitude: true,
+              longitude: true,
+              geocodedAt: true,
+            },
+          },
         },
       });
       validBookingId = booking?.id ?? null;
@@ -229,6 +271,7 @@ export async function POST(
         }
       }
       if (normalizedLocationContext === "business") {
+        validBookingVendorLocation = await ensureVendorBusinessLocation(vendorId, validBookingVendorLocation);
         if (!validBookingVendorLocation?.geocodedAt || !hasValidCoordinates(validBookingVendorLocation)) {
           return NextResponse.json(
             {

@@ -4,11 +4,16 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
+  const vendorUpdate = vi.fn();
   const mediaSessionFindFirst = vi.fn();
   const mediaSessionCreate = vi.fn();
   const consentRecordFindUnique = vi.fn();
+  const geocodeAddress = vi.fn();
 
   const prisma = {
+    vendor: {
+      update: vendorUpdate,
+    },
     booking: {
       findFirst: bookingFindFirst,
     },
@@ -24,9 +29,11 @@ const hoisted = vi.hoisted(() => {
   return {
     prisma,
     bookingFindFirst,
+    vendorUpdate,
     mediaSessionFindFirst,
     mediaSessionCreate,
     consentRecordFindUnique,
+    geocodeAddress,
   };
 });
 
@@ -37,6 +44,14 @@ vi.mock("@/server/db", () => ({
 vi.mock("@/lib/membership-auth", () => ({
   requireVendorMembership: vi.fn(),
 }));
+
+vi.mock("@/lib/geocoding", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/geocoding")>("@/lib/geocoding");
+  return {
+    ...actual,
+    geocodeAddress: hoisted.geocodeAddress,
+  };
+});
 
 const VENDOR_ID = "vendor-1";
 const BOOKING_ID = "booking-1";
@@ -80,11 +95,16 @@ describe("vendor media sessions consent enforcement integration", () => {
         vendor_job_assigned_membership_ids: ["membership-1"],
       }),
       vendor: {
+        address: "123 Main St",
+        city: "Orlando",
+        state: "FL",
+        zipCode: "32801",
         latitude: 28.5383,
         longitude: -81.3792,
         geocodedAt: new Date("2026-06-27T12:00:00.000Z"),
       },
     });
+    hoisted.vendorUpdate.mockReset();
     hoisted.mediaSessionFindFirst.mockResolvedValue(null);
     hoisted.mediaSessionCreate.mockResolvedValue({
       id: "session-1",
@@ -95,6 +115,7 @@ describe("vendor media sessions consent enforcement integration", () => {
       status: "CREATED",
     });
     hoisted.consentRecordFindUnique.mockResolvedValue(null);
+    hoisted.geocodeAddress.mockReset();
   });
 
   it("blocks residence location when consent token/accepted state is missing", async () => {
@@ -232,5 +253,105 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect((json.session as any)?.id).toBe("session-1");
     expect(hoisted.consentRecordFindUnique).not.toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("geocodes a complete vendor address before business location verification when saved coordinates are missing", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: BOOKING_ID,
+      customerMetadata: JSON.stringify({
+        vendor_job_assigned_membership_ids: ["membership-1"],
+      }),
+      vendor: {
+        address: "123 Main St",
+        city: "Orlando",
+        state: "FL",
+        zipCode: "32801",
+        latitude: null,
+        longitude: null,
+        geocodedAt: null,
+      },
+    });
+    const geocodedAt = new Date("2026-07-11T12:00:00.000Z");
+    hoisted.geocodeAddress.mockResolvedValue({
+      status: "success",
+      provider: "census",
+      latitude: 28.5383,
+      longitude: -81.3792,
+      geocodedAt,
+    });
+    hoisted.vendorUpdate.mockResolvedValue({});
+
+    const { req, ctx } = buildPostRequest({
+      locationContext: "business",
+      locationProof: {
+        latitude: 28.53831,
+        longitude: -81.37919,
+        accuracyMeters: 20,
+      },
+    });
+
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect((json.session as any)?.id).toBe("session-1");
+    expect(hoisted.geocodeAddress).toHaveBeenCalledWith({
+      address: "123 Main St",
+      city: "Orlando",
+      state: "FL",
+      zipCode: "32801",
+      latitude: null,
+      longitude: null,
+      geocodedAt: null,
+    });
+    expect(hoisted.vendorUpdate).toHaveBeenCalledWith({
+      where: { id: VENDOR_ID },
+      data: {
+        latitude: 28.5383,
+        longitude: -81.3792,
+        geocodedAt,
+      },
+    });
+    expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps blocking business recording when a complete vendor address cannot be geocoded", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: BOOKING_ID,
+      customerMetadata: JSON.stringify({
+        vendor_job_assigned_membership_ids: ["membership-1"],
+      }),
+      vendor: {
+        address: "123 Main St",
+        city: "Orlando",
+        state: "FL",
+        zipCode: "32801",
+        latitude: null,
+        longitude: null,
+        geocodedAt: null,
+      },
+    });
+    hoisted.geocodeAddress.mockResolvedValue({
+      status: "not_found",
+      provider: "census",
+      message: "No geocoding result found for this address.",
+    });
+
+    const { req, ctx } = buildPostRequest({
+      locationContext: "business",
+      locationProof: {
+        latitude: 28.53831,
+        longitude: -81.37919,
+        accuracyMeters: 20,
+      },
+    });
+
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("BUSINESS_LOCATION_NOT_CONFIGURED");
+    expect(hoisted.vendorUpdate).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 });
