@@ -172,15 +172,15 @@ function UserSidebarContent() {
         <div className="flex flex-col items-center mb-8 px-2">
           <div className="relative mb-4">
             {visibleUser.avatar ? (
-              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-white/20 bg-slate-950/85 p-1.5 shadow-md ring-1 ring-blue-300/10">
+              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[1.35rem] border-2 border-white/20 bg-white p-2 shadow-md ring-1 ring-blue-300/10">
                 <img
                   src={visibleUser.avatar}
                   alt={visibleUser.name}
-                  className="h-full w-full rounded-full object-contain"
+                  className="h-full w-full rounded-[1rem] object-contain"
                 />
               </div>
             ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-white/20 bg-gradient-to-r from-blue-500 to-purple-500 text-xl font-bold text-white shadow-md">
+              <div className="flex h-24 w-24 items-center justify-center rounded-[1.35rem] border-2 border-white/20 bg-gradient-to-r from-blue-500 to-purple-500 text-2xl font-bold text-white shadow-md">
                 {initials}
               </div>
             )}
