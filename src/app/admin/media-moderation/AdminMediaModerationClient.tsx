@@ -375,7 +375,7 @@ function AssetModerationControls({
   return (
     <div className="flex flex-col gap-2">
       <div className="space-y-1">
-        <Label htmlFor={`visibility-${asset.assetId}`} className="text-xs text-gray-600">
+        <Label htmlFor={`visibility-${asset.assetId}`} className="text-xs text-slate-300">
           Visibility level
         </Label>
         <select
@@ -383,7 +383,7 @@ function AssetModerationControls({
           value={visibility}
           onChange={(e) => setVisibility(e.target.value as VisibilityLevel)}
           disabled={actionBusy}
-          className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+          className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-50"
         >
           {VISIBILITY_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -391,7 +391,7 @@ function AssetModerationControls({
             </option>
           ))}
         </select>
-        <p className="text-[11px] text-gray-500 leading-snug">{selectedHint}</p>
+        <p className="text-[11px] text-slate-400 leading-snug">{selectedHint}</p>
       </div>
       <Button
         size="sm"
@@ -403,6 +403,7 @@ function AssetModerationControls({
       <Button
         size="sm"
         variant="outline"
+        className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
         disabled={actionBusy}
         onClick={() => openModerationReasonModal(asset, 'reject')}
       >
@@ -411,6 +412,7 @@ function AssetModerationControls({
       <Button
         size="sm"
         variant="outline"
+        className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
         disabled={actionBusy}
         onClick={() => openModerationReasonModal(asset, 'flag')}
       >
@@ -1092,9 +1094,9 @@ export default function AdminMediaModerationClient({
                 statusText: stageVideo ? (isApproved ? 'Approved' : 'Needs admin action') : 'Missing',
                 statusClass: stageVideo
                   ? isApproved
-                    ? 'text-emerald-700'
-                    : 'text-amber-700'
-                  : 'text-red-700',
+                    ? 'text-emerald-300'
+                    : 'text-amber-200'
+                  : 'text-red-300',
               };
             });
             const overallPackageStatus = allRequiredStagesApproved ? 'Approved' : 'Admin Review Required';
@@ -1105,15 +1107,18 @@ export default function AdminMediaModerationClient({
             const hasMixedState = moderationLabel === 'Mixed' || visibilityLabel === 'Mixed';
             const aiSuggestion = aiSuggestionByPackageId[pack.packageId];
             return (
-              <Card key={pack.packageId} className="border-2 border-emerald-300 bg-gradient-to-br from-emerald-50/70 to-white">
+              <Card
+                key={pack.packageId}
+                className="border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl shadow-black/25"
+              >
                 <CardContent className="pt-6">
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <div className="font-semibold text-base">{pack.jobTitle || 'Untitled Job'}</div>
-                        <div className="text-sm text-gray-700">Vendor: {pack.vendorName || pack.vendorId}</div>
-                        <div className="text-sm text-gray-700">Client: {pack.clientName || '-'}</div>
-                        <div className="text-sm text-gray-700">Job status: {formatJobBookingStatus(pack.bookingStatus)}</div>
+                        <div className="font-semibold text-base text-white">{pack.jobTitle || 'Untitled Job'}</div>
+                        <div className="text-sm text-slate-300">Vendor: {pack.vendorName || pack.vendorId}</div>
+                        <div className="text-sm text-slate-300">Client: {pack.clientName || '-'}</div>
+                        <div className="text-sm text-slate-300">Job status: {formatJobBookingStatus(pack.bookingStatus)}</div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {showReadyForAdminReview ? (
@@ -1124,40 +1129,44 @@ export default function AdminMediaModerationClient({
                         {showPackageApproved ? (
                           <Badge className="bg-green-700 text-white hover:bg-green-700">Package Approved</Badge>
                         ) : null}
-                        <Badge variant="outline">Package moderation: {prettyStatus(moderationLabel)}</Badge>
-                        <Badge variant="outline">Package visibility: {prettyStatus(visibilityLabel)}</Badge>
+                        <Badge variant="outline" className="border-slate-600 bg-slate-950/80 text-slate-100">
+                          Package moderation: {prettyStatus(moderationLabel)}
+                        </Badge>
+                        <Badge variant="outline" className="border-slate-600 bg-slate-950/80 text-slate-100">
+                          Package visibility: {prettyStatus(visibilityLabel)}
+                        </Badge>
                       </div>
                     </div>
                     {hasMixedState ? (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
                         Some stages have different moderation or visibility states.
                       </div>
                     ) : null}
-                    <div className="rounded-md border border-emerald-200 bg-white/80 p-3 text-sm">
-                      <div className="font-medium text-gray-900">Package Status</div>
+                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 text-sm">
+                      <div className="font-medium text-white">Package Status</div>
                       <div className="mt-2 space-y-1 text-sm">
                         {packageStageSummary.map((row) => (
                           <div key={`${pack.packageId}:${row.stage}`} className="flex items-center justify-between gap-3">
-                            <span className="text-gray-800">{row.label}</span>
+                            <span className="text-slate-200">{row.label}</span>
                             <span className={row.statusClass}>{row.statusText}</span>
                           </div>
                         ))}
                       </div>
-                      <div className="mt-3 border-t pt-2 flex items-center justify-between">
-                        <span className="font-medium text-gray-900">Overall</span>
-                        <span className={allRequiredStagesApproved ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>
+                      <div className="mt-3 border-t border-slate-700 pt-2 flex items-center justify-between">
+                        <span className="font-medium text-white">Overall</span>
+                        <span className={allRequiredStagesApproved ? 'font-semibold text-emerald-300' : 'font-semibold text-amber-200'}>
                           {overallPackageStatus}
                         </span>
                       </div>
                     </div>
-                    <div className="rounded-md border bg-white p-3 space-y-3">
-                      <div className="text-sm font-medium text-gray-900">Package review actions</div>
-                      <p className="text-xs text-gray-600">
+                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 space-y-3">
+                      <div className="text-sm font-medium text-white">Package review actions</div>
+                      <p className="text-xs text-slate-300">
                         Normal workflow: choose package visibility, then approve, reject, or flag the full Before + During + Completed service package.
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                         <div className="space-y-1 md:col-span-2">
-                          <Label htmlFor={`package-visibility-${pack.packageId}`} className="text-xs text-gray-600">
+                          <Label htmlFor={`package-visibility-${pack.packageId}`} className="text-xs text-slate-300">
                             Package visibility
                           </Label>
                           <select
@@ -1170,7 +1179,7 @@ export default function AdminMediaModerationClient({
                               }))
                             }
                             disabled={packageActionBusy}
-                            className="h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+                            className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-50"
                           >
                             {VISIBILITY_OPTIONS.map((opt) => (
                               <option key={opt.value} value={opt.value}>
@@ -1187,6 +1196,7 @@ export default function AdminMediaModerationClient({
                         <Button
                           size="sm"
                           variant="outline"
+                          className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
                           disabled={packageActionBusy}
                           onClick={() => openPackageModerationReasonModal(pack, 'reject')}
                         >
@@ -1195,6 +1205,7 @@ export default function AdminMediaModerationClient({
                         <Button
                           size="sm"
                           variant="outline"
+                          className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
                           disabled={packageActionBusy}
                           onClick={() => openPackageModerationReasonModal(pack, 'flag')}
                         >
@@ -1204,17 +1215,18 @@ export default function AdminMediaModerationClient({
                       </div>
                     </div>
                     {initialAiModerationEnabled ? (
-                      <div className="rounded-md border border-sky-200 bg-sky-50/60 p-3 space-y-3">
+                      <div className="rounded-lg border border-sky-400/30 bg-sky-500/10 p-3 space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <div className="text-sm font-medium text-gray-900">AI Review Assist</div>
-                            <p className="text-xs text-gray-600">
+                            <div className="text-sm font-medium text-white">AI Review Assist</div>
+                            <p className="text-xs text-slate-300">
                               Metadata-only recommendation. The AI does not watch the actual video content in this version.
                             </p>
                           </div>
                           <Button
                             size="sm"
                             variant="outline"
+                            className="border-sky-300/40 bg-slate-950/80 text-sky-50 hover:bg-sky-950 hover:text-white"
                             disabled={aiActionBusy}
                             onClick={() => requestAiSuggestion(pack)}
                           >
@@ -1223,21 +1235,21 @@ export default function AdminMediaModerationClient({
                           </Button>
                         </div>
                         {aiSuggestion ? (
-                          <div className="rounded-md border bg-white p-3 space-y-3">
+                          <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 space-y-3">
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge className="bg-sky-700 text-white hover:bg-sky-700">
                                 AI decision: {prettyStatus(aiSuggestion.suggestion.decision)}
                               </Badge>
-                              <Badge variant="outline">
+                              <Badge variant="outline" className="border-slate-600 bg-slate-900 text-slate-100">
                                 Confidence: {prettyStatus(aiSuggestion.suggestion.confidence)}
                               </Badge>
-                              <Badge variant="outline">Scope: metadata only</Badge>
+                              <Badge variant="outline" className="border-slate-600 bg-slate-900 text-slate-100">Scope: metadata only</Badge>
                             </div>
-                            <div className="text-sm text-gray-900">{aiSuggestion.suggestion.summary}</div>
+                            <div className="text-sm text-slate-100">{aiSuggestion.suggestion.summary}</div>
                             {aiSuggestion.suggestion.policyAreas.length ? (
                               <div className="flex flex-wrap gap-2">
                                 {aiSuggestion.suggestion.policyAreas.map((area) => (
-                                  <Badge key={`${pack.packageId}:${area}`} variant="outline">
+                                  <Badge key={`${pack.packageId}:${area}`} variant="outline" className="border-slate-600 bg-slate-900 text-slate-100">
                                     {prettyStatus(area)}
                                   </Badge>
                                 ))}
@@ -1245,15 +1257,15 @@ export default function AdminMediaModerationClient({
                             ) : null}
                             {aiSuggestion.suggestion.findings.length ? (
                               <div className="space-y-2">
-                                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
                                   Findings
                                 </div>
                                 {aiSuggestion.suggestion.findings.map((finding, index) => (
-                                  <div key={`${pack.packageId}:finding:${index}`} className="rounded border p-2">
-                                    <div className="font-medium text-sm text-gray-900">{finding.label}</div>
-                                    <div className="text-sm text-gray-700">{finding.detail}</div>
+                                  <div key={`${pack.packageId}:finding:${index}`} className="rounded border border-slate-700 bg-slate-900 p-2">
+                                    <div className="font-medium text-sm text-slate-100">{finding.label}</div>
+                                    <div className="text-sm text-slate-300">{finding.detail}</div>
                                     {finding.evidence.length ? (
-                                      <ul className="mt-1 list-disc pl-5 text-xs text-gray-600">
+                                      <ul className="mt-1 list-disc pl-5 text-xs text-slate-400">
                                         {finding.evidence.map((evidence, evidenceIndex) => (
                                           <li key={`${pack.packageId}:finding:${index}:evidence:${evidenceIndex}`}>
                                             {evidence}
@@ -1267,28 +1279,28 @@ export default function AdminMediaModerationClient({
                             ) : null}
                             {aiSuggestion.suggestion.recommendedActions.length ? (
                               <div className="space-y-2">
-                                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
                                   Recommended next actions
                                 </div>
-                                <ul className="list-disc pl-5 text-sm text-gray-700">
+                                <ul className="list-disc pl-5 text-sm text-slate-300">
                                   {aiSuggestion.suggestion.recommendedActions.map((action, index) => (
                                     <li key={`${pack.packageId}:action:${index}`}>{action}</li>
                                   ))}
                                 </ul>
                               </div>
                             ) : null}
-                            <div className="rounded border border-dashed border-sky-200 p-3 space-y-3">
+                            <div className="rounded border border-dashed border-sky-400/30 bg-slate-900/70 p-3 space-y-3">
                               <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
                                   Operator feedback
                                 </div>
                                 {aiSuggestion.feedback ? (
-                                  <Badge variant="outline">
+                                  <Badge variant="outline" className="border-slate-600 bg-slate-950 text-slate-100">
                                     {feedbackOutcomeLabel(aiSuggestion.feedback.outcome)}
                                     {aiSuggestion.feedback.mode === 'automatic' ? ' (auto)' : ''}
                                   </Badge>
                                 ) : (
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-slate-400">
                                     Package and stage moderation actions auto-record followed or overrode when the recommendation clearly maps to the action taken.
                                   </span>
                                 )}
@@ -1298,6 +1310,7 @@ export default function AdminMediaModerationClient({
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
                                     disabled={aiFeedbackBusy}
                                     onClick={async () => {
                                       const result = await recordAiFeedbackForPackage(pack, 'accepted', 'manual');
@@ -1314,6 +1327,7 @@ export default function AdminMediaModerationClient({
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
                                     disabled={aiFeedbackBusy}
                                     onClick={async () => {
                                       const result = await recordAiFeedbackForPackage(pack, 'overrode', 'manual');
@@ -1330,6 +1344,7 @@ export default function AdminMediaModerationClient({
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
                                     disabled={aiFeedbackBusy}
                                     onClick={async () => {
                                       const result = await recordAiFeedbackForPackage(pack, 'ignored', 'manual');
@@ -1346,7 +1361,7 @@ export default function AdminMediaModerationClient({
                                 </div>
                               ) : null}
                             </div>
-                            <div className="text-[11px] text-gray-500">
+                            <div className="text-[11px] text-slate-400">
                               Model: {aiSuggestion.model || 'Unknown'}
                               {aiSuggestion.usage?.totalTokens ? ` • Tokens: ${aiSuggestion.usage.totalTokens}` : ''}
                               {aiSuggestion.promptVersion ? ` • Prompt: ${aiSuggestion.promptVersion}` : ''}
@@ -1355,12 +1370,13 @@ export default function AdminMediaModerationClient({
                         ) : null}
                       </div>
                     ) : null}
-                    <div className="rounded-md border bg-white p-3">
+                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-medium text-gray-900">Advanced stage controls</div>
+                        <div className="text-sm font-medium text-white">Advanced stage controls</div>
                         <Button
                           size="sm"
                           variant="outline"
+                          className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
                           onClick={() =>
                             setAdvancedOpenById((prev) => ({
                               ...prev,
@@ -1371,7 +1387,7 @@ export default function AdminMediaModerationClient({
                           {advancedOpenById[pack.packageId] ? 'Hide' : 'Show'}
                         </Button>
                       </div>
-                      <p className="mt-1 text-xs text-gray-600">
+                      <p className="mt-1 text-xs text-slate-300">
                         Use only when you need stage-specific overrides after a package-level decision.
                       </p>
                     </div>
@@ -1381,7 +1397,7 @@ export default function AdminMediaModerationClient({
                         const stageVideo = pack.videosByStage[stage];
                         if (!stageVideo) {
                           return (
-                            <div key={`${pack.packageId}:${stage}`} className="rounded border border-dashed border-gray-300 p-3 text-sm text-gray-500">
+                            <div key={`${pack.packageId}:${stage}`} className="rounded-lg border border-dashed border-slate-600 bg-slate-950/60 p-3 text-sm text-slate-400">
                               {STAGE_LABELS[stage]} video missing.
                             </div>
                           );
@@ -1390,34 +1406,36 @@ export default function AdminMediaModerationClient({
                         return (
                           <div
                             key={stageVideo.assetId}
-                            className={`rounded border p-3 space-y-2 ${
-                              stage === 'COMPLETED' ? 'border-emerald-400 bg-emerald-50/70' : 'bg-white'
+                            className={`rounded-lg border bg-slate-950/70 p-3 space-y-2 ${
+                              stage === 'COMPLETED' ? 'border-emerald-400/70 ring-1 ring-emerald-400/20' : 'border-slate-700'
                             }`}
                           >
-                            <div className="h-24 rounded border bg-gray-50 flex items-center justify-center overflow-hidden">
+                            <div className="h-24 rounded border border-slate-700 bg-slate-900 flex items-center justify-center overflow-hidden">
                               {stageVideo.previewRef && stageVideo.mimeType.startsWith('image/') ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={stageVideo.previewRef} alt={stageVideo.title} className="h-full w-full object-cover" />
                               ) : (
-                                <Video className="w-6 h-6 text-gray-400" />
+                                <Video className="w-6 h-6 text-slate-400" />
                               )}
                             </div>
-                            <div className="font-medium text-sm flex flex-wrap items-center gap-2">
+                            <div className="font-medium text-sm text-white flex flex-wrap items-center gap-2">
                               {STAGE_LABELS[stage]}
                               {stage === 'COMPLETED' ? (
                                 <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Primary video</Badge>
                               ) : null}
                             </div>
-                            <div className="text-sm text-gray-900">{stageVideo.title}</div>
-                            <div className="text-xs text-gray-600">
+                            <div className="text-sm text-slate-100">{stageVideo.title}</div>
+                            <div className="text-xs text-slate-400">
                               Uploaded: {formatModerationTimestamp(stageVideo.createdAt)}
                             </div>
-                            <div className="text-xs text-gray-600">
+                            <div className="text-xs text-slate-400">
                               Uploader: {stageVideo.employeeName || stageVideo.uploadedByMembershipId || '-'}
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <Badge variant="outline">Moderation: {prettyStatus(stageVideo.moderationStatus)}</Badge>
-                              <Badge variant="outline">
+                              <Badge variant="outline" className="border-slate-600 bg-slate-900 text-slate-100">
+                                Moderation: {prettyStatus(stageVideo.moderationStatus)}
+                              </Badge>
+                              <Badge variant="outline" className="border-slate-600 bg-slate-900 text-slate-100">
                                 Visibility:{' '}
                                 {VISIBILITY_OPTIONS.find((o) => o.value === visibilityLevelFromAsset(stageVideo.visibilityStatus))
                                   ?.label || stageVideo.visibilityStatus}
@@ -1427,6 +1445,7 @@ export default function AdminMediaModerationClient({
                               <Button
                                 size="sm"
                                 variant="outline"
+                                className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
                                 onClick={() => setSelectedAsset({ stage, video: stageVideo, pack })}
                               >
                                 Details
@@ -1445,7 +1464,7 @@ export default function AdminMediaModerationClient({
                       })}
                       </div>
                     ) : null}
-                    <div className="text-xs text-gray-600">
+                    <div className="text-xs text-slate-400">
                       Package updated: {formatModerationTimestamp(pack.createdAt)}
                       {pack.serviceName ? ` • Service: ${pack.serviceName}` : ''}
                       {pack.uploadedByMembershipIds.length ? ` • Uploaders: ${pack.uploadedByMembershipIds.join(', ')}` : ''}
