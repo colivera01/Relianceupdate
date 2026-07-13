@@ -657,6 +657,83 @@ describe("vendor job actions integration", () => {
     });
   });
 
+  it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER force resends an already released service order link", async () => {
+    const metadata = JSON.stringify({
+      vendor_job_assigned_membership_ids: ["member-1"],
+      vendor_job_assigned_employees: ["Peter Parker"],
+      vendor_job_primary_membership_id: "member-1",
+      vendor_job_primary_employee: "Peter Parker",
+      vendor_job_recording_location: "business",
+      vendor_job_location_verified: false,
+      vendor_job_service_order_released_membership_ids: ["member-1"],
+      vendor_job_service_order_released_at: "2026-06-11T12:00:00.000Z",
+      reliance_ops: { operational_phase: "ASSIGNED" },
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: metadata,
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      scheduledFor: new Date("2026-06-20T15:00:00.000Z"),
+      date: null,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      status: "PENDING",
+      customerMetadata: metadata,
+    });
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "member-1",
+        user: {
+          name: "Peter Parker",
+          email: "peter@example.com",
+          phone: "4075550123",
+        },
+      },
+    ]);
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      id: "job1",
+      status: "PENDING",
+      customerMetadata: args.data.customerMetadata,
+      updatedAt: new Date("2026-06-11T12:10:00.000Z"),
+    }));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "RELEASE_EMPLOYEE_SERVICE_ORDER",
+      forceResend: true,
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(sendJobAssignmentNotification).toHaveBeenCalledTimes(1);
+    expect(sendJobAssignmentNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "job1",
+        employeeName: "Peter Parker",
+        employeeEmail: "peter@example.com",
+        employeePhone: "4075550123",
+        employeeJobLink: expect.stringMatching(
+          /^http:\/\/localhost\/employee\/jobs\?jobId=job1&ct=.+/
+        ),
+      })
+    );
+    const updateArg = hoisted.bookingUpdate.mock.calls[0][0];
+    const savedMetadata = JSON.parse(updateArg.data.customerMetadata);
+    expect(savedMetadata.vendor_job_service_order_released_membership_ids).toEqual(["member-1"]);
+    expect(json.notifications).toMatchObject({
+      sentCount: 1,
+      forceResend: true,
+    });
+    expect(json.message).toBe("Employee service order link resent.");
+  });
+
   it("DELETE allows CONFIRMED (in-progress) jobs for vendors", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "CONFIRMED" });
     hoisted.mediaSessionFindMany.mockResolvedValue([]);

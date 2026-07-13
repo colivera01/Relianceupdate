@@ -1776,10 +1776,12 @@ export default function VendorJobs() {
 
   const releaseEmployeeServiceOrderForJob = async (
     job: any,
-    snapshot: ReturnType<typeof buildRecordingComplianceSnapshot>
+    snapshot: ReturnType<typeof buildRecordingComplianceSnapshot>,
+    options?: { forceResend?: boolean }
   ) => {
     const payload = await runPersistedJobAction(job, 'RELEASE_EMPLOYEE_SERVICE_ORDER', {
       recordingCompliance: snapshot,
+      ...(options?.forceResend ? { forceResend: true } : {}),
     });
     const backendSnapshot = payload?.job?.recordingCompliance || payload?.recordingCompliance || null;
     if (backendSnapshot) {
@@ -1802,6 +1804,44 @@ export default function VendorJobs() {
       });
     }
     return payload;
+  };
+
+  const handleResendEmployeeServiceOrder = async (job: any) => {
+    if (jobMutationLoadingId) return;
+    if (!isJobAssignedForVideoUpload(job)) {
+      setJobActionFeedback({ type: 'error', message: videoAssignmentRequiredCopy });
+      return;
+    }
+    setJobMutationLoadingId(`resend-service-order:${String(job?.id || '')}`);
+    setJobActionFeedback(null);
+    try {
+      const saved = getSavedRecordingComplianceForJob(job);
+      const snapshot =
+        saved ||
+        buildRecordingComplianceSnapshot(job, {
+          location: 'business',
+          consentAccepted: false,
+          consentToken: '',
+          locationVerified: false,
+        });
+      const refreshed = await refreshRecordingComplianceSnapshot(job, snapshot);
+      if (!refreshed) {
+        throw new Error('The service order is missing its recording setup. Open Job and complete the service-order step first.');
+      }
+      const payload = await releaseEmployeeServiceOrderForJob(job, refreshed, { forceResend: true });
+      await reloadJobsFromBackend();
+      setJobActionFeedback({
+        type: 'success',
+        message: payload?.message || 'Employee service order link resent.',
+      });
+    } catch (error) {
+      setJobActionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Could not resend the employee service order link.',
+      });
+    } finally {
+      setJobMutationLoadingId(null);
+    }
   };
 
   const releaseEmployeeServiceOrderWhenReady = async (
@@ -7432,6 +7472,19 @@ export default function VendorJobs() {
                                 >
                                   {isJobAssignedForVideoUpload(job) ? 'Reassign Job' : 'Assign Employee'}
                                 </button>
+                                {isJobAssignedForVideoUpload(job) ? (
+                                  <button
+                                    className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                    onClick={() => {
+                                      setActiveJobActionMenuId(null);
+                                      void handleResendEmployeeServiceOrder(job);
+                                    }}
+                                    disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                    title="Resend the employee's secure service order link by email/SMS when available."
+                                  >
+                                    Resend Service Order Link
+                                  </button>
+                                ) : null}
                                 <button
                                   className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"
                                   onClick={() => {

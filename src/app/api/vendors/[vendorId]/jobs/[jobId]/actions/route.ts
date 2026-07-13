@@ -591,6 +591,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     }
 
     if (action === "RELEASE_EMPLOYEE_SERVICE_ORDER") {
+      const forceResend = Boolean(body?.forceResend);
       const existing = await prisma.booking.findUnique({
         where: { id: booking.id },
         select: { customerMetadata: true, status: true },
@@ -647,9 +648,11 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       if (!resolved.ok) return resolved.response;
 
       const compliance = parseRecordingComplianceMetadata(metadata);
-      const unreleasedMembers = resolved.members.filter(
-        (assignmentMember) => !compliance.releasedMembershipIds.includes(assignmentMember.id)
-      );
+      const unreleasedMembers = forceResend
+        ? resolved.members
+        : resolved.members.filter(
+            (assignmentMember) => !compliance.releasedMembershipIds.includes(assignmentMember.id)
+          );
       if (unreleasedMembers.length === 0) {
         return NextResponse.json({
           success: true,
@@ -740,6 +743,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         newValue: {
           releasedMembershipIds: releasedIds,
           notificationResults,
+          forceResend,
         },
         metadata: { vendorId },
       });
@@ -755,9 +759,10 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         },
         notifications: {
           sentCount: successfulMembershipIds.length,
+          forceResend,
           results: notificationResults,
         },
-        message: "Employee service order sent.",
+        message: forceResend ? "Employee service order link resent." : "Employee service order sent.",
       });
     }
 
