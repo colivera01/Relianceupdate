@@ -5,6 +5,7 @@ import { readNotificationEnv } from "@/lib/env/notification-config";
 import { TRUST_OUTCOME_TYPES, tryRecordFinalizedOperationalOutcome } from "@/lib/trust-score-outcome-foundation";
 import { tryRecalculateVendorTrustScore } from "@/lib/trust-score-calculator";
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
+import { sendVideoPackageApprovedNotification } from "@/lib/notifications/send-video-package-approved";
 import {
   MODERATION_APPROVED,
   MODERATION_FLAGGED,
@@ -47,11 +48,30 @@ function parseMetadata(value: string | null | undefined): Record<string, unknown
   }
 }
 
+function usableCustomerEmail(value: unknown): string {
+  const email = String(value || "").trim();
+  return email.toLowerCase().endsWith("@reliance.local") ? "" : email;
+}
+
 function toAbsoluteVideoUrl(bookingId: string): string {
   const env = readNotificationEnv();
   const base = String(env.appBaseUrl || "").trim();
   const path = `/my-bookings/${bookingId}?videoReady=1`;
   return base ? `${base}${path}` : path;
+}
+
+function toAbsoluteVendorJobUrl(bookingId: string): string {
+  const env = readNotificationEnv();
+  const base = String(env.appBaseUrl || "").trim();
+  const path = `/vendor/jobs/${bookingId}`;
+  return base ? `${base}${path}` : path;
+}
+
+function visibilityLabel(level: VisibilityLevel): string {
+  if (level === "public") return "Public";
+  if (level === "customer_only") return "Customer only";
+  if (level === "vendor_archive_only") return "Vendor archive only";
+  return "Private / internal";
 }
 
 /**
@@ -98,7 +118,24 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         clientName: true,
         userId: true,
         customerMetadata: true,
-        vendor: { select: { businessName: true, name: true } },
+        vendor: {
+          select: {
+            businessName: true,
+            name: true,
+            email: true,
+            phone: true,
+            memberships: {
+              where: {
+                status: "ACTIVE",
+                role: "MANAGER",
+              },
+              select: {
+                id: true,
+                user: { select: { name: true, email: true, phone: true } },
+              },
+            },
+          },
+        },
         user: { select: { email: true, name: true, phone: true } },
         service: { select: { name: true } },
       },
@@ -218,12 +255,19 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         "package_moderate"
       );
     }
-    if (action === "approve" && (visibility === "customer_only" || visibility === "public")) {
+    if (action === "approve") {
       const metadata = parseMetadata(booking.customerMetadata);
-      const alreadyNotified = Boolean(metadata.proof_ready_notification_sent_at);
+      const nextMetadata: Record<string, unknown> = { ...metadata };
+      let metadataChanged = false;
+
+      if (visibility === "customer_only" || visibility === "public") {
+        const alreadyNotified = Boolean(metadata.proof_ready_notification_sent_at);
       if (!alreadyNotified) {
         const videoUrl = toAbsoluteVideoUrl(bookingId);
-        const customerEmail = String(booking.user?.email || metadata.client_email || "").trim();
+        const customerEmail =
+          usableCustomerEmail(metadata.client_email) ||
+          usableCustomerEmail(metadata.claim_contact_email) ||
+          usableCustomerEmail(booking.user?.email);
         const customerPhone = String(booking.user?.phone || metadata.client_phone || "").trim();
         const customerName = String(booking.user?.name || booking.clientName || "").trim();
         let notified = false;
@@ -240,13 +284,62 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         });
         notified = Boolean(sendResult.ok);
         // Best-effort anti-spam gate: mark attempted once so re-approve does not spam.
-        const nextMetadata = {
-          ...metadata,
-          proof_ready_notification_sent_at: new Date().toISOString(),
-          proof_ready_notification_sent_success: notified,
-          proof_ready_notification_visibility: visibility,
-          proof_ready_notification_url: videoUrl,
-        };
+        nextMetadata.proof_ready_notification_sent_at = new Date().toISOString();
+        nextMetadata.proof_ready_notification_sent_success = notified;
+        nextMetadata.proof_ready_notification_visibility = visibility;
+        nextMetadata.proof_ready_notification_url = videoUrl;
+        metadataChanged = true;
+        }
+      }
+
+      const alreadyManagerNotified = Boolean(metadata.admin_package_approved_notification_sent_at);
+      if (!alreadyManagerNotified) {
+        const vendorName = booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor";
+        const jobTitle = booking.title || booking.service?.name || "Service order";
+        const managerReviewLink = toAbsoluteVendorJobUrl(bookingId);
+        const activeManagers = Array.isArray((booking.vendor as any)?.memberships)
+          ? ((booking.vendor as any).memberships as any[])
+          : [];
+        const recipients = activeManagers.length
+          ? activeManagers.map((manager) => ({
+              name: manager?.user?.name || vendorName,
+              email: manager?.user?.email || "",
+              phone: manager?.user?.phone || "",
+            }))
+          : [
+              {
+                name: vendorName,
+                email: booking.vendor?.email || "",
+                phone: booking.vendor?.phone || "",
+              },
+            ];
+        const managerResults = [];
+        for (const recipient of recipients) {
+          const result = await sendVideoPackageApprovedNotification({
+            actorUserId: userId,
+            bookingId,
+            managerName: recipient.name,
+            managerEmail: recipient.email,
+            managerPhone: recipient.phone,
+            managerReviewLink,
+            vendorName,
+            jobTitle,
+            customerName: booking.clientName,
+            visibilityLabel: visibilityLabel(visibility),
+          });
+          managerResults.push({
+            email: Boolean(recipient.email),
+            phone: Boolean(recipient.phone),
+            anySuccess: result.anySuccess,
+          });
+        }
+        nextMetadata.admin_package_approved_notification_sent_at = new Date().toISOString();
+        nextMetadata.admin_package_approved_notification_visibility = visibility;
+        nextMetadata.admin_package_approved_notification_success = managerResults.some((result) => result.anySuccess);
+        metadataChanged = true;
+      }
+
+      if (metadataChanged) {
         await prisma.booking.update({
           where: { id: bookingId },
           data: { customerMetadata: JSON.stringify(nextMetadata) },

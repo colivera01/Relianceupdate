@@ -50,6 +50,18 @@ type DeviceStatusRow = {
   indicator: "error" | "low_battery" | "normal";
 };
 
+type ServiceVideoActivityRow = {
+  id: string;
+  bookingId: string | null;
+  jobTitle: string;
+  clientName: string | null;
+  stage: string | null;
+  moderationStatus: string;
+  visibilityStatus: string;
+  bytes: string;
+  createdAt: string;
+};
+
 const SUPPORTED_EVENT_TYPES = [
   "device_boot",
   "device_paired",
@@ -87,11 +99,13 @@ export default function VendorTelemetryPage() {
   const resolvedVendorId = useMemo(() => (vendorProfile?.id ? String(vendorProfile.id) : ""), [vendorProfile?.id]);
 
   const [events, setEvents] = useState<DeviceTelemetryEvent[]>([]);
+  const [serviceVideoActivity, setServiceVideoActivity] = useState<ServiceVideoActivityRow[]>([]);
   const [deviceStatuses, setDeviceStatuses] = useState<DeviceStatusRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [activityError, setActivityError] = useState<string | null>(null);
 
   const [eventType, setEventType] = useState<string>("all");
   const [deviceUid, setDeviceUid] = useState<string>("");
@@ -233,6 +247,43 @@ export default function VendorTelemetryPage() {
     }
   }, [userId, resolvedVendorId, eventType, deviceUid, sinceLocal, limit, buildSinceIso]);
 
+  const fetchServiceVideoActivity = useCallback(async () => {
+    if (!userId || !resolvedVendorId) return;
+    setActivityError(null);
+    try {
+      const res = await fetch(`/api/vendors/${resolvedVendorId}/media?activity=true`, {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          ...getClientSessionHeaders(userId),
+        },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(json?.error || json?.message || "Failed to fetch service video activity"));
+      }
+      const incoming = Array.isArray(json?.assets) ? json.assets : [];
+      setServiceVideoActivity(
+        incoming
+          .filter((asset: any) => String(asset?.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO")
+          .map((asset: any) => ({
+            id: String(asset.id || asset.assetId),
+            bookingId: asset.bookingId ? String(asset.bookingId) : null,
+            jobTitle: String(asset.jobTitle || asset.title || "Service video"),
+            clientName: asset.clientName ? String(asset.clientName) : null,
+            stage: asset.vendorJobVideoStage ? String(asset.vendorJobVideoStage) : null,
+            moderationStatus: String(asset.moderationStatus || "pending_review"),
+            visibilityStatus: String(asset.visibilityStatus || "private"),
+            bytes: String(asset.bytes || "0"),
+            createdAt: String(asset.createdAt),
+          }))
+      );
+    } catch (e) {
+      setActivityError(e instanceof Error ? e.message : "Failed to fetch service video activity");
+      setServiceVideoActivity([]);
+    }
+  }, [userId, resolvedVendorId]);
+
   const displayFilters = useMemo(() => {
     const parts: string[] = [];
     if (eventType && eventType !== "all") parts.push(`type=${eventType}`);
@@ -244,8 +295,8 @@ export default function VendorTelemetryPage() {
   }, [eventType, deviceUid, sinceLocal, limit, buildSinceIso]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([fetchDeviceStatuses(), fetchEvents()]);
-  }, [fetchDeviceStatuses, fetchEvents]);
+    await Promise.all([fetchDeviceStatuses(), fetchEvents(), fetchServiceVideoActivity()]);
+  }, [fetchDeviceStatuses, fetchEvents, fetchServiceVideoActivity]);
 
   const showRawTelemetryForDevice = useCallback((uid: string | null) => {
     if (!uid) return;
@@ -280,6 +331,51 @@ export default function VendorTelemetryPage() {
           {loading || statusLoading ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Recent service video recordings</CardTitle>
+          <p className="text-xs text-gray-500 mt-1">
+            {serviceVideoActivity.length} upload{serviceVideoActivity.length === 1 ? "" : "s"} saved from employee service orders
+          </p>
+        </CardHeader>
+        <CardContent>
+          {activityError ? (
+            <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {activityError}
+            </div>
+          ) : null}
+
+          {serviceVideoActivity.length === 0 ? (
+            <div className="text-sm text-gray-600 py-4">No service video uploads have been saved yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {serviceVideoActivity.map((asset) => (
+                <div key={asset.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="font-semibold text-gray-900">{asset.jobTitle}</div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {asset.clientName ? <span>Client: {asset.clientName}</span> : null}
+                        {asset.clientName && asset.bookingId ? <span> · </span> : null}
+                        {asset.bookingId ? <span>Booking: {asset.bookingId}</span> : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {asset.stage ? <Badge variant="outline">{asset.stage.replace(/_/g, " ")}</Badge> : null}
+                      <Badge variant="outline">{asset.moderationStatus.replace(/_/g, " ")}</Badge>
+                      <Badge variant="outline">{asset.visibilityStatus.replace(/_/g, " ")}</Badge>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-500">
+                    Saved: {new Date(asset.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">

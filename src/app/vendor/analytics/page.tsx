@@ -54,8 +54,10 @@ export default function VendorAnalyticsPage() {
     const totalClients = Number(data.stats?.totalClients || 0);
     const rating = Number(data.stats?.rating || 0);
     const ratingCount = Number(data.stats?.ratingCount || 0);
-    const approvedVideos = Number(data.approvedProofs || 0);
-    const pendingVideos = Number(data.pendingModerationProofs || 0);
+    const approvedServiceOrders = Number(data.approvedServiceOrderCount ?? data.approvedProofs ?? 0);
+    const pendingServiceOrders = Number(
+      data.pendingModerationServiceOrderCount ?? data.pendingModerationProofs ?? 0
+    );
     const archivedVideos = Number(data.archivedProofs || 0);
     const totalProofAssets = Number(data.totalProofAssets || 0);
     const storagePercent = Number(data.storagePercentUsed || 0);
@@ -78,8 +80,8 @@ export default function VendorAnalyticsPage() {
       totalClients,
       rating,
       ratingCount,
-      approvedVideos,
-      pendingVideos,
+      approvedServiceOrders,
+      pendingServiceOrders,
       archivedVideos,
       totalProofAssets,
       storagePercent,
@@ -185,9 +187,9 @@ export default function VendorAnalyticsPage() {
       icon: Star,
     },
     {
-      label: "Service video approvals",
-      value: String(derived.approvedVideos),
-      helper: `${derived.pendingVideos} pending moderation`,
+      label: "Service order approvals",
+      value: String(derived.approvedServiceOrders),
+      helper: `${derived.pendingServiceOrders} pending moderation`,
       icon: Video,
     },
   ];
@@ -276,14 +278,14 @@ export default function VendorAnalyticsPage() {
                 Service video pipeline
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
-                <Badge variant={derived.pendingVideos > 0 ? "warning" : "secondary"}>
-                  {derived.pendingVideos} pending
+                <Badge variant={derived.pendingServiceOrders > 0 ? "warning" : "secondary"}>
+                  {derived.pendingServiceOrders} pending
                 </Badge>
-                <Badge variant="success">{derived.approvedVideos} approved</Badge>
+                <Badge variant="success">{derived.approvedServiceOrders} approved</Badge>
                 <Badge variant="outline">{derived.archivedVideos} archived</Badge>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Approved service videos help first-time customers trust what your business actually delivers.
+                Approved service orders help first-time customers trust what your business actually delivers.
               </p>
             </div>
             <div className="rounded-2xl border bg-slate-50/90 p-4">

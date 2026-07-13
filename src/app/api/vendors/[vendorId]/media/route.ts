@@ -35,14 +35,17 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const includeDeleted = searchParams.get("includeDeleted") === "true";
+    const activityMode = searchParams.get("activity") === "true";
 
-    const where: any = countableMediaAssetWhere({
-      vendorId,
-      ...getApprovedActiveBaseWhere(),
-      visibilityStatus: {
-        in: getVisibilityStatusesForAudience("vendor_internal"),
-      },
-    });
+    const where: any = activityMode
+      ? countableMediaAssetWhere({ vendorId })
+      : countableMediaAssetWhere({
+          vendorId,
+          ...getApprovedActiveBaseWhere(),
+          visibilityStatus: {
+            in: getVisibilityStatusesForAudience("vendor_internal"),
+          },
+        });
 
     // Deprecated behavior: includeDeleted no longer bypasses moderation visibility guardrails.
     if (includeDeleted && process.env.NODE_ENV === "development") {
@@ -79,6 +82,7 @@ export async function GET(
           },
         },
       },
+      take: activityMode ? 100 : undefined,
     });
 
     // Calculate total storage for this vendor (non-deleted only)
@@ -119,6 +123,7 @@ export async function GET(
         serviceId: asset.mediaSession?.service?.id || asset.mediaSession?.serviceId || null,
         serviceName: asset.mediaSession?.service?.name || null,
         sessionType: asset.mediaSession?.sessionType || null,
+        vendorJobVideoStage: asset.mediaSession?.vendorJobVideoStage || null,
         mediaPurpose: deriveMediaPurposeFromSessionType(asset.mediaSession?.sessionType),
         employeeName: asset.mediaSession?.employee?.name || null,
         createdAt: asset.createdAt,
@@ -141,4 +146,3 @@ export async function GET(
     );
   }
 }
-

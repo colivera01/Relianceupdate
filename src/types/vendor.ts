@@ -96,8 +96,14 @@ export interface VendorDashboardResponse {
   notifications: VendorNotification[];
   pendingModerationProofs?: number;
   approvedProofs?: number;
+  pendingModerationServiceOrderCount?: number;
+  approvedServiceOrderCount?: number;
+  publicServiceOrderCount?: number;
+  approvedProofAssets?: number;
   archivedProofs?: number;
   totalProofAssets?: number;
+  trustScore?: number | null;
+  trustScoreSummary?: unknown;
   storageUsedBytes?: string;
   storageLimitBytes?: string;
   storagePercentUsed?: number;

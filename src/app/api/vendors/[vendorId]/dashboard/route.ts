@@ -8,6 +8,12 @@ import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { getEmployeeRatingsForVendor, getVendorRatingStats } from "@/lib/review-attribution-aggregates";
 import { calculateStorageUsage } from "@/lib/storage-helpers";
 import {
+  buildCompleteMediaModerationPackages,
+  countPendingMediaModerationPackages,
+  REQUIRED_MEDIA_MODERATION_STAGE_KEYS,
+} from "@/lib/admin-media-moderation-packages";
+import { getCurrentVendorTrustScoreSnapshot, toVendorTrustScore } from "@/lib/trust-score-read";
+import {
   resolveOperationalClientKey,
   resolveOperationalClientLabel,
 } from "@/lib/operational-client";
@@ -29,6 +35,7 @@ const USE_DASHBOARD_CACHE =
   process.env.NODE_ENV !== "development" && process.env.NODE_ENV !== "test";
 const DASHBOARD_DEBUG_LOG = process.env.NODE_ENV !== "production";
 const APPROVED_STATUS = "APPROVED";
+const PUBLIC_VISIBILITY_STATUS = "PUBLIC";
 
 function approvedCustomerReviewWhereForVendor(
   vendorId: string,
@@ -289,6 +296,8 @@ export async function GET(
       proofModerationGroups,
       totalProofAssets,
       archivedProofs,
+      packageMediaAssets,
+      currentTrustScoreSnapshot,
     ] = await withTransientDbRetry(() =>
       Promise.all([
       // Vendor profile
@@ -431,6 +440,49 @@ export async function GET(
           OR: [{ deletedAt: { not: null } }, { archiveStatus: { in: ["ARCHIVED", "archived"] } }],
         },
       }),
+      jobsOnly
+        ? Promise.resolve([])
+        : typeof (prisma as any).mediaAsset?.findMany === "function"
+        ? (prisma as any).mediaAsset.findMany({
+            where: {
+              ...countableMediaAssetWhere({ vendorId }),
+              mediaSession: {
+                bookingId: { not: null },
+                sessionType: "JOB_SERVICE_VIDEO",
+                vendorJobVideoStage: {
+                  in: [...REQUIRED_MEDIA_MODERATION_STAGE_KEYS],
+                },
+              },
+            },
+            select: {
+              id: true,
+              vendorId: true,
+              moderationStatus: true,
+              visibilityStatus: true,
+              uploadedByMembershipId: true,
+              createdAt: true,
+              mediaSession: {
+                select: {
+                  bookingId: true,
+                  vendorJobVideoStage: true,
+                  booking: {
+                    select: {
+                      id: true,
+                      title: true,
+                      status: true,
+                      clientName: true,
+                      vendor: { select: { businessName: true, name: true } },
+                      service: { select: { name: true } },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : Promise.resolve([]),
+      jobsOnly
+        ? Promise.resolve(null)
+        : getCurrentVendorTrustScoreSnapshot(prisma as any, vendorId),
       ])
     );
 
@@ -902,16 +954,47 @@ export async function GET(
     ];
 
     let pendingModerationProofs = 0;
-    let approvedProofs = 0;
+    let approvedProofAssets = 0;
     for (const row of proofModerationGroups as any[]) {
       const key = normalizeKey(row?.moderationStatus);
       const count = Number(row?._count?.id || 0);
       if (!key || key === "PENDING_REVIEW") {
         pendingModerationProofs += count;
       } else if (key === APPROVED_STATUS) {
-        approvedProofs += count;
+        approvedProofAssets += count;
       }
     }
+    const moderationPackages = buildCompleteMediaModerationPackages(
+      (packageMediaAssets as any[]).map((asset) => ({
+        id: asset.id,
+        title: asset.mediaSession?.booking?.title || asset.mediaSession?.booking?.service?.name || null,
+        vendorId: asset.vendorId,
+        vendorName:
+          asset.mediaSession?.booking?.vendor?.businessName ||
+          asset.mediaSession?.booking?.vendor?.name ||
+          null,
+        bookingId: asset.mediaSession?.bookingId || null,
+        jobTitle: asset.mediaSession?.booking?.title || asset.mediaSession?.booking?.service?.name || null,
+        bookingStatus: asset.mediaSession?.booking?.status || null,
+        clientName: asset.mediaSession?.booking?.clientName || null,
+        serviceName: asset.mediaSession?.booking?.service?.name || null,
+        uploadedByMembershipId: asset.uploadedByMembershipId || null,
+        vendorJobVideoStageKey: asset.mediaSession?.vendorJobVideoStage || null,
+        moderationStatus: asset.moderationStatus || null,
+        visibilityStatus: asset.visibilityStatus || null,
+        createdAt: asset.createdAt || null,
+      }))
+    );
+    const pendingModerationServiceOrders = countPendingMediaModerationPackages(moderationPackages);
+    const approvedServiceOrders = moderationPackages.filter(
+      (pack) => pack.packageReadiness === "APPROVED"
+    ).length;
+    const publicServiceOrders = moderationPackages.filter(
+      (pack) =>
+        pack.packageReadiness === "APPROVED" &&
+        pack.visibilityStatuses.some((status) => normalizeKey(status) === PUBLIC_VISIBILITY_STATUS)
+    ).length;
+    const trustScore = toVendorTrustScore(currentTrustScoreSnapshot as any);
 
     let storageUsedBytes = "0";
     let storageLimitBytes = "0";
@@ -964,9 +1047,15 @@ export async function GET(
       insights: [],
       notifications: [],
       pendingModerationProofs,
-      approvedProofs,
+      approvedProofs: approvedServiceOrders,
+      pendingModerationServiceOrderCount: pendingModerationServiceOrders,
+      approvedServiceOrderCount: approvedServiceOrders,
+      publicServiceOrderCount: publicServiceOrders,
+      approvedProofAssets,
       archivedProofs: Number(archivedProofs || 0),
       totalProofAssets: Number(totalProofAssets || 0),
+      trustScore: trustScore.totalScorePct,
+      trustScoreSummary: trustScore,
       storageUsedBytes,
       storageLimitBytes,
       storagePercentUsed,

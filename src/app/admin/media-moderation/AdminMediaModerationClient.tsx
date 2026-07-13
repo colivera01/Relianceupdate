@@ -111,8 +111,12 @@ function buildInitialPackageVisibilityById(packages: QueuePackage[]) {
   const next: Record<string, VisibilityLevel> = {};
   for (const pack of packages) {
     const packageVisibility = displayPackageState(pack.visibilityStatuses);
+    const existingLevel = packageVisibility === 'Mixed' ? 'private' : visibilityLevelFromAsset(packageVisibility);
+    const packageReadiness = String(pack.packageReadiness || '').trim().toUpperCase();
     next[pack.packageId] =
-      packageVisibility === 'Mixed' ? 'private' : visibilityLevelFromAsset(packageVisibility);
+      packageReadiness === 'READY_FOR_ADMIN_REVIEW' && existingLevel === 'private'
+        ? 'customer_only'
+        : existingLevel;
   }
   return next;
 }

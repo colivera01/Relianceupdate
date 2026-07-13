@@ -314,10 +314,11 @@ export default function VendorDashboard() {
   } as const;
 
   const now = new Date();
-  const jobsToday = recentJobs.filter((job) => {
+  const todaysJobs = recentJobs.filter((job) => {
     const d = new Date(job.date);
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  }).length;
+  });
+  const jobsToday = todaysJobs.length;
   const jobsInProgress =
     typeof data.lifecycleCounts?.inProgress === 'number'
       ? data.lifecycleCounts.inProgress
@@ -334,10 +335,13 @@ export default function VendorDashboard() {
   const completionRate = Number(dashboardStats.totalBookings || 0) > 0
     ? Math.round((jobsCompleted / Number(dashboardStats.totalBookings || 1)) * 100)
     : 0;
-  const approvedProofs = Number(data.approvedProofs || 0);
+  const approvedServiceOrders = Number(data.approvedServiceOrderCount ?? data.approvedProofs ?? 0);
+  const publicServiceOrders = Number(data.publicServiceOrderCount ?? approvedServiceOrders);
+  const latestDashboardReviews = recentReviews.slice(0, 3);
   const trustScoreRaw = Number(
     (dashboardStats as any)?.trustScore ??
       (data as any)?.trustScore ??
+      (data as any)?.trustScoreSummary?.totalScorePct ??
       (data?.profile as any)?.trustScore ??
       (vendorProfile as any)?.trustScore ??
       0
@@ -374,7 +378,8 @@ export default function VendorDashboard() {
     businessName: data?.profile?.businessName || vendorProfile?.businessName || null,
     onboarding: vendorProfile?.onboarding || null,
     publishedReviewCount: ratingCount,
-    approvedServiceVideoCount: approvedProofs,
+    approvedServiceVideoCount: approvedServiceOrders,
+    publicServiceOrderCount: publicServiceOrders,
     promotionBrowseReadiness: PROMOTIONS_ENABLED ? promotionBrowseReadiness : null,
     promotionServices: PROMOTIONS_ENABLED ? promotionServices : [],
     promotionRecentRequests: PROMOTIONS_ENABLED ? promotionRecentRequests : [],
@@ -429,9 +434,9 @@ export default function VendorDashboard() {
       route: '/vendor/analytics',
     },
     {
-      label: 'Approved videos',
-      value: approvedProofs.toString(),
-      detail: 'Approved service videos that support customer trust.',
+      label: 'Approved service orders',
+      value: approvedServiceOrders.toString(),
+      detail: 'Approved service orders that support customer trust.',
       icon: Activity,
       color: 'green' as keyof typeof colorMap,
       route: '/vendor/media?filter=approved',
@@ -863,14 +868,14 @@ export default function VendorDashboard() {
               </p>
             </CardHeader>
             <CardContent>
-              {recentJobs.length === 0 ? (
+              {todaysJobs.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  <p className="text-sm">No active jobs are showing yet.</p>
-                  <p className="text-xs mt-1">New jobs, in-progress work, and completed items will appear here automatically.</p>
+                  <p className="text-sm">No work is scheduled for today.</p>
+                  <p className="text-xs mt-1">This card only shows work dated for the current day.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {recentJobs.map((job) => (
+                  {todaysJobs.map((job) => (
                     <div key={job.id} className="flex justify-between items-center gap-3 p-4 bg-gray-50 rounded-lg">
                       <div className="min-w-0">
                         <h4 className="font-medium truncate text-gray-900">{job.title}</h4>
@@ -912,7 +917,7 @@ export default function VendorDashboard() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {recentReviews.map((review) => (
+                  {latestDashboardReviews.map((review) => (
                     <div key={review.id} className="p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-medium text-gray-900">{review.client}</h4>
@@ -931,6 +936,11 @@ export default function VendorDashboard() {
                       <p className="text-xs text-gray-500">{formatDate(review.date)}</p>
                     </div>
                   ))}
+                  {recentReviews.length > latestDashboardReviews.length ? (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                      Showing the latest {latestDashboardReviews.length} reviews. Open the Reviews tab for the full list.
+                    </div>
+                  ) : null}
                 </div>
               )}
             </CardContent>
@@ -949,7 +959,7 @@ export default function VendorDashboard() {
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-600">Used</span>
               <span className="font-semibold text-gray-900">
-                {storageUsedGb.toFixed(1)} GB / {storageQuotaGb} GB
+                {storageUsedGb.toFixed(2)} GB / {storageQuotaGb.toFixed(2)} GB
               </span>
             </div>
             <div className="h-2 w-full rounded-full bg-gray-200">

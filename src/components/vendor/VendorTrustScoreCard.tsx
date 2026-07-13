@@ -96,8 +96,8 @@ function buildDashboardSnapshot(dashboardData: VendorDashboardResponse) {
     totalClients: Number(dashboardData.stats?.totalClients || 0),
     rating: Number(dashboardData.stats?.rating || 0),
     ratingCount: Number(dashboardData.stats?.ratingCount || 0),
-    approvedVideos: Number(dashboardData.approvedProofs || 0),
-    pendingVideos: Number(dashboardData.pendingModerationProofs || 0),
+    approvedVideos: Number(dashboardData.approvedServiceOrderCount ?? dashboardData.approvedProofs ?? 0),
+    pendingVideos: Number(dashboardData.pendingModerationServiceOrderCount ?? dashboardData.pendingModerationProofs ?? 0),
     archivedVideos: Number(dashboardData.archivedProofs || 0),
     totalVideoAssets: Number(dashboardData.totalProofAssets || 0),
     storagePercentUsed: Number(dashboardData.storagePercentUsed || 0),
@@ -281,6 +281,11 @@ export function VendorTrustScoreCard({
               <p className="mt-1">
                 Customers use this score as a quick read on how reliably your business completes verified work,
                 gets service videos approved, and avoids problems that damage trust.
+              </p>
+              <p className="mt-2 text-xs text-slate-600">
+                A component is below 100% when not every finalized qualifying record passed that rule.
+                For example, 0/1 operational reliability means Reliance has one finalized reliability outcome
+                and none of those outcomes currently count as clean.
               </p>
             </div>
 

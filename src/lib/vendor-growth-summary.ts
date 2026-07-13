@@ -55,6 +55,7 @@ type BuildVendorGrowthSummaryInput = {
   onboarding?: VendorOnboardingState | null;
   publishedReviewCount?: number | null;
   approvedServiceVideoCount?: number | null;
+  publicServiceOrderCount?: number | null;
   promotionBrowseReadiness?: PromotionBrowseReadiness | null;
   promotionServices?: PromotionServiceOption[] | null;
   promotionRecentRequests?: PromotionRecentRequest[] | null;
@@ -79,6 +80,7 @@ export function buildVendorGrowthSummary(
   const vendorId = String(input.vendorId || "").trim();
   const publishedReviewCount = toCount(input.publishedReviewCount);
   const approvedServiceVideoCount = toCount(input.approvedServiceVideoCount);
+  const publicServiceOrderCount = toCount(input.publicServiceOrderCount ?? input.approvedServiceVideoCount);
   const publishedServiceCount = toCount(onboarding?.publishedServiceCount);
   const serviceDraftCount = toCount(onboarding?.serviceDraftCount);
   const promotionServices = Array.isArray(input.promotionServices) ? input.promotionServices : [];
@@ -178,13 +180,13 @@ export function buildVendorGrowthSummary(
       tone: publishedReviewCount > 0 ? "success" : "neutral",
     },
     {
-      label: "Public service videos",
-      value: String(approvedServiceVideoCount),
+      label: "Public service orders",
+      value: String(publicServiceOrderCount),
       detail:
-        approvedServiceVideoCount > 0
-          ? "Approved service videos show real work and make your business feel more trustworthy."
-          : "Approved service videos are one of the clearest ways to help customers trust a newer profile.",
-      tone: approvedServiceVideoCount > 0 ? "success" : "neutral",
+        publicServiceOrderCount > 0
+          ? "Public service orders show real completed work and make your business feel more trustworthy."
+          : "Public service orders are one of the clearest ways to help customers trust a newer profile.",
+      tone: publicServiceOrderCount > 0 ? "success" : "neutral",
     },
   ];
 
