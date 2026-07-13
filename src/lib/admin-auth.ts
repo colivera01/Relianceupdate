@@ -1,5 +1,11 @@
 import { getUserIdFromRequest, verifyJwt } from "./auth";
 import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "./auth-session";
+import {
+  isOwnerAdminEmail,
+  isOwnerAdminPhone,
+  isOwnerAdminUserId,
+} from "@/lib/internal-identities";
+import { prisma } from "@/server/db";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
 
@@ -14,6 +20,33 @@ function getBearerToken(request: Request): string | null {
 function isAdminLikeRole(role: string | null | undefined): boolean {
   const normalized = String(role || "").trim().toLowerCase();
   return normalized === "admin" || normalized === "super_admin" || normalized === "superadmin";
+}
+
+async function isOwnerAdminIdentity(params: {
+  userId: string | null | undefined;
+  email?: string | null;
+}): Promise<boolean> {
+  const userId = String(params.userId || "").trim();
+  if (isOwnerAdminUserId(userId) || isOwnerAdminEmail(params.email)) {
+    return true;
+  }
+
+  if (!userId) return false;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        phone: true,
+      },
+    });
+
+    return isOwnerAdminEmail(user?.email) || isOwnerAdminPhone(user?.phone);
+  } catch (error) {
+    console.error("[admin-auth] owner identity fallback failed", error);
+    return false;
+  }
 }
 
 /**
@@ -79,6 +112,13 @@ export async function readAdminAccess(request: Request): Promise<{
   return {
     userId: userId || null,
     role: role || null,
-    isAdmin: Boolean(userId) && (isAdminLikeRole(role) || isAdminByHeader),
+    isAdmin:
+      Boolean(userId) &&
+      (isAdminLikeRole(role) ||
+        isAdminByHeader ||
+        (await isOwnerAdminIdentity({
+          userId,
+          email: signedSession?.email || undefined,
+        }))),
   };
 }
