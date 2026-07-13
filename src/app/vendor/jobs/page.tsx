@@ -2375,6 +2375,25 @@ export default function VendorJobs() {
     { value: 'public_approved', label: 'Public / Approved' },
   ];
 
+  const getWorkflowTabLabelForJob = (job: any) => {
+    const bucket = getJobWorkflowBucket(job);
+    return workflowTabs.find((tab) => tab.value === bucket)?.label || 'Active Work';
+  };
+
+  const getWorkflowTabBadgeClassForJob = (job: any) => {
+    const bucket = getJobWorkflowBucket(job);
+    if (bucket === 'moderator_review') {
+      return '!border-blue-300/45 !bg-blue-500/25 !text-blue-50';
+    }
+    if (bucket === 'manager_review') {
+      return '!border-amber-300/45 !bg-amber-500/25 !text-amber-50';
+    }
+    if (bucket === 'public_approved') {
+      return '!border-emerald-300/45 !bg-emerald-500/20 !text-emerald-50';
+    }
+    return '!border-sky-300/45 !bg-sky-500/20 !text-sky-50';
+  };
+
   const workflowTabCounts = jobs.reduce((counts: Record<string, number>, job: any) => {
     if (String(job.status).toLowerCase() === 'archived') return counts;
     const bucket = getJobWorkflowBucket(job);
@@ -3741,16 +3760,16 @@ export default function VendorJobs() {
   const getOperationalPhaseBadgeClass = (phase: string | null | undefined) => {
     const p = String(phase || '').trim().toUpperCase();
     if (p === 'AWAITING_ADMIN_REVIEW') {
-      return 'bg-indigo-100 text-indigo-900 border-indigo-200';
+      return '!border-blue-300/45 !bg-blue-500/25 !text-blue-50';
     }
     if (p === 'AWAITING_VENDOR_REVIEW') {
-      return 'bg-amber-100 text-amber-900 border-amber-200';
+      return '!border-amber-300/45 !bg-amber-500/25 !text-amber-50';
     }
-    if (p === 'ASSIGNED') return 'bg-sky-100 text-sky-900 border-sky-200';
-    if (p === 'IN_PROGRESS') return 'bg-blue-100 text-blue-800 border-blue-200';
-    if (p === 'PENDING') return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-    if (p === 'COMPLETED') return 'bg-green-100 text-green-800 border-green-200';
-    return 'bg-gray-100 text-gray-700 border-gray-200';
+    if (p === 'ASSIGNED') return '!border-sky-300/45 !bg-sky-500/20 !text-sky-50';
+    if (p === 'IN_PROGRESS') return '!border-blue-300/45 !bg-blue-500/20 !text-blue-50';
+    if (p === 'PENDING') return '!border-yellow-300/45 !bg-yellow-500/20 !text-yellow-50';
+    if (p === 'COMPLETED') return '!border-green-300/45 !bg-green-500/20 !text-green-50';
+    return '!border-slate-300/30 !bg-slate-500/20 !text-slate-100';
   };
 
   const canVendorMarkJobCompleted = (job: any) =>
@@ -3759,10 +3778,10 @@ export default function VendorJobs() {
   const getJobListBadgeColor = (job: any) => {
     const phase = String(job?.operationalPhase || '').toUpperCase();
     if (phase === 'AWAITING_ADMIN_REVIEW') {
-      return 'bg-indigo-100 text-indigo-900';
+      return getOperationalPhaseBadgeClass(phase);
     }
     if (phase === 'AWAITING_VENDOR_REVIEW') {
-      return 'bg-amber-100 text-amber-900';
+      return getOperationalPhaseBadgeClass(phase);
     }
     return getStatusColor(job.status);
   };
@@ -3790,6 +3809,17 @@ export default function VendorJobs() {
       .replace(/-/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase());
     return `Job: ${pretty}`;
+  };
+
+  const formatOperationalPhaseLabel = (operationalPhase: string | null | undefined) => {
+    const phase = String(operationalPhase || '').trim().toUpperCase();
+    if (phase === 'AWAITING_ADMIN_REVIEW') return 'Awaiting Moderator Review';
+    if (phase === 'AWAITING_VENDOR_REVIEW') return 'Awaiting Manager Review';
+    if (phase === 'ASSIGNED') return 'Assigned';
+    if (phase === 'IN_PROGRESS') return 'In progress';
+    if (phase === 'PENDING') return 'Pending';
+    if (phase === 'COMPLETED') return 'Completed';
+    return 'Workflow status';
   };
 
   const getVideoModerationState = (video: any): 'rejected' | 'flagged' | 'pending_review' | 'approved' | null => {
@@ -6910,7 +6940,14 @@ export default function VendorJobs() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div>
-                     <CardTitle className="text-xl">{job.title}</CardTitle>
+                     <div className="flex flex-wrap items-center gap-2">
+                       <CardTitle className="text-xl">{job.title}</CardTitle>
+                       {!isEmployeeView && workflowFilter === 'all' ? (
+                         <Badge variant="outline" className={getWorkflowTabBadgeClassForJob(job)}>
+                           Currently in: {getWorkflowTabLabelForJob(job)}
+                         </Badge>
+                       ) : null}
+                     </div>
                      <p className="text-gray-600">Client: {job.client}</p>
                      <p className="text-xs text-gray-500">Reference: {String(job.id || '').trim() || 'Unavailable'}</p>
                      <p className="text-xs text-gray-500">
@@ -7232,7 +7269,7 @@ export default function VendorJobs() {
                     return phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW';
                   })() ? (
                     <Badge variant="outline" className={getOperationalPhaseBadgeClass(job.operationalPhase)}>
-                      Awaiting Admin Review
+                      {formatOperationalPhaseLabel(job.operationalPhase)}
                     </Badge>
                   ) : null}
                   <div className="relative" onClick={(e) => e.stopPropagation()}>
