@@ -332,14 +332,22 @@ export default function VendorTelemetryPage() {
         </Button>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Recent service video recordings</CardTitle>
-          <p className="text-xs text-gray-500 mt-1">
-            {serviceVideoActivity.length} upload{serviceVideoActivity.length === 1 ? "" : "s"} saved from employee service orders
-          </p>
-        </CardHeader>
-        <CardContent>
+      <details className="group rounded-lg border border-gray-200 bg-white shadow-sm" open>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-6 py-4">
+          <span>
+            <span className="block text-base font-semibold text-gray-900">Recent service video recordings</span>
+            <span className="mt-1 block text-xs text-gray-500">
+              {serviceVideoActivity.length} upload{serviceVideoActivity.length === 1 ? "" : "s"} saved from employee service orders
+            </span>
+          </span>
+          <span className="rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 group-open:hidden">
+            Show
+          </span>
+          <span className="hidden rounded-full border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 group-open:inline-flex">
+            Hide
+          </span>
+        </summary>
+        <div className="border-t border-gray-100 px-6 py-4">
           {activityError ? (
             <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {activityError}
@@ -374,9 +382,11 @@ export default function VendorTelemetryPage() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </details>
 
+      {false ? (
+        <>
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Device Status</CardTitle>
@@ -543,6 +553,8 @@ export default function VendorTelemetryPage() {
           </div>
         </CardContent>
       </Card>
+        </>
+      ) : null}
     </div>
   );
 }

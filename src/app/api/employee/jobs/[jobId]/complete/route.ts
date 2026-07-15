@@ -75,12 +75,8 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     }
 
     const normalizedStatus = String(booking.status || "").trim().toUpperCase();
-    const hadManagerRejection = Boolean(String(booking.rejectionReason || "").trim());
-    const canSubmitCorrectionFromStaleReviewState =
-      normalizedStatus === "AWAITING_REVIEW" && hadManagerRejection;
     if (
-      !["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(normalizedStatus) &&
-      !canSubmitCorrectionFromStaleReviewState
+      !["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(normalizedStatus)
     ) {
       return NextResponse.json(
         {
@@ -124,7 +120,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         status: "AWAITING_REVIEW",
         customerMetadata: setOperationalPhaseOnMetadataJson(
           booking.customerMetadata,
-          "AWAITING_ADMIN_REVIEW"
+          "AWAITING_VENDOR_REVIEW"
         ),
         rejectionReason: null,
         rejectedAt: null,
@@ -134,50 +130,48 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     });
 
     const notificationResults = [];
-    if (hadManagerRejection) {
-      const managers = await prisma.vendorMembership.findMany({
-        where: {
-          vendorId: booking.vendorId,
-          role: "MANAGER",
-          status: { in: ["ACTIVE", "active", "PENDING", "pending"] },
-        },
-        include: {
-          user: { select: { name: true, email: true, phone: true } },
-        },
-      });
-      const reviewLink = `${resolveJobLinkBaseUrl(request)}/vendor/jobs/${encodeURIComponent(booking.id)}`;
-      const vendorName = String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor");
-      const jobTitle = String(booking.title || booking.service?.name || "Service order");
-      const employeeName = tokenAccess?.employeeName || "The assigned employee";
-      for (const manager of managers) {
-        try {
-          const notification = await sendJobCorrectionReadyNotification({
-            bookingId: booking.id,
-            actorUserId: tokenAccess?.userId || userId || "employee-capture-link",
-            managerName: manager.user?.name || null,
-            managerEmail: manager.user?.email || null,
-            managerPhone: manager.user?.phone || null,
-            managerReviewLink: reviewLink,
-            vendorName,
-            jobTitle,
-            employeeName,
-          });
-          notificationResults.push({
-            membershipId: manager.id,
-            managerName: manager.user?.name || manager.user?.email || "Manager",
-            anySuccess: notification.anySuccess,
-            phoneNumberUsed: notification.phoneNumberUsed,
-            channels: notification.channels,
-          });
-        } catch (error) {
-          notificationResults.push({
-            membershipId: manager.id,
-            managerName: manager.user?.name || manager.user?.email || "Manager",
-            anySuccess: false,
-            errorMessage: error instanceof Error ? error.message : String(error),
-            channels: [],
-          });
-        }
+    const managers = await prisma.vendorMembership.findMany({
+      where: {
+        vendorId: booking.vendorId,
+        role: "MANAGER",
+        status: { in: ["ACTIVE", "active", "PENDING", "pending"] },
+      },
+      include: {
+        user: { select: { name: true, email: true, phone: true } },
+      },
+    });
+    const reviewLink = `${resolveJobLinkBaseUrl(request)}/vendor/jobs/${encodeURIComponent(booking.id)}`;
+    const vendorName = String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor");
+    const jobTitle = String(booking.title || booking.service?.name || "Service order");
+    const employeeName = tokenAccess?.employeeName || "The assigned employee";
+    for (const manager of managers) {
+      try {
+        const notification = await sendJobCorrectionReadyNotification({
+          bookingId: booking.id,
+          actorUserId: tokenAccess?.userId || userId || "employee-capture-link",
+          managerName: manager.user?.name || null,
+          managerEmail: manager.user?.email || null,
+          managerPhone: manager.user?.phone || null,
+          managerReviewLink: reviewLink,
+          vendorName,
+          jobTitle,
+          employeeName,
+        });
+        notificationResults.push({
+          membershipId: manager.id,
+          managerName: manager.user?.name || manager.user?.email || "Manager",
+          anySuccess: notification.anySuccess,
+          phoneNumberUsed: notification.phoneNumberUsed,
+          channels: notification.channels,
+        });
+      } catch (error) {
+        notificationResults.push({
+          membershipId: manager.id,
+          managerName: manager.user?.name || manager.user?.email || "Manager",
+          anySuccess: false,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          channels: [],
+        });
       }
     }
 
@@ -185,7 +179,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       success: true,
       job: updated,
       notifications: {
-        correctionReady: hadManagerRejection,
+        managerReviewReady: true,
         sentCount: notificationResults.filter((result) => result.anySuccess).length,
         results: notificationResults,
       },

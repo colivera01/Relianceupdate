@@ -56,27 +56,27 @@ export async function sendJobCorrectionReadyNotification(
   const greeting = managerName ? `Hi ${managerName},` : "Hi,";
 
   if (env.emailEnabled && email) {
-    const subject = `Reliance corrected video ready: ${jobTitle}`;
+    const subject = `Reliance manager review needed: ${jobTitle}`;
     const text = [
       greeting,
       "",
-      `${employeeName} submitted corrected service videos for ${vendorName}.`,
+      `${employeeName} submitted the completed service video package for ${vendorName}.`,
       "",
       `Job: ${jobTitle}`,
       "",
-      "Open the review package to approve completion or request another change:",
+      "Open the review package to approve completion or reject the completed work order:",
       link,
       "",
       "- Reliance Team",
     ].join("\n");
     const html = buildRelianceEmailHtml({
-      eyebrow: "Corrected package ready",
+      eyebrow: "Manager review needed",
       headline: jobTitle,
       greeting,
-      bodyHtml: `<p style="margin:0 0 18px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(employeeName)}</strong> submitted corrected service videos for <strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong>.</p>`,
+      bodyHtml: `<p style="margin:0 0 18px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(employeeName)}</strong> submitted the completed service video package for <strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong>.</p>`,
       details: [{ label: "Service order", value: jobTitle }],
-      cta: { label: "Review Corrected Package", href: link },
-      secondaryHtml: `<p style="margin:0;">Open the package to approve completion or request another change.</p>`,
+      cta: { label: "Review Package", href: link },
+      secondaryHtml: `<p style="margin:0;">Open the package to approve completion or reject the completed work order.</p>`,
       fallbackHref: link,
     });
     const result = await sendEmail({ to: email, subject, text, html });
@@ -106,7 +106,7 @@ export async function sendJobCorrectionReadyNotification(
   }
 
   if (env.smsEnabled && phone) {
-    const body = `Reliance: Corrected service videos are ready for ${jobTitle}. Review package: ${link} Reply STOP to opt out.`;
+    const body = `Reliance: ${jobTitle} is ready for manager review. Review package: ${link} Reply STOP to opt out.`;
     const result = await sendSms({ to: phone, body });
     channels.push({
       channel: "sms",

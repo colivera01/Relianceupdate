@@ -278,6 +278,7 @@ export default function EmployeeJobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingServiceOrderMessage, setPendingServiceOrderMessage] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [managerSubmitCompleteOpen, setManagerSubmitCompleteOpen] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [stageFeedback, setStageFeedback] = useState<Record<string, StageFeedbackState>>({});
   const [pairedDevice, setPairedDevice] = useState<PairedDeviceState | null>(null);
@@ -528,10 +529,23 @@ export default function EmployeeJobsPage() {
     const nextStatus = String(json?.job?.status || "").trim().toUpperCase();
     setActionMessage(
       nextStatus === "AWAITING_REVIEW"
-        ? "Submitted for manager review."
+        ? "Completed service order sent for manager approval."
         : "Job update submitted."
     );
     await loadJobs();
+    if (nextStatus === "AWAITING_REVIEW") {
+      setManagerSubmitCompleteOpen(true);
+    }
+  };
+
+  const closeCompletedOrder = () => {
+    setManagerSubmitCompleteOpen(false);
+    if (hasCaptureToken && typeof window !== "undefined") {
+      window.close();
+      window.setTimeout(() => {
+        window.location.replace("/");
+      }, 250);
+    }
   };
 
   const uploadStageBlob = async (input: {
@@ -1764,6 +1778,28 @@ export default function EmployeeJobsPage() {
           );
         }}
       />
+      {managerSubmitCompleteOpen ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4">
+          <div className="w-full max-w-sm rounded-3xl border border-emerald-300/30 bg-slate-950 p-5 text-white shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200">
+              Sent for approval
+            </p>
+            <h2 className="mt-3 text-2xl font-bold leading-tight">
+              Completed service order sent to your manager.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-blue-50/75">
+              Your manager has been notified by email/SMS when available. You can close this completed order now.
+            </p>
+            <button
+              type="button"
+              onClick={closeCompletedOrder}
+              className="mt-5 w-full rounded-2xl border border-emerald-200 bg-emerald-600 px-5 py-4 text-base font-bold text-white shadow-lg shadow-emerald-950/40 transition hover:bg-emerald-700 active:scale-[0.99]"
+            >
+              Close Completed Order
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="mx-auto w-full max-w-2xl space-y-4">
         <div className="reliance-operator-hero rounded-[28px] p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

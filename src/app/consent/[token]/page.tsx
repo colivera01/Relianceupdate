@@ -45,6 +45,7 @@ function ConsentPageContent() {
   const [accepted, setAccepted] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [returnLaterSelected, setReturnLaterSelected] = useState(false);
+  const [visibilityChoice, setVisibilityChoice] = useState<'private' | 'public'>('private');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -90,7 +91,7 @@ function ConsentPageContent() {
       const res = await fetch('/api/consent/accept', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token, visibilityChoice }),
       });
 
       const json = await res.json();
@@ -214,6 +215,33 @@ function ConsentPageContent() {
           Your response is securely logged with verification details for compliance, fraud prevention, and dispute protection.
         </p>
       </div>
+
+      {!accepted && !declined ? (
+        <div style={{ marginTop: 20, padding: 16, border: '1px solid #dbeafe', background: '#eff6ff', borderRadius: 8 }}>
+          <p style={{ marginTop: 0 }}><strong>Choose video visibility after approval</strong></p>
+          <label style={{ display: 'block', marginTop: 10 }}>
+            <input
+              type="radio"
+              name="visibilityChoice"
+              checked={visibilityChoice === 'private'}
+              onChange={() => setVisibilityChoice('private')}
+            />{' '}
+            Keep the completed service videos private to my account
+          </label>
+          <label style={{ display: 'block', marginTop: 10 }}>
+            <input
+              type="radio"
+              name="visibilityChoice"
+              checked={visibilityChoice === 'public'}
+              onChange={() => setVisibilityChoice('public')}
+            />{' '}
+            Allow Reliance to show approved completed-service proof publicly
+          </label>
+          <p style={{ marginBottom: 0, color: '#1f2937', fontSize: 13 }}>
+            Reliance moderation still reviews the videos before anything becomes visible.
+          </p>
+        </div>
+      ) : null}
 
       <div style={{ marginTop: 10 }}>
         <a href="/terms" target="_blank" rel="noreferrer">Terms of Service</a> |{' '}

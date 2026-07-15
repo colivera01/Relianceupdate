@@ -8,8 +8,9 @@ export const OPERATIONAL_PHASE_VALUES = [
   "PENDING",
   "ASSIGNED",
   "IN_PROGRESS",
-  "AWAITING_ADMIN_REVIEW",
   "AWAITING_VENDOR_REVIEW",
+  "AWAITING_ADMIN_REVIEW",
+  "REJECTED",
   "COMPLETED",
 ] as const;
 
@@ -105,9 +106,17 @@ export function resolveOperationalPhase(params: {
       return "COMPLETED";
     }
     if (params.hasCompleteStagedPackage) {
-      return "AWAITING_ADMIN_REVIEW";
+      return "AWAITING_VENDOR_REVIEW";
     }
     return "IN_PROGRESS";
+  }
+
+  if (bookingUpper === "AWAITING_REVIEW") {
+    return "AWAITING_VENDOR_REVIEW";
+  }
+
+  if (bookingUpper === "REJECTED") {
+    return "REJECTED";
   }
 
   return assignees.length > 0 ? "ASSIGNED" : "PENDING";

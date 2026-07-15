@@ -54,6 +54,21 @@ function buildCustomerMetadataForCreate(body: {
   if (phone) out.client_phone = phone;
   if (body.custom_fields && typeof body.custom_fields === 'object' && !Array.isArray(body.custom_fields)) {
     const cf = body.custom_fields as Record<string, unknown>;
+    const recordingLocation = String(cf.vendor_job_recording_location || '').trim();
+    if (
+      recordingLocation === 'business' ||
+      recordingLocation === 'residence' ||
+      recordingLocation === 'customer-business'
+    ) {
+      out.vendor_job_recording_location = recordingLocation;
+    }
+    if (cf.vendor_job_customer_controls_visibility === true) {
+      out.vendor_job_customer_controls_visibility = true;
+    }
+    const visibilityOwner = String(cf.vendor_job_visibility_owner || '').trim();
+    if (visibilityOwner) {
+      out.vendor_job_visibility_owner = visibilityOwner;
+    }
     if (Object.keys(cf).length > 0) out.custom_fields = cf;
   }
   if (Object.keys(out).length === 0) return undefined;

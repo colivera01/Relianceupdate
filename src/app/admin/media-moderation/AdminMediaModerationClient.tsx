@@ -1166,31 +1166,12 @@ export default function AdminMediaModerationClient({
                     <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 space-y-3">
                       <div className="text-sm font-medium text-white">Package review actions</div>
                       <p className="text-xs text-slate-300">
-                        Normal workflow: choose package visibility, then approve, reject, or flag the full Before + During + Completed service package.
+                        Normal workflow: approve, reject, or flag the full Before + During + Completed service package.
+                        Visibility follows the customer/vendor consent path already saved on the work order.
                       </p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                        <div className="space-y-1 md:col-span-2">
-                          <Label htmlFor={`package-visibility-${pack.packageId}`} className="text-xs text-slate-300">
-                            Package visibility
-                          </Label>
-                          <select
-                            id={`package-visibility-${pack.packageId}`}
-                            value={selectedPackageVisibility}
-                            onChange={(e) =>
-                              setPackageVisibilityById((prev) => ({
-                                ...prev,
-                                [pack.packageId]: e.target.value as VisibilityLevel,
-                              }))
-                            }
-                            disabled={packageActionBusy}
-                            className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-50"
-                          >
-                            {VISIBILITY_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                        <div className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300">
+                          Saved visibility: {VISIBILITY_OPTIONS.find((opt) => opt.value === selectedPackageVisibility)?.label || selectedPackageVisibility}
                         </div>
                         <Button size="sm" disabled={packageActionBusy} onClick={() => applyPackageAction(pack, 'approve')}>
                           Approve Package

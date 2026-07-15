@@ -75,6 +75,8 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         user: {
           select: {
             name: true,
+            email: true,
+            phone: true,
           },
         },
       },
@@ -89,6 +91,13 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
 
     const metadata = parseCustomerMetadata(booking.customerMetadata || null);
     const notes = String(metadata.user_notes || "").trim();
+    const customerEmail =
+      String(metadata.client_email || metadata.claim_contact_email || "").trim() ||
+      (!String(booking.user?.email || "").trim().toLowerCase().endsWith("@reliance.local")
+        ? String(booking.user?.email || "").trim()
+        : "");
+    const customerPhone =
+      String(metadata.client_phone || metadata.claim_contact_phone || booking.user?.phone || "").trim();
     const client = resolveOperationalClientLabel({
       clientName: booking.clientName,
       userName: booking.user?.name,
@@ -99,6 +108,8 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         id: booking.id,
         title: booking.title || booking.service?.name || "Untitled Job",
         client,
+        customerEmail,
+        customerPhone,
         status: normalizeVendorJobStatus(booking.status),
         source: resolveJobSourceFromMetadata(booking.customerMetadata),
         date: booking.date?.toISOString() || booking.createdAt.toISOString(),

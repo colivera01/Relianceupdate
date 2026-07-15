@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { LockKeyhole, MessageSquare, RefreshCcw, ShieldCheck, Star, Users } from "lucide-react";
 import { useVendorDashboard } from "@/hooks/useVendorDashboard";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,40 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
 
 export default function VendorReviewsPage() {
   const { data, loading, error, refetch, approvalPending } = useVendorDashboard();
+  const [trustScore, setTrustScore] = useState<{
+    scored: boolean;
+    totalScorePct: number | null;
+    computedAt: string | null;
+  } | null>(null);
+  const [trustScoreError, setTrustScoreError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTrustScore() {
+      try {
+        const res = await fetch("/api/vendor/trust-score", { cache: "no-store" });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(String(payload?.error || payload?.message || "Trust Score unavailable"));
+        }
+        if (!cancelled) {
+          setTrustScore(payload?.trustScore || null);
+          setTrustScoreError("");
+        }
+      } catch (fetchError) {
+        if (!cancelled) {
+          setTrustScore(null);
+          setTrustScoreError(fetchError instanceof Error ? fetchError.message : "Trust Score unavailable");
+        }
+      }
+    }
+    if (!approvalPending) {
+      void loadTrustScore();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [approvalPending]);
 
   if (approvalPending) {
     return (
@@ -169,15 +204,21 @@ export default function VendorReviewsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <ShieldCheck className="h-4 w-4 text-emerald-200" />
-                Trust Score Separation
+                Reliance Trust Score
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-200">
-                Separate system
-              </p>
+              {trustScore?.scored && typeof trustScore.totalScorePct === "number" ? (
+                <p className="text-3xl font-bold text-white">{trustScore.totalScorePct}%</p>
+              ) : (
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                  Trust Score building
+                </p>
+              )}
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Trust Score is based on verified operational activity, not customer star ratings.
+                {trustScoreError
+                  ? trustScoreError
+                  : "Based on verified operational activity, not customer star ratings."}
               </p>
             </CardContent>
           </Card>

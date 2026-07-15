@@ -614,7 +614,7 @@ export async function GET(
       // Explicit mapping for all Booking.status values: PENDING, CONFIRMED, COMPLETED, CANCELED
       const statusMap: Record<
         string,
-        "completed" | "in progress" | "scheduled" | "canceled" | "awaiting_review" | "archived"
+        "completed" | "in progress" | "scheduled" | "canceled" | "awaiting_review" | "archived" | "rejected"
       > = {
         COMPLETED: "completed",
         IN_PROGRESS: "in progress",
@@ -623,6 +623,7 @@ export async function GET(
         CANCELED: "canceled",
         AWAITING_REVIEW: "awaiting_review",
         ARCHIVED: "archived",
+        REJECTED: "rejected",
       };
       const mappedStatus = statusMap[booking.status] || "scheduled";
 

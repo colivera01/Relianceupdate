@@ -220,6 +220,7 @@ export default function VendorJobs() {
     phone: '',
     email: '',
     serviceId: '',
+    recordingLocation: 'business',
   });
 
   const getEmptyJobFieldErrors = () => ({
@@ -230,6 +231,7 @@ export default function VendorJobs() {
     phone: '',
     email: '',
     serviceId: '',
+    recordingLocation: '',
   });
 
   const getConsentStatusForJob = (job: any, snapshot?: any) => {
@@ -255,6 +257,17 @@ export default function VendorJobs() {
 
   const getVendorWorkflowStateForJob = (job: any) => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
+    const status = String(job?.status || '').trim().toLowerCase();
+    if (phase === 'REJECTED' || status === 'rejected') {
+      return {
+        label: 'Rejected / closed',
+        detail: job?.rejectionReason
+          ? `Reason: ${String(job.rejectionReason).trim()}`
+          : 'This completed work order was rejected and will not move to public moderation.',
+        actionLabel: 'View Job',
+        tone: 'red',
+      };
+    }
     if (phase === 'AWAITING_ADMIN_REVIEW') {
       return {
         label: 'Pending moderator approval',
@@ -400,6 +413,7 @@ export default function VendorJobs() {
     phone: '',
     email: '',
     serviceId: '',
+    recordingLocation: 'business',
   });
   const [newServiceForJob, setNewServiceForJob] = useState({
     name: '',
@@ -1064,6 +1078,7 @@ export default function VendorJobs() {
   const phoneDigits = getPhoneDigits(newJob.phone);
   const trimmedEmail = newJob.email.trim();
   const selectedServiceId = newJob.serviceId.trim();
+  const selectedRecordingLocation = String(newJob.recordingLocation || '').trim();
   const isAddingServiceFromJob = selectedServiceId === ADD_NEW_SERVICE_VALUE;
   const selectedServiceForWorkRecord = serviceOptions.find((service) => service.id === selectedServiceId);
   const newServiceName = newServiceForJob.name.trim();
@@ -1094,6 +1109,7 @@ export default function VendorJobs() {
     trimmedCustomerLastName &&
     (isEditMode || (hasCustomerDeliveryContact && isCreateJobPhoneValid && isCreateJobEmailValid)) &&
     selectedServiceId &&
+    selectedRecordingLocation &&
     (isAddingServiceFromJob ? newServiceIsValid : Boolean(selectedServiceForWorkRecord)) &&
     vendorId &&
     !isCreatingJob &&
@@ -2400,10 +2416,10 @@ export default function VendorJobs() {
 
   const getJobWorkflowBucket = (job: any) => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
-    const status = String(job?.status || '').trim().toLowerCase();
     if (phase === 'AWAITING_ADMIN_REVIEW') return 'moderator_review';
+    if (phase === 'REJECTED' || status === 'rejected') return 'rejected';
     if (phase === 'COMPLETED' || status === 'completed') return 'public_approved';
-    if (status === 'awaiting_review' || status === 'awaiting review') return 'manager_review';
+    if (phase === 'AWAITING_VENDOR_REVIEW' || status === 'awaiting_review' || status === 'awaiting review') return 'manager_review';
     return 'active';
   };
 
@@ -2413,6 +2429,7 @@ export default function VendorJobs() {
     { value: 'manager_review', label: 'Manager Review' },
     { value: 'moderator_review', label: 'Moderator Review' },
     { value: 'public_approved', label: 'Public / Approved' },
+    { value: 'rejected', label: 'Rejected' },
   ];
 
   const getWorkflowTabLabelForJob = (job: any) => {
@@ -2430,6 +2447,9 @@ export default function VendorJobs() {
     }
     if (bucket === 'public_approved') {
       return '!border-emerald-300/45 !bg-emerald-500/20 !text-emerald-50';
+    }
+    if (bucket === 'rejected') {
+      return '!border-rose-300/45 !bg-rose-500/20 !text-rose-50';
     }
     return '!border-sky-300/45 !bg-sky-500/20 !text-sky-50';
   };
@@ -2498,6 +2518,7 @@ export default function VendorJobs() {
     const formattedPhone = formatPhoneNumber(normalizedPhoneDigits);
     const email = newJob.email.trim();
     const serviceId = newJob.serviceId.trim();
+    const recordingLocation = String(newJob.recordingLocation || '').trim().toLowerCase();
     const selectedService = serviceOptions.find((service) => service.id === serviceId);
     const addingServiceFromJob = serviceId === ADD_NEW_SERVICE_VALUE;
     const manualServiceName = newServiceForJob.name.trim();
@@ -2521,6 +2542,12 @@ export default function VendorJobs() {
       phone: !requiresContactValidation || isValidPhone ? '' : 'Enter a valid 10-digit phone number, or leave phone blank.',
       email: !requiresContactValidation || isValidEmail ? '' : 'Enter a valid email address, or leave email blank.',
       serviceId: serviceId ? '' : 'Service type is required',
+      recordingLocation:
+        recordingLocation === 'business' ||
+        recordingLocation === 'residence' ||
+        recordingLocation === 'customer-business'
+          ? ''
+          : 'Choose where the service video will be recorded.',
     };
     setJobFieldErrors(nextJobErrors);
 
@@ -2531,7 +2558,8 @@ export default function VendorJobs() {
       nextJobErrors.contact ||
       nextJobErrors.phone ||
       nextJobErrors.email ||
-      nextJobErrors.serviceId
+      nextJobErrors.serviceId ||
+      nextJobErrors.recordingLocation
     ) {
       if (nextJobErrors.customerFirstName) {
         clientNameInputRef.current?.focus();
@@ -2666,6 +2694,15 @@ export default function VendorJobs() {
       booking_date: now.toISOString().split('T')[0],
       booking_time: now.toTimeString().split(' ')[0],
       amount: 0,
+      custom_fields: {
+        vendor_job_recording_location: recordingLocation,
+        vendor_job_customer_controls_visibility:
+          recordingLocation === 'residence' || recordingLocation === 'customer-business',
+        vendor_job_visibility_owner:
+          recordingLocation === 'residence' || recordingLocation === 'customer-business'
+            ? 'customer'
+            : 'vendor_business',
+      },
     };
 
     try {
@@ -2710,7 +2747,7 @@ export default function VendorJobs() {
         type: 'success',
         message:
           addingServiceFromJob && resolvedServiceName
-            ? `Created "${resolvedServiceName}" in Services Offered and added the work record for ${client}. Next time, choose "${resolvedServiceName}" from the Service Offered / Work Type dropdown.`
+            ? `Created "${resolvedServiceName}" in Services Offered as pending admin approval and added the work record for ${client}. Next time, choose "${resolvedServiceName}" from the Service Offered / Work Type dropdown.`
             : `Added the work record for ${client}.`,
       });
     } catch (error) {
@@ -2967,6 +3004,7 @@ export default function VendorJobs() {
       phone: String(job?.phone || ''),
       email: String(job?.email || ''),
       serviceId: String(job?.serviceId || ''),
+      recordingLocation: String(job?.recordingCompliance?.location || 'business'),
     });
     setCreateJobError('');
     setJobFieldErrors(getEmptyJobFieldErrors());
@@ -3799,6 +3837,9 @@ export default function VendorJobs() {
 
   const getOperationalPhaseBadgeClass = (phase: string | null | undefined) => {
     const p = String(phase || '').trim().toUpperCase();
+    if (p === 'REJECTED') {
+      return '!border-red-300/50 !bg-red-500/20 !text-red-50';
+    }
     if (p === 'AWAITING_ADMIN_REVIEW') {
       return '!border-blue-300/45 !bg-blue-500/25 !text-blue-50';
     }
@@ -3823,6 +3864,9 @@ export default function VendorJobs() {
     if (phase === 'AWAITING_VENDOR_REVIEW') {
       return getOperationalPhaseBadgeClass(phase);
     }
+    if (phase === 'REJECTED') {
+      return getOperationalPhaseBadgeClass(phase);
+    }
     return getStatusColor(job.status);
   };
 
@@ -3833,6 +3877,9 @@ export default function VendorJobs() {
     }
     if (phase === 'AWAITING_VENDOR_REVIEW') {
       return 'Job: Awaiting Manager Review';
+    }
+    if (phase === 'REJECTED') {
+      return 'Job: Rejected';
     }
     if (phase === 'ASSIGNED') {
       return 'Job: Assigned';
@@ -3855,6 +3902,7 @@ export default function VendorJobs() {
     const phase = String(operationalPhase || '').trim().toUpperCase();
     if (phase === 'AWAITING_ADMIN_REVIEW') return 'Awaiting Moderator Review';
     if (phase === 'AWAITING_VENDOR_REVIEW') return 'Awaiting Manager Review';
+    if (phase === 'REJECTED') return 'Rejected / closed';
     if (phase === 'ASSIGNED') return 'Assigned';
     if (phase === 'IN_PROGRESS') return 'In progress';
     if (phase === 'PENDING') return 'Pending';
@@ -4321,7 +4369,7 @@ export default function VendorJobs() {
       const payload = await rejectJobCompletion(rejectJobTarget, trimmedReason);
       setJobActionFeedback({
         type: "success",
-        message: payload?.message || "Job returned to in-progress for corrections.",
+        message: payload?.message || "Completed work order rejected.",
       });
       setShowRejectJobModal(false);
       setRejectJobTarget(null);
@@ -4700,20 +4748,22 @@ export default function VendorJobs() {
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <div className="relative w-full sm:w-auto">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full appearance-none rounded-lg border-2 border-gray-200 bg-white px-4 py-2 pr-10 text-gray-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:min-w-[140px]"
-            >
-              <option value="all">{isEmployeeView ? 'All My Jobs' : 'All Status'}</option>
-              <option value="pending">Pending</option>
-              <option value="in-progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
+          {isEmployeeView ? (
+            <div className="relative w-full sm:w-auto">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full appearance-none rounded-lg border-2 border-gray-200 bg-white px-4 py-2 pr-10 text-gray-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:min-w-[140px]"
+              >
+                <option value="all">All My Jobs</option>
+                <option value="pending">Pending</option>
+                <option value="in-progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+          ) : null}
           
           {!isEmployeeView && (
             <>
@@ -4779,22 +4829,6 @@ export default function VendorJobs() {
           </div>
         </div>
       ) : null}
-
-      {!isEmployeeView && moderationUpdateCount > 0 && (
-        <div className="mb-6 p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="text-sm text-indigo-900">
-            You have {moderationUpdateCount} media moderation update{moderationUpdateCount === 1 ? '' : 's'}.
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-indigo-300 text-indigo-700 hover:bg-indigo-100"
-            onClick={() => setShowVideoArchive(true)}
-          >
-            Review in Content Archive
-          </Button>
-        </div>
-      )}
 
       {/* Content Archive Modal */}
       <Dialog open={showVideoArchive} onOpenChange={setShowVideoArchive}>
@@ -5536,6 +5570,64 @@ export default function VendorJobs() {
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.contact}</p>
               )}
             </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <label className="block text-sm font-semibold text-slate-900">
+                Service video consent and location path
+              </label>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                Choose how this work record will unlock employee recording and customer visibility.
+              </p>
+              <div className="mt-3 grid gap-2">
+                {[
+                  {
+                    value: 'business',
+                    title: 'Vendor business address',
+                    detail: 'Employee phone verifies the vendor business address. Customer consent is not required.',
+                  },
+                  {
+                    value: 'residence',
+                    title: 'Customer residence',
+                    detail: 'Customer receives consent and chooses whether the completed proof can be public or private.',
+                  },
+                  {
+                    value: 'customer-business',
+                    title: 'Customer business address',
+                    detail: 'Customer consent is required, and the employee phone verifies the customer business location.',
+                  },
+                ].map((option) => {
+                  const checked = newJob.recordingLocation === option.value;
+                  return (
+                    <label
+                      key={option.value}
+                      className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition ${
+                        checked
+                          ? 'border-blue-400 bg-blue-50 text-blue-950'
+                          : 'border-slate-200 bg-white text-slate-800 hover:border-blue-200'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="recordingLocation"
+                        value={option.value}
+                        checked={checked}
+                        onChange={() => {
+                          setNewJob({ ...newJob, recordingLocation: option.value });
+                          setJobFieldErrors((prev) => ({ ...prev, recordingLocation: '' }));
+                        }}
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="block text-sm font-semibold">{option.title}</span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-600">{option.detail}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {jobFieldErrors.recordingLocation ? (
+                <p className="mt-2 text-sm text-red-600">{jobFieldErrors.recordingLocation}</p>
+              ) : null}
+            </div>
             {newJob.serviceId === ADD_NEW_SERVICE_VALUE ? (
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <div className="mb-3">
@@ -6147,9 +6239,9 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Request Changes</DialogTitle>
+            <DialogTitle>Reject Completed Work Order</DialogTitle>
             <DialogDescription>
-              Explain what the employee needs to correct before resubmitting.
+              Rejecting closes this completed work order. It will move to the Rejected tab and will not be sent to admin moderation.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -6162,10 +6254,10 @@ export default function VendorJobs() {
                 value={rejectReasonInput}
                 onChange={(e) => setRejectReasonInput(e.target.value)}
                 className="w-full min-h-[120px] rounded border border-gray-300 px-3 py-2 text-sm"
-                placeholder="Explain what must be fixed before resubmitting."
+                placeholder="Explain why this completed work order is being rejected."
                 required
               />
-              <p className="mt-1 text-xs text-gray-500">This note is shown to the assigned employee.</p>
+              <p className="mt-1 text-xs text-gray-500">This note stays on the rejected work record for manager reference.</p>
             </div>
           </div>
           <DialogFooter>
@@ -6179,7 +6271,7 @@ export default function VendorJobs() {
               }}
               disabled={rejectJobSubmitting || !String(rejectReasonInput || '').trim()}
             >
-              {rejectJobSubmitting ? "Submitting..." : "Request Changes"}
+              {rejectJobSubmitting ? "Submitting..." : "Reject Work Order"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7421,7 +7513,7 @@ export default function VendorJobs() {
                                       }}
                                       disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
                                     >
-                                      Reject Video
+                                      Reject Work Order
                                     </button>
                                   </>
                                 ) : null}

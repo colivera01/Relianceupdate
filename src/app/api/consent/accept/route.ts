@@ -5,10 +5,23 @@ import { evaluateConsentRespondable } from '@/lib/consent-record-state';
 
 type ConsentRecordRow = {
   id: string;
+  bookingId: string | null;
   status: string;
   expiresAt: Date | null;
   acceptedAt: Date | null;
 };
+
+function parseMetadata(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -41,6 +54,8 @@ export async function POST(request: NextRequest) {
     const token = String(body?.token || '').trim();
     const termsVersion = String(body?.termsVersion || '').trim();
     const privacyVersion = String(body?.privacyVersion || '').trim();
+    const visibilityChoice = String(body?.visibilityChoice || 'private').trim().toLowerCase();
+    const normalizedVisibilityChoice = visibilityChoice === 'public' ? 'public' : 'private';
     if (!token) {
       return NextResponse.json({ success: false, error: 'token is required' }, { status: 400 });
     }
@@ -87,6 +102,24 @@ export async function POST(request: NextRequest) {
       })
     );
 
+    if (existing.bookingId) {
+      await withTransientDbRetry(async () => {
+        const booking = await prisma.booking.findUnique({
+          where: { id: existing.bookingId as string },
+          select: { id: true, customerMetadata: true },
+        });
+        if (!booking) return null;
+        const metadata = parseMetadata(booking.customerMetadata);
+        metadata.vendor_job_customer_visibility_choice = normalizedVisibilityChoice;
+        metadata.vendor_job_customer_visibility_choice_at = new Date().toISOString();
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { customerMetadata: JSON.stringify(metadata) },
+        });
+        return null;
+      });
+    }
+
     await withTransientDbRetry(() =>
       (prisma as any).consentEvent.create({
         data: {
@@ -98,6 +131,7 @@ export async function POST(request: NextRequest) {
             ipAddress: ipStored,
             userAgent: uaStored,
             acceptedAt: updated.acceptedAt,
+            visibilityChoice: normalizedVisibilityChoice,
           }),
         },
       })

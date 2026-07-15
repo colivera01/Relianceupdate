@@ -8,6 +8,7 @@ import {
   buildCompleteMediaModerationPackages,
 } from "@/lib/admin-media-moderation-packages";
 import { launchExcludedVendorIds } from "@/lib/internal-identities";
+import { getRelianceOps, parseCustomerMetadataRecord } from "@/lib/vendor-job-operational-phase";
 
 type GetAdminMediaModerationQueueOptions = {
   moderationStatus?: string | null;
@@ -101,6 +102,7 @@ export async function getAdminMediaModerationQueue(
               title: true,
               clientName: true,
               status: true,
+              customerMetadata: true,
             },
           },
           service: {
@@ -133,6 +135,8 @@ export async function getAdminMediaModerationQueue(
         ? "Legacy / unspecified"
         : VENDOR_JOB_VIDEO_STAGE_LABELS[stageKey];
     const isPrimaryProofStageVideo = stageKey === "COMPLETED";
+    const bookingMetadata = parseCustomerMetadataRecord(session?.booking?.customerMetadata || null);
+    const bookingOperationalPhase = getRelianceOps(bookingMetadata).operational_phase || null;
 
     return {
       assetId: asset.id,
@@ -143,6 +147,7 @@ export async function getAdminMediaModerationQueue(
       bookingId: session?.booking?.id || null,
       jobTitle: session?.booking?.title || null,
       bookingStatus: session?.booking?.status || null,
+      bookingOperationalPhase,
       clientName: session?.booking?.clientName || null,
       vendorJobVideoStageKey: stageKey,
       vendorJobVideoStageLabel,
@@ -171,15 +176,25 @@ export async function getAdminMediaModerationQueue(
     : completePackages.filter(
         (pack: any) => !excludedVendorIds.includes(String(pack.vendorId || "").trim())
       );
+  const managerApprovedPackages = launchFacingPackages.filter((pack: any) => {
+    const bookingStatus = String(pack.bookingStatus || "").trim().toUpperCase();
+    const phase = String(
+      pack.videosByStage?.COMPLETED?.bookingOperationalPhase ||
+        pack.videosByStage?.INTRO?.bookingOperationalPhase ||
+        pack.videosByStage?.IN_PROGRESS?.bookingOperationalPhase ||
+        ""
+    ).trim().toUpperCase();
+    return bookingStatus === "COMPLETED" && phase === "AWAITING_ADMIN_REVIEW";
+  });
 
   const filteredByStatus = moderationStatus
-    ? launchFacingPackages.filter((pack) =>
+    ? managerApprovedPackages.filter((pack) =>
         pack.moderationStatuses.some(
           (status: string) =>
             String(status || "").toLowerCase() === moderationStatus.toLowerCase()
         )
       )
-    : launchFacingPackages;
+    : managerApprovedPackages;
 
   const filteredBySearch = search
     ? filteredByStatus.filter((item: any) => {

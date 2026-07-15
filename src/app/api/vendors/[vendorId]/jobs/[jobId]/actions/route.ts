@@ -11,6 +11,7 @@ import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
+import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
 import {
   normalizeRecordingLocationChoice,
@@ -29,6 +30,7 @@ type JobAction =
   | "ASSIGN_JOB"
   | "UPDATE_RECORDING_COMPLIANCE"
   | "RELEASE_EMPLOYEE_SERVICE_ORDER"
+  | "RESEND_COMPLETED_WORK_ORDER"
   | "UPDATE_STATUS"
   | "APPROVE_JOB_COMPLETION";
 
@@ -149,6 +151,15 @@ function resolveJobLinkBaseUrl(request: Request): string {
   } catch {
     return "http://localhost:3000";
   }
+}
+
+function toCustomerCompletedWorkUrl(request: Request, bookingId: string): string {
+  return `${resolveJobLinkBaseUrl(request)}/my-bookings/${encodeURIComponent(bookingId)}`;
+}
+
+function usableCustomerEmail(value: unknown): string {
+  const email = String(value || "").trim();
+  return email && !email.toLowerCase().endsWith("@reliance.local") ? email : "";
 }
 
 async function resolveJobAssignmentForVendor(
@@ -764,6 +775,88 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         },
         message: forceResend ? "Employee service order link resent." : "Employee service order sent.",
       });
+    }
+
+    if (action === "RESEND_COMPLETED_WORK_ORDER") {
+      const statusUpper = normalizeBookingStatus(booking.status);
+      if (statusUpper !== "COMPLETED") {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "COMPLETED_WORK_ORDER_REQUIRED",
+            "Only completed work orders can be resent to the customer.",
+            { status: statusUpper || "UNKNOWN" }
+          ),
+          { status: 409 }
+        );
+      }
+
+      const packageState = await getVendorJobPackageState(vendorId, booking.id);
+      if (!packageState.hasAllRequiredStagesApproved) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "CUSTOMER_VISIBLE_PACKAGE_NOT_READY",
+            "The completed work order cannot be resent until Reliance approves the three-stage video package.",
+            {
+              hasAllRequiredStages: packageState.hasAllRequiredStages,
+              hasAllRequiredStagesApproved: packageState.hasAllRequiredStagesApproved,
+            }
+          ),
+          { status: 409 }
+        );
+      }
+
+      const metadata = parseCustomerMetadata(booking.customerMetadata);
+      const customerEmail =
+        usableCustomerEmail(metadata.client_email) ||
+        usableCustomerEmail(metadata.claim_contact_email) ||
+        usableCustomerEmail(booking.user?.email);
+      const customerPhone = String(metadata.client_phone || booking.user?.phone || "").trim();
+      if (!customerEmail && !customerPhone) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "CUSTOMER_CONTACT_REQUIRED",
+            "This work order does not have a customer email or phone number to resend to."
+          ),
+          { status: 409 }
+        );
+      }
+
+      const result = await sendVideoReadyNotification({
+        actorUserId: member.userId,
+        bookingId: booking.id,
+        customerEmail,
+        customerPhone,
+        customerName: String(booking.clientName || booking.user?.name || "").trim() || null,
+        serviceName: booking.service?.name || null,
+        bookingTitle: booking.title || null,
+        vendorName: booking.vendor?.businessName || booking.vendor?.name || null,
+        videoUrl: toCustomerCompletedWorkUrl(request, booking.id),
+      });
+
+      await recordLifecycleAudit({
+        actionType: "completed_work_order_resent",
+        entityType: "booking",
+        entityId: booking.id,
+        actorUserId: member.userId,
+        newValue: {
+          ok: result.ok,
+          channels: result.channels,
+          videoUrl: result.videoUrl,
+        },
+        metadata: { vendorId },
+      });
+
+      return NextResponse.json({
+        success: result.ok,
+        action,
+        notifications: result,
+        message: result.ok
+          ? "Completed work order resent to the customer."
+          : result.errorMessage || "Reliance could not resend the completed work order.",
+      }, { status: result.ok ? 200 : 502 });
     }
 
     if (action === "UPDATE_STATUS") {

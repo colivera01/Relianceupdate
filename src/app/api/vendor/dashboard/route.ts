@@ -208,7 +208,7 @@ export async function GET(request: Request) {
 
       // Map Prisma status to expected format
 
-      const statusMap: Record<string, 'completed' | 'in progress' | 'scheduled'> = {
+      const statusMap: Record<string, 'completed' | 'in progress' | 'scheduled' | 'rejected'> = {
 
         COMPLETED: 'completed',
 
@@ -217,6 +217,7 @@ export async function GET(request: Request) {
         PENDING: 'scheduled',
 
         CANCELED: 'scheduled', // Treat canceled as scheduled for display
+        REJECTED: 'rejected',
 
       };
 

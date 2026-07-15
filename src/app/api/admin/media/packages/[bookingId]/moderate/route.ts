@@ -146,6 +146,16 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         { status: 404 }
       );
     }
+    const bookingMetadata = parseMetadata(booking.customerMetadata);
+    const customerVisibilityChoice = String(
+      bookingMetadata.vendor_job_customer_visibility_choice || ""
+    ).trim().toLowerCase();
+    const effectiveVisibility: VisibilityLevel =
+      action === "approve" && customerVisibilityChoice === "public"
+        ? "public"
+        : action === "approve" && customerVisibilityChoice === "private"
+        ? "private"
+        : visibility;
 
     const packageAssets = await (prisma as any).mediaAsset.findMany({
       where: {
@@ -198,7 +208,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 
       if (action === "approve") {
         data.moderationStatus = MODERATION_APPROVED;
-        data.visibilityStatus = visibilityToDbValue(visibility);
+        data.visibilityStatus = visibilityToDbValue(effectiveVisibility);
         data.moderationReason = null;
       } else if (action === "reject") {
         data.moderationStatus = MODERATION_REJECTED;
@@ -241,7 +251,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         finalizedByUserId: userId,
         metadata: {
           action,
-          visibility: action === "approve" ? visibility : null,
+          visibility: action === "approve" ? effectiveVisibility : null,
           moderationReason: action === "reject" ? moderationReason : null,
           assetIds: targetAssets.map((asset) => asset.id),
         },
@@ -260,7 +270,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const nextMetadata: Record<string, unknown> = { ...metadata };
       let metadataChanged = false;
 
-      if (visibility === "customer_only" || visibility === "public") {
+      if (effectiveVisibility === "customer_only" || effectiveVisibility === "public") {
         const alreadyNotified = Boolean(metadata.proof_ready_notification_sent_at);
       if (!alreadyNotified) {
         const videoUrl = toAbsoluteVideoUrl(bookingId);
@@ -286,7 +296,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         // Best-effort anti-spam gate: mark attempted once so re-approve does not spam.
         nextMetadata.proof_ready_notification_sent_at = new Date().toISOString();
         nextMetadata.proof_ready_notification_sent_success = notified;
-        nextMetadata.proof_ready_notification_visibility = visibility;
+        nextMetadata.proof_ready_notification_visibility = effectiveVisibility;
         nextMetadata.proof_ready_notification_url = videoUrl;
         metadataChanged = true;
         }
@@ -325,7 +335,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             vendorName,
             jobTitle,
             customerName: booking.clientName,
-            visibilityLabel: visibilityLabel(visibility),
+            visibilityLabel: visibilityLabel(effectiveVisibility),
           });
           managerResults.push({
             email: Boolean(recipient.email),
@@ -334,7 +344,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           });
         }
         nextMetadata.admin_package_approved_notification_sent_at = new Date().toISOString();
-        nextMetadata.admin_package_approved_notification_visibility = visibility;
+        nextMetadata.admin_package_approved_notification_visibility = effectiveVisibility;
         nextMetadata.admin_package_approved_notification_success = managerResults.some((result) => result.anySuccess);
         metadataChanged = true;
       }

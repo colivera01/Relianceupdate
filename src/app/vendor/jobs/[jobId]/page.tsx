@@ -22,6 +22,8 @@ type JobLike = {
   id: string;
   title?: string;
   client?: string;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
   status?: string;
   source?: string;
   date?: string | null;
@@ -120,6 +122,7 @@ export default function VendorJobDetailPage() {
   const [playbackTitle, setPlaybackTitle] = useState("");
   const [playbackError, setPlaybackError] = useState("");
   const [playbackOpen, setPlaybackOpen] = useState(false);
+  const [resendingCompletedOrder, setResendingCompletedOrder] = useState(false);
   const [resolvingPlaybackStage, setResolvingPlaybackStage] = useState<string | null>(null);
   const headers = useMemo(() => getClientSessionHeaders(userId), [userId]);
   const effectiveVendorId = String(vendorId || "").trim();
@@ -425,12 +428,35 @@ export default function VendorJobDetailPage() {
       if (!res.ok) throw new Error(String(json?.error || json?.message || "Rejection failed"));
       setRejectOpen(false);
       setRejectReason("");
-      setActionMessage("Rejected and returned for corrections.");
+      setActionMessage("Completed work order rejected.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to reject completion");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const resendCompletedWorkOrder = async () => {
+    if (!effectiveVendorId || !jobId) return;
+    setResendingCompletedOrder(true);
+    setActionMessage(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/vendors/${effectiveVendorId}/jobs/${encodeURIComponent(jobId)}/actions`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RESEND_COMPLETED_WORK_ORDER" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.success) {
+        throw new Error(String(json?.message || json?.error || "Failed to resend completed work order"));
+      }
+      setActionMessage(json?.message || "Completed work order resent to the customer.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to resend completed work order");
+    } finally {
+      setResendingCompletedOrder(false);
     }
   };
 
@@ -503,7 +529,16 @@ export default function VendorJobDetailPage() {
                   <Badge className={statusBadgeClass(normalizedStatus || "UNKNOWN")}>{normalizedStatus || "UNKNOWN"}</Badge>
                   {canSubmitForManagerReview ? (
                     <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={submitForManagerReview} disabled={submitting}>
-                      {submitting ? "Submitting..." : isManager ? "Move to Review Queue" : "Submit for Manager Review"}
+                      {submitting ? "Submitting..." : "Submit for Manager Review"}
+                    </Button>
+                  ) : null}
+                  {normalizedStatus === "COMPLETED" ? (
+                    <Button
+                      variant="outline"
+                      onClick={resendCompletedWorkOrder}
+                      disabled={resendingCompletedOrder}
+                    >
+                      {resendingCompletedOrder ? "Resending..." : "Resend Completed Work Order"}
                     </Button>
                   ) : null}
                   {canManagerReview ? (
@@ -512,7 +547,7 @@ export default function VendorJobDetailPage() {
                         Approve Completion
                       </Button>
                       <Button variant="outline" className="border-amber-300 text-amber-900" onClick={() => setRejectOpen(true)} disabled={submitting}>
-                        Reject Completion
+                        Reject Work Order
                       </Button>
                     </div>
                   ) : null}
@@ -525,7 +560,7 @@ export default function VendorJobDetailPage() {
                 <CardContent className="p-4 rounded-lg border border-amber-200 bg-amber-50">
                   <p className="text-sm font-semibold text-amber-900">Rejected by manager</p>
                   <p className="mt-1 text-sm text-amber-800">{job.rejectionReason}</p>
-                  <p className="mt-2 text-xs text-amber-700">Fix required video items, then resubmit for manager review.</p>
+                  <p className="mt-2 text-xs text-amber-700">This completed work order is closed as rejected and will not move to public moderation.</p>
                 </CardContent>
               </Card>
             ) : null}
@@ -542,27 +577,27 @@ export default function VendorJobDetailPage() {
                     const hasUpload = Boolean(latestAsset?.id);
                     const stageIsNext = nextMissingStage === stage.key;
                     const stageCardClass = hasUpload
-                      ? "border-emerald-300 bg-emerald-50/50"
-                      : "border-gray-200 bg-white";
+                      ? "border-emerald-400/35 bg-emerald-500/12"
+                      : "border-blue-300/18 bg-slate-950/70";
                     return (
                       <div
                         key={stage.key}
-                        className={`rounded-lg border p-4 ${stageCardClass}`}
+                        className={`rounded-xl border p-4 text-white shadow-sm ${stageCardClass}`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <p className="font-semibold text-gray-900">{stage.label}</p>
+                          <p className="font-semibold text-white">{stage.label}</p>
                           <Badge
                             variant="outline"
-                            className={hasUpload ? "border-emerald-300 text-emerald-700" : "border-amber-300 text-amber-700"}
+                            className={hasUpload ? "border-emerald-300/55 text-emerald-100" : "border-amber-300/55 text-amber-100"}
                           >
                             {hasUpload ? "Uploaded" : "Missing"}
                           </Badge>
                         </div>
-                        <p className="mt-2 text-sm text-gray-600">{stage.cue}</p>
-                        <p className="mt-1 text-xs font-medium text-blue-700">{getStageVideoLimitCopy()}</p>
+                        <p className="mt-2 text-sm text-blue-50/75">{stage.cue}</p>
+                        <p className="mt-1 text-xs font-medium text-blue-200">{getStageVideoLimitCopy()}</p>
                         {hasUpload ? (
                           <div className="mt-3 space-y-2">
-                            <p className="text-xs text-gray-600">
+                            <p className="text-xs text-blue-50/70">
                               Uploaded:{" "}
                               {latestAsset?.createdAt || stageSession?.createdAt
                                 ? formatDateTimeUtc(String(latestAsset?.createdAt || stageSession?.createdAt))
@@ -572,11 +607,11 @@ export default function VendorJobDetailPage() {
                               {resolvingPlaybackStage === stage.key ? "Opening..." : "Watch"}
                             </Button>
                             <p className="text-xs text-gray-600">
-                              Retakes happen from the employee recording workspace.
+                              Retakes happen from the employee recording workspace before manager review.
                             </p>
                           </div>
                         ) : (
-                          <p className="mt-3 text-sm text-gray-500">
+                          <p className="mt-3 text-sm text-blue-50/65">
                             {stage.key === "INTRO"
                               ? "No video yet — upload the intro (before service) video."
                               : stage.key === "IN_PROGRESS"
@@ -585,7 +620,7 @@ export default function VendorJobDetailPage() {
                           </p>
                         )}
                         {stageIsNext ? (
-                          <p className="mt-3 text-xs font-medium text-blue-700">
+                          <p className="mt-3 text-xs font-medium text-blue-200">
                             Next required stage. The assigned employee records this from their secure job link.
                           </p>
                         ) : null}
@@ -597,11 +632,11 @@ export default function VendorJobDetailPage() {
                   <div className="mt-6 rounded-lg border border-emerald-300 bg-emerald-50 p-4">
                     <p className="text-sm text-emerald-900 font-semibold">
                       {isManager
-                        ? "All 3 stages uploaded. Move this package into the review queue before approval."
+                        ? "All 3 stages uploaded. Submit this package for manager review before approval."
                         : "All 3 stages uploaded. Ready to submit for manager review."}
                     </p>
                     <Button className="mt-3 bg-emerald-600 hover:bg-emerald-700" onClick={submitForManagerReview} disabled={submitting}>
-                      {submitting ? "Submitting..." : isManager ? "Move to Review Queue" : "Submit for Manager Review"}
+                      {submitting ? "Submitting..." : "Submit for Manager Review"}
                     </Button>
                   </div>
                 ) : null}
@@ -615,6 +650,8 @@ export default function VendorJobDetailPage() {
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
                   <p><span className="text-gray-600">Client:</span> {job.client || "Unknown"}</p>
+                  <p><span className="text-gray-600">Customer email:</span> {job.customerEmail || "Not saved"}</p>
+                  <p><span className="text-gray-600">Customer phone:</span> {job.customerPhone || "Not saved"}</p>
                   <p><span className="text-gray-600">Service:</span> {job.serviceName || job.serviceType || "General Service"}</p>
                   <p><span className="text-gray-600">Job ID:</span> {job.id}</p>
                   <p><span className="text-gray-600">Created:</span> {formatDateTimeUtc(job.createdAt || null)}</p>
@@ -649,19 +686,22 @@ export default function VendorJobDetailPage() {
         <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Reject Completion</DialogTitle>
+              <DialogTitle>Reject Completed Work Order</DialogTitle>
+              <DialogDescription>
+                This closes the completed work order as rejected. It will not return to the employee for correction or move into public moderation.
+              </DialogDescription>
             </DialogHeader>
             <textarea
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               className="w-full rounded border p-2 text-sm"
               rows={4}
-              placeholder="Required: explain what must be fixed before resubmission."
+              placeholder="Required: explain why this completed work order is rejected."
             />
             <DialogFooter>
               <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
               <Button className="bg-amber-600 hover:bg-amber-700" onClick={rejectCompletion} disabled={submitting}>
-                {submitting ? "Submitting..." : "Reject Completion"}
+                {submitting ? "Submitting..." : "Reject Work Order"}
               </Button>
             </DialogFooter>
           </DialogContent>
