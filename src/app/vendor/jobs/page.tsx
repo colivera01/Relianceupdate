@@ -255,15 +255,22 @@ export default function VendorJobs() {
     return activeStatus && Boolean(String(job?.rejectionReason || '').trim());
   };
 
+  const getJobVideos = (job: any) => (Array.isArray(job?.videos) ? job.videos : []);
+
+  const jobHasRejectedMedia = (job: any) =>
+    getJobVideos(job).some(
+      (video: any) => normalizeModerationStatus(video?.moderationStatus || video?.status) === MODERATION_REJECTED
+    );
+
   const getVendorWorkflowStateForJob = (job: any) => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
     const status = String(job?.status || '').trim().toLowerCase();
-    if (phase === 'REJECTED' || status === 'rejected') {
+    if (phase === 'REJECTED' || status === 'rejected' || jobHasRejectedMedia(job)) {
       return {
         label: 'Rejected / closed',
         detail: job?.rejectionReason
           ? `Reason: ${String(job.rejectionReason).trim()}`
-          : 'This completed work order was rejected and will not move to public moderation.',
+          : 'One or more service video stages were rejected. This work order is closed unless you create a new service order.',
         actionLabel: 'View Job',
         tone: 'red',
       };
@@ -2416,8 +2423,9 @@ export default function VendorJobs() {
 
   const getJobWorkflowBucket = (job: any) => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
+    const status = String(job?.status || '').trim().toLowerCase();
+    if (phase === 'REJECTED' || status === 'rejected' || jobHasRejectedMedia(job)) return 'rejected';
     if (phase === 'AWAITING_ADMIN_REVIEW') return 'moderator_review';
-    if (phase === 'REJECTED' || status === 'rejected') return 'rejected';
     if (phase === 'COMPLETED' || status === 'completed') return 'public_approved';
     if (phase === 'AWAITING_VENDOR_REVIEW' || status === 'awaiting_review' || status === 'awaiting review') return 'manager_review';
     return 'active';
@@ -3858,6 +3866,9 @@ export default function VendorJobs() {
 
   const getJobListBadgeColor = (job: any) => {
     const phase = String(job?.operationalPhase || '').toUpperCase();
+    if (jobHasRejectedMedia(job)) {
+      return getOperationalPhaseBadgeClass('REJECTED');
+    }
     if (phase === 'AWAITING_ADMIN_REVIEW') {
       return getOperationalPhaseBadgeClass(phase);
     }
@@ -3870,16 +3881,16 @@ export default function VendorJobs() {
     return getStatusColor(job.status);
   };
 
-  const formatJobStatusLabel = (status: string | null | undefined, operationalPhase?: string | null) => {
+  const formatJobStatusLabel = (status: string | null | undefined, operationalPhase?: string | null, job?: any) => {
     const phase = String(operationalPhase || '').trim().toUpperCase();
+    if (phase === 'REJECTED' || (job && jobHasRejectedMedia(job))) {
+      return 'Job: Rejected';
+    }
     if (phase === 'AWAITING_ADMIN_REVIEW') {
       return 'Job: Pending Moderator Approval';
     }
     if (phase === 'AWAITING_VENDOR_REVIEW') {
       return 'Job: Awaiting Manager Review';
-    }
-    if (phase === 'REJECTED') {
-      return 'Job: Rejected';
     }
     if (phase === 'ASSIGNED') {
       return 'Job: Assigned';
@@ -3898,11 +3909,11 @@ export default function VendorJobs() {
     return `Job: ${pretty}`;
   };
 
-  const formatOperationalPhaseLabel = (operationalPhase: string | null | undefined) => {
+  const formatOperationalPhaseLabel = (operationalPhase: string | null | undefined, job?: any) => {
     const phase = String(operationalPhase || '').trim().toUpperCase();
+    if (phase === 'REJECTED' || (job && jobHasRejectedMedia(job))) return 'Rejected / closed';
     if (phase === 'AWAITING_ADMIN_REVIEW') return 'Awaiting Moderator Review';
     if (phase === 'AWAITING_VENDOR_REVIEW') return 'Awaiting Manager Review';
-    if (phase === 'REJECTED') return 'Rejected / closed';
     if (phase === 'ASSIGNED') return 'Assigned';
     if (phase === 'IN_PROGRESS') return 'In progress';
     if (phase === 'PENDING') return 'Pending';
@@ -6998,7 +7009,7 @@ export default function VendorJobs() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className={getJobListBadgeColor(job)}>
-                          {formatJobStatusLabel(job.status, job.operationalPhase)}
+                          {formatJobStatusLabel(job.status, job.operationalPhase, job)}
                         </Badge>
                         <Button 
                           size="sm" 
@@ -7233,7 +7244,7 @@ export default function VendorJobs() {
                     {!isEmployeeView &&
                     (() => {
                       const status = String(job?.status || '').trim().toLowerCase();
-                      return status === 'awaiting_review' || status === 'awaiting review';
+                      return !jobHasRejectedMedia(job) && (status === 'awaiting_review' || status === 'awaiting review');
                     })() ? (
                       <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                         <p className="text-sm font-semibold text-amber-900">Manager Review Required</p>
@@ -7369,7 +7380,7 @@ export default function VendorJobs() {
                         </Badge>
                       )}
                       <Badge className={getJobListBadgeColor(job)}>
-                        {formatJobStatusLabel(job.status, job.operationalPhase)}
+                        {formatJobStatusLabel(job.status, job.operationalPhase, job)}
                       </Badge>
                     </>
                   )}
@@ -7401,7 +7412,7 @@ export default function VendorJobs() {
                     return phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW';
                   })() ? (
                     <Badge variant="outline" className={getOperationalPhaseBadgeClass(job.operationalPhase)}>
-                      {formatOperationalPhaseLabel(job.operationalPhase)}
+                      {formatOperationalPhaseLabel(job.operationalPhase, job)}
                     </Badge>
                   ) : null}
                   <div className="relative" onClick={(e) => e.stopPropagation()}>
