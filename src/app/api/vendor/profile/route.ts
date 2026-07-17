@@ -311,7 +311,16 @@ export async function PUT(request: Request) {
     
     if (body.firstName !== undefined) updateData.firstName = body.firstName || null;
     if (body.lastName !== undefined) updateData.lastName = body.lastName || null;
-    if (body.businessName !== undefined) updateData.businessName = body.businessName || null;
+    if (body.businessName !== undefined) {
+      const businessName = String(body.businessName || "").trim();
+      if (!businessName) {
+        return NextResponse.json(
+          { error: "Business Name is required." },
+          { status: 400 }
+        );
+      }
+      updateData.businessName = businessName;
+    }
     if (body.businessType !== undefined) updateData.businessType = body.businessType || null;
     if (body.category !== undefined) updateData.category = body.category || null;
     if (body.foundedYear !== undefined) updateData.foundedYear = body.foundedYear || null;

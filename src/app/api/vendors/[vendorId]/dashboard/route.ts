@@ -349,6 +349,7 @@ export async function GET(
             select: {
               id: true,
               name: true,
+              isPublished: true,
             },
           },
         },
@@ -609,7 +610,11 @@ export async function GET(
     }
 
     const recentJobs = recentBookings
-      .filter((booking: any) => booking.status !== "ARCHIVED")
+      .filter((booking: any) => {
+        if (booking.status === "ARCHIVED") return false;
+        if (!booking.serviceId || !booking.service) return true;
+        return Boolean(booking.service.isPublished);
+      })
       .map((booking: any) => {
       // Explicit mapping for all Booking.status values: PENDING, CONFIRMED, COMPLETED, CANCELED
       const statusMap: Record<
@@ -694,7 +699,12 @@ export async function GET(
       };
     });
 
-    const archivedJobs = archivedBookings.map((booking: any) => {
+    const archivedJobs = archivedBookings
+      .filter((booking: any) => {
+        if (!booking.serviceId || !booking.service) return true;
+        return Boolean(booking.service.isPublished);
+      })
+      .map((booking: any) => {
       const archMedia = mediaSummaryByBookingId.get(String(booking.id)) || {
         linkedSessionCount: 0,
         linkedMediaCount: 0,

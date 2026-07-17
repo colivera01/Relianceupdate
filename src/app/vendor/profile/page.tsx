@@ -95,6 +95,7 @@ export default function VendorProfilePage() {
   // Local UI state (not profile data)
   const [localFormData, setLocalFormData] = useState<Partial<VendorProfileUpdateRequest>>({});
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState('');
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   
   const [businessHours, setBusinessHours] = useState<BusinessHoursSchedule>(() => defaultBusinessHours());
@@ -236,13 +237,20 @@ export default function VendorProfilePage() {
   };
 
   const handleSave = async () => {
+    const nextBusinessName = String(localFormData.businessName || '').trim();
+    if (!nextBusinessName) {
+      setProfileSaveError('Business Name is required before saving your profile.');
+      return;
+    }
+    setProfileSaveError('');
     try {
-      await updateProfile(localFormData);
+      await updateProfile({ ...localFormData, businessName: nextBusinessName });
       setShowSuccessToast(true);
       setTimeout(() => setShowSuccessToast(false), 3000);
     } catch (err) {
       // Error already handled in hook
       console.error('Error updating profile:', err);
+      setProfileSaveError(err instanceof Error ? err.message : 'Profile could not be saved.');
     }
   };
 
@@ -481,10 +489,16 @@ export default function VendorProfilePage() {
                     <Input 
                       name="businessName" 
                       value={localFormData.businessName || ''} 
-                      onChange={handleChange}
+                      onChange={(event) => {
+                        handleChange(event);
+                        if (profileSaveError) setProfileSaveError('');
+                      }}
                       required
                       className="border-slate-700 bg-slate-950 text-white focus:border-blue-500 focus:ring-blue-500"
                     />
+                    {profileSaveError && !String(localFormData.businessName || '').trim() ? (
+                      <p className="mt-1 text-xs font-medium text-red-300">{profileSaveError}</p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-2 text-slate-100">Business Type *</label>
@@ -864,6 +878,12 @@ export default function VendorProfilePage() {
                     ✓ Profile updated successfully!
                   </div>
                 )}
+
+                {profileSaveError && String(localFormData.businessName || '').trim() ? (
+                  <div className="rounded-lg border border-red-400/40 bg-red-950/50 p-3 text-sm font-medium text-red-100">
+                    {profileSaveError}
+                  </div>
+                ) : null}
 
                 <Button 
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all duration-200" 

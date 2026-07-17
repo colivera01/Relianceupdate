@@ -439,7 +439,7 @@ export default function VendorJobs() {
     email: '',
     serviceId: '',
   });
-  const [serviceOptions, setServiceOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [serviceOptions, setServiceOptions] = useState<Array<{ id: string; name: string; isPublished?: boolean }>>([]);
   const [teamMembers, setTeamMembers] = useState<VendorTeamMember[]>([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [employeesLoadError, setEmployeesLoadError] = useState('');
@@ -842,7 +842,8 @@ export default function VendorJobs() {
     if (!isJobAssignedForVideoUpload(job)) {
       return 'Assign Employee';
     }
-    return getVendorWorkflowStateForJob(job).actionLabel;
+    const label = getVendorWorkflowStateForJob(job).actionLabel;
+    return label === 'Open Job' ? '' : label;
   };
 
   const handlePrimaryJobAction = (job: any) => {
@@ -1087,7 +1088,8 @@ export default function VendorJobs() {
   const selectedServiceId = newJob.serviceId.trim();
   const selectedRecordingLocation = String(newJob.recordingLocation || '').trim();
   const isAddingServiceFromJob = selectedServiceId === ADD_NEW_SERVICE_VALUE;
-  const selectedServiceForWorkRecord = serviceOptions.find((service) => service.id === selectedServiceId);
+  const publishedServiceOptions = serviceOptions.filter((service: any) => service.isPublished !== false);
+  const selectedServiceForWorkRecord = publishedServiceOptions.find((service) => service.id === selectedServiceId);
   const newServiceName = newServiceForJob.name.trim();
   const newServiceDescription = newServiceForJob.description.trim();
   const newServicePriceText = newServiceForJob.price.trim();
@@ -1142,11 +1144,12 @@ export default function VendorJobs() {
             id: String(service?.id ?? ''),
             name: String(service?.name ?? '').trim(),
             vendorId: String(service?.vendor_id ?? service?.vendorId ?? service?.vendor?.id ?? ''),
+            isPublished: Boolean(service?.isPublished),
           }))
           .filter((service: any) => service.id && service.name);
 
         const vendorScoped = normalized.filter((service: any) => service.vendorId === String(vendorId));
-        setServiceOptions(vendorScoped.map(({ id, name }: any) => ({ id, name })));
+        setServiceOptions(vendorScoped.map(({ id, name, isPublished }: any) => ({ id, name, isPublished })));
       } catch (error) {
         setServiceOptions([]);
         setServicesLoadError(
@@ -2068,12 +2071,21 @@ export default function VendorJobs() {
       (job) => job?.id && !suppressedJobIds.has(String(job.id))
     );
     const backendIds = new Set(normalizedBackendJobs.map((job) => String(job.id)));
+    const preservedById = new Map(
+      preservedJobs
+        .map((job) => [String(job?.id || ''), job] as const)
+        .filter(([id]) => id && !suppressedJobIds.has(id))
+    );
+    const mergedBackendJobs = normalizedBackendJobs.map((job) => {
+      const preserved = preservedById.get(String(job.id));
+      return preserved ? { ...job, ...preserved } : job;
+    });
     const optimisticJobs = preservedJobs.filter((job) => {
       const id = String(job?.id || '');
       return id && !backendIds.has(id) && !suppressedJobIds.has(id);
     });
 
-    return [...optimisticJobs, ...normalizedBackendJobs];
+    return [...optimisticJobs, ...mergedBackendJobs];
   };
 
   const upsertJobLocally = (job: any) => {
@@ -2438,6 +2450,7 @@ export default function VendorJobs() {
     { value: 'moderator_review', label: 'Moderator Review' },
     { value: 'public_approved', label: 'Public / Approved' },
     { value: 'rejected', label: 'Rejected' },
+    { value: 'archived', label: 'Archived' },
   ];
 
   const getWorkflowTabLabelForJob = (job: any) => {
@@ -2462,8 +2475,11 @@ export default function VendorJobs() {
     return '!border-sky-300/45 !bg-sky-500/20 !text-sky-50';
   };
 
-  const workflowTabCounts = jobs.reduce((counts: Record<string, number>, job: any) => {
-    if (String(job.status).toLowerCase() === 'archived') return counts;
+  const workflowTabCounts = [...jobs, ...archivedJobs].reduce((counts: Record<string, number>, job: any) => {
+    if (String(job.status).toLowerCase() === 'archived') {
+      counts.archived = (counts.archived || 0) + 1;
+      return counts;
+    }
     const bucket = getJobWorkflowBucket(job);
     counts.all = (counts.all || 0) + 1;
     counts[bucket] = (counts[bucket] || 0) + 1;
@@ -2471,12 +2487,20 @@ export default function VendorJobs() {
   }, {});
 
   // Filter jobs based on view mode and search
-  const filteredJobs = jobs.filter(job => {
-    if (String(job.status).toLowerCase() === 'archived') {
+  const jobsForActiveWorkflow = workflowFilter === 'archived' ? archivedJobs : jobs;
+  const filteredJobs = jobsForActiveWorkflow.filter(job => {
+    const isArchivedJob = String(job.status).toLowerCase() === 'archived';
+    if (workflowFilter === 'archived' && !isArchivedJob) {
+      return false;
+    }
+    if (workflowFilter !== 'archived' && isArchivedJob) {
       return false;
     }
     const matchesStatus = statusFilter === 'all' || job.status === statusFilter;
-    const matchesWorkflow = workflowFilter === 'all' || getJobWorkflowBucket(job) === workflowFilter;
+    const matchesWorkflow =
+      workflowFilter === 'all' ||
+      workflowFilter === 'archived' ||
+      getJobWorkflowBucket(job) === workflowFilter;
     const matchesSearch = job.title.toLowerCase().includes(search.toLowerCase()) || 
                          job.client.toLowerCase().includes(search.toLowerCase());
     
@@ -2527,7 +2551,7 @@ export default function VendorJobs() {
     const email = newJob.email.trim();
     const serviceId = newJob.serviceId.trim();
     const recordingLocation = String(newJob.recordingLocation || '').trim().toLowerCase();
-    const selectedService = serviceOptions.find((service) => service.id === serviceId);
+    const selectedService = publishedServiceOptions.find((service) => service.id === serviceId);
     const addingServiceFromJob = serviceId === ADD_NEW_SERVICE_VALUE;
     const manualServiceName = newServiceForJob.name.trim();
     const manualServiceDescription = newServiceForJob.description.trim();
@@ -2549,7 +2573,11 @@ export default function VendorJobs() {
       contact: !requiresContactValidation || hasDeliveryContact ? '' : 'Enter a customer phone number or email address.',
       phone: !requiresContactValidation || isValidPhone ? '' : 'Enter a valid 10-digit phone number, or leave phone blank.',
       email: !requiresContactValidation || isValidEmail ? '' : 'Enter a valid email address, or leave email blank.',
-      serviceId: serviceId ? '' : 'Service type is required',
+      serviceId: serviceId
+        ? !addingServiceFromJob && !selectedService
+          ? 'Choose an approved service. Pending admin approval services cannot create work records.'
+          : ''
+        : 'Service type is required',
       recordingLocation:
         recordingLocation === 'business' ||
         recordingLocation === 'residence' ||
@@ -2649,9 +2677,6 @@ export default function VendorJobs() {
 
     setCreateJobError('');
     setIsCreatingJob(true);
-    let resolvedServiceId = serviceId;
-    let resolvedServiceName = selectedService?.name || '';
-
     if (addingServiceFromJob) {
       try {
         const createServiceRes = await fetch('/api/services', {
@@ -2675,21 +2700,32 @@ export default function VendorJobs() {
               `Failed to create service offered (${createServiceRes.status})`
           );
         }
-        resolvedServiceId = String(createServicePayload?.service?.id || '').trim();
-        resolvedServiceName = String(createServicePayload?.service?.name || manualServiceName).trim();
-        if (!resolvedServiceId) {
+        const createdServiceId = String(createServicePayload?.service?.id || '').trim();
+        const createdServiceName = String(createServicePayload?.service?.name || manualServiceName).trim();
+        if (!createdServiceId) {
           throw new Error('Service offered was created without an id.');
         }
-        setServiceOptions((current) => {
-          if (current.some((service) => service.id === resolvedServiceId)) return current;
-          return [...current, { id: resolvedServiceId, name: resolvedServiceName || manualServiceName }];
+        setNewJob(getEmptyJobForm());
+        setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
+        setJobFieldErrors(getEmptyJobFieldErrors());
+        setJobModalMode('create');
+        setJobFormTargetId(null);
+        setShowCreateJob(false);
+        setJobActionFeedback({
+          type: 'success',
+          message: `Created "${createdServiceName || manualServiceName}" as pending admin approval. It will be available for work records after admin approval.`,
         });
+        setIsCreatingJob(false);
+        return;
       } catch (error) {
         setCreateJobError(error instanceof Error ? error.message : 'Failed to add service offered.');
         setIsCreatingJob(false);
         return;
       }
     }
+
+    let resolvedServiceId = serviceId;
+    let resolvedServiceName = selectedService?.name || '';
 
     const now = new Date();
     const payload = {
@@ -3056,6 +3092,7 @@ export default function VendorJobs() {
           : assignedJob.assignedEmployees,
       };
       applyJobPatchLocally(job, persistedAssignedJob);
+      upsertJobLocally(persistedAssignedJob);
       let feedbackType: 'success' | 'error' = 'success';
       let feedbackMessage = payload?.message || 'Job assignment updated.';
       let releasedRecordingCompliance: any = null;
@@ -3107,13 +3144,11 @@ export default function VendorJobs() {
               : 'Job assigned, but the service order could not be sent.';
         }
       }
-      await reloadJobsFromBackend();
-      applyJobPatchLocally(
-        persistedAssignedJob,
-        releasedRecordingCompliance
-          ? { ...persistedAssignedJob, recordingCompliance: releasedRecordingCompliance }
-          : persistedAssignedJob
-      );
+      const finalAssignedJob = releasedRecordingCompliance
+        ? { ...persistedAssignedJob, recordingCompliance: releasedRecordingCompliance }
+        : persistedAssignedJob;
+      applyJobPatchLocally(persistedAssignedJob, finalAssignedJob);
+      await reloadJobsFromBackend({ preserveJobs: [finalAssignedJob], silent: true });
       setJobActionFeedback({ type: feedbackType, message: feedbackMessage });
       setShowAssignmentModal(false);
       setSelectedAssignmentMembershipIds([]);
@@ -5411,7 +5446,7 @@ export default function VendorJobs() {
             <DialogDescription>
               {jobModalMode === 'edit'
                 ? 'Update saved work details.'
-                : 'Create the customer work record that can later be assigned to employees, sent for customer consent, and moved through the three video stages. Choose an existing Services Offered item, or create one new reusable service while you create this work record.'}
+                : 'Create the customer work record that can later be assigned to employees, sent for customer consent, and moved through the three video stages. Choose an approved Services Offered item, or submit a new service for admin approval first.'}
             </DialogDescription>
           </DialogHeader>
           {jobModalMode !== 'edit' ? (
@@ -5433,7 +5468,7 @@ export default function VendorJobs() {
                 aria-invalid={Boolean(jobFieldErrors.serviceId)}
                 onChange={(e) => {
                   const value = e.target.value;
-                  const chosenService = serviceOptions.find((service) => service.id === value);
+                  const chosenService = publishedServiceOptions.find((service) => service.id === value);
                   setNewJob({
                     ...newJob,
                     serviceId: value,
@@ -5455,7 +5490,7 @@ export default function VendorJobs() {
                 {jobModalMode !== 'edit' ? (
                   <option value={ADD_NEW_SERVICE_VALUE}>+ Add a new service offered</option>
                 ) : null}
-                {serviceOptions.map((service) => (
+                {publishedServiceOptions.map((service) => (
                   <option key={service.id} value={service.id}>
                     {service.name}
                   </option>
@@ -5467,8 +5502,8 @@ export default function VendorJobs() {
               {jobFieldErrors.serviceId && (
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.serviceId}</p>
               )}
-              {!servicesLoading && serviceOptions.length === 0 && (
-                <p className="mt-1 text-sm text-amber-700">No Services Offered items available. Add a customer-facing service offered first.</p>
+              {!servicesLoading && publishedServiceOptions.length === 0 && (
+                <p className="mt-1 text-sm text-amber-700">No approved Services Offered items are available yet. Submit a service for admin approval first.</p>
               )}
               {servicesLoadError && (
                 <p className="mt-1 text-xs text-amber-700">{servicesLoadError}</p>
@@ -7048,25 +7083,23 @@ export default function VendorJobs() {
             {jobActionFeedback.message}
           </div>
         )}
-        {showArchivedJobs ? (
-          <p className="text-sm text-gray-600 py-2">
-            You are viewing archived jobs above. Switch to <strong>Active jobs</strong> to upload videos, delete
-            in-progress work, or use bulk actions.
-          </p>
-        ) : null}
-        {!showArchivedJobs && jobsLoading ? (
+        {jobsLoading ? (
           <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
             Loading jobs...
           </div>
-        ) : !showArchivedJobs && jobsLoadError && filteredJobs.length === 0 ? (
+        ) : jobsLoadError && filteredJobs.length === 0 ? (
           <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             {jobsLoadError}
           </div>
-        ) : !showArchivedJobs && filteredJobs.length === 0 ? (
+        ) : filteredJobs.length === 0 ? (
           <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
-            {isEmployeeView ? 'No jobs assigned to you yet.' : 'No jobs found for this vendor yet.'}
+            {workflowFilter === 'archived'
+              ? 'No archived work records yet.'
+              : isEmployeeView
+                ? 'No jobs assigned to you yet.'
+                : 'No jobs found for this vendor yet.'}
           </div>
-        ) : !showArchivedJobs ? (
+        ) : (
           <>
             {jobsLoadError && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
@@ -7625,7 +7658,7 @@ export default function VendorJobs() {
           </Card>
             ))}
           </>
-        ) : null}
+        )}
       </div>
 
       <Dialog open={showJobActionConfirmModal} onOpenChange={setShowJobActionConfirmModal}>
