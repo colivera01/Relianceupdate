@@ -159,6 +159,12 @@ function normalizeKey(value: unknown): string {
   return String(value || "").trim().toUpperCase();
 }
 
+function hasRejectedStagedMedia(packageState: ReturnType<typeof evaluateVendorJobPackageState>): boolean {
+  return Object.values(packageState.stages || {}).some(
+    (stage) => normalizeKey(stage?.latestModerationStatus) === "REJECTED"
+  );
+}
+
 function mapConsentRecordToVendorUiState(
   record: any
 ): "accepted" | "declined" | "expired_or_unavailable" | "not_requested" | "requested" {
@@ -640,14 +646,18 @@ export async function GET(
       const packageState = evaluateVendorJobPackageState(
         sessionsForPhaseByBookingId.get(String(booking.id)) || []
       );
-      const operationalPhase = resolveOperationalPhase({
-        bookingStatus: booking.status,
-        customerMetadata: booking.customerMetadata,
-        linkedMediaCount: mediaSummary.linkedMediaCount,
-        assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
-        hasCompleteStagedPackage: packageState.hasAllRequiredStages,
-        hasAdminApprovedStagedPackage: packageState.hasAllRequiredStagesApproved,
-      });
+      const rejectedStagedMedia = hasRejectedStagedMedia(packageState);
+      const operationalPhase = rejectedStagedMedia
+        ? "REJECTED"
+        : resolveOperationalPhase({
+            bookingStatus: booking.status,
+            customerMetadata: booking.customerMetadata,
+            linkedMediaCount: mediaSummary.linkedMediaCount,
+            assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
+            hasCompleteStagedPackage: packageState.hasAllRequiredStages,
+            hasAdminApprovedStagedPackage: packageState.hasAllRequiredStagesApproved,
+          });
+      const effectiveStatus = rejectedStagedMedia ? "rejected" : mappedStatus;
 
       // Handle Decimal amount
       const amount = booking.amount;
@@ -675,7 +685,7 @@ export async function GET(
         customerEmail: customerContact.email,
         customerPhone: customerContact.phone,
         amount: amountValue,
-        status: mappedStatus,
+        status: effectiveStatus,
         operationalPhase,
         assignedEmployees: assignedEmployeesRaw,
         assignedMembershipIds,
@@ -788,9 +798,15 @@ export async function GET(
     const lifecycleCounts = recentJobs.reduce(
       (counts, job: any) => {
         const normalized = String(job?.status || "").trim().toLowerCase();
-        if (normalized === "completed") counts.completed += 1;
-        else if (normalized === "in progress") counts.inProgress += 1;
-        else if (normalized === "awaiting_review") counts.awaitingReview += 1;
+        const phase = normalizeKey(job?.operationalPhase);
+        if (phase === "REJECTED" || normalized === "rejected") counts.rejected += 1;
+        else if (phase === "COMPLETED" || normalized === "completed") counts.completed += 1;
+        else if (phase === "IN_PROGRESS" || normalized === "in progress") counts.inProgress += 1;
+        else if (
+          phase === "AWAITING_VENDOR_REVIEW" ||
+          phase === "AWAITING_ADMIN_REVIEW" ||
+          normalized === "awaiting_review"
+        ) counts.awaitingReview += 1;
         else if (normalized === "canceled") counts.canceled += 1;
         else counts.scheduled += 1;
         return counts;
@@ -801,6 +817,7 @@ export async function GET(
         awaitingReview: 0,
         completed: 0,
         canceled: 0,
+        rejected: 0,
         archived: archivedJobs.length,
       }
     );
@@ -998,11 +1015,14 @@ export async function GET(
     );
     const pendingModerationServiceOrders = countPendingMediaModerationPackages(moderationPackages);
     const approvedServiceOrders = moderationPackages.filter(
-      (pack) => pack.packageReadiness === "APPROVED"
+      (pack) =>
+        pack.packageReadiness === "APPROVED" &&
+        !["REJECTED", "CANCELED", "ARCHIVED"].includes(normalizeKey(pack.bookingStatus))
     ).length;
     const publicServiceOrders = moderationPackages.filter(
       (pack) =>
         pack.packageReadiness === "APPROVED" &&
+        !["REJECTED", "CANCELED", "ARCHIVED"].includes(normalizeKey(pack.bookingStatus)) &&
         pack.visibilityStatuses.some((status) => normalizeKey(status) === PUBLIC_VISIBILITY_STATUS)
     ).length;
     const trustScore = toVendorTrustScore(currentTrustScoreSnapshot as any);

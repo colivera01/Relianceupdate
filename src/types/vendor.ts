@@ -89,6 +89,7 @@ export interface VendorDashboardResponse {
     awaitingReview: number;
     completed: number;
     canceled: number;
+    rejected?: number;
     archived: number;
   };
   recentReviews: VendorReview[];

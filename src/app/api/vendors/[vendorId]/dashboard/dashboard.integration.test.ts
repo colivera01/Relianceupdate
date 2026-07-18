@@ -148,7 +148,7 @@ function mockHappyPathData() {
           client_phone: "555-0101",
         }),
         user: { id: "user-customer", name: "Pat", email: "unclaimed@example.test", phone: "555-9999" },
-        service: { id: "service-1", name: "Deep Cleaning" },
+        service: { id: "service-1", name: "Deep Cleaning", isPublished: true },
       },
     ])
     .mockResolvedValueOnce([])
@@ -278,6 +278,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
       awaitingReview: 0,
       completed: 0,
       canceled: 0,
+      rejected: 0,
       archived: 0,
     });
     expect(body).not.toHaveProperty("code");
@@ -326,7 +327,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
           updatedAt: new Date("2026-04-15T11:00:00.000Z"),
           customerMetadata: "{}",
           user: { id: "user-customer", name: "Jordan", email: "jordan@example.com", phone: "555-0101" },
-          service: { id: "service-1", name: "Deep Cleaning" },
+          service: { id: "service-1", name: "Deep Cleaning", isPublished: true },
         },
         {
           id: "job-complete",
@@ -342,7 +343,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
           updatedAt: new Date("2026-04-16T11:00:00.000Z"),
           customerMetadata: "{}",
           user: { id: "user-customer-2", name: "Pat", email: "pat@example.com", phone: "555-0102" },
-          service: { id: "service-2", name: "Move-out Cleaning" },
+          service: { id: "service-2", name: "Move-out Cleaning", isPublished: true },
         },
       ])
       .mockResolvedValueOnce([])
@@ -380,8 +381,114 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
       awaitingReview: 1,
       completed: 1,
       canceled: 0,
+      rejected: 0,
       archived: 0,
     });
+  });
+
+  it("keeps rejected staged media out of awaiting-review dashboard counts", async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue("user-1");
+    vi.mocked(getVendorMembership).mockResolvedValue({
+      id: "membership-1",
+      role: "MANAGER",
+      status: "ACTIVE",
+      badgeId: null,
+    } as any);
+    vi.mocked(requireVendorMembership).mockResolvedValue({
+      userId: "user-1",
+      membershipId: "membership-1",
+      role: "MANAGER",
+    } as any);
+
+    hoisted.vendorFindUnique.mockResolvedValue({
+      id: "v1",
+      name: "Metro Home Care Pros",
+      businessName: "Metro Home Care Pros",
+      email: "metro@example.com",
+      phone: "555-0000",
+      city: "Orlando",
+      state: "FL",
+    });
+    hoisted.bookingGroupBy.mockResolvedValue([{ _count: { _all: 1 }, _sum: { amount: 120 } }]);
+    hoisted.bookingFindMany
+      .mockResolvedValueOnce([
+        {
+          id: "job-rejected-stage",
+          vendorId: "v1",
+          serviceId: "service-1",
+          title: "Rejected staged package",
+          clientName: "Jordan",
+          amount: 120,
+          status: "AWAITING_REVIEW",
+          date: new Date("2026-04-15T12:00:00.000Z"),
+          scheduledFor: new Date("2026-04-15T12:00:00.000Z"),
+          createdAt: new Date("2026-04-15T10:00:00.000Z"),
+          updatedAt: new Date("2026-04-15T11:00:00.000Z"),
+          customerMetadata: "{}",
+          user: { id: "user-customer", name: "Jordan", email: "jordan@example.com", phone: "555-0101" },
+          service: { id: "service-1", name: "Deep Cleaning", isPublished: true },
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ userId: "user-customer" }])
+      .mockResolvedValueOnce([]);
+    hoisted.reviewFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    vi.mocked(getVendorRatingStats).mockResolvedValue({
+      averageRating: 0,
+      reviewCount: 0,
+      ratingSum: 0,
+    });
+    vi.mocked(getEmployeeRatingsForVendor).mockResolvedValue([]);
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      {
+        id: "session-rejected-intro",
+        bookingId: "job-rejected-stage",
+        vendorJobVideoStage: "INTRO",
+        sessionType: "JOB_SERVICE_VIDEO",
+        _count: { mediaAssets: 1 },
+        mediaAssets: [
+          {
+            id: "asset-rejected-intro",
+            moderationStatus: "rejected",
+            createdAt: new Date("2026-04-15T12:10:00.000Z"),
+          },
+        ],
+      },
+    ]);
+    hoisted.consentRecordFindMany.mockResolvedValue([]);
+    hoisted.mediaAssetGroupBy.mockResolvedValue([]);
+    hoisted.mediaAssetCount.mockResolvedValue(0);
+    hoisted.vendorMembershipFindMany.mockResolvedValue([]);
+    vi.mocked(calculateStorageUsage).mockResolvedValue({
+      usedBytes: BigInt(0),
+      limitBytes: BigInt(0),
+      percentUsed: 0,
+      isOverLimit: false,
+    });
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.lifecycleCounts).toMatchObject({
+      scheduled: 0,
+      inProgress: 0,
+      awaitingReview: 0,
+      completed: 0,
+      canceled: 0,
+      rejected: 1,
+      archived: 0,
+    });
+    expect(body.recentJobs).toEqual([
+      expect.objectContaining({
+        id: "job-rejected-stage",
+        status: "rejected",
+        operationalPhase: "REJECTED",
+      }),
+    ]);
   });
 });
 
