@@ -1025,6 +1025,7 @@ export async function GET(
         !["REJECTED", "CANCELED", "ARCHIVED"].includes(normalizeKey(pack.bookingStatus)) &&
         pack.visibilityStatuses.some((status) => normalizeKey(status) === PUBLIC_VISIBILITY_STATUS)
     ).length;
+    const customerVisibleApprovedServiceOrders = publicServiceOrders;
     const trustScore = toVendorTrustScore(currentTrustScoreSnapshot as any);
 
     let storageUsedBytes = "0";
@@ -1080,7 +1081,7 @@ export async function GET(
       pendingModerationProofs,
       approvedProofs: approvedServiceOrders,
       pendingModerationServiceOrderCount: pendingModerationServiceOrders,
-      approvedServiceOrderCount: approvedServiceOrders,
+      approvedServiceOrderCount: customerVisibleApprovedServiceOrders,
       publicServiceOrderCount: publicServiceOrders,
       approvedProofAssets,
       archivedProofs: Number(archivedProofs || 0),

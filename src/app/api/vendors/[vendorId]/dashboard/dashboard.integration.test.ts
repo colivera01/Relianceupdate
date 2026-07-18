@@ -23,6 +23,7 @@ const hoisted = vi.hoisted(() => {
   const consentRecordFindMany = vi.fn();
   const mediaAssetGroupBy = vi.fn();
   const mediaAssetCount = vi.fn();
+  const mediaAssetFindMany = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
   const vendorMembershipFindMany = vi.fn();
 
@@ -49,6 +50,7 @@ const hoisted = vi.hoisted(() => {
     mediaAsset: {
       groupBy: mediaAssetGroupBy,
       count: mediaAssetCount,
+      findMany: mediaAssetFindMany,
     },
     vendorMembership: {
       findFirst: vendorMembershipFindFirst,
@@ -69,6 +71,7 @@ const hoisted = vi.hoisted(() => {
     consentRecordFindMany,
     mediaAssetGroupBy,
     mediaAssetCount,
+    mediaAssetFindMany,
     vendorMembershipFindFirst,
     vendorMembershipFindMany,
   };
@@ -190,6 +193,8 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     hoisted.consentRecordFindMany.mockReset();
     hoisted.mediaAssetGroupBy.mockReset();
     hoisted.mediaAssetCount.mockReset();
+    hoisted.mediaAssetFindMany.mockReset();
+    hoisted.mediaAssetFindMany.mockResolvedValue([]);
     hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.vendorMembershipFindMany.mockReset();
     vi.mocked(getVendorRatingStats).mockReset();
@@ -287,6 +292,83 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(vi.mocked(requireVendorMembership)).toHaveBeenCalledWith(req, "v1");
   });
 
+  it("keeps private approved media packages out of customer-visible service order counts", async () => {
+    mockHappyPathData();
+    hoisted.mediaAssetFindMany.mockResolvedValue([
+      {
+        id: "asset-intro",
+        vendorId: "v1",
+        moderationStatus: "approved",
+        visibilityStatus: "private",
+        uploadedByMembershipId: "membership-1",
+        createdAt: new Date("2026-04-15T12:10:00.000Z"),
+        mediaSession: {
+          bookingId: "job-private-approved",
+          vendorJobVideoStage: "INTRO",
+          booking: {
+            id: "job-private-approved",
+            title: "Private proof package",
+            status: "COMPLETED",
+            clientName: "Pat",
+            vendor: { businessName: "Sparkle Services", name: "Sparkle Services" },
+            service: { name: "Deep Cleaning" },
+          },
+        },
+      },
+      {
+        id: "asset-progress",
+        vendorId: "v1",
+        moderationStatus: "approved",
+        visibilityStatus: "private",
+        uploadedByMembershipId: "membership-1",
+        createdAt: new Date("2026-04-15T12:15:00.000Z"),
+        mediaSession: {
+          bookingId: "job-private-approved",
+          vendorJobVideoStage: "IN_PROGRESS",
+          booking: {
+            id: "job-private-approved",
+            title: "Private proof package",
+            status: "COMPLETED",
+            clientName: "Pat",
+            vendor: { businessName: "Sparkle Services", name: "Sparkle Services" },
+            service: { name: "Deep Cleaning" },
+          },
+        },
+      },
+      {
+        id: "asset-completed",
+        vendorId: "v1",
+        moderationStatus: "approved",
+        visibilityStatus: "private",
+        uploadedByMembershipId: "membership-1",
+        createdAt: new Date("2026-04-15T12:20:00.000Z"),
+        mediaSession: {
+          bookingId: "job-private-approved",
+          vendorJobVideoStage: "COMPLETED",
+          booking: {
+            id: "job-private-approved",
+            title: "Private proof package",
+            status: "COMPLETED",
+            clientName: "Pat",
+            vendor: { businessName: "Sparkle Services", name: "Sparkle Services" },
+            service: { name: "Deep Cleaning" },
+          },
+        },
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    expect(body.approvedProofs).toBe(1);
+    expect(body.approvedServiceOrderCount).toBe(0);
+    expect(body.publicServiceOrderCount).toBe(0);
+  });
+
   it("reports awaiting-review lifecycle counts from actual booking status instead of inferring from reviews", async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue("user-1");
     vi.mocked(getVendorMembership).mockResolvedValue({
@@ -360,6 +442,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     hoisted.consentRecordFindMany.mockResolvedValue([]);
     hoisted.mediaAssetGroupBy.mockResolvedValue([]);
     hoisted.mediaAssetCount.mockResolvedValue(0);
+    hoisted.mediaAssetFindMany.mockResolvedValue([]);
     hoisted.vendorMembershipFindMany.mockResolvedValue([]);
     vi.mocked(calculateStorageUsage).mockResolvedValue({
       usedBytes: BigInt(0),
