@@ -3,19 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
-import { OWNER_ADMIN_EMAIL, OWNER_ADMIN_PHONE } from '@/lib/internal-identities';
 
 export type AppRole = 'customer' | 'vendor' | 'admin';
-
-function normalizePhone(value: string | null | undefined): string {
-  return String(value || '').replace(/\D/g, '');
-}
-
-function hasAdminIdentity(email: string | null | undefined, phone: string | null | undefined): boolean {
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  const normalizedPhone = normalizePhone(phone);
-  return normalizedEmail === OWNER_ADMIN_EMAIL || normalizedPhone === OWNER_ADMIN_PHONE;
-}
 
 function rolesFromSession(userTypeRaw: string | null | undefined, availableProfilesRaw: string[] | undefined): Set<AppRole> {
   const roles = new Set<AppRole>();
@@ -57,14 +46,6 @@ export function useAvailableRoles(currentRole: AppRole) {
     () => String(user?.id || fallbackUser?.id || '').trim(),
     [fallbackUser?.id, user?.id]
   );
-  const email = useMemo(
-    () => String((user as any)?.email || fallbackUser?.email || '').trim(),
-    [fallbackUser?.email, user]
-  );
-  const phone = useMemo(
-    () => String((user as any)?.phone || fallbackUser?.phone || '').trim(),
-    [fallbackUser?.phone, user]
-  );
   const userType = useMemo(
     () => String(user?.userType || fallbackUser?.userType || '').trim(),
     [fallbackUser?.userType, user?.userType]
@@ -85,14 +66,6 @@ export function useAvailableRoles(currentRole: AppRole) {
     async function resolveRoles() {
       const sessionRoles = rolesFromSession(userType, availableProfiles);
       const hasExplicitSessionRoles = sessionRoles.size > 0 || Boolean(userType) || availableProfiles.length > 0;
-      const isRegisteredAdminIdentity = hasAdminIdentity(email, phone);
-
-      if (isRegisteredAdminIdentity) {
-        // The owner/admin identity intentionally keeps customer access for
-        // platform-building flows. Add it up front so admin pages do not need
-        // to probe /api/customer/profile just to render the Customer toggle.
-        sessionRoles.add('customer');
-      }
 
       const headers = {
         'Content-Type': 'application/json',
@@ -105,8 +78,7 @@ export function useAvailableRoles(currentRole: AppRole) {
         (
           currentRole === 'vendor' ||
           currentRole === 'admin' ||
-          !hasExplicitSessionRoles ||
-          isRegisteredAdminIdentity
+          !hasExplicitSessionRoles
         );
 
       if (shouldProbeCustomer) {
@@ -133,8 +105,7 @@ export function useAvailableRoles(currentRole: AppRole) {
         (
           currentRole === 'customer' ||
           currentRole === 'admin' ||
-          !hasExplicitSessionRoles ||
-          isRegisteredAdminIdentity
+          !hasExplicitSessionRoles
         );
 
       if (shouldProbeVendor) {
@@ -156,13 +127,7 @@ export function useAvailableRoles(currentRole: AppRole) {
         }
       }
 
-      if (isRegisteredAdminIdentity) {
-        // Strict identity match is sufficient to show the Admin toggle.
-        // The actual admin pages/APIs are protected server-side, so a UI
-        // probe is informational only and should not retract the option
-        // on a transient backend failure (DB outage, network blip, etc.).
-        sessionRoles.add('admin');
-      } else {
+      if (!sessionRoles.has('admin')) {
         sessionRoles.delete('admin');
       }
 
@@ -183,7 +148,7 @@ export function useAvailableRoles(currentRole: AppRole) {
     return () => {
       cancelled = true;
     };
-  }, [availableProfiles, currentRole, email, phone, userId, userType]);
+  }, [availableProfiles, currentRole, userId, userType]);
 
   return {
     availableRoles,

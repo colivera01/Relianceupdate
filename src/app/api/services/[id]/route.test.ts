@@ -86,6 +86,9 @@ describe("vendor-owned service mutation access", () => {
     hoisted.serviceFindUnique.mockResolvedValue({
       id: "service-1",
       vendorId: "vendor-1",
+      isPublished: false,
+      publishedAt: null,
+      _count: { bookings: 0, mediaSessions: 0, favorites: 0, promotionCampaigns: 0 },
       vendor: { accountStatus: "active" },
     });
     hoisted.serviceDelete.mockResolvedValue({ id: "service-1" });
@@ -106,6 +109,45 @@ describe("vendor-owned service mutation access", () => {
     expect(response.status).toBe(200);
     expect(hoisted.serviceDelete).toHaveBeenCalledWith({
       where: { id: "service-1" },
+    });
+  });
+
+  it("archives a published service without deleting its work history", async () => {
+    const { resolveVendorAccessForUser } = await import("@/lib/vendor-context");
+    const publishedAt = new Date("2026-07-01T12:00:00.000Z");
+
+    hoisted.serviceFindUnique.mockResolvedValue({
+      id: "service-1",
+      vendorId: "vendor-1",
+      isPublished: true,
+      publishedAt,
+      _count: { bookings: 3, mediaSessions: 3, favorites: 2, promotionCampaigns: 0 },
+      vendor: { accountStatus: "active" },
+    });
+    hoisted.serviceUpdate.mockResolvedValue({ id: "service-1", isPublished: false });
+    vi.mocked(resolveVendorAccessForUser).mockResolvedValue({
+      state: "ACTIVE",
+      userId: "user-1",
+      vendorId: "vendor-1",
+    } as any);
+
+    const response = await DELETE(
+      new Request("http://localhost/api/services/service-1", {
+        method: "DELETE",
+        headers: { "x-user-id": "user-1" },
+      }) as any,
+      { params: Promise.resolve({ id: "service-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(hoisted.serviceDelete).not.toHaveBeenCalled();
+    expect(hoisted.serviceUpdate).toHaveBeenCalledWith({
+      where: { id: "service-1" },
+      data: { isPublished: false, publishedAt },
+    });
+    expect(await readJson(response)).toMatchObject({
+      action: "archived",
+      preservedReferences: 8,
     });
   });
 });

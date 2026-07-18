@@ -151,6 +151,11 @@ export default function FavoritesPage() {
                         <div>
                           <h3 className="font-semibold text-lg text-gray-900">{item.serviceName}</h3>
                           <p className="text-sm text-gray-700">By {item.vendorName}</p>
+                          {!item.publicListing.serviceEligible ? (
+                            <Badge className="mt-2 border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-100">
+                              No longer available
+                            </Badge>
+                          ) : null}
                         </div>
                         <Button
                           type="button"
@@ -190,17 +195,21 @@ export default function FavoritesPage() {
                       </div>
 
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <Link
-                          href={`/service/${item.serviceId}?returnTo=${encodeURIComponent(serviceReturnHref)}&returnLabel=${encodeURIComponent(serviceReturnLabel)}`}
-                        >
-                          <Button size="sm">View Service Details</Button>
-                        </Link>
+                        {item.publicListing.serviceEligible ? (
+                          <Link
+                            href={`/service/${item.serviceId}?returnTo=${encodeURIComponent(serviceReturnHref)}&returnLabel=${encodeURIComponent(serviceReturnLabel)}`}
+                          >
+                            <Button size="sm">View Service Details</Button>
+                          </Link>
+                        ) : null}
                         <Link href={`/vendors/${item.vendorId}`}>
                           <Button size="sm" variant="outline">View Vendor</Button>
                         </Link>
-                        <Link href={`/booking/${item.serviceId}`}>
-                          <Button size="sm" variant="outline">Request Service</Button>
-                        </Link>
+                        {item.publicListing.serviceEligible ? (
+                          <Link href={`/booking/${item.serviceId}`}>
+                            <Button size="sm" variant="outline">Request Service</Button>
+                          </Link>
+                        ) : null}
                       </div>
                     </div>
                   </div>

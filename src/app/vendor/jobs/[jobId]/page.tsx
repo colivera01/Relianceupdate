@@ -603,7 +603,12 @@ export default function VendorJobDetailPage() {
                                 ? formatDateTimeUtc(String(latestAsset?.createdAt || stageSession?.createdAt))
                                 : "Unknown"}
                             </p>
-                            <Button size="sm" variant="outline" onClick={() => void watchStage(stage.key)}>
+                            <Button
+                              size="sm"
+                              onClick={() => void watchStage(stage.key)}
+                              disabled={resolvingPlaybackStage === stage.key}
+                              className="bg-blue-600 text-white shadow-sm hover:bg-blue-700 disabled:bg-blue-500"
+                            >
                               {resolvingPlaybackStage === stage.key ? "Opening..." : "Watch"}
                             </Button>
                             <p className="text-xs text-gray-600">

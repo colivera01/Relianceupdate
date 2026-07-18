@@ -30,9 +30,9 @@ describe("readAdminAccess", () => {
     prismaMocks.user.findUnique.mockResolvedValue(null);
   });
 
-  it("allows the owner admin email even when cached profiles are stale", async () => {
+  it("allows the registered owner admin user id even when cached profiles are stale", async () => {
     authSessionMocks.getAuthSessionClaimsFromRequest.mockReturnValue({
-      userId: "current-owner-row",
+      userId: "D43B6BB3-1A72-45EC-A362-A6E1E0580EA0",
       email: "colivera080124@gmail.com",
       userType: "customer",
       availableProfiles: ["customer"],
@@ -40,7 +40,7 @@ describe("readAdminAccess", () => {
       expiresAt: 9999999999,
       version: 1,
     });
-    authMocks.getUserIdFromRequest.mockResolvedValue("current-owner-row");
+    authMocks.getUserIdFromRequest.mockResolvedValue("D43B6BB3-1A72-45EC-A362-A6E1E0580EA0");
 
     const { readAdminAccess } = await import("./admin-auth");
     const access = await readAdminAccess(new Request("http://localhost/admin"));
@@ -50,32 +50,22 @@ describe("readAdminAccess", () => {
     expect(prismaMocks.user.findUnique).not.toHaveBeenCalled();
   });
 
-  it("allows the owner admin phone as a database fallback for stale sessions", async () => {
+  it("does not promote a different account that shares the owner email", async () => {
     authSessionMocks.getAuthSessionClaimsFromRequest.mockReturnValue({
-      userId: "current-owner-row",
-      email: "bradley@example.com",
+      userId: "electro-vendor-row",
+      email: "colivera080124@gmail.com",
       userType: "customer",
       availableProfiles: ["customer"],
       issuedAt: 1,
       expiresAt: 9999999999,
       version: 1,
     });
-    authMocks.getUserIdFromRequest.mockResolvedValue("current-owner-row");
-    prismaMocks.user.findUnique.mockResolvedValue({
-      email: "bradley@example.com",
-      phone: "4079148888",
-    });
+    authMocks.getUserIdFromRequest.mockResolvedValue("electro-vendor-row");
 
     const { readAdminAccess } = await import("./admin-auth");
     const access = await readAdminAccess(new Request("http://localhost/admin"));
 
-    expect(access.isAdmin).toBe(true);
-    expect(prismaMocks.user.findUnique).toHaveBeenCalledWith({
-      where: { id: "current-owner-row" },
-      select: {
-        email: true,
-        phone: true,
-      },
-    });
+    expect(access.isAdmin).toBe(false);
+    expect(prismaMocks.user.findUnique).not.toHaveBeenCalled();
   });
 });

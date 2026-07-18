@@ -12,6 +12,8 @@ import { checkVendorSlotAvailability } from '@/lib/availability-slots';
 import { deriveCustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
 import { findUserIdByEmailCaseInsensitive } from '@/lib/resolve-booking-owner-user-id';
 import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
+import { generateConsentToken } from '@/lib/consent-flow';
+import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -73,6 +75,12 @@ function buildCustomerMetadataForCreate(body: {
   }
   if (Object.keys(out).length === 0) return undefined;
   return out;
+}
+
+function resolveConsentBaseUrl(request: NextRequest): string {
+  const configured = String(process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  return String(request.headers.get('origin') || new URL(request.url).origin).trim().replace(/\/+$/, '');
 }
 
 // TODO: Import your database models
@@ -300,7 +308,7 @@ export async function POST(request: NextRequest) {
     const vendorId = String(vendor_id);
     const vendor = await prisma.vendor.findUnique({
       where: { id: vendorId },
-      select: { id: true, accountStatus: true },
+      select: { id: true, accountStatus: true, businessName: true, name: true },
     });
     if (!vendor) {
       return NextResponse.json(
@@ -497,6 +505,126 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const recordingLocation = String(
+      customerMetadataPayload?.vendor_job_recording_location || ''
+    ).trim().toLowerCase();
+    const requiresCustomerConsent =
+      isVendorStaffForThisVendor &&
+      (recordingLocation === 'residence' || recordingLocation === 'customer-business');
+    let automaticConsent: Record<string, unknown> | null = null;
+
+    if (requiresCustomerConsent) {
+      try {
+        const token = generateConsentToken();
+        const requestedAt = new Date();
+        const expiresAt = new Date(requestedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
+        const mediaSession = await (prisma as any).mediaSession.create({
+          data: {
+            vendorId,
+            bookingId: booking.id,
+            serviceId,
+            userId: bookingUserId,
+            sessionType: 'CONSENT_REQUEST',
+            status: 'CREATED',
+            title: 'Customer consent request',
+            description: `Consent request before ${recordingLocation} recording`,
+          },
+        });
+        const consentRecord = await (prisma as any).consentRecord.create({
+          data: {
+            token,
+            bookingId: booking.id,
+            vendorId,
+            mediaSessionId: mediaSession.id,
+            consentType: 'video_access',
+            status: 'requested',
+            requestedAt,
+            expiresAt,
+          },
+        });
+        await (prisma as any).consentEvent.create({
+          data: { consentRecordId: consentRecord.id, eventType: 'sent', metadata: null },
+        });
+
+        const consentMetadata = {
+          ...(customerMetadataPayload || {}),
+          vendor_job_consent_token: token,
+          vendor_job_consent_accepted: false,
+          vendor_job_consent_status: 'requested',
+        };
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { customerMetadata: JSON.stringify(consentMetadata) },
+        });
+
+        let notification: Awaited<ReturnType<typeof sendConsentLinkNotification>> | null = null;
+        let notificationError: string | null = null;
+        try {
+          notification = await sendConsentLinkNotification({
+            consentRecordId: consentRecord.id,
+            actorUserId: String(authUserId || bookingUserId),
+            token,
+            consentPath: `/consent/${encodeURIComponent(token)}`,
+            absoluteBaseUrl: resolveConsentBaseUrl(request),
+            customerEmail: clientEmailCombined || undefined,
+            customerPhone: clientPhoneCombined || undefined,
+            customerName: client_name ? String(client_name) : undefined,
+            vendorName: String(vendor.businessName || vendor.name || '').trim() || undefined,
+            serviceName: title ? String(title) : undefined,
+            bookingTitle: title ? String(title) : undefined,
+            serviceDate: scheduledFor.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            }),
+            consentTypeLabel: 'video access',
+          });
+          await (prisma as any).consentEvent.create({
+            data: {
+              consentRecordId: consentRecord.id,
+              eventType: 'notification_dispatch',
+              metadata: JSON.stringify({
+                anySuccess: notification.anySuccess,
+                channels: notification.channels,
+                absoluteFallbackLink: notification.absoluteFallbackLink,
+              }),
+            },
+          });
+        } catch (notificationFailure) {
+          notificationError =
+            notificationFailure instanceof Error
+              ? notificationFailure.message
+              : String(notificationFailure);
+          await (prisma as any).consentEvent.create({
+            data: {
+              consentRecordId: consentRecord.id,
+              eventType: 'notification_dispatch_failed',
+              metadata: JSON.stringify({ error: notificationError }),
+            },
+          });
+        }
+
+        automaticConsent = {
+          status: 'requested',
+          token,
+          consentUrl: `/consent/${encodeURIComponent(token)}`,
+          consentAbsoluteUrl: notification?.absoluteFallbackLink || null,
+          notification,
+          notificationError,
+          deliveryConfirmed: notification?.anySuccess === true,
+          manualLinkRequired: notification?.anySuccess !== true,
+        };
+      } catch (consentFailure) {
+        console.error('[bookings] automatic customer consent setup failed', consentFailure);
+        automaticConsent = {
+          status: 'setup_failed',
+          deliveryConfirmed: false,
+          manualLinkRequired: true,
+          error: consentFailure instanceof Error ? consentFailure.message : String(consentFailure),
+        };
+      }
+    }
+
     const hydrated = await prisma.booking.findUnique({
       where: { id: booking.id },
       select: {
@@ -523,7 +651,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       booking: contract,
-      message: 'Booking created successfully',
+      automaticConsent,
+      message: automaticConsent
+        ? automaticConsent.deliveryConfirmed
+          ? 'Booking created and customer consent request sent'
+          : 'Booking created, but customer consent delivery needs attention'
+        : 'Booking created successfully',
       /** @deprecated Prefer `booking.customer_metadata` — kept for older clients. */
       meta: {
         user_notes: (contract.customer_metadata as { user_notes?: string } | null)?.user_notes ?? null,

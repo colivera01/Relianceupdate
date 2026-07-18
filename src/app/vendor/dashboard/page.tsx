@@ -391,7 +391,6 @@ export default function VendorDashboard() {
       detail: 'Jobs currently scheduled for today.',
       icon: Calendar,
       color: 'blue' as keyof typeof colorMap,
-      route: '/vendor/jobs?filter=today',
     },
     {
       label: 'Work in progress',
@@ -399,7 +398,6 @@ export default function VendorDashboard() {
       detail: 'Active jobs your team is working right now.',
       icon: TrendingUp,
       color: 'green' as keyof typeof colorMap,
-      route: '/vendor/jobs?filter=in-progress',
     },
     {
       label: 'Awaiting review',
@@ -407,7 +405,6 @@ export default function VendorDashboard() {
       detail: 'Finished jobs still waiting on review or approval steps.',
       icon: Star,
       color: 'yellow' as keyof typeof colorMap,
-      route: '/vendor/jobs?filter=awaiting-review',
     },
     {
       label: 'Completed',
@@ -415,7 +412,6 @@ export default function VendorDashboard() {
       detail: 'Completed jobs already closed out in Reliance.',
       icon: CheckCircle,
       color: 'purple' as keyof typeof colorMap,
-      route: '/vendor/jobs?filter=completed',
     },
     {
       label: 'Public reviews',
@@ -423,7 +419,6 @@ export default function VendorDashboard() {
       detail: 'Customer comments currently visible to new customers.',
       icon: Star,
       color: 'yellow' as keyof typeof colorMap,
-      route: '/vendor/reviews',
     },
     {
       label: 'Trust Score',
@@ -431,7 +426,6 @@ export default function VendorDashboard() {
       detail: 'Reliance trust signal from completed proof, reviews, and reliability.',
       icon: ShieldCheck,
       color: 'blue' as keyof typeof colorMap,
-      route: '/vendor/analytics',
     },
     {
       label: 'Approved service orders',
@@ -439,7 +433,6 @@ export default function VendorDashboard() {
       detail: 'Approved service orders that support customer trust.',
       icon: Activity,
       color: 'green' as keyof typeof colorMap,
-      route: '/vendor/media?filter=approved',
     },
   ];
 
@@ -534,11 +527,9 @@ export default function VendorDashboard() {
                   const colors = colorMap[card.color];
                   const isAwaitingReview = card.label === 'Awaiting review' && awaitingReview > 0;
                   return (
-                    <button
+                    <div
                       key={card.label}
-                      type="button"
-                      onClick={() => router.push(card.route)}
-                      className={`rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/8 ${
+                      className={`rounded-[22px] border p-4 text-left ${
                         isAwaitingReview
                           ? 'border-amber-300/40 bg-amber-500/10'
                           : 'border-white/10 bg-white/5'
@@ -558,7 +549,7 @@ export default function VendorDashboard() {
                         </div>
                       </div>
                       <p className="mt-3 text-sm leading-6 text-white/68">{card.detail}</p>
-                    </button>
+                    </div>
                   );
                 })}
               </div>

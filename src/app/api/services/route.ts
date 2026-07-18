@@ -12,6 +12,11 @@ function parsePositiveNumber(value: string | null): number | null {
 }
 
 function mapServiceRow(service: any) {
+  const lifecycleStatus = service.isPublished
+    ? 'active'
+    : service.publishedAt
+      ? 'archived'
+      : 'pending_approval';
   return {
     id: service.id,
     name: service.name,
@@ -21,6 +26,7 @@ function mapServiceRow(service: any) {
     vendorId: service.vendorId,
     isPublished: Boolean(service.isPublished),
     publishedAt: service.publishedAt ? new Date(service.publishedAt).toISOString() : null,
+    lifecycleStatus,
     created_at: service.createdAt ? new Date(service.createdAt).toISOString() : null,
     updated_at: service.updatedAt ? new Date(service.updatedAt).toISOString() : null,
     vendor: service.vendor

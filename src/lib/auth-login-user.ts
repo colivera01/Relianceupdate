@@ -1,4 +1,4 @@
-import { isOwnerAdminEmail, isOwnerAdminPhone, isOwnerAdminUserId } from "@/lib/internal-identities";
+import { isOwnerAdminUserId } from "@/lib/internal-identities";
 import { sanitizeCustomerFacingAvatar } from "@/lib/avatar-display";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { prisma } from "@/server/db";
@@ -32,11 +32,7 @@ export async function buildAuthLoginUserPayload(params: {
   });
 
   const profileSet = new Set<string>();
-  if (
-    isOwnerAdminUserId(userId) ||
-    isOwnerAdminEmail(email || dbUser?.email) ||
-    isOwnerAdminPhone(dbUser?.phone)
-  ) {
+  if (isOwnerAdminUserId(userId)) {
     profileSet.add("admin");
   }
 

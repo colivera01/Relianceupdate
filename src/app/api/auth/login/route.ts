@@ -8,8 +8,6 @@ import {
 } from "@/lib/account-status";
 import {
   isInternalDemoUserRecord,
-  isOwnerAdminEmail,
-  isOwnerAdminPhone,
   isOwnerAdminUserId,
 } from "@/lib/internal-identities";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
@@ -263,8 +261,6 @@ export async function POST(request: NextRequest) {
 
     const profileSet = getRegistryProfiles(user);
     const isOwnerAdminIdentity =
-      isOwnerAdminEmail(user?.email || resolvedDbUser?.email || emailNorm) ||
-      isOwnerAdminPhone(user?.phone || resolvedDbUser?.phone) ||
       isOwnerAdminUserId(resolvedUserId) ||
       isOwnerAdminUserId(user?.id);
 

@@ -16,6 +16,7 @@ type ServiceRow = {
   price: number;
   isPublished: boolean;
   publishedAt: string | null;
+  lifecycleStatus: 'active' | 'pending_approval' | 'archived';
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -82,6 +83,12 @@ function mapApiService(service: any): ServiceRow {
     price: Number(service?.price || 0),
     isPublished: Boolean(service?.isPublished),
     publishedAt: service?.publishedAt ? String(service.publishedAt) : null,
+    lifecycleStatus:
+      service?.lifecycleStatus === 'archived'
+        ? 'archived'
+        : service?.isPublished
+          ? 'active'
+          : 'pending_approval',
     createdAt: service?.created_at ? String(service.created_at) : null,
     updatedAt: service?.updated_at ? String(service.updated_at) : null,
   };
@@ -110,6 +117,7 @@ export default function VendorServicesPage() {
   const [copyLoading, setCopyLoading] = useState(false);
   const [copyError, setCopyError] = useState('');
   const [copyMessage, setCopyMessage] = useState('');
+  const [serviceActionMessage, setServiceActionMessage] = useState('');
 
   const sortedServices = useMemo(
     () =>
@@ -273,8 +281,16 @@ export default function VendorServicesPage() {
 
   const handleDeleteService = async (service: ServiceRow) => {
     if (deleteLoadingId) return;
+    const isUnusedDraft = service.lifecycleStatus === 'pending_approval';
+    const confirmed = window.confirm(
+      isUnusedDraft
+        ? `Delete the unused draft "${service.name}"? This cannot be undone.`
+        : `Stop offering "${service.name}"? It will be removed from customer browsing, while completed work records and customer history remain available.`
+    );
+    if (!confirmed) return;
     setDeleteLoadingId(service.id);
     setServicesError('');
+    setServiceActionMessage('');
     try {
       const res = await fetch(`/api/services/${encodeURIComponent(service.id)}`, {
         method: 'DELETE',
@@ -283,6 +299,11 @@ export default function VendorServicesPage() {
       if (!res.ok) {
         throw new Error(payload?.error || `Failed to delete service (${res.status})`);
       }
+      setServiceActionMessage(
+        payload?.action === 'deleted'
+          ? 'Unused draft deleted.'
+          : 'Service archived and removed from customer browsing. Existing work records were preserved.'
+      );
       await reloadServices();
     } catch (error) {
       setServicesError(error instanceof Error ? error.message : 'Failed to delete service');
@@ -432,6 +453,12 @@ export default function VendorServicesPage() {
           </div>
         )}
 
+        {serviceActionMessage && (
+          <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800">
+            {serviceActionMessage}
+          </div>
+        )}
+
         {servicesLoading ? (
           <div className="p-6 bg-white rounded-2xl border border-gray-200 text-gray-600 flex items-center gap-2">
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -446,6 +473,7 @@ export default function VendorServicesPage() {
             {sortedServices.map((service) => {
               const cleanDescription = stripEstimatedDurationNote(service.description);
               const estimatedDuration = extractEstimatedDuration(service.description);
+              const isArchived = service.lifecycleStatus === 'archived';
 
               return (
               <div
@@ -453,7 +481,9 @@ export default function VendorServicesPage() {
                 className={`rounded-2xl border p-4 shadow-sm ${
                   service.isPublished
                     ? 'border-gray-200 bg-white'
-                    : 'border-dashed border-amber-300 bg-slate-100 opacity-80'
+                    : isArchived
+                      ? 'border-slate-300 bg-slate-100'
+                      : 'border-dashed border-amber-300 bg-slate-100 opacity-80'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
@@ -473,16 +503,30 @@ export default function VendorServicesPage() {
                     <div className="text-xs text-gray-500">Reference estimate</div>
                     <div
                       className={`text-xs mt-1 ${
-                        service.isPublished ? 'text-green-700' : 'text-amber-700'
+                        service.isPublished
+                          ? 'text-green-700'
+                          : isArchived
+                            ? 'text-slate-700'
+                            : 'text-amber-700'
                       }`}
                     >
-                      {service.isPublished ? 'Published for customers' : 'Pending admin approval'}
+                      {service.isPublished
+                        ? 'Published for customers'
+                        : isArchived
+                          ? 'Archived - no longer offered'
+                          : 'Pending admin approval'}
                     </div>
                   </div>
                 </div>
                 {!service.isPublished ? (
-                  <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-                    New service pending admin approval. Once approved, this service will be activated for customers.
+                  <div className={`mb-4 rounded-lg border px-3 py-2 text-xs leading-5 ${
+                    isArchived
+                      ? 'border-slate-300 bg-slate-200 text-slate-800'
+                      : 'border-amber-200 bg-amber-50 text-amber-900'
+                  }`}>
+                    {isArchived
+                      ? 'This service is no longer offered. Existing work records, approved proof, and saved customer history remain intact.'
+                      : 'New service pending admin approval. Once approved, this service will be activated for customers.'}
                   </div>
                 ) : null}
 
@@ -503,7 +547,16 @@ export default function VendorServicesPage() {
                     disabled={deleteLoadingId === service.id}
                     className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {deleteLoadingId === service.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    {deleteLoadingId === service.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        <span className="sr-only">
+                          {service.lifecycleStatus === 'pending_approval' ? 'Delete draft' : 'Stop offering service'}
+                        </span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

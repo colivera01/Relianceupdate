@@ -346,7 +346,21 @@ export async function DELETE(
     const serviceId = String(id);
     const existing = await prisma.service.findUnique({
       where: { id: serviceId },
-      select: { id: true, vendorId: true, vendor: { select: { accountStatus: true } } },
+      select: {
+        id: true,
+        vendorId: true,
+        isPublished: true,
+        publishedAt: true,
+        _count: {
+          select: {
+            bookings: true,
+            mediaSessions: true,
+            favorites: true,
+            promotionCampaigns: true,
+          },
+        },
+        vendor: { select: { accountStatus: true } },
+      },
     });
     if (!existing) {
       return NextResponse.json(
@@ -375,13 +389,40 @@ export async function DELETE(
       );
     }
 
-    await prisma.service.delete({
+    const referenceCount =
+      existing._count.bookings +
+      existing._count.mediaSessions +
+      existing._count.favorites +
+      existing._count.promotionCampaigns;
+    const canPermanentlyDeleteDraft =
+      !existing.isPublished && !existing.publishedAt && referenceCount === 0;
+
+    if (canPermanentlyDeleteDraft) {
+      await prisma.service.delete({
+        where: { id: serviceId },
+      });
+
+      return NextResponse.json({
+        success: true,
+        action: 'deleted',
+        message: 'Unused draft deleted successfully',
+      });
+    }
+
+    await prisma.service.update({
       where: { id: serviceId },
+      data: {
+        isPublished: false,
+        // Keep the original publication date so archived services remain distinct from drafts.
+        publishedAt: existing.publishedAt || new Date(),
+      },
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Service deleted successfully',
+      action: 'archived',
+      preservedReferences: referenceCount,
+      message: 'Service archived. Existing work records and customer history were preserved.',
     });
   } catch (error) {
     console.error('Error deleting service:', error);

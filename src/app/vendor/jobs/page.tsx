@@ -293,55 +293,22 @@ export default function VendorJobs() {
         tone: 'amber',
       };
     }
-    const nextStage = getNextMissingVideoStageForJob(job);
-    if (!isJobAssignedForVideoUpload(job)) {
-      return {
-        label: 'Assign employee',
-        detail: 'Assign the job before consent or staged videos.',
-        actionLabel: 'Assign Employee',
-        tone: 'amber',
-      };
-    }
-    if (!nextStage) {
-      return {
-        label: 'All videos uploaded',
-        detail: 'Starting Condition, Work in Progress, and Final Result videos are present.',
-        actionLabel: 'View Job',
-        tone: 'green',
-      };
-    }
-
-    const stageLabel = formatVideoStageLabel(nextStage);
     const snapshot = getSavedRecordingComplianceForJob(job);
     const locationChoice = String(snapshot?.location || '').trim().toLowerCase();
     const consentState = getConsentStatusForJob(job, snapshot);
-    const consentStateRequiresFollowUp =
-      consentState === CONSENT_STATE.REQUESTED ||
-      consentState === CONSENT_STATE.ACCEPTED ||
-      consentState === CONSENT_STATE.DECLINED ||
-      consentState === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE;
+    const nextStage = getNextMissingVideoStageForJob(job);
+    const stageLabel = nextStage ? formatVideoStageLabel(nextStage) : 'next stage';
+    const isAssigned = isJobAssignedForVideoUpload(job);
     const requiresConsent =
       locationChoice === 'residence' ||
-      locationChoice === 'customer-business' ||
-      consentStateRequiresFollowUp;
+      locationChoice === 'customer-business';
 
-    if (!locationChoice && !consentStateRequiresFollowUp) {
+    if (!locationChoice) {
       return {
         label: 'Choose recording location',
         detail: `Select the recording location first. Customer residence/business requires consent before ${stageLabel}.`,
         actionLabel: 'Choose Location',
         tone: 'amber',
-      };
-    }
-    if (locationChoice === 'business') {
-      const serviceOrderSent = Boolean(snapshot?.serviceOrderReleasedAt);
-      return {
-        label: serviceOrderSent
-          ? `Service order sent - employee verifies location`
-          : 'Consent not required - send service order',
-        detail: 'The employee phone verifies the business address before the camera opens.',
-        actionLabel: serviceOrderSent ? 'Open Job' : 'Send Service Order',
-        tone: serviceOrderSent ? 'green' : 'blue',
       };
     }
     if (requiresConsent && !hasCustomerContactForJob(job)) {
@@ -353,6 +320,22 @@ export default function VendorJobs() {
       };
     }
     if (requiresConsent && consentState === CONSENT_STATE.ACCEPTED) {
+      if (!isAssigned) {
+        return {
+          label: 'Customer consent accepted - assign employee',
+          detail: `Customer consent is accepted for ${formatCustomerConsentRecipient(job)}. The work order is now ready for assignment.`,
+          actionLabel: 'Assign Employee',
+          tone: 'green',
+        };
+      }
+      if (!nextStage) {
+        return {
+          label: 'All videos uploaded',
+          detail: 'Starting Condition, Work in Progress, and Final Result videos are present.',
+          actionLabel: 'View Job',
+          tone: 'green',
+        };
+      }
       return {
         label: `Consent accepted - start ${stageLabel} video`,
         detail: `Customer consent is accepted for ${formatCustomerConsentRecipient(job)}.`,
@@ -384,12 +367,46 @@ export default function VendorJobs() {
         tone: 'amber',
       };
     }
+    if (requiresConsent) {
+      return {
+        label: 'Customer consent required',
+        detail: `Consent will be sent to ${formatCustomerConsentRecipient(job)}. Assignment remains locked until the customer accepts.`,
+        actionLabel: 'Send Consent',
+        tone: 'amber',
+      };
+    }
+    if (!isAssigned) {
+      return {
+        label: 'Assign employee',
+        detail: 'This business-address work order is ready for assignment.',
+        actionLabel: 'Assign Employee',
+        tone: 'amber',
+      };
+    }
+    if (!nextStage) {
+      return {
+        label: 'All videos uploaded',
+        detail: 'Starting Condition, Work in Progress, and Final Result videos are present.',
+        actionLabel: 'View Job',
+        tone: 'green',
+      };
+    }
+    const serviceOrderSent = Boolean(snapshot?.serviceOrderReleasedAt);
     return {
-      label: 'Send video consent',
-      detail: `Send customer consent to ${formatCustomerConsentRecipient(job)} before uploading ${stageLabel}.`,
-      actionLabel: 'Send Consent',
-      tone: 'amber',
+      label: serviceOrderSent
+        ? 'Service order sent - employee verifies location'
+        : 'Consent not required - send service order',
+      detail: 'The employee phone verifies the business address before the camera opens.',
+      actionLabel: serviceOrderSent ? 'Open Job' : 'Send Service Order',
+      tone: serviceOrderSent ? 'green' : 'blue',
     };
+  };
+
+  const isJobBlockedByCustomerConsent = (job: any): boolean => {
+    const snapshot = getSavedRecordingComplianceForJob(job);
+    const locationChoice = String(snapshot?.location || '').trim().toLowerCase();
+    if (locationChoice !== 'residence' && locationChoice !== 'customer-business') return false;
+    return getConsentStatusForJob(job, snapshot) !== CONSENT_STATE.ACCEPTED;
   };
 
   useEffect(() => {
@@ -445,12 +462,6 @@ export default function VendorJobs() {
   const [employeesLoadError, setEmployeesLoadError] = useState('');
   const [servicesLoading, setServicesLoading] = useState(false);
   const [servicesLoadError, setServicesLoadError] = useState('');
-  const isActiveManager = teamMembers.some(
-    (member) =>
-      String(member?.userId || '').trim() === String(authUserId || '').trim() &&
-      String(member?.status || '').trim().toUpperCase() === 'ACTIVE' &&
-      String(member?.role || '').trim().toUpperCase() === 'MANAGER'
-  );
   const clientNameInputRef = useRef<HTMLInputElement | null>(null);
   const clientLastNameInputRef = useRef<HTMLInputElement | null>(null);
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
@@ -839,9 +850,6 @@ export default function VendorJobs() {
     if (normalizedStatus === 'completed' || normalizedStatus === 'complete') {
       return 'View Job';
     }
-    if (!isJobAssignedForVideoUpload(job)) {
-      return 'Assign Employee';
-    }
     const label = getVendorWorkflowStateForJob(job).actionLabel;
     return label === 'Open Job' ? '' : label;
   };
@@ -861,8 +869,22 @@ export default function VendorJobs() {
       openJobDetails(job);
       return;
     }
-    if (!isJobAssignedForVideoUpload(job)) {
+    const workflowAction = getVendorWorkflowStateForJob(job).actionLabel;
+    if (workflowAction === 'Assign Employee') {
       openAssignmentModal(job);
+      return;
+    }
+    if (
+      workflowAction === 'Choose Location' ||
+      workflowAction === 'Open Consent Step' ||
+      workflowAction === 'Send Consent' ||
+      workflowAction === 'Check Consent' ||
+      workflowAction === 'View Consent Step' ||
+      workflowAction === 'Resend Consent' ||
+      workflowAction === 'Send Service Order' ||
+      workflowAction.startsWith('Start ')
+    ) {
+      void openComplianceForNextStage(job);
       return;
     }
     const nextStage = getNextMissingVideoStageForJob(job);
@@ -2777,6 +2799,13 @@ export default function VendorJobs() {
         phone: formattedPhone || normalizedPhoneDigits,
         email,
       });
+      const automaticConsent = parsed?.automaticConsent;
+      if (automaticConsent?.status === 'requested') {
+        setConsentStatusByBookingId((prev) => ({
+          ...prev,
+          [persistedId]: CONSENT_STATE.REQUESTED,
+        }));
+      }
       upsertJobLocally(optimisticJob);
       await reloadJobsFromBackend({ preserveJobs: [optimisticJob], silent: true });
       router.refresh();
@@ -2788,9 +2817,15 @@ export default function VendorJobs() {
       setJobFormTargetId(null);
       setShowCreateJob(false);
       setJobActionFeedback({
-        type: 'success',
+        type: automaticConsent?.status === 'setup_failed' ? 'error' : 'success',
         message:
-          addingServiceFromJob && resolvedServiceName
+          automaticConsent?.deliveryConfirmed === true
+            ? `Added the work record for ${client}. Customer consent was sent automatically; assignment is locked until the customer accepts.`
+            : automaticConsent?.status === 'requested'
+              ? `Added the work record for ${client}. The consent link was created, but email/SMS delivery was not confirmed. Open the consent step to resend or share the link.`
+              : automaticConsent?.status === 'setup_failed'
+                ? `Added the work record for ${client}, but customer consent could not be created. Open the consent step and retry before assigning an employee.`
+                : addingServiceFromJob && resolvedServiceName
             ? `Created "${resolvedServiceName}" in Services Offered as pending admin approval and added the work record for ${client}. Next time, choose "${resolvedServiceName}" from the Service Offered / Work Type dropdown.`
             : `Added the work record for ${client}.`,
       });
@@ -7332,7 +7367,7 @@ export default function VendorJobs() {
                           >
                             View Review Package
                           </Button>
-                          {isActiveManager ? (
+                          {!isEmployeeView ? (
                             <>
                               {(() => {
                                 const hasAllReviewStages =
@@ -7472,8 +7507,9 @@ export default function VendorJobs() {
                           const isPendingOrInProgress =
                             status === 'pending' || status === 'in-progress' || status === 'in progress';
                           const isCompleted = status === 'completed';
-                          const isAwaitingReview = status === 'awaiting_review' || status === 'awaiting review';
-                          const isArchived = status === 'archived';
+                           const isAwaitingReview = status === 'awaiting_review' || status === 'awaiting review';
+                           const isArchived = status === 'archived';
+                           const isConsentBlocked = isJobBlockedByCustomerConsent(job);
 
                           if (isCompleted) {
                             return (
@@ -7528,7 +7564,7 @@ export default function VendorJobs() {
                                 >
                                   View Review Package
                                 </button>
-                                {isActiveManager ? (
+                                {!isEmployeeView ? (
                                   <>
                                     <button
                                       className="w-full px-3 py-2.5 text-left text-sm text-emerald-100 transition hover:bg-emerald-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -7598,16 +7634,22 @@ export default function VendorJobs() {
                                 >
                                   Edit
                                 </button>
-                                <button
-                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                  onClick={() => {
-                                    setActiveJobActionMenuId(null);
-                                    openAssignmentModal(job);
-                                  }}
-                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                >
-                                  {isJobAssignedForVideoUpload(job) ? 'Reassign Job' : 'Assign Employee'}
-                                </button>
+                                {isConsentBlocked ? (
+                                  <div className="border-y border-amber-300/15 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
+                                    Assignment locked - waiting for customer consent
+                                  </div>
+                                ) : (
+                                  <button
+                                    className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                    onClick={() => {
+                                      setActiveJobActionMenuId(null);
+                                      openAssignmentModal(job);
+                                    }}
+                                    disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                  >
+                                    {isJobAssignedForVideoUpload(job) ? 'Reassign Job' : 'Assign Employee'}
+                                  </button>
+                                )}
                                 {isJobAssignedForVideoUpload(job) ? (
                                   <button
                                     className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"

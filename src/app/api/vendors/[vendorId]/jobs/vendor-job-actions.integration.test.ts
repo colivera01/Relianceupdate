@@ -423,6 +423,44 @@ describe("vendor job actions integration", () => {
     expect(j.code).toBe("JOB_DELETE_SUCCESS_WITH_LINKED_CONTENT_ARCHIVED");
   });
 
+  it("PATCH ASSIGN_JOB blocks customer-location assignment until consent is accepted", async () => {
+    const customerLocationMetadata = JSON.stringify({
+      vendor_job_recording_location: "residence",
+      reliance_ops: { operational_phase: "PENDING" },
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: customerLocationMetadata,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      status: "PENDING",
+      customerMetadata: customerLocationMetadata,
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      {
+        id: "member-1",
+        user: { name: "Peter Parker", email: "peter@example.com", phone: "4075550123" },
+      },
+    ]);
+    hoisted.consentRecordFindFirst.mockResolvedValue({ status: "requested" });
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "ASSIGN_JOB",
+      assignedMembershipIds: ["member-1"],
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("CUSTOMER_CONSENT_REQUIRED_BEFORE_ASSIGNMENT");
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
   it("PATCH ASSIGN_JOB stores primary employee attribution and defers the service order email", async () => {
     const previousMetadata = JSON.stringify({
       vendor_job_assigned_membership_ids: ["old-member"],

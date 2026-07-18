@@ -471,6 +471,26 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         select: { customerMetadata: true, status: true },
       });
       const metadata = parseCustomerMetadata(existing?.customerMetadata || null);
+      const compliance = parseRecordingComplianceMetadata(existing?.customerMetadata || null);
+      const requiresCustomerConsentBeforeAssignment =
+        compliance.location === "residence" || compliance.location === "customer-business";
+      if (requiresCustomerConsentBeforeAssignment) {
+        const latestConsentRecord = await (prisma as any).consentRecord.findFirst({
+          where: { bookingId: booking.id },
+          orderBy: { requestedAt: "desc" },
+          select: { status: true },
+        });
+        if (String(latestConsentRecord?.status || "").trim().toUpperCase() !== "ACCEPTED") {
+          return NextResponse.json(
+            apiResponse(
+              false,
+              "CUSTOMER_CONSENT_REQUIRED_BEFORE_ASSIGNMENT",
+              "Customer consent must be accepted before an employee can be assigned to this service order."
+            ),
+            { status: 409 }
+          );
+        }
+      }
       const previouslyAssignedIds = Array.isArray(metadata.vendor_job_assigned_membership_ids)
         ? metadata.vendor_job_assigned_membership_ids
             .map((id) => String(id || "").trim())
