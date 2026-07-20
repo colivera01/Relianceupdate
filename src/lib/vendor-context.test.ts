@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { OWNER_ADMIN_EMAIL, OWNER_ADMIN_USER_ID } from "@/lib/internal-identities";
+import {
+  OWNER_ADMIN_BETA_USER_ID,
+  OWNER_ADMIN_EMAIL,
+  OWNER_ADMIN_USER_ID,
+} from "@/lib/internal-identities";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { prisma } from "@/server/db";
 
@@ -49,6 +53,19 @@ describe("resolveVendorAccessForUser", () => {
       vendorId: null,
       membershipId: null,
     });
+    expect((prisma as any).vendorMembership.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does not expose legacy Vendor memberships to the beta Admin identity", async () => {
+    const access = await resolveVendorAccessForUser(OWNER_ADMIN_BETA_USER_ID);
+
+    expect(access).toMatchObject({
+      state: "NONE",
+      userId: OWNER_ADMIN_BETA_USER_ID,
+      vendorId: null,
+      membershipId: null,
+    });
+    expect((prisma as any).user.findUnique).not.toHaveBeenCalled();
     expect((prisma as any).vendorMembership.findMany).not.toHaveBeenCalled();
   });
 });
