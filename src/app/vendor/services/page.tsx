@@ -7,6 +7,12 @@ import { useVendorProfile } from '@/hooks/useVendorProfile';
 import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingStatusPanel';
 import { tutorialGuides } from '@/lib/user-guidance';
 import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
+import {
+  countVendorServicesByWorkflow,
+  filterVendorServicesByWorkflow,
+  VENDOR_SERVICE_WORKFLOW_TABS,
+  type VendorServiceWorkflowFilter,
+} from '@/lib/vendor-service-workflow';
 
 type ServiceRow = {
   id: string;
@@ -118,6 +124,7 @@ export default function VendorServicesPage() {
   const [copyError, setCopyError] = useState('');
   const [copyMessage, setCopyMessage] = useState('');
   const [serviceActionMessage, setServiceActionMessage] = useState('');
+  const [workflowFilter, setWorkflowFilter] = useState<VendorServiceWorkflowFilter>('all');
 
   const sortedServices = useMemo(
     () =>
@@ -127,6 +134,14 @@ export default function VendorServicesPage() {
         return bTime - aTime;
       }),
     [services]
+  );
+  const workflowTabCounts = useMemo(
+    () => countVendorServicesByWorkflow(sortedServices),
+    [sortedServices]
+  );
+  const visibleServices = useMemo(
+    () => filterVendorServicesByWorkflow(sortedServices, workflowFilter),
+    [sortedServices, workflowFilter]
   );
   const growthSummary = useMemo(
     () =>
@@ -302,7 +317,21 @@ export default function VendorServicesPage() {
       setServiceActionMessage(
         payload?.action === 'deleted'
           ? 'Unused draft deleted.'
-          : 'Service archived and removed from customer browsing. Existing work records were preserved.'
+          : 'Service moved to Archived and removed from customer browsing. Existing work records were preserved.'
+      );
+      setServices((currentServices) =>
+        payload?.action === 'deleted'
+          ? currentServices.filter((currentService) => currentService.id !== service.id)
+          : currentServices.map((currentService) =>
+              currentService.id === service.id
+                ? {
+                    ...currentService,
+                    isPublished: false,
+                    lifecycleStatus: 'archived',
+                    updatedAt: new Date().toISOString(),
+                  }
+                : currentService
+            )
       );
       await reloadServices();
     } catch (error) {
@@ -454,10 +483,48 @@ export default function VendorServicesPage() {
         )}
 
         {serviceActionMessage && (
-          <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800">
+          <div className="mb-4 rounded-lg border border-emerald-300/35 bg-emerald-950/80 p-4 text-sm font-medium text-emerald-100">
             {serviceActionMessage}
           </div>
         )}
+
+        {!servicesLoading && sortedServices.length > 0 ? (
+          <div className="mb-6 overflow-x-auto">
+            <div
+              role="tablist"
+              aria-label="Filter services by workflow stage"
+              className="inline-flex min-w-full gap-2 rounded-2xl border border-white/10 bg-slate-950/55 p-2"
+            >
+              {VENDOR_SERVICE_WORKFLOW_TABS.map((tab) => {
+                const active = workflowFilter === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    aria-controls="service-workflow-panel"
+                    onClick={() => setWorkflowFilter(tab.value)}
+                    className={`flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                      active
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/25'
+                        : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        active ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300'
+                      }`}
+                    >
+                      {workflowTabCounts[tab.value]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         {servicesLoading ? (
           <div className="p-6 bg-white rounded-2xl border border-gray-200 text-gray-600 flex items-center gap-2">
@@ -468,9 +535,21 @@ export default function VendorServicesPage() {
           <div className="p-6 bg-white rounded-2xl border border-gray-200 text-gray-600">
             No services offered added yet. Add the first service customers should be able to understand and request.
           </div>
+        ) : visibleServices.length === 0 ? (
+          <div
+            id="service-workflow-panel"
+            role="tabpanel"
+            className="rounded-lg border border-white/10 bg-slate-950/65 p-6 text-slate-300"
+          >
+            No services are currently in this stage.
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sortedServices.map((service) => {
+          <div
+            id="service-workflow-panel"
+            role="tabpanel"
+            className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
+          >
+            {visibleServices.map((service) => {
               const cleanDescription = stripEstimatedDurationNote(service.description);
               const estimatedDuration = extractEstimatedDuration(service.description);
               const isArchived = service.lifecycleStatus === 'archived';
@@ -482,14 +561,16 @@ export default function VendorServicesPage() {
                   service.isPublished
                     ? 'border-gray-200 bg-white'
                     : isArchived
-                      ? 'border-slate-300 bg-slate-100'
+                      ? 'border-slate-600 bg-slate-900'
                       : 'border-dashed border-amber-300 bg-slate-100 opacity-80'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div>
-                    <h3 className="font-semibold text-gray-900">{service.name}</h3>
-                    <p className={`mt-1 text-sm ${service.isPublished ? 'text-gray-600' : 'text-slate-500'}`}>
+                    <h3 className={`font-semibold ${isArchived ? 'text-white' : 'text-gray-900'}`}>
+                      {service.name}
+                    </h3>
+                    <p className={`mt-1 text-sm ${isArchived ? 'text-slate-300' : service.isPublished ? 'text-gray-600' : 'text-slate-500'}`}>
                       {cleanDescription || 'No description'}
                     </p>
                     {estimatedDuration ? (
@@ -499,14 +580,14 @@ export default function VendorServicesPage() {
                     ) : null}
                   </div>
                   <div className="text-right">
-                    <div className="text-lg font-bold text-blue-600">${service.price.toFixed(2)}</div>
-                    <div className="text-xs text-gray-500">Reference estimate</div>
+                    <div className={`text-lg font-bold ${isArchived ? 'text-blue-300' : 'text-blue-600'}`}>${service.price.toFixed(2)}</div>
+                    <div className={`text-xs ${isArchived ? 'text-slate-400' : 'text-gray-500'}`}>Reference estimate</div>
                     <div
                       className={`text-xs mt-1 ${
                         service.isPublished
                           ? 'text-green-700'
                           : isArchived
-                            ? 'text-slate-700'
+                            ? 'text-slate-200'
                             : 'text-amber-700'
                       }`}
                     >
@@ -521,7 +602,7 @@ export default function VendorServicesPage() {
                 {!service.isPublished ? (
                   <div className={`mb-4 rounded-lg border px-3 py-2 text-xs leading-5 ${
                     isArchived
-                      ? 'border-slate-300 bg-slate-200 text-slate-800'
+                      ? 'border-slate-600 bg-slate-950/80 text-slate-200'
                       : 'border-amber-200 bg-amber-50 text-amber-900'
                   }`}>
                     {isArchived
@@ -530,7 +611,7 @@ export default function VendorServicesPage() {
                   </div>
                 ) : null}
 
-                <div className="text-xs text-gray-500 mb-4">
+                <div className={`mb-4 text-xs ${isArchived ? 'text-slate-400' : 'text-gray-500'}`}>
                   Updated:{' '}
                   {service.updatedAt ? new Date(service.updatedAt).toLocaleDateString() : 'Unknown'}
                 </div>
