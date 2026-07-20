@@ -3,7 +3,7 @@ import { getUserIdFromRequest } from "@/lib/auth";
 import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "@/lib/auth-session";
 import { registeredUsers, syncRegisteredUsersFromDisk } from "@/lib/dev-registered-users";
 import {
-  isOwnerAdminUserId,
+  isOwnerAdminIdentity,
 } from "@/lib/internal-identities";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { prisma } from "@/server/db";
@@ -22,7 +22,8 @@ function normalizeProfile(value: unknown): SwitchableProfile | null {
 }
 
 async function resolveProfileState(request: NextRequest, authenticatedUserId: string) {
-  if (isOwnerAdminUserId(authenticatedUserId)) {
+  const signedSession = getAuthSessionClaimsFromRequest(request);
+  if (isOwnerAdminIdentity({ id: authenticatedUserId, email: signedSession?.email })) {
     return {
       availableProfiles: [] as SwitchableProfile[],
       currentProfile: null,
@@ -32,7 +33,6 @@ async function resolveProfileState(request: NextRequest, authenticatedUserId: st
 
   syncRegisteredUsersFromDisk();
 
-  const signedSession = getAuthSessionClaimsFromRequest(request);
   const bearerToken = getBearerTokenFromRequest(request);
   const signedBearer = bearerToken ? verifyAuthBearerToken(bearerToken) : null;
   const sessionClaims = signedSession || signedBearer;
@@ -45,6 +45,13 @@ async function resolveProfileState(request: NextRequest, authenticatedUserId: st
       phone: true,
     },
   });
+  if (isOwnerAdminIdentity(dbUser)) {
+    return {
+      availableProfiles: [] as SwitchableProfile[],
+      currentProfile: null,
+      canSwitch: false,
+    };
+  }
 
   const devRow =
     registeredUsers.find((user) => String(user.id || "").trim() === authenticatedUserId) ||

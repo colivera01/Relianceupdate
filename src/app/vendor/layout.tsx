@@ -19,6 +19,7 @@ import ProfileToggle from '@/components/ProfileToggle';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { RelianceLogo } from '@/components/public/RelianceLogo';
 import VendorSessionGuard from '@/components/vendor/VendorSessionGuard';
+import { isOwnerAdminUserId } from '@/lib/internal-identities';
 
 // TODO Future mobile: convert this sidebar into a bottom nav or slide-out
 // drawer for an app-like experience on small screens. The sidebar is hidden
@@ -145,7 +146,9 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
   }
 
   const isAdminOnlyAccount =
-    authUser.userType === 'admin' || authUser.availableProfiles?.includes('admin');
+    isOwnerAdminUserId(authUser.id) ||
+    authUser.userType === 'admin' ||
+    authUser.availableProfiles?.includes('admin');
 
   if (isAdminOnlyAccount) {
     return (

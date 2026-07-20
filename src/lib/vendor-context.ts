@@ -1,7 +1,7 @@
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { isUserAccountRestricted, isVendorAccountRestricted, normalizeAccountStatus } from "@/lib/account-status";
-import { isOwnerAdminUserId } from "@/lib/internal-identities";
+import { isOwnerAdminIdentity, isOwnerAdminUserId } from "@/lib/internal-identities";
 
 export type VendorAccessState = "ACTIVE" | "PENDING" | "RESTRICTED" | "NONE";
 
@@ -101,8 +101,11 @@ export async function resolveVendorAccessForUser(
   const preferredVendorId = options?.preferredVendorId?.trim();
   const user = await (prisma as any).user.findUnique({
     where: { id: userId },
-    select: { id: true, accountStatus: true },
+    select: { id: true, email: true, phone: true, accountStatus: true },
   });
+  if (isOwnerAdminIdentity(user)) {
+    return toVendorAccessContext(userId, null, "NONE");
+  }
   if (user && isUserAccountRestricted(user.accountStatus)) {
     return {
       state: "RESTRICTED",

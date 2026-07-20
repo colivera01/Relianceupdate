@@ -8,6 +8,7 @@ import { getClientSessionHeaders } from '@/lib/client-session';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AlertTriangle, LogIn } from 'lucide-react';
+import { isOwnerAdminUserId } from '@/lib/internal-identities';
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -115,7 +116,9 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
   }
 
   const isAdminOnlyAccount =
-    user?.userType === 'admin' || user?.availableProfiles?.includes('admin');
+    isOwnerAdminUserId(user?.id) ||
+    user?.userType === 'admin' ||
+    user?.availableProfiles?.includes('admin');
 
   if (isAdminOnlyAccount) {
     return (

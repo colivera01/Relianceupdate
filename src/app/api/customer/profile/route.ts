@@ -7,7 +7,7 @@ import { accountStatusErrorBody, AccountStatusError, isUserAccountRestricted } f
 import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 import { findDbCredentialByUserId, upsertDbCredential } from "@/lib/auth-credentials";
 import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
-import { isOwnerAdminUserId } from "@/lib/internal-identities";
+import { isOwnerAdminIdentity } from "@/lib/internal-identities";
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -75,7 +75,8 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
-    if (isOwnerAdminUserId(resolvedUserId)) {
+    const signedSession = getAuthSessionClaimsFromRequest(request);
+    if (isOwnerAdminIdentity({ id: resolvedUserId, email: signedSession?.email })) {
       return NextResponse.json(
         { error: "This Admin account does not have a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
         { status: 403 }
@@ -104,6 +105,12 @@ export async function GET(request: NextRequest) {
         },
       })
     );
+    if (isOwnerAdminIdentity(dbUser)) {
+      return NextResponse.json(
+        { error: "This Admin account does not have a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
+        { status: 403 }
+      );
+    }
     const dbCredential = dbUser ? await findDbCredentialByUserId(dbUser.id).catch(() => null) : null;
 
     const devRow =
@@ -237,7 +244,8 @@ export async function PUT(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (isOwnerAdminUserId(userId)) {
+    const signedSession = getAuthSessionClaimsFromRequest(request);
+    if (isOwnerAdminIdentity({ id: userId, email: signedSession?.email })) {
       return NextResponse.json(
         { error: "This Admin account cannot update a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
         { status: 403 }
@@ -257,6 +265,12 @@ export async function PUT(request: NextRequest) {
         accountStatus: true,
       },
     });
+    if (isOwnerAdminIdentity(dbUser)) {
+      return NextResponse.json(
+        { error: "This Admin account cannot update a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
+        { status: 403 }
+      );
+    }
     if (dbUser && isUserAccountRestricted((dbUser as any).accountStatus)) {
       const statusError = new AccountStatusError("user", (dbUser as any).accountStatus);
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });

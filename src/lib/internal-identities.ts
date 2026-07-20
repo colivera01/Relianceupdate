@@ -96,6 +96,19 @@ export function isOwnerAdminUserId(userId: unknown): boolean {
   return String(userId ?? "").trim().toUpperCase() === OWNER_ADMIN_USER_ID.toUpperCase();
 }
 
+export function isOwnerAdminIdentity(identity: {
+  id?: unknown;
+  email?: unknown;
+  phone?: unknown;
+} | null | undefined): boolean {
+  if (!identity) return false;
+  return (
+    isOwnerAdminUserId(identity.id) ||
+    isOwnerAdminEmail(identity.email) ||
+    isOwnerAdminPhone(identity.phone)
+  );
+}
+
 export function isInternalDemoVendorId(vendorId: unknown): boolean {
   const id = String(vendorId ?? "").trim();
   return INTERNAL_DEMO_VENDOR_IDS.includes(id as (typeof INTERNAL_DEMO_VENDOR_IDS)[number]);
@@ -118,9 +131,7 @@ export function isInternalDemoUserRecord(user: {
 } | null | undefined): boolean {
   if (!user) return false;
   if (user.demo === true) return true;
-  if (isOwnerAdminUserId(user.id)) return true;
-  if (isOwnerAdminEmail(user.email)) return true;
-  if (isOwnerAdminPhone(user.phone)) return true;
+  if (isOwnerAdminIdentity(user)) return true;
   return false;
 }
 
