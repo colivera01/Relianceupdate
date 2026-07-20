@@ -120,6 +120,24 @@ function markDevChallengeConsumed(challengeId: string, consumedAt: Date) {
   return store[index];
 }
 
+async function invalidateUndeliveredChallenge(challengeId: string) {
+  const consumedAt = new Date();
+  try {
+    await (prisma as any).authMfaChallenge.update({
+      where: { id: challengeId },
+      data: { consumedAt },
+    });
+    return;
+  } catch (error) {
+    if (!IS_DEV) {
+      console.error("[auth-mfa] Failed to invalidate an undelivered MFA challenge:", error);
+      return;
+    }
+  }
+
+  markDevChallengeConsumed(challengeId, consumedAt);
+}
+
 function parseCookieHeader(cookieHeader: string | null | undefined): Record<string, string> {
   if (!cookieHeader) return {};
   const parsed: Record<string, string> = {};
@@ -299,6 +317,9 @@ export async function issueLoginMfaChallenge(params: {
   ].join("\n");
 
   const sendResult = await sendEmail({ to: email, subject, html, text });
+  if (!sendResult.ok) {
+    await invalidateUndeliveredChallenge(String(challenge.id));
+  }
 
   return {
     challengeId: String(challenge.id),
@@ -399,6 +420,13 @@ export async function resendLoginMfaChallenge(params: {
     forceNew: true,
     userSnapshot: existing.userSnapshot,
   });
+
+  if (!resent.sendResult.ok) {
+    return {
+      ok: false as const,
+      reason: "delivery_failed" as const,
+    };
+  }
 
   return {
     ok: true as const,

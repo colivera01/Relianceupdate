@@ -23,8 +23,11 @@ export async function POST(request: NextRequest) {
 
     if (!resent.ok) {
       const status =
-        resent.reason === "not_found" ? 404 :
-        400;
+        resent.reason === "not_found"
+          ? 404
+          : resent.reason === "delivery_failed"
+          ? 503
+          : 400;
       return NextResponse.json(
         {
           error:
@@ -32,8 +35,13 @@ export async function POST(request: NextRequest) {
               ? "This sign-in challenge has already been completed."
               : resent.reason === "expired"
               ? "This sign-in challenge has expired. Start over."
+              : resent.reason === "delivery_failed"
+              ? "Reliance could not send the sign-in code. Please try again in a moment."
               : "This sign-in challenge is invalid.",
-          code: "MFA_RESEND_FAILED",
+          code:
+            resent.reason === "delivery_failed"
+              ? "MFA_EMAIL_DELIVERY_FAILED"
+              : "MFA_RESEND_FAILED",
           reason: resent.reason,
         },
         { status }

@@ -359,11 +359,29 @@ export async function POST(request: NextRequest) {
         userSnapshot: userResponse,
       });
 
+      if (!challenge.sendResult.ok) {
+        console.error("[auth/login] MFA email delivery failed", {
+          message:
+            ("errorMessage" in challenge.sendResult && challenge.sendResult.errorMessage) ||
+            "unknown_provider_error",
+        });
+        return NextResponse.json(
+          {
+            error:
+              "Reliance could not send the sign-in code. Please try again in a moment.",
+            code: "MFA_EMAIL_DELIVERY_FAILED",
+          },
+          { status: 503 }
+        );
+      }
+
       return NextResponse.json(
         {
           success: true,
           mfaRequired: true,
-          message: "A sign-in code was sent to your email.",
+          message: challenge.reused
+            ? "A sign-in code was already sent. Check your inbox or request a new code."
+            : "A sign-in code was sent to your email.",
           challengeId: challenge.challengeId,
           email: credentialForMfa.email,
           availableProfiles,

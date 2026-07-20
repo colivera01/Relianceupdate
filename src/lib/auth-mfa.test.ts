@@ -25,6 +25,7 @@ const hoisted = vi.hoisted(() => {
       $transaction: transaction,
       authMfaChallenge: {
         findFirst,
+        update,
       },
     },
     updateMany,
@@ -118,6 +119,34 @@ describe("auth-mfa", () => {
     expect(hoisted.updateMany).not.toHaveBeenCalled();
     expect(hoisted.create).not.toHaveBeenCalled();
     expect(hoisted.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a challenge when the email provider rejects delivery", async () => {
+    const { issueLoginMfaChallenge } = await import("./auth-mfa");
+    hoisted.findFirst.mockResolvedValue(null);
+    hoisted.create.mockResolvedValue({
+      id: "challenge-undelivered",
+      userId: "user-1",
+      email: "vendor@example.net",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    hoisted.sendEmail.mockResolvedValue({
+      ok: false,
+      errorMessage: "API key is invalid",
+    });
+
+    const result = await issueLoginMfaChallenge({
+      credentialId: "cred-1",
+      userId: "user-1",
+      email: "vendor@example.net",
+      baseUrl: "http://localhost:3000",
+    });
+
+    expect(result.sendResult).toMatchObject({ ok: false });
+    expect(hoisted.update).toHaveBeenCalledWith({
+      where: { id: "challenge-undelivered" },
+      data: { consumedAt: expect.any(Date) },
+    });
   });
 
   it("verifies a valid code and rejects reused challenges", async () => {
