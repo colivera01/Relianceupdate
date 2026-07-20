@@ -1,6 +1,7 @@
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { isUserAccountRestricted, isVendorAccountRestricted, normalizeAccountStatus } from "@/lib/account-status";
+import { isOwnerAdminUserId } from "@/lib/internal-identities";
 
 export type VendorAccessState = "ACTIVE" | "PENDING" | "RESTRICTED" | "NONE";
 
@@ -93,6 +94,10 @@ export async function resolveVendorAccessForUser(
   userId: string,
   options?: ResolveVendorAccessOptions
 ): Promise<VendorAccessContext> {
+  if (isOwnerAdminUserId(userId)) {
+    return toVendorAccessContext(userId, null, "NONE");
+  }
+
   const preferredVendorId = options?.preferredVendorId?.trim();
   const user = await (prisma as any).user.findUnique({
     where: { id: userId },

@@ -144,6 +144,30 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     );
   }
 
+  const isAdminOnlyAccount =
+    authUser.userType === 'admin' || authUser.availableProfiles?.includes('admin');
+
+  if (isAdminOnlyAccount) {
+    return (
+      <div className="reliance-operator-shell reliance-grid-lines min-h-screen px-6 py-12">
+        <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl items-center justify-center">
+          <div className="w-full rounded-xl border border-blue-300/20 bg-slate-950/85 p-7 text-white shadow-2xl shadow-black/20">
+            <h1 className="text-2xl font-semibold">Admin account</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              This sign-in is reserved for the Reliance Admin console and is not connected to the Electro LLC Vendor profile.
+            </p>
+            <Link
+              href="/admin/dashboard"
+              className="mt-6 inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Open Admin Dashboard
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!hasLiveVendorAccess && vendorProfileLoading) {
     return (
       <div className="min-h-screen bg-slate-100 px-6 py-10">

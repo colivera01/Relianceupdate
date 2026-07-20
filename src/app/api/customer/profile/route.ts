@@ -7,6 +7,7 @@ import { accountStatusErrorBody, AccountStatusError, isUserAccountRestricted } f
 import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 import { findDbCredentialByUserId, upsertDbCredential } from "@/lib/auth-credentials";
 import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
+import { isOwnerAdminUserId } from "@/lib/internal-identities";
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -72,6 +73,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized: missing authenticated user context" },
         { status: 401 }
+      );
+    }
+    if (isOwnerAdminUserId(resolvedUserId)) {
+      return NextResponse.json(
+        { error: "This Admin account does not have a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
+        { status: 403 }
       );
     }
 
@@ -229,6 +236,12 @@ export async function PUT(request: NextRequest) {
     const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (isOwnerAdminUserId(userId)) {
+      return NextResponse.json(
+        { error: "This Admin account cannot update a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
+        { status: 403 }
+      );
     }
 
     const dbUser = await prisma.user.findUnique({

@@ -114,6 +114,30 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
     );
   }
 
+  const isAdminOnlyAccount =
+    user?.userType === 'admin' || user?.availableProfiles?.includes('admin');
+
+  if (isAdminOnlyAccount) {
+    return (
+      <div className="reliance-operator-shell reliance-grid-lines min-h-screen px-6 py-12">
+        <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl items-center justify-center">
+          <div className="w-full rounded-xl border border-blue-300/20 bg-slate-950/85 p-7 text-white shadow-2xl shadow-black/20">
+            <h1 className="text-2xl font-semibold">Admin account</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              This sign-in is reserved for the Reliance Admin console and does not have a Customer profile.
+            </p>
+            <Link
+              href="/admin/dashboard"
+              className="mt-6 inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Open Admin Dashboard
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const content = restrictedMessage ? (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
       <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-full bg-amber-100 text-amber-700">

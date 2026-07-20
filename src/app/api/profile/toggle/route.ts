@@ -3,8 +3,6 @@ import { getUserIdFromRequest } from "@/lib/auth";
 import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "@/lib/auth-session";
 import { registeredUsers, syncRegisteredUsersFromDisk } from "@/lib/dev-registered-users";
 import {
-  isOwnerAdminEmail,
-  isOwnerAdminPhone,
   isOwnerAdminUserId,
 } from "@/lib/internal-identities";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
@@ -24,6 +22,14 @@ function normalizeProfile(value: unknown): SwitchableProfile | null {
 }
 
 async function resolveProfileState(request: NextRequest, authenticatedUserId: string) {
+  if (isOwnerAdminUserId(authenticatedUserId)) {
+    return {
+      availableProfiles: [] as SwitchableProfile[],
+      currentProfile: null,
+      canSwitch: false,
+    };
+  }
+
   syncRegisteredUsersFromDisk();
 
   const signedSession = getAuthSessionClaimsFromRequest(request);
@@ -71,14 +77,6 @@ async function resolveProfileState(request: NextRequest, authenticatedUserId: st
   const vendorAccess = await resolveVendorAccessForUser(authenticatedUserId).catch(() => null);
   if (vendorAccess?.state === "ACTIVE" && vendorAccess.vendorId) {
     profileSet.add("vendor");
-  }
-
-  if (
-    isOwnerAdminUserId(authenticatedUserId) ||
-    isOwnerAdminEmail(dbUser?.email || sessionClaims?.email || devRow?.email) ||
-    isOwnerAdminPhone(dbUser?.phone || devRow?.phone)
-  ) {
-    profileSet.add("customer");
   }
 
   const devUserType = String(devRow?.userType || "").trim().toLowerCase();

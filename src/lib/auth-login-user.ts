@@ -32,17 +32,18 @@ export async function buildAuthLoginUserPayload(params: {
   });
 
   const profileSet = new Set<string>();
-  if (isOwnerAdminUserId(userId)) {
+  const isOwnerAdminIdentity = isOwnerAdminUserId(userId);
+  if (isOwnerAdminIdentity) {
     profileSet.add("admin");
-  }
-
-  try {
-    const vendorAccess = await resolveVendorAccessForUser(userId);
-    if ((vendorAccess.state === "ACTIVE" || vendorAccess.state === "PENDING") && vendorAccess.vendorId) {
-      profileSet.add("vendor");
+  } else {
+    try {
+      const vendorAccess = await resolveVendorAccessForUser(userId);
+      if ((vendorAccess.state === "ACTIVE" || vendorAccess.state === "PENDING") && vendorAccess.vendorId) {
+        profileSet.add("vendor");
+      }
+    } catch {
+      // Fall through; the caller can still sign in with the non-vendor profile set.
     }
-  } catch {
-    // Fall through; the caller can still sign in with the non-vendor profile set.
   }
 
   if (!profileSet.size) {

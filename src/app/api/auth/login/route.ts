@@ -265,25 +265,26 @@ export async function POST(request: NextRequest) {
       isOwnerAdminUserId(user?.id);
 
     if (isOwnerAdminIdentity) {
+      profileSet.clear();
       profileSet.add("admin");
-    }
-
-    try {
-      const vendorAccess = await resolveVendorAccessForUser(resolvedUserId);
-      if ((vendorAccess.state === "ACTIVE" || vendorAccess.state === "PENDING") && vendorAccess.vendorId) {
-        profileSet.add("vendor");
-      }
-    } catch (vendorErr: unknown) {
-      const msg = vendorErr instanceof Error ? vendorErr.message : String(vendorErr);
-      console.error("[auth/login] Prisma error while resolving vendor membership:", msg);
-      if (!IS_DEV) {
-        return NextResponse.json(
-          {
-            error: "Login failed. Please try again.",
-            code: "VENDOR_PROFILE_RESOLUTION_DB_ERROR",
-          },
-          { status: 503 }
-        );
+    } else {
+      try {
+        const vendorAccess = await resolveVendorAccessForUser(resolvedUserId);
+        if ((vendorAccess.state === "ACTIVE" || vendorAccess.state === "PENDING") && vendorAccess.vendorId) {
+          profileSet.add("vendor");
+        }
+      } catch (vendorErr: unknown) {
+        const msg = vendorErr instanceof Error ? vendorErr.message : String(vendorErr);
+        console.error("[auth/login] Prisma error while resolving vendor membership:", msg);
+        if (!IS_DEV) {
+          return NextResponse.json(
+            {
+              error: "Login failed. Please try again.",
+              code: "VENDOR_PROFILE_RESOLUTION_DB_ERROR",
+            },
+            { status: 503 }
+          );
+        }
       }
     }
 

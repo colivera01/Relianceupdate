@@ -65,6 +65,12 @@ export function useAvailableRoles(currentRole: AppRole) {
 
     async function resolveRoles() {
       const sessionRoles = rolesFromSession(userType, availableProfiles);
+      if (sessionRoles.has('admin')) {
+        if (!cancelled) {
+          setAvailableRoles(['admin']);
+        }
+        return;
+      }
       const hasExplicitSessionRoles = sessionRoles.size > 0 || Boolean(userType) || availableProfiles.length > 0;
 
       const headers = {
@@ -125,10 +131,6 @@ export function useAvailableRoles(currentRole: AppRole) {
         } catch {
           // Keep best-effort behavior.
         }
-      }
-
-      if (!sessionRoles.has('admin')) {
-        sessionRoles.delete('admin');
       }
 
       if (!sessionRoles.has(currentRole)) {
