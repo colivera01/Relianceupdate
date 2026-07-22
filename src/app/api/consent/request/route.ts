@@ -4,6 +4,7 @@ import { CONSENT_TYPES, generateConsentToken } from '@/lib/consent-flow';
 import { createAdminAuditLog } from '@/lib/admin-audit';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
+import { resolveBookingCustomer } from '@/lib/booking-customer';
 import { logNotificationEnvWarnings } from '@/lib/env/notification-config';
 
 type ConsentRequestRecord = {
@@ -55,21 +56,9 @@ function parseCustomerMetadata(value: string | null | undefined): Record<string,
   }
 }
 
-function formatServiceDateLabel(value: Date | string | null | undefined): string | undefined {
-  if (!value) return undefined;
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return undefined;
-  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 function isLocalhostOrigin(origin: string | null | undefined): boolean {
   if (!origin) return false;
   return /^http:\/\/localhost(?::\d+)?$/i.test(String(origin).trim());
-}
-
-function usableCustomerEmail(value: unknown): string {
-  const email = String(value || '').trim();
-  return email.toLowerCase().endsWith('@reliance.local') ? '' : email;
 }
 
 function resolveConsentBaseUrl(request: NextRequest, requestedOrigin?: string | null): string {
@@ -132,19 +121,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid booking/vendor pair' }, { status: 404 });
     }
     const bookingMeta = parseCustomerMetadata(booking.customerMetadata || null);
-    const customerEmail =
-      usableCustomerEmail(bookingMeta.client_email) ||
-      usableCustomerEmail(bookingMeta.claim_contact_email) ||
-      usableCustomerEmail(booking.user?.email) ||
-      undefined;
-    const customerPhone =
-      (bookingMeta.client_phone ? String(bookingMeta.client_phone).trim() : '') ||
-      (booking.user?.phone && String(booking.user.phone).trim()) ||
-      undefined;
-    const customerName =
-      (booking.user?.name && String(booking.user.name).trim()) ||
-      (booking.clientName ? String(booking.clientName).trim() : '') ||
-      undefined;
+    const customer = resolveBookingCustomer(booking);
+    const customerEmail = customer.email || undefined;
+    const customerPhone = customer.phone || undefined;
+    const customerName = customer.name || undefined;
     const vendorName =
       (booking.vendor?.businessName && String(booking.vendor.businessName).trim()) ||
       (booking.vendor?.name && String(booking.vendor.name).trim()) ||
@@ -155,7 +135,8 @@ export async function POST(request: NextRequest) {
     const serviceName =
       (booking.service?.name && String(booking.service.name).trim()) ||
       undefined;
-    const serviceDate = formatServiceDateLabel(booking.scheduledFor);
+    const serviceDate = booking.scheduledFor;
+    const serviceTimeZone = String(bookingMeta.service_time_zone || '').trim() || null;
 
     const token = generateConsentToken();
     const record = await withTransientDbRetry<ConsentRequestRecord>(() =>
@@ -212,6 +193,7 @@ export async function POST(request: NextRequest) {
           serviceName,
           bookingTitle,
           serviceDate,
+          serviceTimeZone,
           consentTypeLabel: consentType.replace(/_/g, ' '),
         });
         notification = notificationResult;

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { evaluateConsentRespondable } from '@/lib/consent-record-state';
+import { sendConsentDecisionNotifications } from '@/lib/notifications/send-consent-decision';
+import { parseCustomerMetadata } from '@/lib/job-assignment';
 
 type ConsentRecordRow = {
   id: string;
+  bookingId: string | null;
   status: string;
   expiresAt: Date | null;
 };
@@ -91,6 +94,34 @@ export async function POST(request: NextRequest) {
         },
       })
     );
+
+    if (existing.bookingId) {
+      const booking = await prisma.booking.findUnique({
+        where: { id: existing.bookingId },
+        select: { customerMetadata: true },
+      });
+      if (booking) {
+        const metadata = parseCustomerMetadata(booking.customerMetadata);
+        metadata.vendor_job_consent_accepted = false;
+        metadata.vendor_job_consent_status = 'declined';
+        metadata.vendor_job_consent_declined_at = new Date().toISOString();
+        if (reason) metadata.vendor_job_consent_decline_reason = reason;
+        delete metadata.vendor_job_service_order_released_membership_ids;
+        delete metadata.vendor_job_service_order_released_at;
+        await prisma.booking.update({
+          where: { id: existing.bookingId },
+          data: { customerMetadata: JSON.stringify(metadata) },
+        });
+      }
+      await sendConsentDecisionNotifications({
+        request,
+        bookingId: existing.bookingId,
+        accepted: false,
+        actorUserId: 'customer-consent',
+      }).catch((notificationError) => {
+        console.error('[consent/decline] decision notification failed', notificationError);
+      });
+    }
 
     return NextResponse.json({ success: true, consent: updated });
   } catch (error) {

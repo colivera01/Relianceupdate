@@ -4,8 +4,7 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { mapMediaSessionCreateFailure } from "@/lib/media-session-create-errors";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { normalizeVendorJobVideoStage } from "@/lib/vendor-job-video-stages";
-import { distanceMeters, hasValidCoordinates } from "@/lib/distance";
-import { geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
+import { parseRecordingLocationProof, verifyJobRecordingLocation } from "@/lib/job-recording-location";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -30,25 +29,6 @@ function getAssignedMembershipIdsFromMetadata(metadata: string | null | undefine
   return raw.map((id) => String(id || "").trim()).filter(Boolean);
 }
 
-function asFiniteNumber(value: unknown): number | null {
-  const numeric = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
-function getLocationProof(body: Record<string, unknown>) {
-  const nested =
-    body.locationProof && typeof body.locationProof === "object" && !Array.isArray(body.locationProof)
-      ? (body.locationProof as Record<string, unknown>)
-      : {};
-  const latitude = asFiniteNumber(nested.latitude ?? body.latitude ?? body.geoLatitude);
-  const longitude = asFiniteNumber(nested.longitude ?? body.longitude ?? body.geoLongitude);
-  const accuracyMeters = asFiniteNumber(
-    nested.accuracyMeters ?? nested.accuracy ?? body.accuracyMeters ?? body.geoAccuracyMeters
-  );
-  const capturedAt = String(nested.capturedAt ?? body.locationCapturedAt ?? "").trim();
-  return { latitude, longitude, accuracyMeters, capturedAt };
-}
-
 type VendorBusinessLocation = {
   address?: string | null;
   city?: string | null;
@@ -58,34 +38,6 @@ type VendorBusinessLocation = {
   longitude: number | null;
   geocodedAt: Date | null;
 };
-
-async function ensureVendorBusinessLocation(vendorId: string, location: VendorBusinessLocation | null) {
-  if (!location) return null;
-  if (location.geocodedAt && hasValidCoordinates(location)) return location;
-  if (!hasCompleteAddress(location)) return location;
-
-  const geocodeResult = await geocodeAddress(location);
-  if (geocodeResult.status !== "success") return location;
-
-  await prisma.vendor.update({
-    where: { id: vendorId },
-    data: {
-      latitude: geocodeResult.latitude,
-      longitude: geocodeResult.longitude,
-      geocodedAt: geocodeResult.geocodedAt,
-    },
-  });
-
-  return {
-    ...location,
-    latitude: geocodeResult.latitude,
-    longitude: geocodeResult.longitude,
-    geocodedAt: geocodeResult.geocodedAt,
-  };
-}
-
-const BUSINESS_LOCATION_RADIUS_METERS = 150;
-const BUSINESS_LOCATION_MAX_ACCURACY_METERS = 150;
 
 const ALLOWED_STATUSES = new Set([
   "CREATED",
@@ -270,60 +222,18 @@ export async function POST(
           );
         }
       }
-      if (normalizedLocationContext === "business") {
-        validBookingVendorLocation = await ensureVendorBusinessLocation(vendorId, validBookingVendorLocation);
-        if (!validBookingVendorLocation?.geocodedAt || !hasValidCoordinates(validBookingVendorLocation)) {
+      if (normalizedLocationContext === "business" || normalizedLocationContext === "customer-business") {
+        const verification = await verifyJobRecordingLocation({
+          vendorId,
+          metadata: validBookingMetadata,
+          vendorLocation: validBookingVendorLocation,
+          proof: parseRecordingLocationProof(body),
+          location: normalizedLocationContext,
+        });
+        if (!verification.ok) {
           return NextResponse.json(
-            {
-              success: false,
-              code: "BUSINESS_LOCATION_NOT_CONFIGURED",
-              message:
-                "The vendor registered business address must be geocoded before business-address recording can proceed.",
-            },
-            { status: 409 }
-          );
-        }
-        const locationProof = getLocationProof(body);
-        if (
-          locationProof.latitude == null ||
-          locationProof.longitude == null ||
-          locationProof.accuracyMeters == null
-        ) {
-          return NextResponse.json(
-            {
-              success: false,
-              code: "BUSINESS_LOCATION_PROOF_REQUIRED",
-              message:
-                "Allow location access so Reliance can confirm this recording is happening at the registered business address.",
-            },
-            { status: 409 }
-          );
-        }
-        const distanceFromRegisteredAddress = distanceMeters(
-          { latitude: locationProof.latitude, longitude: locationProof.longitude },
-          {
-            latitude: validBookingVendorLocation.latitude,
-            longitude: validBookingVendorLocation.longitude,
-          }
-        );
-        if (
-          locationProof.accuracyMeters > BUSINESS_LOCATION_MAX_ACCURACY_METERS ||
-          distanceFromRegisteredAddress > BUSINESS_LOCATION_RADIUS_METERS
-        ) {
-          return NextResponse.json(
-            {
-              success: false,
-              code: "BUSINESS_LOCATION_MISMATCH",
-              message:
-                "This device is not close enough to the registered business address to create a business-address service video.",
-              details: {
-                allowedRadiusMeters: BUSINESS_LOCATION_RADIUS_METERS,
-                maxAccuracyMeters: BUSINESS_LOCATION_MAX_ACCURACY_METERS,
-                distanceMeters: Math.round(distanceFromRegisteredAddress),
-                accuracyMeters: Math.round(locationProof.accuracyMeters),
-              },
-            },
-            { status: 403 }
+            { success: false, code: verification.code, message: verification.message, details: verification.details },
+            { status: verification.status }
           );
         }
       }

@@ -922,10 +922,13 @@ export default function EmployeeJobsPage() {
       ...prev,
       [nextRecordingKey]: {
         status: "uploading",
-        message: "Allow location access so Reliance can confirm this recording is at the registered business address.",
+        message:
+          getRecordingLocation(job) === "customer-business"
+            ? "Allow location access so Reliance can confirm this phone is at the customer business address."
+            : "Allow location access so Reliance can confirm this phone is at the registered vendor business address.",
       },
     }));
-    return new Promise<LocationProof>((resolve, reject) => {
+    const proof = await new Promise<LocationProof>((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude, accuracy } = position.coords;
@@ -945,6 +948,16 @@ export default function EmployeeJobsPage() {
         { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
       );
     });
+    const response = await fetch(`/api/employee/jobs/${encodeURIComponent(job.id)}/verify-location`, {
+      method: "POST",
+      headers: employeeRequestHeaders(),
+      body: JSON.stringify({ locationProof: proof }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result?.verified !== true) {
+      throw new Error(result?.message || result?.error || "This phone is not at the required service location.");
+    }
+    return proof;
   };
 
   const prepareCapturedDraftFromFile = async (

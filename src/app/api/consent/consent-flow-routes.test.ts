@@ -7,6 +7,10 @@ const hoisted = vi.hoisted(() => {
   const consentRecordFindUnique = vi.fn();
   const consentRecordUpdate = vi.fn();
   const consentEventCreate = vi.fn();
+  const bookingFindUnique = vi.fn();
+  const bookingUpdate = vi.fn();
+  const geocodeAddress = vi.fn();
+  const sendConsentDecisionNotifications = vi.fn();
   const prisma = {
     consentRecord: {
       findUnique: consentRecordFindUnique,
@@ -15,6 +19,10 @@ const hoisted = vi.hoisted(() => {
     consentEvent: {
       create: consentEventCreate,
     },
+    booking: {
+      findUnique: bookingFindUnique,
+      update: bookingUpdate,
+    },
   };
 
   return {
@@ -22,11 +30,24 @@ const hoisted = vi.hoisted(() => {
     consentRecordFindUnique,
     consentRecordUpdate,
     consentEventCreate,
+    bookingFindUnique,
+    bookingUpdate,
+    geocodeAddress,
+    sendConsentDecisionNotifications,
   };
 });
 
 vi.mock("@/server/db", () => ({
   prisma: hoisted.prisma,
+}));
+
+vi.mock("@/lib/geocoding", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/geocoding")>("@/lib/geocoding");
+  return { ...actual, geocodeAddress: hoisted.geocodeAddress };
+});
+
+vi.mock("@/lib/notifications/send-consent-decision", () => ({
+  sendConsentDecisionNotifications: hoisted.sendConsentDecisionNotifications,
 }));
 
 const CONSENT_TOKEN = "e2e-consent-pending-token";
@@ -79,6 +100,11 @@ describe("consent token and response routes", () => {
     hoisted.consentRecordFindUnique.mockReset();
     hoisted.consentRecordUpdate.mockReset();
     hoisted.consentEventCreate.mockReset();
+    hoisted.bookingFindUnique.mockReset();
+    hoisted.bookingUpdate.mockReset();
+    hoisted.geocodeAddress.mockReset();
+    hoisted.sendConsentDecisionNotifications.mockReset();
+    hoisted.sendConsentDecisionNotifications.mockResolvedValue({ releasedMembershipIds: [], notifications: [] });
   });
 
   it("loads a valid pending consent token with booking and vendor context", async () => {
@@ -118,7 +144,7 @@ describe("consent token and response routes", () => {
     const res = await acceptConsent(
       jsonRequest(
         "/api/consent/accept",
-        { token: CONSENT_TOKEN, termsVersion: "terms-2026-05", privacyVersion: "privacy-2026-05" },
+        { token: CONSENT_TOKEN, termsAccepted: true, termsVersion: "terms-2026-05", privacyVersion: "privacy-2026-05" },
         { "x-forwarded-for": "203.0.113.10", "user-agent": "vitest-consent-smoke" }
       ) as any
     );
@@ -143,6 +169,68 @@ describe("consent token and response routes", () => {
         eventType: "accepted",
       }),
     });
+  });
+
+  it("requires terms acceptance before recording consent", async () => {
+    hoisted.consentRecordFindUnique.mockResolvedValue(buildConsentFixture());
+
+    const res = await acceptConsent(jsonRequest("/api/consent/accept", { token: CONSENT_TOKEN }) as any);
+    const json = await readJson(res);
+
+    expect(res.status).toBe(422);
+    expect(json.code).toBe("CONSENT_TERMS_REQUIRED");
+    expect(hoisted.consentRecordUpdate).not.toHaveBeenCalled();
+  });
+
+  it("requires and verifies the customer business address before accepting", async () => {
+    hoisted.consentRecordFindUnique.mockResolvedValue(
+      buildConsentFixture({ bookingId: "booking-1" })
+    );
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "booking-1",
+      customerMetadata: JSON.stringify({ vendor_job_recording_location: "customer-business" }),
+    });
+    hoisted.geocodeAddress.mockResolvedValue({
+      status: "success",
+      provider: "census",
+      latitude: 28.5383,
+      longitude: -81.3792,
+      geocodedAt: new Date("2026-07-22T12:00:00.000Z"),
+      formattedAddress: "123 MAIN ST, ORLANDO, FL, 32801",
+    });
+    hoisted.consentRecordUpdate.mockResolvedValue({
+      id: "consent-1",
+      status: "accepted",
+      expiresAt: EXPIRES_AT,
+      acceptedAt: new Date("2026-07-22T12:05:00.000Z"),
+    });
+    hoisted.consentEventCreate.mockResolvedValue({ id: "event-accepted" });
+
+    const res = await acceptConsent(
+      jsonRequest("/api/consent/accept", {
+        token: CONSENT_TOKEN,
+        termsAccepted: true,
+        visibilityChoice: "public",
+        customerBusinessAddress: {
+          address: "123 Main St",
+          city: "Orlando",
+          state: "FL",
+          zipCode: "32801",
+        },
+      }) as any
+    );
+
+    expect(res.status).toBe(200);
+    const saved = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
+    expect(saved).toMatchObject({
+      vendor_job_consent_accepted: true,
+      vendor_job_customer_visibility_choice: "public",
+      vendor_job_customer_business_latitude: 28.5383,
+      vendor_job_customer_business_longitude: -81.3792,
+    });
+    expect(hoisted.sendConsentDecisionNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: "booking-1", accepted: true })
+    );
   });
 
   it("declines a pending consent and records the decline reason", async () => {

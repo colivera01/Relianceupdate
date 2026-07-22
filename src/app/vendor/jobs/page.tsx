@@ -2759,6 +2759,8 @@ export default function VendorJobs() {
       client_email: email || undefined,
       booking_date: now.toISOString().split('T')[0],
       booking_time: now.toTimeString().split(' ')[0],
+      scheduled_for: now.toISOString(),
+      service_time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       amount: 0,
       custom_fields: {
         vendor_job_recording_location: recordingLocation,
@@ -3153,30 +3155,40 @@ export default function VendorJobs() {
               : 'Job reassigned, but the service order could not be resent.';
         }
       } else if (nextMembershipIds.length > 0) {
-        const autoReleaseSnapshot = buildRecordingComplianceSnapshot(persistedAssignedJob, {
-          location: 'business',
-          consentAccepted: false,
-          consentToken: '',
-          locationVerified: false,
-        });
+        const autoReleaseSnapshot =
+          getSavedRecordingComplianceForJob(persistedAssignedJob) ||
+          previousCompliance ||
+          buildRecordingComplianceSnapshot(persistedAssignedJob, {
+            location: 'business',
+            consentAccepted: false,
+            consentToken: '',
+            locationVerified: false,
+          });
         mergeRecordingComplianceForJob(persistedAssignedJob, autoReleaseSnapshot);
-        try {
-          const releasePayload = await releaseEmployeeServiceOrderForJob(
-            persistedAssignedJob,
-            autoReleaseSnapshot
-          );
-          releasedRecordingCompliance =
-            releasePayload?.job?.recordingCompliance || releasePayload?.recordingCompliance || null;
+        if (isComplianceSatisfiedForRecording(persistedAssignedJob, autoReleaseSnapshot)) {
+          try {
+            const releasePayload = await releaseEmployeeServiceOrderForJob(
+              persistedAssignedJob,
+              autoReleaseSnapshot
+            );
+            releasedRecordingCompliance =
+              releasePayload?.job?.recordingCompliance || releasePayload?.recordingCompliance || null;
+            feedbackMessage =
+              releasePayload?.notifications?.sentCount > 0
+                ? 'Job assigned and the service order was sent to the assigned team member.'
+                : releasePayload?.message || 'Job assigned. The service order is ready for the assigned team member.';
+          } catch (releaseError) {
+            feedbackType = 'error';
+            feedbackMessage =
+              releaseError instanceof Error
+                ? `Job assigned, but the service order could not be sent: ${releaseError.message}`
+                : 'Job assigned, but the service order could not be sent.';
+          }
+        } else {
           feedbackMessage =
-            releasePayload?.notifications?.sentCount > 0
-              ? 'Job assigned and the service order was sent to the assigned team member.'
-              : releasePayload?.message || 'Job assigned. The service order is ready for the assigned team member.';
-        } catch (releaseError) {
-          feedbackType = 'error';
-          feedbackMessage =
-            releaseError instanceof Error
-              ? `Job assigned, but the service order could not be sent: ${releaseError.message}`
-              : 'Job assigned, but the service order could not be sent.';
+            autoReleaseSnapshot.location === 'residence' || autoReleaseSnapshot.location === 'customer-business'
+              ? 'Job assigned. The secure service order will be sent automatically after the customer approves.'
+              : 'Job assigned. Complete the recording-location check to send the employee service order.';
         }
       }
       const finalAssignedJob = releasedRecordingCompliance

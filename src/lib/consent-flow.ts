@@ -10,6 +10,9 @@ export const CONSENT_TYPES = new Set([
 
 export const CONSENT_STATUSES = new Set(['requested', 'accepted', 'declined', 'expired', 'revoked']);
 
+export const CURRENT_TERMS_VERSION = 'terms-2026-07';
+export const CURRENT_PRIVACY_VERSION = 'privacy-2026-07';
+
 export function generateConsentToken() {
   return crypto.randomBytes(24).toString('hex');
 }

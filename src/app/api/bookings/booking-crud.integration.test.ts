@@ -302,6 +302,7 @@ describe('POST /api/bookings', () => {
     hoisted.bookingCreate.mockResolvedValue({ id: 'new-book' });
     const metaStr = JSON.stringify({
       user_notes: 'Please bring supplies',
+      client_name: 'Pat',
       client_email: 'pat@example.com',
       client_phone: '555-0100',
       custom_fields: { service_address: '1 Main St' },

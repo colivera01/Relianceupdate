@@ -10,6 +10,7 @@ import {
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
+import { resolveBookingCustomer } from "@/lib/booking-customer";
 
 type StageKey = "INTRO" | "IN_PROGRESS" | "COMPLETED";
 
@@ -135,6 +136,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           normalizedStatus === "CONFIRMED" ||
           normalizedStatus === "IN_PROGRESS" ||
           (normalizedStatus === "AWAITING_REVIEW" && correctionRequested));
+      const customer = resolveBookingCustomer(booking);
       return {
         id: booking.id,
         vendorId: booking.vendorId,
@@ -142,12 +144,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         title: booking.title || booking.service?.name || "Assigned Job",
         status: booking.status,
         service: booking.service || null,
-        customer: {
-          id: booking.user?.id || null,
-          name: booking.user?.name || null,
-          email: booking.user?.email || null,
-          phone: booking.user?.phone || null,
-        },
+        customer,
         bookingDate: booking.scheduledFor || booking.date || null,
         rejectionReason: (booking as any).rejectionReason || null,
         rejectedAt: (booking as any).rejectedAt || null,

@@ -14,6 +14,7 @@ import { findUserIdByEmailCaseInsensitive } from '@/lib/resolve-booking-owner-us
 import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
 import { generateConsentToken } from '@/lib/consent-flow';
 import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
+import { resolveBookingSchedule } from '@/lib/booking-schedule';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -43,17 +44,23 @@ async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> 
 /** Structured payload stored as JSON string in `Booking.customerMetadata` (snake_case keys). */
 function buildCustomerMetadataForCreate(body: {
   user_notes?: unknown;
+  client_name?: unknown;
   client_email?: unknown;
   client_phone?: unknown;
+  service_time_zone?: unknown;
   custom_fields?: unknown;
 }): Record<string, unknown> | undefined {
   const out: Record<string, unknown> = {};
   const notes = typeof body.user_notes === 'string' ? body.user_notes.trim() : '';
   if (notes) out.user_notes = notes;
+  const name = typeof body.client_name === 'string' ? body.client_name.trim() : '';
+  if (name) out.client_name = name;
   const email = typeof body.client_email === 'string' ? body.client_email.trim() : '';
   if (email) out.client_email = email;
   const phone = typeof body.client_phone === 'string' ? body.client_phone.trim() : '';
   if (phone) out.client_phone = phone;
+  const timeZone = typeof body.service_time_zone === 'string' ? body.service_time_zone.trim() : '';
+  if (timeZone) out.service_time_zone = timeZone;
   if (body.custom_fields && typeof body.custom_fields === 'object' && !Array.isArray(body.custom_fields)) {
     const cf = body.custom_fields as Record<string, unknown>;
     const recordingLocation = String(cf.vendor_job_recording_location || '').trim();
@@ -286,6 +293,8 @@ export async function POST(request: NextRequest) {
       vendor_id,
       booking_date,
       booking_time,
+      scheduled_for,
+      service_time_zone,
       user_notes,
       custom_fields,
       title,
@@ -422,11 +431,11 @@ export async function POST(request: NextRequest) {
     }
     await ensureUserAccountCanAct(bookingUserId);
 
-    const combinedDateTime =
-      booking_date && booking_time
-        ? new Date(`${booking_date}T${booking_time}`)
-        : new Date();
-    const scheduledFor = Number.isNaN(combinedDateTime.getTime()) ? new Date() : combinedDateTime;
+    const scheduledFor = resolveBookingSchedule({
+      scheduledFor: scheduled_for,
+      bookingDate: booking_date,
+      bookingTime: booking_time,
+    });
 
     if (booking_date && booking_time) {
       const slotCheck = await checkVendorSlotAvailability({
@@ -448,8 +457,10 @@ export async function POST(request: NextRequest) {
 
     let customerMetadataPayload = buildCustomerMetadataForCreate({
       user_notes,
+      client_name,
       client_email,
       client_phone,
+      service_time_zone,
       custom_fields,
     });
     if (isVendorStaffForThisVendor) {
@@ -572,11 +583,8 @@ export async function POST(request: NextRequest) {
             vendorName: String(vendor.businessName || vendor.name || '').trim() || undefined,
             serviceName: title ? String(title) : undefined,
             bookingTitle: title ? String(title) : undefined,
-            serviceDate: scheduledFor.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            }),
+            serviceDate: scheduledFor,
+            serviceTimeZone: typeof service_time_zone === 'string' ? service_time_zone : null,
             consentTypeLabel: 'video access',
           });
           await (prisma as any).consentEvent.create({

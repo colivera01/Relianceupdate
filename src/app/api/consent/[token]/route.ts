@@ -11,6 +11,7 @@ type ConsentTokenBooking = {
   title: string | null;
   clientName: string | null;
   scheduledFor: Date | null;
+  customerMetadata: string | null;
   service: { id: string; name: string; price: number | null } | null;
 };
 
@@ -74,6 +75,7 @@ export async function GET(request: Request, context: RouteContext) {
               title: true,
               clientName: true,
               scheduledFor: true,
+              customerMetadata: true,
               service: { select: { id: true, name: true, price: true } },
             },
           },
@@ -109,6 +111,14 @@ export async function GET(request: Request, context: RouteContext) {
 
     const respondable = evaluateConsentRespondable(consent.status, consent.expiresAt, now);
 
+    let bookingMetadata: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(consent.booking.customerMetadata || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) bookingMetadata = parsed;
+    } catch {}
+
+    const { customerMetadata: _customerMetadata, ...publicBooking } = consent.booking;
+
     return NextResponse.json({
       success: true,
       consent: {
@@ -124,7 +134,8 @@ export async function GET(request: Request, context: RouteContext) {
         privacyVersion: consent.privacyVersion,
         mediaSessionId: consent.mediaSessionId,
         vendor: consent.vendor,
-        booking: consent.booking,
+        booking: publicBooking,
+        recordingLocation: String(bookingMetadata.vendor_job_recording_location || '').trim() || null,
         canRespond: respondable.respondable,
         respondBlockedReason: respondable.respondable ? null : respondable.reason,
       },

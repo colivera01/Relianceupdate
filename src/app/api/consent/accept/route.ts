@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
-import { hashConsentDocument } from '@/lib/consent-flow';
+import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, hashConsentDocument } from '@/lib/consent-flow';
 import { evaluateConsentRespondable } from '@/lib/consent-record-state';
+import { formatAddress, geocodeAddress, hasCompleteAddress } from '@/lib/geocoding';
+import { sendConsentDecisionNotifications } from '@/lib/notifications/send-consent-decision';
 
 type ConsentRecordRow = {
   id: string;
@@ -52,14 +54,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const token = String(body?.token || '').trim();
-    const termsVersion = String(body?.termsVersion || '').trim();
-    const privacyVersion = String(body?.privacyVersion || '').trim();
+    const termsAccepted = body?.termsAccepted === true;
+    const termsVersion = String(body?.termsVersion || CURRENT_TERMS_VERSION).trim();
+    const privacyVersion = String(body?.privacyVersion || CURRENT_PRIVACY_VERSION).trim();
     const visibilityChoice = String(body?.visibilityChoice || 'private').trim().toLowerCase();
     const normalizedVisibilityChoice = visibilityChoice === 'public' ? 'public' : 'private';
     if (!token) {
       return NextResponse.json({ success: false, error: 'token is required' }, { status: 400 });
     }
-
     const existing = await withTransientDbRetry<ConsentRecordRow | null>(() =>
       (prisma as any).consentRecord.findUnique({ where: { token } })
     );
@@ -79,6 +81,56 @@ export async function POST(request: NextRequest) {
         { success: false, error: `Consent is already ${existing.status}`, code: 'CONSENT_NOT_PENDING' },
         { status: 409 }
       );
+    }
+    if (!termsAccepted || !termsVersion || !privacyVersion) {
+      return NextResponse.json(
+        { success: false, error: 'Terms of Service and Privacy Policy acceptance is required.', code: 'CONSENT_TERMS_REQUIRED' },
+        { status: 422 }
+      );
+    }
+
+    let bookingForConsent: { id: string; customerMetadata: string | null } | null = null;
+    let customerBusinessLocationVerified = false;
+    if (existing.bookingId) {
+      bookingForConsent = await withTransientDbRetry(() =>
+        prisma.booking.findUnique({
+          where: { id: existing.bookingId as string },
+          select: { id: true, customerMetadata: true },
+        })
+      );
+      const metadata = parseMetadata(bookingForConsent?.customerMetadata);
+      if (String(metadata.vendor_job_recording_location || '').trim() === 'customer-business') {
+        const rawAddress = body?.customerBusinessAddress || {};
+        const address = {
+          address: String(rawAddress?.address || '').trim(),
+          city: String(rawAddress?.city || '').trim(),
+          state: String(rawAddress?.state || '').trim(),
+          zipCode: String(rawAddress?.zipCode || '').trim(),
+        };
+        if (!hasCompleteAddress(address)) {
+          return NextResponse.json(
+            { success: false, error: 'Street address, city, state, and ZIP code are required.', code: 'CUSTOMER_BUSINESS_ADDRESS_REQUIRED' },
+            { status: 422 }
+          );
+        }
+        const geocode = await geocodeAddress(address);
+        if (geocode.status !== 'success') {
+          return NextResponse.json(
+            { success: false, error: 'We could not verify that customer business address. Check it and try again.', code: 'CUSTOMER_BUSINESS_ADDRESS_NOT_VERIFIED' },
+            { status: 422 }
+          );
+        }
+        metadata.vendor_job_customer_business_address = address.address;
+        metadata.vendor_job_customer_business_city = address.city;
+        metadata.vendor_job_customer_business_state = address.state;
+        metadata.vendor_job_customer_business_zip_code = address.zipCode;
+        metadata.vendor_job_customer_business_latitude = geocode.latitude;
+        metadata.vendor_job_customer_business_longitude = geocode.longitude;
+        metadata.vendor_job_customer_business_geocoded_at = geocode.geocodedAt.toISOString();
+        metadata.vendor_job_customer_business_formatted_address = geocode.formattedAddress || formatAddress(address);
+        bookingForConsent = { ...bookingForConsent!, customerMetadata: JSON.stringify(metadata) };
+        customerBusinessLocationVerified = true;
+      }
     }
 
     const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null;
@@ -104,14 +156,17 @@ export async function POST(request: NextRequest) {
 
     if (existing.bookingId) {
       await withTransientDbRetry(async () => {
-        const booking = await prisma.booking.findUnique({
-          where: { id: existing.bookingId as string },
-          select: { id: true, customerMetadata: true },
-        });
+        const booking = bookingForConsent;
         if (!booking) return null;
         const metadata = parseMetadata(booking.customerMetadata);
         metadata.vendor_job_customer_visibility_choice = normalizedVisibilityChoice;
         metadata.vendor_job_customer_visibility_choice_at = new Date().toISOString();
+        metadata.vendor_job_consent_accepted = true;
+        metadata.vendor_job_consent_status = 'accepted';
+        metadata.vendor_job_consent_accepted_at = new Date().toISOString();
+        metadata.vendor_job_consent_terms_accepted = true;
+        metadata.vendor_job_consent_terms_version = termsVersion;
+        metadata.vendor_job_consent_privacy_version = privacyVersion;
         await prisma.booking.update({
           where: { id: booking.id },
           data: { customerMetadata: JSON.stringify(metadata) },
@@ -132,12 +187,25 @@ export async function POST(request: NextRequest) {
             userAgent: uaStored,
             acceptedAt: updated.acceptedAt,
             visibilityChoice: normalizedVisibilityChoice,
+            customerBusinessLocationVerified,
           }),
         },
       })
     );
 
-    return NextResponse.json({ success: true, consent: updated });
+    const notifications = existing.bookingId
+      ? await sendConsentDecisionNotifications({
+          request,
+          bookingId: existing.bookingId,
+          accepted: true,
+          actorUserId: 'customer-consent',
+        }).catch((notificationError) => {
+          console.error('[consent/accept] decision notification failed', notificationError);
+          return null;
+        })
+      : null;
+
+    return NextResponse.json({ success: true, consent: updated, notifications });
   } catch (error) {
     console.error('[consent/accept] POST error:', error);
     if (isTransientDbConnectivityError(error)) {

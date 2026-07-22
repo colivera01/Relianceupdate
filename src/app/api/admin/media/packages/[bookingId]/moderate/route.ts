@@ -6,6 +6,7 @@ import { TRUST_OUTCOME_TYPES, tryRecordFinalizedOperationalOutcome } from "@/lib
 import { tryRecalculateVendorTrustScore } from "@/lib/trust-score-calculator";
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { sendVideoPackageApprovedNotification } from "@/lib/notifications/send-video-package-approved";
+import { resolveBookingCustomer } from "@/lib/booking-customer";
 import {
   MODERATION_APPROVED,
   MODERATION_FLAGGED,
@@ -274,12 +275,10 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         const alreadyNotified = Boolean(metadata.proof_ready_notification_sent_at);
       if (!alreadyNotified) {
         const videoUrl = toAbsoluteVideoUrl(bookingId);
-        const customerEmail =
-          usableCustomerEmail(metadata.client_email) ||
-          usableCustomerEmail(metadata.claim_contact_email) ||
-          usableCustomerEmail(booking.user?.email);
-        const customerPhone = String(booking.user?.phone || metadata.client_phone || "").trim();
-        const customerName = String(booking.user?.name || booking.clientName || "").trim();
+        const customer = resolveBookingCustomer(booking);
+        const customerEmail = customer.email || "";
+        const customerPhone = customer.phone || "";
+        const customerName = customer.name || "";
         let notified = false;
         const sendResult = await sendVideoReadyNotification({
           actorUserId: userId,

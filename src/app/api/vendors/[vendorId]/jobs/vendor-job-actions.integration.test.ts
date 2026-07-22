@@ -423,7 +423,7 @@ describe("vendor job actions integration", () => {
     expect(j.code).toBe("JOB_DELETE_SUCCESS_WITH_LINKED_CONTENT_ARCHIVED");
   });
 
-  it("PATCH ASSIGN_JOB blocks customer-location assignment until consent is accepted", async () => {
+  it("PATCH ASSIGN_JOB saves a customer-location assignment while consent is pending", async () => {
     const customerLocationMetadata = JSON.stringify({
       vendor_job_recording_location: "residence",
       reliance_ops: { operational_phase: "PENDING" },
@@ -447,7 +447,12 @@ describe("vendor job actions integration", () => {
         user: { name: "Peter Parker", email: "peter@example.com", phone: "4075550123" },
       },
     ]);
-    hoisted.consentRecordFindFirst.mockResolvedValue({ status: "requested" });
+    hoisted.bookingUpdate.mockImplementation(async ({ data }: any) => ({
+      id: "job1",
+      status: "PENDING",
+      customerMetadata: data.customerMetadata,
+      updatedAt: new Date("2026-07-22T12:00:00.000Z"),
+    }));
 
     const { req, ctx } = patchReqBody("v1", "job1", {
       action: "ASSIGN_JOB",
@@ -456,9 +461,12 @@ describe("vendor job actions integration", () => {
     const res = await PATCH(req, ctx as any);
     const json = await toJson(res);
 
-    expect(res.status).toBe(409);
-    expect(json.code).toBe("CUSTOMER_CONSENT_REQUIRED_BEFORE_ASSIGNMENT");
-    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.notifications).toMatchObject({ deferred: true, sentCount: 0 });
+    const saved = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
+    expect(saved.vendor_job_assigned_membership_ids).toEqual(["member-1"]);
+    expect(saved.vendor_job_service_order_released_at).toBeUndefined();
   });
 
   it("PATCH ASSIGN_JOB stores primary employee attribution and defers the service order email", async () => {

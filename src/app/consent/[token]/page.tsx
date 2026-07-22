@@ -12,6 +12,7 @@ type ConsentData = {
   customerName: string;
   createdAt: string;
   status: string;
+  recordingLocation: string;
 };
 
 function ConsentPageContent() {
@@ -46,6 +47,8 @@ function ConsentPageContent() {
   const [declined, setDeclined] = useState(false);
   const [returnLaterSelected, setReturnLaterSelected] = useState(false);
   const [visibilityChoice, setVisibilityChoice] = useState<'private' | 'public'>('private');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [businessAddress, setBusinessAddress] = useState({ address: '', city: '', state: '', zipCode: '' });
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -71,6 +74,7 @@ function ConsentPageContent() {
             customerName: consent?.booking?.clientName || '',
             createdAt: consent?.requestedAt || consent?.createdAt || '',
             status: consent?.status || '',
+            recordingLocation: consent?.recordingLocation || '',
           });
           const normalizedStatus = String(consent?.status || '').trim().toLowerCase();
           setAccepted(normalizedStatus === 'accepted');
@@ -85,13 +89,32 @@ function ConsentPageContent() {
 
   const handleAccept = async () => {
     setError('');
+    if (!termsAccepted) {
+      setError('Review and accept the Terms of Service and Privacy Policy before approving.');
+      return;
+    }
+    if (
+      data?.recordingLocation === 'customer-business' &&
+      Object.values(businessAddress).some((value) => !value.trim())
+    ) {
+      setError('Enter the complete customer business address before approving.');
+      return;
+    }
     setAccepting(true);
 
     try {
       const res = await fetch('/api/consent/accept', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, visibilityChoice }),
+        body: JSON.stringify({
+          token,
+          visibilityChoice,
+          termsAccepted: true,
+          termsVersion: 'terms-2026-07',
+          privacyVersion: 'privacy-2026-07',
+          customerBusinessAddress:
+            data?.recordingLocation === 'customer-business' ? businessAddress : undefined,
+        }),
       });
 
       const json = await res.json();
@@ -119,7 +142,7 @@ function ConsentPageContent() {
           return;
         }
       } else {
-        setError('Failed to accept consent.');
+        setError(json?.error || json?.message || 'Failed to accept consent.');
       }
     } catch {
       setError('Error submitting consent.');
@@ -164,7 +187,7 @@ function ConsentPageContent() {
 
   if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
 
-  if (error) return <div style={{ padding: 40, color: 'red' }}>{error}</div>;
+  if (error && !data) return <div style={{ padding: 40, color: 'red' }}>{error}</div>;
 
   return (
     <div style={{ maxWidth: 700, margin: '40px auto', fontFamily: 'sans-serif' }}>
@@ -243,10 +266,38 @@ function ConsentPageContent() {
         </div>
       ) : null}
 
+      {!accepted && !declined && data?.recordingLocation === 'customer-business' ? (
+        <div style={{ marginTop: 20, padding: 16, border: '1px solid #dbeafe', borderRadius: 8 }}>
+          <p style={{ marginTop: 0 }}><strong>Customer business address</strong></p>
+          <p style={{ color: '#374151', fontSize: 14 }}>
+            The employee's phone must be at this address before the camera can open.
+          </p>
+          <input
+            aria-label="Street address"
+            placeholder="Street address"
+            value={businessAddress.address}
+            onChange={(event) => setBusinessAddress((previous) => ({ ...previous, address: event.target.value }))}
+            style={{ width: '100%', boxSizing: 'border-box', padding: 10, marginBottom: 10 }}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+            <input aria-label="City" placeholder="City" value={businessAddress.city} onChange={(event) => setBusinessAddress((previous) => ({ ...previous, city: event.target.value }))} style={{ padding: 10, minWidth: 0 }} />
+            <input aria-label="State" placeholder="State" value={businessAddress.state} onChange={(event) => setBusinessAddress((previous) => ({ ...previous, state: event.target.value }))} style={{ padding: 10, minWidth: 0 }} />
+            <input aria-label="ZIP code" placeholder="ZIP" value={businessAddress.zipCode} onChange={(event) => setBusinessAddress((previous) => ({ ...previous, zipCode: event.target.value }))} style={{ padding: 10, minWidth: 0 }} />
+          </div>
+        </div>
+      ) : null}
+
       <div style={{ marginTop: 10 }}>
         <a href="/terms" target="_blank" rel="noreferrer">Terms of Service</a> |{' '}
         <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>
       </div>
+      {!accepted && !declined ? (
+        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 16 }}>
+          <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
+          <span>I agree to the Terms of Service and Privacy Policy for this service-video request.</span>
+        </label>
+      ) : null}
+      {error ? <div role="alert" style={{ marginTop: 16, color: '#b91c1c' }}>{error}</div> : null}
       <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         {returnTo ? (
           <Link href={returnTo} style={{ color: '#2563eb', textDecoration: 'underline' }}>
