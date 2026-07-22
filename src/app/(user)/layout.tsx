@@ -11,7 +11,7 @@ import { AlertTriangle, LogIn } from 'lucide-react';
 import { isOwnerAdminUserId } from '@/lib/internal-identities';
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [restrictedMessage, setRestrictedMessage] = useState<string | null>(null);
   const pathname = usePathname() || '';
   // The customer shell should identify itself as "customer" even when the
@@ -127,14 +127,15 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
           <div className="w-full rounded-xl border border-blue-300/20 bg-slate-950/85 p-7 text-white shadow-2xl shadow-black/20">
             <h1 className="text-2xl font-semibold">Admin account</h1>
             <p className="mt-3 text-sm leading-6 text-slate-300">
-              This sign-in is reserved for the Reliance Admin console and does not have a Customer profile.
+              This browser is currently signed in as {user?.email}. That Admin session is separate from the Customer account.
             </p>
-            <Link
-              href="/admin/dashboard"
+            <button
+              type="button"
+              onClick={() => void logout()}
               className="mt-6 inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
-              Open Admin Dashboard
-            </Link>
+              Sign out and switch account
+            </button>
           </div>
         </div>
       </div>

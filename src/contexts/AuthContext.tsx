@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
 export interface AuthUser {
@@ -55,32 +55,45 @@ function persistClientSession(userData: AuthUser, authToken?: string | null) {
   document.cookie = `session_user_id=${encodeURIComponent(String(userData.id))}; path=/; samesite=lax`;
 }
 
+function clearClientSession() {
+  localStorage.removeItem('userData');
+  localStorage.removeItem('user');
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('auth_token');
+  sessionStorage.removeItem('registrationSuccess');
+  sessionStorage.removeItem('registrationUserType');
+
+  document.cookie.split(';').forEach((cookie) => {
+    document.cookie = cookie
+      .replace(/^ +/, '')
+      .replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`);
+  });
+}
+
+function sessionIdentityKey(userData: AuthUser | null): string {
+  if (!userData) return '';
+  const profiles = Array.isArray(userData.availableProfiles)
+    ? [...userData.availableProfiles].map(String).sort().join(',')
+    : '';
+  return `${userData.id}|${userData.email}|${userData.userType}|${profiles}`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const userRef = useRef<AuthUser | null>(null);
+  const reconcileInFlightRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    userRef.current = user;
+  }, [user]);
+
+  const reconcileServerSession = useCallback((refreshOnChange = false) => {
+    if (reconcileInFlightRef.current) return reconcileInFlightRef.current;
+
+    const task = (async () => {
       try {
-        const userData = readStoredUserRaw();
-        const authToken = localStorage.getItem('authToken') || localStorage.getItem('auth_token');
-
-        if (userData && authToken) {
-          const parsedUser = JSON.parse(userData) as AuthUser;
-          setUser(parsedUser);
-          persistClientSession(parsedUser, authToken);
-          if (DEV_AUTH_DEBUG) {
-            console.info('[AuthProvider] hydrate session', {
-              userId: parsedUser?.id,
-              email: parsedUser?.email,
-              userType: parsedUser?.userType,
-              tokenPreview: `${String(authToken).slice(0, 14)}...`,
-            });
-          }
-          return;
-        }
-
         const response = await fetch('/api/auth/session', {
           method: 'GET',
           credentials: 'same-origin',
@@ -94,30 +107,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             typeof sessionJson?.token === 'string' && sessionJson.token
               ? sessionJson.token
               : null;
+          const identityChanged =
+            sessionIdentityKey(userRef.current) !== sessionIdentityKey(sessionUser);
+
+          userRef.current = sessionUser;
           setUser(sessionUser);
           persistClientSession(sessionUser, sessionToken);
-          if (DEV_AUTH_DEBUG) {
-            console.info('[AuthProvider] hydrated from signed session cookie', {
-              userId: sessionUser?.id,
-              email: sessionUser?.email,
-              userType: sessionUser?.userType,
-            });
+
+          if (identityChanged && refreshOnChange) {
+            router.refresh();
+          }
+          return;
+        }
+
+        if (response.status === 401) {
+          const hadClientSession = Boolean(userRef.current || readStoredUserRaw());
+          userRef.current = null;
+          setUser(null);
+          clearClientSession();
+          if (hadClientSession && refreshOnChange) {
+            router.refresh();
           }
         }
       } catch (error) {
         console.error('Error checking auth:', error);
-        localStorage.removeItem('userData');
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('auth_token');
+      }
+    })().finally(() => {
+      reconcileInFlightRef.current = null;
+    });
+
+    reconcileInFlightRef.current = task;
+    return task;
+  }, [router]);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        await reconcileServerSession(false);
       } finally {
         setIsLoading(false);
       }
     };
 
     void checkAuth();
-  }, []);
+  }, [reconcileServerSession]);
+
+  useEffect(() => {
+    const reconcileActiveTab = () => {
+      if (document.visibilityState === 'visible') {
+        void reconcileServerSession(true);
+      }
+    };
+    const reconcileChangedStorage = (event: StorageEvent) => {
+      if (!event.key || ['userData', 'user', 'authToken', 'auth_token'].includes(event.key)) {
+        void reconcileServerSession(true);
+      }
+    };
+
+    window.addEventListener('focus', reconcileActiveTab);
+    document.addEventListener('visibilitychange', reconcileActiveTab);
+    window.addEventListener('storage', reconcileChangedStorage);
+    return () => {
+      window.removeEventListener('focus', reconcileActiveTab);
+      document.removeEventListener('visibilitychange', reconcileActiveTab);
+      window.removeEventListener('storage', reconcileChangedStorage);
+    };
+  }, [reconcileServerSession]);
 
   const login = (userData: AuthUser, authToken?: string | null) => {
+    userRef.current = userData;
     setUser(userData);
     const resolvedToken =
       (authToken != null && String(authToken).trim()) ||
@@ -147,26 +205,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Logout API call failed, but continuing with client-side logout');
       }
 
+      userRef.current = null;
       setUser(null);
-      localStorage.removeItem('userData');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('auth_token');
-      sessionStorage.removeItem('registrationSuccess');
-      sessionStorage.removeItem('registrationUserType');
-
-      document.cookie.split(';').forEach(function (c) {
-        document.cookie = c
-          .replace(/^ +/, '')
-          .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/');
-      });
+      clearClientSession();
 
       router.push('/auth/login');
     } catch (error) {
       console.error('Logout error:', error);
+      userRef.current = null;
       setUser(null);
-      localStorage.removeItem('userData');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('auth_token');
+      clearClientSession();
       router.push('/auth/login');
     }
   };
@@ -174,6 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateUser = (userData: Partial<AuthUser>) => {
     if (user) {
       const updatedUser = { ...user, ...userData };
+      userRef.current = updatedUser;
       setUser(updatedUser);
       localStorage.setItem('userData', JSON.stringify(updatedUser));
     }
