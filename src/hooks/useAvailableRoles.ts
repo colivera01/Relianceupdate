@@ -33,7 +33,7 @@ export function useAvailableRoles(currentRole: AppRole) {
     if (typeof window === 'undefined') return;
     if (user) return;
     try {
-      const raw = localStorage.getItem('userData') || localStorage.getItem('user');
+      const raw = sessionStorage.getItem('userData') || sessionStorage.getItem('user');
       if (!raw) return;
       const parsed = JSON.parse(raw) as Record<string, any>;
       setFallbackUser(parsed);

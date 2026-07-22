@@ -137,15 +137,15 @@ class ApiClient {
   setAuthToken(token: string): void {
     // Store token for future requests
     if (typeof window !== 'undefined') {
-      localStorage.setItem('auth_token', token);
-      localStorage.setItem('authToken', token);
+      sessionStorage.setItem('auth_token', token);
+      sessionStorage.setItem('authToken', token);
     }
   }
 
   // Helper to get authorization header
   private getAuthHeaders(): Record<string, string> {
     if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('auth_token') || localStorage.getItem('authToken');
+      const token = sessionStorage.getItem('auth_token') || sessionStorage.getItem('authToken');
       if (token) {
         return { Authorization: `Bearer ${token}` };
       }

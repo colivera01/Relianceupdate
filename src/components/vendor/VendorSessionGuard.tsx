@@ -12,16 +12,11 @@ type VendorSessionGuardPayload = {
 
 function clearClientAuthState() {
   try {
-    localStorage.removeItem("userData");
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("auth_token");
+    sessionStorage.removeItem("userData");
+    sessionStorage.removeItem("authToken");
+    sessionStorage.removeItem("auth_token");
     sessionStorage.removeItem("registrationSuccess");
     sessionStorage.removeItem("registrationUserType");
-    document.cookie.split(";").forEach((cookie) => {
-      document.cookie = cookie
-        .replace(/^ +/, "")
-        .replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`);
-    });
   } catch {
     // Browser storage can be unavailable in private or locked-down contexts.
   }

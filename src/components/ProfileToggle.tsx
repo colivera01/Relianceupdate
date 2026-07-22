@@ -61,8 +61,8 @@ export default function ProfileToggle({
       }
 
       const token =
-        localStorage.getItem('authToken') ||
-        localStorage.getItem('auth_token') ||
+        sessionStorage.getItem('authToken') ||
+        sessionStorage.getItem('auth_token') ||
         '';
       const response = await fetch('/api/profile/toggle', {
         method: 'POST',

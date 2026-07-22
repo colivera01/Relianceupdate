@@ -55,7 +55,7 @@ const adminNav: AdminNavItem[] = [
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const { availableRoles, userId } = useAvailableRoles('admin');
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const pathname = usePathname() || '';
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -93,9 +93,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   }, [dropdownOpen]);
 
   const handleSignOut = () => {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/logout';
-    }
+    void logout();
   };
   const mobileAdminNav = [
     adminNav[0],

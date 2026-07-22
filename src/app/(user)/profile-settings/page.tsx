@@ -139,7 +139,7 @@ function readStoredProfile(): { profile: Partial<CustomerProfile>; locationPrefe
   }
 
   try {
-    const raw = localStorage.getItem('userData') || localStorage.getItem('user');
+    const raw = sessionStorage.getItem('userData') || sessionStorage.getItem('user');
     if (!raw) {
       return { profile: {}, locationPreferenceEnabled: null };
     }
@@ -276,7 +276,7 @@ export default function ProfileSettingsPage() {
     nextLocationEnabled: boolean,
     nextPhotoUrl?: string | null
   ) => {
-    const localUserData = localStorage.getItem('userData');
+    const localUserData = sessionStorage.getItem('userData');
     const parsed = localUserData ? JSON.parse(localUserData) : {};
     const resolvedPhotoUrl = typeof nextPhotoUrl === 'string' ? nextPhotoUrl : profile.profilePhoto;
     const updatedUserData = {
@@ -294,7 +294,7 @@ export default function ProfileSettingsPage() {
       zipCode: profile.zipCode,
       locationPreferenceEnabled: nextLocationEnabled,
     };
-    localStorage.setItem('userData', JSON.stringify(updatedUserData));
+    sessionStorage.setItem('userData', JSON.stringify(updatedUserData));
   };
 
   const saveProfileToApi = async (profile: CustomerProfile, nextLocationEnabled: boolean) => {

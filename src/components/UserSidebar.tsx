@@ -106,7 +106,7 @@ function UserSidebarContent() {
       setCurrentUser(signedInUser);
       return;
     }
-    const userData = localStorage.getItem('userData');
+    const userData = sessionStorage.getItem('userData');
     if (userData) {
       try {
         const parsed = JSON.parse(userData) as Record<string, unknown>;

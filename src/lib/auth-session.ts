@@ -1,6 +1,8 @@
 import crypto from "crypto";
 
 const SESSION_COOKIE_NAME = "reliance_session";
+const ADMIN_UI_SESSION_COOKIE_NAME = "reliance_admin_session";
+const ADMIN_API_SESSION_COOKIE_NAME = "reliance_admin_api_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const DEV_SESSION_SECRET = "reliance-dev-session-secret-change-me";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
@@ -112,8 +114,31 @@ export function getAuthSessionClaimsFromRequest(request: Request): AuthSessionCl
   return verifyAuthSessionCookie(cookieMap[SESSION_COOKIE_NAME]);
 }
 
+export function getAdminAuthSessionClaimsFromRequest(request: Request): AuthSessionClaims | null {
+  const cookieMap = parseCookieHeader(request.headers.get("cookie"));
+  const pathname = new URL(request.url).pathname;
+  const scopedCookieNames = pathname.startsWith("/api/admin")
+    ? [ADMIN_API_SESSION_COOKIE_NAME, ADMIN_UI_SESSION_COOKIE_NAME]
+    : [ADMIN_UI_SESSION_COOKIE_NAME, ADMIN_API_SESSION_COOKIE_NAME];
+
+  for (const cookieName of scopedCookieNames) {
+    const claims = verifyAuthSessionCookie(cookieMap[cookieName]);
+    if (claims) return claims;
+  }
+
+  return verifyAuthSessionCookie(cookieMap[SESSION_COOKIE_NAME]);
+}
+
 export function getAuthSessionCookieName(): string {
   return SESSION_COOKIE_NAME;
+}
+
+export function getAdminUiSessionCookieName(): string {
+  return ADMIN_UI_SESSION_COOKIE_NAME;
+}
+
+export function getAdminApiSessionCookieName(): string {
+  return ADMIN_API_SESSION_COOKIE_NAME;
 }
 
 export function getAuthSessionCookieOptions() {
@@ -123,5 +148,19 @@ export function getAuthSessionCookieOptions() {
     httpOnly: true,
     secure: IS_PRODUCTION,
     maxAge: SESSION_TTL_SECONDS,
+  };
+}
+
+export function getAdminUiSessionCookieOptions() {
+  return {
+    ...getAuthSessionCookieOptions(),
+    path: "/admin",
+  };
+}
+
+export function getAdminApiSessionCookieOptions() {
+  return {
+    ...getAuthSessionCookieOptions(),
+    path: "/api/admin",
   };
 }

@@ -21,7 +21,7 @@ function readStoredAdminUser(): StoredAdminUser | null {
 
   for (const key of ['userData', 'user']) {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = sessionStorage.getItem(key);
       if (!raw) continue;
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') return parsed as StoredAdminUser;
@@ -52,7 +52,7 @@ export function getAdminRequestHeaders(): HeadersInit {
   if (typeof window === 'undefined') return headers;
 
   const actor = getCurrentAdminActor();
-  const token = localStorage.getItem('authToken') || localStorage.getItem('auth_token');
+  const token = sessionStorage.getItem('authToken') || sessionStorage.getItem('auth_token');
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }

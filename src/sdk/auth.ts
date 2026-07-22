@@ -109,9 +109,9 @@ export const authSDK = {
   // Logout (clear token)
   logout(): void {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('userData');
+      sessionStorage.removeItem('auth_token');
+      sessionStorage.removeItem('authToken');
+      sessionStorage.removeItem('userData');
     }
   }
 };
@@ -129,4 +129,3 @@ export const {
   checkVendorEligibility,
   logout
 } = authSDK;
-

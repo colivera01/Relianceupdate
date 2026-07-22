@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server";
-import { createAuthBearerToken, createAuthSessionCookie, getAuthSessionCookieOptions } from "@/lib/auth-session";
+import {
+  createAuthBearerToken,
+  createAuthSessionCookie,
+  getAdminApiSessionCookieName,
+  getAdminApiSessionCookieOptions,
+  getAdminUiSessionCookieName,
+  getAdminUiSessionCookieOptions,
+  getAuthSessionCookieName,
+  getAuthSessionCookieOptions,
+} from "@/lib/auth-session";
+import { isOwnerAdminUserId } from "@/lib/internal-identities";
 import { sendVendorLoginAlert } from "@/lib/vendor-security";
 
 export type AuthLoginUserPayload = {
@@ -32,27 +42,45 @@ export async function buildSuccessfulLoginResponse(params: {
     ...(params.devWarning ? { devWarning: params.devWarning } : {}),
   });
 
-  response.cookies.set(
-    "reliance_session",
-    createAuthSessionCookie({
-      userId: params.user.id,
-      email: params.user.email,
-      userType: params.user.userType,
-      availableProfiles: params.user.availableProfiles,
-    }),
-    getAuthSessionCookieOptions()
-  );
+  const sessionCookie = createAuthSessionCookie({
+    userId: params.user.id,
+    email: params.user.email,
+    userType: params.user.userType,
+    availableProfiles: params.user.availableProfiles,
+  });
+  const isAdminSession =
+    params.user.userType === "admin" ||
+    params.user.availableProfiles.includes("admin") ||
+    isOwnerAdminUserId(params.user.id);
 
-  response.cookies.set("userId", params.user.id, {
-    path: "/",
-    sameSite: "lax",
-    httpOnly: false,
-  });
-  response.cookies.set("session_user_id", params.user.id, {
-    path: "/",
-    sameSite: "lax",
-    httpOnly: false,
-  });
+  if (isAdminSession) {
+    response.cookies.set(
+      getAdminUiSessionCookieName(),
+      sessionCookie,
+      getAdminUiSessionCookieOptions()
+    );
+    response.cookies.set(
+      getAdminApiSessionCookieName(),
+      sessionCookie,
+      getAdminApiSessionCookieOptions()
+    );
+  } else {
+    response.cookies.set(
+      getAuthSessionCookieName(),
+      sessionCookie,
+      getAuthSessionCookieOptions()
+    );
+    response.cookies.set("userId", params.user.id, {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: false,
+    });
+    response.cookies.set("session_user_id", params.user.id, {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: false,
+    });
+  }
 
   if (params.request) {
     try {

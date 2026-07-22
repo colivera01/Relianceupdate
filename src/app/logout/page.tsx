@@ -15,15 +15,12 @@ export default function LogoutPage() {
     const LOGOUT_REQUEST_TIMEOUT_MS = 8000;
 
     const clearClientSession = () => {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('userData');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('authToken');
+      sessionStorage.removeItem('auth_token');
+      sessionStorage.removeItem('userData');
+      sessionStorage.removeItem('user');
       sessionStorage.removeItem('registrationSuccess');
       sessionStorage.removeItem('registrationUserType');
-      document.cookie.split(";").forEach(function(c) {
-        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-      });
     };
 
     const performLogout = async () => {
@@ -38,6 +35,7 @@ export default function LogoutPage() {
             headers: {
               'Content-Type': 'application/json',
             },
+            body: JSON.stringify({ scope: 'general' }),
             signal: controller.signal,
           });
 

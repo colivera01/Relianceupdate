@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const authSessionMocks = vi.hoisted(() => ({
-  getAuthSessionClaimsFromRequest: vi.fn(),
+  getAdminAuthSessionClaimsFromRequest: vi.fn(),
   verifyAuthBearerToken: vi.fn(),
 }));
 
@@ -31,7 +31,7 @@ describe("readAdminAccess", () => {
   });
 
   it("allows the registered owner admin user id even when cached profiles are stale", async () => {
-    authSessionMocks.getAuthSessionClaimsFromRequest.mockReturnValue({
+    authSessionMocks.getAdminAuthSessionClaimsFromRequest.mockReturnValue({
       userId: "D43B6BB3-1A72-45EC-A362-A6E1E0580EA0",
       email: "colivera080124@gmail.com",
       userType: "customer",
@@ -51,7 +51,7 @@ describe("readAdminAccess", () => {
   });
 
   it("does not promote a different account that shares the owner email", async () => {
-    authSessionMocks.getAuthSessionClaimsFromRequest.mockReturnValue({
+    authSessionMocks.getAdminAuthSessionClaimsFromRequest.mockReturnValue({
       userId: "electro-vendor-row",
       email: "colivera080124@gmail.com",
       userType: "customer",

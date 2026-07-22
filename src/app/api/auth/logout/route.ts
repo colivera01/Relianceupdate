@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthSessionCookieName, getAuthSessionCookieOptions } from "@/lib/auth-session";
+import {
+  getAdminApiSessionCookieName,
+  getAdminApiSessionCookieOptions,
+  getAdminUiSessionCookieName,
+  getAdminUiSessionCookieOptions,
+  getAuthSessionCookieName,
+  getAuthSessionCookieOptions,
+} from "@/lib/auth-session";
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,20 +29,34 @@ export async function POST(request: NextRequest) {
       message: 'Logged out successfully'
     });
 
-    response.cookies.set(getAuthSessionCookieName(), "", {
-      ...getAuthSessionCookieOptions(),
-      maxAge: 0,
-    });
-    response.cookies.set("userId", "", {
-      path: "/",
-      sameSite: "lax",
-      maxAge: 0,
-    });
-    response.cookies.set("session_user_id", "", {
-      path: "/",
-      sameSite: "lax",
-      maxAge: 0,
-    });
+    const body = await request.json().catch(() => ({}));
+    const scope = body?.scope === "admin" ? "admin" : "general";
+
+    if (scope === "admin") {
+      response.cookies.set(getAdminUiSessionCookieName(), "", {
+        ...getAdminUiSessionCookieOptions(),
+        maxAge: 0,
+      });
+      response.cookies.set(getAdminApiSessionCookieName(), "", {
+        ...getAdminApiSessionCookieOptions(),
+        maxAge: 0,
+      });
+    } else {
+      response.cookies.set(getAuthSessionCookieName(), "", {
+        ...getAuthSessionCookieOptions(),
+        maxAge: 0,
+      });
+      response.cookies.set("userId", "", {
+        path: "/",
+        sameSite: "lax",
+        maxAge: 0,
+      });
+      response.cookies.set("session_user_id", "", {
+        path: "/",
+        sameSite: "lax",
+        maxAge: 0,
+      });
+    }
     return response;
 
   } catch (error) {

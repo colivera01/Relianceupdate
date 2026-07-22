@@ -3,8 +3,8 @@ const AUTH_DEBUG = typeof process !== "undefined" && process.env.NODE_ENV !== "p
 function readStoredUserIdFromBrowser(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const rawPrimary = localStorage.getItem("userData");
-    const raw = rawPrimary || localStorage.getItem("user");
+    const rawPrimary = sessionStorage.getItem("userData");
+    const raw = rawPrimary || sessionStorage.getItem("user");
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { id?: string };
     return parsed?.id ? String(parsed.id) : null;
@@ -20,7 +20,7 @@ export function getClientSessionHeaders(preferredUserId?: string | null): Record
     return headers;
   }
 
-  const token = localStorage.getItem("authToken") || localStorage.getItem("auth_token");
+  const token = sessionStorage.getItem("authToken") || sessionStorage.getItem("auth_token");
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -61,7 +61,7 @@ export function getClientAuthHeaders(): Record<string, string> {
     return headers;
   }
 
-  const token = localStorage.getItem("authToken") || localStorage.getItem("auth_token");
+  const token = sessionStorage.getItem("authToken") || sessionStorage.getItem("auth_token");
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }

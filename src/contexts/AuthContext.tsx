@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 export interface AuthUser {
   id: string;
@@ -30,14 +30,14 @@ const DEV_AUTH_DEBUG =
 
 function readStoredUserRaw(): string | null {
   if (typeof window === 'undefined') return null;
-  const primary = localStorage.getItem('userData');
+  const primary = sessionStorage.getItem('userData');
   if (primary) return primary;
-  const legacy = localStorage.getItem('user');
+  const legacy = sessionStorage.getItem('user');
   if (legacy) {
-    localStorage.setItem('userData', legacy);
-    localStorage.removeItem('user');
+    sessionStorage.setItem('userData', legacy);
+    sessionStorage.removeItem('user');
     if (DEV_AUTH_DEBUG) {
-      console.info('[AuthProvider] migrated localStorage key "user" -> "userData"');
+      console.info('[AuthProvider] migrated sessionStorage key "user" -> "userData"');
     }
     return legacy;
   }
@@ -46,28 +46,20 @@ function readStoredUserRaw(): string | null {
 
 function persistClientSession(userData: AuthUser, authToken?: string | null) {
   const serialized = JSON.stringify(userData);
-  localStorage.setItem('userData', serialized);
+  sessionStorage.setItem('userData', serialized);
   if (authToken && String(authToken).trim()) {
-    localStorage.setItem('authToken', String(authToken));
-    localStorage.setItem('auth_token', String(authToken));
+    sessionStorage.setItem('authToken', String(authToken));
+    sessionStorage.setItem('auth_token', String(authToken));
   }
-  document.cookie = `userId=${encodeURIComponent(String(userData.id))}; path=/; samesite=lax`;
-  document.cookie = `session_user_id=${encodeURIComponent(String(userData.id))}; path=/; samesite=lax`;
 }
 
 function clearClientSession() {
-  localStorage.removeItem('userData');
-  localStorage.removeItem('user');
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('auth_token');
+  sessionStorage.removeItem('userData');
+  sessionStorage.removeItem('user');
+  sessionStorage.removeItem('authToken');
+  sessionStorage.removeItem('auth_token');
   sessionStorage.removeItem('registrationSuccess');
   sessionStorage.removeItem('registrationUserType');
-
-  document.cookie.split(';').forEach((cookie) => {
-    document.cookie = cookie
-      .replace(/^ +/, '')
-      .replace(/=.*/, `=;expires=${new Date(0).toUTCString()};path=/`);
-  });
 }
 
 function sessionIdentityKey(userData: AuthUser | null): string {
@@ -82,6 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname() || '';
+  const isAdminScope = pathname.startsWith('/admin');
+  const sessionEndpoint = isAdminScope ? '/admin/session' : '/api/auth/session';
   const userRef = useRef<AuthUser | null>(null);
   const reconcileInFlightRef = useRef<Promise<void> | null>(null);
 
@@ -94,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const task = (async () => {
       try {
-        const response = await fetch('/api/auth/session', {
+        const response = await fetch(sessionEndpoint, {
           method: 'GET',
           credentials: 'same-origin',
           cache: 'no-store',
@@ -138,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     reconcileInFlightRef.current = task;
     return task;
-  }, [router]);
+  }, [router, sessionEndpoint]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -158,19 +153,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void reconcileServerSession(true);
       }
     };
-    const reconcileChangedStorage = (event: StorageEvent) => {
-      if (!event.key || ['userData', 'user', 'authToken', 'auth_token'].includes(event.key)) {
-        void reconcileServerSession(true);
-      }
-    };
-
     window.addEventListener('focus', reconcileActiveTab);
     document.addEventListener('visibilitychange', reconcileActiveTab);
-    window.addEventListener('storage', reconcileChangedStorage);
     return () => {
       window.removeEventListener('focus', reconcileActiveTab);
       document.removeEventListener('visibilitychange', reconcileActiveTab);
-      window.removeEventListener('storage', reconcileChangedStorage);
     };
   }, [reconcileServerSession]);
 
@@ -179,8 +166,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(userData);
     const resolvedToken =
       (authToken != null && String(authToken).trim()) ||
-      localStorage.getItem('authToken') ||
-      localStorage.getItem('auth_token');
+      sessionStorage.getItem('authToken') ||
+      sessionStorage.getItem('auth_token');
     persistClientSession(userData, resolvedToken);
     if (DEV_AUTH_DEBUG) {
       console.info('[AuthProvider] login()', {
@@ -199,6 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ scope: isAdminScope ? 'admin' : 'general' }),
       });
 
       if (!response.ok) {
@@ -224,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const updatedUser = { ...user, ...userData };
       userRef.current = updatedUser;
       setUser(updatedUser);
-      localStorage.setItem('userData', JSON.stringify(updatedUser));
+      sessionStorage.setItem('userData', JSON.stringify(updatedUser));
     }
   };
 

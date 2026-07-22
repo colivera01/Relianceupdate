@@ -1,5 +1,5 @@
 import { getUserIdFromRequest, verifyJwt } from "./auth";
-import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "./auth-session";
+import { getAdminAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "./auth-session";
 import {
   isOwnerAdminUserId,
 } from "@/lib/internal-identities";
@@ -45,7 +45,7 @@ export async function readAdminAccess(request: Request): Promise<{
   role: string | null;
   isAdmin: boolean;
 }> {
-  const signedSession = getAuthSessionClaimsFromRequest(request);
+  const signedSession = getAdminAuthSessionClaimsFromRequest(request);
   const userId = signedSession?.userId || (await getUserIdFromRequest(request));
 
   let role: string | undefined = signedSession?.availableProfiles?.includes("admin")
