@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Calendar, Clock, RefreshCw, Star } from 'lucide-react';
+import { Calendar, Clock, LogIn, RefreshCw, ShieldCheck, Star, UserPlus } from 'lucide-react';
 import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { SmartVideoPlayer } from '@/components/reviews/SmartVideoPlayer';
@@ -24,6 +24,7 @@ import { getCustomerProofStageLabel } from '@/lib/vendor-job-video-stages';
 import { Badge } from '@/components/ui/badge';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { getClientSessionHeaders } from '@/lib/client-session';
+import { appendAuthNext } from '@/lib/auth-next';
 
 type BookingDetail = {
   id: string;
@@ -60,6 +61,11 @@ type BookingMediaAsset = {
   proofStage?: 'before' | 'during' | 'after' | null;
   isPrimaryProofVideo?: boolean;
   createdAt?: string | null;
+};
+
+type BookingClaimIssue = {
+  code: string;
+  message: string;
 };
 
 function normalizeStatus(status: string | null | undefined): string {
@@ -159,10 +165,11 @@ function BookingMediaDetailPageContent() {
     requestedReturnTo === '/reviews'
       ? `/my-bookings/${bookingId}?returnTo=${encodeURIComponent('/reviews')}`
       : `/my-bookings/${bookingId}`;
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, logout } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [claimIssue, setClaimIssue] = useState<BookingClaimIssue | null>(null);
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [customerLifecycle, setCustomerLifecycle] = useState<BookingLifecycleDetail | null>(null);
   const [assets, setAssets] = useState<BookingMediaAsset[]>([]);
@@ -184,6 +191,15 @@ function BookingMediaDetailPageContent() {
 
   const userId = resolveCustomerUserId(user?.id);
   const bypassConsent = process.env.NEXT_PUBLIC_BYPASS_CONSENT === 'true';
+  const invitationQuery = searchParams?.toString() || '';
+  const invitationPath = `/my-bookings/${bookingId}${
+    invitationQuery ? `?${invitationQuery}` : ''
+  }`;
+  const registrationHref = appendAuthNext(
+    '/auth/register?type=user',
+    invitationPath
+  );
+  const loginHref = appendAuthNext('/auth/login', invitationPath);
 
   const loadPage = async () => {
     if (!bookingId) {
@@ -199,6 +215,7 @@ function BookingMediaDetailPageContent() {
 
     setLoading(true);
     setError(null);
+    setClaimIssue(null);
     try {
       if (videoReadyFromLink) {
         const claimResponse = await fetch(`/api/bookings/${bookingId}/claim`, {
@@ -212,6 +229,25 @@ function BookingMediaDetailPageContent() {
         });
         const claimJson = await claimResponse.json().catch(() => ({}));
         if (!claimResponse.ok) {
+          const claimCode = String(claimJson?.code || '').trim();
+          if (
+            claimCode === 'CLAIM_EMAIL_MISMATCH' ||
+            claimCode === 'BOOKING_ALREADY_CLAIMED'
+          ) {
+            setClaimIssue({
+              code: claimCode,
+              message: String(
+                claimJson?.error ||
+                  'This service record belongs to a different customer account.'
+              ),
+            });
+            setBooking(null);
+            setCustomerLifecycle(null);
+            setAssets([]);
+            setVideos([]);
+            setActiveVideoId(null);
+            return;
+          }
           throw new Error(
             claimJson?.error ||
               `Unable to connect this service record (${claimResponse.status})`
@@ -787,6 +823,69 @@ function BookingMediaDetailPageContent() {
               <div className="h-24 rounded bg-gray-100 animate-pulse" />
               <div className="h-24 rounded bg-gray-100 animate-pulse" />
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (claimIssue) {
+    return (
+      <div className="min-h-[68vh] px-4 py-10">
+        <div className="mx-auto flex min-h-[58vh] w-full max-w-2xl items-center justify-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="service-video-account-title"
+            className="w-full rounded-[28px] border border-white/10 bg-slate-950/88 p-7 text-white shadow-[0_28px_90px_rgba(0,0,0,0.28)] sm:p-9"
+          >
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 text-blue-200">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+            <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-blue-200">
+              Customer account protection
+            </p>
+            <h1
+              id="service-video-account-title"
+              className="mt-2 text-3xl font-semibold text-white"
+            >
+              This video was shared with another customer email
+            </h1>
+            <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+              You are currently signed in as {user?.email}. To protect the
+              completed work order, Reliance can only connect it to the customer
+              email that received the service-video link.
+            </p>
+            <div className="mt-5 rounded-xl border border-blue-300/20 bg-blue-500/10 px-5 py-4 text-sm leading-6 text-slate-200">
+              <p className="font-semibold text-white">
+                Continue with the email that received this link.
+              </p>
+              <p className="mt-1">
+                Customer registration is free. After registration or sign-in,
+                this work order will open and be saved in My Service Records.
+              </p>
+            </div>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => void logout(registrationHref)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-500"
+              >
+                <UserPlus className="h-4 w-4" />
+                Switch Account and Register Free
+              </button>
+              <button
+                type="button"
+                onClick={() => void logout(loginHref)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+              >
+                <LogIn className="h-4 w-4" />
+                Switch Account and Sign In
+              </button>
+            </div>
+            <p className="mt-5 text-xs leading-5 text-slate-400">
+              Reference ID: <span className="font-mono">{bookingId}</span>
+            </p>
           </div>
         </div>
       </div>

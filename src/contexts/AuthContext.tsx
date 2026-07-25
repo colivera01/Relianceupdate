@@ -19,7 +19,7 @@ interface AuthContextType {
   isLoading: boolean;
   /** Persist session. Pass `authToken` from the login API so it is not overwritten client-side. */
   login: (userData: AuthUser, authToken?: string | null) => void;
-  logout: () => Promise<void>;
+  logout: (redirectTo?: string) => Promise<void>;
   updateUser: (userData: Partial<AuthUser>) => void;
 }
 
@@ -179,7 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = async () => {
+  const logout = async (redirectTo = '/auth/login') => {
+    const safeRedirectTo =
+      redirectTo.startsWith('/') && !redirectTo.startsWith('//')
+        ? redirectTo
+        : '/auth/login';
     try {
       const response = await fetch('/api/auth/logout', {
         method: 'POST',
@@ -197,13 +201,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       clearClientSession();
 
-      router.push('/auth/login');
+      router.push(safeRedirectTo);
     } catch (error) {
       console.error('Logout error:', error);
       userRef.current = null;
       setUser(null);
       clearClientSession();
-      router.push('/auth/login');
+      router.push(safeRedirectTo);
     }
   };
 
