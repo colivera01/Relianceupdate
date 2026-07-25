@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Flashlight, FlashlightOff } from "lucide-react";
+import { Flashlight, FlashlightOff, LoaderCircle } from "lucide-react";
 import { GuidanceCallout } from "@/components/guidance/GuidanceCallout";
 import { TutorialEntryPoint } from "@/components/guidance/TutorialEntryPoint";
 import { useAuth } from "@/contexts/AuthContext";
@@ -259,11 +259,13 @@ function getCaptureLinkStepLabel(stage: (typeof STAGES)[number]["key"]): string 
 
 function getStageCardActionLabel(input: {
   isOpening: boolean;
+  isUploading?: boolean;
   isSaved: boolean;
   hasDraft: boolean;
   hasCaptureToken: boolean;
   stage: (typeof STAGES)[number]["key"];
 }): string {
+  if (input.isUploading) return "Uploading and saving...";
   if (input.isOpening) return "Opening camera...";
   if (input.hasDraft) return "Preview open - finish or retake";
   if (input.isSaved) return "Recorded - tap to edit";
@@ -1495,6 +1497,8 @@ export default function EmployeeJobsPage() {
                 const selected = selectedStage.key === stage.key;
                 const stageActionKey = `${job.id}:${stage.key}`;
                 const isOpeningThisStage = recordingOpeningKey === stageActionKey;
+                const cardFeedback = stageFeedback[stageActionKey] || null;
+                const isUploadingThisStage = cardFeedback?.status === "uploading";
                 const canStartThisStage = canStartStageFromCard;
                 return (
                   <button
@@ -1510,8 +1514,10 @@ export default function EmployeeJobsPage() {
                       }
                     }}
                     disabled={Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))}
-                    className={`min-h-[128px] rounded-2xl border p-4 text-left transition ${
-                      selected
+                    className={`min-h-[168px] rounded-2xl border p-4 text-left transition ${
+                      isUploadingThisStage
+                        ? "border-blue-200 bg-blue-500/25 shadow-[0_0_0_1px_rgba(191,219,254,0.45)]"
+                        : selected
                         ? "border-blue-300 bg-blue-600/35 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
                         : done
                           ? "border-emerald-400/35 bg-emerald-500/12 hover:border-emerald-300"
@@ -1548,12 +1554,31 @@ export default function EmployeeJobsPage() {
                         >
                           {getStageCardActionLabel({
                             isOpening: isOpeningThisStage,
+                            isUploading: isUploadingThisStage,
                             isSaved: done,
                             hasDraft: Boolean(capturedDraft?.jobId === job.id && capturedDraft.stage === stage.key),
                             hasCaptureToken,
                             stage: stage.key,
                           })}
                         </p>
+                        {cardFeedback ? (
+                          <p
+                            role="status"
+                            aria-live="polite"
+                            className={`mt-3 flex items-center gap-2 text-sm font-semibold ${
+                              cardFeedback.status === "error"
+                                ? "text-red-200"
+                                : cardFeedback.status === "success"
+                                  ? "text-emerald-200"
+                                  : "text-blue-100"
+                            }`}
+                          >
+                            {isUploadingThisStage ? (
+                              <LoaderCircle className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+                            ) : null}
+                            <span>{cardFeedback.message}</span>
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </button>

@@ -3,6 +3,7 @@ import { sendEmail } from "@/lib/email/resend";
 import { sendSms } from "@/lib/sms/twilio";
 import { logNotificationAttempt } from "@/lib/notifications/notification-audit";
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
+import { formatCustomerFacingServiceDateTime } from "@/lib/notifications/customer-facing-date";
 
 export type JobAssignmentNotificationInput = {
   bookingId: string;
@@ -15,6 +16,7 @@ export type JobAssignmentNotificationInput = {
   jobTitle: string;
   customerName?: string | null;
   scheduledFor?: string | Date | null;
+  serviceTimeZone?: string | null;
 };
 
 export type JobAssignmentNotificationResult = {
@@ -44,19 +46,6 @@ function normalizeE164ish(phone: string | null | undefined): string | null {
   return digits ? `+${digits}` : null;
 }
 
-function formatScheduledFor(value: string | Date | null | undefined): string {
-  if (!value) return "Date/time not set yet";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "Date/time not set yet";
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function normalizeServiceOrderTitle(jobTitle: string, customerName: string): string {
   const title = String(jobTitle || "Assigned service").trim();
   const customer = String(customerName || "").trim();
@@ -77,7 +66,10 @@ export async function sendJobAssignmentNotification(
   const vendorName = String(input.vendorName || "Reliance Vendor").trim();
   const customerName = String(input.customerName || "").trim();
   const serviceOrderTitle = normalizeServiceOrderTitle(input.jobTitle || "", customerName);
-  const scheduledFor = formatScheduledFor(input.scheduledFor);
+  const scheduledFor = formatCustomerFacingServiceDateTime({
+    value: input.scheduledFor,
+    timeZone: input.serviceTimeZone,
+  });
   const link = input.employeeJobLink;
 
   if (env.emailEnabled && email) {

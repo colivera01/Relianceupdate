@@ -4,6 +4,7 @@ import { sendSms } from '@/lib/sms/twilio';
 import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
+import { formatCustomerFacingServiceDateTime } from '@/lib/notifications/customer-facing-date';
 
 export type VideoReadyNotificationInput = {
   actorUserId: string;
@@ -14,6 +15,8 @@ export type VideoReadyNotificationInput = {
   serviceName?: string | null;
   bookingTitle?: string | null;
   vendorName?: string | null;
+  completedAt?: string | Date | null;
+  serviceTimeZone?: string | null;
   videoUrl: string;
 };
 
@@ -51,6 +54,11 @@ export async function sendVideoReadyNotification(
   });
   const subject = `Your service video from ${vendorName} is ready`;
   const message = `${vendorName} has completed and shared your Reliance service video proof for ${serviceLabel}.`;
+  const completedAt = formatCustomerFacingServiceDateTime({
+    value: input.completedAt,
+    timeZone: input.serviceTimeZone,
+    fallback: '',
+  });
 
   if (env.emailEnabled && customerEmail) {
     const html = buildRelianceEmailHtml({
@@ -64,6 +72,7 @@ export async function sendVideoReadyNotification(
       details: [
         { label: 'Service', value: serviceLabel },
         { label: 'Service provider', value: vendorName },
+        ...(completedAt ? [{ label: 'Work completed', value: completedAt }] : []),
         { label: 'Video package', value: 'Starting Condition, Work in Progress, and Final Result' },
       ],
       cta: { label: 'Watch Service Video', href: input.videoUrl },
@@ -73,6 +82,7 @@ export async function sendVideoReadyNotification(
       `Hello${customerName ? ` ${customerName}` : ''},`,
       '',
       message,
+      ...(completedAt ? [`Work completed: ${completedAt}`] : []),
       '',
       'Open Reliance to review the Starting Condition, Work in Progress, and Final Result clips shared by your provider.',
       '',

@@ -101,7 +101,8 @@ export async function POST(request: NextRequest) {
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!emailRegex.test(normalizedEmail)) {
       return NextResponse.json(
         { error: 'Invalid email format' },
         { status: 400 }
@@ -118,6 +119,49 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = hashPassword(password);
     const isProductionRuntime = process.env.NODE_ENV === "production";
+    let existingCustomer:
+      | {
+          id: string;
+          email: string | null;
+          phone: string | null;
+          accountStatus: string | null;
+        }
+      | null = null;
+
+    try {
+      existingCustomer = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          accountStatus: true,
+        },
+      });
+    } catch (existingAccountLookupError) {
+      console.error("Customer existing-account lookup failed:", existingAccountLookupError);
+      return NextResponse.json(
+        {
+          error: "Registration could not be confirmed right now. Please try again in a moment.",
+          code: "CUSTOMER_REGISTRATION_ACCOUNT_LOOKUP_FAILED",
+        },
+        { status: 503 }
+      );
+    }
+
+    const restoringDeactivatedAccount =
+      String(existingCustomer?.accountStatus || "").trim().toLowerCase() ===
+      "deactivated";
+    if (existingCustomer && !restoringDeactivatedAccount) {
+      return NextResponse.json(
+        {
+          error:
+            "An account already uses this email. Sign in or reset the password instead of creating another account.",
+          code: "CUSTOMER_ACCOUNT_ALREADY_EXISTS",
+        },
+        { status: 409 }
+      );
+    }
 
     const registryFallbackId = crypto.randomUUID();
     let claimBooking:
@@ -167,7 +211,11 @@ export async function POST(request: NextRequest) {
           claimBooking.customerMetadata
         ),
         bookingUserEmail: claimBooking.user?.email,
-        accountEmail: email,
+        bookingUserId: claimBooking.userId,
+        accountEmail: normalizedEmail,
+        restorableUserId: restoringDeactivatedAccount
+          ? existingCustomer?.id
+          : null,
         claimToken: serviceVideoIntent.claimToken,
       });
       if (!claimValidation.ok) {
@@ -189,7 +237,7 @@ export async function POST(request: NextRequest) {
       id: registryFallbackId,
       firstName,
       lastName,
-      email,
+      email: normalizedEmail,
       phone,
       passwordHash,
       address,
@@ -239,10 +287,10 @@ export async function POST(request: NextRequest) {
           : {};
       const staleCoordinateClear = { latitude: null, longitude: null, geocodedAt: null };
       const persistedUser = await (prisma as any).user.upsert({
-        where: { email },
+        where: { email: normalizedEmail },
         create: {
           name: `${firstName} ${lastName}`.trim(),
-          email,
+          email: normalizedEmail,
           phone,
           address: addressInput.address || null,
           city: addressInput.city || null,
@@ -259,6 +307,14 @@ export async function POST(request: NextRequest) {
           state: addressInput.state || null,
           zipCode: addressInput.zipCode || null,
           ...(geocodeResult?.status === "success" ? coordinateData : staleCoordinateClear),
+          ...(restoringDeactivatedAccount
+            ? {
+                accountStatus: "active",
+                accountStatusUpdatedAt: new Date(),
+                accountStatusReason: null,
+                accountStatusAdminNotes: null,
+              }
+            : {}),
         },
         select: {
           id: true,
@@ -267,10 +323,11 @@ export async function POST(request: NextRequest) {
       persistedCustomerId = String(persistedUser?.id || registryFallbackId);
       const credential = await upsertDbCredential({
         userId: persistedCustomerId,
-        email,
+        email: normalizedEmail,
         passwordHash,
+        ...(restoringDeactivatedAccount ? { emailVerifiedAt: null } : {}),
       });
-      if (claimBooking) {
+      if (claimBooking && claimBooking.userId !== persistedCustomerId) {
         const claimMetadata = parseCustomerBookingClaimMetadata(
           claimBooking.customerMetadata
         );
@@ -300,7 +357,7 @@ export async function POST(request: NextRequest) {
         });
       }
       verification = await sendOrPreviewEmailVerification({
-        email,
+        email: normalizedEmail,
         credentialId: String(credential.id),
         recipientName: `${firstName} ${lastName}`.trim() || null,
         baseUrl: request.nextUrl.origin,
@@ -343,6 +400,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Customer registered successfully',
       customerId: persistedCustomerId,
+      accountRestored: restoringDeactivatedAccount,
       emailVerificationRequired: true,
       emailDeliveryQueued: Boolean(verification?.sendResult.ok),
       ...(process.env.NODE_ENV !== "production" && verification

@@ -57,6 +57,8 @@ describe("sendVideoReadyNotification", () => {
       customerName: "Alex",
       serviceName: "Apartment Cleaning",
       vendorName: "Metro Home Care Pros",
+      completedAt: "2026-07-25T01:59:13.000Z",
+      serviceTimeZone: "America/New_York",
       videoUrl: "https://relianceonline.org/my-bookings/booking-1?videoReady=1",
     });
 
@@ -67,12 +69,15 @@ describe("sendVideoReadyNotification", () => {
     expect(email.html).toContain("Metro Home Care Pros shared your service video proof");
     expect(email.html).toContain("completed the service-video package for your recent service");
     expect(email.html).toContain("Service provider");
+    expect(email.html).toContain("Work completed");
+    expect(email.html).toMatch(/Jul 24, 2026, 9:59 PM (EDT|GMT-4)/);
     expect(email.html).toContain("Video package");
     expect(email.html).toContain("Backup link:");
     expect(email.html).toContain("reliance-email-logo.png");
     expect(email.text).toContain(
       "Metro Home Care Pros has completed and shared your Reliance service video proof for Apartment Cleaning."
     );
+    expect(email.text).toMatch(/Work completed: Jul 24, 2026, 9:59 PM (EDT|GMT-4)/);
     expect(hoisted.sendSms).toHaveBeenCalledTimes(1);
     expect(hoisted.sendSms.mock.calls[0][0]).toMatchObject({
       to: "+14075550199",

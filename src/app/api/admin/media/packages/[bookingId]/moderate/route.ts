@@ -125,6 +125,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         vendorId: true,
         title: true,
         clientName: true,
+        date: true,
         userId: true,
         customerMetadata: true,
         vendor: {
@@ -307,6 +308,11 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           serviceName: booking.service?.name,
           bookingTitle: booking.title,
           vendorName: booking.vendor?.businessName || booking.vendor?.name || null,
+          completedAt: booking.date || null,
+          serviceTimeZone:
+            typeof bookingMetadata.service_time_zone === "string"
+              ? bookingMetadata.service_time_zone
+              : null,
           videoUrl,
         });
         notified = Boolean(sendResult.ok);

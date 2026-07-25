@@ -292,7 +292,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(vi.mocked(requireVendorMembership)).toHaveBeenCalledWith(req, "v1");
   });
 
-  it("keeps private approved media packages out of customer-visible service order counts", async () => {
+  it("counts an approved package as an approved service order while keeping private proof out of public counts", async () => {
     mockHappyPathData();
     hoisted.mediaAssetFindMany.mockResolvedValue([
       {
@@ -365,7 +365,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(res.status).toBe(200);
     const body = await readJson(res);
     expect(body.approvedProofs).toBe(1);
-    expect(body.approvedServiceOrderCount).toBe(0);
+    expect(body.approvedServiceOrderCount).toBe(1);
     expect(body.publicServiceOrderCount).toBe(0);
   });
 
@@ -467,6 +467,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
       rejected: 0,
       archived: 0,
     });
+    expect((body.stats as Record<string, unknown>).completionEligibleBookingCount).toBe(2);
   });
 
   it("keeps rejected staged media out of awaiting-review dashboard counts", async () => {

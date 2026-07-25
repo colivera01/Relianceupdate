@@ -727,6 +727,10 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             jobTitle,
             customerName,
             scheduledFor: booking.scheduledFor || booking.date || null,
+            serviceTimeZone:
+              typeof assignmentMetadata.service_time_zone === "string"
+                ? assignmentMetadata.service_time_zone
+                : null,
           });
           if (notification.anySuccess) successfulMembershipIds.push(assignmentMember.id);
           notificationResults.push({
@@ -875,6 +879,11 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         serviceName: booking.service?.name || null,
         bookingTitle: booking.title || null,
         vendorName: booking.vendor?.businessName || booking.vendor?.name || null,
+        completedAt: booking.date || null,
+        serviceTimeZone:
+          typeof metadata.service_time_zone === "string"
+            ? metadata.service_time_zone
+            : null,
         videoUrl: toCustomerCompletedWorkUrl(
           request,
           booking.id,

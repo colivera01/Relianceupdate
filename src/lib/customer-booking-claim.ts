@@ -78,7 +78,9 @@ export function issueCustomerBookingClaimToken(
 export function validateCustomerBookingClaim(input: {
   metadata: CustomerBookingClaimMetadata;
   bookingUserEmail: unknown;
+  bookingUserId?: unknown;
   accountEmail: unknown;
+  restorableUserId?: unknown;
   claimToken?: unknown;
   now?: Date;
 }): CustomerBookingClaimValidation {
@@ -93,6 +95,11 @@ export function validateCustomerBookingClaim(input: {
   }
 
   if (!isUnclaimedBookingUserEmail(input.bookingUserEmail)) {
+    const bookingUserId = String(input.bookingUserId || "").trim();
+    const restorableUserId = String(input.restorableUserId || "").trim();
+    if (bookingUserId && restorableUserId && bookingUserId === restorableUserId) {
+      return { ok: true };
+    }
     return {
       ok: false,
       code: "BOOKING_ALREADY_CLAIMED",

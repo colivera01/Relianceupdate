@@ -1463,7 +1463,10 @@ export default function AdminMediaModerationClient({
       )}
 
       <Dialog open={Boolean(selectedAsset)} onOpenChange={(open) => !open && setSelectedAsset(null)}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent
+          className="max-h-[90dvh] max-w-2xl overflow-y-auto overscroll-contain"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>
               {selectedAsset ? `${STAGE_LABELS[selectedAsset.stage]} video — ${selectedAsset.pack.jobTitle || 'Job package'}` : 'Media Asset'}
@@ -1479,7 +1482,12 @@ export default function AdminMediaModerationClient({
                 <div className="p-3 rounded border border-amber-200 bg-amber-50 text-amber-900">{assetPlaybackError}</div>
               ) : null}
               {assetPlaybackUrl && selectedAsset.video.mimeType.startsWith('video/') && (
-                <video className="w-full rounded border bg-black" controls src={assetPlaybackUrl}>
+                <video
+                  className="max-h-[52dvh] w-full rounded border bg-black object-contain"
+                  controls
+                  playsInline
+                  src={assetPlaybackUrl}
+                >
                   Your browser does not support video playback.
                 </video>
               )}

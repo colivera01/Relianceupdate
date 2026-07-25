@@ -75,6 +75,7 @@ export interface VendorDashboardResponse {
     totalClients: number;
     rating: number;
     ratingCount?: number;
+    completionEligibleBookingCount?: number;
   };
   employeePerformance?: Array<{
     membershipId: string;

@@ -821,6 +821,11 @@ export async function GET(
         archived: archivedJobs.length,
       }
     );
+    const completionEligibleBookingCount =
+      lifecycleCounts.scheduled +
+      lifecycleCounts.inProgress +
+      lifecycleCounts.awaitingReview +
+      lifecycleCounts.completed;
 
     if (jobsOnly) {
       const response = {
@@ -1025,7 +1030,6 @@ export async function GET(
         !["REJECTED", "CANCELED", "ARCHIVED"].includes(normalizeKey(pack.bookingStatus)) &&
         pack.visibilityStatuses.some((status) => normalizeKey(status) === PUBLIC_VISIBILITY_STATUS)
     ).length;
-    const customerVisibleApprovedServiceOrders = publicServiceOrders;
     const trustScore = toVendorTrustScore(currentTrustScoreSnapshot as any);
 
     let storageUsedBytes = "0";
@@ -1066,6 +1070,7 @@ export async function GET(
       },
       stats: {
         totalBookings,
+        completionEligibleBookingCount,
         totalEarnings: parseFloat(totalEarnings.toFixed(2)), // Format as number with 2 decimals
         totalClients,
         rating: vendorRatingStats.averageRating,
@@ -1081,7 +1086,7 @@ export async function GET(
       pendingModerationProofs,
       approvedProofs: approvedServiceOrders,
       pendingModerationServiceOrderCount: pendingModerationServiceOrders,
-      approvedServiceOrderCount: customerVisibleApprovedServiceOrders,
+      approvedServiceOrderCount: approvedServiceOrders,
       publicServiceOrderCount: publicServiceOrders,
       approvedProofAssets,
       archivedProofs: Number(archivedProofs || 0),

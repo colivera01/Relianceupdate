@@ -770,15 +770,15 @@ export function AdminAccountsConsole({ summary }: AdminAccountsConsoleProps) {
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="h-auto flex-wrap gap-2 rounded-2xl bg-slate-100 p-2">
+            <TabsList className="h-auto flex-wrap gap-2 rounded-2xl bg-slate-950/80 p-2">
               {TAB_ORDER.map((tab) => (
                 <TabsTrigger
                   key={tab}
                   value={tab}
-                  className="rounded-xl px-4 py-2.5 text-sm data-[state=active]:bg-white"
+                  className="rounded-xl px-4 py-2.5 text-sm text-slate-200 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-none"
                 >
                   <span className="font-medium">{TAB_CONFIG[tab].label}</span>
-                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 data-[state=active]:bg-slate-100">
+                  <span className="ml-2 rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-100">
                     {countFormatter(summary[tab === 'customers' ? 'customers' : tab === 'vendors' ? 'vendors' : 'restricted'])}
                   </span>
                 </TabsTrigger>
@@ -931,19 +931,23 @@ export function AdminAccountsConsole({ summary }: AdminAccountsConsoleProps) {
                 results.map((account) => {
                   const joinedAt = formatDateTime(account.createdAt);
                   const statusUpdatedAt = formatDateTime(account.accountStatusUpdatedAt);
+                  const isSelected =
+                    selected?.id === account.id && selected?.targetType === account.targetType;
                   return (
                     <button
                       key={`${account.targetType}-${account.id}`}
                       type="button"
                       className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                        selected?.id === account.id && selected?.targetType === account.targetType
-                          ? 'border-[#204080] bg-[#f5f8fc]'
+                        isSelected
+                          ? 'border-blue-400 bg-slate-900 ring-1 ring-blue-400/40'
                           : 'border-gray-200 bg-white hover:border-[#204080]'
                       }`}
                       onClick={() => setSelected(account)}
                     >
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-gray-900">{account.displayName}</span>
+                        <span className={`font-semibold ${isSelected ? 'text-white' : 'text-gray-900'}`}>
+                          {account.displayName}
+                        </span>
                         <Badge variant="outline">
                           {account.targetType === 'vendor' ? 'vendor' : 'customer'}
                         </Badge>
@@ -961,7 +965,7 @@ export function AdminAccountsConsole({ summary }: AdminAccountsConsoleProps) {
                         )}
                       </div>
 
-                      <div className="mt-2 space-y-1 text-sm text-gray-700">
+                      <div className={`mt-2 space-y-1 text-sm ${isSelected ? 'text-slate-200' : 'text-gray-700'}`}>
                         {account.targetType === 'vendor' ? (
                           <>
                             {account.ownerName && account.ownerName !== account.displayName ? (
@@ -986,7 +990,7 @@ export function AdminAccountsConsole({ summary }: AdminAccountsConsoleProps) {
                         {joinedAt ? <div>Joined: {joinedAt}</div> : null}
                       </div>
 
-                      <div className="mt-2 text-xs text-gray-500">
+                      <div className={`mt-2 text-xs ${isSelected ? 'text-slate-400' : 'text-gray-500'}`}>
                         ID: <span className="font-mono">{account.id}</span>
                         {account.email ? ` | ${account.email}` : ''}
                         {account.phone ? ` | ${account.phone}` : ''}

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
+import {
+  formatCustomerFacingServiceDate,
+  formatCustomerFacingServiceDateTime,
+} from '@/lib/notifications/customer-facing-date';
 
 describe('formatCustomerFacingServiceDate', () => {
   it('keeps UTC-midnight date stable', () => {
@@ -24,5 +27,25 @@ describe('formatCustomerFacingServiceDate', () => {
       fallback: 'Recent booking',
     });
     expect(out).toBe('Recent booking');
+  });
+});
+
+describe('formatCustomerFacingServiceDateTime', () => {
+  it('formats an absolute timestamp in the service-order sender time zone', () => {
+    const out = formatCustomerFacingServiceDateTime({
+      value: '2026-07-25T01:59:13.000Z',
+      timeZone: 'America/New_York',
+    });
+
+    expect(out).toMatch(/^Jul 24, 2026, 9:59 PM (EDT|GMT-4)$/);
+  });
+
+  it('returns a useful fallback for invalid date-time values', () => {
+    expect(
+      formatCustomerFacingServiceDateTime({
+        value: 'not-a-date',
+        fallback: 'Date/time unavailable',
+      })
+    ).toBe('Date/time unavailable');
   });
 });

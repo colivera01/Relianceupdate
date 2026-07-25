@@ -65,6 +65,18 @@ describe("customer booking claim helpers", () => {
     ).toMatchObject({ ok: false, code: "BOOKING_ALREADY_CLAIMED" });
   });
 
+  it("allows a deactivated identity to reclaim its own already-linked booking", () => {
+    expect(
+      validateCustomerBookingClaim({
+        metadata: { claim_contact_email: "customer@example.com" },
+        bookingUserEmail: "customer@example.com",
+        bookingUserId: "customer-1",
+        accountEmail: "customer@example.com",
+        restorableUserId: "customer-1",
+      })
+    ).toEqual({ ok: true });
+  });
+
   it("removes the claim secret when the booking is connected to the customer", () => {
     const claimed = markCustomerBookingClaimed(
       {

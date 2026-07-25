@@ -3,16 +3,19 @@ import { POST } from "./route";
 
 const hoisted = vi.hoisted(() => {
   const userUpsert = vi.fn();
+  const userFindUnique = vi.fn();
   const bookingFindUnique = vi.fn();
   const bookingUpdateMany = vi.fn();
 
   return {
     userUpsert,
+    userFindUnique,
     bookingFindUnique,
     bookingUpdateMany,
     prisma: {
       user: {
         upsert: userUpsert,
+        findUnique: userFindUnique,
       },
       booking: {
         findUnique: bookingFindUnique,
@@ -81,6 +84,8 @@ describe("POST /api/customer/register", () => {
   beforeEach(() => {
     vi.stubEnv("NODE_ENV", "production");
     hoisted.userUpsert.mockReset();
+    hoisted.userFindUnique.mockReset();
+    hoisted.userFindUnique.mockResolvedValue(null);
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdateMany.mockReset();
   });
@@ -173,5 +178,77 @@ describe("POST /api/customer/register", () => {
       customer_account_linked: true,
       linked_customer_user_id: "customer-1",
     });
+  });
+
+  it("restores a deactivated customer identity and keeps its already-linked service record", async () => {
+    const { upsertDbCredential } = await import("@/lib/auth-credentials");
+    vi.mocked(upsertDbCredential).mockClear();
+    hoisted.userFindUnique.mockResolvedValueOnce({
+      id: "customer-deactivated",
+      email: "beta.customer@reliance.test",
+      phone: "407-555-0199",
+      accountStatus: "deactivated",
+    });
+    hoisted.bookingFindUnique.mockResolvedValueOnce({
+      id: "booking-1",
+      userId: "customer-deactivated",
+      customerMetadata: JSON.stringify({
+        claim_status: "CLAIMED",
+        claim_contact_email: "beta.customer@reliance.test",
+        linked_customer_user_id: "customer-deactivated",
+      }),
+      user: { email: "beta.customer@reliance.test" },
+    });
+    hoisted.userUpsert.mockResolvedValueOnce({ id: "customer-deactivated" });
+
+    const response = await POST(
+      createCustomerRegisterRequest({
+        registrationNextPath: "/my-bookings/booking-1?videoReady=1",
+      })
+    );
+    const json = await readJson(response);
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({
+      success: true,
+      customerId: "customer-deactivated",
+      accountRestored: true,
+      emailVerificationRequired: true,
+    });
+    expect(hoisted.userUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: "beta.customer@reliance.test" },
+        update: expect.objectContaining({
+          accountStatus: "active",
+          accountStatusReason: null,
+          accountStatusAdminNotes: null,
+        }),
+      })
+    );
+    expect(upsertDbCredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "customer-deactivated",
+        emailVerifiedAt: null,
+      })
+    );
+    expect(hoisted.bookingUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite an existing active account through registration", async () => {
+    hoisted.userFindUnique.mockResolvedValueOnce({
+      id: "customer-active",
+      email: "beta.customer@reliance.test",
+      phone: "407-555-0199",
+      accountStatus: "active",
+    });
+
+    const response = await POST(createCustomerRegisterRequest());
+    const json = await readJson(response);
+
+    expect(response.status).toBe(409);
+    expect(json).toMatchObject({
+      code: "CUSTOMER_ACCOUNT_ALREADY_EXISTS",
+    });
+    expect(hoisted.userUpsert).not.toHaveBeenCalled();
   });
 });

@@ -150,6 +150,8 @@ describe("vendor-attributed SMS copy", () => {
       employeeJobLink: "https://relianceonline.org/employee/jobs?jobId=booking-1",
       vendorName: "Electro LLC",
       jobTitle: "Outlet Installation",
+      scheduledFor: "2026-07-25T01:59:13.000Z",
+      serviceTimeZone: "America/New_York",
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
@@ -175,6 +177,8 @@ describe("vendor-attributed SMS copy", () => {
       vendorName: "Electro LLC",
       jobTitle: "Ivan Olivera - Electrical Service Recording Test",
       customerName: "Ivan Olivera",
+      scheduledFor: "2026-07-25T01:59:13.000Z",
+      serviceTimeZone: "America/New_York",
     });
 
     expect(hoisted.sendEmail.mock.calls[0][0].subject).toBe(
@@ -185,6 +189,9 @@ describe("vendor-attributed SMS copy", () => {
     );
     expect(hoisted.sendEmail.mock.calls[0][0].text).toContain(
       "Job: Electrical Service Recording Test"
+    );
+    expect(hoisted.sendEmail.mock.calls[0][0].text).toContain(
+      "Jul 24, 2026, 9:59 PM EDT"
     );
     expect(hoisted.sendEmail.mock.calls[0][0].html).toContain('alt="Reliance"');
     expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("background:#050a12");

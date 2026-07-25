@@ -5,6 +5,10 @@ type CustomerFacingDateInput = {
   fallback?: string;
 };
 
+type CustomerFacingDateTimeInput = CustomerFacingDateInput & {
+  timeZoneName?: 'short' | 'long';
+};
+
 function isUtcMidnight(date: Date): boolean {
   return (
     date.getUTCHours() === 0 &&
@@ -58,5 +62,29 @@ export function formatCustomerFacingServiceDate(input: CustomerFacingDateInput):
     month: 'short',
     day: 'numeric',
     ...(timeZone ? { timeZone } : {}),
+  }).format(date);
+}
+
+export function formatCustomerFacingServiceDateTime(
+  input: CustomerFacingDateTimeInput
+): string {
+  const fallback = input.fallback || 'Date/time not set yet';
+  if (!input.value) return fallback;
+
+  const date =
+    input.value instanceof Date ? input.value : new Date(String(input.value));
+  if (Number.isNaN(date.getTime())) return fallback;
+
+  const locale = input.locale || 'en-US';
+  const timeZone = String(input.timeZone || '').trim() || undefined;
+
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
+    timeZoneName: input.timeZoneName || 'short',
   }).format(date);
 }

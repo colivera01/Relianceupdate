@@ -332,8 +332,13 @@ export default function VendorDashboard() {
       ? data.lifecycleCounts.awaitingReview
       : recentJobs.filter((job) => job.status === 'awaiting_review').length;
   const ratingCount = Number(dashboardStats.ratingCount || recentReviews.length || 0);
-  const completionRate = Number(dashboardStats.totalBookings || 0) > 0
-    ? Math.round((jobsCompleted / Number(dashboardStats.totalBookings || 1)) * 100)
+  const completionEligibleBookings = Number(
+    dashboardStats.completionEligibleBookingCount ??
+      jobsCompleted + jobsInProgress + awaitingReview +
+        Number(data.lifecycleCounts?.scheduled || 0)
+  );
+  const completionRate = completionEligibleBookings > 0
+    ? Math.round((jobsCompleted / completionEligibleBookings) * 100)
     : 0;
   const approvedServiceOrders = Number(data.approvedServiceOrderCount ?? data.approvedProofs ?? 0);
   const publicServiceOrders = Number(data.publicServiceOrderCount ?? approvedServiceOrders);
