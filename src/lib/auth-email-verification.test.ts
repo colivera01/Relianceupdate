@@ -119,6 +119,7 @@ describe("auth email verification", () => {
       recipientName: "Notify User",
       baseUrl: "http://localhost:3000",
       audience: "customer",
+      nextPath: "/my-bookings/booking-1?videoReady=1&claimToken=claim-1",
     });
 
     expect(hoisted.sendEmail).toHaveBeenCalledTimes(1);
@@ -128,6 +129,9 @@ describe("auth email verification", () => {
     expect(hoisted.sendEmail.mock.calls[0][0].html).toContain("Finish setting up your customer account");
     expect(result.sendResult.ok).toBe(true);
     expect(result.verificationLink).toContain("/auth/verify-email?token=");
+    expect(result.verificationLink).toContain(
+      "next=%2Fmy-bookings%2Fbooking-1%3FvideoReady%3D1%26claimToken%3Dclaim-1"
+    );
     expect(result.verificationTokenPreview).toMatch(/^[a-f0-9]{64}$/);
   });
 });

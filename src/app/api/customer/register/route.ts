@@ -5,6 +5,15 @@ import { upsertDbCredential } from "@/lib/auth-credentials";
 import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
 import { prisma } from "@/server/db";
 import { geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
+import {
+  getCustomerServiceVideoIntent,
+  sanitizeAuthNextPath,
+} from "@/lib/auth-next";
+import {
+  markCustomerBookingClaimed,
+  parseCustomerBookingClaimMetadata,
+  validateCustomerBookingClaim,
+} from "@/lib/customer-booking-claim";
 
 const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || "";
 
@@ -38,7 +47,11 @@ export async function POST(request: NextRequest) {
   console.log('Customer registration API called');
   try {
     const body = await request.json();
-    console.log('Request body received:', { ...body, password: '[HIDDEN]' });
+    console.log('Request body received:', {
+      ...body,
+      password: '[HIDDEN]',
+      registrationNextPath: body?.registrationNextPath ? '[PRESENT]' : undefined,
+    });
     
     const {
       firstName,
@@ -52,8 +65,11 @@ export async function POST(request: NextRequest) {
       zipCode,
       bio,
       recaptchaToken,
-      userType
+      userType,
+      registrationNextPath
     } = body;
+    const safeNextPath = sanitizeAuthNextPath(registrationNextPath);
+    const serviceVideoIntent = getCustomerServiceVideoIntent(safeNextPath);
 
     // Temporarily disable reCAPTCHA verification for development
     // TODO: Re-enable reCAPTCHA verification in production
@@ -104,6 +120,69 @@ export async function POST(request: NextRequest) {
     const isProductionRuntime = process.env.NODE_ENV === "production";
 
     const registryFallbackId = crypto.randomUUID();
+    let claimBooking:
+      | {
+          id: string;
+          userId: string;
+          customerMetadata: string | null;
+          user: { email: string | null } | null;
+        }
+      | null = null;
+
+    if (serviceVideoIntent) {
+      try {
+        claimBooking = await prisma.booking.findUnique({
+          where: { id: serviceVideoIntent.bookingId },
+          select: {
+            id: true,
+            userId: true,
+            customerMetadata: true,
+            user: { select: { email: true } },
+          },
+        });
+      } catch (claimLookupError) {
+        console.error("Customer service-record claim lookup failed:", claimLookupError);
+        return NextResponse.json(
+          {
+            error:
+              "The service record could not be confirmed right now. Please try again in a moment.",
+            code: "CUSTOMER_BOOKING_CLAIM_LOOKUP_FAILED",
+          },
+          { status: 503 }
+        );
+      }
+
+      if (!claimBooking) {
+        return NextResponse.json(
+          {
+            error: "This completed service record could not be found.",
+            code: "CUSTOMER_BOOKING_CLAIM_NOT_FOUND",
+          },
+          { status: 404 }
+        );
+      }
+
+      const claimValidation = validateCustomerBookingClaim({
+        metadata: parseCustomerBookingClaimMetadata(
+          claimBooking.customerMetadata
+        ),
+        bookingUserEmail: claimBooking.user?.email,
+        accountEmail: email,
+        claimToken: serviceVideoIntent.claimToken,
+      });
+      if (!claimValidation.ok) {
+        return NextResponse.json(
+          {
+            error: claimValidation.error,
+            code: claimValidation.code,
+          },
+          {
+            status:
+              claimValidation.code === "BOOKING_ALREADY_CLAIMED" ? 409 : 403,
+          }
+        );
+      }
+    }
 
     // Prepare customer data for storage
     const customerData = {
@@ -191,6 +270,29 @@ export async function POST(request: NextRequest) {
         email,
         passwordHash,
       });
+      if (claimBooking) {
+        const claimMetadata = parseCustomerBookingClaimMetadata(
+          claimBooking.customerMetadata
+        );
+        const claimed = await prisma.booking.updateMany({
+          where: {
+            id: claimBooking.id,
+            userId: claimBooking.userId,
+          },
+          data: {
+            userId: persistedCustomerId,
+            customerMetadata: JSON.stringify(
+              markCustomerBookingClaimed(
+                claimMetadata,
+                persistedCustomerId
+              )
+            ),
+          },
+        });
+        if (claimed.count !== 1) {
+          throw new Error("CUSTOMER_BOOKING_CLAIM_CONFLICT");
+        }
+      }
       if (!isProductionRuntime) {
         addRegisteredUser({
           ...customerData,
@@ -203,6 +305,7 @@ export async function POST(request: NextRequest) {
         recipientName: `${firstName} ${lastName}`.trim() || null,
         baseUrl: request.nextUrl.origin,
         audience: "customer",
+        nextPath: safeNextPath,
       }).catch((sendError) => {
         console.error("Customer verification email send error:", sendError);
         return null;

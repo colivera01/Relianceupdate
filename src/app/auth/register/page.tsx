@@ -31,6 +31,7 @@ import {
   getAuthEntryBackHref,
   getAuthEntryBackLabel,
   getAuthEntryDescription,
+  getCustomerServiceVideoIntent,
   sanitizeAuthNextPath,
 } from '@/lib/auth-next';
 import { tutorialGuides } from '@/lib/user-guidance';
@@ -972,6 +973,8 @@ function RegisterPageInner() {
   const router = useRouter();
   const type = searchParams?.get('type') as 'vendor' | 'user';
   const safeNextPath = sanitizeAuthNextPath(searchParams?.get('next'));
+  const serviceVideoIntent = getCustomerServiceVideoIntent(safeNextPath);
+  const isServiceVideoRegistration = Boolean(serviceVideoIntent);
   const loginHref = appendAuthNext('/auth/login', safeNextPath);
   const entryBackHref = getAuthEntryBackHref(safeNextPath);
   const entryBackLabel = getAuthEntryBackLabel(safeNextPath);
@@ -1516,10 +1519,17 @@ function RegisterPageInner() {
         bondingStatus: String(formData.bondingStatus),
         smsConsent: String(formData.smsConsent),
         userType,
+        registrationNextPath: safeNextPath,
         recaptchaToken: token // Include reCAPTCHA token if available
       };
 
-      console.log('Registration data prepared:', { ...registrationData, password: '[HIDDEN]' });
+      console.log('Registration data prepared:', {
+        ...registrationData,
+        password: '[HIDDEN]',
+        registrationNextPath: registrationData.registrationNextPath
+          ? '[PRESENT]'
+          : null,
+      });
 
       // Determine the correct API endpoint based on user type
       const apiEndpoint = userType === 'vendor' ? '/api/vendor/register' : '/api/customer/register';
@@ -1909,7 +1919,7 @@ function RegisterPageInner() {
         </div>
 
         {/* User Type Toggle */}
-        <div className="flex justify-center mb-8">
+        {!isServiceVideoRegistration ? <div className="flex justify-center mb-8">
           <div className="rounded-full border border-white/10 bg-slate-950/80 p-1 shadow-[0_18px_45px_rgba(2,6,23,0.32)] backdrop-blur">
             <button
               onClick={() => switchUserType('user')}
@@ -1934,7 +1944,7 @@ function RegisterPageInner() {
               I Provide Services
             </button>
           </div>
-        </div>
+        </div> : null}
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Registration Form */}
@@ -1961,6 +1971,28 @@ function RegisterPageInner() {
               </div>
             </CardHeader>
             <CardContent>
+              {isServiceVideoRegistration ? (
+                <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-slate-800">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+                    <div>
+                      <p className="font-semibold text-slate-950">
+                        Your completed service video is waiting
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">
+                        Create a free customer account and verify your email.
+                        Reliance will securely connect this completed work order
+                        to My Service Records so you can watch the approved
+                        videos and leave a review.
+                      </p>
+                      <p className="mt-2 text-sm font-medium text-blue-800">
+                        Registration is free. Your account also lets you browse
+                        providers and public service proof.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <div className="mb-5 flex justify-end">
                 <TutorialEntryPoint
                   guide={userType === 'vendor' ? tutorialGuides.vendorRegistration : tutorialGuides.customerRegistration}

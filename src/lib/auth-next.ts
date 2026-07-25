@@ -15,10 +15,39 @@ export function appendAuthNext(path: string, nextPath: string | null | undefined
   return `${url.pathname}${url.search}`;
 }
 
+export type CustomerServiceVideoIntent = {
+  bookingId: string;
+  claimToken: string;
+  returnPath: string;
+};
+
+export function getCustomerServiceVideoIntent(
+  nextPath: string | null | undefined
+): CustomerServiceVideoIntent | null {
+  const safeNextPath = sanitizeAuthNextPath(nextPath);
+  if (!safeNextPath) return null;
+
+  const url = new URL(safeNextPath, "http://reliance.local");
+  const match = url.pathname.match(/^\/my-bookings\/([^/]+)$/);
+  const isVideoReady =
+    url.searchParams.get("videoReady") === "1" ||
+    url.searchParams.get("proofReady") === "1";
+  if (!match || !isVideoReady) return null;
+
+  return {
+    bookingId: decodeURIComponent(match[1]),
+    claimToken: String(url.searchParams.get("claimToken") || "").trim(),
+    returnPath: `${url.pathname}${url.search}`,
+  };
+}
+
 export function getAuthContinuationTarget(nextPath: string | null | undefined): string | null {
   const safeNextPath = sanitizeAuthNextPath(nextPath);
   if (!safeNextPath) return null;
 
+  if (getCustomerServiceVideoIntent(safeNextPath)) {
+    return "your completed service video";
+  }
   if (safeNextPath.startsWith('/booking/')) return 'this service request';
   if (safeNextPath.startsWith('/service/')) return 'this service detail';
   if (safeNextPath.startsWith('/browse')) return 'browsing vendor services';
@@ -32,6 +61,9 @@ export function getAuthContinuationPhrase(nextPath: string | null | undefined): 
   if (target === 'browsing vendor services') return 'keep browsing vendor services';
   if (target === 'the Help Center') return 'continue to the Help Center';
   if (target === 'where you left off') return 'continue where you left off';
+  if (target === 'your completed service video') {
+    return 'open your completed service video';
+  }
   return `continue with ${target}`;
 }
 
@@ -102,6 +134,7 @@ export function getAuthEntryBackLabel(nextPath: string | null | undefined): stri
   const safeNextPath = sanitizeAuthNextPath(nextPath);
   if (!safeNextPath) return 'Back to Home';
 
+  if (getCustomerServiceVideoIntent(safeNextPath)) return 'Back to Service Video';
   if (safeNextPath.startsWith('/booking/')) return 'Back to Service Request';
   if (safeNextPath.startsWith('/service/')) return 'Back to Service Detail';
   if (safeNextPath.startsWith('/vendor/')) return 'Back to Vendor Area';

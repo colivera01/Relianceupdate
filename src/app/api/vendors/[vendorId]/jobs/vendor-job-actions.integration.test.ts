@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, PATCH } from "./[jobId]/actions/route";
 import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
+import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 
 const hoisted = vi.hoisted(() => {
@@ -81,6 +82,10 @@ vi.mock("@/lib/notifications/send-job-assignment", () => ({
   sendJobAssignmentNotification: vi.fn(),
 }));
 
+vi.mock("@/lib/notifications/send-video-ready", () => ({
+  sendVideoReadyNotification: vi.fn(),
+}));
+
 vi.mock("@/lib/lifecycle-audit", () => ({
   recordLifecycleAudit: vi.fn(),
 }));
@@ -146,6 +151,12 @@ describe("vendor job actions integration", () => {
         { channel: "sms", attempted: true, success: true, providerMessageId: "sms-1" },
       ],
     });
+    vi.mocked(sendVideoReadyNotification).mockReset();
+    vi.mocked(sendVideoReadyNotification).mockResolvedValue({
+      ok: true,
+      channels: [],
+      videoUrl: "",
+    } as any);
     vi.mocked(recordLifecycleAudit).mockReset();
     vi.mocked(recordLifecycleAudit).mockResolvedValue(undefined);
     hoisted.bookingFindFirst.mockReset();
@@ -778,6 +789,80 @@ describe("vendor job actions integration", () => {
       forceResend: true,
     });
     expect(json.message).toBe("Employee service order link resent.");
+  });
+
+  it("PATCH RESEND_COMPLETED_WORK_ORDER sends an unclaimed customer a fresh secure invitation", async () => {
+    const metadata = JSON.stringify({
+      claim_status: "UNCLAIMED",
+      claim_contact_email: "customer@example.com",
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "COMPLETED",
+      customerMetadata: metadata,
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: {
+        name: "Carmen Customer",
+        email: "unclaimed+job1@reliance.local",
+        phone: null,
+      },
+    });
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      {
+        id: "intro-session",
+        sessionType: "JOB_SERVICE_VIDEO",
+        vendorJobVideoStage: "INTRO",
+        mediaAssets: [{ id: "intro", moderationStatus: "approved" }],
+      },
+      {
+        id: "progress-session",
+        sessionType: "JOB_SERVICE_VIDEO",
+        vendorJobVideoStage: "IN_PROGRESS",
+        mediaAssets: [{ id: "progress", moderationStatus: "approved" }],
+      },
+      {
+        id: "complete-session",
+        sessionType: "JOB_SERVICE_VIDEO",
+        vendorJobVideoStage: "COMPLETED",
+        mediaAssets: [{ id: "complete", moderationStatus: "approved" }],
+      },
+    ]);
+    hoisted.bookingUpdate.mockResolvedValue({ id: "job1" });
+    vi.mocked(sendVideoReadyNotification).mockImplementation(
+      async (input: any) =>
+        ({
+          ok: true,
+          channels: [],
+          videoUrl: input.videoUrl,
+        } as any)
+    );
+
+    const { req, ctx } = patchReq(
+      "v1",
+      "job1",
+      "RESEND_COMPLETED_WORK_ORDER"
+    );
+    const res = await PATCH(req, ctx as any);
+
+    expect(res.status).toBe(200);
+    expect(sendVideoReadyNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerEmail: "customer@example.com",
+        videoUrl: expect.stringMatching(
+          /^http:\/\/localhost\/my-bookings\/job1\?videoReady=1&claimToken=/
+        ),
+      })
+    );
+    const updateInput = hoisted.bookingUpdate.mock.calls[0][0];
+    const savedMetadata = JSON.parse(updateInput.data.customerMetadata);
+    expect(savedMetadata.customer_booking_claim_token_hash).toMatch(
+      /^[a-f0-9]{64}$/
+    );
+    expect(updateInput.data.customerMetadata).not.toContain("claimToken");
   });
 
   it("DELETE allows CONFIRMED (in-progress) jobs for vendors", async () => {

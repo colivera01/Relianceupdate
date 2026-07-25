@@ -14,6 +14,10 @@ import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assi
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
 import {
+  isUnclaimedBookingUserEmail,
+  issueCustomerBookingClaimToken,
+} from "@/lib/customer-booking-claim";
+import {
   normalizeRecordingLocationChoice,
   parseRecordingComplianceMetadata,
 } from "@/lib/job-assignment";
@@ -164,8 +168,18 @@ function resolveJobLinkBaseUrl(request: Request): string {
   }
 }
 
-function toCustomerCompletedWorkUrl(request: Request, bookingId: string): string {
-  return `${resolveJobLinkBaseUrl(request)}/my-bookings/${encodeURIComponent(bookingId)}`;
+function toCustomerCompletedWorkUrl(
+  request: Request,
+  bookingId: string,
+  claimToken?: string
+): string {
+  const params = new URLSearchParams({ videoReady: "1" });
+  if (claimToken) {
+    params.set("claimToken", claimToken);
+  }
+  return `${resolveJobLinkBaseUrl(request)}/my-bookings/${encodeURIComponent(
+    bookingId
+  )}?${params.toString()}`;
 }
 
 function usableCustomerEmail(value: unknown): string {
@@ -835,6 +849,23 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         );
       }
 
+      let claimToken = "";
+      if (
+        customerEmail &&
+        isUnclaimedBookingUserEmail(booking.user?.email)
+      ) {
+        const issuedClaim = issueCustomerBookingClaimToken(metadata);
+        claimToken = issuedClaim.rawToken;
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: {
+            customerMetadata: stringifyCustomerMetadata(
+              issuedClaim.metadata
+            ),
+          },
+        });
+      }
+
       const result = await sendVideoReadyNotification({
         actorUserId: member.userId,
         bookingId: booking.id,
@@ -844,7 +875,11 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         serviceName: booking.service?.name || null,
         bookingTitle: booking.title || null,
         vendorName: booking.vendor?.businessName || booking.vendor?.name || null,
-        videoUrl: toCustomerCompletedWorkUrl(request, booking.id),
+        videoUrl: toCustomerCompletedWorkUrl(
+          request,
+          booking.id,
+          claimToken
+        ),
       });
 
       await recordLifecycleAudit({

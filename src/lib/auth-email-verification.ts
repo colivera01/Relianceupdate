@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "@/server/db";
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
+import { sanitizeAuthNextPath } from "@/lib/auth-next";
 
 const EMAIL_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24;
 
@@ -121,6 +122,7 @@ export async function sendOrPreviewEmailVerification(params: {
   recipientName?: string | null;
   baseUrl: string;
   audience?: "customer" | "vendor" | "account";
+  nextPath?: string | null;
 }) {
   const { sendEmail } = await import("@/lib/email/resend");
   const normalizedEmail = normalizeEmail(params.email);
@@ -133,7 +135,12 @@ export async function sendOrPreviewEmailVerification(params: {
     email: normalizedEmail,
   });
 
-  const verificationLink = `${String(params.baseUrl || "").replace(/\/+$/, "")}/auth/verify-email?token=${issued.rawToken}`;
+  const verificationParams = new URLSearchParams({ token: issued.rawToken });
+  const safeNextPath = sanitizeAuthNextPath(params.nextPath);
+  if (safeNextPath) {
+    verificationParams.set("next", safeNextPath);
+  }
+  const verificationLink = `${String(params.baseUrl || "").replace(/\/+$/, "")}/auth/verify-email?${verificationParams.toString()}`;
   const recipientName = String(params.recipientName || "").trim();
   const copy = getVerificationEmailCopy(params.audience);
   const greeting = recipientName ? `Hi ${escapeHtml(recipientName)},` : "Hi there,";

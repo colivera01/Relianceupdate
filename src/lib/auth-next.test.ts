@@ -3,6 +3,7 @@ import {
   appendAuthNext,
   getAuthContinuationPhrase,
   getAuthContinuationTarget,
+  getCustomerServiceVideoIntent,
   getAuthEntryBackHref,
   getAuthEntryBackLabel,
   getAuthEntryDescription,
@@ -49,6 +50,28 @@ describe('auth next helpers', () => {
     expect(getAuthContinuationTarget('/booking/service-123')).toBe('this service request');
     expect(getAuthContinuationTarget('/browse?category=cleaning')).toBe('browsing vendor services');
     expect(getAuthContinuationTarget(null)).toBeNull();
+  });
+
+  it('recognizes a video-ready work order without exposing unrelated booking routes', () => {
+    expect(
+      getCustomerServiceVideoIntent(
+        '/my-bookings/booking-1?videoReady=1&claimToken=claim-123'
+      )
+    ).toEqual({
+      bookingId: 'booking-1',
+      claimToken: 'claim-123',
+      returnPath:
+        '/my-bookings/booking-1?videoReady=1&claimToken=claim-123',
+    });
+    expect(getCustomerServiceVideoIntent('/my-bookings/booking-1')).toBeNull();
+    expect(
+      getAuthEntryDescription(
+        'register',
+        '/my-bookings/booking-1?videoReady=1'
+      )
+    ).toBe(
+      'Create your account to open your completed service video.'
+    );
   });
 
   it('formats continuation phrases naturally', () => {

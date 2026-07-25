@@ -18,6 +18,10 @@ import {
   VISIBILITY_VENDOR_ARCHIVE_ONLY,
 } from "@/lib/media-visibility";
 import { normalizeVendorJobVideoStage, type VendorJobVideoStage } from "@/lib/vendor-job-video-stages";
+import {
+  isUnclaimedBookingUserEmail,
+  issueCustomerBookingClaimToken,
+} from "@/lib/customer-booking-claim";
 
 interface RouteParams {
   params: Promise<{ bookingId: string }>;
@@ -54,10 +58,14 @@ function usableCustomerEmail(value: unknown): string {
   return email.toLowerCase().endsWith("@reliance.local") ? "" : email;
 }
 
-function toAbsoluteVideoUrl(bookingId: string): string {
+function toAbsoluteVideoUrl(bookingId: string, claimToken?: string): string {
   const env = readNotificationEnv();
   const base = String(env.appBaseUrl || "").trim();
-  const path = `/my-bookings/${bookingId}?videoReady=1`;
+  const params = new URLSearchParams({ videoReady: "1" });
+  if (claimToken) {
+    params.set("claimToken", claimToken);
+  }
+  const path = `/my-bookings/${bookingId}?${params.toString()}`;
   return base ? `${base}${path}` : path;
 }
 
@@ -274,11 +282,21 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       if (effectiveVisibility === "customer_only" || effectiveVisibility === "public") {
         const alreadyNotified = Boolean(metadata.proof_ready_notification_sent_at);
       if (!alreadyNotified) {
-        const videoUrl = toAbsoluteVideoUrl(bookingId);
         const customer = resolveBookingCustomer(booking);
         const customerEmail = customer.email || "";
         const customerPhone = customer.phone || "";
         const customerName = customer.name || "";
+        let claimToken = "";
+        if (
+          customerEmail &&
+          isUnclaimedBookingUserEmail(booking.user?.email)
+        ) {
+          const issuedClaim = issueCustomerBookingClaimToken(nextMetadata);
+          claimToken = issuedClaim.rawToken;
+          Object.assign(nextMetadata, issuedClaim.metadata);
+          metadataChanged = true;
+        }
+        const videoUrl = toAbsoluteVideoUrl(bookingId, claimToken);
         let notified = false;
         const sendResult = await sendVideoReadyNotification({
           actorUserId: userId,
@@ -296,7 +314,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         nextMetadata.proof_ready_notification_sent_at = new Date().toISOString();
         nextMetadata.proof_ready_notification_sent_success = notified;
         nextMetadata.proof_ready_notification_visibility = effectiveVisibility;
-        nextMetadata.proof_ready_notification_url = videoUrl;
+        nextMetadata.proof_ready_notification_url =
+          toAbsoluteVideoUrl(bookingId);
         metadataChanged = true;
         }
       }

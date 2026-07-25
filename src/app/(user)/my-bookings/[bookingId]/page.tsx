@@ -23,6 +23,7 @@ import { tutorialGuides } from '@/lib/user-guidance';
 import { getCustomerProofStageLabel } from '@/lib/vendor-job-video-stages';
 import { Badge } from '@/components/ui/badge';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
+import { getClientSessionHeaders } from '@/lib/client-session';
 
 type BookingDetail = {
   id: string;
@@ -149,6 +150,7 @@ function BookingMediaDetailPageContent() {
   const consentAcceptedFromReturn = searchParams?.get('consentAccepted') === '1';
   const videoReadyFromLink =
     searchParams?.get('videoReady') === '1' || searchParams?.get('proofReady') === '1';
+  const claimToken = String(searchParams?.get('claimToken') || '').trim();
   const consentTokenFromReturn = String(searchParams?.get('consentToken') || '').trim();
   const consentedMediaSessionId = String(searchParams?.get('mediaSessionId') || '').trim();
   const requestedReturnTo = String(searchParams?.get('returnTo') || '').trim();
@@ -198,6 +200,35 @@ function BookingMediaDetailPageContent() {
     setLoading(true);
     setError(null);
     try {
+      if (videoReadyFromLink) {
+        const claimResponse = await fetch(`/api/bookings/${bookingId}/claim`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getClientSessionHeaders(userId),
+          },
+          credentials: 'include',
+          body: JSON.stringify({ claimToken }),
+        });
+        const claimJson = await claimResponse.json().catch(() => ({}));
+        if (!claimResponse.ok) {
+          throw new Error(
+            claimJson?.error ||
+              `Unable to connect this service record (${claimResponse.status})`
+          );
+        }
+        if (claimToken) {
+          const cleanedParams = new URLSearchParams(
+            searchParams?.toString() || ''
+          );
+          cleanedParams.delete('claimToken');
+          const cleanedQuery = cleanedParams.toString();
+          router.replace(
+            `/my-bookings/${bookingId}${cleanedQuery ? `?${cleanedQuery}` : ''}`
+          );
+        }
+      }
+
       const [bookingRes, mediaRes] = await Promise.all([
         fetch(`/api/bookings/${bookingId}`, {
           method: 'GET',

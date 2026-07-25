@@ -7,12 +7,17 @@ import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { getClientSessionHeaders } from '@/lib/client-session';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { AlertTriangle, LogIn } from 'lucide-react';
+import { AlertTriangle, LogIn, Video } from 'lucide-react';
 import { isOwnerAdminUserId } from '@/lib/internal-identities';
+import {
+  appendAuthNext,
+  getCustomerServiceVideoIntent,
+} from '@/lib/auth-next';
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [restrictedMessage, setRestrictedMessage] = useState<string | null>(null);
+  const [queryString, setQueryString] = useState('');
   const pathname = usePathname() || '';
   // The customer shell should identify itself as "customer" even when the
   // signed-in identity also has admin/vendor access. Role toggles should
@@ -20,8 +25,19 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
   const currentProfile = 'customer' as const;
   const { availableRoles, userId } = useAvailableRoles(currentProfile);
   const isPublicServiceRoute = pathname.startsWith('/service/');
-  const returnPath = pathname || '/user-dashboard';
-  const signInHref = `/auth/login?next=${encodeURIComponent(returnPath || '/user-dashboard')}`;
+  const returnPath = `${pathname || '/user-dashboard'}${
+    queryString ? `?${queryString}` : ''
+  }`;
+  const serviceVideoIntent = getCustomerServiceVideoIntent(returnPath);
+  const signInHref = appendAuthNext('/auth/login', returnPath);
+  const registrationHref = appendAuthNext(
+    '/auth/register?type=user',
+    returnPath
+  );
+
+  useEffect(() => {
+    setQueryString(window.location.search.replace(/^\?/, ''));
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +91,69 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
   }
 
   if (!isAuthenticated) {
+    if (serviceVideoIntent) {
+      return (
+        <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] px-4 py-12">
+          <div className="mx-auto flex min-h-[70vh] w-full max-w-2xl items-center justify-center">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="service-video-registration-title"
+              className="w-full rounded-[28px] border border-slate-200 bg-white p-7 shadow-[0_28px_90px_rgba(7,16,38,0.16)] sm:p-9"
+            >
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-700">
+                <Video className="h-6 w-6" />
+              </div>
+              <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
+                Completed service record
+              </p>
+              <h1
+                id="service-video-registration-title"
+                className="mt-2 font-display text-3xl font-semibold text-slate-950"
+              >
+                Your completed service video is ready
+              </h1>
+              <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+                You are continuing to Reliance to securely view the completed
+                work order shared by your service provider.
+              </p>
+              <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm leading-6 text-slate-700">
+                <p className="font-semibold text-slate-950">
+                  Create a free customer account to continue.
+                </p>
+                <p className="mt-1">
+                  The work order will be saved in My Service Records, where you
+                  can watch approved videos and leave a review. You can also
+                  browse Reliance&apos;s network and public service proof.
+                </p>
+              </div>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href={registrationHref}
+                  className="inline-flex items-center justify-center rounded-lg bg-[var(--reliance-blue)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#1a58db]"
+                >
+                  Continue to Free Registration
+                </Link>
+                <Link
+                  href={signInHref}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <LogIn className="h-4 w-4" />
+                  I Already Have an Account
+                </Link>
+              </div>
+              <Link
+                href="/browse"
+                className="mt-5 inline-flex text-sm font-medium text-blue-700 hover:underline"
+              >
+                Browse public services instead
+              </Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] px-4 py-12">
         <div className="mx-auto flex min-h-[60vh] w-full max-w-3xl items-center justify-center">

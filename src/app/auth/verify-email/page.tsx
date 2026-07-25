@@ -3,12 +3,18 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { appendAuthNext, sanitizeAuthNextPath } from "@/lib/auth-next";
 
 type VerifyState = "loading" | "success" | "error";
 
 function VerifyEmailPageContent() {
   const searchParams = useSearchParams();
   const token = useMemo(() => String(searchParams?.get("token") || "").trim(), [searchParams]);
+  const nextPath = useMemo(
+    () => sanitizeAuthNextPath(searchParams?.get("next")),
+    [searchParams]
+  );
+  const loginHref = appendAuthNext("/auth/login", nextPath);
   const [state, setState] = useState<VerifyState>(token ? "loading" : "error");
   const [message, setMessage] = useState(
     token ? "Verifying your email..." : "Verification link is missing or incomplete."
@@ -57,14 +63,14 @@ function VerifyEmailPageContent() {
         <div className="mt-8 flex flex-wrap gap-3">
           {state === "success" ? (
             <Link
-              href="/auth/login"
+              href={loginHref}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
             >
               Continue to sign in
             </Link>
           ) : null}
           <Link
-            href="/auth/login"
+            href={loginHref}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
           >
             Back to login

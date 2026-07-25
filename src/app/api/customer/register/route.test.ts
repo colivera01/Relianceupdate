@@ -3,12 +3,20 @@ import { POST } from "./route";
 
 const hoisted = vi.hoisted(() => {
   const userUpsert = vi.fn();
+  const bookingFindUnique = vi.fn();
+  const bookingUpdateMany = vi.fn();
 
   return {
     userUpsert,
+    bookingFindUnique,
+    bookingUpdateMany,
     prisma: {
       user: {
         upsert: userUpsert,
+      },
+      booking: {
+        findUnique: bookingFindUnique,
+        updateMany: bookingUpdateMany,
       },
     },
   };
@@ -73,6 +81,8 @@ describe("POST /api/customer/register", () => {
   beforeEach(() => {
     vi.stubEnv("NODE_ENV", "production");
     hoisted.userUpsert.mockReset();
+    hoisted.bookingFindUnique.mockReset();
+    hoisted.bookingUpdateMany.mockReset();
   });
 
   afterEach(() => {
@@ -123,5 +133,45 @@ describe("POST /api/customer/register", () => {
       })
     );
     expect(addRegisteredUser).not.toHaveBeenCalled();
+  });
+
+  it("connects an emailed completed work order to the matching new customer account", async () => {
+    const { sendOrPreviewEmailVerification } = await import(
+      "@/lib/auth-email-verification"
+    );
+    vi.mocked(sendOrPreviewEmailVerification).mockClear();
+    hoisted.bookingFindUnique.mockResolvedValueOnce({
+      id: "booking-1",
+      userId: "placeholder-1",
+      customerMetadata: JSON.stringify({
+        claim_status: "UNCLAIMED",
+        claim_contact_email: "beta.customer@reliance.test",
+      }),
+      user: { email: "unclaimed+booking-1@reliance.local" },
+    });
+    hoisted.userUpsert.mockResolvedValueOnce({ id: "customer-1" });
+    hoisted.bookingUpdateMany.mockResolvedValueOnce({ count: 1 });
+    const nextPath = "/my-bookings/booking-1?videoReady=1";
+
+    const response = await POST(
+      createCustomerRegisterRequest({ registrationNextPath: nextPath })
+    );
+
+    expect(response.status).toBe(200);
+    expect(hoisted.bookingUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "booking-1", userId: "placeholder-1" },
+        data: expect.objectContaining({ userId: "customer-1" }),
+      })
+    );
+    expect(sendOrPreviewEmailVerification).toHaveBeenCalledWith(
+      expect.objectContaining({ nextPath })
+    );
+    const updateData = hoisted.bookingUpdateMany.mock.calls[0][0].data;
+    expect(JSON.parse(updateData.customerMetadata)).toMatchObject({
+      claim_status: "CLAIMED",
+      customer_account_linked: true,
+      linked_customer_user_id: "customer-1",
+    });
   });
 });
