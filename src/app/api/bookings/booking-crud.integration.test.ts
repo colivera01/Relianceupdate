@@ -421,6 +421,44 @@ describe('POST /api/bookings', () => {
     expect(hoisted.queryRaw).not.toHaveBeenCalled();
   });
 
+  it('allows vendor staff to create a work record for a customer whose account is inactive', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'inactive-customer' });
+    hoisted.userFindUnique.mockResolvedValue({
+      id: 'vendor-user-1',
+      accountStatus: 'active',
+    });
+    hoisted.bookingCreate.mockResolvedValue({ id: 'inactive-customer-book' });
+    hoisted.bookingFindUnique.mockResolvedValue(
+      baseHydratedBooking({
+        id: 'inactive-customer-book',
+        userId: 'inactive-customer',
+      })
+    );
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          client_name: 'Inactive Customer',
+          client_email: 'inactive@example.com',
+        },
+        'POST'
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(hoisted.bookingCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ userId: 'inactive-customer' }),
+    });
+    expect(hoisted.userFindUnique).toHaveBeenCalledTimes(1);
+  });
+
   it('automatically creates and sends consent for a vendor-created customer-location order', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });

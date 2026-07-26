@@ -50,6 +50,7 @@ function ConsentPageContent() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [businessAddress, setBusinessAddress] = useState({ address: '', city: '', state: '', zipCode: '' });
   const [error, setError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     if (!token) {
@@ -58,11 +59,16 @@ function ConsentPageContent() {
       return;
     }
 
+    setLoading(true);
+    setError('');
     fetch(`/api/consent/${encodeURIComponent(token)}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((res) => {
-        if (res.success) {
-          const consent = res.consent || {};
+      .then(async (response) => ({
+        response,
+        payload: await response.json().catch(() => ({})),
+      }))
+      .then(({ response, payload }) => {
+        if (response.ok && payload.success) {
+          const consent = payload.consent || {};
           setData({
             vendorName:
               consent?.vendor?.businessName ||
@@ -79,13 +85,23 @@ function ConsentPageContent() {
           const normalizedStatus = String(consent?.status || '').trim().toLowerCase();
           setAccepted(normalizedStatus === 'accepted');
           setDeclined(normalizedStatus === 'declined');
+        } else if (response.status === 404 || payload?.code === 'CONSENT_NOT_FOUND') {
+          setError(
+            'This consent link is no longer available. Ask the service provider to resend the consent request.'
+          );
         } else {
-          setError('Unable to load consent.');
+          setError(
+            String(
+              payload?.error ||
+                payload?.message ||
+                'The consent request could not be loaded. Please try again.'
+            )
+          );
         }
       })
-      .catch(() => setError('Connection error'))
+      .catch(() => setError('Connection error. Check your connection and try again.'))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, loadAttempt]);
 
   const handleAccept = async () => {
     setError('');
@@ -187,7 +203,26 @@ function ConsentPageContent() {
 
   if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
 
-  if (error && !data) return <div style={{ padding: 40, color: 'red' }}>{error}</div>;
+  if (error && !data) {
+    return (
+      <div style={{ maxWidth: 700, margin: '40px auto', padding: 24, fontFamily: 'sans-serif' }}>
+        <div role="alert" style={{ color: '#b91c1c' }}>{error}</div>
+        <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+            disabled={loading}
+            style={{ padding: '8px 14px' }}
+          >
+            {loading ? 'Trying again...' : 'Try again'}
+          </button>
+          <Link href={customerHelpHref} style={{ color: '#2563eb', textDecoration: 'underline' }}>
+            Open Help Center
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 700, margin: '40px auto', fontFamily: 'sans-serif' }}>
@@ -297,7 +332,21 @@ function ConsentPageContent() {
           <span>I agree to the Terms of Service and Privacy Policy for this service-video request.</span>
         </label>
       ) : null}
-      {error ? <div role="alert" style={{ marginTop: 16, color: '#b91c1c' }}>{error}</div> : null}
+      {error ? (
+        <div role="alert" style={{ marginTop: 16, color: '#b91c1c' }}>
+          <div>{error}</div>
+          {!data ? (
+            <button
+              type="button"
+              onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+              disabled={loading}
+              style={{ marginTop: 10, padding: '8px 14px' }}
+            >
+              {loading ? 'Trying again...' : 'Try again'}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         {returnTo ? (
           <Link href={returnTo} style={{ color: '#2563eb', textDecoration: 'underline' }}>

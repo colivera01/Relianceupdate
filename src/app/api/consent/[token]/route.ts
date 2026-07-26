@@ -26,7 +26,7 @@ type ConsentTokenRecord = {
   expiresAt: Date | null;
   termsVersion: string | null;
   privacyVersion: string | null;
-  mediaSessionId: string;
+  mediaSessionId: string | null;
   booking: ConsentTokenBooking;
   vendor: { id: string; name: string; businessName: string | null };
 };

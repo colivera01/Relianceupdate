@@ -903,7 +903,7 @@ model ConsentRecord {
   token         String   @unique
   bookingId      String
   vendorId       String
-  mediaSessionId String
+  mediaSessionId String?
   consentType   String
   status        String   @default("requested")
   requestedAt   DateTime @default(now())
@@ -920,7 +920,7 @@ model ConsentRecord {
 
   booking       Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   vendor        Vendor @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaSession  MediaSession @relation(fields: [mediaSessionId], references: [id], onDelete: Cascade)
+  mediaSession  MediaSession? @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   events        ConsentEvent[]
 
   @@index([bookingId, status])

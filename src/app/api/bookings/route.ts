@@ -429,7 +429,11 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-    await ensureUserAccountCanAct(bookingUserId);
+    // Vendor staff are acting on behalf of the vendor here. A customer's
+    // inactive account must not prevent the vendor from creating their work record.
+    if (!isVendorStaffForThisVendor) {
+      await ensureUserAccountCanAct(bookingUserId);
+    }
 
     const scheduledFor = resolveBookingSchedule({
       scheduledFor: scheduled_for,

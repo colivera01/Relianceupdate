@@ -3,7 +3,7 @@ import { distanceMeters, hasValidCoordinates } from "@/lib/distance";
 import { geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
 
 export const RECORDING_LOCATION_RADIUS_METERS = 150;
-export const RECORDING_LOCATION_MAX_ACCURACY_METERS = 150;
+export const RECORDING_LOCATION_MAX_ACCURACY_METERS = 500;
 
 export type RecordingLocationProof = {
   latitude: number | null;
@@ -127,10 +127,29 @@ export async function verifyJobRecordingLocation(input: {
     { latitude: input.proof.latitude, longitude: input.proof.longitude },
     { latitude: expected.latitude!, longitude: expected.longitude! }
   );
-  if (
-    input.proof.accuracyMeters > RECORDING_LOCATION_MAX_ACCURACY_METERS ||
-    distance > RECORDING_LOCATION_RADIUS_METERS
-  ) {
+  if (input.proof.accuracyMeters > RECORDING_LOCATION_MAX_ACCURACY_METERS) {
+    return {
+      ok: false,
+      status: 409,
+      code:
+        location === "business"
+          ? "BUSINESS_LOCATION_ACCURACY_TOO_LOW"
+          : "CUSTOMER_BUSINESS_LOCATION_ACCURACY_TOO_LOW",
+      message: `The phone's location signal is not precise enough to verify the ${label}. Turn on precise location, move near a window or outdoors, and try again.`,
+      details: {
+        allowedRadiusMeters: RECORDING_LOCATION_RADIUS_METERS,
+        maxAccuracyMeters: RECORDING_LOCATION_MAX_ACCURACY_METERS,
+        distanceMeters: Math.round(distance),
+        accuracyMeters: Math.round(input.proof.accuracyMeters),
+      },
+    };
+  }
+
+  // Browser geolocation reports a point plus an uncertainty radius. Compare the
+  // nearest plausible device position so ordinary indoor GPS drift does not look
+  // like the employee is at a different address.
+  const nearestPossibleDistance = Math.max(0, distance - input.proof.accuracyMeters);
+  if (nearestPossibleDistance > RECORDING_LOCATION_RADIUS_METERS) {
     return {
       ok: false,
       status: 403,
@@ -141,6 +160,7 @@ export async function verifyJobRecordingLocation(input: {
         maxAccuracyMeters: RECORDING_LOCATION_MAX_ACCURACY_METERS,
         distanceMeters: Math.round(distance),
         accuracyMeters: Math.round(input.proof.accuracyMeters),
+        nearestPossibleDistanceMeters: Math.round(nearestPossibleDistance),
       },
     };
   }

@@ -32,4 +32,42 @@ describe("verifyJobRecordingLocation", () => {
     });
     expect(result).toMatchObject({ ok: true, location: "customer-business" });
   });
+
+  it("accepts normal indoor GPS uncertainty when the address remains within the accuracy radius", async () => {
+    const result = await verifyJobRecordingLocation({
+      vendorId: "vendor-1",
+      metadata: customerBusinessMetadata,
+      vendorLocation: null,
+      proof: { latitude: 28.5398, longitude: -81.3792, accuracyMeters: 220 },
+    });
+    expect(result).toMatchObject({ ok: true, location: "customer-business" });
+  });
+
+  it("asks for a better phone fix when location accuracy is too low", async () => {
+    const result = await verifyJobRecordingLocation({
+      vendorId: "vendor-1",
+      metadata: customerBusinessMetadata,
+      vendorLocation: null,
+      proof: { latitude: 28.5383, longitude: -81.3792, accuracyMeters: 650 },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      code: "CUSTOMER_BUSINESS_LOCATION_ACCURACY_TOO_LOW",
+    });
+  });
+
+  it("still rejects a phone whose nearest plausible position is outside the allowed radius", async () => {
+    const result = await verifyJobRecordingLocation({
+      vendorId: "vendor-1",
+      metadata: customerBusinessMetadata,
+      vendorLocation: null,
+      proof: { latitude: 28.5483, longitude: -81.3792, accuracyMeters: 300 },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 403,
+      code: "CUSTOMER_BUSINESS_LOCATION_MISMATCH",
+    });
+  });
 });
