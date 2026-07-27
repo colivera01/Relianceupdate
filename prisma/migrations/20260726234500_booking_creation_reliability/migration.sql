@@ -1,9 +1,9 @@
 ALTER TABLE [dbo].[bookings]
   ADD [creationRequestKey] NVARCHAR(255) NULL;
 
-CREATE UNIQUE INDEX [bookings_creationRequestKey_key]
+EXEC(N'CREATE UNIQUE INDEX [bookings_creationRequestKey_key]
   ON [dbo].[bookings]([creationRequestKey])
-  WHERE [creationRequestKey] IS NOT NULL;
+  WHERE [creationRequestKey] IS NOT NULL');
 
 CREATE TABLE [dbo].[booking_notifications] (
   [id] NVARCHAR(1000) NOT NULL,
