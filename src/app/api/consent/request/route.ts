@@ -3,16 +3,19 @@ import { prisma } from '@/server/db';
 import { CONSENT_TYPES, generateConsentToken } from '@/lib/consent-flow';
 import { createAdminAuditLog } from '@/lib/admin-audit';
 import { getUserIdFromRequest } from '@/lib/auth';
-import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
 import { resolveBookingCustomer } from '@/lib/booking-customer';
 import { logNotificationEnvWarnings } from '@/lib/env/notification-config';
+import {
+  CUSTOMER_CONSENT_NOTIFICATION_KIND,
+  dispatchQueuedConsentNotification,
+} from '@/lib/booking-notification-delivery';
 
 type ConsentRequestRecord = {
   id: string;
   token: string;
   bookingId: string;
   vendorId: string;
-  mediaSessionId: string;
+  mediaSessionId: string | null;
   consentType: string;
   status: string;
   requestedAt: Date;
@@ -139,26 +142,94 @@ export async function POST(request: NextRequest) {
     const serviceTimeZone = String(bookingMeta.service_time_zone || '').trim() || null;
 
     const token = generateConsentToken();
-    const record = await withTransientDbRetry<ConsentRequestRecord>(() =>
-      (prisma as any).consentRecord.create({
-        data: {
-          token,
-          bookingId,
-          vendorId,
-          mediaSessionId,
-          consentType,
-          status: 'requested',
-          requestedAt: new Date(),
-          expiresAt,
-        },
-      })
-    );
+    const requestState = await withTransientDbRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const previousRequested = await tx.consentRecord.findMany({
+          where: {
+            bookingId,
+            status: { in: ['requested', 'pending'] },
+          },
+          select: { id: true },
+        });
+        if (previousRequested.length) {
+          await tx.consentRecord.updateMany({
+            where: { id: { in: previousRequested.map((item) => item.id) } },
+            data: { status: 'superseded' },
+          });
+          await Promise.all(
+            previousRequested.map((item) =>
+              tx.consentEvent.create({
+                data: {
+                  consentRecordId: item.id,
+                  eventType: 'superseded',
+                  metadata: JSON.stringify({ replacementTokenCreatedAt: new Date().toISOString() }),
+                },
+              })
+            )
+          );
+        }
 
-    await withTransientDbRetry(() =>
-      (prisma as any).consentEvent.create({
-        data: { consentRecordId: record.id, eventType: 'sent', metadata: null },
+        const record = await tx.consentRecord.create({
+          data: {
+            token,
+            bookingId,
+            vendorId,
+            mediaSessionId,
+            consentType,
+            status: 'requested',
+            requestedAt: new Date(),
+            expiresAt,
+          },
+        });
+        await tx.consentEvent.create({
+          data: {
+            consentRecordId: record.id,
+            eventType: previousRequested.length ? 'resent' : 'created',
+            metadata: JSON.stringify({
+              previousTokenCount: previousRequested.length,
+              notificationStatus: 'QUEUED',
+            }),
+          },
+        });
+
+        const updatedMetadata = {
+          ...bookingMeta,
+          vendor_job_consent_token: token,
+          vendor_job_consent_accepted: false,
+          vendor_job_consent_status: 'requested',
+          vendor_job_consent_notification_status: 'QUEUED',
+          vendor_job_consent_last_requested_at: new Date().toISOString(),
+        };
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { customerMetadata: JSON.stringify(updatedMetadata) },
+        });
+        const notificationRecord = await tx.bookingNotification.upsert({
+          where: {
+            bookingId_kind: {
+              bookingId,
+              kind: CUSTOMER_CONSENT_NOTIFICATION_KIND,
+            },
+          },
+          create: {
+            bookingId,
+            consentRecordId: record.id,
+            kind: CUSTOMER_CONSENT_NOTIFICATION_KIND,
+            status: 'QUEUED',
+          },
+          update: {
+            consentRecordId: record.id,
+            status: 'QUEUED',
+            channelsJson: null,
+            lastError: null,
+            lastAttemptAt: null,
+            sentAt: null,
+          },
+        });
+        return { record, notificationRecord, previousTokenCount: previousRequested.length };
       })
     );
+    const record = requestState.record as ConsentRequestRecord;
 
     try {
       await withTransientDbRetry(() =>
@@ -176,11 +247,17 @@ export async function POST(request: NextRequest) {
 
     const consentPath = `/consent/${encodeURIComponent(token)}`;
     const consentBaseUrl = resolveConsentBaseUrl(request, origin);
-    let notification: Awaited<ReturnType<typeof sendConsentLinkNotification>> | null = null;
+    let notification: Awaited<
+      ReturnType<typeof dispatchQueuedConsentNotification>
+    >['notification'] = null;
+    let delivery: Awaited<
+      ReturnType<typeof dispatchQueuedConsentNotification>
+    >['delivery'] = null;
     let notificationError: string | null = null;
     if (!skipNotification) {
       try {
-        const notificationResult = await sendConsentLinkNotification({
+        const dispatched = await dispatchQueuedConsentNotification({
+          notificationId: requestState.notificationRecord.id,
           consentRecordId: record.id,
           actorUserId: String(actorUserId),
           token,
@@ -196,16 +273,23 @@ export async function POST(request: NextRequest) {
           serviceTimeZone,
           consentTypeLabel: consentType.replace(/_/g, ' '),
         });
-        notification = notificationResult;
+        notification = dispatched.notification;
+        delivery = dispatched.delivery;
+        notificationError = delivery?.lastError || null;
+        const deliveryConfirmed =
+          delivery?.status === 'SENT' || delivery?.status === 'PARTIAL';
         await withTransientDbRetry(() =>
           (prisma as any).consentEvent.create({
             data: {
               consentRecordId: record.id,
-              eventType: 'notification_dispatch',
+              eventType: deliveryConfirmed
+                ? 'notification_dispatch'
+                : 'notification_dispatch_failed',
               metadata: JSON.stringify({
-                anySuccess: notificationResult.anySuccess,
-                channels: notificationResult.channels,
-                absoluteFallbackLink: notificationResult.absoluteFallbackLink,
+                status: delivery?.status || 'FAILED',
+                channels: delivery?.channels || [],
+                absoluteFallbackLink: notification?.absoluteFallbackLink || null,
+                error: notificationError,
               }),
             },
           })
@@ -231,9 +315,15 @@ export async function POST(request: NextRequest) {
       consentUrl: consentPath,
       consentAbsoluteUrl: notification?.absoluteFallbackLink ?? null,
       notification,
+      delivery,
       notificationError,
-      manualLinkRequired: skipNotification ? false : !notification?.anySuccess,
-      message: notification?.anySuccess
+      previousTokenCount: requestState.previousTokenCount,
+      manualLinkRequired:
+        skipNotification
+          ? false
+          : delivery?.status !== 'SENT' && delivery?.status !== 'PARTIAL',
+      message:
+        delivery?.status === 'SENT' || delivery?.status === 'PARTIAL'
         ? undefined
         : skipNotification
           ? undefined

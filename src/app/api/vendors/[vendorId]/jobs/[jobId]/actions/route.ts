@@ -77,15 +77,77 @@ function stringifyCustomerMetadata(metadata: Record<string, unknown>) {
   return JSON.stringify(metadata);
 }
 
+function buildRecordingLocationSnapshot(
+  location: "business" | "residence" | "customer-business",
+  source: Record<string, unknown> | null | undefined
+) {
+  const latitude = Number(source?.latitude);
+  const longitude = Number(source?.longitude);
+  const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
+  const address = String(source?.address || "").trim() || null;
+  const city = String(source?.city || "").trim() || null;
+  const state = String(source?.state || "").trim() || null;
+  const zipCode = String(source?.zipCode || "").trim() || null;
+  const hasAddress = Boolean(address && city && state && zipCode);
+  return {
+    type: location,
+    source:
+      location === "business"
+        ? "vendor_profile"
+        : location === "residence"
+          ? "customer_profile"
+          : "customer_supplied",
+    status:
+      location === "customer-business" && !hasAddress
+        ? "pending_customer_input"
+        : hasCoordinates
+          ? "verified_coordinates"
+          : hasAddress
+            ? "address_only"
+            : "not_available",
+    address,
+    city,
+    state,
+    zip_code: zipCode,
+    latitude: hasCoordinates ? latitude : null,
+    longitude: hasCoordinates ? longitude : null,
+    geocoded_at:
+      source?.geocodedAt instanceof Date
+        ? source.geocodedAt.toISOString()
+        : String(source?.geocodedAt || "").trim() || null,
+    captured_at: new Date().toISOString(),
+  };
+}
+
 function mergeRecordingComplianceMetadata(
   value: string | null | undefined,
   input: Record<string, unknown>,
-  locationVerification?: Record<string, unknown>
+  locationVerification?: Record<string, unknown>,
+  locationSources?: {
+    vendor?: Record<string, unknown> | null;
+    customer?: Record<string, unknown> | null;
+  }
 ) {
   const metadata = parseCustomerMetadata(value);
   const location = normalizeRecordingLocationChoice(input.location);
   if (location) {
     metadata.vendor_job_recording_location = location;
+    const existingSnapshot =
+      metadata.vendor_job_recording_location_snapshot &&
+      typeof metadata.vendor_job_recording_location_snapshot === "object" &&
+      !Array.isArray(metadata.vendor_job_recording_location_snapshot)
+        ? (metadata.vendor_job_recording_location_snapshot as Record<string, unknown>)
+        : null;
+    if (normalizeRecordingLocationChoice(existingSnapshot?.type) !== location) {
+      metadata.vendor_job_recording_location_snapshot = buildRecordingLocationSnapshot(
+        location,
+        location === "business"
+          ? locationSources?.vendor
+          : location === "residence"
+            ? locationSources?.customer
+            : null
+      );
+    }
   }
   if (input.consentAccepted !== undefined) {
     metadata.vendor_job_consent_accepted = input.consentAccepted === true;
@@ -365,8 +427,33 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         scheduledFor: true,
         date: true,
         service: { select: { name: true } },
-        vendor: { select: { name: true, businessName: true } },
-        user: { select: { name: true, email: true, phone: true } },
+        vendor: {
+          select: {
+            name: true,
+            businessName: true,
+            address: true,
+            city: true,
+            state: true,
+            zipCode: true,
+            latitude: true,
+            longitude: true,
+            geocodedAt: true,
+          },
+        },
+        user: {
+          select: {
+            name: true,
+            email: true,
+            phone: true,
+            address: true,
+            city: true,
+            state: true,
+            zipCode: true,
+            latitude: true,
+            longitude: true,
+            geocodedAt: true,
+          },
+        },
       },
     });
 
@@ -596,7 +683,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const metadata = mergeRecordingComplianceMetadata(
         existing?.customerMetadata || booking.customerMetadata,
         input,
-        locationVerification
+        locationVerification,
+        { vendor: booking.vendor, customer: booking.user }
       );
       const updated = await prisma.booking.update({
         where: { id: booking.id },
@@ -640,7 +728,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             body.recordingCompliance as Record<string, unknown>,
             body?.locationVerification && typeof body.locationVerification === "object"
               ? (body.locationVerification as Record<string, unknown>)
-              : undefined
+              : undefined,
+            { vendor: booking.vendor, customer: booking.user }
           )
         );
       }

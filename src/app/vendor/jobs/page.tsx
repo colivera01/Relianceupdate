@@ -467,6 +467,7 @@ export default function VendorJobs() {
   const phoneInputRef = useRef<HTMLInputElement | null>(null);
   const emailInputRef = useRef<HTMLInputElement | null>(null);
   const serviceTypeSelectRef = useRef<HTMLSelectElement | null>(null);
+  const createJobRequestRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [preferredNextVideoStage, setPreferredNextVideoStage] = useState<'' | VendorJobVideoStage>('');
   const [preferredReplaceStage, setPreferredReplaceStage] = useState(false);
   const [search, setSearch] = useState('');
@@ -1986,6 +1987,14 @@ export default function VendorJobs() {
     });
   };
 
+  const openCustomerConsentForJob = (job: any) => {
+    setSelectedJob(job);
+    setPreferredNextVideoStage(getNextMissingVideoStageForJob(job) || '');
+    setPreferredReplaceStage(false);
+    setActiveJobActionMenuId(null);
+    setShowComplianceModal(true);
+  };
+
   const openComplianceForSpecificStage = (
     job: any,
     stage: VendorJobVideoStage,
@@ -2078,6 +2087,7 @@ export default function VendorJobs() {
       consentAcceptedAt: job?.consentAcceptedAt || null,
       consentDeclinedAt: job?.consentDeclinedAt || null,
       recordingCompliance: job?.recordingCompliance || null,
+      consentNotification: job?.consentNotification || null,
       archivedAt: status === 'archived' ? (job?.date || new Date().toISOString()) : null,
       archiveReason: status === 'archived' ? 'Archived job' : '',
     };
@@ -2772,12 +2782,30 @@ export default function VendorJobs() {
             : 'vendor_business',
       },
     };
+    const creationFingerprint = JSON.stringify(payload);
+    const previousCreationRequest = createJobRequestRef.current;
+    const creationRequestKey =
+      previousCreationRequest?.fingerprint === creationFingerprint
+        ? previousCreationRequest.key
+        : typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `work-record-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    createJobRequestRef.current = {
+      fingerprint: creationFingerprint,
+      key: creationRequestKey,
+    };
 
     try {
       const res = await fetch('/api/bookings', {
         method: 'POST',
-        headers: getRequestHeaders(),
-        body: JSON.stringify(payload),
+        headers: {
+          ...getRequestHeaders(),
+          'Idempotency-Key': creationRequestKey,
+        },
+        body: JSON.stringify({
+          ...payload,
+          idempotency_key: creationRequestKey,
+        }),
       });
       const rawText = await res.text().catch(() => '');
       const parsed = parseResponsePayload(rawText);
@@ -2818,6 +2846,7 @@ export default function VendorJobs() {
       setJobModalMode('create');
       setJobFormTargetId(null);
       setShowCreateJob(false);
+      createJobRequestRef.current = null;
       setJobActionFeedback({
         type: automaticConsent?.status === 'setup_failed' ? 'error' : 'success',
         message:
@@ -3688,7 +3717,11 @@ export default function VendorJobs() {
         consentToken: token,
       });
       const notification = consentPayload?.notification;
-      const deliveryConfirmed = notification?.anySuccess === true;
+      const deliveryStatus = String(consentPayload?.delivery?.status || '').toUpperCase();
+      const deliveryConfirmed =
+        notification?.anySuccess === true ||
+        deliveryStatus === 'SENT' ||
+        deliveryStatus === 'PARTIAL';
       const fallbackConsentLink = String(consentPayload?.consentAbsoluteUrl || '').trim();
       if (deliveryConfirmed) {
         const sentChannels = Array.isArray(notification?.channels)
@@ -3729,6 +3762,7 @@ export default function VendorJobs() {
           );
         });
       }
+      await reloadJobsFromBackend({ silent: true });
     } catch (error: any) {
       setCustomerConsentStatus(CONSENT_STATE.NOT_REQUESTED);
       setCustomerConsentRequested(false);
@@ -6654,12 +6688,15 @@ export default function VendorJobs() {
                       disabled={
                         !hasCustomerContactForJob(selectedJob) ||
                         customerConsentSending ||
-                        customerConsentStatus === CONSENT_STATE.REQUESTED ||
                         customerConsentStatus === CONSENT_STATE.ACCEPTED
                       }
                       className="w-full"
                     >
-                      {customerConsentSending ? 'Sending Video Consent...' : 'Send Video Consent to Customer'}
+                      {customerConsentSending
+                        ? 'Sending Video Consent...'
+                        : customerConsentStatus === CONSENT_STATE.REQUESTED
+                          ? 'Resend Video Consent to Customer'
+                          : 'Send Video Consent to Customer'}
                     </Button>
                     {!hasCustomerContactForJob(selectedJob) ? (
                       <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -6771,12 +6808,15 @@ export default function VendorJobs() {
                       disabled={
                         !hasCustomerContactForJob(selectedJob) ||
                         customerConsentSending ||
-                        customerConsentStatus === CONSENT_STATE.REQUESTED ||
                         customerConsentStatus === CONSENT_STATE.ACCEPTED
                       }
                       className="w-full"
                     >
-                      {customerConsentSending ? 'Sending Video Consent...' : 'Send Video Consent to Customer'}
+                      {customerConsentSending
+                        ? 'Sending Video Consent...'
+                        : customerConsentStatus === CONSENT_STATE.REQUESTED
+                          ? 'Resend Video Consent to Customer'
+                          : 'Send Video Consent to Customer'}
                     </Button>
                     {!hasCustomerContactForJob(selectedJob) ? (
                       <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -7185,6 +7225,12 @@ export default function VendorJobs() {
                     <p className="text-sm text-blue-600 mt-1">
                       Assigned: {job.assignedEmployees && job.assignedEmployees.length > 0 ? job.assignedEmployees.join(', ') : 'Unassigned'}
                     </p>
+                    {job?.recordingCompliance?.addressSnapshot?.formattedAddress ? (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Recording location saved for this order:{' '}
+                        {job.recordingCompliance.addressSnapshot.formattedAddress}
+                      </p>
+                    ) : null}
                     {(() => {
                       const workflow = getVendorWorkflowStateForJob(job);
                       const toneClasses: Record<string, string> = {
@@ -7480,6 +7526,36 @@ export default function VendorJobs() {
                     return null;
                   })()}
                   {(() => {
+                    const deliveryStatus = String(job?.consentNotification?.status || '').toUpperCase();
+                    if (deliveryStatus === 'FAILED') {
+                      return (
+                        <Badge
+                          className="bg-red-100 text-red-800"
+                          title={String(job?.consentNotification?.lastError || 'Consent delivery failed')}
+                        >
+                          Consent delivery failed
+                        </Badge>
+                      );
+                    }
+                    if (deliveryStatus === 'PARTIAL') {
+                      return (
+                        <Badge
+                          className="bg-amber-100 text-amber-900"
+                          title={String(job?.consentNotification?.lastError || 'One delivery channel failed')}
+                        >
+                          Consent sent with warning
+                        </Badge>
+                      );
+                    }
+                    if (deliveryStatus === 'SENT') {
+                      return <Badge className="bg-emerald-100 text-emerald-800">Consent sent</Badge>;
+                    }
+                    if (deliveryStatus === 'QUEUED' || deliveryStatus === 'SENDING') {
+                      return <Badge className="bg-blue-100 text-blue-800">Consent sending</Badge>;
+                    }
+                    return null;
+                  })()}
+                  {(() => {
                     const consentState = String(
                       consentStatusByBookingId[String(job.bookingId || job.id || '')] || ''
                     ).toLowerCase();
@@ -7647,9 +7723,17 @@ export default function VendorJobs() {
                                   Edit
                                 </button>
                                 {isConsentBlocked ? (
-                                  <div className="border-y border-amber-300/15 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
-                                    Assignment locked - waiting for customer consent
-                                  </div>
+                                  <>
+                                    <div className="border-y border-amber-300/15 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
+                                      Assignment locked - waiting for customer consent
+                                    </div>
+                                    <button
+                                      className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white"
+                                      onClick={() => openCustomerConsentForJob(job)}
+                                    >
+                                      Open / Resend Customer Consent
+                                    </button>
+                                  </>
                                 ) : (
                                   <button
                                     className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"

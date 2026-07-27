@@ -94,6 +94,41 @@ function customerBusinessLocation(metadataValue: string | null | undefined): Ven
   return hasCompleteAddress(location) ? location : null;
 }
 
+function recordingLocationSnapshot(
+  metadataValue: string | null | undefined,
+  expectedType: "business" | "customer-business"
+): VendorLocation | null {
+  const metadata = parseMetadata(metadataValue);
+  const raw = metadata.vendor_job_recording_location_snapshot;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const snapshot = raw as Record<string, unknown>;
+  if (locationChoice(snapshot.type) !== expectedType) return null;
+  const location = {
+    address: String(snapshot.address || "").trim() || null,
+    city: String(snapshot.city || "").trim() || null,
+    state: String(snapshot.state || "").trim() || null,
+    zipCode: String(snapshot.zip_code || snapshot.zipCode || "").trim() || null,
+    latitude: finite(snapshot.latitude),
+    longitude: finite(snapshot.longitude),
+    geocodedAt: snapshot.geocoded_at ? new Date(String(snapshot.geocoded_at)) : null,
+  };
+  return hasCompleteAddress(location) || hasValidCoordinates(location) ? location : null;
+}
+
+async function resolveImmutableSnapshotLocation(location: VendorLocation | null) {
+  if (!location) return null;
+  if (hasValidCoordinates(location)) return location;
+  if (!hasCompleteAddress(location)) return location;
+  const result = await geocodeAddress(location);
+  if (result.status !== "success") return location;
+  return {
+    ...location,
+    latitude: result.latitude,
+    longitude: result.longitude,
+    geocodedAt: result.geocodedAt,
+  };
+}
+
 export async function verifyJobRecordingLocation(input: {
   vendorId: string;
   metadata: string | null | undefined;
@@ -107,8 +142,10 @@ export async function verifyJobRecordingLocation(input: {
     return { ok: false, status: 422, code: "LOCATION_VERIFICATION_NOT_REQUIRED", message: "This service order does not require business-location verification." };
   }
 
-  const expected =
-    location === "business"
+  const immutableSnapshot = recordingLocationSnapshot(input.metadata, location);
+  const expected = immutableSnapshot
+    ? await resolveImmutableSnapshotLocation(immutableSnapshot)
+    : location === "business"
       ? await resolveVendorLocation(input.vendorId, input.vendorLocation)
       : customerBusinessLocation(input.metadata);
   const label = location === "business" ? "registered vendor business address" : "customer business address";

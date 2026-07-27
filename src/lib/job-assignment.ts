@@ -15,6 +15,13 @@ export type RecordingComplianceMetadata = {
   locationVerifiedAt: string | null;
   serviceOrderReleasedAt: string | null;
   releasedMembershipIds: string[];
+  addressSnapshot: {
+    type: RecordingLocationChoice | null;
+    source: string | null;
+    status: string | null;
+    formattedAddress: string | null;
+    capturedAt: string | null;
+  } | null;
 };
 
 export function parseCustomerMetadata(value: string | null | undefined): Record<string, unknown> {
@@ -71,6 +78,19 @@ export function parseRecordingComplianceMetadata(
         .map((id) => String(id || "").trim())
         .filter(Boolean)
     : [];
+  const rawSnapshot = parsed.vendor_job_recording_location_snapshot;
+  const snapshot =
+    rawSnapshot && typeof rawSnapshot === "object" && !Array.isArray(rawSnapshot)
+      ? (rawSnapshot as Record<string, unknown>)
+      : null;
+  const snapshotAddress = snapshot
+    ? [
+        String(snapshot.address || "").trim(),
+        String(snapshot.city || "").trim(),
+        String(snapshot.state || "").trim(),
+        String(snapshot.zip_code || snapshot.zipCode || "").trim(),
+      ].filter(Boolean)
+    : [];
 
   return {
     location: normalizeRecordingLocationChoice(parsed.vendor_job_recording_location),
@@ -81,6 +101,15 @@ export function parseRecordingComplianceMetadata(
     serviceOrderReleasedAt:
       String(parsed.vendor_job_service_order_released_at || "").trim() || null,
     releasedMembershipIds: Array.from(new Set(releasedMembershipIds)),
+    addressSnapshot: snapshot
+      ? {
+          type: normalizeRecordingLocationChoice(snapshot.type),
+          source: String(snapshot.source || "").trim() || null,
+          status: String(snapshot.status || "").trim() || null,
+          formattedAddress: snapshotAddress.length ? snapshotAddress.join(", ") : null,
+          capturedAt: String(snapshot.captured_at || "").trim() || null,
+        }
+      : null,
   };
 }
 

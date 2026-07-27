@@ -21,6 +21,7 @@ const hoisted = vi.hoisted(() => {
   const reviewCount = vi.fn();
   const mediaSessionFindMany = vi.fn();
   const consentRecordFindMany = vi.fn();
+  const bookingNotificationFindMany = vi.fn();
   const mediaAssetGroupBy = vi.fn();
   const mediaAssetCount = vi.fn();
   const mediaAssetFindMany = vi.fn();
@@ -47,6 +48,9 @@ const hoisted = vi.hoisted(() => {
     consentRecord: {
       findMany: consentRecordFindMany,
     },
+    bookingNotification: {
+      findMany: bookingNotificationFindMany,
+    },
     mediaAsset: {
       groupBy: mediaAssetGroupBy,
       count: mediaAssetCount,
@@ -69,6 +73,7 @@ const hoisted = vi.hoisted(() => {
     reviewCount,
     mediaSessionFindMany,
     consentRecordFindMany,
+    bookingNotificationFindMany,
     mediaAssetGroupBy,
     mediaAssetCount,
     mediaAssetFindMany,
@@ -166,6 +171,7 @@ function mockHappyPathData() {
   vi.mocked(getEmployeeRatingsForVendor).mockResolvedValue([]);
   hoisted.mediaSessionFindMany.mockResolvedValue([]);
   hoisted.consentRecordFindMany.mockResolvedValue([]);
+  hoisted.bookingNotificationFindMany.mockResolvedValue([]);
   hoisted.mediaAssetGroupBy.mockResolvedValue([]);
   hoisted.mediaAssetCount.mockResolvedValue(0);
   hoisted.vendorMembershipFindMany.mockResolvedValue([]);
@@ -191,6 +197,8 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     hoisted.reviewCount.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.consentRecordFindMany.mockReset();
+    hoisted.bookingNotificationFindMany.mockReset();
+    hoisted.bookingNotificationFindMany.mockResolvedValue([]);
     hoisted.mediaAssetGroupBy.mockReset();
     hoisted.mediaAssetCount.mockReset();
     hoisted.mediaAssetFindMany.mockReset();

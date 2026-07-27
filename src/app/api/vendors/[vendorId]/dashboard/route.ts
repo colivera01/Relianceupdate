@@ -23,6 +23,10 @@ import {
   vendorOperationalBookingWhere,
 } from "@/lib/metrics-exclusion";
 import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
+import {
+  CUSTOMER_CONSENT_NOTIFICATION_KIND,
+  toBookingNotificationState,
+} from "@/lib/booking-notification-delivery";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -594,9 +598,20 @@ export async function GET(
           })
         )
       : [];
+    const consentNotifications = bookingIds.length
+      ? await withTransientDbRetry(() =>
+          (prisma as any).bookingNotification.findMany({
+            where: {
+              bookingId: { in: bookingIds },
+              kind: CUSTOMER_CONSENT_NOTIFICATION_KIND,
+            },
+          })
+        )
+      : [];
     const mediaSummaryByBookingId = new Map<string, { linkedSessionCount: number; linkedMediaCount: number }>();
     const sessionsForPhaseByBookingId = new Map<string, any[]>();
     const latestConsentByBookingId = new Map<string, any>();
+    const consentNotificationByBookingId = new Map<string, any>();
     for (const session of sessionsByBooking as any[]) {
       const key = String(session.bookingId || "");
       if (!key) continue;
@@ -613,6 +628,10 @@ export async function GET(
       const key = String(consentRecord?.bookingId || "");
       if (!key || latestConsentByBookingId.has(key)) continue;
       latestConsentByBookingId.set(key, consentRecord);
+    }
+    for (const notification of consentNotifications as any[]) {
+      const key = String(notification?.bookingId || "");
+      if (key) consentNotificationByBookingId.set(key, notification);
     }
 
     const recentJobs = recentBookings
@@ -643,6 +662,8 @@ export async function GET(
         linkedMediaCount: 0,
       };
       const latestConsentRecord = latestConsentByBookingId.get(String(booking.id)) || null;
+      const consentNotification =
+        consentNotificationByBookingId.get(String(booking.id)) || null;
       const packageState = evaluateVendorJobPackageState(
         sessionsForPhaseByBookingId.get(String(booking.id)) || []
       );
@@ -697,6 +718,7 @@ export async function GET(
         latestConsentToken: latestConsentRecord?.token || null,
         consentAcceptedAt: latestConsentRecord?.acceptedAt?.toISOString?.() || null,
         consentDeclinedAt: latestConsentRecord?.declinedAt?.toISOString?.() || null,
+        consentNotification: toBookingNotificationState(consentNotification),
         source: resolveJobSourceFromMetadata(booking.customerMetadata),
         createdAt: booking.createdAt?.toISOString() || null,
         updatedAt: booking.updatedAt?.toISOString() || booking.createdAt?.toISOString() || null,

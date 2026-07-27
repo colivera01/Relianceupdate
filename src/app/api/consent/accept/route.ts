@@ -128,6 +128,19 @@ export async function POST(request: NextRequest) {
         metadata.vendor_job_customer_business_longitude = geocode.longitude;
         metadata.vendor_job_customer_business_geocoded_at = geocode.geocodedAt.toISOString();
         metadata.vendor_job_customer_business_formatted_address = geocode.formattedAddress || formatAddress(address);
+        metadata.vendor_job_recording_location_snapshot = {
+          type: 'customer-business',
+          source: 'customer_supplied',
+          status: 'verified_coordinates',
+          address: address.address,
+          city: address.city,
+          state: address.state,
+          zip_code: address.zipCode,
+          latitude: geocode.latitude,
+          longitude: geocode.longitude,
+          geocoded_at: geocode.geocodedAt.toISOString(),
+          captured_at: new Date().toISOString(),
+        };
         bookingForConsent = { ...bookingForConsent!, customerMetadata: JSON.stringify(metadata) };
         customerBusinessLocationVerified = true;
       }

@@ -392,6 +392,7 @@ model Booking {
   seedBatchId  String?
   /** JSON string (snake_case keys). SQL Server provider has no Prisma `Json` type — use `String` + app parse/stringify. */
   customerMetadata String? @db.NVarChar(Max)
+  creationRequestKey String?
 
   // Relations
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -403,8 +404,31 @@ model Booking {
   reviews      Review[]
   serviceIssues BookingServiceIssue[]
   operationalOutcomes VendorOperationalOutcome[]
+  notifications BookingNotification[]
 
   @@map("bookings")
+}
+
+model BookingNotification {
+  id              String   @id @default(cuid())
+  bookingId       String
+  consentRecordId String?
+  kind            String
+  status          String   @default("QUEUED")
+  attemptCount    Int      @default(0)
+  channelsJson    String?  @db.NVarChar(Max)
+  lastError       String?  @db.NVarChar(Max)
+  lastAttemptAt   DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, kind])
+  @@index([status, lastAttemptAt])
+  @@index([consentRecordId])
+  @@map("booking_notifications")
 }
 
 model Review {

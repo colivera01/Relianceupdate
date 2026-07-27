@@ -637,6 +637,67 @@ describe("vendor job actions integration", () => {
     });
   });
 
+  it("PATCH UPDATE_RECORDING_COMPLIANCE snapshots the selected business address", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: JSON.stringify({}),
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      scheduledFor: new Date("2026-06-20T15:00:00.000Z"),
+      date: null,
+      service: { name: "Electrical Service" },
+      vendor: {
+        businessName: "Electro LLC",
+        name: "Electro",
+        address: "407 Boxwood Circle",
+        city: "Winter Springs",
+        state: "FL",
+        zipCode: "32708",
+        latitude: 28.6984,
+        longitude: -81.3081,
+        geocodedAt: new Date("2026-06-10T12:00:00.000Z"),
+      },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({ customerMetadata: JSON.stringify({}) });
+    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
+      id: "job1",
+      status: "PENDING",
+      customerMetadata: args.data.customerMetadata,
+      updatedAt: new Date("2026-06-11T12:10:00.000Z"),
+    }));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "UPDATE_RECORDING_COMPLIANCE",
+      recordingCompliance: {
+        location: "business",
+        consentAccepted: false,
+        locationVerified: false,
+      },
+    });
+    const response = await PATCH(req, ctx as any);
+    const json = await toJson(response);
+    const savedMetadata = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
+
+    expect(response.status).toBe(200);
+    expect(savedMetadata.vendor_job_recording_location_snapshot).toMatchObject({
+      type: "business",
+      source: "vendor_profile",
+      status: "verified_coordinates",
+      address: "407 Boxwood Circle",
+      city: "Winter Springs",
+      state: "FL",
+      zip_code: "32708",
+      latitude: 28.6984,
+      longitude: -81.3081,
+    });
+    expect(json.job.recordingCompliance.addressSnapshot.formattedAddress).toBe(
+      "407 Boxwood Circle, Winter Springs, FL, 32708"
+    );
+  });
+
   it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER sends the service order after business location verification", async () => {
     const metadata = JSON.stringify({
       vendor_job_assigned_membership_ids: ["member-1"],

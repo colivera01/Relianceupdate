@@ -70,4 +70,40 @@ describe("verifyJobRecordingLocation", () => {
       code: "CUSTOMER_BUSINESS_LOCATION_MISMATCH",
     });
   });
+
+  it("uses the address snapshot saved on the work order after the vendor profile changes", async () => {
+    const metadata = JSON.stringify({
+      vendor_job_recording_location: "business",
+      vendor_job_recording_location_snapshot: {
+        type: "business",
+        source: "vendor_profile",
+        status: "verified_coordinates",
+        address: "100 Original Ave",
+        city: "Orlando",
+        state: "FL",
+        zip_code: "32801",
+        latitude: 28.5383,
+        longitude: -81.3792,
+        captured_at: "2026-07-22T12:00:00.000Z",
+      },
+    });
+    const changedVendorProfile = {
+      address: "200 New Address Rd",
+      city: "Mount Dora",
+      state: "FL",
+      zipCode: "32757",
+      latitude: 28.8025,
+      longitude: -81.6445,
+      geocodedAt: new Date("2026-07-23T12:00:00.000Z"),
+    };
+
+    const result = await verifyJobRecordingLocation({
+      vendorId: "vendor-1",
+      metadata,
+      vendorLocation: changedVendorProfile,
+      proof: { latitude: 28.53831, longitude: -81.37919, accuracyMeters: 20 },
+    });
+
+    expect(result).toMatchObject({ ok: true, location: "business" });
+  });
 });

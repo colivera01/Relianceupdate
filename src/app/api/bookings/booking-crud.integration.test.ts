@@ -10,6 +10,7 @@ const hoisted = vi.hoisted(() => {
   const bookingCount = vi.fn();
   const bookingFindMany = vi.fn();
   const bookingFindUnique = vi.fn();
+  const bookingFindFirst = vi.fn();
   const bookingCreate = vi.fn();
   const bookingUpdate = vi.fn();
   const vendorFindUnique = vi.fn();
@@ -23,14 +24,20 @@ const hoisted = vi.hoisted(() => {
   const reviewFindFirst = vi.fn();
   const mediaSessionCreate = vi.fn();
   const consentRecordCreate = vi.fn();
+  const consentRecordFindFirst = vi.fn();
   const consentEventCreate = vi.fn();
+  const bookingNotificationCreate = vi.fn();
+  const bookingNotificationFindUnique = vi.fn();
+  const bookingNotificationUpdateMany = vi.fn();
+  const bookingNotificationUpdate = vi.fn();
   const queryRaw = vi.fn();
 
-  const prisma = {
+  const prisma: any = {
     booking: {
       count: bookingCount,
       findMany: bookingFindMany,
       findUnique: bookingFindUnique,
+      findFirst: bookingFindFirst,
       create: bookingCreate,
       update: bookingUpdate,
     },
@@ -40,16 +47,25 @@ const hoisted = vi.hoisted(() => {
     user: { findFirst: userFindFirst, findUnique: userFindUnique, create: userCreate },
     review: { findFirst: reviewFindFirst },
     mediaSession: { create: mediaSessionCreate },
-    consentRecord: { create: consentRecordCreate },
+    consentRecord: { create: consentRecordCreate, findFirst: consentRecordFindFirst },
     consentEvent: { create: consentEventCreate },
+    bookingNotification: {
+      create: bookingNotificationCreate,
+      findUnique: bookingNotificationFindUnique,
+      updateMany: bookingNotificationUpdateMany,
+      update: bookingNotificationUpdate,
+    },
     $queryRaw: queryRaw,
   };
+  const transaction = vi.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
+  prisma.$transaction = transaction;
 
   return {
     prisma,
     bookingCount,
     bookingFindMany,
     bookingFindUnique,
+    bookingFindFirst,
     bookingCreate,
     bookingUpdate,
     vendorFindUnique,
@@ -63,7 +79,13 @@ const hoisted = vi.hoisted(() => {
     reviewFindFirst,
     mediaSessionCreate,
     consentRecordCreate,
+    consentRecordFindFirst,
     consentEventCreate,
+    bookingNotificationCreate,
+    bookingNotificationFindUnique,
+    bookingNotificationUpdateMany,
+    bookingNotificationUpdate,
+    transaction,
     queryRaw,
   };
 });
@@ -209,6 +231,7 @@ describe('POST /api/bookings', () => {
     hoisted.serviceFindUnique.mockReset();
     hoisted.serviceCreate.mockReset();
     hoisted.bookingCreate.mockReset();
+    hoisted.bookingFindFirst.mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.userFindFirst.mockReset();
@@ -217,7 +240,16 @@ describe('POST /api/bookings', () => {
     hoisted.reviewFindFirst.mockReset();
     hoisted.mediaSessionCreate.mockReset();
     hoisted.consentRecordCreate.mockReset();
+    hoisted.consentRecordFindFirst.mockReset();
     hoisted.consentEventCreate.mockReset();
+    hoisted.bookingNotificationCreate.mockReset();
+    hoisted.bookingNotificationFindUnique.mockReset();
+    hoisted.bookingNotificationUpdateMany.mockReset();
+    hoisted.bookingNotificationUpdate.mockReset();
+    hoisted.transaction.mockReset();
+    hoisted.transaction.mockImplementation(async (callback: (tx: typeof hoisted.prisma) => unknown) =>
+      callback(hoisted.prisma)
+    );
     hoisted.bookingUpdate.mockReset();
     vi.mocked(sendConsentLinkNotification).mockReset();
     hoisted.queryRaw.mockReset();
@@ -225,6 +257,24 @@ describe('POST /api/bookings', () => {
     hoisted.userFindFirst.mockResolvedValue(null);
     hoisted.userFindUnique.mockResolvedValue(null);
     hoisted.userCreate.mockResolvedValue({ id: 'placeholder-user-1' });
+    hoisted.bookingFindFirst.mockResolvedValue(null);
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
+    hoisted.bookingNotificationFindUnique.mockResolvedValue(null);
+    hoisted.bookingNotificationCreate.mockResolvedValue({
+      id: 'notification-1',
+      status: 'QUEUED',
+      attemptCount: 0,
+    });
+    hoisted.bookingNotificationUpdateMany.mockResolvedValue({ count: 1 });
+    hoisted.bookingNotificationUpdate.mockResolvedValue({
+      id: 'notification-1',
+      status: 'SENT',
+      attemptCount: 1,
+      channelsJson: JSON.stringify([{ channel: 'email', attempted: true, success: true }]),
+      lastError: null,
+      lastAttemptAt: new Date('2024-07-01T12:00:00.000Z'),
+      sentAt: new Date('2024-07-01T12:00:01.000Z'),
+    });
     hoisted.reviewFindFirst.mockResolvedValue(null);
     hoisted.queryRaw.mockResolvedValue([]);
     vi.mocked(sendConsentLinkNotification).mockResolvedValue({
@@ -519,16 +569,110 @@ describe('POST /api/bookings', () => {
         bookingTitle: 'Electrical Service Recording Test',
       })
     );
-    expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
-      where: { id: 'customer-location-book' },
-      data: {
+    expect(hoisted.bookingCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
         customerMetadata: expect.stringContaining('"vendor_job_consent_status":"requested"'),
-      },
+      }),
+    });
+    expect(hoisted.bookingNotificationCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bookingId: 'customer-location-book',
+        kind: 'CUSTOMER_CONSENT_REQUEST',
+        status: 'QUEUED',
+      }),
     });
     expect(await readJson(res)).toMatchObject({
       success: true,
       automaticConsent: { status: 'requested', deliveryConfirmed: true },
     });
+  });
+
+  it('returns the existing work record when the same creation key is retried', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.bookingFindFirst.mockResolvedValue(
+      baseHydratedBooking({
+        id: 'already-created',
+        vendorId: 'ven-1',
+        userId: 'customer-1',
+      })
+    );
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          client_name: 'Alex',
+          client_email: 'alex@example.com',
+          idempotency_key: 'stable-create-key',
+        },
+        'POST'
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(hoisted.bookingFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { creationRequestKey: 'stable-create-key' } })
+    );
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
+    expect(await readJson(res)).toMatchObject({
+      success: true,
+      idempotentReplay: true,
+      booking: { id: 'already-created' },
+    });
+  });
+
+  it('creates the booking and consent state in one database transaction', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue({
+      id: 'ven-1',
+      businessName: 'Vendor Co',
+      address: '100 Main St',
+      city: 'Orlando',
+      state: 'FL',
+      zipCode: '32801',
+      latitude: 28.54,
+      longitude: -81.38,
+    });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
+    hoisted.bookingCreate.mockResolvedValue({ id: 'transaction-book' });
+    hoisted.mediaSessionCreate.mockResolvedValue({ id: 'transaction-session' });
+    hoisted.consentRecordCreate.mockResolvedValue({
+      id: 'transaction-consent',
+      token: 'transaction-token',
+      status: 'requested',
+    });
+    hoisted.consentEventCreate.mockResolvedValue({ id: 'event-1' });
+    hoisted.bookingFindUnique.mockResolvedValue(
+      baseHydratedBooking({ id: 'transaction-book', userId: 'customer-by-email' })
+    );
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          client_name: 'Alex',
+          client_email: 'alex@example.com',
+          custom_fields: { vendor_job_recording_location: 'customer-business' },
+        },
+        'POST'
+      )
+    );
+
+    expect(res.status).toBe(200);
+    expect(hoisted.transaction).toHaveBeenCalledTimes(1);
+    expect(hoisted.bookingCreate).toHaveBeenCalledTimes(1);
+    expect(hoisted.consentRecordCreate).toHaveBeenCalledTimes(1);
+    expect(hoisted.bookingNotificationCreate).toHaveBeenCalledTimes(1);
   });
 
   it('creates an unclaimed booking placeholder when client_email has no existing account', async () => {
