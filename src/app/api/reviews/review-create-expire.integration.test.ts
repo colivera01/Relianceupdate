@@ -4,7 +4,6 @@ import { POST as createReviewPOST } from './create/route';
 import { POST as expireReviewPOST } from './window/expire/route';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { createAdminAuditLog } from '@/lib/admin-audit';
-import { notifyReviewWindowClosedWithoutSubmission } from '@/lib/review-notifications';
 
 const futureExpires = () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -18,6 +17,7 @@ const hoisted = vi.hoisted(() => {
   const reviewCreate = vi.fn();
   const reviewPromptEventCreate = vi.fn();
   const reviewCount = vi.fn();
+  const mediaAssetFindFirst = vi.fn();
   const $transaction = vi.fn();
 
   const prisma = {
@@ -29,6 +29,7 @@ const hoisted = vi.hoisted(() => {
     booking: { findUnique: bookingFindUnique },
     vendorMembership: { findFirst: vendorMembershipFindFirst },
     review: { findFirst: reviewFindFirst, count: reviewCount },
+    mediaAsset: { findFirst: mediaAssetFindFirst },
     reviewPromptEvent: { create: reviewPromptEventCreate },
     $transaction,
   };
@@ -44,6 +45,7 @@ const hoisted = vi.hoisted(() => {
     reviewCreate,
     reviewPromptEventCreate,
     reviewCount,
+    mediaAssetFindFirst,
     $transaction,
   };
 });
@@ -58,16 +60,6 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/admin-audit', () => ({
   createAdminAuditLog: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock('@/lib/review-notifications', () => ({
-  notifyReviewWindowClosedWithoutSubmission: vi.fn().mockResolvedValue({
-    sent: false,
-    reason: 'notification_partial_or_skipped',
-    context: {},
-    delivery: null,
-    loadError: null,
-  }),
 }));
 
 vi.mock('@/lib/email-verification-enforcement', () => ({
@@ -98,6 +90,8 @@ describe('POST /api/reviews/create', () => {
     hoisted.reviewWindowUpdate.mockReset();
     hoisted.reviewWindowUpdateMany.mockReset();
     hoisted.reviewPromptEventCreate.mockReset();
+    hoisted.mediaAssetFindFirst.mockReset();
+    hoisted.mediaAssetFindFirst.mockResolvedValue({ id: 'asset-visible' });
     vi.mocked(createAdminAuditLog).mockClear();
   });
 
@@ -132,6 +126,7 @@ describe('POST /api/reviews/create', () => {
       id: 'b1',
       userId: 'customer-b',
       vendorId: 'v1',
+      status: 'COMPLETED',
     });
     hoisted.reviewFindFirst.mockResolvedValue(null);
 
@@ -148,6 +143,71 @@ describe('POST /api/reviews/create', () => {
     const j = await readJson(res);
     expect(j.error).toBe('Only the booking customer can submit review');
     expect(hoisted.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('does not allow a review for an incomplete work record', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
+    hoisted.reviewWindowFindUnique.mockResolvedValue({
+      id: 'rw1',
+      bookingId: 'b1',
+      vendorId: 'v1',
+      mediaSessionId: 'ms1',
+      status: 'active',
+      expiresAt: futureExpires(),
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: 'b1',
+      userId: 'customer-a',
+      vendorId: 'v1',
+      status: 'IN_PROGRESS',
+    });
+
+    const res = await createReviewPOST(
+      jsonRequest('http://localhost/api/reviews/create', {
+        reviewWindowId: 'rw1',
+        bookingId: 'b1',
+        vendorId: 'v1',
+        rating: 5,
+        submittedVia: 'manual',
+      })
+    );
+
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).code).toBe('BOOKING_NOT_COMPLETED');
+    expect(hoisted.reviewCreate).not.toHaveBeenCalled();
+  });
+
+  it('requires manager-approved customer-visible final proof at submission time', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
+    hoisted.reviewWindowFindUnique.mockResolvedValue({
+      id: 'rw1',
+      bookingId: 'b1',
+      vendorId: 'v1',
+      mediaSessionId: 'ms1',
+      status: 'active',
+      expiresAt: futureExpires(),
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: 'b1',
+      userId: 'customer-a',
+      vendorId: 'v1',
+      status: 'COMPLETED',
+    });
+    hoisted.mediaAssetFindFirst.mockResolvedValue(null);
+
+    const res = await createReviewPOST(
+      jsonRequest('http://localhost/api/reviews/create', {
+        reviewWindowId: 'rw1',
+        bookingId: 'b1',
+        vendorId: 'v1',
+        rating: 5,
+        submittedVia: 'manual',
+      })
+    );
+
+    expect(res.status).toBe(409);
+    expect((await readJson(res)).code).toBe('REVIEW_PROOF_NOT_CUSTOMER_VISIBLE');
+    expect(hoisted.reviewCreate).not.toHaveBeenCalled();
   });
 
   it('returns 409 REVIEW_WINDOW_CONTEXT_MISMATCH when window booking/vendor do not match body', async () => {
@@ -202,7 +262,7 @@ describe('POST /api/reviews/create', () => {
     expect(j.code).toBe('REVIEW_WINDOW_MEDIA_MISMATCH');
   });
 
-  it('returns 200 success path with valid ownership and matching active window', async () => {
+  it('allows an eligible customer to review more than 72 hours after availability began', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
     hoisted.reviewWindowFindUnique.mockResolvedValue({
       id: 'rw1',
@@ -210,12 +270,13 @@ describe('POST /api/reviews/create', () => {
       vendorId: 'v1',
       mediaSessionId: 'ms1',
       status: 'active',
-      expiresAt: futureExpires(),
+      expiresAt: new Date('2026-01-01T00:00:00.000Z'),
     });
     hoisted.bookingFindUnique.mockResolvedValue({
       id: 'b1',
       userId: 'customer-a',
       vendorId: 'v1',
+      status: 'COMPLETED',
     });
     hoisted.reviewFindFirst.mockResolvedValue(null);
 
@@ -305,6 +366,7 @@ describe('POST /api/reviews/create', () => {
       id: 'b1',
       userId: 'customer-a',
       vendorId: 'v1',
+      status: 'COMPLETED',
       customerMetadata: JSON.stringify({
         vendor_job_assigned_membership_ids: ['membership-1', 'membership-2'],
         vendor_job_assigned_employees: ['Tech One', 'Tech Two'],
@@ -341,6 +403,7 @@ describe('POST /api/reviews/create', () => {
         vendorId: 'v1',
         rating: 5,
         submittedVia: 'video_overlay',
+        reviewAttributionTarget: 'assigned_team',
       })
     );
     expect(res.status).toBe(200);
@@ -350,7 +413,7 @@ describe('POST /api/reviews/create', () => {
           assignedMembershipId: 'membership-2',
           assignedEmployeeName: 'Tech Two',
           assignedUserId: 'employee-user-1',
-          attributionVersion: 1,
+          attributionVersion: 2,
         }),
       })
     );
@@ -370,6 +433,7 @@ describe('POST /api/reviews/create', () => {
       id: 'b1',
       userId: 'customer-a',
       vendorId: 'v1',
+      status: 'COMPLETED',
       customerMetadata: JSON.stringify({}),
     });
     hoisted.reviewFindFirst.mockResolvedValue(null);
@@ -406,7 +470,7 @@ describe('POST /api/reviews/create', () => {
           assignedMembershipId: null,
           assignedEmployeeName: null,
           assignedUserId: null,
-          attributionVersion: 1,
+          attributionVersion: 2,
         }),
       })
     );
@@ -426,6 +490,7 @@ describe('POST /api/reviews/create', () => {
       id: 'b1',
       userId: 'customer-a',
       vendorId: 'v1',
+      status: 'COMPLETED',
       customerMetadata: null,
     });
     hoisted.reviewFindFirst.mockResolvedValue(null);
@@ -465,7 +530,7 @@ describe('POST /api/reviews/window/expire', () => {
     hoisted.reviewWindowUpdate.mockReset();
     hoisted.reviewCount.mockReset();
     hoisted.reviewPromptEventCreate.mockReset();
-    vi.mocked(notifyReviewWindowClosedWithoutSubmission).mockClear();
+    hoisted.reviewCreate.mockReset();
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -494,11 +559,11 @@ describe('POST /api/reviews/window/expire', () => {
     );
     expect(res.status).toBe(403);
     const j = await readJson(res);
-    expect(j.error).toBe('Only the booking customer can expire this review window');
+    expect(j.error).toBe('Only the booking customer can manage this review opportunity');
     expect(hoisted.reviewWindowUpdate).not.toHaveBeenCalled();
   });
 
-  it('returns 200 authorized path when window is already non-active', async () => {
+  it('does not turn a historical non-active record into a review', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
     hoisted.reviewWindowFindUnique.mockResolvedValue({
       id: 'rw1',
@@ -514,12 +579,13 @@ describe('POST /api/reviews/window/expire', () => {
     expect(res.status).toBe(200);
     const j = await readJson(res);
     expect(j.success).toBe(true);
-    expect(String(j.message)).toContain('Window already expired');
+    expect(String(j.message)).toContain('do not expire');
+    expect(j.reviewOpportunityStillAvailable).toBe(true);
+    expect(j.reviewCreated).toBe(false);
     expect(hoisted.reviewWindowUpdate).not.toHaveBeenCalled();
-    expect(vi.mocked(notifyReviewWindowClosedWithoutSubmission)).not.toHaveBeenCalled();
   });
 
-  it('returns 200 success path when window is active', async () => {
+  it('does not close an active review opportunity or create a review', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
     hoisted.reviewWindowFindUnique.mockResolvedValue({
       id: 'rw1',
@@ -529,26 +595,17 @@ describe('POST /api/reviews/window/expire', () => {
       status: 'active',
     });
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', userId: 'customer-a' });
-    hoisted.reviewWindowUpdate.mockResolvedValue({
-      id: 'rw1',
-      bookingId: 'b1',
-      vendorId: 'v1',
-      mediaSessionId: 'ms1',
-      status: 'expired',
-      closedAt: new Date(),
-    });
-    hoisted.reviewCount.mockResolvedValue(0);
-    hoisted.reviewPromptEventCreate.mockResolvedValue({});
-
     const res = await expireReviewPOST(
       jsonRequest('http://localhost/api/reviews/window/expire', { reviewWindowId: 'rw1' })
     );
     expect(res.status).toBe(200);
     const j = await readJson(res);
     expect(j.success).toBe(true);
-    expect((j.reviewWindow as { status: string }).status).toBe('expired');
-    expect(hoisted.reviewWindowUpdate).toHaveBeenCalled();
-    expect(hoisted.reviewPromptEventCreate).toHaveBeenCalled();
-    expect(vi.mocked(notifyReviewWindowClosedWithoutSubmission)).toHaveBeenCalled();
+    expect((j.reviewWindow as { status: string }).status).toBe('active');
+    expect(j.reviewOpportunityStillAvailable).toBe(true);
+    expect(j.reviewCreated).toBe(false);
+    expect(hoisted.reviewWindowUpdate).not.toHaveBeenCalled();
+    expect(hoisted.reviewPromptEventCreate).not.toHaveBeenCalled();
+    expect(hoisted.reviewCreate).not.toHaveBeenCalled();
   });
 });

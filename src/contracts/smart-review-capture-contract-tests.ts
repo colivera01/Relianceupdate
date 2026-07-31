@@ -39,8 +39,8 @@ export function assertWindowExpireResponse(value: unknown): boolean {
   if (value.success === false) return true;
   return (
     isObject(value.reviewWindow) &&
-    typeof value.bookingReviewCount === 'number' &&
-    Number.isFinite(value.bookingReviewCount)
+    typeof value.reviewOpportunityStillAvailable === 'boolean' &&
+    value.reviewCreated === false
   );
 }
 
@@ -67,7 +67,12 @@ export const smartReviewCaptureExamples = {
     review: { id: 'rv_1', source: 'customer', submittedVia: 'video_overlay' },
     links: { bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'm1' },
   },
-  expire: { success: true, reviewWindow: { id: 'rw_1', status: 'expired' }, bookingReviewCount: 0 },
+  expire: {
+    success: true,
+    reviewWindow: { id: 'rw_1', status: 'active' },
+    reviewOpportunityStillAvailable: true,
+    reviewCreated: false,
+  },
   consent: { success: true, consent: { id: 'cn_1', status: 'accepted' } },
   audit: { success: true, rows: [], pagination: { page: 1, limit: 25, total: 0, totalPages: 0 } },
 };

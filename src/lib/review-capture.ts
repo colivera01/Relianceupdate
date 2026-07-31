@@ -1,6 +1,9 @@
 import { prisma } from '@/server/db';
 
 const VALID_WINDOW_STATUSES = new Set(['active', 'submitted', 'expired', 'closed']);
+// ReviewWindow.expiresAt remains required by the current schema for compatibility.
+// Phase 1 no longer uses it for eligibility or closes review opportunities by time.
+const NON_EXPIRING_COMPATIBILITY_DATE = new Date('9999-12-31T23:59:59.999Z');
 const VALID_PROMPT_EVENTS = new Set([
   'soft_prompt_shown',
   'reinforcement_prompt_shown',
@@ -42,28 +45,24 @@ export async function getOrCreateActiveReviewWindow(input: {
     orderBy: { createdAt: 'desc' },
   });
 
-  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
   if (existing) {
-    const normalizedStatus = String(existing.status || "").trim().toLowerCase();
-    const expiresAtMs = existing.expiresAt ? new Date(existing.expiresAt).getTime() : Number.NaN;
-    const isExpired = Number.isFinite(expiresAtMs) && expiresAtMs < Date.now();
-    const canReopen = !existing.reviewId && (normalizedStatus === "active" || normalizedStatus === "expired" || normalizedStatus === "closed");
+    const normalizedStatus = String(existing.status || '').trim().toLowerCase();
+    const canNormalize =
+      !existing.reviewId && ['active', 'expired', 'closed'].includes(normalizedStatus);
 
-    if (normalizedStatus === "active" && !isExpired) {
-      return { window: existing, created: false };
-    }
-
-    if (canReopen) {
-      const reopened = await (prisma as any).reviewWindow.update({
+    if (canNormalize) {
+      if (normalizedStatus === 'active') {
+        return { window: existing, created: false };
+      }
+      const normalized = await (prisma as any).reviewWindow.update({
         where: { id: existing.id },
         data: {
-          status: "active",
-          openedAt: new Date(),
-          expiresAt,
+          status: 'active',
+          expiresAt: NON_EXPIRING_COMPATIBILITY_DATE,
           closedAt: null,
         },
       });
-      return { window: reopened, created: false };
+      return { window: normalized, created: false };
     }
   }
 
@@ -75,7 +74,7 @@ export async function getOrCreateActiveReviewWindow(input: {
         mediaSessionId: input.mediaSessionId,
         status: 'active',
         openedAt: new Date(),
-        expiresAt,
+        expiresAt: NON_EXPIRING_COMPATIBILITY_DATE,
       },
     });
     return { window: createdRow, created: true };
@@ -91,21 +90,22 @@ export async function getOrCreateActiveReviewWindow(input: {
         orderBy: { createdAt: 'desc' },
       });
       if (fallback) {
-        const normalizedStatus = String(fallback.status || "").trim().toLowerCase();
-        const fallbackExpiresAtMs = fallback.expiresAt ? new Date(fallback.expiresAt).getTime() : Number.NaN;
-        const fallbackExpired = Number.isFinite(fallbackExpiresAtMs) && fallbackExpiresAtMs < Date.now();
-        const canReopen = !fallback.reviewId && (normalizedStatus === "active" || normalizedStatus === "expired" || normalizedStatus === "closed");
-        if (canReopen && fallbackExpired) {
-          const reopened = await (prisma as any).reviewWindow.update({
+        const normalizedStatus = String(fallback.status || '').trim().toLowerCase();
+        const canNormalize =
+          !fallback.reviewId && ['active', 'expired', 'closed'].includes(normalizedStatus);
+        if (canNormalize) {
+          if (normalizedStatus === 'active') {
+            return { window: fallback, created: false };
+          }
+          const normalized = await (prisma as any).reviewWindow.update({
             where: { id: fallback.id },
             data: {
-              status: "active",
-              openedAt: new Date(),
-              expiresAt,
+              status: 'active',
+              expiresAt: NON_EXPIRING_COMPATIBILITY_DATE,
               closedAt: null,
             },
           });
-          return { window: reopened, created: false };
+          return { window: normalized, created: false };
         }
         return { window: fallback, created: false };
       }
@@ -114,36 +114,26 @@ export async function getOrCreateActiveReviewWindow(input: {
   }
 }
 
-export async function closeExpiredReviewWindows(now = new Date()) {
-  return (prisma as any).reviewWindow.updateMany({
-    where: {
-      status: 'active',
-      expiresAt: { lt: now },
-    },
-    data: {
-      status: 'expired',
-      closedAt: now,
-    },
-  });
-}
-
 export async function assertReviewWindowActive(reviewWindowId: string) {
-  const window = await (prisma as any).reviewWindow.findUnique({
+  let window = await (prisma as any).reviewWindow.findUnique({
     where: { id: reviewWindowId },
   });
-  if (!window) return { ok: false as const, error: 'Review window not found', status: 404 };
+  if (!window) return { ok: false as const, error: 'Review opportunity not found', status: 404 };
   if (!VALID_WINDOW_STATUSES.has(String(window.status || ''))) {
-    return { ok: false as const, error: 'Invalid review window status', status: 409 };
+    return { ok: false as const, error: 'Invalid review opportunity status', status: 409 };
   }
-  if (window.status !== 'active') {
-    return { ok: false as const, error: `Review window is ${window.status}`, status: 409 };
+  if (window.reviewId || String(window.status || '').toLowerCase() === 'submitted') {
+    return { ok: false as const, error: 'A review already exists for this service', status: 409 };
   }
-  if (window.expiresAt && new Date(window.expiresAt).getTime() < Date.now()) {
-    await (prisma as any).reviewWindow.update({
+  if (['expired', 'closed'].includes(String(window.status || '').toLowerCase())) {
+    window = await (prisma as any).reviewWindow.update({
       where: { id: reviewWindowId },
-      data: { status: 'expired', closedAt: new Date() },
+      data: {
+        status: 'active',
+        expiresAt: NON_EXPIRING_COMPATIBILITY_DATE,
+        closedAt: null,
+      },
     });
-    return { ok: false as const, error: 'Review window expired', status: 409 };
   }
   return { ok: true as const, window };
 }
@@ -161,13 +151,13 @@ export async function assertReviewWindowActiveForUser(
   });
 
   if (!booking) {
-    return { ok: false as const, error: "Booking not found for this review window", status: 404 };
+    return { ok: false as const, error: 'Booking not found for this review opportunity', status: 404 };
   }
 
   if (String(booking.userId || "") !== String(userId || "")) {
     return {
       ok: false as const,
-      error: "Forbidden: review window does not belong to this user",
+      error: 'Forbidden: review opportunity does not belong to this user',
       status: 403,
     };
   }

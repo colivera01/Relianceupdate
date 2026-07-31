@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
 import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
-import { sendReviewReminderNotification } from '@/lib/notifications/send-review-reminder';
-import { sendReviewExpiredNotification } from '@/lib/notifications/send-review-expired';
+import { sendReviewInvitationNotification } from '@/lib/notifications/send-review-invitation';
 import { sendEmployeeInviteNotification } from '@/lib/notifications/send-employee-invite';
 import { sendVideoReadyNotification } from '@/lib/notifications/send-video-ready';
 
@@ -66,7 +65,7 @@ export async function POST(request: NextRequest) {
       consentTypeLabel: 'video_access',
     });
 
-    const reviewReminder = await sendReviewReminderNotification({
+    const reviewInvitation = await sendReviewInvitationNotification({
       reviewWindowId: 'dev-email-audit-review-window',
       actorUserId: userId,
       bookingId: reviewPathBookingId,
@@ -76,14 +75,6 @@ export async function POST(request: NextRequest) {
       serviceName,
       bookingTitle,
       scheduledDate: serviceDate,
-    });
-
-    const reviewExpired = await sendReviewExpiredNotification({
-      reviewWindowId: 'dev-email-audit-review-window',
-      actorUserId: userId,
-      bookingId: reviewPathBookingId,
-      customerEmail: email,
-      customerName,
     });
 
     const employeeInvite = await sendEmployeeInviteNotification({
@@ -112,8 +103,7 @@ export async function POST(request: NextRequest) {
       email,
       deliveries: {
         consent,
-        reviewReminder,
-        reviewExpired,
+        reviewInvitation,
         employeeInvite,
         videoReady,
       },

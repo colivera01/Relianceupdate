@@ -8,7 +8,7 @@ export type NotificationAuditPayload = {
   fallbackLink: string;
   errorMessage?: string;
   errorCode?: string;
-  /** e.g. consent_link | review_reminder | review_expired */
+  /** e.g. consent_link | review_invitation */
   kind: string;
 };
 

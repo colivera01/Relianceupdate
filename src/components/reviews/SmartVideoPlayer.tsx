@@ -17,7 +17,7 @@ type Props = {
   className?: string;
   onEnded?: () => void;
   autoPlayToken?: number;
-  /** When false, plays video only (no review window, prompts, or review API calls). Default true. */
+  /** When false, plays video only (no review prompts or review API calls). Default true. */
   reviewCaptureEnabled?: boolean;
   /**
    * Customer user id used only to decide whether review capture should run.
@@ -134,7 +134,7 @@ export function SmartVideoPlayer({
           const backendDetailError = String(json?.details?.error || backendError);
           setAccessError(backendError);
           setAccessErrorDetails(
-            `review window start failed (${res.status}) | step=${backendStep} code=${backendCode} | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} auth=${reviewApisEnabled ? 'signed' : 'missing'} | backend="${backendDetailError}" meta=${JSON.stringify(backendMeta)}`
+            `review availability failed (${res.status}) | step=${backendStep} code=${backendCode} | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} auth=${reviewApisEnabled ? 'signed' : 'missing'} | backend="${backendDetailError}" meta=${JSON.stringify(backendMeta)}`
           );
         }
       } catch (e: unknown) {
@@ -142,7 +142,7 @@ export function SmartVideoPlayer({
         const message = e instanceof Error ? e.message : 'Failed to start review session';
         setAccessError(message);
         setAccessErrorDetails(
-          `review window start request error | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} auth=${reviewApisEnabled ? 'signed' : 'missing'} | error="${message}"`
+          `review availability request error | bookingId=${bookingId} vendorId=${vendorId} mediaSessionId=${mediaSessionId} auth=${reviewApisEnabled ? 'signed' : 'missing'} | error="${message}"`
         );
       }
     })();
@@ -324,13 +324,7 @@ export function SmartVideoPlayer({
   }, [submitSuccess]);
 
   const handleCloseWithoutReview = async () => {
-    if (reviewWindowId && trimmedUserId) {
-      await fetch('/api/reviews/window/expire', {
-        method: 'POST',
-        headers: { ...reviewJsonHeaders },
-        body: JSON.stringify({ reviewWindowId }),
-      });
-    }
+    await logPromptEvent('dismissed', { reason: 'customer_left_without_review' });
     setShowExit(false);
   };
 

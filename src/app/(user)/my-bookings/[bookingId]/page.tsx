@@ -495,14 +495,12 @@ function BookingMediaDetailPageContent() {
             value: completedVideoAvailableToCustomer ? 'Available' : 'Not available',
           },
           {
-            label: 'Review window',
+            label: 'Optional review',
             value: reviewSubmitted
-              ? 'Closed after submission'
+              ? 'Submitted'
               : reviewEligible
-                ? customerLifecycle.reviewWindowOpen
-                  ? 'Open'
-                  : 'Opens from the approved video'
-                : 'Closed until approved video is available',
+                ? 'Available when you are ready'
+                : 'Available after approved video delivery',
           },
           {
             label: 'Review',
@@ -537,7 +535,7 @@ function BookingMediaDetailPageContent() {
           }
         : awaitingApprovedReviewVideo
           ? {
-              title: 'Why the review window is not open yet',
+              title: 'Why an optional review is not available yet',
               description:
                 'Reviews unlock only after an approved final-result customer-visible video exists for this service record.',
               bullets: [

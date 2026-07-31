@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
-import { notifyReviewWindowClosedWithoutSubmission } from '@/lib/review-notifications';
 
+/**
+ * Compatibility endpoint for older clients. Review opportunities no longer
+ * expire, so this route performs ownership checks and makes no state change.
+ */
 export async function POST(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);
@@ -18,7 +21,7 @@ export async function POST(request: NextRequest) {
 
     const row = await (prisma as any).reviewWindow.findUnique({ where: { id: reviewWindowId } });
     if (!row) {
-      return NextResponse.json({ success: false, error: 'Review window not found' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Review opportunity not found' }, { status: 404 });
     }
 
     const booking = await prisma.booking.findUnique({
@@ -26,50 +29,30 @@ export async function POST(request: NextRequest) {
       select: { id: true, userId: true },
     });
     if (!booking) {
-      return NextResponse.json({ success: false, error: 'Booking not found for this review window' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: 'Booking not found for this review opportunity' },
+        { status: 404 }
+      );
     }
     if (String(booking.userId) !== String(userId)) {
       return NextResponse.json(
-        { success: false, error: 'Only the booking customer can expire this review window' },
+        { success: false, error: 'Only the booking customer can manage this review opportunity' },
         { status: 403 }
       );
     }
 
-    if (row.status !== 'active') {
-      return NextResponse.json({ success: true, reviewWindow: row, message: `Window already ${row.status}` });
-    }
-
-    const updated = await (prisma as any).reviewWindow.update({
-      where: { id: reviewWindowId },
-      data: { status: 'expired', closedAt: new Date() },
-    });
-
-    const reviewCount = await prisma.review.count({
-      where: { bookingId: String(updated.bookingId) } as any,
-    });
-
-    await (prisma as any).reviewPromptEvent.create({
-      data: {
-        reviewWindowId,
-        eventType: 'dismissed',
-        metadata: JSON.stringify({ reason: 'window_expired_no_submission' }),
-      },
-    });
-    const notify = await notifyReviewWindowClosedWithoutSubmission({
-      reviewWindowId,
-      bookingId: String(updated.bookingId),
-      vendorId: String(updated.vendorId),
-      mediaSessionId: String(updated.mediaSessionId),
-    });
-
     return NextResponse.json({
       success: true,
-      reviewWindow: updated,
-      bookingReviewCount: reviewCount,
-      expiryNotification: notify,
+      reviewWindow: row,
+      reviewOpportunityStillAvailable: !row.reviewId,
+      reviewCreated: false,
+      message: 'Optional reviews do not expire. No review was created.',
     });
   } catch (error) {
-    console.error('[reviews/window/expire] POST error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to expire review window' }, { status: 500 });
+    console.error('[reviews/window/expire] POST compatibility error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to read review opportunity' },
+      { status: 500 }
+    );
   }
 }

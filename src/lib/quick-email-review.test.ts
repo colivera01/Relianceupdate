@@ -8,6 +8,7 @@ const hoisted = vi.hoisted(() => {
   const reviewPromptEventCreate = vi.fn();
   const reviewFindUnique = vi.fn();
   const reviewUpdate = vi.fn();
+  const mediaAssetFindFirst = vi.fn();
   const createAdminAuditLog = vi.fn();
   const verifyReviewEmailToken = vi.fn();
 
@@ -18,6 +19,7 @@ const hoisted = vi.hoisted(() => {
       findUnique: reviewFindUnique,
       update: reviewUpdate,
     },
+    mediaAsset: { findFirst: mediaAssetFindFirst },
     $transaction: vi.fn(async (callback: (tx: any) => Promise<any>) =>
       callback({
         review: { create: reviewCreate },
@@ -36,6 +38,7 @@ const hoisted = vi.hoisted(() => {
     reviewPromptEventCreate,
     reviewFindUnique,
     reviewUpdate,
+    mediaAssetFindFirst,
     createAdminAuditLog,
     verifyReviewEmailToken,
   };
@@ -66,6 +69,7 @@ function activeWindow() {
       id: "booking-1",
       userId: "customer-1",
       vendorId: "vendor-1",
+      status: "COMPLETED",
       title: "Panel repair",
       customerMetadata: JSON.stringify({
         vendor_job_primary_employee: "Assigned Worker",
@@ -87,6 +91,7 @@ describe("quick email review", () => {
     hoisted.reviewPromptEventCreate.mockReset();
     hoisted.reviewFindUnique.mockReset();
     hoisted.reviewUpdate.mockReset();
+    hoisted.mediaAssetFindFirst.mockReset();
     hoisted.createAdminAuditLog.mockReset();
     hoisted.verifyReviewEmailToken.mockReset();
     hoisted.prisma.$transaction.mockClear();
@@ -94,6 +99,7 @@ describe("quick email review", () => {
     hoisted.verifyReviewEmailToken.mockReturnValue({ reviewWindowId: "review-window-1" });
     hoisted.reviewWindowFindUnique.mockResolvedValue(activeWindow());
     hoisted.reviewFindFirst.mockResolvedValue(null);
+    hoisted.mediaAssetFindFirst.mockResolvedValue({ id: "asset-visible" });
     hoisted.reviewCreate.mockImplementation(async ({ data }: any) => ({ id: "review-1", ...data }));
     hoisted.reviewWindowUpdate.mockResolvedValue({ id: "review-window-1", status: "submitted" });
     hoisted.reviewPromptEventCreate.mockResolvedValue({ id: "event-1" });

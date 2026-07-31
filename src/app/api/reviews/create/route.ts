@@ -16,6 +16,8 @@ import {
   normalizeReviewAttributionTarget,
   shouldAttributeReviewToAssignedTeam,
 } from '@/lib/review-attribution-intent';
+import { getVisibilityStatusesForAudience } from '@/lib/media-visibility';
+import { isCompletedStatus, normalizeBookingStatusKey } from '@/lib/my-bookings';
 
 export async function POST(request: NextRequest) {
   let step = 'parse_request';
@@ -113,13 +115,51 @@ export async function POST(request: NextRequest) {
     step = 'booking_lookup';
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { id: true, userId: true, vendorId: true, customerMetadata: true },
+      select: { id: true, userId: true, vendorId: true, status: true, customerMetadata: true },
     });
     if (!booking || String(booking.vendorId) !== vendorId) {
       return NextResponse.json({ success: false, error: 'Invalid booking/vendor pair' }, { status: 404 });
     }
     if (String(booking.userId) !== String(userId)) {
       return NextResponse.json({ success: false, error: 'Only the booking customer can submit review' }, { status: 403 });
+    }
+    if (!isCompletedStatus(normalizeBookingStatusKey(booking.status))) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'A review is available only after the booking is completed',
+          code: 'BOOKING_NOT_COMPLETED',
+        },
+        { status: 409 }
+      );
+    }
+
+    step = 'customer_visible_final_proof_check';
+    const customerVisibleFinalProof = await (prisma as any).mediaAsset.findFirst({
+      where: {
+        mediaSessionId: windowMediaSessionId,
+        deletedAt: null,
+        moderationStatus: 'approved',
+        archiveStatus: 'active',
+        visibilityStatus: { in: getVisibilityStatusesForAudience('customer') },
+        mediaSession: {
+          bookingId,
+          vendorId,
+          sessionType: 'JOB_SERVICE_VIDEO',
+          vendorJobVideoStage: 'COMPLETED',
+        },
+      },
+      select: { id: true },
+    });
+    if (!customerVisibleFinalProof) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'An approved customer-visible final service video is required before reviewing',
+          code: 'REVIEW_PROOF_NOT_CUSTOMER_VISIBLE',
+        },
+        { status: 409 }
+      );
     }
 
     step = 'existing_review_lookup';

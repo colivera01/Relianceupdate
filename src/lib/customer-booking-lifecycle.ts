@@ -111,13 +111,12 @@ export function deriveCustomerBookingLifecycle(input: {
     videoState = 'rejected';
   }
 
-  const hasActiveReviewWindow = (input.reviewWindows || []).some(
-    (window) => String(window.status || '').trim().toLowerCase() === 'active'
-  );
   const reviewSubmitted = input.hasSubmittedReview;
   const reviewEligible =
     completedWorkMarked && completedStageCustomerVisibleApprovedVideoCount > 0;
-  const reviewWindowOpen = hasActiveReviewWindow && reviewEligible && !reviewSubmitted;
+  // ReviewWindow status is retained for compatibility, but elapsed time and old
+  // expired/closed rows no longer govern an eligible customer's opportunity.
+  const reviewWindowOpen = reviewEligible && !reviewSubmitted;
 
   return {
     completedWorkMarked,

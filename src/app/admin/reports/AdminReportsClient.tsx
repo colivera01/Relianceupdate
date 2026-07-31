@@ -281,7 +281,7 @@ export default function AdminReportsClient() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="rounded-lg border p-4">
-                  <div className="text-sm font-medium text-slate-900">Review windows opened in the last 30 days</div>
+                  <div className="text-sm font-medium text-slate-900">Review opportunities created in the last 30 days</div>
                   <div className="mt-1 text-2xl font-semibold text-slate-900">
                     {formatCount(summary?.reviewWindowsLast30Days ?? null)}
                   </div>

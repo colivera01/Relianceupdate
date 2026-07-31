@@ -86,7 +86,7 @@ const quickLinks: AdminQuickLink[] = [
   {
     href: "/admin/review-audit",
     label: "Review Audit",
-    description: "Inspect review windows, evidence coverage, and moderation readiness.",
+    description: "Inspect review availability, evidence coverage, and moderation readiness.",
     icon: Search,
     accentClass: "bg-[rgba(248,182,60,0.12)] text-[var(--reliance-amber)]",
   },

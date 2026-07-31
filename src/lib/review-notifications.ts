@@ -1,6 +1,5 @@
 import { prisma } from '@/server/db';
-import { sendReviewReminderNotification } from '@/lib/notifications/send-review-reminder';
-import { sendReviewExpiredNotification } from '@/lib/notifications/send-review-expired';
+import { sendReviewInvitationNotification } from '@/lib/notifications/send-review-invitation';
 
 type ReminderContext = {
   reviewWindowId: string;
@@ -10,11 +9,11 @@ type ReminderContext = {
 };
 
 /**
- * No durable job queue is configured. This performs an immediate best-effort
- * email/SMS reminder when transports are enabled (see return.reason).
+ * Sends the single ordinary invitation when review availability first begins.
+ * No deadline-driven follow-up or repeated reminder is scheduled.
  */
-export async function scheduleReviewReminder(context: ReminderContext, delayMinutes = 30) {
-  let delivery: Awaited<ReturnType<typeof sendReviewReminderNotification>> | null = null;
+export async function sendReviewInvitation(context: ReminderContext) {
+  let delivery: Awaited<ReturnType<typeof sendReviewInvitationNotification>> | null = null;
   let loadError: string | null = null;
   try {
     const booking = await prisma.booking.findUnique({
@@ -28,7 +27,7 @@ export async function scheduleReviewReminder(context: ReminderContext, delayMinu
     if (!booking) {
       loadError = 'booking_not_found';
     } else {
-      delivery = await sendReviewReminderNotification({
+      delivery = await sendReviewInvitationNotification({
         reviewWindowId: context.reviewWindowId,
         actorUserId: 'system',
         bookingId: context.bookingId,
@@ -43,52 +42,13 @@ export async function scheduleReviewReminder(context: ReminderContext, delayMinu
     }
   } catch (e) {
     loadError = e instanceof Error ? e.message : String(e);
-    console.error('[review-notifications] scheduleReviewReminder error:', e);
+    console.error('[review-notifications] sendReviewInvitation error:', e);
   }
 
   return {
     queued: false,
-    reason: 'no_background_scheduler',
-    synchronousReminderAttempt: true,
-    delayMinutes,
-    context,
-    delivery,
-    loadError,
-  };
-}
-
-export async function notifyReviewWindowClosedWithoutSubmission(context: ReminderContext) {
-  let delivery: Awaited<ReturnType<typeof sendReviewExpiredNotification>> | null = null;
-  let loadError: string | null = null;
-  try {
-    const booking = await prisma.booking.findUnique({
-      where: { id: context.bookingId },
-      include: {
-        user: { select: { email: true, phone: true, name: true } },
-        vendor: { select: { name: true, businessName: true } },
-      },
-    });
-    if (!booking) {
-      loadError = 'booking_not_found';
-    } else {
-      delivery = await sendReviewExpiredNotification({
-        reviewWindowId: context.reviewWindowId,
-        actorUserId: 'system',
-        bookingId: context.bookingId,
-        customerEmail: booking.user?.email,
-        customerPhone: booking.user?.phone,
-        customerName: booking.user?.name,
-        vendorName: booking.vendor?.businessName || booking.vendor?.name || null,
-      });
-    }
-  } catch (e) {
-    loadError = e instanceof Error ? e.message : String(e);
-    console.error('[review-notifications] notifyReviewWindowClosedWithoutSubmission error:', e);
-  }
-
-  return {
-    sent: Boolean(delivery?.anySuccess),
-    reason: delivery?.anySuccess ? 'notification_sent' : 'notification_partial_or_skipped',
+    reason: 'single_invitation_best_effort',
+    synchronousInvitationAttempt: true,
     context,
     delivery,
     loadError,

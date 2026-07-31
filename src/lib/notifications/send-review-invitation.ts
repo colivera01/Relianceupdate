@@ -7,7 +7,7 @@ import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
 import { createReviewEmailToken } from '@/lib/review-email-token';
 
-export type ReviewReminderInput = {
+export type ReviewInvitationInput = {
   reviewWindowId: string;
   actorUserId: string;
   bookingId: string;
@@ -30,12 +30,11 @@ export type ChannelDelivery = {
   errorCode?: string;
 };
 
-export type ReviewReminderResult = {
+export type ReviewInvitationResult = {
   fallbackLink: string;
   absoluteFallbackLink: string;
   channels: ChannelDelivery[];
   anySuccess: boolean;
-  /** True when no background job exists; immediate send was attempted instead. */
   synchronousBestEffort: true;
 };
 
@@ -49,24 +48,18 @@ function reviewsPath(bookingId: string, rating?: number): string {
 }
 
 function buildAbsoluteUrl(base: string, path: string): string {
-  const p = path.startsWith('/') ? path : `/${path}`;
-  if (!base) return p;
-  return `${base}${p}`;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return base ? `${base}${normalizedPath}` : normalizedPath;
 }
 
 function quickReviewPath(reviewWindowId: string, rating: number): string {
   const token = createReviewEmailToken({ reviewWindowId });
-  const query = new URLSearchParams({
-    token,
-    rating: String(rating),
-  });
-  return `/reviews/quick?${query.toString()}`;
+  return `/reviews/quick?${new URLSearchParams({ token, rating: String(rating) }).toString()}`;
 }
 
-/**
- * Immediate reminder (scheduler is not wired). Uses email/SMS when enabled and contact exists.
- */
-export async function sendReviewReminderNotification(input: ReviewReminderInput): Promise<ReviewReminderResult> {
+export async function sendReviewInvitationNotification(
+  input: ReviewInvitationInput
+): Promise<ReviewInvitationResult> {
   const env = readNotificationEnv();
   const path = reviewsPath(input.bookingId);
   const absoluteFallbackLink = buildAbsoluteUrl(env.appBaseUrl, path);
@@ -88,7 +81,6 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
     timeZone: input.serviceTimeZone,
     fallback: 'Recent booking',
   });
-
   const subject = hasVendorName
     ? `How was your service with ${vendorName}?`
     : 'How was your recent service?';
@@ -99,39 +91,36 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
     )
     .join('');
   const html = buildRelianceEmailHtml({
-    eyebrow: 'Service feedback',
-    headline: 'How was your service?',
+    eyebrow: 'Optional service feedback',
+    headline: 'Your service is complete',
     greeting: `Hello${input.customerName ? ` ${String(input.customerName)}` : ''},`,
     bodyHtml: `
-      <p style="margin:0 0 14px;">We would love your feedback on your recent service${hasVendorName ? ` with <strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong>` : ''}.</p>
-      <p style="margin:0;">Your feedback helps future customers choose with confidence and helps providers improve their service.</p>
+      <p style="margin:0 0 14px;">You may leave an optional review for your recent service${hasVendorName ? ` with <strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong>` : ''}.</p>
+      <p style="margin:0;">If you do not leave a review, nothing is posted and your completed service record remains unchanged.</p>
     `,
     details: [
       { label: 'Service', value: serviceLabel },
       { label: 'Date', value: scheduledDateLabel },
     ],
-    cta: { label: 'Review Your Service', href: absoluteFallbackLink },
+    cta: { label: 'Leave an Optional Review', href: absoluteFallbackLink },
     secondaryHtml: `
       <p style="margin:0 0 8px;color:#ffffff;font-weight:800;">Start with a quick rating:</p>
       <p style="margin:0 0 14px;">${ratingHtml}</p>
-      <p style="margin:0;">Your feedback window is open for a limited time. You can watch your service video, confirm the rating, and leave feedback in one place.</p>
+      <p style="margin:0;">You can watch your service video, confirm the rating, and leave feedback in one place.</p>
     `,
     fallbackHref: absoluteFallbackLink,
   });
   const text = [
     `Hello${input.customerName ? ` ${String(input.customerName).trim()}` : ''},`,
     '',
-    `We would love your feedback on your recent service${hasVendorName ? ` with ${vendorName}` : ''}.`,
-    'Your feedback helps future customers choose with confidence and helps providers improve their service.',
+    `Your service is complete. You may leave an optional review${hasVendorName ? ` for your service with ${vendorName}` : ''}.`,
+    'If you do not leave a review, nothing is posted and your completed service record remains unchanged.',
     '',
     'Service details:',
     `- Service: ${serviceLabel}`,
     `- Date: ${scheduledDateLabel}`,
     '',
-    'Your feedback window is open for a limited time.',
-    'You can watch your service video and leave feedback in one place.',
-    '',
-    `Review your service: ${absoluteFallbackLink}`,
+    `Leave an optional review: ${absoluteFallbackLink}`,
     '',
     'Start with a quick rating:',
     ...inlineRatingLinks.map((item) => `${item.rating} star${item.rating > 1 ? 's' : ''}: ${item.url}`),
@@ -141,22 +130,22 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
 
   const email = (input.customerEmail || '').trim();
   if (env.emailEnabled && email) {
-    const r = await sendEmail({ to: email, subject, html, text });
+    const result = await sendEmail({ to: email, subject, html, text });
     channels.push({
       channel: 'email',
       attempted: true,
-      success: r.ok,
-      providerMessageId: r.providerMessageId,
-      errorMessage: r.errorMessage,
+      success: result.ok,
+      providerMessageId: result.providerMessageId,
+      errorMessage: result.errorMessage,
     });
     await logNotificationAttempt(input.actorUserId, input.reviewWindowId, {
-      kind: 'review_reminder',
+      kind: 'review_invitation',
       channel: 'email',
       recipient: email,
-      success: r.ok,
-      providerMessageId: r.providerMessageId,
+      success: result.ok,
+      providerMessageId: result.providerMessageId,
       fallbackLink: absoluteFallbackLink,
-      errorMessage: r.errorMessage,
+      errorMessage: result.errorMessage,
     });
   } else {
     channels.push({
@@ -170,26 +159,26 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
     const body = hasVendorName
-      ? `Reliance: Your feedback window is open for ${serviceLabel} with ${vendorName}. Watch the service video and review here: ${absoluteFallbackLink} Reply STOP to opt out.`
-      : `Reliance: Your feedback window is open. Watch your service video and review your service here: ${absoluteFallbackLink} Reply STOP to opt out.`;
-    const r = await sendSms({ to: phone, body });
+      ? `Reliance: Your service with ${vendorName} is complete. You may leave an optional review for ${serviceLabel}: ${absoluteFallbackLink} Reply STOP to opt out.`
+      : `Reliance: Your service is complete. You may leave an optional review here: ${absoluteFallbackLink} Reply STOP to opt out.`;
+    const result = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',
       attempted: true,
-      success: r.ok,
-      providerMessageId: r.providerMessageId,
-      errorMessage: r.errorMessage,
-      errorCode: r.errorCode,
+      success: result.ok,
+      providerMessageId: result.providerMessageId,
+      errorMessage: result.errorMessage,
+      errorCode: result.errorCode,
     });
     await logNotificationAttempt(input.actorUserId, input.reviewWindowId, {
-      kind: 'review_reminder',
+      kind: 'review_invitation',
       channel: 'sms',
       recipient: phone,
-      success: r.ok,
-      providerMessageId: r.providerMessageId,
+      success: result.ok,
+      providerMessageId: result.providerMessageId,
       fallbackLink: absoluteFallbackLink,
-      errorMessage: r.errorMessage,
-      errorCode: r.errorCode,
+      errorMessage: result.errorMessage,
+      errorCode: result.errorCode,
     });
   } else {
     channels.push({
@@ -204,13 +193,13 @@ export async function sendReviewReminderNotification(input: ReviewReminderInput)
     fallbackLink: path,
     absoluteFallbackLink,
     channels,
-    anySuccess: channels.some((c) => c.attempted && c.success),
+    anySuccess: channels.some((channel) => channel.attempted && channel.success),
     synchronousBestEffort: true,
   };
 }
 
-function escapeHtml(s: string): string {
-  return s
+function escapeHtml(value: string): string {
+  return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -219,11 +208,11 @@ function escapeHtml(s: string): string {
 
 function normalizeE164ish(phone: string | null | undefined): string | null {
   if (!phone) return null;
-  const t = phone.trim();
-  if (!t) return null;
-  if (t.startsWith('+')) return t;
-  const digits = t.replace(/\D/g, '');
+  const trimmed = phone.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('+')) return trimmed;
+  const digits = trimmed.replace(/\D/g, '');
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length >= 11 && digits.startsWith('1')) return `+${digits}`;
-  return t.startsWith('+') ? t : `+${digits}`;
+  return `+${digits}`;
 }

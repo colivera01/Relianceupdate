@@ -4,19 +4,15 @@ import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import SimpleTooltip from "@/components/ui/tooltip";
-import { Info } from "lucide-react";
 
 export interface ReviewCardProps {
   review: any;
   isSelected: boolean;
   onSelect: () => void;
   onDetails: () => void;
-  countdown: { hours: number; minutes: number; seconds: number } | null;
-  timerColor: string;
-  progress: number; // 0-100
 }
 
-export default function ReviewCard({ review: r, isSelected, onSelect, onDetails, countdown, timerColor, progress }: ReviewCardProps) {
+export default function ReviewCard({ review: r, isSelected, onSelect, onDetails }: ReviewCardProps) {
   return (
     <Card className="p-4 shadow-md border hover:ring-2 hover:ring-blue-400 transition" tabIndex={0}>
       <div className="flex justify-between mb-2">
@@ -38,24 +34,11 @@ export default function ReviewCard({ review: r, isSelected, onSelect, onDetails,
         </SimpleTooltip>
         <Badge variant="outline">{r.rating}★</Badge>
       </div>
-      {/* Countdown Timer + Progress Bar + Info Tooltip */}
-      <div className={`mb-2 text-sm flex items-center gap-2 ${countdown ? timerColor : 'text-gray-400 font-semibold'}`}>
-        {countdown
-          ? <>
-              <span>Auto review will apply in: {countdown.hours}h {countdown.minutes}m {countdown.seconds}s</span>
-              <SimpleTooltip content="If not manually reviewed, this review will be auto-reviewed after 72 hours."><Info className="w-4 h-4 text-blue-400 inline-block" /></SimpleTooltip>
-              {countdown.hours < 1 && <Badge variant="destructive">Expiring soon!</Badge>}
-            </>
-          : <span>Auto review applied</span>
-        }
-      </div>
-      {countdown && <div className="w-full h-2 bg-gray-200 rounded mb-2 overflow-hidden"><div className={`h-2 rounded ${timerColor} bg-current`} style={{ width: `${progress}%`, backgroundColor: timerColor.includes('red') ? '#dc2626' : timerColor.includes('orange') ? '#f59e42' : '#6b7280' }} /></div>}
       <CardHeader className="py-1"><CardTitle>{r.content.length > 50 ? r.content.slice(0, 50) + '...' : r.content}</CardTitle></CardHeader>
       <CardContent>
         <p className="text-sm text-gray-600 truncate">{r.reviewerType === 'vendor' ? r.vendor : r.user}</p>
         <Button size="sm" className="mt-2 focus:outline-none focus:ring" onClick={onDetails} aria-label={`View details for review ${r.id}`}>Details</Button>
-        {countdown && countdown.hours < 1 && <Button size="sm" variant="secondary" className="ml-2" onClick={onDetails}>Review Now</Button>}
       </CardContent>
     </Card>
   );
-} 
+}

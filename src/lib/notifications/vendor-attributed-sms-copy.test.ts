@@ -63,10 +63,10 @@ describe("vendor-attributed SMS copy", () => {
     );
   });
 
-  it("identifies the vendor in customer review reminder SMS", async () => {
-    const { sendReviewReminderNotification } = await import("./send-review-reminder");
+  it("identifies the vendor in the optional customer review invitation SMS", async () => {
+    const { sendReviewInvitationNotification } = await import("./send-review-invitation");
 
-    await sendReviewReminderNotification({
+    await sendReviewInvitationNotification({
       reviewWindowId: "review-window-1",
       actorUserId: "system",
       bookingId: "booking-1",
@@ -76,20 +76,21 @@ describe("vendor-attributed SMS copy", () => {
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Reliance: Your feedback window is open for Panel Inspection with Electro LLC."
+      "Reliance: Your service with Electro LLC is complete. You may leave an optional review for Panel Inspection:"
     );
+    expect(hoisted.sendSms.mock.calls[0][0].body).not.toMatch(/deadline|expires|limited time|automatic/i);
   });
 
-  it("uses clear quick-rating links in customer review reminder email", async () => {
+  it("uses clear quick-rating links without deadline or automatic-outcome wording", async () => {
     hoisted.readNotificationEnv.mockReturnValue({
       emailEnabled: true,
       smsEnabled: false,
       appBaseUrl: "https://relianceonline.org",
     });
     hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "email-1" });
-    const { sendReviewReminderNotification } = await import("./send-review-reminder");
+    const { sendReviewInvitationNotification } = await import("./send-review-invitation");
 
-    await sendReviewReminderNotification({
+    await sendReviewInvitationNotification({
       reviewWindowId: "review-window-1",
       actorUserId: "system",
       bookingId: "booking-1",
@@ -106,21 +107,8 @@ describe("vendor-attributed SMS copy", () => {
     expect(email.html).not.toContain("&#9733;&#9733;");
     expect(email.text).toContain("5 stars: https://relianceonline.org/reviews/quick?token=");
     expect(email.text).toContain("&rating=5");
-  });
-
-  it("identifies the vendor when a review window closes", async () => {
-    const { sendReviewExpiredNotification } = await import("./send-review-expired");
-
-    await sendReviewExpiredNotification({
-      reviewWindowId: "review-window-1",
-      actorUserId: "system",
-      bookingId: "booking-1",
-      customerPhone: "4075550199",
-      vendorName: "Electro LLC",
-    });
-
-    expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Reliance: Your feedback window for Electro LLC has closed."
+    expect(`${email.html}\n${email.text}`).not.toMatch(
+      /72[ -]?hours?|deadline|limited time|window.*clos|automatic review|automatic rating/i
     );
   });
 

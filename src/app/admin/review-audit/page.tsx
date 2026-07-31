@@ -301,7 +301,10 @@ export default function ReviewAuditPage() {
                     <DetailItem label="Window status" value={formatLabel(selected.status)} />
                     <DetailItem label="Lifecycle truth" value={formatLabel(selected.effectiveStatus)} />
                     <DetailItem label="Opened" value={formatDateTime(selected.openedAt)} />
-                    <DetailItem label="Expires" value={formatDateTime(selected.expiresAt)} />
+                  <DetailItem
+                    label="Legacy expiry field (not enforced)"
+                    value={formatDateTime(selected.expiresAt)}
+                  />
                     <DetailItem label="Closed" value={formatDateTime(selected.closedAt)} />
                     <DetailItem label="Media session" value={selected.mediaSession?.id || 'Not linked'} />
                     <DetailItem label="Media status" value={formatLabel(selected.mediaSession?.status)} />
@@ -337,7 +340,7 @@ export default function ReviewAuditPage() {
                     <DetailItem label="Video pending approval" value={selected.customerLifecycle?.videoPendingApproval ? 'Yes' : 'No'} />
                     <DetailItem label="Review eligible" value={selected.customerLifecycle?.reviewEligible ? 'Yes' : 'No'} />
                     <DetailItem label="Review submitted" value={selected.customerLifecycle?.reviewSubmitted ? 'Yes' : 'No'} />
-                    <DetailItem label="Review window open" value={selected.customerLifecycle?.reviewWindowOpen ? 'Yes' : 'No'} />
+                    <DetailItem label="Optional review available" value={selected.customerLifecycle?.reviewWindowOpen ? 'Yes' : 'No'} />
                     <DetailItem label="Video state" value={formatLabel(selected.customerLifecycle?.videoState)} />
                   </div>
                   {selected.lifecycleNote ? (
@@ -359,7 +362,10 @@ export default function ReviewAuditPage() {
                             <DetailItem label="Requested" value={formatDateTime(record.requestedAt)} />
                             <DetailItem label="Accepted" value={formatDateTime(record.acceptedAt)} />
                             <DetailItem label="Declined" value={formatDateTime(record.declinedAt)} />
-                            <DetailItem label="Expires" value={formatDateTime(record.expiresAt)} />
+                        <DetailItem
+                          label="Legacy expiry field (not enforced)"
+                          value={formatDateTime(record.expiresAt)}
+                        />
                           </div>
                           <div className="mt-3">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Consent events</p>

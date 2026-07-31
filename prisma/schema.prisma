@@ -877,7 +877,7 @@ model ReviewWindow {
   reviewId       String?  @unique
   status         String   @default("active")
   openedAt       DateTime @default(now())
-  expiresAt      DateTime
+  expiresAt      DateTime // Deprecated compatibility field; not used to govern review eligibility.
   closedAt       DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

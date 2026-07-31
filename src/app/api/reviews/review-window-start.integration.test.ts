@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST as reviewWindowStartPOST } from './window/start/route';
-import { scheduleReviewReminder } from '@/lib/review-notifications';
+import { sendReviewInvitation } from '@/lib/review-notifications';
 import { getUserIdFromRequest } from '@/lib/auth';
 
 const hoisted = vi.hoisted(() => {
@@ -12,6 +12,7 @@ const hoisted = vi.hoisted(() => {
   const mediaAssetFindFirst = vi.fn();
   const reviewWindowFindFirst = vi.fn();
   const reviewWindowCreate = vi.fn();
+  const reviewWindowUpdate = vi.fn();
 
   const prisma = {
     booking: { findUnique: bookingFindUnique },
@@ -22,6 +23,7 @@ const hoisted = vi.hoisted(() => {
     reviewWindow: {
       findFirst: reviewWindowFindFirst,
       create: reviewWindowCreate,
+      update: reviewWindowUpdate,
     },
   };
 
@@ -34,6 +36,7 @@ const hoisted = vi.hoisted(() => {
     mediaAssetFindFirst,
     reviewWindowFindFirst,
     reviewWindowCreate,
+    reviewWindowUpdate,
   };
 });
 
@@ -42,9 +45,9 @@ vi.mock('@/server/db', () => ({
 }));
 
 vi.mock('@/lib/review-notifications', () => ({
-  scheduleReviewReminder: vi.fn().mockResolvedValue({
+  sendReviewInvitation: vi.fn().mockResolvedValue({
     queued: false,
-    reason: 'no_background_scheduler',
+    reason: 'single_invitation_best_effort',
   }),
 }));
 
@@ -73,7 +76,8 @@ describe('POST /api/reviews/window/start', () => {
     hoisted.mediaAssetFindFirst.mockReset();
     hoisted.reviewWindowFindFirst.mockReset();
     hoisted.reviewWindowCreate.mockReset();
-    vi.mocked(scheduleReviewReminder).mockClear();
+    hoisted.reviewWindowUpdate.mockReset();
+    vi.mocked(sendReviewInvitation).mockClear();
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
     hoisted.mediaAssetFindFirst.mockResolvedValue({ id: 'asset-visible' });
     hoisted.reviewFindFirst.mockResolvedValue(null);
@@ -279,10 +283,10 @@ describe('POST /api/reviews/window/start', () => {
     expect(j.created).toBe(false);
     expect((j.reviewWindow as { id: string }).id).toBe('rw-existing');
     expect(hoisted.reviewWindowCreate).not.toHaveBeenCalled();
-    expect(vi.mocked(scheduleReviewReminder)).not.toHaveBeenCalled();
+    expect(vi.mocked(sendReviewInvitation)).not.toHaveBeenCalled();
   });
 
-  it('returns 200, creates window, and schedules reminder when created', async () => {
+  it('returns 200, creates availability, and sends one invitation when created', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
@@ -300,7 +304,7 @@ describe('POST /api/reviews/window/start', () => {
       mediaSessionId: 'ms1',
       status: 'active',
       openedAt: new Date(),
-      expiresAt: new Date(Date.now() + 72 * 3600_000),
+      expiresAt: new Date('9999-12-31T23:59:59.999Z'),
     };
     hoisted.reviewWindowCreate.mockResolvedValue(newWindow);
 
@@ -313,7 +317,8 @@ describe('POST /api/reviews/window/start', () => {
     expect(j.created).toBe(true);
     expect((j.reviewWindow as { id: string }).id).toBe('rw-new');
     expect(hoisted.reviewWindowCreate).toHaveBeenCalled();
-    expect(vi.mocked(scheduleReviewReminder)).toHaveBeenCalledWith({
+    expect(vi.mocked(sendReviewInvitation)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sendReviewInvitation)).toHaveBeenCalledWith({
       reviewWindowId: 'rw-new',
       bookingId: 'b1',
       vendorId: 'v1',
@@ -355,7 +360,7 @@ describe('POST /api/reviews/window/start', () => {
     expect(j.success).toBe(true);
     expect(j.created).toBe(false);
     expect((j.reviewWindow as { id: string }).id).toBe('rw-race-existing');
-    expect(vi.mocked(scheduleReviewReminder)).not.toHaveBeenCalled();
+    expect(vi.mocked(sendReviewInvitation)).not.toHaveBeenCalled();
   });
 
   it('returns 401 when requester user context is missing', async () => {

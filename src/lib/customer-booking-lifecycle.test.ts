@@ -37,6 +37,28 @@ describe('deriveCustomerBookingLifecycle', () => {
     expect(lifecycle.reviewSubmitted).toBe(false);
   });
 
+  it('keeps an eligible review available despite an old expired compatibility row', () => {
+    const lifecycle = deriveCustomerBookingLifecycle({
+      bookingStatus: 'COMPLETED',
+      hasSubmittedReview: false,
+      mediaSessions: [
+        completedSession([
+          {
+            mimeType: 'video/mp4',
+            moderationStatus: 'approved',
+            visibilityStatus: 'customer_only',
+            archiveStatus: 'active',
+          },
+        ]),
+      ],
+      reviewWindows: [{ status: 'expired' }],
+    });
+
+    expect(lifecycle.reviewEligible).toBe(true);
+    expect(lifecycle.reviewWindowOpen).toBe(true);
+    expect(lifecycle.reviewSubmitted).toBe(false);
+  });
+
   it('keeps a completed booking with an approved customer-visible completed video and submitted review logically consistent', () => {
     const lifecycle = deriveCustomerBookingLifecycle({
       bookingStatus: 'completed',

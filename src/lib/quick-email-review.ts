@@ -2,6 +2,8 @@ import { prisma } from "@/server/db";
 import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 import { createAdminAuditLog } from "@/lib/admin-audit";
 import { verifyReviewEmailToken } from "@/lib/review-email-token";
+import { getVisibilityStatusesForAudience } from "@/lib/media-visibility";
+import { isCompletedStatus, normalizeBookingStatusKey } from "@/lib/my-bookings";
 
 export type QuickEmailReviewResult =
   | {
@@ -25,7 +27,7 @@ export type QuickEmailReviewResult =
       canAddComment: boolean;
     }
   | {
-      status: "invalid" | "expired" | "not_ready";
+      status: "invalid" | "not_ready";
       message: string;
     };
 
@@ -69,6 +71,7 @@ async function loadReviewWindow(reviewWindowId: string) {
           id: true,
           userId: true,
           vendorId: true,
+          status: true,
           title: true,
           customerMetadata: true,
           service: { select: { name: true } },
@@ -85,27 +88,28 @@ export async function submitQuickEmailReviewRating(input: {
   rating: unknown;
 }): Promise<QuickEmailReviewResult> {
   const claims = verifyReviewEmailToken(input.token);
-  if (!claims) return { status: "invalid", message: "This review link is invalid or expired." };
+  if (!claims) {
+    return {
+      status: "invalid",
+      message: "This review link is invalid. Sign in to Reliance to leave an optional review.",
+    };
+  }
   const rating = normalizeRating(input.rating);
   if (!rating) return { status: "invalid", message: "Choose a rating from 1 to 5 stars." };
 
   const window = await loadReviewWindow(claims.reviewWindowId);
   if (!window || !window.booking) {
-    return { status: "invalid", message: "This review window could not be found." };
+    return { status: "invalid", message: "This review opportunity could not be found." };
   }
 
   const vendorName = publicVendorName(window.booking.vendor);
   const currentServiceLabel = serviceLabel(window.booking);
 
-  if (window.expiresAt && new Date(window.expiresAt).getTime() < Date.now()) {
-    return { status: "expired", message: "This review window has expired." };
-  }
-
   const existingReview = await (prisma as any).review.findFirst({
     where: { bookingId: window.bookingId },
     select: { id: true, rating: true, comment: true },
   });
-  if (existingReview || window.reviewId || String(window.status || "") !== "active") {
+  if (existingReview || window.reviewId || String(window.status || '').toLowerCase() === 'submitted') {
     const review = existingReview || window.review || null;
     return {
       status: "already_submitted",
@@ -116,6 +120,30 @@ export async function submitQuickEmailReviewRating(input: {
       vendorName,
       serviceName: currentServiceLabel,
       canAddComment: Boolean(review?.id && !review?.comment),
+    };
+  }
+
+  if (!isCompletedStatus(normalizeBookingStatusKey(window.booking.status))) {
+    return { status: 'not_ready', message: 'This service is not complete yet.' };
+  }
+  const customerVisibleFinalProof = await (prisma as any).mediaAsset.findFirst({
+    where: {
+      mediaSessionId: String(window.mediaSessionId),
+      deletedAt: null,
+      moderationStatus: 'approved',
+      archiveStatus: 'active',
+      visibilityStatus: { in: getVisibilityStatusesForAudience('customer') },
+      mediaSession: {
+        sessionType: 'JOB_SERVICE_VIDEO',
+        vendorJobVideoStage: 'COMPLETED',
+      },
+    },
+    select: { id: true },
+  });
+  if (!customerVisibleFinalProof) {
+    return {
+      status: 'not_ready',
+      message: 'An approved customer-visible final service video is required before reviewing.',
     };
   }
 
@@ -216,7 +244,7 @@ export async function saveQuickEmailReviewComment(input: {
   comment: unknown;
 }): Promise<QuickEmailCommentResult> {
   const claims = verifyReviewEmailToken(input.token);
-  if (!claims) return { status: "invalid", message: "This review link is invalid or expired." };
+  if (!claims) return { status: 'invalid', message: 'This review link is invalid.' };
   const comment = normalizeComment(input.comment);
   if (!comment) return { status: "invalid", message: "Enter a comment before saving." };
 

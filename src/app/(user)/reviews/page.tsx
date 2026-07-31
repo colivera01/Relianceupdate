@@ -234,8 +234,8 @@ export default function ReviewsPage() {
               Review completed services
             </h1>
             <p className="max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
-              When a completed service record has an approved customer-visible service video, you can leave
-              a review here and keep your submitted feedback tied to the right service record.
+              Your service is complete. You may leave an optional review after an approved customer-visible
+              service video is available. If you submit nothing, your service record remains complete.
             </p>
             <p className="text-sm leading-7 text-white/68">
               {loading || authLoading
@@ -320,13 +320,13 @@ export default function ReviewsPage() {
         <>
           <section className="mb-10">
             <div className="space-y-1 mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Ready to Review</h2>
+              <h2 className="text-xl font-semibold text-gray-900">Optional Reviews Available</h2>
               <p className="text-sm text-gray-600">
-                These completed services have approved customer-visible service videos and are ready for a review.
+                These completed services have approved customer-visible service videos. Review them whenever you choose.
               </p>
             </div>
             {data.pending.length === 0
-              ? sectionEmptyState('You have no completed services waiting for a review.')
+              ? sectionEmptyState('You have no completed services with an optional review available.')
               : data.pending.map((item) => (
                   <div
                     key={item.bookingId}
@@ -353,7 +353,7 @@ export default function ReviewsPage() {
           {data.awaiting.length > 0 ? (
             <section className="mb-10">
               <div className="space-y-1 mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Review Not Open Yet</h2>
+                <h2 className="text-xl font-semibold text-gray-900">Optional Review Not Available Yet</h2>
                 <p className="text-sm text-gray-600">
                   These completed services are not reviewable yet. Open the service record to see whether
                   the service video is pending approval, not customer-visible, or still unavailable.
@@ -361,11 +361,11 @@ export default function ReviewsPage() {
               </div>
               <GuidanceCallout
                 title="Why some completed service records still are not reviewable"
-                description="Reliance opens the review flow only after an approved final-result customer-visible video exists for that service record."
+                description="Reliance makes an optional review available only after an approved final-result customer-visible video exists for that service record."
                 bullets={[
                   'Completed work can still be waiting on service-video approval.',
                   'A video can exist without being customer-visible yet.',
-                  'Once the approved final-result video is available, this section moves the service record into Ready to Review.',
+                  'Once the approved final-result video is available, this section moves the service record into Optional Reviews Available.',
                 ]}
                 tone="amber"
                 className="mb-4"

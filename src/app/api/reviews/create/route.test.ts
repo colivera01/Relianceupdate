@@ -9,11 +9,13 @@ const hoisted = vi.hoisted(() => {
   const reviewWindowUpdateMany = vi.fn();
   const reviewPromptEventCreate = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
+  const mediaAssetFindFirst = vi.fn();
 
   const prisma = {
     booking: { findUnique: bookingFindUnique },
     review: { findFirst: reviewFindFirst },
     vendorMembership: { findFirst: vendorMembershipFindFirst },
+    mediaAsset: { findFirst: mediaAssetFindFirst },
     $transaction: vi.fn(async (callback: (tx: any) => Promise<any>) =>
       callback({
         review: { create: reviewCreate },
@@ -35,6 +37,7 @@ const hoisted = vi.hoisted(() => {
     reviewWindowUpdateMany,
     reviewPromptEventCreate,
     vendorMembershipFindFirst,
+    mediaAssetFindFirst,
   };
 });
 
@@ -98,6 +101,7 @@ function setupBooking() {
     id: "booking-1",
     userId: "user-1",
     vendorId: "vendor-1",
+    status: "COMPLETED",
     customerMetadata: JSON.stringify({
       vendor_job_primary_membership_id: "membership-1",
       vendor_job_primary_employee: "Hector Rivera",
@@ -106,6 +110,7 @@ function setupBooking() {
     }),
   });
   hoisted.reviewFindFirst.mockResolvedValue(null);
+  hoisted.mediaAssetFindFirst.mockResolvedValue({ id: "asset-1" });
   hoisted.vendorMembershipFindFirst.mockResolvedValue({
     userId: "employee-user-1",
     user: { name: "Hector Rivera", email: "hector@example.com" },
@@ -125,6 +130,7 @@ describe("POST /api/reviews/create attribution", () => {
     hoisted.reviewWindowUpdateMany.mockReset();
     hoisted.reviewPromptEventCreate.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
+    hoisted.mediaAssetFindFirst.mockReset();
     hoisted.prisma.$transaction.mockClear();
     setupBooking();
   });

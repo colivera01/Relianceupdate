@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
 import { getOrCreateActiveReviewWindow } from '@/lib/review-capture';
-import { scheduleReviewReminder } from '@/lib/review-notifications';
+import { sendReviewInvitation } from '@/lib/review-notifications';
 import { getUserIdFromRequest } from '@/lib/auth';
 import {
   accountStatusErrorBody,
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Review window can only open after the booking is completed',
+          error: 'An optional review is available only after the booking is completed',
           code: 'BOOKING_NOT_COMPLETED',
         },
         { status: 409 }
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Review window requires the final-result service video',
+          error: 'An optional review requires the final-result service video',
           code: 'REVIEW_REQUIRES_COMPLETED_STAGE_VIDEO',
         },
         { status: 409 }
@@ -177,12 +177,12 @@ export async function POST(request: NextRequest) {
     step = 'review_window_get_or_create';
     logStep(step);
     const { window, created } = await getOrCreateActiveReviewWindow({ bookingId, vendorId, mediaSessionId });
-    let reminderDispatch: Awaited<ReturnType<typeof scheduleReviewReminder>> | null = null;
+    let invitationDispatch: Awaited<ReturnType<typeof sendReviewInvitation>> | null = null;
     if (created) {
-      step = 'review_reminder_schedule';
+      step = 'review_invitation_send';
       logStep(step, { reviewWindowId: window.id });
       try {
-        reminderDispatch = await scheduleReviewReminder({
+        invitationDispatch = await sendReviewInvitation({
           reviewWindowId: window.id,
           bookingId,
           vendorId,
@@ -191,17 +191,16 @@ export async function POST(request: NextRequest) {
       } catch (notificationError) {
         // Best-effort only; do not fail window start when notifications fail.
         const err = notificationError as any;
-        console.error('[reviews/window/start] reminder scheduling failed (non-blocking):', {
+        console.error('[reviews/window/start] invitation send failed (non-blocking):', {
           reviewWindowId: window.id,
           error: err?.message || String(notificationError),
           code: err?.code,
           meta: err?.meta,
         });
-        reminderDispatch = {
+        invitationDispatch = {
           queued: false,
-          reason: 'schedule_failed_non_blocking',
-          synchronousReminderAttempt: false,
-          delayMinutes: 30,
+          reason: 'invitation_failed_non_blocking',
+          synchronousInvitationAttempt: false,
           context: { reviewWindowId: window.id, bookingId, vendorId, mediaSessionId },
           delivery: null,
           loadError: err?.message || String(notificationError),
@@ -214,7 +213,7 @@ export async function POST(request: NextRequest) {
       success: true,
       reviewWindow: window,
       created,
-      reminderDispatch,
+      invitationDispatch,
     });
   } catch (error: any) {
     if (error instanceof AccountStatusError) {
@@ -238,7 +237,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to start review window',
+        error: 'Failed to prepare optional review',
         step,
         code: errorCode,
         meta: errorMeta,

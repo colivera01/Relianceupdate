@@ -61,7 +61,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
     return {
       effectiveStatus: "BOOKING_NOT_COMPLETED",
       lifecycleNote:
-        "The booking is not in a completed state, so no customer review window should be open yet.",
+        "The booking is not in a completed state, so customer review availability has not begun.",
       customerLifecycle,
     };
   }
@@ -70,7 +70,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
     return {
       effectiveStatus: "REVIEW_OPEN",
       lifecycleNote:
-        "A customer-visible approved final-result video exists, so the review window is legitimately open.",
+        "A customer-visible approved final-result video exists, so an optional customer review is available.",
       customerLifecycle,
     };
   }

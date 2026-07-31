@@ -98,7 +98,6 @@ function emailShell(input) {
 const base = "https://beta.relianceonline.org";
 const serviceLink = `${base}/employee/jobs?jobId=cmqwvc2vr000bso843zn562dl&ct=sample-token`;
 const reviewLink = `${base}/my-bookings/sample-booking?returnTo=%2Freviews`;
-const recordsLink = `${base}/my-bookings`;
 const serviceName = "Electrical Service Recording Test";
 const vendorName = "Electro LLC";
 const customerName = "Ivan Olivera";
@@ -191,20 +190,20 @@ const previews = [
     fallbackHref: `${base}/my-bookings/sample-booking`,
   },
   {
-    file: "05-review-reminder.png",
-    title: "Review reminder",
-    eyebrow: "Service feedback",
-    headline: "How was your service?",
+    file: "05-review-invitation.png",
+    title: "Optional review invitation",
+    eyebrow: "Optional service feedback",
+    headline: "Your service is complete",
     greeting: `Hello ${customerName},`,
     bodyHtml: `
-      <p style="margin:0 0 14px;">We would love your feedback on your recent service with <strong style="color:#ffffff;">${escapeHtml(vendorName)}</strong>.</p>
-      <p style="margin:0;">Your feedback helps future customers choose with confidence and helps providers improve their service.</p>
+      <p style="margin:0 0 14px;">You may leave an optional review for your recent service with <strong style="color:#ffffff;">${escapeHtml(vendorName)}</strong>.</p>
+      <p style="margin:0;">If you do not leave a review, nothing is posted and your completed service record remains unchanged.</p>
     `,
     details: [
       { label: "Service", value: serviceName },
       { label: "Date", value: "June 28, 2026" },
     ],
-    cta: { label: "Review Your Service", href: reviewLink },
+    cta: { label: "Leave an Optional Review", href: reviewLink },
     secondaryHtml: `
       <p style="margin:0 0 8px;color:#ffffff;font-weight:800;">Start with a quick rating:</p>
       <p style="margin:0 0 14px;">
@@ -214,22 +213,9 @@ const previews = [
         <a href="${reviewLink}&rating=4" aria-label="Start a 4 out of 5 star review" style="display:inline-block;margin:0 8px 8px 0;padding:9px 12px;border-radius:999px;border:1px solid #2b5aa5;background:#0d1b33;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;line-height:1;"><span style="display:inline-block;min-width:12px;text-align:center;">4</span><span style="color:#facc15;margin-left:4px;">&#9733;</span></a>
         <a href="${reviewLink}&rating=5" aria-label="Start a 5 out of 5 star review" style="display:inline-block;margin:0 8px 8px 0;padding:9px 12px;border-radius:999px;border:1px solid #2b5aa5;background:#0d1b33;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;line-height:1;"><span style="display:inline-block;min-width:12px;text-align:center;">5</span><span style="color:#facc15;margin-left:4px;">&#9733;</span></a>
       </p>
-      <p style="margin:0;">Your feedback window is open for a limited time. You can watch your service video, confirm the rating, and leave feedback in one place.</p>
+      <p style="margin:0;">You can watch your service video, confirm the rating, and leave feedback in one place.</p>
     `,
     fallbackHref: reviewLink,
-  },
-  {
-    file: "06-review-window-closed.png",
-    title: "Review window closed",
-    eyebrow: "Feedback window closed",
-    headline: "Your feedback window has closed",
-    greeting: `Hello ${customerName},`,
-    bodyHtml: `
-      <p style="margin:0 0 14px;">Your feedback window for <strong style="color:#ffffff;">${escapeHtml(vendorName)}</strong> has ended without a submitted review.</p>
-      <p style="margin:0;">If you still need help, open My Service Records in Reliance or contact support from the app.</p>
-    `,
-    cta: { label: "Open My Service Records", href: recordsLink },
-    fallbackHref: recordsLink,
   },
   {
     file: "07-device-pairing-invite.png",
