@@ -55,15 +55,24 @@ vi.mock("@/lib/storage-helpers", () => ({
 
 const VENDOR_ID = "vendor-1";
 
-function buildRequest(durationSeconds: number) {
+function buildRequest(
+  durationSeconds: number,
+  options: {
+    blobKey?: string;
+    mimeType?: string;
+  } = {}
+) {
+  const blobKey =
+    options.blobKey || "vendor/vendor-1/media/asset-1.mp4";
+  const mimeType = options.mimeType || "video/mp4";
   return new Request(`http://localhost/api/vendors/${VENDOR_ID}/media/upload/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       assetId: "asset-1",
-      blobKey: "vendor/vendor-1/media/asset-1.mp4",
+      blobKey,
       bytes: 1024,
-      mimeType: "video/mp4",
+      mimeType,
       mediaSessionId: "session-1",
       durationSeconds,
     }),
@@ -88,6 +97,48 @@ function box(type: string, body: Buffer): Buffer {
   header.writeUInt32BE(body.length + 8, 0);
   header.write(type, 4, 4, "ascii");
   return Buffer.concat([header, body]);
+}
+
+function ebmlElement(id: number[], data: Buffer): Buffer {
+  if (data.length >= 127) throw new Error("Test element is too large.");
+  return Buffer.concat([Buffer.from(id), Buffer.from([0x80 | data.length]), data]);
+}
+
+function unknownSizeElement(id: number[], data: Buffer): Buffer {
+  return Buffer.concat([Buffer.from(id), Buffer.from([0xff]), data]);
+}
+
+function mediaRecorderWebmWithoutInfoDuration(
+  clusterTimestamp: number,
+  relativeTimestamp: number
+): Buffer {
+  const block = Buffer.alloc(5);
+  block[0] = 0x81;
+  block.writeInt16BE(relativeTimestamp, 1);
+  block[3] = 0x80;
+
+  const timestamp = Buffer.alloc(2);
+  timestamp.writeUInt16BE(clusterTimestamp);
+
+  const info = ebmlElement(
+    [0x15, 0x49, 0xa9, 0x66],
+    ebmlElement([0x2a, 0xd7, 0xb1], Buffer.from([0x0f, 0x42, 0x40]))
+  );
+  const cluster = unknownSizeElement(
+    [0x1f, 0x43, 0xb6, 0x75],
+    Buffer.concat([
+      ebmlElement([0xe7], timestamp),
+      ebmlElement([0xa3], block),
+    ])
+  );
+
+  return Buffer.concat([
+    ebmlElement([0x1a, 0x45, 0xdf, 0xa3], Buffer.alloc(0)),
+    unknownSizeElement(
+      [0x18, 0x53, 0x80, 0x67],
+      Buffer.concat([info, cluster])
+    ),
+  ]);
 }
 
 describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duration", () => {
@@ -158,6 +209,24 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     expect(hoisted.mediaAssetCreate).toHaveBeenCalledTimes(1);
   });
 
+  it("allows a Chrome MediaRecorder WebM without Info.Duration", async () => {
+    vi.mocked(downloadBlobToBuffer).mockResolvedValue(
+      mediaRecorderWebmWithoutInfoDuration(8_000, 512)
+    );
+
+    const blobKey = "vendor/vendor-1/media/asset-1.webm";
+    const mimeType = "video/webm;codecs=vp9";
+    const res = await POST(buildRequest(8.512, { blobKey, mimeType }), {
+      params: Promise.resolve({ vendorId: VENDOR_ID }),
+    });
+    const json = await readJson(res);
+
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(downloadBlobToBuffer).toHaveBeenCalledWith(blobKey);
+    expect(hoisted.mediaAssetCreate).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a staged video when the uploaded media probes over the 30-second limit", async () => {
     vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationSeconds(31));
 
@@ -177,7 +246,7 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     expect(hoisted.mediaAssetCreate).not.toHaveBeenCalled();
   });
 
-  it("moves booking-linked manager uploads into awaiting review when all required stages exist", async () => {
+  it("keeps booking-linked uploads in progress until the employee submits the package", async () => {
     vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationSeconds(12));
     hoisted.mediaSessionFindFirst
       .mockResolvedValueOnce({
@@ -229,10 +298,9 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
       data: {
         customerMetadata: JSON.stringify({
           reliance_ops: {
-            operational_phase: "AWAITING_ADMIN_REVIEW",
+            operational_phase: "IN_PROGRESS",
           },
         }),
-        status: "AWAITING_REVIEW",
       },
     });
   });

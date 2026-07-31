@@ -683,7 +683,9 @@ export default function EmployeeJobsPage() {
       });
       const completeJson = await completeRes.json().catch(() => ({}));
       if (!completeRes.ok || !completeJson?.success) {
-        throw new Error(completeJson?.error || "Failed to finalize upload");
+        throw new Error(
+          completeJson?.message || completeJson?.error || "Failed to finalize upload"
+        );
       }
 
       const stageRes = await fetch(`/api/employee/jobs/${job.id}/stage`, {
@@ -717,10 +719,12 @@ export default function EmployeeJobsPage() {
       }));
       await loadJobs();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to upload stage video");
+      const uploadErrorMessage =
+        e instanceof Error ? e.message : "Failed to upload stage video";
+      setError(uploadErrorMessage);
       setStageFeedback((prev) => ({
         ...prev,
-        [uploadKey]: { status: "error", message: "Upload failed, try again" },
+        [uploadKey]: { status: "error", message: uploadErrorMessage },
       }));
     } finally {
       setUploadingKey(null);

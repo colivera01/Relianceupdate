@@ -128,7 +128,10 @@ function readMp4MovieHeaderDuration(
 }
 
 function probeWebmDurationSeconds(buffer: Buffer): number | null {
-  return findWebmDurationInRange(buffer, 0, buffer.length, 0);
+  return (
+    findWebmDurationInRange(buffer, 0, buffer.length, 0) ??
+    probeWebmBlockTimelineDurationSeconds(buffer)
+  );
 }
 
 type EbmlElement = {
@@ -136,6 +139,7 @@ type EbmlElement = {
   dataStart: number;
   dataEnd: number;
   nextOffset: number;
+  unknownSize: boolean;
 };
 
 function findWebmDurationInRange(
@@ -203,6 +207,143 @@ function readWebmInfoDuration(
   return positiveFiniteDuration((duration * timestampScale) / 1_000_000_000);
 }
 
+type WebmTimelineState = {
+  timestampScale: number;
+  maxTimestampUnits: number | null;
+};
+
+type WebmClusterContext = {
+  timestampUnits: number;
+};
+
+function probeWebmBlockTimelineDurationSeconds(buffer: Buffer): number | null {
+  const state: WebmTimelineState = {
+    timestampScale: 1_000_000,
+    maxTimestampUnits: null,
+  };
+
+  scanWebmTimelineRange(buffer, 0, buffer.length, state, null, 0);
+  if (state.maxTimestampUnits == null) return null;
+
+  return positiveFiniteDuration(
+    (state.maxTimestampUnits * state.timestampScale) / 1_000_000_000
+  );
+}
+
+function scanWebmTimelineRange(
+  buffer: Buffer,
+  start: number,
+  end: number,
+  state: WebmTimelineState,
+  initialCluster: WebmClusterContext | null,
+  depth: number
+): void {
+  if (depth > 12) return;
+
+  let offset = start;
+  let activeCluster = initialCluster;
+
+  while (offset < end) {
+    const element = readEbmlElement(buffer, offset, end);
+    if (!element) return;
+
+    if (element.id === 0x1a45dfa3 || element.id === 0x18538067) {
+      if (element.unknownSize) {
+        activeCluster = null;
+        offset = element.dataStart;
+        continue;
+      }
+      scanWebmTimelineRange(
+        buffer,
+        element.dataStart,
+        element.dataEnd,
+        state,
+        null,
+        depth + 1
+      );
+    } else if (element.id === 0x1549a966) {
+      scanWebmTimelineRange(
+        buffer,
+        element.dataStart,
+        element.dataEnd,
+        state,
+        null,
+        depth + 1
+      );
+    } else if (element.id === 0x2ad7b1) {
+      const timestampScale = readUnsignedInteger(
+        buffer,
+        element.dataStart,
+        element.dataEnd
+      );
+      if (timestampScale > 0) state.timestampScale = timestampScale;
+    } else if (element.id === 0x1f43b675) {
+      const nextCluster = { timestampUnits: 0 };
+      if (element.unknownSize) {
+        activeCluster = nextCluster;
+        offset = element.dataStart;
+        continue;
+      }
+      scanWebmTimelineRange(
+        buffer,
+        element.dataStart,
+        element.dataEnd,
+        state,
+        nextCluster,
+        depth + 1
+      );
+    } else if (activeCluster && element.id === 0xe7) {
+      activeCluster.timestampUnits = readUnsignedInteger(
+        buffer,
+        element.dataStart,
+        element.dataEnd
+      );
+    } else if (
+      activeCluster &&
+      (element.id === 0xa3 || element.id === 0xa1)
+    ) {
+      const relativeTimestamp = readWebmBlockRelativeTimestamp(
+        buffer,
+        element.dataStart,
+        element.dataEnd
+      );
+      if (relativeTimestamp != null) {
+        const absoluteTimestamp =
+          activeCluster.timestampUnits + relativeTimestamp;
+        if (
+          absoluteTimestamp >= 0 &&
+          (state.maxTimestampUnits == null ||
+            absoluteTimestamp > state.maxTimestampUnits)
+        ) {
+          state.maxTimestampUnits = absoluteTimestamp;
+        }
+      }
+    } else if (activeCluster && element.id === 0xa0) {
+      scanWebmTimelineRange(
+        buffer,
+        element.dataStart,
+        element.dataEnd,
+        state,
+        activeCluster,
+        depth + 1
+      );
+    }
+
+    offset = element.nextOffset;
+  }
+}
+
+function readWebmBlockRelativeTimestamp(
+  buffer: Buffer,
+  start: number,
+  end: number
+): number | null {
+  if (start >= end) return null;
+  const trackNumberLength = ebmlVintLength(buffer[start]);
+  if (!trackNumberLength || start + trackNumberLength + 2 > end) return null;
+  return buffer.readInt16BE(start + trackNumberLength);
+}
+
 function readEbmlElement(
   buffer: Buffer,
   offset: number,
@@ -223,6 +364,7 @@ function readEbmlElement(
     dataStart,
     dataEnd,
     nextOffset: dataEnd,
+    unknownSize: size.value === Infinity,
   };
 }
 
