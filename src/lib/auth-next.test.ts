@@ -63,6 +63,13 @@ describe('auth next helpers', () => {
       returnPath:
         '/my-bookings/booking-1?videoReady=1&claimToken=claim-123',
     });
+    expect(
+      getCustomerServiceVideoIntent('/my-bookings/booking-1?videoReady=1')
+    ).toEqual({
+      bookingId: 'booking-1',
+      claimToken: '',
+      returnPath: '/my-bookings/booking-1?videoReady=1',
+    });
     expect(getCustomerServiceVideoIntent('/my-bookings/booking-1')).toBeNull();
     expect(
       getAuthEntryDescription(

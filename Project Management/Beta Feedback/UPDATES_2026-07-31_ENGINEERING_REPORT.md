@@ -229,3 +229,9 @@ The full Vitest suite retains 13 failures in nine unrelated suites. The reposito
 ## Completion Boundary
 
 Only the six attachment tasks and their direct verification/documentation were addressed. No later consent epic or unrelated repair was implemented.
+
+## Live Beta Follow-Up
+
+The original implementation checkpoint was pushed to `cursor-latest-build`, but the Azure beta application is configured to deploy from the separate `beta` branch. That deployment branch had not received the customer service-video handoff changes, so the live site continued to render the shared customer shell and linked vendor control.
+
+The follow-up adds explicit regression coverage for the exact email link format used in production (`/my-bookings/{id}?videoReady=1`, without a claim token). The corrected build is deployed by fast-forwarding the existing `beta` branch; no force push or history rewrite is used. Live visual verification is performed against the same URL shape after deployment.
