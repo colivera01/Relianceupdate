@@ -76,8 +76,6 @@ export async function POST(
       vendorJobVideoStage,
       replaceExisting,
       locationContext,
-      consentAccepted,
-      consentToken,
     } = body;
     const tokenAccess = await resolveEmployeeCaptureAccess(request, {
       vendorId,
@@ -194,29 +192,24 @@ export async function POST(
         normalizedLocationContext === "residence" ||
         normalizedLocationContext === "customer-business";
       if (consentRequiredByLocation) {
-        const acceptedFromBody = Boolean(consentAccepted);
-        let acceptedFromBackend = false;
-        const token = String(consentToken || "").trim();
-        if (token) {
-          const consentRecord = await (prisma as any).consentRecord.findUnique({
-            where: { token },
-            select: { status: true, bookingId: true, vendorId: true },
-          });
-          if (
-            consentRecord &&
-            String(consentRecord.status || "").trim().toUpperCase() === "ACCEPTED" &&
-            String(consentRecord.bookingId || "") === String(validBookingId || "") &&
-            String(consentRecord.vendorId || "") === String(vendorId)
-          ) {
-            acceptedFromBackend = true;
-          }
-        }
-        if (!(acceptedFromBody && acceptedFromBackend)) {
+        const verifiedPermission = await (prisma as any).consentRecord.findFirst({
+          where: {
+            bookingId: String(validBookingId || ""),
+            vendorId: String(vendorId),
+            status: "accepted",
+            lifecycleStatus: "ALLOWED",
+            verifiedDecision: true,
+            decisionEvidence: { isNot: null },
+          },
+          select: { id: true },
+          orderBy: { acceptedAt: "desc" },
+        });
+        if (!verifiedPermission) {
           return NextResponse.json(
             {
               success: false,
-              code: "CONSENT_REQUIRED",
-              message: "Customer consent must be accepted before recording can proceed.",
+              code: "VERIFIED_PERMISSION_REQUIRED",
+              message: "Verified customer recording permission is required before recording can proceed.",
             },
             { status: 409 }
           );

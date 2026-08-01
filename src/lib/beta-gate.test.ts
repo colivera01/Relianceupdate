@@ -139,6 +139,12 @@ describe("private beta gate", () => {
     expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
 
+  it("lets the independently authenticated notification worker reach its route", async () => {
+    const response = await middleware(betaRequest("/api/internal/notifications/process"));
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+  });
+
   it("does not block public compliance and SMS consent pages", async () => {
     for (const path of ["/privacy", "/terms", "/sms-policy", "/auth/register?type=user", "/help"]) {
       const response = await middleware(betaRequest(path));
@@ -162,6 +168,34 @@ describe("private beta gate", () => {
 
     expect(apiResponse.headers.get("location")).toBeNull();
     expect(apiResponse.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+  });
+
+  it("allows intended recipients to complete a verified permission request", async () => {
+    for (const path of [
+      "/consent/action-secret",
+      "/api/consent/action-secret",
+      "/api/consent/action-secret/verification/start",
+      "/api/consent/action-secret/verification/verify",
+      "/api/consent/action-secret/wrong-recipient",
+      "/api/consent/accept",
+      "/api/consent/decline",
+    ]) {
+      const response = await middleware(betaRequest(path));
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    }
+  });
+
+  it("keeps vendor permission management routes behind the beta gate", async () => {
+    for (const path of [
+      "/api/consent/request",
+      "/api/consent/requests/request-1/resend",
+      "/api/consent/requests/request-1/recipient",
+      "/api/consent/status?bookingId=job-1",
+    ]) {
+      const response = await middleware(betaRequest(path));
+      expect(response.status).toBe(307);
+    }
   });
 
   it("does not block employee capture media upload calls with capture token headers", async () => {

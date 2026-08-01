@@ -1,290 +1,266 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GET as getConsent } from "./[token]/route";
-import { POST as acceptConsent } from "./accept/route";
-import { POST as declineConsent } from "./decline/route";
+
+import { hashOpaqueSecret } from "@/lib/consent/token";
+import { GET as getPermission } from "./[token]/route";
+import { POST as allowPermission } from "./accept/route";
+import { POST as declinePermission } from "./decline/route";
 
 const hoisted = vi.hoisted(() => {
-  const consentRecordFindUnique = vi.fn();
+  const consentRequestLinkFindUnique = vi.fn();
+  const consentRequestLinkUpdate = vi.fn();
+  const consentRequestLinkUpdateMany = vi.fn();
   const consentRecordUpdate = vi.fn();
   const consentEventCreate = vi.fn();
-  const bookingFindUnique = vi.fn();
+  const consentDecisionSessionFindUnique = vi.fn();
+  const consentDecisionSessionUpdateMany = vi.fn();
+  const consentDecisionEvidenceCreate = vi.fn();
   const bookingUpdate = vi.fn();
-  const geocodeAddress = vi.fn();
-  const sendConsentDecisionNotifications = vi.fn();
-  const prisma = {
-    consentRecord: {
-      findUnique: consentRecordFindUnique,
-      update: consentRecordUpdate,
+  const sendDecision = vi.fn();
+  const getUserId = vi.fn();
+  const prisma: any = {
+    consentRequestLink: {
+      findUnique: consentRequestLinkFindUnique,
+      update: consentRequestLinkUpdate,
+      updateMany: consentRequestLinkUpdateMany,
     },
-    consentEvent: {
-      create: consentEventCreate,
+    consentRecord: { update: consentRecordUpdate },
+    consentEvent: { create: consentEventCreate },
+    consentDecisionSession: {
+      findUnique: consentDecisionSessionFindUnique,
+      updateMany: consentDecisionSessionUpdateMany,
     },
-    booking: {
-      findUnique: bookingFindUnique,
-      update: bookingUpdate,
-    },
+    consentDecisionEvidence: { create: consentDecisionEvidenceCreate },
+    booking: { update: bookingUpdate },
   };
-
+  prisma.$transaction = vi.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
   return {
     prisma,
-    consentRecordFindUnique,
+    consentRequestLinkFindUnique,
+    consentRequestLinkUpdate,
+    consentRequestLinkUpdateMany,
     consentRecordUpdate,
     consentEventCreate,
-    bookingFindUnique,
+    consentDecisionSessionFindUnique,
+    consentDecisionSessionUpdateMany,
+    consentDecisionEvidenceCreate,
     bookingUpdate,
-    geocodeAddress,
-    sendConsentDecisionNotifications,
+    sendDecision,
+    getUserId,
   };
 });
 
-vi.mock("@/server/db", () => ({
-  prisma: hoisted.prisma,
-}));
-
-vi.mock("@/lib/geocoding", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/geocoding")>("@/lib/geocoding");
-  return { ...actual, geocodeAddress: hoisted.geocodeAddress };
-});
-
+vi.mock("@/server/db", () => ({ prisma: hoisted.prisma }));
+vi.mock("@/lib/auth", () => ({ getUserIdFromRequest: hoisted.getUserId }));
 vi.mock("@/lib/notifications/send-consent-decision", () => ({
-  sendConsentDecisionNotifications: hoisted.sendConsentDecisionNotifications,
+  sendConsentDecisionNotifications: hoisted.sendDecision,
 }));
 
-const CONSENT_TOKEN = "e2e-consent-pending-token";
-const REQUESTED_AT = new Date("2026-05-01T12:00:00.000Z");
-const EXPIRES_AT = new Date("2026-12-01T12:00:00.000Z");
+const ACTION_SECRET = "permission-action-secret";
+const DECISION_SECRET = "permission-decision-secret";
 
-function buildConsentFixture(overrides: Record<string, unknown> = {}) {
+function buildLink(overrides: Record<string, unknown> = {}) {
   return {
-    id: "consent-1",
-    token: CONSENT_TOKEN,
-    status: "requested",
-    consentType: "video_access",
-    requestedAt: REQUESTED_AT,
-    acceptedAt: null,
-    declinedAt: null,
-    expiresAt: EXPIRES_AT,
-    termsVersion: null,
-    privacyVersion: null,
-    mediaSessionId: "media-session-1",
-    booking: {
-      id: "booking-1",
-      title: "E2E Consent Smoke Booking",
-      clientName: "E2E Consent Customer",
-      scheduledFor: new Date("2026-06-02T14:00:00.000Z"),
-      service: { id: "service-1", name: "E2E Consent Smoke Service", price: 125 },
-    },
-    vendor: {
-      id: "vendor-1",
-      name: "E2E Consent Vendor",
-      businessName: "E2E Consent Vendor LLC",
+    id: "link-1",
+    consentRecordId: "permission-1",
+    secretHash: hashOpaqueSecret(ACTION_SECRET),
+    generation: 1,
+    revokedAt: null,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    consentRecord: {
+      id: "permission-1",
+      bookingId: "booking-1",
+      generation: 1,
+      status: "requested",
+      lifecycleStatus: "DELIVERED",
+      verifiedDecision: false,
+      decisionEvidence: null,
+      scopeHash: "scope-hash",
+      recipientName: "Customer One",
+      recipientEmailHash: "email-hash",
+      recipientPhoneHash: null,
+      recipientEmailMasked: "c***@example.com",
+      recipientPhoneMasked: null,
+      contentVersion: {
+        version: "recording-permission-v1",
+        contentHash: "content-hash",
+        contentJson: JSON.stringify({ purpose: "Record proof of service" }),
+      },
+      vendor: { id: "vendor-1", name: "Vendor", businessName: "Vendor Co" },
+      booking: {
+        id: "booking-1",
+        title: "Outlet Installation",
+        scheduledFor: new Date("2026-07-31T14:00:00.000Z"),
+        date: null,
+        customerMetadata: JSON.stringify({ vendor_job_recording_location: "residence" }),
+        service: { id: "service-1", name: "Outlet Installation" },
+        user: null,
+      },
     },
     ...overrides,
   };
 }
 
-function jsonRequest(path: string, body: Record<string, unknown>, headers: Record<string, string> = {}) {
+function decisionRequest(path: string, body: Record<string, unknown>, withCookie = true) {
   return new Request(`http://localhost${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...(withCookie ? { cookie: `reliance_permission_decision=${DECISION_SECRET}` } : {}),
+      "x-forwarded-for": "203.0.113.10",
+      "user-agent": "vitest-permission-flow",
+    },
     body: JSON.stringify(body),
   });
 }
 
-async function readJson(res: Response) {
-  return res.json() as Promise<Record<string, any>>;
-}
-
-describe("consent token and response routes", () => {
+describe("verified recording permission routes", () => {
   beforeEach(() => {
-    hoisted.consentRecordFindUnique.mockReset();
-    hoisted.consentRecordUpdate.mockReset();
-    hoisted.consentEventCreate.mockReset();
-    hoisted.bookingFindUnique.mockReset();
-    hoisted.bookingUpdate.mockReset();
-    hoisted.geocodeAddress.mockReset();
-    hoisted.sendConsentDecisionNotifications.mockReset();
-    hoisted.sendConsentDecisionNotifications.mockResolvedValue({ releasedMembershipIds: [], notifications: [] });
+    vi.clearAllMocks();
+    hoisted.consentRequestLinkFindUnique.mockResolvedValue(buildLink());
+    hoisted.consentRequestLinkUpdate.mockResolvedValue({ id: "link-1" });
+    hoisted.consentDecisionSessionFindUnique.mockResolvedValue({
+      id: "session-1",
+      consentRecordId: "permission-1",
+      verificationMethod: "email_otp",
+      verifiedContactHash: "email-hash",
+      verifiedUserId: null,
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+    });
+    hoisted.consentDecisionSessionUpdateMany.mockResolvedValue({ count: 1 });
+    hoisted.consentDecisionEvidenceCreate.mockResolvedValue({ id: "evidence-1", actorUserId: null });
+    hoisted.consentRecordUpdate.mockResolvedValue({ id: "permission-1", lifecycleStatus: "ALLOWED" });
+    hoisted.consentRequestLinkUpdateMany.mockResolvedValue({ count: 1 });
+    hoisted.bookingUpdate.mockResolvedValue({ id: "booking-1" });
+    hoisted.consentEventCreate.mockResolvedValue({ id: "event-1" });
+    hoisted.sendDecision.mockResolvedValue({ notifications: [] });
+    hoisted.getUserId.mockResolvedValue(null);
   });
 
-  it("loads a valid pending consent token with booking and vendor context", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue(buildConsentFixture());
-
-    const res = await getConsent(new Request(`http://localhost/api/consent/${CONSENT_TOKEN}`), {
-      params: Promise.resolve({ token: CONSENT_TOKEN }),
+  it("returns only identity-safe request details and never echoes the action secret", async () => {
+    const response = await getPermission(new Request(`http://localhost/api/consent/${ACTION_SECRET}`), {
+      params: Promise.resolve({ token: ACTION_SECRET }),
     });
-    const json = await readJson(res);
+    const json = await response.json();
 
-    expect(res.status).toBe(200);
-    expect(json.success).toBe(true);
-    expect(json.consent).toMatchObject({
-      token: CONSENT_TOKEN,
-      status: "requested",
-      canRespond: true,
-      respondBlockedReason: null,
-      mediaSessionId: "media-session-1",
-      vendor: { businessName: "E2E Consent Vendor LLC" },
-      booking: {
-        title: "E2E Consent Smoke Booking",
-        service: { name: "E2E Consent Smoke Service" },
+    expect(response.status).toBe(200);
+    expect(json.permission).toMatchObject({
+      id: "permission-1",
+      vendorName: "Vendor Co",
+      serviceName: "Outlet Installation",
+      initialAudience: "private",
+      audioEnabled: false,
+      canDecide: true,
+    });
+    expect(JSON.stringify(json)).not.toContain(ACTION_SECRET);
+    expect(JSON.stringify(json)).not.toContain("customer@example.com");
+  });
+
+  it("requires verified identity before allowing recording", async () => {
+    const response = await allowPermission(
+      decisionRequest(
+        "/api/consent/accept",
+        { token: ACTION_SECRET, claimedRole: "customer", authorityScope: "self_and_property" },
+        false
+      ) as any
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ code: "IDENTITY_VERIFICATION_REQUIRED" });
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a role paired with an inconsistent authority scope", async () => {
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "business_location_and_property",
+      }) as any
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({ code: "AUTHORITY_REQUIRED" });
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
+  });
+
+  it("records one durable allow decision with Private initial audience and audio off", async () => {
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+      }) as any
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.permission).toEqual({ state: "allowed", initialAudience: "private", audioEnabled: false });
+    expect(hoisted.consentDecisionEvidenceCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        consentRecordId: "permission-1",
+        decision: "ALLOWED",
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+        contentHash: "content-hash",
+        scopeHash: "scope-hash",
+      }),
+    });
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
+      where: { id: "booking-1" },
+      data: {
+        customerMetadata: expect.stringContaining('"vendor_job_customer_visibility_choice":"private"'),
       },
     });
   });
 
-  it("accepts a pending consent and records the audit event", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue(buildConsentFixture());
-    hoisted.consentRecordUpdate.mockResolvedValue({
-      id: "consent-1",
-      status: "accepted",
-      expiresAt: EXPIRES_AT,
-      acceptedAt: new Date("2026-05-01T12:05:00.000Z"),
-    });
-    hoisted.consentEventCreate.mockResolvedValue({ id: "event-accepted" });
-
-    const res = await acceptConsent(
-      jsonRequest(
-        "/api/consent/accept",
-        { token: CONSENT_TOKEN, termsAccepted: true, termsVersion: "terms-2026-05", privacyVersion: "privacy-2026-05" },
-        { "x-forwarded-for": "203.0.113.10", "user-agent": "vitest-consent-smoke" }
-      ) as any
-    );
-    const json = await readJson(res);
-
-    expect(res.status).toBe(200);
-    expect(json.success).toBe(true);
-    expect(hoisted.consentRecordUpdate).toHaveBeenCalledWith({
-      where: { token: CONSENT_TOKEN },
-      data: expect.objectContaining({
-        status: "accepted",
-        termsVersion: "terms-2026-05",
-        privacyVersion: "privacy-2026-05",
-        ipAddress: "203.0.113.10",
-        userAgent: "vitest-consent-smoke",
-        documentHash: expect.any(String),
-      }),
-    });
-    expect(hoisted.consentEventCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        consentRecordId: "consent-1",
-        eventType: "accepted",
-      }),
-    });
-  });
-
-  it("requires terms acceptance before recording consent", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue(buildConsentFixture());
-
-    const res = await acceptConsent(jsonRequest("/api/consent/accept", { token: CONSENT_TOKEN }) as any);
-    const json = await readJson(res);
-
-    expect(res.status).toBe(422);
-    expect(json.code).toBe("CONSENT_TERMS_REQUIRED");
-    expect(hoisted.consentRecordUpdate).not.toHaveBeenCalled();
-  });
-
-  it("requires and verifies the customer business address before accepting", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue(
-      buildConsentFixture({ bookingId: "booking-1" })
-    );
-    hoisted.bookingFindUnique.mockResolvedValue({
-      id: "booking-1",
-      customerMetadata: JSON.stringify({ vendor_job_recording_location: "customer-business" }),
-    });
-    hoisted.geocodeAddress.mockResolvedValue({
-      status: "success",
-      provider: "census",
-      latitude: 28.5383,
-      longitude: -81.3792,
-      geocodedAt: new Date("2026-07-22T12:00:00.000Z"),
-      formattedAddress: "123 MAIN ST, ORLANDO, FL, 32801",
-    });
-    hoisted.consentRecordUpdate.mockResolvedValue({
-      id: "consent-1",
-      status: "accepted",
-      expiresAt: EXPIRES_AT,
-      acceptedAt: new Date("2026-07-22T12:05:00.000Z"),
-    });
-    hoisted.consentEventCreate.mockResolvedValue({ id: "event-accepted" });
-
-    const res = await acceptConsent(
-      jsonRequest("/api/consent/accept", {
-        token: CONSENT_TOKEN,
-        termsAccepted: true,
-        visibilityChoice: "public",
-        customerBusinessAddress: {
-          address: "123 Main St",
-          city: "Orlando",
-          state: "FL",
-          zipCode: "32801",
-        },
+  it("records a verified decline without creating a public or review outcome", async () => {
+    const response = await declinePermission(
+      decisionRequest("/api/consent/decline", {
+        token: ACTION_SECRET,
+        claimedRole: "authorized_representative",
+        authorityScope: "authorized_location_and_property",
       }) as any
     );
 
-    expect(res.status).toBe(200);
-    const saved = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
-    expect(saved).toMatchObject({
-      vendor_job_consent_accepted: true,
-      vendor_job_customer_visibility_choice: "public",
-      vendor_job_customer_business_latitude: 28.5383,
-      vendor_job_customer_business_longitude: -81.3792,
+    expect(response.status).toBe(200);
+    expect(hoisted.consentDecisionEvidenceCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ decision: "DECLINED" }),
     });
-    expect(hoisted.sendConsentDecisionNotifications).toHaveBeenCalledWith(
-      expect.objectContaining({ bookingId: "booking-1", accepted: true })
-    );
+    const persisted = hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata;
+    expect(persisted).toContain('"vendor_job_consent_accepted":false');
+    expect(persisted).not.toContain("review");
+    expect(persisted).not.toContain("public");
   });
 
-  it("declines a pending consent and records the decline reason", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue(buildConsentFixture());
-    hoisted.consentRecordUpdate.mockResolvedValue({
-      id: "consent-1",
-      status: "declined",
-      expiresAt: EXPIRES_AT,
-    });
-    hoisted.consentEventCreate.mockResolvedValue({ id: "event-declined" });
-
-    const res = await declineConsent(
-      jsonRequest(
-        "/api/consent/decline",
-        { token: CONSENT_TOKEN, reason: "Not ready for video access" },
-        { "x-real-ip": "203.0.113.11", "user-agent": "vitest-consent-smoke" }
-      ) as any
+  it("keeps expired action links locked", async () => {
+    hoisted.consentRequestLinkFindUnique.mockResolvedValue(
+      buildLink({ expiresAt: new Date(Date.now() - 1000) })
     );
-    const json = await readJson(res);
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+      }) as any
+    );
 
-    expect(res.status).toBe(200);
-    expect(json.success).toBe(true);
-    expect(hoisted.consentRecordUpdate).toHaveBeenCalledWith({
-      where: { token: CONSENT_TOKEN },
-      data: expect.objectContaining({
-        status: "declined",
-        declinedAt: expect.any(Date),
-      }),
-    });
-    expect(hoisted.consentEventCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        consentRecordId: "consent-1",
-        eventType: "declined",
-        metadata: expect.stringContaining("Not ready for video access"),
-      }),
-    });
+    expect(response.status).toBe(409);
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
   });
 
-  it("rejects an expired consent response", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue(
-      buildConsentFixture({
-        expiresAt: new Date("2026-01-01T00:00:00.000Z"),
-      })
+  it("rejects a second decision when the verification session was already consumed", async () => {
+    hoisted.consentDecisionSessionUpdateMany.mockResolvedValue({ count: 0 });
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+      }) as any
     );
 
-    const res = await acceptConsent(jsonRequest("/api/consent/accept", { token: CONSENT_TOKEN }) as any);
-    const json = await readJson(res);
-
-    expect(res.status).toBe(410);
-    expect(json).toMatchObject({
-      success: false,
-      code: "CONSENT_EXPIRED",
-    });
-    expect(hoisted.consentRecordUpdate).not.toHaveBeenCalled();
-    expect(hoisted.consentEventCreate).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "DECISION_SESSION_USED" });
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
   });
 });

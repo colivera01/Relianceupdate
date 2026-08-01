@@ -53,7 +53,6 @@ export async function POST(request: NextRequest) {
     const consent = await sendConsentLinkNotification({
       consentRecordId: 'dev-email-audit-consent',
       actorUserId: userId,
-      token: 'dev-email-audit-consent',
       consentPath,
       absoluteBaseUrl: baseUrl,
       customerEmail: email,

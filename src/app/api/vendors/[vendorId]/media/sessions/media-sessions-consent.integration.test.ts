@@ -7,7 +7,7 @@ const hoisted = vi.hoisted(() => {
   const vendorUpdate = vi.fn();
   const mediaSessionFindFirst = vi.fn();
   const mediaSessionCreate = vi.fn();
-  const consentRecordFindUnique = vi.fn();
+  const consentRecordFindFirst = vi.fn();
   const geocodeAddress = vi.fn();
 
   const prisma = {
@@ -22,7 +22,7 @@ const hoisted = vi.hoisted(() => {
       create: mediaSessionCreate,
     },
     consentRecord: {
-      findUnique: consentRecordFindUnique,
+      findFirst: consentRecordFindFirst,
     },
   };
 
@@ -32,7 +32,7 @@ const hoisted = vi.hoisted(() => {
     vendorUpdate,
     mediaSessionFindFirst,
     mediaSessionCreate,
-    consentRecordFindUnique,
+    consentRecordFindFirst,
     geocodeAddress,
   };
 });
@@ -87,7 +87,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     hoisted.bookingFindFirst.mockReset();
     hoisted.mediaSessionFindFirst.mockReset();
     hoisted.mediaSessionCreate.mockReset();
-    hoisted.consentRecordFindUnique.mockReset();
+    hoisted.consentRecordFindFirst.mockReset();
 
     hoisted.bookingFindFirst.mockResolvedValue({
       id: BOOKING_ID,
@@ -114,7 +114,7 @@ describe("vendor media sessions consent enforcement integration", () => {
       vendorJobVideoStage: "INTRO",
       status: "CREATED",
     });
-    hoisted.consentRecordFindUnique.mockResolvedValue(null);
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
     hoisted.geocodeAddress.mockReset();
   });
 
@@ -127,7 +127,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("CONSENT_REQUIRED");
+    expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
@@ -140,60 +140,48 @@ describe("vendor media sessions consent enforcement integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("CONSENT_REQUIRED");
+    expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
-  it("blocks residence location when consent token exists but backend record is requested", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue({
-      status: "requested",
-      bookingId: BOOKING_ID,
-      vendorId: VENDOR_ID,
-    });
+  it("blocks residence recording when the backend has no verified permission evidence", async () => {
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
     const { req, ctx } = buildPostRequest({
       locationContext: "residence",
       consentAccepted: true,
-      consentToken: "token-requested",
+      consentToken: "client-claims-are-ignored",
     });
 
     const res = await POST(req, ctx as any);
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("CONSENT_REQUIRED");
+    expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
-  it("blocks residence location when token is accepted but booking/vendor does not match", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue({
-      status: "ACCEPTED",
-      bookingId: "booking-other",
-      vendorId: "vendor-other",
-    });
+  it("blocks residence recording when an unrelated permission cannot satisfy the scoped query", async () => {
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
     const { req, ctx } = buildPostRequest({
       locationContext: "residence",
       consentAccepted: true,
-      consentToken: "token-mismatch",
+      consentToken: "unrelated-client-token",
     });
 
     const res = await POST(req, ctx as any);
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("CONSENT_REQUIRED");
+    expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
-  it("allows staged session creation when accepted consent matches booking and vendor", async () => {
-    hoisted.consentRecordFindUnique.mockResolvedValue({
-      status: "ACCEPTED",
-      bookingId: BOOKING_ID,
-      vendorId: VENDOR_ID,
-    });
+  it("allows staged session creation only when the scoped query finds verified decision evidence", async () => {
+    hoisted.consentRecordFindFirst.mockResolvedValue({ id: "permission-1" });
     const { req, ctx } = buildPostRequest({
       locationContext: "residence",
-      consentAccepted: true,
-      consentToken: "token-accepted",
+      consentAccepted: false,
+      consentToken: "ignored-client-token",
     });
 
     const res = await POST(req, ctx as any);
@@ -202,6 +190,18 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect(res.status).toBe(200);
     expect((json.session as any)?.id).toBe("session-1");
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
+    expect(hoisted.consentRecordFindFirst).toHaveBeenCalledWith({
+      where: {
+        bookingId: BOOKING_ID,
+        vendorId: VENDOR_ID,
+        status: "accepted",
+        lifecycleStatus: "ALLOWED",
+        verifiedDecision: true,
+        decisionEvidence: { isNot: null },
+      },
+      select: { id: true },
+      orderBy: { acceptedAt: "desc" },
+    });
   });
 
   it("blocks business location when geolocation proof is missing", async () => {
@@ -214,7 +214,7 @@ describe("vendor media sessions consent enforcement integration", () => {
 
     expect(res.status).toBe(409);
     expect(json.code).toBe("BUSINESS_LOCATION_PROOF_REQUIRED");
-    expect(hoisted.consentRecordFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.consentRecordFindFirst).not.toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
@@ -251,7 +251,7 @@ describe("vendor media sessions consent enforcement integration", () => {
 
     expect(res.status).toBe(200);
     expect((json.session as any)?.id).toBe("session-1");
-    expect(hoisted.consentRecordFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.consentRecordFindFirst).not.toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
   });
 

@@ -4,6 +4,7 @@ import {
   ConsentLinkDeliveryResult,
   sendConsentLinkNotification,
 } from "@/lib/notifications/send-consent-link";
+import { maskPermissionEmail, maskPermissionPhone, normalizePermissionEmail, normalizePermissionPhone } from "@/lib/consent/recipient";
 
 export const CUSTOMER_CONSENT_NOTIFICATION_KIND = "CUSTOMER_CONSENT_REQUEST";
 
@@ -104,6 +105,30 @@ export async function dispatchQueuedConsentNotification(
   try {
     const notification = await sendConsentLinkNotification(input);
     const status = deliveryStatus(notification);
+    const attemptNumber = Number((await (prisma as any).bookingNotification.findUnique({
+      where: { id: input.notificationId },
+      select: { attemptCount: true },
+    }))?.attemptCount || 1);
+    await Promise.all(
+      notification.channels.map((channel) =>
+        (prisma as any).bookingNotificationAttempt.create({
+          data: {
+            notificationId: input.notificationId,
+            consentRecordId: input.consentRecordId,
+            channel: channel.channel,
+            destinationMasked:
+              channel.channel === "email"
+                ? maskPermissionEmail(normalizePermissionEmail(input.customerEmail))
+                : maskPermissionPhone(normalizePermissionPhone(input.customerPhone)),
+            status: channel.attempted ? (channel.success ? "SENT" : "FAILED") : "SKIPPED",
+            attemptNumber,
+            providerMessageId: channel.providerMessageId || null,
+            errorCode: channel.errorCode || null,
+            errorMessage: channel.errorMessage || null,
+          },
+        })
+      )
+    );
     const updated = await (prisma as any).bookingNotification.update({
       where: { id: input.notificationId },
       data: {
@@ -111,6 +136,7 @@ export async function dispatchQueuedConsentNotification(
         channelsJson: JSON.stringify(notification.channels),
         lastError: deliveryError(notification),
         ...(notification.anySuccess ? { sentAt: new Date() } : {}),
+        nextAttemptAt: notification.anySuccess ? null : new Date(Date.now() + 5 * 60 * 1000),
       },
     });
     return {

@@ -1,33 +1,33 @@
 # Epic 1 Product Owner Demo
 
 **Epic:** Verified Permission Request
-**Build / commit:** TBD
-**Demo date:** TBD
+**Build / commit:** This Epic 1 Git checkpoint
 **Product Owner:** Cesar Olivera
-**Overall result:** Not run
+**Overall result:** Not run - ready after beta migration/provider setup
 
-For every row, record Pass, Fail, or Blocked plus evidence and disposition.
+## PRODUCT OWNER DEMO CHECKLIST
 
-| Validate | Exact action and expected observation | Result | Evidence | Observation / defect | Owner | Disposition |
-|---|---|---|---|---|---|---|
-| Expected workflow | Complete the epic's approved end-to-end workflow and verify every decision and recovery state. | Not run | | | | |
-| Expected notifications | Trigger every affected notification and verify recipient, channel, copy, link, retry, failure, and delivery evidence. | Not run | | | | |
-| Expected dashboard updates | Keep affected role views open and verify confirmed state and next action update consistently. | Not run | | | | |
-| Expected database state | Inspect controlled test records and verify the exact models, state, evidence, and absence of fabricated activity. | Not run | | | | |
-| Expected admin state | Verify authorized admin visibility and actions, plus denial of prohibited overrides. | Not run | | | | |
-| Expected customer state | Verify control, privacy, understandable choices, and complete loading/success/failure/empty/blocked states. | Not run | | | | |
-| Expected vendor state | Verify the vendor always sees the current status, responsible participant, and correct next action. | Not run | | | | |
-| Expected employee state | Verify only assigned, approved actions are available and blocked reasons are clear. | Not run | | | | |
-| Expected Trust Score behavior | Verify only genuine approved inputs affect the score and all non-effects remain neutral. | Not run | | | | |
-| Expected review behavior | Verify genuine optional reviews remain separate and no review/rating is inferred or fabricated. | Not run | | | | |
-| Expected audit history | Reconstruct every consequential actor, version, decision, attempt, failure, and outcome. | Not run | | | | |
-| Expected screenshots | Review the indexed desktop/mobile/state/before-after package and confirm sensitive data is redacted. | Not run | | | | |
+Record Pass, Fail, or Blocked for every row.
 
-## Follow-Up Defects
-
-| ID | Severity | Description | Owner | Required before approval? | Status |
-|---|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD | TBD |
+| Validate                      | Exact action and expected observation                                                                                                                                                         | Result  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Expected workflow             | Create an eligible customer-location work record. Open the customer request, verify identity, select valid authority, and allow. Employee recording unlocks only after the verified decision. | Not run |
+| Decline                       | Use a fresh record and decline. Vendor/employee show declined, camera stays locked, and service may continue without Reliance recording.                                                      | Not run |
+| Decide later                  | Leave a pending request undecided. It remains pending and locked.                                                                                                                             | Not run |
+| Wrong recipient               | Report “not for me.” The link cannot decide, the state is not declined, and vendor sees correction.                                                                                           | Not run |
+| Verification failure          | Enter invalid/expired OTPs. No decision is accepted and no secret is revealed.                                                                                                                | Not run |
+| Expiry/resend                 | Use an expired request, resend as manager, and confirm old link invalid/new generation current. Accepted decisions are not replaced.                                                          | Not run |
+| Expected notifications        | Confirm email/SMS recipient, Private/audio-off copy, link, wrong-recipient guidance, retries, and evidence.                                                                                   | Not run |
+| Expected dashboard updates    | Refresh vendor and employee views after each state; both show one canonical status and next action.                                                                                           | Not run |
+| Expected database state       | Confirm only hashes/masks, one current request, durable verification/authority/version/decision evidence, and independent attempts.                                                           | Not run |
+| Expected admin state          | Confirm read-only Permission Audit and non-admin denial; no decision override.                                                                                                                | Not run |
+| Expected customer state       | Verify loading, education, failure, authority, allowed, declined, wrong-recipient, expired, and unavailable states on desktop/mobile.                                                         | Not run |
+| Expected vendor state         | Only a manager in the booking's active vendor may create/resend/correct; other users receive non-enumerating denial.                                                                          | Not run |
+| Expected employee state       | Assigned employee sees the block and cannot open camera until verified Allow exists.                                                                                                          | Not run |
+| Expected Trust Score behavior | Allow, decline, and no response create no Trust Score input.                                                                                                                                  | Not run |
+| Expected review behavior      | Permission creates no review, rating, synthetic activity, or invitation.                                                                                                                      | Not run |
+| Expected audit history        | Reconstruct version, recipient mask, attempts, OTP outcome, authority, decision, IP/user agent, and lifecycle events.                                                                         | Not run |
+| Expected screenshots          | Review `08_Screenshots/README.md`; confirm controlled data and required desktop/mobile states.                                                                                                | Not run |
 
 ## Product Owner Decision
 
@@ -36,4 +36,4 @@ For every row, record Pass, Fail, or Blocked plus evidence and disposition.
 - [ ] Blocked
 - [ ] Next epic authorized
 
-**Decision notes:** TBD
+**Decision notes:** Pending.

@@ -241,7 +241,9 @@ export default function VendorJobs() {
     const backendStatus = String(job?.consentStatus || '').trim();
     if (backendStatus) return backendStatus;
     if (snapshot?.consentAccepted) return CONSENT_STATE.ACCEPTED;
-    if (String(snapshot?.consentToken || '').trim()) return CONSENT_STATE.REQUESTED;
+    if (String(snapshot?.consentRequestId || job?.latestConsentId || '').trim()) {
+      return CONSENT_STATE.REQUESTED;
+    }
     return CONSENT_STATE.NOT_REQUESTED;
   };
 
@@ -322,8 +324,8 @@ export default function VendorJobs() {
     if (requiresConsent && consentState === CONSENT_STATE.ACCEPTED) {
       if (!isAssigned) {
         return {
-          label: 'Customer consent accepted - assign employee',
-          detail: `Customer consent is accepted for ${formatCustomerConsentRecipient(job)}. The work order is now ready for assignment.`,
+          label: 'Recording permission verified - assign employee',
+          detail: `Recording permission is verified for ${formatCustomerConsentRecipient(job)}. The work order is now ready for assignment.`,
           actionLabel: 'Assign Employee',
           tone: 'green',
         };
@@ -338,7 +340,7 @@ export default function VendorJobs() {
       }
       return {
         label: `Consent accepted - start ${stageLabel} video`,
-        detail: `Customer consent is accepted for ${formatCustomerConsentRecipient(job)}.`,
+        detail: `Recording permission is verified for ${formatCustomerConsentRecipient(job)}.`,
         actionLabel: `Start ${stageLabel}`,
         tone: 'green',
       };
@@ -369,7 +371,7 @@ export default function VendorJobs() {
     }
     if (requiresConsent) {
       return {
-        label: 'Customer consent required',
+        label: 'Verified recording permission required',
         detail: `Consent will be sent to ${formatCustomerConsentRecipient(job)}. Assignment remains locked until the customer accepts.`,
         actionLabel: 'Send Consent',
         tone: 'amber',
@@ -575,6 +577,9 @@ export default function VendorJobs() {
     ACCEPTED: 'accepted',
     DECLINED: 'declined',
     EXPIRED_OR_UNAVAILABLE: 'expired_or_unavailable',
+    DELIVERY_FAILED: 'delivery_failed',
+    WRONG_RECIPIENT: 'wrong_recipient',
+    NO_DIGITAL_CHANNEL: 'no_digital_channel',
   } as const;
   const [location, setLocation] = useState('');
   const [showConsent, setShowConsent] = useState(false);
@@ -587,7 +592,7 @@ export default function VendorJobs() {
   const [customerConsentRequested, setCustomerConsentRequested] = useState(false);
   const [customerConsentReceived, setCustomerConsentReceived] = useState(false);
   const [customerConsentSending, setCustomerConsentSending] = useState(false);
-  const [activeConsentToken, setActiveConsentToken] = useState('');
+  const [activePermissionRequestId, setActivePermissionRequestId] = useState('');
   const [consentRefreshLoading, setConsentRefreshLoading] = useState(false);
   const [consentRefreshError, setConsentRefreshError] = useState('');
   const [recordingComplianceByJobId, setRecordingComplianceByJobId] = useState<
@@ -596,7 +601,7 @@ export default function VendorJobs() {
       {
         location: 'business' | 'residence' | 'customer-business';
         consentAccepted: boolean;
-        consentToken: string;
+        consentRequestId: string;
         locationVerified: boolean;
         savedAt: string;
         serviceOrderReleasedAt?: string | null;
@@ -652,7 +657,7 @@ export default function VendorJobs() {
     setCustomerConsentStatus(CONSENT_STATE.NOT_REQUESTED);
     setCustomerConsentRequested(false);
     setCustomerConsentReceived(false);
-    setActiveConsentToken('');
+    setActivePermissionRequestId('');
     setLocationVerified(false);
     setGeoLoading(false);
     setGeoError('');
@@ -661,24 +666,30 @@ export default function VendorJobs() {
 
   const applyConsentStatusFromBackend = (
     statusValue: string | null | undefined,
-    options?: { consentToken?: string | null }
+    options?: { requestId?: string | null }
   ) => {
     const upper = String(statusValue || '').trim().toUpperCase();
     const normalized =
-      upper === 'ACCEPTED'
+      upper === 'ACCEPTED' || upper === 'ALLOWED'
         ? CONSENT_STATE.ACCEPTED
-        : upper === 'REQUESTED' || upper === 'PENDING'
+        : upper === 'REQUESTED' || upper === 'PENDING' || upper === 'DELIVERED' || upper === 'SENDING'
         ? CONSENT_STATE.REQUESTED
         : upper === 'DECLINED'
         ? CONSENT_STATE.DECLINED
+      : upper === 'DELIVERY_FAILED'
+      ? CONSENT_STATE.DELIVERY_FAILED
+      : upper === 'WRONG_RECIPIENT' || upper === 'RECIPIENT_MISMATCH'
+      ? CONSENT_STATE.WRONG_RECIPIENT
+      : upper === 'NO_DIGITAL_CHANNEL'
+      ? CONSENT_STATE.NO_DIGITAL_CHANNEL
       : upper === 'EXPIRED'
       ? CONSENT_STATE.EXPIRED_OR_UNAVAILABLE
         : CONSENT_STATE.NOT_REQUESTED;
-    const resolvedConsentToken = String(
-      options?.consentToken ?? activeConsentToken ?? ''
+    const resolvedRequestId = String(
+      options?.requestId ?? activePermissionRequestId ?? ''
     ).trim();
-    if (resolvedConsentToken) {
-      setActiveConsentToken(resolvedConsentToken);
+    if (resolvedRequestId) {
+      setActivePermissionRequestId(resolvedRequestId);
     }
     setCustomerConsentStatus(normalized);
     setConsentStatus(normalized);
@@ -705,8 +716,8 @@ export default function VendorJobs() {
       mergeRecordingComplianceForJob(selectedJob, {
         location: selectedLocation as 'business' | 'residence' | 'customer-business',
         consentAccepted: normalized === CONSENT_STATE.ACCEPTED,
-        consentToken:
-          resolvedConsentToken || String(existingSnapshot?.consentToken || '').trim(),
+        consentRequestId:
+          resolvedRequestId || String(existingSnapshot?.consentRequestId || '').trim(),
         locationVerified:
           existingSnapshot?.locationVerified !== undefined
             ? Boolean(existingSnapshot.locationVerified)
@@ -716,53 +727,26 @@ export default function VendorJobs() {
     }
   };
 
-  const fetchConsentStatus = async (token: string) => {
-    const trimmed = String(token || '').trim();
-    if (!trimmed) return;
-    const res = await fetch(`/api/consent/${encodeURIComponent(trimmed)}`, {
-      method: 'GET',
-      headers: getRequestHeaders(),
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || payload?.success === false) {
-      const payloadCode = String(payload?.code || '').trim().toUpperCase();
-      if (
-        res.status === 404 ||
-        res.status === 410 ||
-        payloadCode === 'CONSENT_EXPIRED' ||
-        payloadCode === 'CONSENT_NOT_FOUND'
-      ) {
-        applyConsentStatusFromBackend('EXPIRED');
-        return;
-      }
-      const message =
-        (typeof payload?.error === 'string' && payload.error) ||
-        (typeof payload?.message === 'string' && payload.message) ||
-        `Failed to fetch consent status (${res.status})`;
-      applyConsentStatusFromBackend('EXPIRED');
-      throw new Error(message);
-    }
-    applyConsentStatusFromBackend(payload?.consent?.status, {
-      consentToken: String(payload?.consent?.token || '').trim(),
-    });
-  };
-
   const mapConsentStatusPayloadToUiState = (payload: any) => {
     const normalized = String(payload?.status || '').trim().toLowerCase();
-    const latestToken = String(payload?.latestConsentToken || '').trim();
-    if (normalized === 'accepted') {
-      return { status: CONSENT_STATE.ACCEPTED, latestToken };
+    if (normalized === 'accepted' || normalized === 'allowed') {
+      return { status: CONSENT_STATE.ACCEPTED };
     }
     if (normalized === 'declined') {
-      return { status: CONSENT_STATE.DECLINED, latestToken };
+      return { status: CONSENT_STATE.DECLINED };
     }
     if (normalized === 'expired') {
-      return { status: CONSENT_STATE.EXPIRED_OR_UNAVAILABLE, latestToken };
+      return { status: CONSENT_STATE.EXPIRED_OR_UNAVAILABLE };
     }
-    if (normalized === 'pending') {
-      return { status: CONSENT_STATE.REQUESTED, latestToken };
+    if (normalized === 'delivery_failed') return { status: CONSENT_STATE.DELIVERY_FAILED };
+    if (normalized === 'wrong_recipient' || normalized === 'recipient_mismatch') {
+      return { status: CONSENT_STATE.WRONG_RECIPIENT };
     }
-    return { status: CONSENT_STATE.NOT_REQUESTED, latestToken };
+    if (normalized === 'no_digital_channel') return { status: CONSENT_STATE.NO_DIGITAL_CHANNEL };
+    if (normalized === 'pending' || normalized === 'delivered' || normalized === 'sending') {
+      return { status: CONSENT_STATE.REQUESTED };
+    }
+    return { status: CONSENT_STATE.NOT_REQUESTED };
   };
 
   const refreshConsentStatusForSelectedJob = async () => {
@@ -783,14 +767,16 @@ export default function VendorJobs() {
         );
       }
       const mapped = mapConsentStatusPayloadToUiState(payload);
-      applyConsentStatusFromBackend(mapped.status, { consentToken: mapped.latestToken });
+      applyConsentStatusFromBackend(mapped.status, {
+        requestId: String(payload?.permission?.id || payload?.latestConsentId || '').trim(),
+      });
       if (selectedJob && mapped.status === CONSENT_STATE.ACCEPTED) {
         const selectedLocation = String(location || '').trim().toLowerCase();
         if (selectedLocation === 'residence' || selectedLocation === 'customer-business') {
           const snapshot = buildRecordingComplianceSnapshot(selectedJob, {
             location: selectedLocation as 'residence' | 'customer-business',
             consentAccepted: true,
-            consentToken: mapped.latestToken || activeConsentToken,
+            consentRequestId: String(payload?.permission?.id || payload?.latestConsentId || '').trim(),
             locationVerified:
               selectedLocation === 'customer-business'
                 ? Boolean(locationVerified || getSavedRecordingComplianceForJob(selectedJob)?.locationVerified)
@@ -903,7 +889,7 @@ export default function VendorJobs() {
     mergeRecordingComplianceForJob(job, {
       location: locationChoice,
       consentAccepted: false,
-      consentToken: '',
+      consentRequestId: '',
       locationVerified: false,
       savedAt: new Date().toISOString(),
     });
@@ -934,7 +920,7 @@ export default function VendorJobs() {
       assignmentSatisfiedForCompliance &&
       !consentSatisfiedForCompliance
     ) {
-      return 'Job assigned. Customer consent is still required before recording.';
+      return 'Job assigned. Verified recording permission is still required before recording.';
     }
     if (assignmentSatisfiedForCompliance && consentSatisfiedForCompliance && locationRequiredForCompliance) {
       return 'Ready to send. The employee phone will verify the required location before the camera opens.';
@@ -962,24 +948,26 @@ export default function VendorJobs() {
       return;
     }
 
-    const consentToken = String(snapshot.consentToken || '').trim();
+    const consentRequestId = String(
+      snapshot.consentRequestId || selectedJob?.latestConsentId || ''
+    ).trim();
     const consentAccepted = Boolean(snapshot.consentAccepted);
     setLocation(savedLocation);
     setLocationVerified(Boolean(snapshot.locationVerified));
-    setActiveConsentToken(consentToken);
+    setActivePermissionRequestId(consentRequestId);
     setCustomerConsentReceived(consentAccepted);
-    setCustomerConsentRequested(Boolean(consentToken) || consentAccepted);
+    setCustomerConsentRequested(Boolean(consentRequestId) || consentAccepted);
     setCustomerConsentStatus(
       consentAccepted
         ? CONSENT_STATE.ACCEPTED
-        : consentToken
+        : consentRequestId
         ? CONSENT_STATE.REQUESTED
         : CONSENT_STATE.NOT_REQUESTED
     );
     setConsentStatus(
       consentAccepted
         ? CONSENT_STATE.ACCEPTED
-        : consentToken
+        : consentRequestId
         ? CONSENT_STATE.REQUESTED
         : CONSENT_STATE.NOT_REQUESTED
     );
@@ -997,8 +985,7 @@ export default function VendorJobs() {
 
     const snapshot = getSavedRecordingComplianceForJob(selectedJob);
     const hasAcceptedConsent = Boolean(snapshot?.consentAccepted);
-    const hasConsentToken = Boolean(String(snapshot?.consentToken || '').trim());
-    if (hasAcceptedConsent && hasConsentToken) return;
+    if (hasAcceptedConsent) return;
 
     void refreshConsentStatusForSelectedJob().catch((error) => {
       console.warn('[vendor/jobs] failed to hydrate consent status for compliance modal', error);
@@ -1009,8 +996,7 @@ export default function VendorJobs() {
     const consentPollingEligible =
       showComplianceModal &&
       (location === 'residence' || location === 'customer-business') &&
-      customerConsentStatus === CONSENT_STATE.REQUESTED &&
-      Boolean(activeConsentToken);
+      customerConsentStatus === CONSENT_STATE.REQUESTED;
 
     if (!consentPollingEligible) {
       return;
@@ -1028,7 +1014,6 @@ export default function VendorJobs() {
     showComplianceModal,
     location,
     customerConsentStatus,
-    activeConsentToken,
     selectedJob?.bookingId,
     selectedJob?.id,
   ]);
@@ -1472,7 +1457,7 @@ export default function VendorJobs() {
     partial: Partial<{
       location: 'business' | 'residence' | 'customer-business';
       consentAccepted: boolean;
-      consentToken: string;
+      consentRequestId: string;
       locationVerified: boolean;
       savedAt: string;
       serviceOrderReleasedAt?: string | null;
@@ -1500,10 +1485,10 @@ export default function VendorJobs() {
           partial.consentAccepted !== undefined
             ? Boolean(partial.consentAccepted)
             : Boolean(existing?.consentAccepted),
-        consentToken:
-          partial.consentToken !== undefined
-            ? String(partial.consentToken || '').trim()
-            : String(existing?.consentToken || '').trim(),
+        consentRequestId:
+          partial.consentRequestId !== undefined
+            ? String(partial.consentRequestId || '').trim()
+            : String(existing?.consentRequestId || '').trim(),
         locationVerified:
           partial.locationVerified !== undefined
             ? Boolean(partial.locationVerified)
@@ -1546,7 +1531,7 @@ export default function VendorJobs() {
     snapshot: {
       location: 'business' | 'residence' | 'customer-business';
       consentAccepted: boolean;
-      consentToken: string;
+      consentRequestId: string;
       locationVerified: boolean;
       savedAt: string;
       serviceOrderReleasedAt?: string | null;
@@ -1559,7 +1544,7 @@ export default function VendorJobs() {
       keys,
       location: snapshot.location,
       consentAccepted: snapshot.consentAccepted,
-      hasConsentToken: Boolean(snapshot.consentToken),
+      hasPermissionRequest: Boolean(snapshot.consentRequestId),
       locationVerified: snapshot.locationVerified,
       savedAt: snapshot.savedAt,
     });
@@ -1593,7 +1578,7 @@ export default function VendorJobs() {
         selectedKey: freshest.key,
         location: hit.location,
         consentAccepted: hit.consentAccepted,
-        hasConsentToken: Boolean(hit.consentToken),
+        hasPermissionRequest: Boolean(hit.consentRequestId),
         locationVerified: hit.locationVerified,
         savedAt: hit.savedAt,
       });
@@ -1609,7 +1594,7 @@ export default function VendorJobs() {
       const hydrated = {
         location: serverLocation as 'business' | 'residence' | 'customer-business',
         consentAccepted: Boolean(serverSnapshot?.consentAccepted),
-        consentToken: String(serverSnapshot?.consentToken || '').trim(),
+        consentRequestId: String(job?.latestConsentId || '').trim(),
         locationVerified: Boolean(serverSnapshot?.locationVerified),
         savedAt:
           String(serverSnapshot?.locationVerifiedAt || serverSnapshot?.serviceOrderReleasedAt || job?.updatedAt || '').trim() ||
@@ -1641,7 +1626,7 @@ export default function VendorJobs() {
           keys,
           hasSnapshot: Boolean(snapshot),
           consentAccepted: Boolean(snapshot?.consentAccepted),
-          hasConsentToken: Boolean(String(snapshot?.consentToken || '').trim()),
+          hasPermissionRequest: Boolean(String(snapshot?.consentRequestId || '').trim()),
           location: snapshot?.location || null,
           savedAt: snapshot?.savedAt || null,
         };
@@ -1660,7 +1645,7 @@ export default function VendorJobs() {
       | {
           location: 'business' | 'residence' | 'customer-business';
           consentAccepted: boolean;
-          consentToken: string;
+          consentRequestId: string;
           locationVerified: boolean;
         }
       | null
@@ -1684,13 +1669,13 @@ export default function VendorJobs() {
     }
     const consentSatisfied =
       locationChoice === 'residence' || locationChoice === 'customer-business'
-        ? Boolean(snapshot.consentAccepted && String(snapshot.consentToken || '').trim())
+        ? Boolean(snapshot.consentAccepted)
         : true;
     if (!consentSatisfied) {
       console.info('[recording-compliance] unsatisfied: consent requirement not met', {
         locationChoice,
         consentAccepted: snapshot.consentAccepted,
-        hasConsentToken: Boolean(String(snapshot.consentToken || '').trim()),
+        hasVerifiedPermission: Boolean(snapshot.consentAccepted),
       });
     }
     return consentSatisfied;
@@ -1702,7 +1687,7 @@ export default function VendorJobs() {
       | {
           location: 'business' | 'residence' | 'customer-business';
           consentAccepted: boolean;
-          consentToken: string;
+          consentRequestId: string;
           locationVerified: boolean;
           savedAt?: string;
         }
@@ -1714,39 +1699,39 @@ export default function VendorJobs() {
       locationChoice === 'residence' || locationChoice === 'customer-business';
     if (!requiresConsent) return snapshot;
     if (snapshot.consentAccepted) return snapshot;
-    const token = String(snapshot.consentToken || '').trim();
-    if (!token) return snapshot;
+    const bookingId = String(job?.bookingId || job?.id || '').trim();
+    if (!bookingId) return snapshot;
     try {
-      const res = await fetch(`/api/consent/${encodeURIComponent(token)}`, {
+      const res = await fetch(`/api/consent/status?bookingId=${encodeURIComponent(bookingId)}`, {
         method: 'GET',
         headers: getRequestHeaders(),
         cache: 'no-store',
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload?.success === false) {
-        console.info('[recording-compliance] token refresh failed', {
+        console.info('[recording-compliance] permission refresh failed', {
           status: res.status,
           code: payload?.code || null,
         });
         return snapshot;
       }
-      const latestStatus = String(payload?.consent?.status || '').trim().toLowerCase();
-      const accepted = latestStatus === 'accepted';
+      const latestStatus = String(payload?.status || '').trim().toLowerCase();
+      const accepted = latestStatus === 'accepted' || latestStatus === 'allowed';
       const refreshed = {
         ...snapshot,
         consentAccepted: accepted,
-        consentToken: token,
+        consentRequestId: String(payload?.permission?.id || payload?.latestConsentId || snapshot.consentRequestId || '').trim(),
         savedAt: new Date().toISOString(),
       };
       mergeRecordingComplianceForJob(job, refreshed);
-      console.info('[recording-compliance] token refresh applied', {
+      console.info('[recording-compliance] permission refresh applied', {
         latestStatus,
         consentAccepted: accepted,
-        hasConsentToken: Boolean(token),
+        hasVerifiedPermission: accepted,
       });
       return refreshed;
     } catch (error) {
-      console.info('[recording-compliance] token refresh exception', {
+      console.info('[recording-compliance] permission refresh exception', {
         message: error instanceof Error ? error.message : String(error),
       });
       return snapshot;
@@ -1758,7 +1743,7 @@ export default function VendorJobs() {
     overrides: Partial<{
       location: 'business' | 'residence' | 'customer-business';
       consentAccepted: boolean;
-      consentToken: string;
+      consentRequestId: string;
       locationVerified: boolean;
       savedAt: string;
     }> = {}
@@ -1779,10 +1764,10 @@ export default function VendorJobs() {
         overrides.consentAccepted !== undefined
           ? Boolean(overrides.consentAccepted)
           : Boolean(customerConsentReceived || existingSnapshot?.consentAccepted),
-      consentToken:
-        overrides.consentToken !== undefined
-          ? String(overrides.consentToken || '').trim()
-          : String(activeConsentToken || existingSnapshot?.consentToken || '').trim(),
+      consentRequestId:
+        overrides.consentRequestId !== undefined
+          ? String(overrides.consentRequestId || '').trim()
+          : String(activePermissionRequestId || existingSnapshot?.consentRequestId || '').trim(),
       locationVerified:
         overrides.locationVerified !== undefined
           ? Boolean(overrides.locationVerified)
@@ -1809,7 +1794,7 @@ export default function VendorJobs() {
       mergeRecordingComplianceForJob(job, {
         location: snapshot.location,
         consentAccepted: Boolean(backendSnapshot.consentAccepted),
-        consentToken: String(backendSnapshot.consentToken || snapshot.consentToken || '').trim(),
+        consentRequestId: String(snapshot.consentRequestId || job?.latestConsentId || '').trim(),
         locationVerified: Boolean(backendSnapshot.locationVerified),
         savedAt:
           String(backendSnapshot.locationVerifiedAt || backendSnapshot.serviceOrderReleasedAt || '').trim() ||
@@ -1837,7 +1822,7 @@ export default function VendorJobs() {
       mergeRecordingComplianceForJob(job, {
         location: snapshot.location,
         consentAccepted: Boolean(backendSnapshot.consentAccepted),
-        consentToken: String(backendSnapshot.consentToken || snapshot.consentToken || '').trim(),
+        consentRequestId: String(snapshot.consentRequestId || job?.latestConsentId || '').trim(),
         locationVerified: Boolean(backendSnapshot.locationVerified),
         savedAt:
           String(backendSnapshot.locationVerifiedAt || backendSnapshot.serviceOrderReleasedAt || '').trim() ||
@@ -1870,7 +1855,7 @@ export default function VendorJobs() {
         buildRecordingComplianceSnapshot(job, {
           location: 'business',
           consentAccepted: false,
-          consentToken: '',
+          consentRequestId: '',
           locationVerified: false,
         });
       const refreshed = await refreshRecordingComplianceSnapshot(job, snapshot);
@@ -1960,7 +1945,7 @@ export default function VendorJobs() {
       setCustomerConsentStatus(
         refreshed!.consentAccepted ? CONSENT_STATE.ACCEPTED : CONSENT_STATE.NOT_REQUESTED
       );
-      setActiveConsentToken(String(refreshed!.consentToken || '').trim());
+      setActivePermissionRequestId(String(refreshed!.consentRequestId || '').trim());
       setPreferredNextVideoStage('');
       setPreferredReplaceStage(false);
       setShowComplianceModal(false);
@@ -2083,7 +2068,7 @@ export default function VendorJobs() {
       customerApprovalCompletedAt: null,
       customerApprovalWorkflow: null,
       consentStatus: String(job?.consentStatus || '').trim() || CONSENT_STATE.NOT_REQUESTED,
-      latestConsentToken: String(job?.latestConsentToken || '').trim(),
+      latestConsentId: String(job?.latestConsentId || '').trim(),
       consentAcceptedAt: job?.consentAcceptedAt || null,
       consentDeclinedAt: job?.consentDeclinedAt || null,
       recordingCompliance: job?.recordingCompliance || null,
@@ -2848,14 +2833,21 @@ export default function VendorJobs() {
       setShowCreateJob(false);
       createJobRequestRef.current = null;
       setJobActionFeedback({
-        type: automaticConsent?.status === 'setup_failed' ? 'error' : 'success',
+        type:
+          automaticConsent?.status === 'delivery_failed' ||
+          automaticConsent?.status === 'no_digital_channel' ||
+          automaticConsent?.status === 'recipient_mismatch'
+            ? 'error'
+            : 'success',
         message:
-          automaticConsent?.deliveryConfirmed === true
-            ? `Added the work record for ${client}. Customer consent was sent automatically; assignment is locked until the customer accepts.`
-            : automaticConsent?.status === 'requested'
-              ? `Added the work record for ${client}. The consent link was created, but email/SMS delivery was not confirmed. Open the consent step to resend or share the link.`
-              : automaticConsent?.status === 'setup_failed'
-                ? `Added the work record for ${client}, but customer consent could not be created. Open the consent step and retry before assigning an employee.`
+          automaticConsent?.status === 'delivered'
+            ? `Added the work record for ${client}. The recording-permission request was delivered; recording stays locked until the customer or authorized representative allows it.`
+            : automaticConsent?.status === 'delivery_failed'
+              ? `Added the work record for ${client}, but delivery was not confirmed. Recording stays locked. Open the recording-permission step to resend it.`
+              : automaticConsent?.status === 'no_digital_channel'
+                ? `Added the work record for ${client}, but no customer email or mobile phone is available. Recording stays locked until the recipient is corrected and permission is verified.`
+                : automaticConsent?.status === 'recipient_mismatch'
+                  ? `Added the work record for ${client}, but the email and phone may belong to different accounts. Recording stays locked until the recipient is corrected.`
                 : addingServiceFromJob && resolvedServiceName
             ? `Created "${resolvedServiceName}" in Services Offered as pending admin approval and added the work record for ${client}. Next time, choose "${resolvedServiceName}" from the Service Offered / Work Type dropdown.`
             : `Added the work record for ${client}.`,
@@ -2919,11 +2911,11 @@ export default function VendorJobs() {
       return;
     }
     if (location === 'residence' && !customerConsentReceived) {
-      setVideoUploadError('Customer consent must be accepted before creating service video at residence.');
+      setVideoUploadError('Verified recording permission is required before creating a service video at a residence.');
       return;
     }
     if (location === 'customer-business' && !customerConsentReceived) {
-      setVideoUploadError('Customer consent must be accepted before creating service video at customer business.');
+      setVideoUploadError('Verified recording permission is required before creating a service video at a customer business.');
       return;
     }
     if (!file) {
@@ -2967,8 +2959,6 @@ export default function VendorJobs() {
         replaceExisting: Boolean(newVideo.replaceStage),
         durationSeconds: selectedVideoDurationSeconds,
         locationContext: location || undefined,
-        consentAccepted: customerConsentReceived,
-        consentToken: activeConsentToken || undefined,
         getHeaders: getRequestHeaders,
         onLifecycleState: setUploadLifecycleState,
       });
@@ -3190,7 +3180,7 @@ export default function VendorJobs() {
           buildRecordingComplianceSnapshot(persistedAssignedJob, {
             location: 'business',
             consentAccepted: false,
-            consentToken: '',
+            consentRequestId: '',
             locationVerified: false,
           });
         mergeRecordingComplianceForJob(persistedAssignedJob, autoReleaseSnapshot);
@@ -3521,7 +3511,7 @@ export default function VendorJobs() {
                   : 'business',
               locationVerified: true,
               consentAccepted: Boolean(customerConsentReceived),
-              consentToken: String(activeConsentToken || '').trim(),
+              consentRequestId: String(activePermissionRequestId || '').trim(),
             });
             mergeRecordingComplianceForJob(selectedJob, snapshot);
             void persistRecordingComplianceToBackend(selectedJob, snapshot, verificationData)
@@ -3621,7 +3611,7 @@ export default function VendorJobs() {
 
   const handleRequestCustomerConsent = async () => {
     if (!vendorId || !selectedJob) {
-      setGeoError('Select a valid job before requesting customer consent.');
+      setGeoError('Select a valid work record before requesting recording permission.');
       return;
     }
     const selectedJobSnapshot = selectedJob;
@@ -3637,7 +3627,7 @@ export default function VendorJobs() {
     }
     if (!hasCustomerContactForJob(selectedJobSnapshot)) {
       setGeoError(
-        'Customer email or phone is required before sending video consent. Update the job/customer contact first; assigned employee contact is not used for customer consent.'
+        'A customer email or mobile phone is required before sending recording permission. Update the customer contact first; the assigned employee contact cannot be used.'
       );
       return;
     }
@@ -3646,6 +3636,41 @@ export default function VendorJobs() {
     setConsentRefreshError('');
     setCustomerConsentSending(true);
     try {
+      const currentRequestId = String(selectedJobSnapshot?.latestConsentId || '').trim();
+      const currentState = String(selectedJobSnapshot?.consentStatus || '').trim().toLowerCase();
+      if (currentRequestId) {
+        const needsCorrection =
+          currentState === CONSENT_STATE.WRONG_RECIPIENT || currentState === 'recipient_mismatch';
+        const endpoint = needsCorrection
+          ? `/api/consent/requests/${encodeURIComponent(currentRequestId)}/recipient`
+          : `/api/consent/requests/${encodeURIComponent(currentRequestId)}/resend`;
+        const method = needsCorrection ? 'PATCH' : 'POST';
+        const recoveryRes = await fetch(endpoint, {
+          method,
+          headers: requestHeaders,
+          ...(needsCorrection
+            ? {
+                body: JSON.stringify({
+                  name: selectedJobSnapshot?.client || selectedJobSnapshot?.clientName || '',
+                  email: selectedJobSnapshot?.customerEmail || '',
+                  phone: selectedJobSnapshot?.customerPhone || '',
+                }),
+              }
+            : {}),
+        });
+        const recoveryPayload = await recoveryRes.json().catch(() => ({}));
+        if (!recoveryRes.ok || recoveryPayload?.success === false) {
+          throw new Error(String(recoveryPayload?.error || 'Unable to resend the recording permission request'));
+        }
+        applyConsentStatusFromBackend(recoveryPayload?.permission?.state || 'pending');
+        setGeoInfo(
+          needsCorrection
+            ? 'Recipient details were updated and a new secure recording-permission request was sent.'
+            : 'A new secure recording-permission link was sent. The previous link no longer works.'
+        );
+        await reloadJobsFromBackend({ silent: true });
+        return;
+      }
       const sessionRes = await fetch(`/api/vendors/${vendorIdSnapshot}/media/sessions`, {
         method: 'POST',
         headers: requestHeaders,
@@ -3653,14 +3678,14 @@ export default function VendorJobs() {
           bookingId,
           serviceId: selectedJobSnapshot?.serviceId ? String(selectedJobSnapshot.serviceId) : undefined,
           sessionType: 'CONSENT_REQUEST',
-          title: 'Customer consent request',
-          description: `Consent request before ${location || 'service'} recording`,
+          title: 'Customer recording permission request',
+          description: `Recording permission request before ${location || 'service'} recording`,
         }),
       });
       const sessionPayload = await sessionRes.json().catch(() => ({}));
       if (!sessionRes.ok) {
         throw new Error(
-          String(sessionPayload?.message || sessionPayload?.error || 'Failed to create consent request session')
+          String(sessionPayload?.message || sessionPayload?.error || 'Failed to create the recording-permission session')
         );
       }
       const mediaSessionId = String(sessionPayload?.session?.id || '');
@@ -3673,59 +3698,37 @@ export default function VendorJobs() {
         headers: requestHeaders,
         body: JSON.stringify({
           bookingId,
-          vendorId: vendorIdSnapshot,
           mediaSessionId,
-          consentType: 'video_access',
-          origin: window.location.origin,
         }),
       });
       const consentPayload = await consentRes.json().catch(() => ({}));
       if (!consentRes.ok || consentPayload?.success === false) {
         throw new Error(
-          String(consentPayload?.error || consentPayload?.message || 'Failed to request customer consent')
+          String(consentPayload?.error || consentPayload?.message || 'Failed to request recording permission')
         );
       }
-      const token = String(consentPayload?.consent?.token || '').trim();
       setCustomerConsentRequested(true);
       setCustomerConsentReceived(false);
-      setActiveConsentToken(token);
-      if (
-        selectedJobSnapshot &&
-        token &&
-        (selectedLocation === 'business' ||
-          selectedLocation === 'residence' ||
-          selectedLocation === 'customer-business')
-      ) {
+      setActivePermissionRequestId(String(consentPayload?.permission?.id || '').trim());
+      if (selectedJobSnapshot && (selectedLocation === 'residence' || selectedLocation === 'customer-business')) {
         mergeRecordingComplianceForJob(selectedJobSnapshot, {
           location: selectedLocation as 'business' | 'residence' | 'customer-business',
           consentAccepted: false,
-          consentToken: token,
+          consentRequestId: String(consentPayload?.permission?.id || '').trim(),
           locationVerified,
           savedAt: new Date().toISOString(),
         });
-        const snapshot = buildRecordingComplianceSnapshot(selectedJobSnapshot, {
-          location: selectedLocation as 'business' | 'residence' | 'customer-business',
-          consentAccepted: false,
-          consentToken: token,
-          locationVerified,
-        });
-        void persistRecordingComplianceToBackend(selectedJobSnapshot, snapshot).catch((error) => {
-          console.warn('[Vendor Compliance] Failed to persist consent token', error);
-        });
       }
-      applyConsentStatusFromBackend(consentPayload?.consent?.status || 'REQUESTED', {
-        consentToken: token,
+      applyConsentStatusFromBackend(consentPayload?.permission?.state || 'REQUESTED', {
+        requestId: String(consentPayload?.permission?.id || '').trim(),
       });
-      const notification = consentPayload?.notification;
       const deliveryStatus = String(consentPayload?.delivery?.status || '').toUpperCase();
       const deliveryConfirmed =
-        notification?.anySuccess === true ||
         deliveryStatus === 'SENT' ||
         deliveryStatus === 'PARTIAL';
-      const fallbackConsentLink = String(consentPayload?.consentAbsoluteUrl || '').trim();
       if (deliveryConfirmed) {
-        const sentChannels = Array.isArray(notification?.channels)
-          ? notification.channels
+        const sentChannels = Array.isArray(consentPayload?.delivery?.channels)
+          ? consentPayload.delivery.channels
               .filter((channel: any) => channel?.attempted && channel?.success)
               .map((channel: any) => String(channel?.channel || '').toUpperCase())
               .filter(Boolean)
@@ -3733,19 +3736,14 @@ export default function VendorJobs() {
           : '';
         setGeoInfo(
           sentChannels
-            ? `Customer consent request sent by ${sentChannels}. Waiting for customer response.`
-            : 'Customer consent request sent. Waiting for customer response.'
+            ? `Recording permission request sent by ${sentChannels}. Waiting for the customer or representative.`
+            : 'Recording permission request sent. Waiting for the customer or representative.'
         );
       } else {
         const deliveryReason =
-          consentPayload?.notificationError ||
-          consentPayload?.message ||
+          consentPayload?.delivery?.lastError ||
           'Email/SMS delivery was not confirmed.';
-        setGeoInfo(
-          fallbackConsentLink
-            ? `Consent link was created, but delivery was not confirmed: ${deliveryReason} Share this link with the customer: ${fallbackConsentLink}`
-            : `Consent link was created, but delivery was not confirmed: ${deliveryReason}`
-        );
+        setGeoInfo(`Recording stays locked because delivery was not confirmed: ${deliveryReason}`);
       }
       const bookingKey = selectedJobSnapshot?.bookingId
         ? String(selectedJobSnapshot.bookingId)
@@ -3753,22 +3751,13 @@ export default function VendorJobs() {
       if (bookingKey) {
         setConsentStatusByBookingId((prev) => ({ ...prev, [bookingKey]: CONSENT_STATE.REQUESTED }));
       }
-      if (token) {
-        void fetchConsentStatus(token).catch((statusError: any) => {
-          setGeoInfo(
-            statusError?.message
-              ? `Consent request sent. Unable to refresh status right now: ${statusError.message}`
-              : 'Consent request sent. Unable to refresh status right now.'
-          );
-        });
-      }
       await reloadJobsFromBackend({ silent: true });
     } catch (error: any) {
       setCustomerConsentStatus(CONSENT_STATE.NOT_REQUESTED);
       setCustomerConsentRequested(false);
       setCustomerConsentReceived(false);
-      setActiveConsentToken('');
-      setGeoError(error?.message || 'Failed to request customer consent');
+      setActivePermissionRequestId('');
+      setGeoError(error?.message || 'Failed to request recording permission');
     } finally {
       setCustomerConsentSending(false);
     }
@@ -3797,7 +3786,7 @@ export default function VendorJobs() {
       (complianceLocation === 'residence' || complianceLocation === 'customer-business') &&
       !customerConsentReceived
     ) {
-      setGeoError('Customer consent must be accepted before sending the employee service order.');
+      setGeoError('Verified recording permission is required before sending the employee service order.');
       return;
     }
 
@@ -3806,8 +3795,8 @@ export default function VendorJobs() {
     const snapshot = buildRecordingComplianceSnapshot(selectedJob, {
       location: complianceLocation as 'business' | 'residence' | 'customer-business',
       consentAccepted: Boolean(customerConsentReceived),
-      consentToken: String(
-        activeConsentToken || getSavedRecordingComplianceForJob(selectedJob)?.consentToken || ''
+      consentRequestId: String(
+        activePermissionRequestId || getSavedRecordingComplianceForJob(selectedJob)?.consentRequestId || ''
       ).trim(),
       locationVerified: Boolean(locationVerified),
     });
@@ -3847,9 +3836,9 @@ export default function VendorJobs() {
       if (location === 'business') {
         setGeoError('Assign an employee before sending the service order.');
       } else if (location === 'residence') {
-        setGeoError('Customer consent must be accepted before sending the employee service order.');
+        setGeoError('Verified recording permission is required before sending the employee service order.');
       } else if (location === 'customer-business') {
-        setGeoError('Customer consent must be accepted before sending the employee service order.');
+        setGeoError('Verified recording permission is required before sending the employee service order.');
       }
       return;
     }
@@ -3923,7 +3912,7 @@ export default function VendorJobs() {
       const snapshot = buildRecordingComplianceSnapshot(selectedJob, {
         location: complianceLocation as 'business' | 'residence' | 'customer-business',
         consentAccepted: Boolean(customerConsentReceived),
-        consentToken: String(activeConsentToken || getSavedRecordingComplianceForJob(selectedJob)?.consentToken || '').trim(),
+        consentRequestId: String(activePermissionRequestId || getSavedRecordingComplianceForJob(selectedJob)?.consentRequestId || '').trim(),
         locationVerified: Boolean(locationVerified),
       });
       persistRecordingComplianceForJob(selectedJob, snapshot);
@@ -4765,7 +4754,7 @@ export default function VendorJobs() {
             <h3 className="text-lg font-semibold mb-1">Manage jobs and scheduled work</h3>
             <p className="text-blue-100 text-sm leading-relaxed">
               <strong>Services Offered</strong> is your customer-facing menu. This page is where you create
-              the actual customer work record, assign employees, request customer consent when needed, and
+              the actual customer work record, assign employees, request verified recording permission when needed, and
               track the Starting Condition, Work in Progress, and Final Result videos.
               Use <strong> Add Work Record</strong> for scheduled work, beta/demo jobs, or jobs an admin asks
               you to enter.
@@ -4808,17 +4797,17 @@ export default function VendorJobs() {
               <li><strong>Assign the employee</strong> who will record on-site. The employee must already be on your team.</li>
               <li>
                 <strong>Choose where the recording happens.</strong> Business address requires employee phone
-                location verification. Customer residence requires customer consent. Customer business requires
-                customer consent and employee phone location verification.
+                location verification. A customer residence requires verified recording permission. A customer business requires
+                verified recording permission and employee phone location verification.
               </li>
-              <li><strong>If customer consent is required, send the consent request</strong> and wait for approval before recording is allowed.</li>
+              <li><strong>If recording permission is required, send the secure request</strong> and wait for a verified decision before recording is allowed.</li>
               <li><strong>Send the employee service order link</strong> so the employee can open it on the phone they will use to record.</li>
               <li><strong>If location is required, the employee verifies location</strong> from that phone before recording unlocks.</li>
               <li><strong>The employee records all three stages</strong>: Starting Condition, Work in Progress, and Final Result. Each stage can be previewed, saved, or retaken.</li>
               <li><strong>The employee sends the finished package to the manager</strong>. Manager and admin approval happen before customers or public pages can see the videos.</li>
             </ol>
             <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-              Each work card shows its current <strong>Next step</strong>: assign employee, wait for customer consent,
+              Each work card shows its current <strong>Next step</strong>: assign employee, wait for recording permission,
               send/open the service order link, verify employee location, record the next stage, or review completed videos.
             </div>
             <label className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">
@@ -5527,7 +5516,7 @@ export default function VendorJobs() {
             <DialogDescription>
               {jobModalMode === 'edit'
                 ? 'Update saved work details.'
-                : 'Create the customer work record that can later be assigned to employees, sent for customer consent, and moved through the three video stages. Choose an approved Services Offered item, or submit a new service for admin approval first.'}
+                : 'Create the customer work record that can later be assigned to employees, sent for verified recording permission, and moved through the three video stages. Choose an approved Services Offered item, or submit a new service for admin approval first.'}
             </DialogDescription>
           </DialogHeader>
           {jobModalMode !== 'edit' ? (
@@ -5709,7 +5698,7 @@ export default function VendorJobs() {
                   {
                     value: 'business',
                     title: 'Vendor business address',
-                    detail: 'Employee phone verifies the vendor business address. Customer consent is not required.',
+                    detail: 'The employee phone verifies the vendor business address. This location path does not authorize capturing customers, bystanders, or unrelated personal information.',
                   },
                   {
                     value: 'residence',
@@ -5719,7 +5708,7 @@ export default function VendorJobs() {
                   {
                     value: 'customer-business',
                     title: 'Customer business address',
-                    detail: 'Customer consent is required, and the employee phone verifies the customer business location.',
+                    detail: 'Verified recording permission is required, and the employee phone verifies the customer business location.',
                   },
                 ].map((option) => {
                   const checked = newJob.recordingLocation === option.value;
@@ -6495,7 +6484,7 @@ export default function VendorJobs() {
               Legal Compliance & Security Verification
             </DialogTitle>
             <DialogDescription>
-              Assign employee, choose recording location, send customer consent if required, then start the Starting Condition video.
+              Assign an employee, choose the recording location, send recording permission if required, then start the Starting Condition video.
             </DialogDescription>
           </DialogHeader>
 
@@ -6530,7 +6519,7 @@ export default function VendorJobs() {
                       if (selectedJob) persistLocationChoiceForJob(selectedJob, 'residence');
                     }} 
                   />
-                  <span>At Customer Residence (Customer consent required)</span>
+                  <span>At Customer Residence (Verified recording permission required)</span>
                 </label>
                 <label className="flex items-center space-x-3">
                   <input 
@@ -6544,7 +6533,7 @@ export default function VendorJobs() {
                       if (selectedJob) persistLocationChoiceForJob(selectedJob, 'customer-business');
                     }} 
                   />
-                  <span>At Customer Business (Customer consent + Location verification)</span>
+                  <span>At Customer Business (Recording permission + location verification)</span>
                 </label>
               </div>
             </div>
@@ -6560,18 +6549,24 @@ export default function VendorJobs() {
                     {assignmentSatisfiedForCompliance ? 'Assigned' : 'Assignment required'}
                   </div>
                   <div className="mt-1 text-gray-700">
-                    Consent:{' '}
+                    Recording permission:{' '}
                     {!consentRequiredForCompliance
                       ? 'Not required for selected location'
                       : customerConsentStatus === CONSENT_STATE.ACCEPTED
-                      ? 'Accepted'
+                      ? 'Verified and allowed'
                       : customerConsentStatus === CONSENT_STATE.REQUESTED
-                      ? 'Requested (awaiting customer response)'
+                      ? 'Delivered (awaiting customer response)'
                       : customerConsentStatus === CONSENT_STATE.DECLINED
-                      ? 'Declined'
+                      ? 'Recording declined'
+                      : customerConsentStatus === CONSENT_STATE.DELIVERY_FAILED
+                      ? 'Delivery failed - recording locked'
+                      : customerConsentStatus === CONSENT_STATE.WRONG_RECIPIENT
+                      ? 'Wrong or mismatched recipient - correction required'
+                      : customerConsentStatus === CONSENT_STATE.NO_DIGITAL_CHANNEL
+                      ? 'No email or mobile phone - correction required'
                       : customerConsentStatus === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE
                       ? 'Expired or unavailable'
-                      : 'Consent required'}
+                      : 'Verified permission required'}
                   </div>
                   <div className="text-gray-700">
                     Location verification:{' '}
@@ -6584,7 +6579,7 @@ export default function VendorJobs() {
                 </div>
                 {consentRequiredForCompliance && (
                   <div className="mb-4 rounded-md border border-gray-200 bg-white px-3 py-3 text-sm">
-                    <div className="font-medium text-gray-900">Customer consent status</div>
+                    <div className="font-medium text-gray-900">Recording-permission status</div>
                     <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                       <div
                         className={`rounded border px-2 py-1 text-center ${
@@ -6593,7 +6588,7 @@ export default function VendorJobs() {
                             : 'border-gray-200 bg-gray-50 text-gray-500'
                         }`}
                       >
-                        Pending
+                        Waiting
                       </div>
                       <div
                         className={`rounded border px-2 py-1 text-center ${
@@ -6602,7 +6597,7 @@ export default function VendorJobs() {
                             : 'border-gray-200 bg-gray-50 text-gray-500'
                         }`}
                       >
-                        Accepted
+                        Allowed
                       </div>
                       <div
                         className={`rounded border px-2 py-1 text-center ${
@@ -6614,6 +6609,21 @@ export default function VendorJobs() {
                         Declined
                       </div>
                     </div>
+                    {customerConsentStatus === CONSENT_STATE.DELIVERY_FAILED ? (
+                      <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                        Delivery was not confirmed. Check the recipient and resend the secure request. Recording remains locked.
+                      </div>
+                    ) : null}
+                    {customerConsentStatus === CONSENT_STATE.WRONG_RECIPIENT ? (
+                      <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                        The recipient was reported as wrong or the contact channels do not match. Correct the customer contact before resending.
+                      </div>
+                    ) : null}
+                    {customerConsentStatus === CONSENT_STATE.NO_DIGITAL_CHANNEL ? (
+                      <div className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                        No customer email or mobile phone is available. Add one before sending recording permission.
+                      </div>
+                    ) : null}
                   </div>
                 )}
                 
@@ -6636,7 +6646,7 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-yellow-900">Legal Notice</h4>
+                          <h4 className="font-medium text-yellow-900">Location Verification</h4>
                           <p className="text-sm text-yellow-700 mt-1">
                             Business-address recordings are blocked unless the employee phone reports a location near the registered business address. Location and device details are logged for compliance and security.
                           </p>
@@ -6653,9 +6663,9 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <Users className="w-5 h-5 text-blue-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-blue-900">Customer Consent Required</h4>
+                          <h4 className="font-medium text-blue-900">Verified Recording Permission Required</h4>
                           <p className="text-sm text-blue-700 mt-1">
-                            Recording at a customer's residence requires explicit consent. The customer will receive a secure notification to review and agree to the terms.
+                            The customer or an authorized representative receives a secure request explaining what will be recorded. Recording stays locked until identity, authority, delivery, and permission are verified.
                           </p>
                         </div>
                       </div>
@@ -6665,21 +6675,21 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-yellow-900">Legal Notice</h4>
+                          <h4 className="font-medium text-yellow-900">Recording Safeguard</h4>
                           <p className="text-sm text-yellow-700 mt-1">
-                            By proceeding, you confirm you have informed the customer and will only record after receiving their consent. All actions will be logged for compliance and security.
+                            The customer makes the recording decision directly. This request starts Private, keeps audio off, and creates an audit history without making the video Public.
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <div className="mb-4 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                      <div className="font-medium text-gray-900">Customer consent contact</div>
+                      <div className="font-medium text-gray-900">Recording-permission recipient</div>
                       <div className={hasCustomerContactForJob(selectedJob) ? 'text-gray-700' : 'text-red-700'}>
                         {formatCustomerConsentRecipient(selectedJob)}
                       </div>
                       <div className="mt-1 text-xs text-gray-500">
-                        Reliance sends the consent request to the customer contact saved on this work record.
+                        Reliance sends the secure request to the customer contact saved on this work record.
                       </div>
                     </div>
 
@@ -6693,25 +6703,25 @@ export default function VendorJobs() {
                       className="w-full"
                     >
                       {customerConsentSending
-                        ? 'Sending Video Consent...'
+                        ? 'Sending Recording Permission...'
                         : customerConsentStatus === CONSENT_STATE.REQUESTED
-                          ? 'Resend Video Consent to Customer'
-                          : 'Send Video Consent to Customer'}
+                          ? 'Resend Recording Permission'
+                          : 'Send Recording Permission'}
                     </Button>
                     {!hasCustomerContactForJob(selectedJob) ? (
                       <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        Customer email or phone is missing, so consent cannot be sent from this workflow.
+                        Customer email or mobile phone is missing. Add a valid recipient before requesting permission.
                       </div>
                     ) : null}
                     {customerConsentSending ? (
                       <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                        Sending customer consent request now. This status will update only after Reliance confirms the request was created.
+                        Sending the secure recording-permission request. Recording remains locked until delivery and the customer decision are verified.
                       </div>
                     ) : null}
                     
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
-                        <div>Customer consent request sent. Waiting for customer response.</div>
+                        <div>Recording-permission request sent. Waiting for the customer or authorized representative.</div>
                         <Button
                           size="sm"
                           variant="outline"
@@ -6719,7 +6729,7 @@ export default function VendorJobs() {
                           disabled={consentRefreshLoading}
                           className="w-full"
                         >
-                          {consentRefreshLoading ? 'Checking consent…' : 'Refresh consent status'}
+                          {consentRefreshLoading ? 'Checking permission...' : 'Refresh permission status'}
                         </Button>
                         {consentRefreshError ? (
                           <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
@@ -6731,21 +6741,21 @@ export default function VendorJobs() {
                     {customerConsentStatus === CONSENT_STATE.ACCEPTED && (
                       <div className="mt-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
                         <div className="text-base font-semibold text-green-800">✔ Ready to Record</div>
-                        <div className="mt-1">Customer consent has been approved. You may begin recording now.</div>
+                        <div className="mt-1">Verified recording permission is active. The employee may proceed within the approved scope.</div>
                         <div className="mt-1 text-green-700/90">
-                          Consent covers all required service recordings. You may proceed with intro, in-progress, and completion videos without additional approval.
+                          Permission covers the three service stages, starts Private, and keeps audio off. Public sharing is a separate later decision.
                         </div>
                       </div>
                     )}
                     {customerConsentStatus === CONSENT_STATE.DECLINED && (
                       <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        Customer declined consent. Recording cannot proceed.
+                        The customer declined recording. The service may continue without Reliance recording when the vendor can perform it without video proof.
                       </div>
                     )}
                     {customerConsentStatus === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE && (
                       <div className="mt-2 space-y-2">
                         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                          Consent expired or unavailable. Please resend the request.
+                          This secure request expired or is unavailable. Resend it to create a new link; recording remains locked.
                         </div>
                         <Button
                           size="sm"
@@ -6754,7 +6764,7 @@ export default function VendorJobs() {
                           disabled={consentRefreshLoading}
                           className="w-full"
                         >
-                          {consentRefreshLoading ? 'Checking consent…' : 'Refresh consent status'}
+                          {consentRefreshLoading ? 'Checking permission...' : 'Refresh permission status'}
                         </Button>
                         {consentRefreshError ? (
                           <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
@@ -6773,9 +6783,9 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <Users className="w-5 h-5 text-blue-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-blue-900">Customer Consent & Location Verification</h4>
+                          <h4 className="font-medium text-blue-900">Recording Permission & Location Verification</h4>
                           <p className="text-sm text-blue-700 mt-1">
-                            Recording at a customer's business address requires customer consent first. After consent is accepted, the employee opens the service order on-site and Reliance asks their phone for location before the camera opens.
+                            An authorized business representative must allow the approved recording scope. After permission is verified, the employee also verifies the business location before the camera opens.
                           </p>
                         </div>
                       </div>
@@ -6785,21 +6795,21 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-yellow-900">Legal Notice</h4>
+                          <h4 className="font-medium text-yellow-900">Recording Safeguard</h4>
                           <p className="text-sm text-yellow-700 mt-1">
-                            By proceeding, you confirm you have informed the customer and will only record after receiving their consent. Employee phone location and device info may be logged for compliance and security.
+                            A business representative cannot authorize recording every employee, visitor, or customer. The employee must avoid people and confidential material outside the approved scope. Audio remains off.
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <div className="mb-4 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                      <div className="font-medium text-gray-900">Customer consent contact</div>
+                      <div className="font-medium text-gray-900">Recording-permission recipient</div>
                       <div className={hasCustomerContactForJob(selectedJob) ? 'text-gray-700' : 'text-red-700'}>
                         {formatCustomerConsentRecipient(selectedJob)}
                       </div>
                       <div className="mt-1 text-xs text-gray-500">
-                        Reliance sends the consent request to the customer contact saved on this work record.
+                        Reliance sends the secure request to the customer contact saved on this work record.
                       </div>
                     </div>
 
@@ -6813,25 +6823,25 @@ export default function VendorJobs() {
                       className="w-full"
                     >
                       {customerConsentSending
-                        ? 'Sending Video Consent...'
+                        ? 'Sending Recording Permission...'
                         : customerConsentStatus === CONSENT_STATE.REQUESTED
-                          ? 'Resend Video Consent to Customer'
-                          : 'Send Video Consent to Customer'}
+                          ? 'Resend Recording Permission'
+                          : 'Send Recording Permission'}
                     </Button>
                     {!hasCustomerContactForJob(selectedJob) ? (
                       <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        Customer email or phone is missing, so consent cannot be sent from this workflow.
+                        Customer email or mobile phone is missing. Add a valid recipient before requesting permission.
                       </div>
                     ) : null}
                     {customerConsentSending ? (
                       <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                        Sending customer consent request now. This status will update only after Reliance confirms the request was created.
+                        Sending the secure recording-permission request. Recording remains locked until delivery and the customer decision are verified.
                       </div>
                     ) : null}
 
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
-                        <div>Customer consent request sent. Waiting for customer response.</div>
+                        <div>Recording-permission request sent. Waiting for the customer or authorized representative.</div>
                         <Button
                           size="sm"
                           variant="outline"
@@ -6839,7 +6849,7 @@ export default function VendorJobs() {
                           disabled={consentRefreshLoading}
                           className="w-full"
                         >
-                          {consentRefreshLoading ? 'Checking consent…' : 'Refresh consent status'}
+                          {consentRefreshLoading ? 'Checking permission...' : 'Refresh permission status'}
                         </Button>
                         {consentRefreshError ? (
                           <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
@@ -6851,21 +6861,21 @@ export default function VendorJobs() {
                     {customerConsentStatus === CONSENT_STATE.ACCEPTED && (
                       <div className="mt-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
                         <div className="text-base font-semibold text-green-800">✔ Ready to Record</div>
-                        <div className="mt-1">Customer consent has been approved. You may begin recording now.</div>
+                        <div className="mt-1">Verified recording permission is active. The employee may proceed within the approved scope.</div>
                         <div className="mt-1 text-green-700/90">
-                          Consent covers all required service recordings. You may proceed with intro, in-progress, and completion videos without additional approval.
+                          Permission covers the three service stages, starts Private, and keeps audio off. Public sharing is a separate later decision.
                         </div>
                       </div>
                     )}
                     {customerConsentStatus === CONSENT_STATE.DECLINED && (
                       <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        Customer declined consent. Recording cannot proceed.
+                        The customer declined recording. The service may continue without Reliance recording when the vendor can perform it without video proof.
                       </div>
                     )}
                     {customerConsentStatus === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE && (
                       <div className="mt-2 space-y-2">
                         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                          Consent expired or unavailable. Please resend the request.
+                          This secure request expired or is unavailable. Resend it to create a new link; recording remains locked.
                         </div>
                         <Button
                           size="sm"
@@ -6874,7 +6884,7 @@ export default function VendorJobs() {
                           disabled={consentRefreshLoading}
                           className="w-full"
                         >
-                          {consentRefreshLoading ? 'Checking consent…' : 'Refresh consent status'}
+                          {consentRefreshLoading ? 'Checking permission...' : 'Refresh permission status'}
                         </Button>
                         {consentRefreshError ? (
                           <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
@@ -6943,9 +6953,9 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-green-900">Customer Consent Accepted</h4>
+                          <h4 className="font-medium text-green-900">Recording Permission Verified</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Customer consent has been accepted. Send the service order so the employee can record from their job link.
+                            Permission is verified. Send the service order so the employee can record within the approved scope.
                           </p>
                         </div>
                       </div>
@@ -6967,9 +6977,9 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-green-900">Customer Consent Accepted</h4>
+                          <h4 className="font-medium text-green-900">Recording Permission Verified</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Customer consent has been accepted. Send the service order so the employee can verify location from their phone and record.
+                            Permission is verified. Send the service order so the employee can verify location and record within the approved scope.
                           </p>
                         </div>
                       </div>
@@ -6990,9 +7000,9 @@ export default function VendorJobs() {
                     <div className="flex items-start gap-2">
                       <Clock className="w-5 h-5 text-yellow-600 mt-0.5" />
                       <div>
-                        <h4 className="font-medium text-yellow-900">Waiting for Customer Consent</h4>
+                        <h4 className="font-medium text-yellow-900">Waiting for Recording Permission</h4>
                         <p className="text-sm text-yellow-700 mt-1">
-                          Waiting for customer consent...
+                          Recording stays locked until the customer or authorized representative responds.
                         </p>
                       </div>
                     </div>
@@ -7005,9 +7015,9 @@ export default function VendorJobs() {
                     <div className="flex items-start gap-2">
                       <X className="w-5 h-5 text-red-600 mt-0.5" />
                       <div>
-                        <h4 className="font-medium text-red-900">Customer Consent Declined</h4>
+                        <h4 className="font-medium text-red-900">Recording Declined</h4>
                         <p className="text-sm text-red-700 mt-1">
-                          Customer has declined consent. You cannot proceed with video creation.
+                          The customer declined recording. Do not record this work through Reliance.
                         </p>
                       </div>
                     </div>
@@ -7725,13 +7735,13 @@ export default function VendorJobs() {
                                 {isConsentBlocked ? (
                                   <>
                                     <div className="border-y border-amber-300/15 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
-                                      Assignment locked - waiting for customer consent
+                                      Recording locked - waiting for verified permission
                                     </div>
                                     <button
                                       className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white"
                                       onClick={() => openCustomerConsentForJob(job)}
                                     >
-                                      Open / Resend Customer Consent
+                                      Open / Resend Recording Permission
                                     </button>
                                   </>
                                 ) : (

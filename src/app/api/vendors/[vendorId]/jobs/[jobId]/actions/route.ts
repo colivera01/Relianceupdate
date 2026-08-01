@@ -149,14 +149,9 @@ function mergeRecordingComplianceMetadata(
       );
     }
   }
-  if (input.consentAccepted !== undefined) {
-    metadata.vendor_job_consent_accepted = input.consentAccepted === true;
-  }
-  if (input.consentToken !== undefined) {
-    const token = String(input.consentToken || "").trim();
-    if (token) metadata.vendor_job_consent_token = token;
-    else delete metadata.vendor_job_consent_token;
-  }
+  // Customer permission is derived from immutable server evidence. A manager
+  // may configure location details here, but cannot assert a customer decision.
+  delete metadata.vendor_job_consent_token;
   if (input.locationVerified !== undefined) {
     const verified = input.locationVerified === true;
     metadata.vendor_job_location_verified = verified;
@@ -186,11 +181,13 @@ function releaseFailureForCompliance(value: string | null | undefined, consentRe
     compliance.location === "residence" || compliance.location === "customer-business";
 
   if (requiresConsent) {
-    const consentStatus = String(consentRecord?.status || "").trim().toUpperCase();
-    if (consentStatus !== "ACCEPTED") {
+    const verifiedAllowed =
+      consentRecord?.verifiedDecision === true &&
+      String(consentRecord?.lifecycleStatus || "").trim().toUpperCase() === "ALLOWED";
+    if (!verifiedAllowed) {
       return {
-        code: "CUSTOMER_CONSENT_REQUIRED",
-        message: "Customer consent must be accepted before sending the employee service order.",
+        code: "VERIFIED_PERMISSION_REQUIRED",
+        message: "Verified recording permission is required before sending the employee service order.",
       };
     }
   }
@@ -207,6 +204,21 @@ function releaseFailureForCompliance(value: string | null | undefined, consentRe
   }
 
   return null;
+}
+
+function toSafeRecordingCompliance(value: string | null | undefined, consentRecord?: any) {
+  const compliance = parseRecordingComplianceMetadata(value);
+  return {
+    location: compliance.location,
+    consentAccepted:
+      consentRecord?.verifiedDecision === true &&
+      String(consentRecord?.lifecycleStatus || "").trim().toUpperCase() === "ALLOWED",
+    locationVerified: compliance.locationVerified,
+    locationVerifiedAt: compliance.locationVerifiedAt,
+    serviceOrderReleasedAt: compliance.serviceOrderReleasedAt,
+    releasedMembershipIds: compliance.releasedMembershipIds,
+    addressSnapshot: compliance.addressSnapshot,
+  };
 }
 
 function displayNameForMembershipUser(
@@ -625,7 +637,6 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         data: { customerMetadata: JSON.stringify(metadata) },
         select: { id: true, status: true, customerMetadata: true, updatedAt: true },
       });
-
       await recordLifecycleAudit({
         actionType: "job_assigned",
         entityType: "booking",
@@ -691,13 +702,18 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         data: { customerMetadata: stringifyCustomerMetadata(metadata) },
         select: { id: true, status: true, customerMetadata: true, updatedAt: true },
       });
+      const latestPermission = await (prisma as any).consentRecord.findFirst({
+        where: { bookingId: booking.id },
+        orderBy: { requestedAt: "desc" },
+        select: { lifecycleStatus: true, verifiedDecision: true },
+      });
 
       await recordLifecycleAudit({
         actionType: "recording_compliance_updated",
         entityType: "booking",
         entityId: booking.id,
         actorUserId: member.userId,
-        newValue: parseRecordingComplianceMetadata(updated.customerMetadata),
+        newValue: toSafeRecordingCompliance(updated.customerMetadata, latestPermission),
         metadata: { vendorId },
       });
 
@@ -707,7 +723,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         job: {
           id: updated.id,
           status: updated.status,
-          recordingCompliance: parseRecordingComplianceMetadata(updated.customerMetadata),
+          recordingCompliance: toSafeRecordingCompliance(updated.customerMetadata, latestPermission),
           updatedAt: updated.updatedAt,
         },
         message: "Recording compliance saved.",
@@ -754,12 +770,13 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const latestConsentRecord = await (prisma as any).consentRecord.findFirst({
         where: { bookingId: booking.id },
         orderBy: { requestedAt: "desc" },
+        select: { lifecycleStatus: true, verifiedDecision: true },
       });
       const complianceFailure = releaseFailureForCompliance(metadata, latestConsentRecord);
       if (complianceFailure) {
         return NextResponse.json(
           apiResponse(false, complianceFailure.code, complianceFailure.message, {
-            recordingCompliance: parseRecordingComplianceMetadata(metadata),
+            recordingCompliance: toSafeRecordingCompliance(metadata, latestConsentRecord),
           }),
           { status: 409 }
         );
@@ -783,7 +800,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           success: true,
           action,
           notifications: { sentCount: 0, alreadyReleased: true, results: [] },
-          recordingCompliance: compliance,
+          recordingCompliance: toSafeRecordingCompliance(metadata, latestConsentRecord),
           message: "Employee service order was already sent for this assignment.",
         });
       }
@@ -883,7 +900,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         job: {
           id: updated.id,
           status: updated.status,
-          recordingCompliance: parseRecordingComplianceMetadata(updated.customerMetadata),
+          recordingCompliance: toSafeRecordingCompliance(updated.customerMetadata, latestConsentRecord),
           updatedAt: updated.updatedAt,
         },
         notifications: {

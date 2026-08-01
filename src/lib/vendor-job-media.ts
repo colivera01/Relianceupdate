@@ -31,8 +31,6 @@ type UploadParams = {
   replaceExisting?: boolean;
   durationSeconds: number;
   locationContext?: string;
-  consentAccepted?: boolean;
-  consentToken?: string;
 };
 
 type UploadOutcome = {
@@ -198,8 +196,6 @@ export async function runVendorJobMediaUpload({
   replaceExisting,
   durationSeconds,
   locationContext,
-  consentAccepted,
-  consentToken,
 }: UploadParams): Promise<UploadOutcome> {
   let mediaSessionId: string | null = null;
   const selectedJobBookingId = selectedJob?.bookingId
@@ -272,8 +268,6 @@ export async function runVendorJobMediaUpload({
       vendorJobVideoStage: videoStage,
       replaceExisting: Boolean(replaceExisting),
       locationContext: locationContext || undefined,
-      consentAccepted: Boolean(consentAccepted),
-      consentToken: consentToken || undefined,
       title,
       description,
     };

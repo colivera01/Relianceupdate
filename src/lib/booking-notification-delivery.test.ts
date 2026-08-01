@@ -6,6 +6,7 @@ const hoisted = vi.hoisted(() => ({
   updateMany: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
+  attemptCreate: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -14,6 +15,9 @@ vi.mock("@/server/db", () => ({
       updateMany: hoisted.updateMany,
       findUnique: hoisted.findUnique,
       update: hoisted.update,
+    },
+    bookingNotificationAttempt: {
+      create: hoisted.attemptCreate,
     },
   },
 }));
@@ -26,7 +30,6 @@ const input = {
   notificationId: "notification-1",
   consentRecordId: "consent-1",
   actorUserId: "vendor-user-1",
-  token: "token-1",
   consentPath: "/consent/token-1",
   absoluteBaseUrl: "https://beta.relianceonline.org",
   customerEmail: "customer@example.com",
@@ -37,11 +40,14 @@ describe("dispatchQueuedConsentNotification", () => {
     hoisted.updateMany.mockReset();
     hoisted.findUnique.mockReset();
     hoisted.update.mockReset();
+    hoisted.attemptCreate.mockReset();
     vi.mocked(sendConsentLinkNotification).mockReset();
+    hoisted.attemptCreate.mockResolvedValue({ id: "attempt-1" });
   });
 
   it("marks a provider-accepted delivery as sent and stores its channel result", async () => {
     hoisted.updateMany.mockResolvedValue({ count: 1 });
+    hoisted.findUnique.mockResolvedValue({ attemptCount: 1 });
     vi.mocked(sendConsentLinkNotification).mockResolvedValue({
       anySuccess: true,
       absoluteFallbackLink: "https://beta.relianceonline.org/consent/token-1",

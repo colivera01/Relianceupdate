@@ -1,482 +1,213 @@
-'use client';
+"use client";
 
-import { Suspense, useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { CheckCircle2, Clock3, LockKeyhole, ShieldCheck, UserCheck, VolumeX } from "lucide-react";
 
-type ConsentData = {
+import styles from "./permission.module.css";
+
+type Permission = {
+  id: string;
+  state: string;
   vendorName: string;
   serviceName: string;
-  bookingName: string;
-  scheduledDate: string;
-  customerName: string;
-  createdAt: string;
-  status: string;
-  recordingLocation: string;
+  scheduledFor: string | null;
+  recordingLocation: string | null;
+  audioEnabled: boolean;
+  initialAudience: "private";
+  recipientEmailMasked: string | null;
+  recipientPhoneMasked: string | null;
+  customerName: string | null;
+  actionExpiresAt: string;
+  verificationOptions: { account: boolean; email: boolean; sms: boolean };
+  canDecide: boolean;
 };
 
-function ConsentPageContent() {
-  const params = useParams();
-  const searchParams = useSearchParams();
-  const token = String(params?.token || '');
-  const returnTo = String(searchParams?.get('returnTo') || '').trim();
-  const mediaSessionId = String(searchParams?.get('mediaSessionId') || '').trim();
-  const returnLinkLabel = (() => {
-    if (!returnTo) return 'Back to service page';
-    try {
-      const parsed = new URL(returnTo, 'http://localhost');
-      return parsed.searchParams.get('returnTo') === '/reviews'
-        ? 'Back to review detail'
-        : 'Back to service page';
-    } catch {
-      return returnTo.includes('returnTo=%2Freviews') || returnTo.includes('returnTo=/reviews')
-        ? 'Back to review detail'
-        : 'Back to service page';
-    }
-  })();
-  const helpReturnLabel = returnLinkLabel;
-  const customerHelpHref = `/help?role=customer&returnTo=${encodeURIComponent(
-    returnTo || '/my-bookings'
-  )}&returnLabel=${encodeURIComponent(helpReturnLabel)}`;
+const ROLE_OPTIONS = [
+  { value: "customer", label: "I am the customer", scope: "self_and_property" },
+  { value: "authorized_representative", label: "I am authorized for this customer and location", scope: "authorized_location_and_property" },
+  { value: "customer_business_representative", label: "I represent this business location", scope: "business_location_and_property" },
+  { value: "guardian", label: "I am the legal guardian of a minor", scope: "guardian_for_minor" },
+] as const;
 
-  const [data, setData] = useState<ConsentData | null>(null);
+function stateMessage(state: string) {
+  const messages: Record<string, { title: string; detail: string }> = {
+    allowed: { title: "Recording is allowed", detail: "Identity and authority were verified. Recordings will start Private." },
+    decided: { title: "A decision was already saved", detail: "This secure link cannot be used again." },
+    declined: { title: "Recording was declined", detail: "Reliance recording stays locked. The service may continue without recording." },
+    later: { title: "No decision was saved", detail: "Recording stays locked. You can return to this secure link before it expires if you want to decide." },
+    expired: { title: "This secure link expired", detail: "Ask the service provider to send a new recording-permission request." },
+    superseded: { title: "A newer request is available", detail: "This link was replaced and cannot be used." },
+    wrong_recipient: { title: "This request was reported as misdirected", detail: "The service provider must correct the recipient before sending another request." },
+  };
+  return messages[state] || { title: "This request is not available", detail: "Ask the service provider to review the permission status." };
+}
+
+export default function PermissionPage() {
+  const token = String(useParams()?.token || "");
+  const [permission, setPermission] = useState<Permission | null>(null);
   const [loading, setLoading] = useState(true);
-  const [accepting, setAccepting] = useState(false);
-  const [declining, setDeclining] = useState(false);
-  const [accepted, setAccepted] = useState(false);
-  const [declined, setDeclined] = useState(false);
-  const [returnLaterSelected, setReturnLaterSelected] = useState(false);
-  const [visibilityChoice, setVisibilityChoice] = useState<'private' | 'public'>('private');
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [businessAddress, setBusinessAddress] = useState({ address: '', city: '', state: '', zipCode: '' });
-  const [error, setError] = useState('');
-  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [error, setError] = useState("");
+  const [channel, setChannel] = useState<"email" | "sms" | null>(null);
+  const [code, setCode] = useState("");
+  const [verified, setVerified] = useState(false);
+  const [role, setRole] = useState("");
+  const [busy, setBusy] = useState("");
+  const [finished, setFinished] = useState<"allowed" | "declined" | "later" | "wrong_recipient" | null>(null);
+  const [address, setAddress] = useState({ address: "", city: "", state: "", zipCode: "" });
+
+  const selectedRole = useMemo(() => ROLE_OPTIONS.find((option) => option.value === role), [role]);
 
   useEffect(() => {
-    if (!token) {
-      setError('Unable to load consent.');
-      setLoading(false);
-      return;
-    }
-
+    let active = true;
     setLoading(true);
-    setError('');
-    fetch(`/api/consent/${encodeURIComponent(token)}`, { cache: 'no-store' })
-      .then(async (response) => ({
-        response,
-        payload: await response.json().catch(() => ({})),
-      }))
-      .then(({ response, payload }) => {
-        if (response.ok && payload.success) {
-          const consent = payload.consent || {};
-          setData({
-            vendorName:
-              consent?.vendor?.businessName ||
-              consent?.vendor?.name ||
-              'Service Provider',
-            serviceName: consent?.booking?.service?.name || consent?.booking?.title || 'Service',
-            bookingName: consent?.booking?.title || consent?.booking?.id || 'Booking',
-            scheduledDate: consent?.booking?.scheduledFor || '',
-            customerName: consent?.booking?.clientName || '',
-            createdAt: consent?.requestedAt || consent?.createdAt || '',
-            status: consent?.status || '',
-            recordingLocation: consent?.recordingLocation || '',
-          });
-          const normalizedStatus = String(consent?.status || '').trim().toLowerCase();
-          setAccepted(normalizedStatus === 'accepted');
-          setDeclined(normalizedStatus === 'declined');
-        } else if (response.status === 404 || payload?.code === 'CONSENT_NOT_FOUND') {
-          setError(
-            'This consent link is no longer available. Ask the service provider to resend the consent request.'
-          );
-        } else {
-          setError(
-            String(
-              payload?.error ||
-                payload?.message ||
-                'The consent request could not be loaded. Please try again.'
-            )
-          );
-        }
+    fetch(`/api/consent/${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(async (response) => ({ response, body: await response.json().catch(() => ({})) }))
+      .then(({ response, body }) => {
+        if (!active) return;
+        if (!response.ok || !body?.permission) throw new Error(body?.error || "This recording request could not be loaded.");
+        setPermission(body.permission);
       })
-      .catch(() => setError('Connection error. Check your connection and try again.'))
-      .finally(() => setLoading(false));
-  }, [token, loadAttempt]);
+      .catch((reason) => active && setError(reason instanceof Error ? reason.message : "This recording request could not be loaded."))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, [token]);
 
-  const handleAccept = async () => {
-    setError('');
-    if (!termsAccepted) {
-      setError('Review and accept the Terms of Service and Privacy Policy before approving.');
-      return;
-    }
-    if (
-      data?.recordingLocation === 'customer-business' &&
-      Object.values(businessAddress).some((value) => !value.trim())
-    ) {
-      setError('Enter the complete customer business address before approving.');
-      return;
-    }
-    setAccepting(true);
-
+  async function beginVerification(nextChannel: "account" | "email" | "sms") {
+    setBusy(`verify-${nextChannel}`);
+    setError("");
     try {
-      const res = await fetch('/api/consent/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          visibilityChoice,
-          termsAccepted: true,
-          termsVersion: 'terms-2026-07',
-          privacyVersion: 'privacy-2026-07',
-          customerBusinessAddress:
-            data?.recordingLocation === 'customer-business' ? businessAddress : undefined,
-        }),
+      const response = await fetch(`/api/consent/${encodeURIComponent(token)}/verification/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: nextChannel }),
       });
-
-      const json = await res.json();
-
-      if (json.success) {
-        setAccepted(true);
-        setDeclined(false);
-        setReturnLaterSelected(false);
-        setData((previous) =>
-          previous
-            ? {
-                ...previous,
-                status: 'accepted',
-              }
-            : previous
-        );
-        if (returnTo) {
-          const redirectUrl = new URL(returnTo, window.location.origin);
-          redirectUrl.searchParams.set('consentAccepted', '1');
-          redirectUrl.searchParams.set('consentToken', token);
-          if (mediaSessionId) {
-            redirectUrl.searchParams.set('mediaSessionId', mediaSessionId);
-          }
-          window.location.href = `${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`;
-          return;
-        }
+      const body = await response.json().catch(() => ({}));
+      if (body?.verified) {
+        setVerified(true);
+        setChannel(null);
+      } else if (nextChannel !== "account") {
+        setChannel(nextChannel);
       } else {
-        setError(json?.error || json?.message || 'Failed to accept consent.');
+        setError("This signed-in account does not match the intended recipient. Use email or SMS verification instead.");
       }
     } catch {
-      setError('Error submitting consent.');
+      setError("Verification could not be started. Try again.");
     } finally {
-      setAccepting(false);
+      setBusy("");
     }
-  };
+  }
 
-  const handleDecline = async () => {
-    setError('');
-    setDeclining(true);
-
-    try {
-      const res = await fetch('/api/consent/decline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
-
-      const json = await res.json();
-
-      if (json.success) {
-        setDeclined(true);
-        setAccepted(false);
-        setData((previous) =>
-          previous
-            ? {
-                ...previous,
-                status: 'declined',
-              }
-            : previous
-        );
-      } else {
-        setError('Failed to decline consent.');
-      }
-    } catch {
-      setError('Error submitting decline request.');
-    } finally {
-      setDeclining(false);
+  async function verifyCode() {
+    if (!channel || code.length !== 6) return;
+    setBusy("code");
+    setError("");
+    const response = await fetch(`/api/consent/${encodeURIComponent(token)}/verification/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel, code }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok && body?.verified) {
+      setVerified(true);
+      setChannel(null);
+      setCode("");
+    } else {
+      setError(body?.error || "That code could not be verified. Request a new code if needed.");
     }
-  };
+    setBusy("");
+  }
 
-  if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
+  async function decide(decision: "allow" | "decline") {
+    if (!selectedRole) {
+      setError("Choose the role that describes your authority for this service.");
+      return;
+    }
+    setBusy(decision);
+    setError("");
+    const response = await fetch(`/api/consent/${decision === "allow" ? "accept" : "decline"}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token,
+        claimedRole: selectedRole.value,
+        authorityScope: selectedRole.scope,
+        customerBusinessAddress: permission?.recordingLocation === "customer-business" ? address : undefined,
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.ok && body?.success) setFinished(decision === "allow" ? "allowed" : "declined");
+    else setError(body?.error || "Your decision could not be saved. Try again.");
+    setBusy("");
+  }
 
-  if (error && !data) {
-    return (
-      <div style={{ maxWidth: 700, margin: '40px auto', padding: 24, fontFamily: 'sans-serif' }}>
-        <div role="alert" style={{ color: '#b91c1c' }}>{error}</div>
-        <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setLoadAttempt((attempt) => attempt + 1)}
-            disabled={loading}
-            style={{ padding: '8px 14px' }}
-          >
-            {loading ? 'Trying again...' : 'Try again'}
-          </button>
-          <Link href={customerHelpHref} style={{ color: '#2563eb', textDecoration: 'underline' }}>
-            Open Help Center
-          </Link>
-        </div>
-      </div>
-    );
+  async function wrongRecipient() {
+    setBusy("wrong");
+    const response = await fetch(`/api/consent/${encodeURIComponent(token)}/wrong-recipient`, { method: "POST" });
+    if (response.ok) setFinished("wrong_recipient");
+    else setError("The service provider could not be notified. Try again.");
+    setBusy("");
+  }
+
+  if (loading) {
+    return <main className={styles.page}><section className={styles.shell} aria-busy="true"><div className={styles.skeleton} /><div className={styles.skeletonTall} /></section></main>;
+  }
+  if (error && !permission) {
+    return <main className={styles.page}><section className={styles.shell}><div className={styles.error} role="alert"><strong>Unable to open this request</strong><span>{error}</span></div></section></main>;
+  }
+  if (!permission) return null;
+  if (finished) {
+    const final = stateMessage(finished);
+    return <main className={styles.page}><section className={styles.shell}><div className={styles.success}><CheckCircle2 /><div><h1>{final.title}</h1><p>{final.detail}</p></div></div></section></main>;
+  }
+  if (!permission.canDecide) {
+    const final = stateMessage(permission.state);
+    return <main className={styles.page}><section className={styles.shell}><div className={styles.status}><Clock3 /><div><h1>{final.title}</h1><p>{final.detail}</p></div></div></section></main>;
   }
 
   return (
-    <div style={{ maxWidth: 700, margin: '40px auto', fontFamily: 'sans-serif' }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1>{data?.vendorName || 'Your vendor'} is requesting your approval</h1>
-        <p style={{ color: '#555' }}>
-          This request is related to your service with <strong>{data?.vendorName || 'your vendor'}</strong>.
-        </p>
-      </div>
+    <main className={styles.page}>
+      <section className={styles.shell}>
+        <header className={styles.header}>
+          <span className={styles.eyebrow}>Recording permission</span>
+          <h1>Choose whether this service may be recorded</h1>
+          <p>{permission.vendorName} uses Reliance to create proof of the work. You are in control of this decision.</p>
+        </header>
 
-      <div style={{ background: '#eef6ff', padding: 16, borderRadius: 8 }}>
-        <p>
-          <strong>{data?.vendorName || 'Your vendor'}</strong> uses Reliance to securely record and share service videos so you can review them afterward.
-        </p>
-      </div>
-
-      <div style={{ marginTop: 20, padding: 16, border: '1px solid #ddd', borderRadius: 8 }}>
-        <p><strong>Vendor:</strong> {data?.vendorName || 'Unavailable'}</p>
-        <p><strong>Service:</strong> {data?.serviceName || data?.bookingName || 'Unavailable'}</p>
-        <p>
-          <strong>Scheduled date:</strong>{' '}
-          {data?.scheduledDate ? new Date(data.scheduledDate).toLocaleDateString() : 'Unavailable'}
-        </p>
-        {data?.customerName ? <p><strong>Customer:</strong> {data.customerName}</p> : null}
-        <p><strong>Requested:</strong> {new Date(data?.createdAt || '').toLocaleString()}</p>
-      </div>
-
-      <div style={{ marginTop: 20, padding: 16, background: '#f0fdf4', borderRadius: 8 }}>
-        <p><strong>Access after approval</strong></p>
-        <ul>
-          <li>If you already have a Reliance account, sign in after approving</li>
-          <li>If not, you can create one when you are ready</li>
-          <li>Your service videos stay securely stored in Reliance</li>
-        </ul>
-      </div>
-
-      <div style={{ marginTop: 20, padding: 16, background: '#f6f8fa', borderRadius: 8 }}>
-        <p><strong>Why this is needed</strong></p>
-        <p style={{ fontSize: 14, color: '#555', marginTop: 6 }}>
-          {data?.vendorName || 'Your vendor'} may capture recording steps as part of documenting your service.
-        </p>
-        <ul style={{ marginTop: 8, paddingLeft: 20, color: '#374151' }}>
-          <li>Intro Video - before work begins (condition overview)</li>
-          <li>In-Progress Video - during the service (work being performed)</li>
-          <li>Completion Video - after the service (final results)</li>
-        </ul>
-        <p style={{ marginTop: 12, fontSize: 14, color: '#374151' }}>
-          Your response is securely logged with verification details for compliance, fraud prevention, and dispute protection.
-        </p>
-      </div>
-
-      {!accepted && !declined ? (
-        <div style={{ marginTop: 20, padding: 16, border: '1px solid #dbeafe', background: '#eff6ff', borderRadius: 8 }}>
-          <p style={{ marginTop: 0 }}><strong>Choose video visibility after approval</strong></p>
-          <label style={{ display: 'block', marginTop: 10 }}>
-            <input
-              type="radio"
-              name="visibilityChoice"
-              checked={visibilityChoice === 'private'}
-              onChange={() => setVisibilityChoice('private')}
-            />{' '}
-            Keep the completed service videos private to my account
-          </label>
-          <label style={{ display: 'block', marginTop: 10 }}>
-            <input
-              type="radio"
-              name="visibilityChoice"
-              checked={visibilityChoice === 'public'}
-              onChange={() => setVisibilityChoice('public')}
-            />{' '}
-            Allow Reliance to show approved completed-service proof publicly
-          </label>
-          <p style={{ marginBottom: 0, color: '#1f2937', fontSize: 13 }}>
-            Reliance moderation still reviews the videos before anything becomes visible.
-          </p>
+        <div className={styles.serviceCard}>
+          <div><span>Service provider</span><strong>{permission.vendorName}</strong></div>
+          <div><span>Service</span><strong>{permission.serviceName}</strong></div>
+          <div><span>Location type</span><strong>{permission.recordingLocation === "customer-business" ? "Customer business" : "Customer residence"}</strong></div>
         </div>
-      ) : null}
 
-      {!accepted && !declined && data?.recordingLocation === 'customer-business' ? (
-        <div style={{ marginTop: 20, padding: 16, border: '1px solid #dbeafe', borderRadius: 8 }}>
-          <p style={{ marginTop: 0 }}><strong>Customer business address</strong></p>
-          <p style={{ color: '#374151', fontSize: 14 }}>
-            The employee's phone must be at this address before the camera can open.
-          </p>
-          <input
-            aria-label="Street address"
-            placeholder="Street address"
-            value={businessAddress.address}
-            onChange={(event) => setBusinessAddress((previous) => ({ ...previous, address: event.target.value }))}
-            style={{ width: '100%', boxSizing: 'border-box', padding: 10, marginBottom: 10 }}
-          />
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
-            <input aria-label="City" placeholder="City" value={businessAddress.city} onChange={(event) => setBusinessAddress((previous) => ({ ...previous, city: event.target.value }))} style={{ padding: 10, minWidth: 0 }} />
-            <input aria-label="State" placeholder="State" value={businessAddress.state} onChange={(event) => setBusinessAddress((previous) => ({ ...previous, state: event.target.value }))} style={{ padding: 10, minWidth: 0 }} />
-            <input aria-label="ZIP code" placeholder="ZIP" value={businessAddress.zipCode} onChange={(event) => setBusinessAddress((previous) => ({ ...previous, zipCode: event.target.value }))} style={{ padding: 10, minWidth: 0 }} />
-          </div>
+        <div className={styles.education}>
+          <article><ShieldCheck /><div><strong>Why you are being asked</strong><p>Reliance records Starting Condition, Work in Progress, and Final Result clips as proof of service.</p></div></article>
+          <article><VolumeX /><div><strong>Audio is off</strong><p>This request does not authorize conversation or audio recording.</p></div></article>
+          <article><LockKeyhole /><div><strong>Private is the starting point</strong><p>Allowing recording does not make anything public. Public sharing would be a separate later decision.</p></div></article>
         </div>
-      ) : null}
 
-      <div style={{ marginTop: 10 }}>
-        <a href="/terms" target="_blank" rel="noreferrer">Terms of Service</a> |{' '}
-        <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>
-      </div>
-      {!accepted && !declined ? (
-        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 16 }}>
-          <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
-          <span>I agree to the Terms of Service and Privacy Policy for this service-video request.</span>
-        </label>
-      ) : null}
-      {error ? (
-        <div role="alert" style={{ marginTop: 16, color: '#b91c1c' }}>
-          <div>{error}</div>
-          {!data ? (
-            <button
-              type="button"
-              onClick={() => setLoadAttempt((attempt) => attempt + 1)}
-              disabled={loading}
-              style={{ marginTop: 10, padding: '8px 14px' }}
-            >
-              {loading ? 'Trying again...' : 'Try again'}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        {returnTo ? (
-          <Link href={returnTo} style={{ color: '#2563eb', textDecoration: 'underline' }}>
-            {returnLinkLabel}
-          </Link>
-        ) : null}
-        <Link href={customerHelpHref} style={{ color: '#2563eb', textDecoration: 'underline' }}>
-          Open Help Center
-        </Link>
-      </div>
+        {!verified ? (
+          <section className={styles.step}>
+            <div className={styles.stepHeading}><span>1</span><div><h2>Verify you received the request</h2><p>This prevents someone else from deciding with your link.</p></div></div>
+            <div className={styles.actions}>
+              <button className={styles.primary} disabled={Boolean(busy)} onClick={() => beginVerification("account")}><UserCheck />Use my signed-in account</button>
+              {permission.verificationOptions.email ? <button className={styles.secondary} disabled={Boolean(busy)} onClick={() => beginVerification("email")}>Email code to {permission.recipientEmailMasked}</button> : null}
+              {permission.verificationOptions.sms ? <button className={styles.secondary} disabled={Boolean(busy)} onClick={() => beginVerification("sms")}>Text code to {permission.recipientPhoneMasked}</button> : null}
+            </div>
+            {channel ? <div className={styles.codeRow}><label htmlFor="permission-code">6-digit code</label><input id="permission-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} /><button className={styles.primary} disabled={code.length !== 6 || Boolean(busy)} onClick={verifyCode}>Verify code</button></div> : null}
+          </section>
+        ) : (
+          <section className={styles.step}>
+            <div className={styles.stepHeading}><span>2</span><div><h2>Confirm your authority</h2><p>Choose the role that accurately describes you. A business representative cannot decide for unrelated people who may appear.</p></div></div>
+            <div className={styles.roleGrid}>{ROLE_OPTIONS.map((option) => <label key={option.value} className={role === option.value ? styles.roleSelected : styles.role}><input type="radio" name="authority-role" value={option.value} checked={role === option.value} onChange={() => setRole(option.value)} /><span>{option.label}</span></label>)}</div>
+            {permission.recordingLocation === "customer-business" ? <div className={styles.addressGrid}><label>Street address<input value={address.address} onChange={(event) => setAddress({ ...address, address: event.target.value })} /></label><label>City<input value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} /></label><label>State<input value={address.state} onChange={(event) => setAddress({ ...address, state: event.target.value })} /></label><label>ZIP code<input inputMode="numeric" value={address.zipCode} onChange={(event) => setAddress({ ...address, zipCode: event.target.value })} /></label></div> : null}
+            <div className={styles.decisionBox}><h2>Your decision</h2><p><strong>If you choose No:</strong> Reliance recording stays locked. The service may still continue without Reliance recording.</p><div className={styles.actions}><button className={styles.primary} disabled={!role || Boolean(busy)} onClick={() => decide("allow")}>Allow recording</button><button className={styles.danger} disabled={!role || Boolean(busy)} onClick={() => decide("decline")}>Decline recording</button><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button></div></div>
+          </section>
+        )}
 
-      {!accepted && !declined ? (
-        <div style={{ marginTop: 30 }}>
-          <button
-            onClick={handleAccept}
-            disabled={accepting || declining}
-            style={{
-              background: '#2563eb',
-              color: '#fff',
-              padding: '10px 20px',
-              border: 'none',
-              borderRadius: 6,
-              marginRight: 10,
-            }}
-          >
-            {accepting ? 'Processing...' : 'Approve access'}
-          </button>
-
-          <button
-            onClick={handleDecline}
-            disabled={accepting || declining}
-            style={{ padding: '10px 20px' }}
-          >
-            {declining ? 'Processing...' : 'Decline'}
-          </button>
-        </div>
-      ) : accepted ? (
-        <div
-          style={{
-            marginTop: 30,
-            padding: 16,
-            borderRadius: 8,
-            border: '1px solid #bbf7d0',
-            background: '#f0fdf4',
-          }}
-        >
-          <h2 style={{ margin: 0, color: '#14532d' }}>Consent Accepted</h2>
-          <p style={{ marginTop: 10, color: '#166534' }}>
-            Your consent has been securely recorded. Your provider may now proceed with the service video workflow.
-          </p>
-
-          <div style={{ marginTop: 16 }}>
-            <p style={{ margin: 0 }}><strong>What happens next</strong></p>
-            <ul style={{ marginTop: 8, paddingLeft: 20, color: '#14532d' }}>
-              <li>If you already have a Reliance account, you can sign in to access your service-related content when available</li>
-              <li>If you do not yet have an account, you may be asked to create one later to securely access your service video</li>
-              <li>You will only be able to view content that has been approved and made available to you</li>
-            </ul>
-          </div>
-
-          <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <Link
-              href="/auth/login"
-              style={{
-                background: '#2563eb',
-                color: '#fff',
-                padding: '10px 16px',
-                borderRadius: 6,
-                textDecoration: 'none',
-                fontWeight: 600,
-              }}
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/auth/register?type=user"
-              style={{
-                background: '#1f2937',
-                color: '#fff',
-                padding: '10px 16px',
-                borderRadius: 6,
-                textDecoration: 'none',
-                fontWeight: 600,
-              }}
-            >
-              Create Account
-            </Link>
-            <button
-              type="button"
-              onClick={() => setReturnLaterSelected(true)}
-              style={{
-                background: '#fff',
-                color: '#374151',
-                border: '1px solid #d1d5db',
-                padding: '10px 16px',
-                borderRadius: 6,
-              }}
-            >
-              Return later
-            </button>
-          </div>
-          {returnLaterSelected && (
-            <p style={{ marginTop: 12, marginBottom: 0, color: '#4b5563', fontSize: 14 }}>
-              You do not need to stay on this page. Your response has already been recorded.
-            </p>
-          )}
-        </div>
-      ) : (
-        <div style={{ marginTop: 30, color: '#b45309' }}>
-          Consent declined. Video access remains unavailable unless a new consent request is sent.
-        </div>
-      )}
-
-      {data?.status ? (
-        <div style={{ marginTop: 12, color: '#666' }}>
-          Current status: <strong>{data.status}</strong>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function ConsentPageFallback() {
-  return <div style={{ padding: 40 }}>Loading...</div>;
-}
-
-export default function ConsentPage() {
-  return (
-    <Suspense fallback={<ConsentPageFallback />}>
-      <ConsentPageContent />
-    </Suspense>
+        {error ? <div className={styles.error} role="alert">{error}</div> : null}
+        <button className={styles.linkButton} disabled={Boolean(busy)} onClick={wrongRecipient}>This request is not for me</button>
+      </section>
+    </main>
   );
 }

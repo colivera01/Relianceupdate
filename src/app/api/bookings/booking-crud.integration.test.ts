@@ -5,6 +5,8 @@ import { GET as bookingDetailGET, PUT as bookingPutPUT, DELETE as bookingDeleteD
 import { getUserIdFromRequest } from '@/lib/auth';
 import { checkVendorSlotAvailability } from '@/lib/availability-slots';
 import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
+import { createVerifiedPermissionRequest } from '@/lib/consent/request-service';
+import { deliverVerifiedPermissionRequest } from '@/lib/consent/delivery-service';
 
 const hoisted = vi.hoisted(() => {
   const bookingCount = vi.fn();
@@ -28,6 +30,7 @@ const hoisted = vi.hoisted(() => {
   const consentEventCreate = vi.fn();
   const bookingNotificationCreate = vi.fn();
   const bookingNotificationFindUnique = vi.fn();
+  const bookingNotificationFindFirst = vi.fn();
   const bookingNotificationUpdateMany = vi.fn();
   const bookingNotificationUpdate = vi.fn();
   const queryRaw = vi.fn();
@@ -52,6 +55,7 @@ const hoisted = vi.hoisted(() => {
     bookingNotification: {
       create: bookingNotificationCreate,
       findUnique: bookingNotificationFindUnique,
+      findFirst: bookingNotificationFindFirst,
       updateMany: bookingNotificationUpdateMany,
       update: bookingNotificationUpdate,
     },
@@ -83,6 +87,7 @@ const hoisted = vi.hoisted(() => {
     consentEventCreate,
     bookingNotificationCreate,
     bookingNotificationFindUnique,
+    bookingNotificationFindFirst,
     bookingNotificationUpdateMany,
     bookingNotificationUpdate,
     transaction,
@@ -108,6 +113,14 @@ vi.mock('@/lib/email-verification-enforcement', () => ({
 
 vi.mock('@/lib/notifications/send-consent-link', () => ({
   sendConsentLinkNotification: vi.fn(),
+}));
+
+vi.mock('@/lib/consent/request-service', () => ({
+  createVerifiedPermissionRequest: vi.fn(),
+}));
+
+vi.mock('@/lib/consent/delivery-service', () => ({
+  deliverVerifiedPermissionRequest: vi.fn(),
 }));
 
 function jsonRequest(url: string, body?: unknown, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET') {
@@ -244,6 +257,7 @@ describe('POST /api/bookings', () => {
     hoisted.consentEventCreate.mockReset();
     hoisted.bookingNotificationCreate.mockReset();
     hoisted.bookingNotificationFindUnique.mockReset();
+    hoisted.bookingNotificationFindFirst.mockReset();
     hoisted.bookingNotificationUpdateMany.mockReset();
     hoisted.bookingNotificationUpdate.mockReset();
     hoisted.transaction.mockReset();
@@ -260,6 +274,7 @@ describe('POST /api/bookings', () => {
     hoisted.bookingFindFirst.mockResolvedValue(null);
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
     hoisted.bookingNotificationFindUnique.mockResolvedValue(null);
+    hoisted.bookingNotificationFindFirst.mockResolvedValue(null);
     hoisted.bookingNotificationCreate.mockResolvedValue({
       id: 'notification-1',
       status: 'QUEUED',
@@ -281,6 +296,40 @@ describe('POST /api/bookings', () => {
       anySuccess: true,
       absoluteFallbackLink: 'https://beta.relianceonline.org/consent/token-1',
       channels: [{ channel: 'email', attempted: true, success: true }],
+    } as any);
+    vi.mocked(createVerifiedPermissionRequest).mockReset();
+    vi.mocked(createVerifiedPermissionRequest).mockResolvedValue({
+      consentRecordId: 'permission-1',
+      requestLinkId: 'link-1',
+      actionSecret: 'server-only-action-secret',
+      actionPath: '/consent/server-only-action-secret',
+      notificationId: 'notification-1',
+      state: 'pending',
+      recipient: {
+        name: 'Alex',
+        email: 'alex@example.com',
+        phone: null,
+        emailHash: 'email-hash',
+        phoneHash: null,
+        emailMasked: 'a***@example.com',
+        phoneMasked: null,
+      },
+      booking: {
+        id: 'customer-location-book',
+        title: 'Electrical Service Recording Test',
+        vendor: { name: 'Vendor', businessName: 'Vendor Co' },
+        service: { name: 'Electrical Service' },
+      },
+      generation: 1,
+    } as any);
+    vi.mocked(deliverVerifiedPermissionRequest).mockReset();
+    vi.mocked(deliverVerifiedPermissionRequest).mockResolvedValue({
+      status: 'SENT',
+      attemptCount: 1,
+      channels: [{ channel: 'email', attempted: true, success: true }],
+      lastError: null,
+      lastAttemptAt: '2026-07-31T12:00:00.000Z',
+      sentAt: '2026-07-31T12:00:01.000Z',
     } as any);
   });
 
@@ -509,7 +558,7 @@ describe('POST /api/bookings', () => {
     expect(hoisted.userFindUnique).toHaveBeenCalledTimes(1);
   });
 
-  it('automatically creates and sends consent for a vendor-created customer-location order', async () => {
+  it('automatically creates and sends a verified permission request for a vendor-created customer-location order', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
     hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
@@ -517,11 +566,6 @@ describe('POST /api/bookings', () => {
     hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
     hoisted.bookingCreate.mockResolvedValue({ id: 'customer-location-book' });
     hoisted.mediaSessionCreate.mockResolvedValue({ id: 'consent-session-1' });
-    hoisted.consentRecordCreate.mockImplementation(async (args: any) => ({
-      id: 'consent-record-1',
-      ...args.data,
-    }));
-    hoisted.consentEventCreate.mockResolvedValue({ id: 'event-1' });
     hoisted.bookingUpdate.mockResolvedValue({ id: 'customer-location-book' });
     hoisted.bookingFindUnique.mockResolvedValue(
       baseHydratedBooking({
@@ -556,35 +600,25 @@ describe('POST /api/bookings', () => {
         sessionType: 'CONSENT_REQUEST',
       }),
     });
-    expect(hoisted.consentRecordCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        bookingId: 'customer-location-book',
-        consentType: 'video_access',
-        status: 'requested',
-      }),
+    expect(createVerifiedPermissionRequest).toHaveBeenCalledWith({
+      bookingId: 'customer-location-book',
+      actorUserId: 'vendor-user-1',
+      mediaSessionId: 'consent-session-1',
+      reason: 'create',
     });
-    expect(sendConsentLinkNotification).toHaveBeenCalledWith(
+    expect(deliverVerifiedPermissionRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        customerEmail: 'alex@example.com',
-        bookingTitle: 'Electrical Service Recording Test',
+        notificationId: 'notification-1',
+        consentRecordId: 'permission-1',
+        actionPath: '/consent/server-only-action-secret',
       })
     );
-    expect(hoisted.bookingCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        customerMetadata: expect.stringContaining('"vendor_job_consent_status":"requested"'),
-      }),
-    });
-    expect(hoisted.bookingNotificationCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        bookingId: 'customer-location-book',
-        kind: 'CUSTOMER_CONSENT_REQUEST',
-        status: 'QUEUED',
-      }),
-    });
-    expect(await readJson(res)).toMatchObject({
+    const json = await readJson(res);
+    expect(json).toMatchObject({
       success: true,
-      automaticConsent: { status: 'requested', deliveryConfirmed: true },
+      automaticConsent: { status: 'delivered', recordingLocked: true },
     });
+    expect(JSON.stringify(json)).not.toContain('server-only-action-secret');
   });
 
   it('returns the existing work record when the same creation key is retried', async () => {
@@ -627,7 +661,7 @@ describe('POST /api/bookings', () => {
     });
   });
 
-  it('creates the booking and consent state in one database transaction', async () => {
+  it('creates the booking transaction before handing permission creation to the canonical service', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
     hoisted.vendorFindUnique.mockResolvedValue({
@@ -644,12 +678,25 @@ describe('POST /api/bookings', () => {
     hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
     hoisted.bookingCreate.mockResolvedValue({ id: 'transaction-book' });
     hoisted.mediaSessionCreate.mockResolvedValue({ id: 'transaction-session' });
-    hoisted.consentRecordCreate.mockResolvedValue({
-      id: 'transaction-consent',
-      token: 'transaction-token',
-      status: 'requested',
-    });
-    hoisted.consentEventCreate.mockResolvedValue({ id: 'event-1' });
+    vi.mocked(createVerifiedPermissionRequest).mockResolvedValue({
+      consentRecordId: 'transaction-permission',
+      requestLinkId: null,
+      actionPath: null,
+      actionSecret: null,
+      notificationId: null,
+      state: 'no_digital_channel',
+      recipient: {
+        name: 'Alex',
+        email: null,
+        phone: null,
+        emailHash: null,
+        phoneHash: null,
+        emailMasked: null,
+        phoneMasked: null,
+      },
+      booking: { id: 'transaction-book' },
+      generation: 1,
+    } as any);
     hoisted.bookingFindUnique.mockResolvedValue(
       baseHydratedBooking({ id: 'transaction-book', userId: 'customer-by-email' })
     );
@@ -671,8 +718,8 @@ describe('POST /api/bookings', () => {
     expect(res.status).toBe(200);
     expect(hoisted.transaction).toHaveBeenCalledTimes(1);
     expect(hoisted.bookingCreate).toHaveBeenCalledTimes(1);
-    expect(hoisted.consentRecordCreate).toHaveBeenCalledTimes(1);
-    expect(hoisted.bookingNotificationCreate).toHaveBeenCalledTimes(1);
+    expect(createVerifiedPermissionRequest).toHaveBeenCalledTimes(1);
+    expect(hoisted.consentRecordCreate).not.toHaveBeenCalled();
   });
 
   it('creates an unclaimed booking placeholder when client_email has no existing account', async () => {

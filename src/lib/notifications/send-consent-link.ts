@@ -9,8 +9,7 @@ import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/rel
 export type ConsentLinkDeliveryInput = {
   consentRecordId: string;
   actorUserId: string;
-  token: string;
-  /** Plain path e.g. /consent/abc */
+  /** Ephemeral action path. It must never be persisted or returned by an API. */
   consentPath: string;
   customerEmail?: string | null;
   customerPhone?: string | null;
@@ -79,37 +78,39 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
     timeZone: input.serviceTimeZone,
     fallback: '',
   });
-  const subject = `Review your service video request from ${vendorName}`;
-  const label = formatConsentRequestLabel(input.consentTypeLabel || 'requested consent');
+  const subject = `Recording permission request from ${vendorName}`;
+  const label = formatConsentRequestLabel(input.consentTypeLabel || 'recording permission');
   const html = buildRelianceEmailHtml({
-    eyebrow: 'Video consent request',
-    headline: 'Review service video approval',
+    eyebrow: 'Recording permission request',
+    headline: 'Choose whether Reliance may record this service',
     greeting: `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
     bodyHtml: `
-      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> is asking for your permission to record and share service videos for this appointment through Reliance.</p>
-      <p style="margin:0;">If you approve, the provider can continue the Reliance service-video workflow and you will be able to review the videos afterward.</p>
+      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> is asking for permission to record three short proof-of-service videos in Reliance.</p>
+      <p style="margin:0 0 14px;">Audio is off. Recordings start Private and public sharing would be a separate decision after the recordings exist.</p>
+      <p style="margin:0;">You may allow, decline, or decide later. The service may continue without Reliance recording.</p>
     `,
     details: [
       { label: 'Service', value: serviceName },
       ...(serviceDate ? [{ label: 'Service date', value: serviceDate }] : []),
       { label: 'Request type', value: label },
     ],
-    cta: { label: 'Review Video Consent Request', href: absoluteFallbackLink },
+    cta: { label: 'Review Recording Request', href: absoluteFallbackLink },
     fallbackHref: absoluteFallbackLink,
-    footerNote: 'If you did not expect this request, you can ignore this message.',
+    footerNote: 'If this request is not for you, use the secure link to report the wrong recipient.',
   });
   const text = [
     `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
     '',
-    `${vendorName} is asking for your permission to record and share service videos for this appointment through Reliance.`,
+    `${vendorName} is asking for permission to record three short proof-of-service videos in Reliance.`,
     `Service: ${serviceName}`,
     ...(serviceDate ? [`Service date: ${serviceDate}`] : []),
-    'If you approve, the provider can continue the Reliance service-video workflow and you will be able to review the videos afterward.',
+    'Audio is off. Recordings start Private. Public sharing is a separate later decision.',
+    'You may allow, decline, or decide later. The service may continue without Reliance recording.',
     `Request type: ${label}.`,
     '',
-    `Review video consent request: ${absoluteFallbackLink}`,
+    `Review recording request: ${absoluteFallbackLink}`,
     '',
-    'If you did not expect this request, you can ignore this message.',
+    'If this request is not for you, use the link to report the wrong recipient.',
     '- Reliance Team',
   ].join('\n');
 
@@ -157,7 +158,7 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `Reliance: Video consent request for ${serviceName} with ${vendorName}. Approve or decline here: ${absoluteFallbackLink} Reply STOP to opt out.`;
+    const body = `Reliance: ${vendorName} requests permission to record ${serviceName}. Audio is off; videos start Private. Allow, decline, or report wrong recipient: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

@@ -32,7 +32,7 @@ export async function logNotificationAttempt(
         recipient: redactRecipient(payload.recipient),
         success: payload.success,
         providerMessageId: payload.providerMessageId ?? null,
-        fallbackLink: payload.fallbackLink,
+        fallbackLink: payload.fallbackLink ? '[secure_link_redacted]' : '',
         errorMessage: payload.errorMessage ?? null,
         errorCode: payload.errorCode ?? null,
       },

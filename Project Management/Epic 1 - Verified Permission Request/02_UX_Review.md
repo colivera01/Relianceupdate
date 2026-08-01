@@ -1,88 +1,77 @@
 # Epic 1 UX Review
 
 **Epic:** Verified Permission Request
-**Build / commit reviewed:** TBD
-**Review date:** TBD
-**Status:** Not started
-
-Review the implementation as a first-time user. Working code is not sufficient evidence of good UX.
+**Build reviewed:** Epic 1 working tree at 2026-07-31
+**Status:** Reviewed; ready for Product Owner demo after beta deployment prerequisites
 
 ## Customer
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Why am I here? | TBD | TBD | TBD | TBD |
-| What is happening? | TBD | TBD | TBD | TBD |
-| What do I need to do? | TBD | TBD | TBD | TBD |
-| What happens if I do nothing? | TBD | TBD | TBD | TBD |
-| What happens next? | TBD | TBD | TBD | TBD |
-| What stays private? | TBD | TBD | TBD | TBD |
-| Wording/hierarchy/anxiety/accessibility/recovery | TBD | TBD | TBD | TBD |
+| Question              | Observation                                                                                                   | Severity | Evidence                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------ |
+| Why am I here?        | The title and service/vendor summary explain that the customer controls whether this service may be recorded. | None     | Desktop/mobile education screenshots |
+| What is happening?    | Three stages, audio-off state, and Private starting audience appear before any decision.                      | None     | `02-permission-education.png`        |
+| What do I need to do? | Verification comes first; authority and Allow/Decline appear only after identity verification.                | None     | `04-authority-confirmation.png`      |
+| What if I do nothing? | The request expires and recording remains locked; waiting is not framed as a penalty.                         | Low      | Education screen                     |
+| What happens next?    | Success explains that recording may begin and completed proof starts Private.                                 | None     | `05-recording-allowed.png`           |
+| What stays private?   | Public sharing is repeatedly identified as a separate later decision.                                         | None     | Education/success screens            |
+| Anxiety/recovery      | Decline, later, wrong recipient, expired, and unavailable states are direct and non-accusatory.               | None     | State screenshots                    |
+
+**Honest observation:** The mobile education page is long because it educates before asking. It remains scannable, but a first-time customer must scroll. Product Owner should validate the amount of explanation on a real phone.
 
 ## Vendor
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Current status and next action | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Controls and button placement | TBD | TBD | TBD | TBD |
-| Privacy reassurance and failure recovery | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+- The job card shows canonical permission and delivery state rather than asking a manager to represent the customer.
+- Masked recipients protect contact data while permitting correction.
+- Delivery failure, wrong recipient, and missing channel identify the next recovery action.
+- The vendor cannot see raw action links, OTPs, or decision-session data.
+- Remaining risk: real beta data may make the job card dense; a live first-time vendor walkthrough remains required.
 
 ## Employee
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Assignment and allowed action | TBD | TBD | TBD | TBD |
-| Recording boundaries / blocked reason | TBD | TBD | TBD | TBD |
-| Wording and hierarchy | TBD | TBD | TBD | TBD |
-| Recovery and manager escalation | TBD | TBD | TBD | TBD |
-| Accessibility and mobile behavior | TBD | TBD | TBD | TBD |
+- Recording is visibly locked when delivery, identity, authority, or permission is uncertain.
+- Camera access is withheld rather than failing after capture.
+- Copy explains the missing gate without exposing private recipient/evidence details.
+- Remaining risk: escalation wording needs validation on the assigned employee's real mobile device.
 
 ## Admin
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Evidence available for a fair decision | TBD | TBD | TBD | TBD |
-| Authority and non-override boundaries | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Failure/recovery/audit visibility | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+- Permission Audit is read-only and shows actor/authority, content version, decision, lifecycle, and delivery evidence.
+- It has no override that substitutes an admin decision for the authority holder.
+- Remaining risk: a controlled live record is needed to confirm scanability and provider/timestamp formatting.
 
 ## Cross-Role Consistency
 
-- Status names consistent: TBD
-- Next action consistent: TBD
-- Private/Public meaning consistent: TBD
-- Notifications match dashboards: TBD
-- No role sees broader data than needed: TBD
+- Canonical status is consistent.
+- Permission never implies Public.
+- Audio remains off.
+- Failure locks recording.
+- Notifications and dashboards derive from the same state.
+- Customer receives service context; vendor sees masks/status; employee sees the gate; admin sees authorized evidence.
 
 ## Journey Summaries
 
-### Customer Journey
+### Customer
 
-TBD
+The customer learns why recording is requested and what remains Private, verifies through a matching account or available channel, confirms authority, and chooses Allow, Decline, Decide later, or Wrong recipient. Uncertainty never unlocks recording.
 
-### Vendor Journey
+### Vendor
 
-TBD
+The vendor creates an eligible work record. Reliance creates one request, attempts available channels, and shows masked delivery/status. The vendor can resend or correct contact information but cannot make the customer's decision.
 
-### Employee Journey
+### Employee
 
-TBD
+The assigned employee receives camera access only after a current verified Allow decision. Pending, failed, expired, wrong-recipient, superseded, or unsupported authority remains blocked.
 
-### Admin Journey
+### Admin
 
-TBD
+An authorized admin can inspect durable permission and delivery evidence. Admin cannot change the decision or broaden visibility.
 
 ## Blocking UX Findings
 
-| Finding | Role | Owner | Resolution | Retest |
-|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD |
+No code-level blocking confusion was found in the controlled customer flow. Live vendor, employee, admin, and provider walkthroughs remain Product Owner validation items.
 
 ## UX Verdict
 
-**Result:** Not reviewed
-**Blocking confusion remains:** TBD
-**Ready for Product Owner demo:** No
+**Result:** Controlled flow meets Epic 1 UX intent.
+**Blocking confusion remains:** None in automated screenshot states; live-role validation pending.
+**Ready for Product Owner demo:** Yes, after migrations and controlled provider configuration.

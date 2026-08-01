@@ -44,12 +44,14 @@ type RecordingLocationChoice = "business" | "residence" | "customer-business";
 
 type RecordingComplianceState = {
   location: RecordingLocationChoice | null;
-  consentAccepted: boolean;
-  consentToken: string;
   locationVerified: boolean;
   locationVerifiedAt: string | null;
   serviceOrderReleasedAt: string | null;
   releasedMembershipIds: string[];
+  permissionRequired: boolean;
+  permissionStatus: string;
+  recordingUnlocked: boolean;
+  recipientNeedsCorrection: boolean;
 };
 
 type StageFeedbackState = {
@@ -358,7 +360,7 @@ export default function EmployeeJobsPage() {
         json?.pendingServiceOrder
           ? String(
               json?.message ||
-                "This service order is assigned, but it is not ready for recording yet. Your manager still needs to send the service order or finish any required customer-consent check."
+                "This service order is assigned, but recording is still locked. Your manager must finish any required delivery, identity, authority, and recording-permission checks first."
             )
           : null
       );
@@ -618,8 +620,6 @@ export default function EmployeeJobsPage() {
     try {
       const deviceIdForUpload = pairedDevice?.deviceId || null;
       const recordingLocation = getRecordingLocation(job);
-      const compliance = job.recordingCompliance || null;
-
       const createSessionRes = await fetch(`/api/vendors/${job.vendorId}/media/sessions`, {
         method: "POST",
         headers: employeeRequestHeaders(),
@@ -629,8 +629,6 @@ export default function EmployeeJobsPage() {
           sessionType: "JOB_SERVICE_VIDEO",
           replaceExisting: true,
           locationContext: recordingLocation,
-          consentAccepted: Boolean(compliance?.consentAccepted),
-          consentToken: String(compliance?.consentToken || "").trim(),
           locationProof,
           deviceId: deviceIdForUpload,
           deviceType: pairedDevice?.deviceType || "PHONE",
@@ -1246,7 +1244,13 @@ export default function EmployeeJobsPage() {
     const openedFromAssignmentLink = !historyMode && focusedJobId === job.id;
     const normalizedStatus = String(job.status || "").trim().toUpperCase();
     const correctionRequested = isCorrectionRequested(job);
-    const showUploadControls = !historyMode && (shouldAllowStageUpload(normalizedStatus) || correctionRequested);
+    const permissionBlocked = Boolean(
+      job.recordingCompliance?.permissionRequired && !job.recordingCompliance?.recordingUnlocked
+    );
+    const showUploadControls =
+      !historyMode &&
+      !permissionBlocked &&
+      (shouldAllowStageUpload(normalizedStatus) || correctionRequested);
     const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
     const helperText = historyMode ? null : submitHelperText(job);
     const selectedStageKey =
@@ -1463,6 +1467,19 @@ export default function EmployeeJobsPage() {
             </span>
           ) : null}
         </div>
+
+        {permissionBlocked ? (
+          <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950">
+            <p className="text-sm font-bold">Recording is locked</p>
+            <p className="mt-1 text-sm leading-5">
+              The customer or authorized representative has not completed the required recording
+              permission step. You can still view the service order, but the camera stays unavailable.
+            </p>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
+              Status: {String(job.recordingCompliance?.permissionStatus || "Pending").replaceAll("_", " ")}
+            </p>
+          </div>
+        ) : null}
 
         {historyMode ? (
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-600">

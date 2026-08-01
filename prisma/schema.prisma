@@ -21,74 +21,74 @@ datasource db {
 // Keep enum-like values as strings at the application layer.
 
 model Vendor {
-  id                  String    @id @default(cuid())
-  firstName           String?
-  lastName            String?
-  name                String    // Keep for backward compatibility
-  businessName        String?
-  businessType        String?
-  category            String?
-  foundedYear         Int?
-  email               String?   @unique
-  phone               String?
-  city                String?
-  state               String?
-  address             String?
-  zipCode             String?
-  latitude            Float?
-  longitude           Float?
-  geocodedAt          DateTime?
-  bio                 String?
-  website             String?
-  licenseNumber       String?
-  insuranceStatus     Boolean   @default(false)
-  insuranceProvider   String?
-  insuranceExpiry     DateTime?
-  bondingStatus       Boolean   @default(false)
-  emergencyContact    String?
-  responseTimeSettings String?
-  businessHoursJson   String?   @db.NVarChar(Max)
-  profilePhoto        String?
-  serviceTypes        String?   // Can be comma-separated for now
-  specializations     String?   // Can be comma-separated for now
-  serviceAreas        String?   // Can be comma-separated for now
+  id                      String    @id @default(cuid())
+  firstName               String?
+  lastName                String?
+  name                    String // Keep for backward compatibility
+  businessName            String?
+  businessType            String?
+  category                String?
+  foundedYear             Int?
+  email                   String?   @unique
+  phone                   String?
+  city                    String?
+  state                   String?
+  address                 String?
+  zipCode                 String?
+  latitude                Float?
+  longitude               Float?
+  geocodedAt              DateTime?
+  bio                     String?
+  website                 String?
+  licenseNumber           String?
+  insuranceStatus         Boolean   @default(false)
+  insuranceProvider       String?
+  insuranceExpiry         DateTime?
+  bondingStatus           Boolean   @default(false)
+  emergencyContact        String?
+  responseTimeSettings    String?
+  businessHoursJson       String?   @db.NVarChar(Max)
+  profilePhoto            String?
+  serviceTypes            String? // Can be comma-separated for now
+  specializations         String? // Can be comma-separated for now
+  serviceAreas            String? // Can be comma-separated for now
   // Payments
-  paymentsEnabled     Boolean   @default(false)
+  paymentsEnabled         Boolean   @default(false)
   // Reminders
-  reminders_review    Boolean   @default(true)
-  reminders_invoice   Boolean   @default(false)
-  reminders_maintenance Boolean @default(true)
-  reminders_followUp  Boolean   @default(true)
+  reminders_review        Boolean   @default(true)
+  reminders_invoice       Boolean   @default(false)
+  reminders_maintenance   Boolean   @default(true)
+  reminders_followUp      Boolean   @default(true)
   // Notifications
-  notifications_job   Boolean   @default(true)
-  notifications_review Boolean @default(true)
-  notifications_payout Boolean   @default(false)
-  notifications_support Boolean  @default(true)
-  notifications_marketing Boolean @default(false)
-  notifications_updates Boolean  @default(true)
+  notifications_job       Boolean   @default(true)
+  notifications_review    Boolean   @default(true)
+  notifications_payout    Boolean   @default(false)
+  notifications_support   Boolean   @default(true)
+  notifications_marketing Boolean   @default(false)
+  notifications_updates   Boolean   @default(true)
   // Security Settings
-  twoFactorEnabled    Boolean   @default(false)
-  loginNotifications  Boolean   @default(true)
-  sessionTimeout      Int       @default(30)
-  passwordExpiry      Int?      // Optional for now
-  failedLoginLockout  Int?      // Optional for now
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  demo                Boolean   @default(false)
-  seedBatchId         String?
-  
+  twoFactorEnabled        Boolean   @default(false)
+  loginNotifications      Boolean   @default(true)
+  sessionTimeout          Int       @default(30)
+  passwordExpiry          Int? // Optional for now
+  failedLoginLockout      Int? // Optional for now
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  demo                    Boolean   @default(false)
+  seedBatchId             String?
+
   // Storage plan & limits
-  planKey             String    @default("FREE") // "FREE" | "STARTER" | "PRO"
-  storageLimitBytes   BigInt    @default(1073741824) // 1GB default for FREE
-  isOverLimit         Boolean   @default(false)
-  overLimitSince      DateTime?
-  isPubliclyListed    Boolean   @default(false)
-  publiclyListedAt    DateTime?
-  accountStatus       String    @default("active")
-  accountStatusUpdatedAt DateTime?
-  accountStatusReason String?
-  accountStatusAdminNotes String? @db.NVarChar(Max)
-  
+  planKey                 String    @default("FREE") // "FREE" | "STARTER" | "PRO"
+  storageLimitBytes       BigInt    @default(1073741824) // 1GB default for FREE
+  isOverLimit             Boolean   @default(false)
+  overLimitSince          DateTime?
+  isPubliclyListed        Boolean   @default(false)
+  publiclyListedAt        DateTime?
+  accountStatus           String    @default("active")
+  accountStatusUpdatedAt  DateTime?
+  accountStatusReason     String?
+  accountStatusAdminNotes String?   @db.NVarChar(Max)
+
   // Relations
   employees           Employee[]
   services            Service[]
@@ -104,7 +104,7 @@ model Vendor {
   reviewWindows       ReviewWindow[]
   consentRecords      ConsentRecord[]
   storageAlerts       VendorStorageAlert[]
-  adminNotifications AdminNotification[]
+  adminNotifications  AdminNotification[]
   promotionCampaigns  PromotionCampaign[]
   serviceIssues       BookingServiceIssue[]
   operationalOutcomes VendorOperationalOutcome[]
@@ -114,82 +114,82 @@ model Vendor {
 }
 
 model Employee {
-  id          String      @id @default(cuid())
+  id          String   @id @default(cuid())
   vendorId    String
   name        String
   email       String
-  role        String  // "MANAGER" | "TECHNICIAN"
+  role        String // "MANAGER" | "TECHNICIAN"
   photoUrl    String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  demo        Boolean     @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  demo        Boolean  @default(false)
   seedBatchId String?
-  
+
   // Relations
-  vendor      Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor        Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   mediaSessions MediaSession[]
 
   @@map("employees")
 }
 
 model Service {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   vendorId    String
   name        String
   description String?
   price       Float
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  demo        Boolean  @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  demo        Boolean   @default(false)
   seedBatchId String?
-  isPublished Boolean  @default(false)
+  isPublished Boolean   @default(false)
   publishedAt DateTime?
-  
+
   // Relations
-  vendor      Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  bookings    Booking[]
-  mediaSessions MediaSession[]
-  favorites   Favorite[]
+  vendor             Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  bookings           Booking[]
+  mediaSessions      MediaSession[]
+  favorites          Favorite[]
   promotionCampaigns PromotionCampaign[]
 
   @@map("services")
 }
 
 model PromotionCampaign {
-  id               String   @id @default(cuid())
-  vendorId         String
-  serviceId        String?
-  name             String
-  packageKey       String   @default("browse-local-7-day")
-  packageSnapshotJson String? @db.NVarChar(Max)
-  packageSnapshotAt DateTime?
-  placementType    String   @default("BROWSE_FEATURED")
-  status           String   @default("draft")
-  paymentStatus    String   @default("not_started")
-  startAt          DateTime
-  endAt            DateTime
-  targetCategory   String?
-  targetCity       String?
-  targetState      String?
-  targetZip        String?
-  targetRadiusMiles Int     @default(10)
-  rankPriority     Int      @default(100)
-  adminNotes       String?  @db.NVarChar(Max)
-  amountDueCents   Int      @default(0)
-  stripePaymentLinkUrl String? @db.NVarChar(2048)
-  paymentReference String?
-  paidAt           DateTime?
-  paymentNotes     String?  @db.NVarChar(Max)
-  createdByUserId  String?
-  approvedByUserId String?
-  approvedAt       DateTime?
-  pausedAt         DateTime?
-  endedAt          DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                   String    @id @default(cuid())
+  vendorId             String
+  serviceId            String?
+  name                 String
+  packageKey           String    @default("browse-local-7-day")
+  packageSnapshotJson  String?   @db.NVarChar(Max)
+  packageSnapshotAt    DateTime?
+  placementType        String    @default("BROWSE_FEATURED")
+  status               String    @default("draft")
+  paymentStatus        String    @default("not_started")
+  startAt              DateTime
+  endAt                DateTime
+  targetCategory       String?
+  targetCity           String?
+  targetState          String?
+  targetZip            String?
+  targetRadiusMiles    Int       @default(10)
+  rankPriority         Int       @default(100)
+  adminNotes           String?   @db.NVarChar(Max)
+  amountDueCents       Int       @default(0)
+  stripePaymentLinkUrl String?   @db.NVarChar(2048)
+  paymentReference     String?
+  paidAt               DateTime?
+  paymentNotes         String?   @db.NVarChar(Max)
+  createdByUserId      String?
+  approvedByUserId     String?
+  approvedAt           DateTime?
+  pausedAt             DateTime?
+  endedAt              DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  vendor           Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  service          Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  vendor  Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([status, placementType, startAt, endAt])
   @@index([vendorId, status])
@@ -202,294 +202,325 @@ model PromotionCampaign {
 }
 
 model PromotionPackage {
-  id                    String   @id @default(cuid())
-  packageKey            String   @unique
-  name                  String
-  publicSummary         String   @db.NVarChar(1000)
-  adminDescription      String   @db.NVarChar(Max)
-  bestFor               String   @db.NVarChar(1000)
-  placementExplanation  String   @db.NVarChar(1000)
-  audience              String   @db.NVarChar(1000)
-  placementType         String
-  durationDays          Int
-  defaultRadiusMiles    Int
-  maxRadiusMiles        Int
-  allowCategoryTargeting Boolean @default(false)
-  maxConcurrentInZone   Int
-  defaultPriceCents     Int
-  isActive              Boolean @default(true)
-  isFoundingRate        Boolean @default(false)
-  pricingLabel          String?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  packageKey             String   @unique
+  name                   String
+  publicSummary          String   @db.NVarChar(1000)
+  adminDescription       String   @db.NVarChar(Max)
+  bestFor                String   @db.NVarChar(1000)
+  placementExplanation   String   @db.NVarChar(1000)
+  audience               String   @db.NVarChar(1000)
+  placementType          String
+  durationDays           Int
+  defaultRadiusMiles     Int
+  maxRadiusMiles         Int
+  allowCategoryTargeting Boolean  @default(false)
+  maxConcurrentInZone    Int
+  defaultPriceCents      Int
+  isActive               Boolean  @default(true)
+  isFoundingRate         Boolean  @default(false)
+  pricingLabel           String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([isActive, placementType])
   @@map("promotion_packages")
 }
 
 model User {
-  id          String   @id @default(cuid())
-  name        String?
-  email       String?  @unique
-  phone       String?  @unique
-  profilePhoto String?
-  address     String?
-  city        String?
-  state       String?
-  zipCode     String?
-  latitude    Float?
-  longitude   Float?
-  geocodedAt  DateTime?
-  locationPreferenceEnabled Boolean @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  demo        Boolean  @default(false)
-  seedBatchId String?
-  accountStatus String   @default("active")
-  accountStatusUpdatedAt DateTime?
-  accountStatusReason String?
-  accountStatusAdminNotes String? @db.NVarChar(Max)
-  
+  id                        String    @id @default(cuid())
+  name                      String?
+  email                     String?   @unique
+  phone                     String?   @unique
+  profilePhoto              String?
+  address                   String?
+  city                      String?
+  state                     String?
+  zipCode                   String?
+  latitude                  Float?
+  longitude                 Float?
+  geocodedAt                DateTime?
+  locationPreferenceEnabled Boolean   @default(false)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  demo                      Boolean   @default(false)
+  seedBatchId               String?
+  accountStatus             String    @default("active")
+  accountStatusUpdatedAt    DateTime?
+  accountStatusReason       String?
+  accountStatusAdminNotes   String?   @db.NVarChar(Max)
+
   // Relations
-  authCredential   AuthCredential?
-  bookings         Booking[]
-  reviews          Review[]
-  memberships      VendorMembership[]
-  invitesCreated   VendorInvite[] @relation("InvitesCreated")
-  mediaSessions    MediaSession[]
-  favorites        Favorite[]
+  authCredential AuthCredential?
+  bookings       Booking[]
+  reviews        Review[]
+  memberships    VendorMembership[]
+  invitesCreated VendorInvite[]     @relation("InvitesCreated")
+  mediaSessions  MediaSession[]
+  favorites      Favorite[]
 
   @@map("users")
 }
 
 model AuthCredential {
-    id                String   @id @default(cuid())
-    userId            String   @unique
-    email             String   @unique
-    passwordHash      String
-    emailVerifiedAt   DateTime?
-    passwordUpdatedAt DateTime @default(now())
-    createdAt         DateTime @default(now())
-    updatedAt         DateTime @updatedAt
-  
-    user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    emailVerificationTokens EmailVerificationToken[]
-    mfaChallenges        AuthMfaChallenge[]
-    trustedDevices       AuthTrustedDevice[]
-    passkeys             AuthPasskey[]
-    passkeyChallenges    AuthPasskeyChallenge[]
-  
-    @@index([email])
-    @@map("auth_credentials")
-  }
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  email             String    @unique
+  passwordHash      String
+  emailVerifiedAt   DateTime?
+  passwordUpdatedAt DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailVerificationTokens EmailVerificationToken[]
+  mfaChallenges           AuthMfaChallenge[]
+  trustedDevices          AuthTrustedDevice[]
+  passkeys                AuthPasskey[]
+  passkeyChallenges       AuthPasskeyChallenge[]
+
+  @@index([email])
+  @@map("auth_credentials")
+}
 
 model AuthPasskey {
-    id                   String   @id @default(cuid())
-    credentialId         String   @unique
-    credentialPublicKey  String
-    webauthnUserId       String
-    counter              Int      @default(0)
-    transportsJson       String?
-    deviceType           String
-    backedUp             Boolean  @default(false)
-    label                String?
-    lastUsedAt           DateTime?
-    revokedAt            DateTime?
-    createdAt            DateTime @default(now())
-    updatedAt            DateTime @updatedAt
-    authCredentialId     String
+  id                  String    @id @default(cuid())
+  credentialId        String    @unique
+  credentialPublicKey String
+  webauthnUserId      String
+  counter             Int       @default(0)
+  transportsJson      String?
+  deviceType          String
+  backedUp            Boolean   @default(false)
+  label               String?
+  lastUsedAt          DateTime?
+  revokedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  authCredentialId    String
 
-    credential           AuthCredential @relation(fields: [authCredentialId], references: [id], onDelete: Cascade)
+  credential AuthCredential @relation(fields: [authCredentialId], references: [id], onDelete: Cascade)
 
-    @@index([authCredentialId, revokedAt, createdAt])
-    @@map("auth_passkeys")
+  @@index([authCredentialId, revokedAt, createdAt])
+  @@map("auth_passkeys")
 }
 
 model AuthPasskeyChallenge {
-    id               String   @id @default(cuid())
-    authCredentialId String
-    challenge        String
-    purpose          String
-    expiresAt        DateTime
-    consumedAt       DateTime?
-    createdAt        DateTime @default(now())
+  id               String    @id @default(cuid())
+  authCredentialId String
+  challenge        String
+  purpose          String
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  createdAt        DateTime  @default(now())
 
-    credential       AuthCredential @relation(fields: [authCredentialId], references: [id], onDelete: Cascade)
+  credential AuthCredential @relation(fields: [authCredentialId], references: [id], onDelete: Cascade)
 
-    @@index([authCredentialId, purpose, consumedAt, expiresAt])
-    @@map("auth_passkey_challenges")
+  @@index([authCredentialId, purpose, consumedAt, expiresAt])
+  @@map("auth_passkey_challenges")
 }
 
 model EmailVerificationToken {
-    id            String   @id @default(cuid())
-    credentialId  String
-    email         String
-    tokenHash     String   @unique
-    expiresAt     DateTime
-    consumedAt    DateTime?
-    createdAt     DateTime @default(now())
+  id           String    @id @default(cuid())
+  credentialId String
+  email        String
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
 
-    credential    AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  credential AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
 
-    @@index([credentialId, email, consumedAt])
-    @@index([email, expiresAt])
-    @@map("email_verification_tokens")
+  @@index([credentialId, email, consumedAt])
+  @@index([email, expiresAt])
+  @@map("email_verification_tokens")
 }
 
 model AuthMfaChallenge {
-    id            String   @id @default(cuid())
-    credentialId  String
-    userId        String
-    email         String
-    codeHash      String
-    purpose       String
-    expiresAt     DateTime
-    consumedAt    DateTime?
-    createdAt     DateTime @default(now())
+  id           String    @id @default(cuid())
+  credentialId String
+  userId       String
+  email        String
+  codeHash     String
+  purpose      String
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
 
-    credential    AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  credential AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
 
-    @@index([userId, purpose, consumedAt])
-    @@index([credentialId, purpose, expiresAt])
-    @@map("auth_mfa_challenges")
+  @@index([userId, purpose, consumedAt])
+  @@index([credentialId, purpose, expiresAt])
+  @@map("auth_mfa_challenges")
 }
 
 model AuthTrustedDevice {
-    id            String   @id @default(cuid())
-    credentialId  String
-    userId        String
-    tokenHash     String   @unique
-    label         String?
-    expiresAt     DateTime
-    revokedAt     DateTime?
-    lastUsedAt    DateTime?
-    createdAt     DateTime @default(now())
+  id           String    @id @default(cuid())
+  credentialId String
+  userId       String
+  tokenHash    String    @unique
+  label        String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
 
-    credential    AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  credential AuthCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
 
-    @@index([userId, revokedAt, expiresAt])
-    @@index([credentialId, expiresAt])
-    @@map("auth_trusted_devices")
+  @@index([userId, revokedAt, expiresAt])
+  @@index([credentialId, expiresAt])
+  @@map("auth_trusted_devices")
 }
 
 model Booking {
-  id           String        @id @default(cuid())
-  userId       String
-  serviceId    String
-  vendorId     String
-  title        String?       // Job/service title
-  clientName   String?       // Client name (or use user relation)
-  amount       Decimal?      // Booking amount (DECIMAL in SQL for precision)
-  status       String @default("PENDING")  // "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELED"
-  scheduledFor DateTime?
-  date         DateTime?    // Job completion or scheduled date
-  rejectionReason String?
-  rejectedAt   DateTime?
-  rejectedBy   String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  demo         Boolean       @default(false)
-  seedBatchId  String?
-  /** JSON string (snake_case keys). SQL Server provider has no Prisma `Json` type — use `String` + app parse/stringify. */
-  customerMetadata String? @db.NVarChar(Max)
+  id                 String    @id @default(cuid())
+  userId             String
+  serviceId          String
+  vendorId           String
+  title              String? // Job/service title
+  clientName         String? // Client name (or use user relation)
+  amount             Decimal? // Booking amount (DECIMAL in SQL for precision)
+  status             String    @default("PENDING") // "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELED"
+  scheduledFor       DateTime?
+  date               DateTime? // Job completion or scheduled date
+  rejectionReason    String?
+  rejectedAt         DateTime?
+  rejectedBy         String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  demo               Boolean   @default(false)
+  seedBatchId        String?
+  /**
+   * JSON string (snake_case keys). SQL Server provider has no Prisma `Json` type — use `String` + app parse/stringify.
+   */
+  customerMetadata   String?   @db.NVarChar(Max)
   creationRequestKey String?
 
   // Relations
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  vendor       Vendor        @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaSessions MediaSession[]
-  reviewWindows ReviewWindow[]
-  consentRecords ConsentRecord[]
-  reviews      Review[]
-  serviceIssues BookingServiceIssue[]
+  user                User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service             Service                    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  vendor              Vendor                     @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSessions       MediaSession[]
+  reviewWindows       ReviewWindow[]
+  consentRecords      ConsentRecord[]
+  reviews             Review[]
+  serviceIssues       BookingServiceIssue[]
   operationalOutcomes VendorOperationalOutcome[]
-  notifications BookingNotification[]
+  notifications       BookingNotification[]
 
   @@map("bookings")
 }
 
 model BookingNotification {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   bookingId       String
   consentRecordId String?
   kind            String
-  status          String   @default("QUEUED")
-  attemptCount    Int      @default(0)
-  channelsJson    String?  @db.NVarChar(Max)
-  lastError       String?  @db.NVarChar(Max)
+  status          String    @default("QUEUED")
+  attemptCount    Int       @default(0)
+  channelsJson    String?   @db.NVarChar(Max)
+  lastError       String?   @db.NVarChar(Max)
   lastAttemptAt   DateTime?
   sentAt          DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  nextAttemptAt   DateTime?
+  leaseExpiresAt  DateTime?
+  deadLetteredAt  DateTime?
+  maxAttempts     Int       @default(4)
+  idempotencyKey  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking  Booking                      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  attempts BookingNotificationAttempt[]
 
   @@unique([bookingId, kind])
   @@index([status, lastAttemptAt])
   @@index([consentRecordId])
+  @@index([status, nextAttemptAt])
+  @@index([idempotencyKey])
   @@map("booking_notifications")
 }
 
+model BookingNotificationAttempt {
+  id                String   @id @default(cuid())
+  notificationId    String
+  consentRecordId   String?
+  channel           String
+  destinationMasked String?
+  status            String
+  attemptNumber     Int
+  providerMessageId String?
+  errorCode         String?
+  errorMessage      String?  @db.NVarChar(Max)
+  attemptedAt       DateTime @default(now())
+
+  notification BookingNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel, attemptNumber])
+  @@index([consentRecordId, attemptedAt])
+  @@index([status, attemptedAt])
+  @@map("booking_notification_attempts")
+}
+
 model Review {
-  id          String   @id @default(cuid())
-  userId      String
-  vendorId    String
-  bookingId   String?
-  mediaSessionId String?
+  id                   String    @id @default(cuid())
+  userId               String
+  vendorId             String
+  bookingId            String?
+  mediaSessionId       String?
   assignedMembershipId String?
   assignedEmployeeName String?
-  assignedUserId String?
-  attributionVersion Int @default(1)
-  clientName  String?  // Client name (or use user relation)
-  jobType     String?  // Type of job/service reviewed
-  rating      Int
-  comment     String?
-  source      String   @default("customer")
-  submittedVia String  @default("manual")
-  moderationStatus String @default("approved")
-  visibilityStatus String @default("private")
-  moderationReason String?
-  moderatedAt DateTime?
-  moderatedByUserId String?
-  date        DateTime? // Review date (defaults to createdAt if not set)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  demo        Boolean  @default(false)
-  seedBatchId String?
-  
+  assignedUserId       String?
+  attributionVersion   Int       @default(1)
+  clientName           String? // Client name (or use user relation)
+  jobType              String? // Type of job/service reviewed
+  rating               Int
+  comment              String?
+  source               String    @default("customer")
+  submittedVia         String    @default("manual")
+  moderationStatus     String    @default("approved")
+  visibilityStatus     String    @default("private")
+  moderationReason     String?
+  moderatedAt          DateTime?
+  moderatedByUserId    String?
+  date                 DateTime? // Review date (defaults to createdAt if not set)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  demo                 Boolean   @default(false)
+  seedBatchId          String?
+
   // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  booking     Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  user         User          @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor       Vendor        @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking      Booking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   mediaSession MediaSession? @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   reviewWindow ReviewWindow?
 
-  @@map("reviews")
   @@index([bookingId])
   @@index([vendorId, assignedMembershipId])
   @@index([vendorId, moderationStatus])
   @@index([assignedMembershipId, moderationStatus])
+  @@map("reviews")
 }
 
 model Device {
-  id            String     @id @default(cuid())
-  vendorId      String
+  id              String    @id @default(cuid())
+  vendorId        String
   // Canonical device identity; nullable during legacy row transition.
-  deviceUid     String?    @unique
+  deviceUid       String?   @unique
   // Legacy fallback field used by older pairing MVP rows.
-  employeeId    String?
-  deviceName    String
-  deviceType    String     // "PHONE" | "HEADSET"
-  pairedAt      DateTime  @default(now())
-  lastSeenAt    DateTime?
-  isActive      Boolean   @default(true)
+  employeeId      String?
+  deviceName      String
+  deviceType      String // "PHONE" | "HEADSET"
+  pairedAt        DateTime  @default(now())
+  lastSeenAt      DateTime?
+  isActive        Boolean   @default(true)
   firmwareVersion String?
-  model         String?
-  os            String?
-  appVersion    String?
+  model           String?
+  os              String?
+  appVersion      String?
 
-  vendor        Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor        Vendor             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   assignments   DeviceAssignment[]
   mediaSessions MediaSession[]
   deviceEvents  DeviceEvent[]
@@ -499,24 +530,24 @@ model Device {
 }
 
 model DeviceEvent {
-  id             String   @id @default(cuid())
-  eventId        String   @unique
-  eventType      String
-  occurredAt     DateTime
-  receivedAt     DateTime @default(now())
-  deviceId       String
-  vendorId       String
-  membershipId   String?
-  bookingId      String?
-  mediaSessionId String?
-  assetId        String?
-  stage          String?
-  payloadJson    String?
-  contextJson    String?
+  id              String   @id @default(cuid())
+  eventId         String   @unique
+  eventType       String
+  occurredAt      DateTime
+  receivedAt      DateTime @default(now())
+  deviceId        String
+  vendorId        String
+  membershipId    String?
+  bookingId       String?
+  mediaSessionId  String?
+  assetId         String?
+  stage           String?
+  payloadJson     String?
+  contextJson     String?
   firmwareVersion String?
   phoneAppVersion String?
 
-  device         Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@index([deviceId, occurredAt])
   @@index([vendorId, occurredAt])
@@ -526,14 +557,14 @@ model DeviceEvent {
 }
 
 model DevicePairingCode {
-  id         String   @id @default(cuid())
-  vendorId   String
-  code       String   @unique
-  expiresAt  DateTime
-  used       Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  vendorId  String
+  code      String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 
-  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@map("device_pairing_codes")
 }
@@ -541,20 +572,20 @@ model DevicePairingCode {
 // MembershipRole: "MANAGER" | "EMPLOYEE"
 // MembershipStatus: "PENDING" | "ACTIVE" | "DENIED" | "REVOKED"
 model VendorMembership {
-  id              String           @id @default(cuid())
-  vendorId        String
-  userId          String
-  role            String   @default("EMPLOYEE") // "MANAGER" | "EMPLOYEE"
-  status          String   @default("PENDING")  // "PENDING" | "ACTIVE" | "DENIED" | "REVOKED"
+  id       String @id @default(cuid())
+  vendorId String
+  userId   String
+  role     String @default("EMPLOYEE") // "MANAGER" | "EMPLOYEE"
+  status   String @default("PENDING") // "PENDING" | "ACTIVE" | "DENIED" | "REVOKED"
 
-  badgeId         String?
-  requestedAt     DateTime @default(now())
-  approvedAt      DateTime?
+  badgeId          String?
+  requestedAt      DateTime  @default(now())
+  approvedAt       DateTime?
   approvedByUserId String?
-  deniedAt        DateTime?
-  deniedByUserId  String?
-  revokedAt       DateTime?
-  revokedByUserId String?
+  deniedAt         DateTime?
+  deniedByUserId   String?
+  revokedAt        DateTime?
+  revokedByUserId  String?
 
   // Store phone fingerprint/meta at request time (so manager can see it before approval)
   pendingPhoneDeviceUid String?
@@ -562,8 +593,8 @@ model VendorMembership {
   pendingDeviceOs       String?
   pendingAppVersion     String?
 
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vendor      Vendor             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments DeviceAssignment[]
 
   @@unique([vendorId, userId])
@@ -572,39 +603,39 @@ model VendorMembership {
 }
 
 model VendorInvite {
-  id            String   @id @default(cuid())
-  vendorId      String
-  code          String   @unique
-  token         String   @unique
+  id              String   @id @default(cuid())
+  vendorId        String
+  code            String   @unique
+  token           String   @unique
   createdByUserId String
-  expiresAt     DateTime
-  maxUses       Int?
-  usesCount     Int      @default(0)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  inviteeName    String?
-  inviteeEmail   String?
-  inviteePhone   String?
-  inviteeRole    String?
+  expiresAt       DateTime
+  maxUses         Int?
+  usesCount       Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  inviteeName     String?
+  inviteeEmail    String?
+  inviteePhone    String?
+  inviteeRole     String?
 
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  createdBy User @relation("InvitesCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  vendor    Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("InvitesCreated", fields: [createdByUserId], references: [id], onDelete: Cascade)
 
   @@index([vendorId, isActive])
   @@map("vendor_invites")
 }
 
 model DeviceAssignment {
-  id            String   @id @default(cuid())
-  vendorId      String
-  deviceId      String   // should refer to a HEADSET device
-  membershipId  String
-  assignedAt    DateTime @default(now())
-  unassignedAt DateTime?
+  id               String    @id @default(cuid())
+  vendorId         String
+  deviceId         String // should refer to a HEADSET device
+  membershipId     String
+  assignedAt       DateTime  @default(now())
+  unassignedAt     DateTime?
   assignedByUserId String
 
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  device Device @relation(fields: [deviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor     Vendor           @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  device     Device           @relation(fields: [deviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   membership VendorMembership @relation(fields: [membershipId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([vendorId])
@@ -613,27 +644,27 @@ model DeviceAssignment {
 }
 
 model MediaAsset {
-  id           String    @id @default(cuid())
-  vendorId     String    // Required: profile owner
-  mediaSessionId String?
-  membershipId String?   // Who captured/uploaded
+  id                     String    @id @default(cuid())
+  vendorId               String // Required: profile owner
+  mediaSessionId         String?
+  membershipId           String? // Who captured/uploaded
   uploadedByMembershipId String?
-  deviceId     String?   // Which headset/phone
-  bytes        BigInt    // File size in bytes
-  mimeType     String    // MIME type (e.g., "image/jpeg", "video/mp4")
-  blobKey      String    // Blob storage key (e.g., "vendor/{vendorId}/media/{assetId}.{ext}")
-  blobUrl      String?   // Full URL to blob (optional, can be generated from blobKey)
-  moderationStatus String @default("pending_review")
-  visibilityStatus String @default("private")
-  archiveStatus String @default("active")
-  moderationReason String?
-  moderatedAt DateTime?
-  moderatedByUserId String?
-  deletedAt    DateTime? // Soft delete timestamp
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  deviceId               String? // Which headset/phone
+  bytes                  BigInt // File size in bytes
+  mimeType               String // MIME type (e.g., "image/jpeg", "video/mp4")
+  blobKey                String // Blob storage key (e.g., "vendor/{vendorId}/media/{assetId}.{ext}")
+  blobUrl                String? // Full URL to blob (optional, can be generated from blobKey)
+  moderationStatus       String    @default("pending_review")
+  visibilityStatus       String    @default("private")
+  archiveStatus          String    @default("active")
+  moderationReason       String?
+  moderatedAt            DateTime?
+  moderatedByUserId      String?
+  deletedAt              DateTime? // Soft delete timestamp
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor       Vendor        @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   mediaSession MediaSession? @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([vendorId, deletedAt])
@@ -644,35 +675,37 @@ model MediaAsset {
 }
 
 model MediaSession {
-  id          String     @id @default(cuid())
-  vendorId    String
-  userId      String?
-  employeeId  String?
-  bookingId   String?
-  serviceId   String?
-  deviceId    String?
-  deviceType  String?    // "PHONE" | "HEADSET"
-  sessionType String     @default("SERVICE_RECORD")
-  /** Vendor job service video stage: INTRO | IN_PROGRESS | COMPLETED (null = legacy / non-staged) */
+  id                  String    @id @default(cuid())
+  vendorId            String
+  userId              String?
+  employeeId          String?
+  bookingId           String?
+  serviceId           String?
+  deviceId            String?
+  deviceType          String? // "PHONE" | "HEADSET"
+  sessionType         String    @default("SERVICE_RECORD")
+  /**
+   * Vendor job service video stage: INTRO | IN_PROGRESS | COMPLETED (null = legacy / non-staged)
+   */
   vendorJobVideoStage String?
-  status      String     @default("CREATED")
-  title       String?
-  description String?
-  startedAt   DateTime   @default(now())
-  endedAt     DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  status              String    @default("CREATED")
+  title               String?
+  description         String?
+  startedAt           DateTime  @default(now())
+  endedAt             DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  vendor      Vendor     @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user        User?      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  employee    Employee?  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  booking     Booking?   @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  service     Service?   @relation(fields: [serviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  device      Device?    @relation(fields: [deviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaAssets MediaAsset[]
-  reviewWindows ReviewWindow[]
+  vendor         Vendor          @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user           User?           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee       Employee?       @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking        Booking?        @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  service        Service?        @relation(fields: [serviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  device         Device?         @relation(fields: [deviceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaAssets    MediaAsset[]
+  reviewWindows  ReviewWindow[]
   consentRecords ConsentRecord[]
-  reviews     Review[]
+  reviews        Review[]
 
   @@index([vendorId, createdAt])
   @@index([vendorId, status])
@@ -684,8 +717,8 @@ model MediaSession {
 
 model VendorStorageAlert {
   id        String   @id @default(cuid())
-  vendorId String
-  threshold Int      // 80, 95, or 100
+  vendorId  String
+  threshold Int // 80, 95, or 100
   sentAt    DateTime @default(now())
 
   vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -697,11 +730,11 @@ model VendorStorageAlert {
 
 model AdminNotification {
   id        String   @id @default(cuid())
-  vendorId String?
-  type      String   // "STORAGE_ALERT" | "STORAGE_LIMIT_REACHED" | etc.
+  vendorId  String?
+  type      String // "STORAGE_ALERT" | "STORAGE_LIMIT_REACHED" | etc.
   title     String
   message   String
-  metadata  String?  // JSON string for additional data
+  metadata  String? // JSON string for additional data
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
@@ -713,27 +746,27 @@ model AdminNotification {
 }
 
 model ContentReport {
-  id               String    @id @default(cuid())
-  targetType       String
-  targetId         String
-  bookingId        String?
-  vendorId         String?
-  reportedUserId   String?
-  reportedVendorId String?
-  reporterUserId   String?
-  reporterVendorId String?
-  reporterRole     String
-  reasonCategory   String
-  reasonDetail     String?   @db.NVarChar(Max)
-  status           String    @default("open")
-  severity         String    @default("medium")
-  autoHidden       Boolean   @default(false)
-  adminOwnerUserId String?
+  id                 String    @id @default(cuid())
+  targetType         String
+  targetId           String
+  bookingId          String?
+  vendorId           String?
+  reportedUserId     String?
+  reportedVendorId   String?
+  reporterUserId     String?
+  reporterVendorId   String?
+  reporterRole       String
+  reasonCategory     String
+  reasonDetail       String?   @db.NVarChar(Max)
+  status             String    @default("open")
+  severity           String    @default("medium")
+  autoHidden         Boolean   @default(false)
+  adminOwnerUserId   String?
   notificationSentAt DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  resolvedAt       DateTime?
-  resolutionNotes  String?   @db.NVarChar(Max)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  resolvedAt         DateTime?
+  resolutionNotes    String?   @db.NVarChar(Max)
 
   @@index([targetType, targetId])
   @@index([status, createdAt])
@@ -744,11 +777,11 @@ model ContentReport {
 }
 
 model BookingServiceIssue {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   bookingId         String
   vendorId          String
   issueType         String
-  status            String   @default("PENDING")
+  status            String    @default("PENDING")
   sourceEntityType  String?
   sourceEntityId    String?
   reportedByUserId  String?
@@ -757,13 +790,13 @@ model BookingServiceIssue {
   refundApprovedAt  DateTime?
   finalizedAt       DateTime?
   finalizedByUserId String?
-  resolutionNotes   String?  @db.NVarChar(Max)
-  metadata          String?  @db.NVarChar(Max)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  resolutionNotes   String?   @db.NVarChar(Max)
+  metadata          String?   @db.NVarChar(Max)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  booking           Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  vendor            Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor  Vendor  @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([bookingId, status])
   @@index([vendorId, status, finalizedAt])
@@ -786,8 +819,8 @@ model VendorOperationalOutcome {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  vendor            Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  booking           Booking? @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor  Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([vendorId, outcomeType, finalizedAt])
   @@index([bookingId, outcomeType])
@@ -799,36 +832,36 @@ model VendorOperationalOutcome {
 // Separate from `Review` (Customer Rating). `visibilityStatus` defaults to "internal"
 // so no public/vendor surface reads these rows until a later UI phase opts in.
 model VendorTrustScoreSnapshot {
-  id                                String   @id @default(cuid())
+  id                                String    @id @default(cuid())
   vendorId                          String
-  scoreVersion                      Int      @default(1)
+  scoreVersion                      Int       @default(1)
   // Null pct = metric/total not yet measurable (no finalized denominator).
   totalScorePct                     Float?
   workflowCompletionPct             Float?
   videoVerificationPct              Float?
   disputeFreePct                    Float?
   operationalReliabilityPct         Float?
-  workflowCompletionNumerator       Int      @default(0)
-  workflowCompletionDenominator     Int      @default(0)
-  videoVerificationNumerator        Int      @default(0)
-  videoVerificationDenominator      Int      @default(0)
-  disputeFreeNumerator              Int      @default(0)
-  disputeFreeDenominator            Int      @default(0)
-  operationalReliabilityNumerator   Int      @default(0)
-  operationalReliabilityDenominator Int      @default(0)
-  computedAt                        DateTime @default(now())
+  workflowCompletionNumerator       Int       @default(0)
+  workflowCompletionDenominator     Int       @default(0)
+  videoVerificationNumerator        Int       @default(0)
+  videoVerificationDenominator      Int       @default(0)
+  disputeFreeNumerator              Int       @default(0)
+  disputeFreeDenominator            Int       @default(0)
+  operationalReliabilityNumerator   Int       @default(0)
+  operationalReliabilityDenominator Int       @default(0)
+  computedAt                        DateTime  @default(now())
   periodStart                       DateTime?
   periodEnd                         DateTime?
   inputHash                         String?
-  isCurrent                         Boolean  @default(true)
-  visibilityStatus                  String   @default("internal")
+  isCurrent                         Boolean   @default(true)
+  visibilityStatus                  String    @default("internal")
   recalcReason                      String?
   recalcSource                      String?
-  detailJson                        String?  @db.NVarChar(Max)
-  createdAt                         DateTime @default(now())
-  updatedAt                         DateTime @updatedAt
+  detailJson                        String?   @db.NVarChar(Max)
+  createdAt                         DateTime  @default(now())
+  updatedAt                         DateTime  @updatedAt
 
-  vendor                            Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([vendorId, isCurrent])
   @@index([vendorId, computedAt])
@@ -837,15 +870,15 @@ model VendorTrustScoreSnapshot {
 }
 
 model AdminAuditLog {
-  id           String   @id @default(cuid())
-  actionType   String
-  entityType   String
-  entityId     String
-  actorUserId  String
+  id            String   @id @default(cuid())
+  actionType    String
+  entityType    String
+  entityId      String
+  actorUserId   String
   previousValue String?
-  newValue     String?
-  metadata     String?
-  createdAt    DateTime @default(now())
+  newValue      String?
+  metadata      String?
+  createdAt     DateTime @default(now())
 
   @@index([entityType, entityId, createdAt])
   @@index([actorUserId, createdAt])
@@ -860,8 +893,8 @@ model Favorite {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, serviceId])
   @@index([userId, createdAt])
@@ -870,24 +903,24 @@ model Favorite {
 }
 
 model ReviewWindow {
-  id            String   @id @default(cuid())
+  id             String    @id @default(cuid())
   bookingId      String
   vendorId       String
   mediaSessionId String
-  reviewId       String?  @unique
-  status         String   @default("active")
-  openedAt       DateTime @default(now())
+  reviewId       String?   @unique
+  status         String    @default("active")
+  openedAt       DateTime  @default(now())
   expiresAt      DateTime // Deprecated compatibility field; not used to govern review eligibility.
   closedAt       DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  vendor         Vendor   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaSession   MediaSession @relation(fields: [mediaSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  review         Review?  @relation(fields: [reviewId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  promptEvents   ReviewPromptEvent[]
-  sentiments     ReviewSentiment[]
+  booking      Booking             @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor       Vendor              @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSession MediaSession        @relation(fields: [mediaSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  review       Review?             @relation(fields: [reviewId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  promptEvents ReviewPromptEvent[]
+  sentiments   ReviewSentiment[]
 
   @@index([bookingId, status])
   @@index([vendorId, createdAt])
@@ -902,7 +935,7 @@ model ReviewPromptEvent {
   metadata       String?
   createdAt      DateTime @default(now())
 
-  reviewWindow   ReviewWindow @relation(fields: [reviewWindowId], references: [id], onDelete: Cascade)
+  reviewWindow ReviewWindow @relation(fields: [reviewWindowId], references: [id], onDelete: Cascade)
 
   @@index([reviewWindowId, createdAt])
   @@index([eventType, createdAt])
@@ -915,7 +948,7 @@ model ReviewSentiment {
   sentiment      String
   createdAt      DateTime @default(now())
 
-  reviewWindow   ReviewWindow @relation(fields: [reviewWindowId], references: [id], onDelete: Cascade)
+  reviewWindow ReviewWindow @relation(fields: [reviewWindowId], references: [id], onDelete: Cascade)
 
   @@index([reviewWindowId, createdAt])
   @@index([sentiment, createdAt])
@@ -923,44 +956,172 @@ model ReviewSentiment {
 }
 
 model ConsentRecord {
-  id            String   @id @default(cuid())
-  token         String   @unique
-  bookingId      String
-  vendorId       String
-  mediaSessionId String?
-  consentType   String
-  status        String   @default("requested")
-  requestedAt   DateTime @default(now())
-  acceptedAt    DateTime?
-  declinedAt    DateTime?
-  expiresAt     DateTime?
-  termsVersion  String?
-  privacyVersion String?
-  ipAddress     String?
-  userAgent     String?
-  documentHash  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                   String    @id @default(cuid())
+  token                String?   @unique
+  bookingId            String
+  vendorId             String
+  mediaSessionId       String?
+  consentType          String
+  status               String    @default("requested")
+  lifecycleStatus      String    @default("PENDING")
+  generation           Int       @default(1)
+  isCurrent            Boolean   @default(false)
+  verifiedDecision     Boolean   @default(false)
+  legacyEvidence       Boolean   @default(false)
+  recipientName        String?
+  recipientEmailHash   String?
+  recipientPhoneHash   String?
+  recipientEmailMasked String?
+  recipientPhoneMasked String?
+  recipientMismatch    Boolean   @default(false)
+  scopeJson            String?   @db.NVarChar(Max)
+  scopeHash            String?
+  audioEnabled         Boolean   @default(false)
+  contentVersionId     String?
+  supersededAt         DateTime?
+  wrongRecipientAt     DateTime?
+  requestedAt          DateTime  @default(now())
+  acceptedAt           DateTime?
+  declinedAt           DateTime?
+  expiresAt            DateTime?
+  termsVersion         String?
+  privacyVersion       String?
+  ipAddress            String?
+  userAgent            String?
+  documentHash         String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  booking       Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  vendor        Vendor @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaSession  MediaSession? @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  events        ConsentEvent[]
+  booking                Booking                        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor                 Vendor                         @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSession           MediaSession?                  @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  contentVersion         ConsentContentVersion?         @relation(fields: [contentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  events                 ConsentEvent[]
+  requestLinks           ConsentRequestLink[]
+  verificationChallenges ConsentVerificationChallenge[]
+  decisionSessions       ConsentDecisionSession[]
+  decisionEvidence       ConsentDecisionEvidence?
 
   @@index([bookingId, status])
+  @@index([bookingId, isCurrent])
   @@index([vendorId, createdAt])
   @@index([mediaSessionId])
+  @@index([lifecycleStatus, expiresAt])
+  @@index([recipientEmailHash])
+  @@index([recipientPhoneHash])
+  @@index([contentVersionId])
   @@map("consent_records")
 }
 
-model ConsentEvent {
-  id             String   @id @default(cuid())
-  consentRecordId String
-  eventType      String
-  metadata       String?
-  createdAt      DateTime @default(now())
+model ConsentContentVersion {
+  id                 String    @id @default(cuid())
+  version            String    @unique
+  contentJson        String    @db.NVarChar(Max)
+  contentHash        String    @unique
+  scopeSchemaVersion String
+  effectiveAt        DateTime
+  retiredAt          DateTime?
+  createdAt          DateTime  @default(now())
 
-  consentRecord  ConsentRecord @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
+  consentRecords ConsentRecord[]
+
+  @@index([effectiveAt, retiredAt])
+  @@map("consent_content_versions")
+}
+
+model ConsentRequestLink {
+  id               String    @id @default(cuid())
+  consentRecordId  String
+  secretHash       String    @unique
+  generation       Int
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revocationReason String?
+  lastViewedAt     DateTime?
+  createdAt        DateTime  @default(now())
+
+  consentRecord ConsentRecord                  @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
+  challenges    ConsentVerificationChallenge[]
+
+  @@unique([consentRecordId, generation])
+  @@index([consentRecordId, revokedAt, expiresAt])
+  @@map("consent_request_links")
+}
+
+model ConsentVerificationChallenge {
+  id              String    @id @default(cuid())
+  consentRecordId String
+  requestLinkId   String
+  channel         String
+  destinationHash String
+  codeHash        String
+  expiresAt       DateTime
+  failedAttempts  Int       @default(0)
+  maxAttempts     Int       @default(5)
+  consumedAt      DateTime?
+  requestIpHash   String?
+  createdAt       DateTime  @default(now())
+
+  consentRecord ConsentRecord      @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
+  requestLink   ConsentRequestLink @relation(fields: [requestLinkId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([consentRecordId, channel, createdAt])
+  @@index([destinationHash, createdAt])
+  @@index([expiresAt, consumedAt])
+  @@map("consent_verification_challenges")
+}
+
+model ConsentDecisionSession {
+  id                  String    @id @default(cuid())
+  consentRecordId     String
+  secretHash          String    @unique
+  verificationMethod  String
+  verifiedContactHash String?
+  verifiedUserId      String?
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  createdAt           DateTime  @default(now())
+
+  consentRecord ConsentRecord @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
+
+  @@index([consentRecordId, expiresAt, consumedAt])
+  @@map("consent_decision_sessions")
+}
+
+model ConsentDecisionEvidence {
+  id                  String   @id @default(cuid())
+  consentRecordId     String   @unique
+  decision            String
+  actorUserId         String?
+  claimedRole         String
+  authorityScope      String
+  verificationMethod  String
+  verifiedContactHash String?
+  requestHash         String
+  scopeHash           String
+  contentHash         String
+  contentVersion      String
+  ipAddress           String?
+  userAgent           String?
+  metadata            String?  @db.NVarChar(Max)
+  decidedAt           DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  consentRecord ConsentRecord @relation(fields: [consentRecordId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([decision, decidedAt])
+  @@index([actorUserId, decidedAt])
+  @@map("consent_decision_evidence")
+}
+
+model ConsentEvent {
+  id              String   @id @default(cuid())
+  consentRecordId String
+  eventType       String
+  metadata        String?
+  createdAt       DateTime @default(now())
+
+  consentRecord ConsentRecord @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
 
   @@index([consentRecordId, createdAt])
   @@index([eventType, createdAt])

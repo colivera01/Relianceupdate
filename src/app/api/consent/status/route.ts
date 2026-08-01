@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { requireVendorManager } from "@/lib/membership-auth";
 
-function mapConsentStatus(record: any): "pending" | "accepted" | "declined" | "expired" | "not_requested" {
+function mapConsentStatus(record: any): string {
   if (!record) return "not_requested";
-  const now = new Date();
+  const lifecycle = String(record.lifecycleStatus || "").trim().toLowerCase();
+  if (lifecycle) return lifecycle;
   const raw = String(record.status || "").trim().toUpperCase();
   if (raw === "ACCEPTED") return "accepted";
   if (raw === "DECLINED") return "declined";
   if (raw === "EXPIRED") return "expired";
   if (raw === "REQUESTED" || raw === "PENDING") {
-    if (record.expiresAt && new Date(record.expiresAt) < now) return "expired";
+    if (record.expiresAt && new Date(record.expiresAt) < new Date()) return "expired";
     return "pending";
   }
   return "not_requested";
@@ -40,16 +42,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const isBookingOwner = String(booking.userId || "") === String(userId);
-    const hasActiveVendorMembership = await prisma.vendorMembership.findFirst({
-      where: {
-        vendorId: String(booking.vendorId || ""),
-        userId: String(userId),
-        status: { in: ["ACTIVE", "active"] },
-      },
-      select: { id: true },
-    });
-    if (!isBookingOwner && !hasActiveVendorMembership) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    if (!isBookingOwner) {
+      try {
+        await requireVendorManager(request, String(booking.vendorId || ""));
+      } catch {
+        return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+      }
     }
 
     const latest = await (prisma as any).consentRecord.findFirst({
@@ -57,8 +55,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       orderBy: { requestedAt: "desc" },
       select: {
         id: true,
-        token: true,
         status: true,
+        lifecycleStatus: true,
+        verifiedDecision: true,
+        recipientEmailMasked: true,
+        recipientPhoneMasked: true,
         acceptedAt: true,
         declinedAt: true,
         requestedAt: true,
@@ -72,8 +73,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       status,
       acceptedAt: latest?.acceptedAt || null,
       declinedAt: latest?.declinedAt || null,
-      latestConsentToken: latest?.token || null,
       latestConsentId: latest?.id || null,
+      verifiedDecision: latest?.verifiedDecision === true,
+      recordingUnlocked:
+        latest?.verifiedDecision === true &&
+        String(latest?.lifecycleStatus || "").toUpperCase() === "ALLOWED",
+      recipient: latest
+        ? { email: latest.recipientEmailMasked || null, phone: latest.recipientPhoneMasked || null }
+        : null,
     });
   } catch (error: any) {
     return NextResponse.json(

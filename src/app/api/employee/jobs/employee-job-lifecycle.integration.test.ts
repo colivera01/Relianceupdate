@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => {
   const bookingUpdate = vi.fn();
   const mediaSessionFindFirst = vi.fn();
   const mediaSessionFindMany = vi.fn();
+  const consentRecordFindMany = vi.fn();
   const resolveEmployeeCaptureAccess = vi.fn();
   const sendJobCorrectionReadyNotification = vi.fn();
   return {
@@ -16,6 +17,7 @@ const hoisted = vi.hoisted(() => {
     bookingUpdate,
     mediaSessionFindFirst,
     mediaSessionFindMany,
+    consentRecordFindMany,
     resolveEmployeeCaptureAccess,
     sendJobCorrectionReadyNotification,
   };
@@ -35,6 +37,9 @@ vi.mock("@/server/db", () => ({
       findFirst: hoisted.mediaSessionFindFirst,
       findMany: hoisted.mediaSessionFindMany,
     },
+    consentRecord: {
+      findMany: hoisted.consentRecordFindMany,
+    },
   },
 }));
 
@@ -49,7 +54,6 @@ vi.mock("@/lib/job-assignment", () => ({
   parseRecordingComplianceMetadata: vi.fn(() => ({
     location: "business",
     consentAccepted: false,
-    consentToken: "",
     locationVerified: true,
     locationVerifiedAt: "2026-07-12T00:00:00.000Z",
     serviceOrderReleasedAt: "2026-07-12T00:00:00.000Z",
@@ -95,9 +99,11 @@ describe("employee job lifecycle routes", () => {
     hoisted.bookingUpdate.mockReset();
     hoisted.mediaSessionFindFirst.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
+    hoisted.consentRecordFindMany.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockReset();
     hoisted.sendJobCorrectionReadyNotification.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue(null);
+    hoisted.consentRecordFindMany.mockResolvedValue([]);
     hoisted.sendJobCorrectionReadyNotification.mockResolvedValue({
       anySuccess: true,
       phoneNumberUsed: "+14075550199",

@@ -12,13 +12,10 @@ import { checkVendorSlotAvailability } from '@/lib/availability-slots';
 import { deriveCustomerBookingLifecycle } from '@/lib/customer-booking-lifecycle';
 import { findUserIdByEmailCaseInsensitive } from '@/lib/resolve-booking-owner-user-id';
 import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
-import { generateConsentToken } from '@/lib/consent-flow';
 import { resolveBookingSchedule } from '@/lib/booking-schedule';
-import {
-  CUSTOMER_CONSENT_NOTIFICATION_KIND,
-  dispatchQueuedConsentNotification,
-  toBookingNotificationState,
-} from '@/lib/booking-notification-delivery';
+import { toBookingNotificationState } from '@/lib/booking-notification-delivery';
+import { createVerifiedPermissionRequest } from '@/lib/consent/request-service';
+import { deliverVerifiedPermissionRequest } from '@/lib/consent/delivery-service';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -494,13 +491,12 @@ export async function POST(request: NextRequest) {
           );
         }
         const [deliveryRecord, consentRecord] = await Promise.all([
-          (prisma as any).bookingNotification.findUnique({
+          (prisma as any).bookingNotification.findFirst({
             where: {
-              bookingId_kind: {
-                bookingId: existingBooking.id,
-                kind: CUSTOMER_CONSENT_NOTIFICATION_KIND,
-              },
+              bookingId: existingBooking.id,
+              kind: { startsWith: 'CUSTOMER_PERMISSION_REQUEST' },
             },
+            orderBy: { createdAt: 'desc' },
           }),
           (prisma as any).consentRecord.findFirst({
             where: { bookingId: existingBooking.id },
@@ -514,12 +510,14 @@ export async function POST(request: NextRequest) {
           booking: mapBookingToContract(existingBooking as any),
           automaticConsent: consentRecord
             ? {
-                status: String(consentRecord.status || 'requested').toLowerCase(),
-                token: consentRecord.token,
-                consentUrl: `/consent/${encodeURIComponent(consentRecord.token)}`,
+                id: consentRecord.id,
+                status: String(consentRecord.lifecycleStatus || consentRecord.status || 'pending').toLowerCase(),
                 delivery,
                 deliveryConfirmed: delivery?.status === 'SENT' || delivery?.status === 'PARTIAL',
-                manualLinkRequired: delivery?.status === 'FAILED',
+                recordingLocked: !(
+                  consentRecord.verifiedDecision === true &&
+                  String(consentRecord.lifecycleStatus || '').toUpperCase() === 'ALLOWED'
+                ),
               }
             : null,
           message: 'This work record was already created. The existing record was returned.',
@@ -634,7 +632,6 @@ export async function POST(request: NextRequest) {
     const requiresCustomerConsent =
       isVendorStaffForThisVendor &&
       (recordingLocation === 'residence' || recordingLocation === 'customer-business');
-    const consentToken = requiresCustomerConsent ? generateConsentToken() : null;
     const customerProfileLocation =
       recordingLocation === 'residence' && bookingUserId
         ? await prisma.user.findUnique({
@@ -658,11 +655,10 @@ export async function POST(request: NextRequest) {
           : recordingLocation === 'residence'
             ? buildRecordingLocationSnapshot('residence', 'customer_profile', customerProfileLocation)
             : buildRecordingLocationSnapshot('customer-business', 'customer_supplied', null);
-      if (consentToken) {
-        nextMeta.vendor_job_consent_token = consentToken;
+      if (requiresCustomerConsent) {
         nextMeta.vendor_job_consent_accepted = false;
-        nextMeta.vendor_job_consent_status = 'requested';
-        nextMeta.vendor_job_consent_notification_status = 'QUEUED';
+        nextMeta.vendor_job_consent_status = 'not_sent';
+        nextMeta.vendor_job_consent_notification_status = 'NOT_SENT';
       }
       customerMetadataPayload = nextMeta;
     }
@@ -721,17 +717,14 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      if (!requiresCustomerConsent || !consentToken) {
+      if (!requiresCustomerConsent) {
         return {
           booking: createdBooking,
           bookingUserId: resolvedBookingUserId,
-          consentRecord: null,
-          notificationRecord: null,
+          consentMediaSessionId: null,
         };
       }
 
-      const requestedAt = new Date();
-      const expiresAt = new Date(requestedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
       const mediaSession = await tx.mediaSession.create({
         data: {
           vendorId,
@@ -744,38 +737,10 @@ export async function POST(request: NextRequest) {
           description: `Consent request before ${recordingLocation} recording`,
         },
       });
-      const consentRecord = await tx.consentRecord.create({
-        data: {
-          token: consentToken,
-          bookingId: createdBooking.id,
-          vendorId,
-          mediaSessionId: mediaSession.id,
-          consentType: 'video_access',
-          status: 'requested',
-          requestedAt,
-          expiresAt,
-        },
-      });
-      await tx.consentEvent.create({
-        data: {
-          consentRecordId: consentRecord.id,
-          eventType: 'created',
-          metadata: JSON.stringify({ notificationStatus: 'QUEUED' }),
-        },
-      });
-      const notificationRecord = await tx.bookingNotification.create({
-        data: {
-          bookingId: createdBooking.id,
-          consentRecordId: consentRecord.id,
-          kind: CUSTOMER_CONSENT_NOTIFICATION_KIND,
-          status: 'QUEUED',
-        },
-      });
       return {
         booking: createdBooking,
         bookingUserId: resolvedBookingUserId,
-        consentRecord,
-        notificationRecord,
+        consentMediaSessionId: mediaSession.id,
       };
       });
     } catch (transactionError: any) {
@@ -803,54 +768,56 @@ export async function POST(request: NextRequest) {
     const booking = transactionalCreate.booking;
     let automaticConsent: Record<string, unknown> | null = null;
 
-    if (
-      transactionalCreate.consentRecord &&
-      transactionalCreate.notificationRecord &&
-      consentToken
-    ) {
-      const dispatched = await dispatchQueuedConsentNotification({
-        notificationId: transactionalCreate.notificationRecord.id,
-        consentRecordId: transactionalCreate.consentRecord.id,
-        actorUserId: String(authUserId || transactionalCreate.bookingUserId),
-        token: consentToken,
-        consentPath: `/consent/${encodeURIComponent(consentToken)}`,
-        absoluteBaseUrl: resolveConsentBaseUrl(request),
-        customerEmail: clientEmailCombined || undefined,
-        customerPhone: clientPhoneCombined || undefined,
-        customerName: client_name ? String(client_name) : undefined,
-        vendorName: String(vendor.businessName || vendor.name || '').trim() || undefined,
-        serviceName: title ? String(title) : undefined,
-        bookingTitle: title ? String(title) : undefined,
-        serviceDate: scheduledFor,
-        serviceTimeZone: typeof service_time_zone === 'string' ? service_time_zone : null,
-        consentTypeLabel: 'video access',
-      });
-      const notificationError = dispatched.delivery?.lastError || null;
-      const notificationStatus = dispatched.delivery?.status || 'FAILED';
-      const deliveryConfirmed =
-        notificationStatus === 'SENT' || notificationStatus === 'PARTIAL';
-      await (prisma as any).consentEvent.create({
-        data: {
-          consentRecordId: transactionalCreate.consentRecord.id,
-          eventType: deliveryConfirmed ? 'notification_dispatch' : 'notification_dispatch_failed',
-          metadata: JSON.stringify({
-            status: notificationStatus,
-            channels: dispatched.delivery?.channels || [],
-            error: notificationError,
-          }),
-        },
-      });
-      automaticConsent = {
-        status: 'requested',
-        token: consentToken,
-        consentUrl: `/consent/${encodeURIComponent(consentToken)}`,
-        consentAbsoluteUrl: dispatched.notification?.absoluteFallbackLink || null,
-        notification: dispatched.notification,
-        delivery: dispatched.delivery,
-        notificationError,
-        deliveryConfirmed,
-        manualLinkRequired: !deliveryConfirmed,
-      };
+    if (transactionalCreate.consentMediaSessionId) {
+      try {
+        const createdPermission = await createVerifiedPermissionRequest({
+          bookingId: booking.id,
+          actorUserId: String(authUserId || transactionalCreate.bookingUserId),
+          mediaSessionId: transactionalCreate.consentMediaSessionId,
+          reason: 'create',
+        });
+        let delivery: any = null;
+        if (createdPermission.actionPath && createdPermission.notificationId) {
+          delivery = await deliverVerifiedPermissionRequest({
+            request,
+            notificationId: createdPermission.notificationId,
+            consentRecordId: createdPermission.consentRecordId,
+            actorUserId: String(authUserId || transactionalCreate.bookingUserId),
+            actionPath: createdPermission.actionPath,
+            recipient: createdPermission.recipient,
+            booking: createdPermission.booking,
+          });
+        }
+        automaticConsent = {
+          id: createdPermission.consentRecordId,
+          status:
+            createdPermission.state === 'pending' && delivery
+              ? delivery.status === 'SENT' || delivery.status === 'PARTIAL'
+                ? 'delivered'
+                : 'delivery_failed'
+              : createdPermission.state,
+          recipient: {
+            name: createdPermission.recipient.name,
+            email: createdPermission.recipient.emailMasked,
+            phone: createdPermission.recipient.phoneMasked,
+          },
+          delivery: delivery
+            ? {
+                status: delivery.status,
+                channels: delivery.channels,
+                lastError: delivery.lastError,
+              }
+            : null,
+          recordingLocked: true,
+        };
+      } catch (permissionError) {
+        console.error('[bookings] automatic permission request failed after booking creation', permissionError);
+        automaticConsent = {
+          status: 'delivery_failed',
+          recordingLocked: true,
+          error: 'The work record was created, but the recording permission request needs attention.',
+        };
+      }
     }
 
     const hydrated = await prisma.booking.findUnique({

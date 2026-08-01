@@ -23,10 +23,7 @@ import {
   vendorOperationalBookingWhere,
 } from "@/lib/metrics-exclusion";
 import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
-import {
-  CUSTOMER_CONSENT_NOTIFICATION_KIND,
-  toBookingNotificationState,
-} from "@/lib/booking-notification-delivery";
+import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -171,8 +168,10 @@ function hasRejectedStagedMedia(packageState: ReturnType<typeof evaluateVendorJo
 
 function mapConsentRecordToVendorUiState(
   record: any
-): "accepted" | "declined" | "expired_or_unavailable" | "not_requested" | "requested" {
+): string {
   if (!record) return "not_requested";
+  const lifecycle = String(record.lifecycleStatus || "").trim().toLowerCase();
+  if (lifecycle) return lifecycle;
   const now = new Date();
   const raw = String(record.status || "").trim().toUpperCase();
   if (raw === "ACCEPTED") return "accepted";
@@ -587,8 +586,11 @@ export async function GET(
             select: {
               id: true,
               bookingId: true,
-              token: true,
               status: true,
+              lifecycleStatus: true,
+              verifiedDecision: true,
+              recipientEmailMasked: true,
+              recipientPhoneMasked: true,
               acceptedAt: true,
               declinedAt: true,
               requestedAt: true,
@@ -603,8 +605,9 @@ export async function GET(
           (prisma as any).bookingNotification.findMany({
             where: {
               bookingId: { in: bookingIds },
-              kind: CUSTOMER_CONSENT_NOTIFICATION_KIND,
+              kind: { startsWith: 'CUSTOMER_PERMISSION_REQUEST' },
             },
+            orderBy: { createdAt: 'desc' },
           })
         )
       : [];
@@ -631,7 +634,9 @@ export async function GET(
     }
     for (const notification of consentNotifications as any[]) {
       const key = String(notification?.bookingId || "");
-      if (key) consentNotificationByBookingId.set(key, notification);
+      if (key && !consentNotificationByBookingId.has(key)) {
+        consentNotificationByBookingId.set(key, notification);
+      }
     }
 
     const recentJobs = recentBookings
@@ -692,6 +697,7 @@ export async function GET(
       const assignedMembershipIds = extractAssignedMembershipIdsFromMetadata(booking.customerMetadata);
       const uploadedVideoStages = extractUploadedVideoStagesFromMetadata(booking.customerMetadata);
       const customerContact = resolveCustomerContactForBooking(booking);
+      const legacyCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
       const clientLabel = resolveOperationalClientLabel({
         clientName: booking.clientName,
         userName: booking.user?.name,
@@ -711,11 +717,29 @@ export async function GET(
         assignedEmployees: assignedEmployeesRaw,
         assignedMembershipIds,
         uploadedVideoStages,
-        recordingCompliance: parseRecordingComplianceMetadata(booking.customerMetadata),
+        recordingCompliance: {
+          location: legacyCompliance.location,
+          consentAccepted:
+            latestConsentRecord?.verifiedDecision === true &&
+            String(latestConsentRecord?.lifecycleStatus || '').toUpperCase() === 'ALLOWED',
+          locationVerified: legacyCompliance.locationVerified,
+          locationVerifiedAt: legacyCompliance.locationVerifiedAt,
+          serviceOrderReleasedAt: legacyCompliance.serviceOrderReleasedAt,
+          releasedMembershipIds: legacyCompliance.releasedMembershipIds,
+        },
         rejectionReason: booking.rejectionReason || null,
         rejectedAt: booking.rejectedAt?.toISOString?.() || null,
         consentStatus: mapConsentRecordToVendorUiState(latestConsentRecord),
-        latestConsentToken: latestConsentRecord?.token || null,
+        latestConsentId: latestConsentRecord?.id || null,
+        permissionRecordingUnlocked:
+          latestConsentRecord?.verifiedDecision === true &&
+          String(latestConsentRecord?.lifecycleStatus || '').toUpperCase() === 'ALLOWED',
+        consentRecipient: latestConsentRecord
+          ? {
+              email: latestConsentRecord.recipientEmailMasked || null,
+              phone: latestConsentRecord.recipientPhoneMasked || null,
+            }
+          : null,
         consentAcceptedAt: latestConsentRecord?.acceptedAt?.toISOString?.() || null,
         consentDeclinedAt: latestConsentRecord?.declinedAt?.toISOString?.() || null,
         consentNotification: toBookingNotificationState(consentNotification),

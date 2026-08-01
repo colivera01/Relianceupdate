@@ -10,7 +10,6 @@ export type RecordingLocationChoice = "business" | "residence" | "customer-busin
 export type RecordingComplianceMetadata = {
   location: RecordingLocationChoice | null;
   consentAccepted: boolean;
-  consentToken: string;
   locationVerified: boolean;
   locationVerifiedAt: string | null;
   serviceOrderReleasedAt: string | null;
@@ -95,7 +94,6 @@ export function parseRecordingComplianceMetadata(
   return {
     location: normalizeRecordingLocationChoice(parsed.vendor_job_recording_location),
     consentAccepted: parsed.vendor_job_consent_accepted === true,
-    consentToken: String(parsed.vendor_job_consent_token || "").trim(),
     locationVerified: parsed.vendor_job_location_verified === true,
     locationVerifiedAt: String(parsed.vendor_job_location_verified_at || "").trim() || null,
     serviceOrderReleasedAt:

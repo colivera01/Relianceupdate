@@ -84,11 +84,33 @@ export async function GET(request: Request): Promise<NextResponse> {
         placeholderData: false,
         pendingServiceOrder: true,
         message:
-          "This service order has been assigned, but it is not ready for recording yet. Your manager still needs to send the service order or finish any required customer-consent check.",
+          "This service order is assigned, but recording is still locked. Your manager must finish the required permission and release steps.",
       });
     }
 
     const bookingIds = releasedBookings.map((b) => b.id);
+
+    const permissionRecords = bookingIds.length
+      ? await prisma.consentRecord.findMany({
+          where: { bookingId: { in: bookingIds } },
+          orderBy: { requestedAt: "desc" },
+          select: {
+            bookingId: true,
+            lifecycleStatus: true,
+            verifiedDecision: true,
+            recipientMismatch: true,
+          },
+        })
+      : [];
+    const permissionByBooking = new Map<
+      string,
+      { lifecycleStatus: string; verifiedDecision: boolean; recipientMismatch: boolean }
+    >();
+    for (const record of permissionRecords) {
+      if (!permissionByBooking.has(record.bookingId)) {
+        permissionByBooking.set(record.bookingId, record);
+      }
+    }
 
     const sessions = bookingIds.length
       ? await (prisma as any).mediaSession.findMany({
@@ -125,6 +147,13 @@ export async function GET(request: Request): Promise<NextResponse> {
     const jobs = releasedBookings.map((booking) => {
       const stageProgress = stageByBooking.get(booking.id) || emptyStageProgress();
       const recordingCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
+      const permission = permissionByBooking.get(booking.id) || null;
+      const permissionRequired =
+        recordingCompliance.location === "residence" ||
+        recordingCompliance.location === "customer-business";
+      const recordingUnlocked =
+        !permissionRequired ||
+        Boolean(permission?.verifiedDecision && permission.lifecycleStatus === "ALLOWED");
       const normalizedStatus = String(booking.status || "").trim().toUpperCase();
       const correctionRequested =
         normalizedStatus !== "COMPLETED" && Boolean(String((booking as any).rejectionReason || "").trim());
@@ -148,7 +177,17 @@ export async function GET(request: Request): Promise<NextResponse> {
         bookingDate: booking.scheduledFor || booking.date || null,
         rejectionReason: (booking as any).rejectionReason || null,
         rejectedAt: (booking as any).rejectedAt || null,
-        recordingCompliance,
+        recordingCompliance: {
+          location: recordingCompliance.location,
+          locationVerified: recordingCompliance.locationVerified,
+          locationVerifiedAt: recordingCompliance.locationVerifiedAt,
+          serviceOrderReleasedAt: recordingCompliance.serviceOrderReleasedAt,
+          releasedMembershipIds: recordingCompliance.releasedMembershipIds,
+          permissionRequired,
+          permissionStatus: permission?.lifecycleStatus || (permissionRequired ? "NOT_SENT" : "NOT_REQUIRED"),
+          recordingUnlocked,
+          recipientNeedsCorrection: Boolean(permission?.recipientMismatch),
+        },
         stageProgress,
         canMarkComplete,
       };

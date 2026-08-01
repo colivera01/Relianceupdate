@@ -52,6 +52,7 @@ export function isBetaGateBypassPath(pathname: string): boolean {
   if (path === "/beta-access" || path.startsWith("/beta-access/")) return true;
   if (path === "/api/beta-gate" || path.startsWith("/api/beta-gate/")) return true;
   if (path === "/api/health" || path.startsWith("/api/health/")) return true;
+  if (path === "/api/internal/notifications/process") return true;
 
   // Public compliance pages must remain reviewable by messaging carriers even
   // when the wider beta site is password protected.
@@ -94,6 +95,18 @@ function isEmployeeCaptureMediaPath(pathname: string): boolean {
     || /^\/api\/vendors\/[^/]+\/media\/upload\/(?:init|complete|proxy)$/.test(pathname);
 }
 
+function isPublicPermissionPath(pathname: string): boolean {
+  if (/^\/consent\/[^/]+$/.test(pathname)) return true;
+  const publicSummary = pathname.match(/^\/api\/consent\/([^/]+)$/);
+  if (publicSummary && !["request", "status", "requests", "accept", "decline"].includes(publicSummary[1])) {
+    return true;
+  }
+  if (/^\/api\/consent\/[^/]+\/(?:verification\/(?:start|verify)|wrong-recipient)$/.test(pathname)) {
+    return true;
+  }
+  return pathname === "/api/consent/accept" || pathname === "/api/consent/decline";
+}
+
 export function isBetaGateBypassRequest(
   pathname: string,
   searchParams: URLSearchParams = new URLSearchParams(),
@@ -102,6 +115,11 @@ export function isBetaGateBypassRequest(
   const path = pathname || "/";
 
   if (isBetaGateBypassPath(path)) return true;
+
+  // Intended recipients must be able to open and complete a permission request
+  // without knowing the private-beta site password. Vendor request-management
+  // routes remain behind the beta gate.
+  if (isPublicPermissionPath(path)) return true;
 
   if (!hasEmployeeCaptureToken(searchParams, headers)) return false;
 

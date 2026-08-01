@@ -1,164 +1,139 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+
 import { POST } from "./route";
-import { dispatchQueuedConsentNotification } from "@/lib/booking-notification-delivery";
 
-const hoisted = vi.hoisted(() => {
-  const bookingFindUnique = vi.fn();
-  const bookingUpdate = vi.fn();
-  const consentRecordFindMany = vi.fn();
-  const consentRecordUpdateMany = vi.fn();
-  const consentRecordCreate = vi.fn();
-  const consentEventCreate = vi.fn();
-  const bookingNotificationUpsert = vi.fn();
-  const prisma: any = {
-    booking: {
-      findUnique: bookingFindUnique,
-      update: bookingUpdate,
-    },
-    consentRecord: {
-      findMany: consentRecordFindMany,
-      updateMany: consentRecordUpdateMany,
-      create: consentRecordCreate,
-    },
-    consentEvent: {
-      create: consentEventCreate,
-    },
-    bookingNotification: {
-      upsert: bookingNotificationUpsert,
-    },
-  };
-  const transaction = vi.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
-  prisma.$transaction = transaction;
-  return {
-    prisma,
-    bookingFindUnique,
-    bookingUpdate,
-    consentRecordFindMany,
-    consentRecordUpdateMany,
-    consentRecordCreate,
-    consentEventCreate,
-    bookingNotificationUpsert,
-    transaction,
-  };
-});
+const hoisted = vi.hoisted(() => ({
+  authorize: vi.fn(),
+  createRequest: vi.fn(),
+  dispatch: vi.fn(),
+  consentRecordUpdate: vi.fn(),
+  consentEventCreate: vi.fn(),
+}));
 
-vi.mock("@/server/db", () => ({ prisma: hoisted.prisma }));
-vi.mock("@/lib/auth", () => ({
-  getUserIdFromRequest: vi.fn().mockResolvedValue("vendor-user-1"),
+vi.mock("@/server/db", () => ({
+  prisma: {
+    consentRecord: { update: hoisted.consentRecordUpdate },
+    consentEvent: { create: hoisted.consentEventCreate },
+  },
 }));
-vi.mock("@/lib/admin-audit", () => ({
-  createAdminAuditLog: vi.fn().mockResolvedValue(undefined),
+vi.mock("@/lib/consent/authorization", () => ({
+  requirePermissionManagerForBooking: hoisted.authorize,
+  permissionAuthorizationStatus: (error: unknown) => {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("Unauthorized")) return 401;
+    if (message.includes("Forbidden")) return 403;
+    if (message.includes("not found")) return 404;
+    return 500;
+  },
 }));
-vi.mock("@/lib/env/notification-config", () => ({
-  logNotificationEnvWarnings: vi.fn(),
+vi.mock("@/lib/consent/request-service", () => ({
+  createVerifiedPermissionRequest: hoisted.createRequest,
 }));
 vi.mock("@/lib/booking-notification-delivery", () => ({
-  CUSTOMER_CONSENT_NOTIFICATION_KIND: "CUSTOMER_CONSENT_REQUEST",
-  dispatchQueuedConsentNotification: vi.fn(),
+  dispatchQueuedConsentNotification: hoisted.dispatch,
 }));
+vi.mock("@/lib/env/notification-config", () => ({ logNotificationEnvWarnings: vi.fn() }));
+
+function request() {
+  return new NextRequest("http://localhost/api/consent/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bookingId: "booking-1", mediaSessionId: "session-1" }),
+  });
+}
 
 describe("POST /api/consent/request", () => {
   beforeEach(() => {
-    for (const mock of [
-      hoisted.bookingFindUnique,
-      hoisted.bookingUpdate,
-      hoisted.consentRecordFindMany,
-      hoisted.consentRecordUpdateMany,
-      hoisted.consentRecordCreate,
-      hoisted.consentEventCreate,
-      hoisted.bookingNotificationUpsert,
-      hoisted.transaction,
-    ]) {
-      mock.mockReset();
-    }
-    hoisted.transaction.mockImplementation(async (callback: (tx: typeof hoisted.prisma) => unknown) =>
-      callback(hoisted.prisma)
-    );
-    hoisted.bookingFindUnique.mockResolvedValue({
-      id: "booking-1",
-      vendorId: "vendor-1",
-      title: "Outlet Installation",
-      scheduledFor: new Date("2026-07-26T14:00:00.000Z"),
-      clientName: "Customer One",
-      customerMetadata: JSON.stringify({
-        client_email: "customer@example.com",
-        vendor_job_recording_location: "residence",
-      }),
-      vendor: { businessName: "Vendor Co", name: "Vendor" },
-      service: { name: "Outlet Installation" },
-      user: { email: "customer@example.com", phone: null, name: "Customer One" },
-    });
-    hoisted.consentRecordFindMany.mockResolvedValue([{ id: "old-consent" }]);
-    hoisted.consentRecordUpdateMany.mockResolvedValue({ count: 1 });
-    hoisted.consentRecordCreate.mockImplementation(async ({ data }: any) => ({
-      id: "new-consent",
-      ...data,
-    }));
-    hoisted.consentEventCreate.mockResolvedValue({ id: "event-1" });
-    hoisted.bookingUpdate.mockResolvedValue({ id: "booking-1" });
-    hoisted.bookingNotificationUpsert.mockResolvedValue({ id: "notification-1" });
-    vi.mocked(dispatchQueuedConsentNotification).mockReset();
-    vi.mocked(dispatchQueuedConsentNotification).mockResolvedValue({
-      claimed: true,
-      notification: {
-        anySuccess: true,
-        absoluteFallbackLink: "https://beta.relianceonline.org/consent/new-token",
-        channels: [{ channel: "email", attempted: true, success: true }],
-      } as any,
-      delivery: {
-        status: "SENT",
-        attemptCount: 2,
-        channels: [{ channel: "email", attempted: true, success: true }],
-        lastError: null,
-        lastAttemptAt: "2026-07-26T12:00:00.000Z",
-        sentAt: "2026-07-26T12:00:01.000Z",
+    vi.clearAllMocks();
+    hoisted.authorize.mockResolvedValue({ manager: { userId: "manager-user-1" } });
+    hoisted.createRequest.mockResolvedValue({
+      consentRecordId: "permission-1",
+      actionSecret: "raw-secret-that-must-not-leave-the-server",
+      actionPath: "/consent/raw-secret-that-must-not-leave-the-server",
+      notificationId: "notification-1",
+      state: "pending",
+      generation: 1,
+      recipient: {
+        name: "Customer One",
+        email: "customer@example.com",
+        phone: null,
+        emailMasked: "c***@example.com",
+        phoneMasked: null,
+      },
+      booking: {
+        id: "booking-1",
+        title: "Outlet Installation",
+        scheduledFor: new Date("2026-07-31T14:00:00.000Z"),
+        vendor: { name: "Vendor", businessName: "Vendor Co" },
+        service: { name: "Outlet Installation" },
       },
     });
+    hoisted.dispatch.mockResolvedValue({
+      delivery: {
+        status: "SENT",
+        attemptCount: 1,
+        channels: [{ channel: "email", attempted: true, success: true }],
+        lastError: null,
+        lastAttemptAt: "2026-07-31T13:00:00.000Z",
+        sentAt: "2026-07-31T13:00:01.000Z",
+      },
+    });
+    hoisted.consentRecordUpdate.mockResolvedValue({ id: "permission-1" });
+    hoisted.consentEventCreate.mockResolvedValue({ id: "event-1" });
   });
 
-  it("supersedes the old token and requeues the tracked notification", async () => {
-    const request = new NextRequest("http://localhost/api/consent/request", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bookingId: "booking-1",
-        vendorId: "vendor-1",
-        mediaSessionId: "session-2",
-        consentType: "video_access",
-        origin: "http://localhost:3000",
-      }),
-    });
-
-    const response = await POST(request);
+  it("allows the vendor manager to create and deliver a permission request", async () => {
+    const response = await POST(request());
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(hoisted.transaction).toHaveBeenCalledTimes(1);
-    expect(hoisted.consentRecordUpdateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["old-consent"] } },
-      data: { status: "superseded" },
+    expect(hoisted.authorize).toHaveBeenCalledWith(expect.any(Request), "booking-1");
+    expect(hoisted.createRequest).toHaveBeenCalledWith({
+      bookingId: "booking-1",
+      actorUserId: "manager-user-1",
+      mediaSessionId: "session-1",
+      reason: "create",
     });
-    expect(hoisted.bookingNotificationUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: expect.objectContaining({
-          consentRecordId: "new-consent",
-          status: "QUEUED",
-          lastError: null,
-        }),
-      })
-    );
-    expect(dispatchQueuedConsentNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        notificationId: "notification-1",
-        consentRecordId: "new-consent",
-        customerEmail: "customer@example.com",
-      })
-    );
-    expect(json).toMatchObject({
-      success: true,
-      previousTokenCount: 1,
-      delivery: { status: "SENT", attemptCount: 2 },
+    expect(json.permission).toMatchObject({
+      id: "permission-1",
+      state: "delivered",
+      recipient: { email: "c***@example.com", phone: null },
+      audioEnabled: false,
+      initialAudience: "private",
     });
+    expect(JSON.stringify(json)).not.toContain("raw-secret-that-must-not-leave-the-server");
+  });
+
+  it("denies an employee or outsider before a request is created", async () => {
+    hoisted.authorize.mockRejectedValue(new Error("Forbidden: Manager access required"));
+    const response = await POST(request());
+
+    expect(response.status).toBe(403);
+    expect(hoisted.createRequest).not.toHaveBeenCalled();
+    expect(hoisted.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps recording locked and reports failed delivery without exposing the action secret", async () => {
+    hoisted.dispatch.mockResolvedValue({
+      delivery: {
+        status: "FAILED",
+        attemptCount: 1,
+        channels: [{ channel: "email", attempted: true, success: false, errorCode: "SEND_FAILED" }],
+        lastError: "Delivery failed",
+        lastAttemptAt: "2026-07-31T13:00:00.000Z",
+        sentAt: null,
+      },
+    });
+    const response = await POST(request());
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.permission.state).toBe("delivery_failed");
+    expect(hoisted.consentRecordUpdate).toHaveBeenCalledWith({
+      where: { id: "permission-1" },
+      data: { lifecycleStatus: "DELIVERY_FAILED" },
+    });
+    expect(JSON.stringify(json)).not.toContain("raw-secret-that-must-not-leave-the-server");
   });
 });

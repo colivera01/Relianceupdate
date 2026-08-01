@@ -51,7 +51,6 @@ describe("vendor-attributed SMS copy", () => {
     await sendConsentLinkNotification({
       consentRecordId: "consent-1",
       actorUserId: "vendor-user-1",
-      token: "token-1",
       consentPath: "/consent/token-1",
       customerPhone: "4075550199",
       vendorName: "Electro LLC",
@@ -59,7 +58,7 @@ describe("vendor-attributed SMS copy", () => {
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Reliance: Video consent request for Outlet Installation with Electro LLC."
+      "Reliance: Electro LLC requests permission to record Outlet Installation."
     );
   });
 

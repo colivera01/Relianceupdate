@@ -37,8 +37,8 @@ async function sendDecisionNotice(input: {
   const decision = input.accepted ? "approved" : "declined";
   const subject = `Customer ${decision} service video access: ${input.jobTitle}`;
   const message = input.accepted
-    ? `The customer approved service video access for ${input.jobTitle}. The assigned employee can now open the secure service order.`
-    : `The customer declined service video access for ${input.jobTitle}. Recording is locked and the service order cannot continue.`;
+    ? `The verified recipient allowed Reliance recording for ${input.jobTitle}. Recordings start Private. The assigned employee can now open the secure service order when all other recording checks pass.`
+    : `The verified recipient declined Reliance recording for ${input.jobTitle}. Recording stays locked. The service may continue without Reliance recording.`;
   const channels = [];
   if (env.emailEnabled && input.recipientEmail) {
     const result = await sendEmail({
