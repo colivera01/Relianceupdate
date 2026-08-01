@@ -261,6 +261,16 @@ The original implementation checkpoint was pushed to `cursor-latest-build`, but 
 
 The follow-up adds explicit regression coverage for the exact email link format used in production (`/my-bookings/{id}?videoReady=1`, without a claim token). The corrected build is deployed by fast-forwarding the existing `beta` branch; no force push or history rewrite is used. Live visual verification is performed against the same URL shape after deployment.
 
+The policy return follow-up is deployed from source commit `684dc79364b22aa984e7ed990feaedfd9bc9f406` in Azure package `reliance-beta-684dc79-complete-20260801174328.zip`. The package was validated to contain the standalone server dependencies and all 347 browser static assets before activation. Live beta verification confirmed:
+
+- SMS Policy, Privacy Policy, and Terms each render two **Close and return to registration** actions when opened from registration.
+- The registration-preservation explanation appears on all three documents.
+- Closing Privacy Policy returned to the existing registration tab.
+- The draft first-name value remained present after return.
+- Direct registration and policy routes returned successfully after the Azure worker restart.
+
+Live screenshot: `output/updates-7-31-26/policy-close-and-return-live-beta.png` (intentionally uncommitted).
+
 ## Seven-Item Recheck
 
 The attachment contains six written concerns plus the separate admin-queue outcome shown in its screenshots. They were rechecked as seven observable results after the Azure package mismatch was identified:
