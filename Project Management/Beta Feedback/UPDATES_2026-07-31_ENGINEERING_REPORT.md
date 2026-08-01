@@ -27,13 +27,24 @@ Resolve the six private-beta issues documented in the attachment without changin
 
 **Primary file:** `src/app/(user)/layout.tsx`
 
-### 3. Registration policy links preserve form progress
+### 3. Registration policy links preserve form progress and provide a clear return
 
 **Before:** SMS Policy, Privacy Policy, and Terms links replaced the registration page, which could interrupt or discard in-progress registration input.
 
-**After:** All three policy links open in a separate browser tab with `noopener noreferrer`, leaving the registration page and entered values in place.
+**Initial after:** All three policy links opened in a separate browser tab with `noopener noreferrer`, leaving the registration page and entered values in place. This preserved progress but did not give the customer an in-page way to close the policy document.
 
-**Primary file:** `src/app/auth/register/page.tsx`
+**Follow-up after:** SMS Policy, Privacy Policy, and Terms now share a Reliance-styled document shell with a clear **Close and return to registration** action at both the top and bottom. The action closes the separate policy tab and reveals the still-open registration form. If a browser blocks scripted tab closing, the action returns through a validated internal registration path. Direct policy visits show **Back to Reliance** instead. Existing policy wording was not changed.
+
+**Primary files:**
+
+- `src/app/auth/register/page.tsx`
+- `src/app/sms-policy/page.tsx`
+- `src/app/privacy/page.tsx`
+- `src/app/terms/page.tsx`
+- `src/components/legal/PolicyDocumentLayout.tsx`
+- `src/components/legal/PolicyReturnAction.tsx`
+- `src/lib/policy-navigation.ts`
+- `src/lib/policy-navigation.test.ts`
 
 ### 4. Manager approval retries no longer report a false failure
 
@@ -77,7 +88,15 @@ Resolve the six private-beta issues documented in the attachment without changin
 - `src/app/api/vendors/[vendorId]/jobs/[jobId]/approve/route.ts`
 - `src/app/api/vendors/[vendorId]/jobs/[jobId]/approve/route.integration.test.ts`
 - `src/app/auth/register/page.tsx`
+- `src/app/globals.css`
+- `src/app/privacy/page.tsx`
+- `src/app/sms-policy/page.tsx`
+- `src/app/terms/page.tsx`
 - `src/app/vendor/analytics/page.tsx`
+- `src/components/legal/PolicyDocumentLayout.tsx`
+- `src/components/legal/PolicyReturnAction.tsx`
+- `src/lib/policy-navigation.ts`
+- `src/lib/policy-navigation.test.ts`
 - `src/lib/notifications/send-consent-decision.ts`
 - `src/lib/notifications/send-consent-decision.test.ts`
 - `src/lib/vendor-analytics.ts`
@@ -141,6 +160,9 @@ Each change is code-only. Reverting this checkpoint restores prior caching, shel
 - Production build: passed after raising Node's heap allowance to 4 GB. Compilation, lint/type validation, static generation for 197 app pages, and build tracing completed.
 - `git diff --check`: passed.
 - Browser DOM check: registration policy links resolve to `/sms-policy`, `/privacy`, and `/terms`, each with `target="_blank"` and `rel="noopener noreferrer"`.
+- Policy navigation unit tests: 3 of 3 passed, including preservation of the service-video continuation and rejection of external/non-registration return paths.
+- Attachment re-audit regression suite: 61 of 61 passed across immediate vendor-job refresh, assignment/archive actions, approval idempotency, customer service-video ownership, auth continuation, analytics, branded consent-decision notification, and policy navigation.
+- Local browser workflow: all three policy pages displayed top and bottom return actions; closing SMS Policy returned to the existing registration tab; the test draft value `Draft Preserved` remained in the form.
 - Responsive browser review: focused service-video handoff verified at 1440 x 1000 and 390 x 844.
 
 ### Repository-wide suite
@@ -157,8 +179,11 @@ Screenshots are intentionally not committed:
 
 - `output/updates-7-31-26/service-video-handoff-desktop.png`
 - `output/updates-7-31-26/service-video-handoff-mobile.png`
+- `output/updates-7-31-26/policy-close-and-return-desktop.png`
 
 The desktop and mobile captures show the focused handoff with clear free-registration and existing-account actions, readable hierarchy, and no unrelated account navigation.
+
+The policy capture shows the shared document shell, readable platform styling, and the visible close-and-return action. Screenshots remain intentionally uncommitted.
 
 ## UX Review
 
@@ -235,3 +260,17 @@ Only the six attachment tasks and their direct verification/documentation were a
 The original implementation checkpoint was pushed to `cursor-latest-build`, but the Azure beta application is configured to deploy from the separate `beta` branch. That deployment branch had not received the customer service-video handoff changes, so the live site continued to render the shared customer shell and linked vendor control.
 
 The follow-up adds explicit regression coverage for the exact email link format used in production (`/my-bookings/{id}?videoReady=1`, without a claim token). The corrected build is deployed by fast-forwarding the existing `beta` branch; no force push or history rewrite is used. Live visual verification is performed against the same URL shape after deployment.
+
+## Seven-Item Recheck
+
+The attachment contains six written concerns plus the separate admin-queue outcome shown in its screenshots. They were rechecked as seven observable results after the Azure package mismatch was identified:
+
+1. Archived work records use an uncached jobs-only refresh after mutation.
+2. Customer video links use the focused handoff and do not expose customer/vendor navigation while ownership is resolved.
+3. Registration policy documents preserve form progress and now include visible close-and-return actions.
+4. A repeated manager approval receives an idempotent success instead of a false status error.
+5. The successfully approved package remains available to the admin moderation queue.
+6. Recording-permission decision email uses the shared branded email shell while retaining text fallback and delivery logging.
+7. Vendor Analytics derives lifecycle and service-order totals from the same canonical dashboard data used by the Vendor Dashboard.
+
+No live work record was archived, approved, or otherwise mutated during this recheck. Those behaviors were verified with integration tests and the successful production build. The policy and customer-handoff experiences were also verified in a real browser.

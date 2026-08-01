@@ -804,3 +804,50 @@ select.video-archive-dropdown {
   text-overflow: clip !important;
   overflow: visible !important;
 } 
+/* Shared reading treatment for public policy documents. */
+.policy-document h1 {
+  margin-bottom: 1.5rem;
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #ffffff;
+}
+
+.policy-document h3 {
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 650;
+  line-height: 1.4;
+  color: #dbeafe;
+}
+
+.policy-document p,
+.policy-document li {
+  color: #cbd5e1;
+  line-height: 1.75;
+}
+
+.policy-document p + p {
+  margin-top: 0.875rem;
+}
+
+.policy-document ul {
+  margin: 0.75rem 0 0 1.25rem;
+  list-style: disc;
+}
+
+.policy-document li + li {
+  margin-top: 0.35rem;
+}
+
+.policy-document a {
+  color: #93c5fd;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.policy-document a:hover {
+  color: #bfdbfe;
+}

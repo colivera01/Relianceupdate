@@ -1,6 +1,17 @@
-export default function PrivacyPage() {
+import { PolicyDocumentLayout } from '@/components/legal/PolicyDocumentLayout';
+
+export default async function PrivacyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string | string[] }>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const returnTo = Array.isArray(resolvedSearchParams.returnTo)
+    ? resolvedSearchParams.returnTo[0]
+    : resolvedSearchParams.returnTo;
+
   return (
-    <div style={{ maxWidth: 800, margin: '40px auto', fontFamily: 'sans-serif' }}>
+    <PolicyDocumentLayout returnTo={returnTo}>
       <h1>Privacy Policy</h1>
 
       <p>
@@ -116,6 +127,6 @@ export default function PrivacyPage() {
         post the revised policy through the platform or related communications. Continued use of
         the platform after updates become effective indicates acceptance of the revised policy.
       </p>
-    </div>
+    </PolicyDocumentLayout>
   );
 }

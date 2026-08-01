@@ -34,6 +34,7 @@ import {
   getCustomerServiceVideoIntent,
   sanitizeAuthNextPath,
 } from '@/lib/auth-next';
+import { buildPolicyDocumentHref } from '@/lib/policy-navigation';
 import { tutorialGuides } from '@/lib/user-guidance';
 import {
   User, 
@@ -982,6 +983,11 @@ function RegisterPageInner() {
 
   // State management
   const [userType, setUserType] = useState<'user' | 'vendor'>(type || 'user');
+  const registrationReturnPath = (() => {
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    params.set('type', userType);
+    return `/auth/register?${params.toString()}`;
+  })();
   const addressRequired = userType === 'vendor';
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2185,15 +2191,15 @@ function RegisterPageInner() {
                           customer video consent requests, approved video availability, review reminders,
                           support updates. Message frequency varies. Msg &amp; data
                           rates may apply. Reply STOP to opt out or HELP for help. This SMS consent is required when a mobile phone number is provided. See{' '}
-                          <Link href="/sms-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                          <Link href={buildPolicyDocumentHref('/sms-policy', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             SMS Policy
                           </Link>
                           ,{' '}
-                          <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                          <Link href={buildPolicyDocumentHref('/privacy', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             Privacy Policy
                           </Link>
                           , and{' '}
-                          <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                          <Link href={buildPolicyDocumentHref('/terms', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             Terms
                           </Link>
                           .

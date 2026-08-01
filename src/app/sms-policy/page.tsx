@@ -1,9 +1,20 @@
 import Link from "next/link";
+import { PolicyDocumentLayout } from "@/components/legal/PolicyDocumentLayout";
+import { buildPolicyDocumentHref } from "@/lib/policy-navigation";
 import { LAUNCH_SUPPORT_EMAIL } from "@/lib/support";
 
-export default function SmsPolicyPage() {
+export default async function SmsPolicyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string | string[] }>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const returnTo = Array.isArray(resolvedSearchParams.returnTo)
+    ? resolvedSearchParams.returnTo[0]
+    : resolvedSearchParams.returnTo;
+
   return (
-    <div style={{ maxWidth: 800, margin: "40px auto", fontFamily: "sans-serif", lineHeight: 1.6 }}>
+    <PolicyDocumentLayout returnTo={returnTo}>
       <h1>Reliance SMS Policy</h1>
 
       <p>
@@ -65,8 +76,9 @@ export default function SmsPolicyPage() {
       <p>
         For help, email{" "}
         <a href={`mailto:${LAUNCH_SUPPORT_EMAIL}`}>{LAUNCH_SUPPORT_EMAIL}</a>. You can also review
-        the <Link href="/privacy">Privacy Policy</Link> and <Link href="/terms">Terms of Service</Link>.
+        the <Link href={buildPolicyDocumentHref("/privacy", returnTo || "")}>Privacy Policy</Link> and{" "}
+        <Link href={buildPolicyDocumentHref("/terms", returnTo || "")}>Terms of Service</Link>.
       </p>
-    </div>
+    </PolicyDocumentLayout>
   );
 }

@@ -1,6 +1,17 @@
-export default function TermsPage() {
+import { PolicyDocumentLayout } from '@/components/legal/PolicyDocumentLayout';
+
+export default async function TermsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string | string[] }>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const returnTo = Array.isArray(resolvedSearchParams.returnTo)
+    ? resolvedSearchParams.returnTo[0]
+    : resolvedSearchParams.returnTo;
+
   return (
-    <div style={{ maxWidth: 800, margin: '40px auto', fontFamily: 'sans-serif' }}>
+    <PolicyDocumentLayout returnTo={returnTo}>
       <h1>Terms of Service</h1>
 
       <p>
@@ -128,6 +139,6 @@ export default function TermsPage() {
         the platform or related communications. Continued use of Reliance after updates become
         effective constitutes acceptance of the revised Terms.
       </p>
-    </div>
+    </PolicyDocumentLayout>
   );
 }
