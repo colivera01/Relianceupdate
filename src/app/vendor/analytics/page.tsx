@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VendorTrustScoreCard } from "@/components/vendor/VendorTrustScoreCard";
 import { useVendorDashboard } from "@/hooks/useVendorDashboard";
+import { deriveVendorAnalyticsMetrics } from "@/lib/vendor-analytics";
 
 function formatPercent(value: number) {
   return `${Math.max(0, Math.round(value))}%`;
@@ -50,25 +51,7 @@ export default function VendorAnalyticsPage() {
   const derived = useMemo(() => {
     if (!data) return null;
 
-    const totalBookings = Number(data.stats?.totalBookings || 0);
-    const totalClients = Number(data.stats?.totalClients || 0);
-    const rating = Number(data.stats?.rating || 0);
-    const ratingCount = Number(data.stats?.ratingCount || 0);
-    const approvedServiceOrders = Number(data.approvedServiceOrderCount ?? data.approvedProofs ?? 0);
-    const pendingServiceOrders = Number(
-      data.pendingModerationServiceOrderCount ?? data.pendingModerationProofs ?? 0
-    );
-    const archivedVideos = Number(data.archivedProofs || 0);
-    const totalProofAssets = Number(data.totalProofAssets || 0);
-    const storagePercent = Number(data.storagePercentUsed || 0);
-
-    const completedJobs = data.recentJobs.filter((job) => job.status === "completed").length;
-    const inProgressJobs = data.recentJobs.filter((job) => job.status === "in progress").length;
-    const scheduledJobs = data.recentJobs.filter((job) => job.status === "scheduled").length;
-    const completionRate =
-      totalBookings > 0 ? Math.round((completedJobs / totalBookings) * 100) : 0;
-    const reviewCoverage =
-      completedJobs > 0 ? Math.round((data.recentReviews.length / completedJobs) * 100) : 0;
+    const metrics = deriveVendorAnalyticsMetrics(data);
 
     const topPerformer =
       [...(data.employeePerformance || [])]
@@ -76,20 +59,7 @@ export default function VendorAnalyticsPage() {
         .sort((a, b) => Number(b.averageRating || 0) - Number(a.averageRating || 0))[0] || null;
 
     return {
-      totalBookings,
-      totalClients,
-      rating,
-      ratingCount,
-      approvedServiceOrders,
-      pendingServiceOrders,
-      archivedVideos,
-      totalProofAssets,
-      storagePercent,
-      completedJobs,
-      inProgressJobs,
-      scheduledJobs,
-      completionRate,
-      reviewCoverage,
+      ...metrics,
       topPerformer,
     };
   }, [data]);
@@ -177,7 +147,7 @@ export default function VendorAnalyticsPage() {
     {
       label: "Completion rate",
       value: formatPercent(derived.completionRate),
-      helper: `${derived.completedJobs} completed from recent tracked jobs`,
+      helper: `${derived.completedJobs} completed from eligible work records`,
       icon: TrendingUp,
     },
     {
@@ -282,7 +252,7 @@ export default function VendorAnalyticsPage() {
                   {derived.pendingServiceOrders} pending
                 </Badge>
                 <Badge variant="success">{derived.approvedServiceOrders} approved</Badge>
-                <Badge variant="outline">{derived.archivedVideos} archived</Badge>
+                <Badge variant="outline">{derived.archivedServiceOrders} archived</Badge>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 Approved service orders help first-time customers trust what your business actually delivers.
@@ -296,6 +266,7 @@ export default function VendorAnalyticsPage() {
               <div className="mt-2 flex flex-wrap gap-2">
                 <Badge variant="outline">{derived.scheduledJobs} scheduled</Badge>
                 <Badge variant="secondary">{derived.inProgressJobs} in progress</Badge>
+                <Badge variant="warning">{derived.awaitingReviewJobs} awaiting review</Badge>
                 <Badge variant="success">{derived.completedJobs} completed</Badge>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">

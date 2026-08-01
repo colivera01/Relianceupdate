@@ -7,6 +7,10 @@ import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assi
 import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
 import { parseAssignmentMetadata, parseCustomerMetadata } from "@/lib/job-assignment";
 import { resolveBookingCustomer } from "@/lib/booking-customer";
+import {
+  buildRelianceEmailHtml,
+  escapeRelianceEmailHtml,
+} from "@/lib/email/reliance-template";
 
 function phone(value: unknown): string | null {
   const text = String(value || "").trim();
@@ -23,6 +27,55 @@ function baseUrl(request: Request): string {
   return new URL(request.url).origin.replace(/\/+$/, "");
 }
 
+export function buildConsentDecisionEmailContent(input: {
+  accepted: boolean;
+  vendorName: string;
+  jobTitle: string;
+  recipientName: string;
+}) {
+  const decision = input.accepted ? "approved" : "declined";
+  const subject = `Customer ${decision} service video access: ${input.jobTitle}`;
+  const message = input.accepted
+    ? `The verified recipient allowed Reliance recording for ${input.jobTitle}. Recordings start Private. The assigned employee can now open the secure service order when all other recording checks pass.`
+    : `The verified recipient declined Reliance recording for ${input.jobTitle}. Recording stays locked. The service may continue without Reliance recording.`;
+  const resultLabel = input.accepted ? "Recording allowed" : "Recording declined";
+  const nextStep = input.accepted
+    ? "The assigned employee may open the secure service order after the remaining recording checks pass."
+    : "Do not record this service in Reliance. The service may continue without recording.";
+  const greeting = `Hi ${input.recipientName || "there"},`;
+  const text = [
+    greeting,
+    "",
+    message,
+    "",
+    `Vendor: ${input.vendorName}`,
+    `Service order: ${input.jobTitle}`,
+    `Decision: ${resultLabel}`,
+    "",
+    `Next step: ${nextStep}`,
+    "",
+    "- Reliance Team",
+  ].join("\n");
+  const html = buildRelianceEmailHtml({
+    eyebrow: "Recording permission update",
+    headline: `${resultLabel}: ${input.jobTitle}`,
+    greeting,
+    bodyHtml: `<p style="margin:0;">${escapeRelianceEmailHtml(message)}</p>`,
+    details: [
+      { label: "Vendor", value: input.vendorName },
+      { label: "Service order", value: input.jobTitle },
+      { label: "Decision", value: resultLabel },
+    ],
+    secondaryHtml: `
+      <p style="margin:0 0 8px;color:#ffffff;font-size:15px;font-weight:800;">What happens next</p>
+      <p style="margin:0;">${escapeRelianceEmailHtml(nextStep)}</p>
+    `,
+    footerNote: "This message confirms the verified recipient's recording-permission decision.",
+  });
+
+  return { subject, message, resultLabel, nextStep, text, html };
+}
+
 async function sendDecisionNotice(input: {
   actorUserId: string;
   bookingId: string;
@@ -35,16 +88,14 @@ async function sendDecisionNotice(input: {
 }) {
   const env = readNotificationEnv();
   const decision = input.accepted ? "approved" : "declined";
-  const subject = `Customer ${decision} service video access: ${input.jobTitle}`;
-  const message = input.accepted
-    ? `The verified recipient allowed Reliance recording for ${input.jobTitle}. Recordings start Private. The assigned employee can now open the secure service order when all other recording checks pass.`
-    : `The verified recipient declined Reliance recording for ${input.jobTitle}. Recording stays locked. The service may continue without Reliance recording.`;
+  const content = buildConsentDecisionEmailContent(input);
   const channels = [];
   if (env.emailEnabled && input.recipientEmail) {
     const result = await sendEmail({
       to: input.recipientEmail,
-      subject,
-      text: `Hi ${input.recipientName || "there"},\n\n${message}\n\nVendor: ${input.vendorName}\n\n- Reliance Team`,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
     });
     channels.push({ channel: "email", success: result.ok });
     await logNotificationAttempt(input.actorUserId, input.bookingId, {
@@ -59,7 +110,7 @@ async function sendDecisionNotice(input: {
   }
   const normalizedPhone = phone(input.recipientPhone);
   if (env.smsEnabled && normalizedPhone) {
-    const result = await sendSms({ to: normalizedPhone, body: `Reliance: ${message}` });
+    const result = await sendSms({ to: normalizedPhone, body: `Reliance: ${content.message}` });
     channels.push({ channel: "sms", success: result.ok });
     await logNotificationAttempt(input.actorUserId, input.bookingId, {
       kind: `customer_consent_${decision}`,

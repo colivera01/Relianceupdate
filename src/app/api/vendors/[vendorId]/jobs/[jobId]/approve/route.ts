@@ -23,14 +23,21 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     const booking = await prisma.booking.findFirst({
       where: { id: jobId, vendorId },
-      select: { id: true, status: true, customerMetadata: true, scheduledFor: true, date: true },
+      select: {
+        id: true,
+        status: true,
+        customerMetadata: true,
+        scheduledFor: true,
+        date: true,
+        updatedAt: true,
+      },
     });
     if (!booking) {
       return NextResponse.json({ error: "Job not found for this vendor." }, { status: 404 });
     }
 
     const currentStatus = normalizeBookingStatus(booking.status);
-    if (currentStatus !== "AWAITING_REVIEW") {
+    if (currentStatus !== "AWAITING_REVIEW" && currentStatus !== "COMPLETED") {
       return NextResponse.json(
         {
           error: "Only jobs in AWAITING_REVIEW can be approved.",
@@ -56,6 +63,25 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       },
     });
     const packageState = evaluateVendorJobPackageState(sessions);
+
+    // A completed three-stage package means the first request already committed.
+    // Treat a retry as success without duplicating audits, Trust Score outcomes,
+    // moderation resets, or notifications.
+    if (currentStatus === "COMPLETED" && packageState.hasAllRequiredStages) {
+      return NextResponse.json({
+        success: true,
+        alreadyApproved: true,
+        message: "Job completion was already approved. Media package is in moderation.",
+        job: {
+          id: booking.id,
+          status: booking.status,
+          date: booking.date,
+          updatedAt: booking.updatedAt,
+        },
+        moderationQueuedAssets: 0,
+      });
+    }
+
     if (!packageState.hasAllRequiredStages) {
       return NextResponse.json(
         {

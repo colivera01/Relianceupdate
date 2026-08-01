@@ -84,6 +84,7 @@ export interface VendorDashboardResponse {
     reviewCount: number;
   }>;
   recentJobs: VendorJob[];
+  archivedJobs?: VendorJob[];
   lifecycleCounts?: {
     scheduled: number;
     inProgress: number;

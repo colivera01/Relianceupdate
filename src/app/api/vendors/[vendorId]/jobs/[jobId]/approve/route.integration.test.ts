@@ -107,6 +107,47 @@ describe("vendor job approve integration", () => {
     expect(j.code).toBe("COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE");
   });
 
+  it("treats a repeated approval after the first request committed as success", async () => {
+    const completedAt = new Date("2026-08-01T12:00:00.000Z");
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      status: "COMPLETED",
+      customerMetadata: "{}",
+      date: completedAt,
+      updatedAt: completedAt,
+    });
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      {
+        id: "s1",
+        sessionType: "JOB_SERVICE_VIDEO",
+        vendorJobVideoStage: "INTRO",
+        mediaAssets: [{ id: "a1", moderationStatus: "pending_review", createdAt: completedAt }],
+      },
+      {
+        id: "s2",
+        sessionType: "JOB_SERVICE_VIDEO",
+        vendorJobVideoStage: "IN_PROGRESS",
+        mediaAssets: [{ id: "a2", moderationStatus: "pending_review", createdAt: completedAt }],
+      },
+      {
+        id: "s3",
+        sessionType: "JOB_SERVICE_VIDEO",
+        vendorJobVideoStage: "COMPLETED",
+        mediaAssets: [{ id: "a3", moderationStatus: "pending_review", createdAt: completedAt }],
+      },
+    ]);
+
+    const { req, ctx } = postReq("v1", "job1");
+    const res = await POST(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect(body.alreadyApproved).toBe(true);
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.txBookingUpdate).not.toHaveBeenCalled();
+    expect(hoisted.txMediaAssetUpdateMany).not.toHaveBeenCalled();
+  });
+
   it("completes job and re-queues package moderation", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",

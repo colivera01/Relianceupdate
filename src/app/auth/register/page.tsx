@@ -2185,15 +2185,15 @@ function RegisterPageInner() {
                           customer video consent requests, approved video availability, review reminders,
                           support updates. Message frequency varies. Msg &amp; data
                           rates may apply. Reply STOP to opt out or HELP for help. This SMS consent is required when a mobile phone number is provided. See{' '}
-                          <Link href="/sms-policy" className="font-semibold text-blue-200 underline">
+                          <Link href="/sms-policy" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             SMS Policy
                           </Link>
                           ,{' '}
-                          <Link href="/privacy" className="font-semibold text-blue-200 underline">
+                          <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             Privacy Policy
                           </Link>
                           , and{' '}
-                          <Link href="/terms" className="font-semibold text-blue-200 underline">
+                          <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             Terms
                           </Link>
                           .

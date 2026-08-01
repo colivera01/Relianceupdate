@@ -285,11 +285,14 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const jobsOnly = searchParams.get("jobsOnly") === "1";
+    // Manage Jobs is an operational surface. Its list must reflect mutations
+    // immediately, so jobs-only responses must never come from the dashboard TTL.
+    const useResponseCache = USE_DASHBOARD_CACHE && !jobsOnly;
 
     // Check cache
     const cacheKey = `dashboard:${vendorId}:${jobsOnly ? "jobsOnly" : "full"}`;
-    const cached = USE_DASHBOARD_CACHE ? cache.get(cacheKey) : null;
-    if (USE_DASHBOARD_CACHE && cached && cached.expiresAt > Date.now()) {
+    const cached = useResponseCache ? cache.get(cacheKey) : null;
+    if (useResponseCache && cached && cached.expiresAt > Date.now()) {
       return NextResponse.json(cached.data);
     }
 
@@ -880,7 +883,7 @@ export async function GET(
         lifecycleCounts,
       };
 
-      if (USE_DASHBOARD_CACHE) {
+      if (useResponseCache) {
         cache.set(cacheKey, {
           data: response,
           expiresAt: Date.now() + CACHE_TTL_MS,
@@ -1145,7 +1148,7 @@ export async function GET(
     };
 
     // Cache the response
-    if (USE_DASHBOARD_CACHE) {
+    if (useResponseCache) {
       cache.set(cacheKey, {
         data: response,
         expiresAt: Date.now() + CACHE_TTL_MS,

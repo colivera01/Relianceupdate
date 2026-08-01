@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-07-31 (Epic 1 engineering checkpoint)
+**Last updated:** 2026-08-01 (Updates 7-31-26 beta-feedback checkpoint)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Current Epic
@@ -22,6 +22,17 @@
 Starting commit: `2ddc4f31560da791330fa67f753593f3962ca544`
 
 Final Epic 1 commit: this checkpoint; use `git log -1` after commit.
+
+## Latest Beta Feedback Maintenance
+
+The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2. This checkpoint covers immediate archived-work-record refresh, a focused service-video account handoff, registration-safe policy links, idempotent manager approval, branded permission-decision email, and canonical Vendor Analytics metrics.
+
+- Report: [Updates 7-31-26 Engineering Report](<Beta Feedback/UPDATES_2026-07-31_ENGINEERING_REPORT.md>)
+- Focused tests: 9 of 9 passed
+- Related regression tests: 57 of 57 passed
+- Production build: Passed with a 4 GB Node heap allowance
+- Full repository suite: 735 passed; 13 unrelated existing failures remain documented in the report
+- Screenshots: `output/updates-7-31-26/` (local evidence, not committed)
 
 ## Roadmap Progress
 

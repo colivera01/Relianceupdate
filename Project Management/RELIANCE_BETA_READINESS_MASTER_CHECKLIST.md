@@ -1,6 +1,17 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
 
+## Beta Feedback Checkpoint - Updates 7-31-26
+
+**Implementation date:** 2026-08-01
+**Engineering state:** Six reported workflow/UX issues are implemented and verified; no checklist row is promoted to Beta Ready by this maintenance checkpoint.
+**Primary evidence:** `Project Management/Beta Feedback/UPDATES_2026-07-31_ENGINEERING_REPORT.md`
+
+- `PROD-07`, `PROD-10`, `PROD-11`, `TEST-02`, `TEST-03`, `TEST-09`, `TEST-11`, `SHOT-01`, `SHOT-05`, `SHOT-07`, and `SHOT-10` gain implementation or validation evidence.
+- The customer proof-ready handoff is focused and account-protected; Manage Jobs operational reads are current after mutations; manager approval retries are idempotent; permission-decision email uses the shared Reliance shell; Analytics uses canonical service-order lifecycle metrics.
+- Release status remains unchanged because live provider delivery, full role journeys, the complete screenshot matrix, the Product Owner demo, and unrelated repository-wide test failures remain open.
+
+
 ## Epic 1 Checkpoint - Verified Permission Request
 
 **Implementation date:** 2026-07-31

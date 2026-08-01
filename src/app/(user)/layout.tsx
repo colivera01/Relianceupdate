@@ -1,12 +1,12 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import UserSidebar from '@/components/UserSidebar';
 import ProfileToggle from '@/components/ProfileToggle';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { getClientSessionHeaders } from '@/lib/client-session';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { AlertTriangle, LogIn, Video } from 'lucide-react';
 import { isOwnerAdminUserId } from '@/lib/internal-identities';
 import {
@@ -14,11 +14,12 @@ import {
   getCustomerServiceVideoIntent,
 } from '@/lib/auth-next';
 
-export default function UserLayout({ children }: { children: React.ReactNode }) {
+function UserLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [restrictedMessage, setRestrictedMessage] = useState<string | null>(null);
-  const [queryString, setQueryString] = useState('');
   const pathname = usePathname() || '';
+  const searchParams = useSearchParams();
+  const queryString = searchParams?.toString() || '';
   // The customer shell should identify itself as "customer" even when the
   // signed-in identity also has admin/vendor access. Role toggles should
   // reflect the current shell, not the highest-privilege account type.
@@ -34,10 +35,6 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
     '/auth/register?type=user',
     returnPath
   );
-
-  useEffect(() => {
-    setQueryString(window.location.search.replace(/^\?/, ''));
-  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,12 +139,6 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
                   I Already Have an Account
                 </Link>
               </div>
-              <Link
-                href="/browse"
-                className="mt-5 inline-flex text-sm font-medium text-blue-700 hover:underline"
-              >
-                Browse public services instead
-              </Link>
             </div>
           </div>
         </div>
@@ -190,6 +181,16 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (serviceVideoIntent) {
+    return (
+      <div className="reliance-operator-shell reliance-grid-lines min-h-screen">
+        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+          {children}
+        </main>
       </div>
     );
   }
@@ -267,4 +268,28 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
       </main>
     </div>
   );
-} 
+}
+
+export default function UserLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)] px-4 py-12">
+          <div className="mx-auto flex min-h-[60vh] w-full max-w-3xl items-center justify-center">
+            <div className="w-full rounded-[32px] border border-slate-200 bg-white p-8 text-center shadow-[0_24px_80px_rgba(7,16,38,0.08)]">
+              <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-2 border-slate-200 border-t-[var(--reliance-blue)]" />
+              <h1 className="font-display text-3xl font-semibold text-slate-950">
+                Opening your customer account
+              </h1>
+              <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+                Reliance is preparing the secure page connected to this link.
+              </p>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <UserLayoutContent>{children}</UserLayoutContent>
+    </Suspense>
+  );
+}
