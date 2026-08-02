@@ -1,17 +1,27 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-02 (Epic 1 operational closeout)
+**Last updated:** 2026-08-02 (Epic 1 approved and completed)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
-## Current Epic
+## Completed Epic
 
 **Epic 1 - Verified Permission Request**
 
+- Status: **Completed**
 - Planning: Approved
 - Implementation: Operational closeout deployed
-- Product Owner demo: Engineering replay and evidence complete; final Product Owner decision pending
-- Next action: Product Owner performs the final manual checklist and approves or rejects Epic 1 closure; SMS handset proof remains deferred until Telnyx is operational
+- Product Owner demo: Approved
+- SMS handset validation: **Deferred - External Provider Dependency**; not an application defect
+- Maintenance rule: No further Epic 1 changes unless a genuine beta defect is discovered
+
+## Next Active Epic
+
+**Epic 2 - Proof-First Platform Shell**
+
+- Status: Active for approved epic planning only
+- Implementation: Not started
+- Required next action: Prepare and present the Epic 2 implementation plan before changing code
 
 ## Current Branch
 
@@ -40,8 +50,8 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 
 | Order | Epic                                                  | Status                                    | Engineering | UX          | Demo    | Git checkpoint     |
 | ----- | ----------------------------------------------------- | ----------------------------------------- | ----------- | ----------- | ------- | ------------------ |
-| 1     | Verified Permission Request                           | Operational closeout complete; approval pending | Complete | No engineering blocker | Final PO checklist pending | Application `08de960` |
-| 2     | Proof-First Platform Shell                            | Not started                               | Not started | Not started | Not run | Not recorded       |
+| 1     | Verified Permission Request                           | **Completed** | Complete | Complete | Approved | Application `08de960` |
+| 2     | Proof-First Platform Shell                            | Next active epic; implementation not started | Not started | Not started | Not run | Not recorded       |
 | 3     | Trusted Accounts and Role Isolation                   | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 4     | Universal Work Record and Recording Gates             | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 5     | Safe Capture Through Private Service Videos           | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -57,9 +67,10 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 
 The Beta Readiness Checklist remains the master acceptance tracker. It is not modified by this workspace-creation task.
 
-- Beta Ready epics: 0 of 12
+- Completed epics: 1 of 12
+- Beta Ready release: No; later epics and release gates remain open
 - Current checklist: [Beta Readiness Master Checklist](RELIANCE_BETA_READINESS_MASTER_CHECKLIST.md)
-- Current Epic snapshot: [Epic 1 Checklist Snapshot](<Epic 1 - Verified Permission Request/06_Checklist_Snapshot.md>)
+- Completed Epic 1 snapshot: [Epic 1 Checklist Snapshot](<Epic 1 - Verified Permission Request/06_Checklist_Snapshot.md>)
 - Release gate: Not ready
 - Evidence rule: No checklist row becomes Beta Ready from code existence alone
 
@@ -67,15 +78,13 @@ The Beta Readiness Checklist remains the master acceptance tracker. It is not mo
 
 | Item                                  | Owner                       | Status  | Next action                                                                                |
 | ------------------------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| Controlled SMS handset validation | Engineering / Product Owner | Deferred - external dependency | Validate with a dedicated handset after Telnyx activation; application wiring remains enabled |
-| Product Owner closeout decision | Product Owner | Pending | Perform the final ten-step checklist in `03_Product_Owner_Demo.md` and approve or reject closure |
+| Controlled SMS handset validation | Engineering / Product Owner | Deferred - External Provider Dependency | Validate after Telnyx activation; do not classify as an application defect |
 
 ## Blocked Items
 
 | Item           | Blocker                                                                     | Owner  | Resolution                                             |
 | -------------- | --------------------------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| Epic 1 closure | Final Product Owner decision remains open; SMS handset proof is externally deferred | Product Owner | Complete final manual replay and approve or reject Epic 1 |
-| Epic 2 start | Epic 1 is not closed | Product Owner | Explicitly approve Epic 1 after corrected demo evidence |
+| Epic 2 implementation | Epic 2 implementation plan has not been presented or approved | Product Owner / Engineering | Prepare the plan and wait for Product Owner approval before code changes |
 
 ## Technical Debt Summary
 
@@ -113,7 +122,7 @@ The Beta Readiness Checklist remains the master acceptance tracker. It is not mo
 
 ## Next Epic
 
-Epic 2 - Proof-First Platform Shell. It is not authorized to begin until the Product Owner approves Epic 1 closed.
+Epic 2 - Proof-First Platform Shell is the next active epic. Implementation has not begun and still requires its approved implementation plan.
 
 ## Required Update Cycle
 

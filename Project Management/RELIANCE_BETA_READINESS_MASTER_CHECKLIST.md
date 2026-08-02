@@ -1,21 +1,26 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
-## Epic 1 Operational Validation - 2026-08-02
+## Epic 1 Completed - Verified Permission Request
 
 **Deployed package:** `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip`
 **Epic 1 corrected application commit:** `08de960c768463f2fea7c407d7bb39e6dcfacb3b`
 **Migration state:** All 34 repository migrations applied in Azure beta
-**Result:** Epic 1 engineering and operational closeout complete; Product Owner closure decision pending
+**Epic status:** **Completed**
+**Product Owner decision:** Approved on 2026-08-02
+**Result:** Epic 1 engineering, operational validation, and Product Owner closeout are complete
 **Primary evidence:** `Project Management/Epic 1 - Verified Permission Request/`
 
 Controlled live validation passed matching-account verification, email OTP, Allow, Decline, Decide later, Wrong recipient, and read-only masked Admin Permission Audit. Email delivery succeeded. SMS provider acceptance was recorded for a reserved fictional test number; handset receipt was not tested.
 
-The original live walkthrough found that a declined customer-residence record could be released and expose employee camera controls. Commit `97396da` replaced the divergent decisions with one immutable-scope server resolver. Commit `08de960` added assigned-work-record resend/contact-correction UX, superseded-link guidance, and a corrected notification-worker query. The current package is healthy, the scheduler has three consecutive successful runs, and a fresh signed-in replay passed live email delivery, login, vendor jobs, and masked recovery controls. SMS handset validation is deferred until Telnyx is operational.
+The original live walkthrough found that a declined customer-residence record could be released and expose employee camera controls. Commit `97396da` replaced the divergent decisions with one immutable-scope server resolver. Commit `08de960` added assigned-work-record resend/contact-correction UX, superseded-link guidance, and a corrected notification-worker query. The current package is healthy, the scheduler has consecutive successful runs, and a fresh signed-in replay passed live email delivery, login, vendor jobs, and masked recovery controls.
+
+**SMS handset validation:** **Deferred - External Provider Dependency.** Telnyx is not operational yet. This is not classified as an application defect. The enabled application path, OTP handling, provider routing, failure behavior, retry behavior, and secret-safety coverage remain preserved for validation after provider activation.
 
 - `CON-05`, `CON-06`, `CON-24`, `CON-25`, `CON-26`, `SEC-04`, `PROD-11`, `PROD-12`, `TEST-03`, and `TEST-06` remain `In Progress`, but the cross-role gate defect is resolved by deployed code and focused regression evidence.
 - `NOT-01` through `NOT-03`, `NOT-05` through `NOT-08`, and `TEST-09` remain `In Progress`; email and scheduler operation are evidenced, while SMS handset/callback validation is externally deferred.
-- `SHOT-01`, `SHOT-02`, `SHOT-03`, `SHOT-07`, and `DOC-01` through `DOC-07` gain corrected desktop/mobile evidence but remain `In Progress` pending complete role evidence and Product Owner approval.
-- No row is promoted to `Beta Ready`. Epic 2 remains unauthorized.
+- `SHOT-01`, `SHOT-02`, `SHOT-03`, `SHOT-07`, and `DOC-01` through `DOC-07` gain corrected desktop/mobile evidence but remain `In Progress` pending complete cross-epic role and release evidence.
+- Epic 1 is `Completed`. Shared checklist rows that also depend on later epics remain `In Progress`; they are not promoted to `Beta Ready` solely from Epic 1 approval.
+- No further Epic 1 changes are planned unless beta validation identifies a genuine defect.
 
 
 ## Beta Feedback Checkpoint - Updates 7-31-26
@@ -40,7 +45,7 @@ Epic 1 added a verified, Private-by-default recording-permission request with ha
 
 ### Evidence-supported row movement
 
-- `CON-05`, `CON-06`, `CON-24`, `CON-25`, `CON-26`, `SEC-04`, `NOT-06`, and `NOT-07`: Epic 1 implementation and automated coverage complete; release status remains evidence-gated until migration deployment and Product Owner validation.
+- `CON-05`, `CON-06`, `CON-24`, `CON-25`, `CON-26`, `SEC-04`, `NOT-06`, and `NOT-07`: Epic 1 implementation, migration deployment, automated coverage, and Product Owner validation are complete; shared release status remains evidence-gated by later epics.
 - `CON-01`, `CON-03`, `CON-07`, `CON-27`, `LEG-09` through `LEG-12`, `NOT-01` through `NOT-03`, `NOT-05`, `NOT-08`, `TEST-06`, `TEST-09`, `SHOT-01`, `SHOT-02`, `SHOT-07`, and `DOC-01` through `DOC-07`: remain `In Progress` because later epics, live providers, role-wide evidence, or Product Owner review still own part of the acceptance criteria.
 - No row is marked `Beta Ready` from code existence alone.
 
