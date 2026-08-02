@@ -1,14 +1,52 @@
 # Epic 1 Engineering Report
 
 **Epic:** Verified Permission Request
-**Status:** Canonical permission-gate correction deployed; Epic closure remains pending unrelated operational evidence
+**Status:** Operational closeout complete; Product Owner closure decision pending
 **Branch:** `cursor-latest-build`
 **Starting commit:** `2ddc4f31560da791330fa67f753593f3962ca544`
-**Final application commit:** `97396da7f6c99f6cea34e7ed40b05973b548ed38`
+**Final application commit:** `08de960c768463f2fea7c407d7bb39e6dcfacb3b`
 **Report date:** 2026-08-02
 **Owner:** Codex / Product Owner
 
 ## Operational Validation Update - 2026-08-02
+
+### Operational Closeout
+
+The final Epic 1 runtime package is `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip`, built from commit `08de960c768463f2fea7c407d7bb39e6dcfacb3b`. Azure package metadata and the live application agree on that commit.
+
+- Vendor managers can now open **Manage Recording Permission** from assigned work records, resend to the masked current recipient, or correct the recipient. Both operations rotate the secure link; the prior link is invalidated.
+- A superseded link explains that a newer request replaced it and directs the customer to the newest request when available.
+- The notification worker's active Prisma query was corrected, and the Azure Logic App is enabled on a five-minute schedule with secure inputs/outputs, exponential retry, and a configured worker secret. Three consecutive post-deployment runs succeeded.
+- `SMS_ENABLED=true` and the Telnyx integration path remains active. OTP generation, hashing, provider routing, retry/failure behavior, audit safety, and no-secret exposure are covered by focused tests. Handset delivery is **Deferred - External Provider Dependency** until Telnyx is operational.
+- A fresh live replay confirmed beta login, live email-code delivery, successful vendor sign-in, a healthy vendor jobs page, and the permission-recovery dialog with masked contacts and recording-lock guidance. The replay intentionally did not mutate or resend an existing customer request.
+
+No migration or database rewrite was required for this closeout. The local workstation could not directly inspect the beta database because Azure SQL network policy rejected the connection; application, test, and masked admin evidence remain the available verification sources.
+
+### Closeout Verification
+
+| Validation | Result |
+| --- | --- |
+| Focused Vitest recovery/worker/route suite | Pass: 21 tests |
+| Permission customer Playwright | Pass: 7 tests, including refresh/close/reopen and superseded request |
+| Vendor recovery Playwright | Pass: 2 desktop/mobile tests |
+| TypeScript | Pass |
+| Production build | Pass with 6 GB heap; 197/197 pages |
+| Azure scheduler | Pass: three consecutive five-minute runs |
+| Live beta email and sign-in | Pass |
+| Live vendor jobs/recovery dialog | Pass; no page error and no raw token visible |
+| SMS handset delivery | Deferred - External Provider Dependency |
+
+### REGRESSION STATEMENT
+
+**Existing functionality intentionally preserved:** canonical permission decisions, role/ownership authorization, assignment and location gates, Private starting audience, audio-off behavior, three-stage recording, manager review, admin evidence, notifications, and fail-closed recording enforcement.
+
+**Existing functionality intentionally unchanged:** reviews, ratings, Trust Score, public publication, exact-media approval, withdrawal, retention/deletion, minors/guardians, account/session architecture, and every later epic.
+
+**Areas verified unaffected:** permission events still create no review, rating, Trust Score input, publication approval, or Public media. The focused permission, booking, notification, and browser regressions pass. Frozen governing documents are unchanged.
+
+**Potential regression risks reviewed:** link rotation, recipient correction, stale-link handling, scheduler idempotency, retry eligibility, masked contact display, browser refresh/reopen, and recording-lock messaging.
+
+**Known unrelated issues:** the repository retains pre-existing generated `tsconfig.tsbuildinfo` and untracked `output/`; dependency advisories and previously documented broad-suite debt remain outside this closeout.
 
 ### Canonical Recording-Gate Correction
 
@@ -34,8 +72,8 @@ Epic 1 remains open for the separate recovery, retry-scheduler, live SMS, and ma
 | SMS initiation | Partial | Provider accepted the send to a reserved fictional test number; handset receipt was not tested |
 | Decline / Decide later / Wrong recipient | Pass at decision layer | Correct customer terminal states and admin audit entries |
 | Employee recording lock | **Corrected** | Canonical desktop/mobile regression proves declined customer-residence stages are disabled, camera controls are absent, and no media request occurs |
-| Resend / contact correction | **Blocked live** | Active vendor UI did not expose the recovery action after assignment; automated route coverage passes |
-| Retry worker | **Not operationally verified** | Worker route exists, but no beta scheduler or worker secret configuration was found |
+| Resend / contact correction | **Resolved in closeout** | Assigned-job recovery UI and automated route/browser coverage pass |
+| Retry worker | **Operational** | Secured five-minute scheduler configured; three consecutive runs succeeded |
 | Admin Permission Audit | Pass | Masked contacts, method, authority, audio-off, decision, and delivery timeline |
 | Raw token/OTP exposure | No UI/API/admin exposure observed | Hash-only automated coverage passed; direct live database inspection was blocked by network policy |
 | Review/rating/Trust/public side effects | None observed | Automated no-side-effect coverage passed; no media was created in live testing |
@@ -113,7 +151,7 @@ New evidence models are additive. `ConsentRecord.token` becomes nullable for leg
 - Retries use idempotency, leases, backoff, maximum attempts, and dead-letter state.
 - Delivery failure never creates permission and keeps recording locked.
 - Controlled email delivery succeeded. SMS provider acceptance was recorded for a reserved fictional test number; end-to-end handset receipt was not claimed.
-- Retry processing remains an operational gap because no beta scheduler or worker-secret configuration was found.
+- Retry processing is operational through a secured five-minute Azure Logic App schedule. Three consecutive post-deployment runs succeeded.
 
 ## AI Impact
 

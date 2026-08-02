@@ -1,10 +1,10 @@
 # Epic 1 Product Owner Demo
 
 **Epic:** Verified Permission Request
-**Build / commit:** Azure beta package `reliance-beta-97396da-canonical-gate-complete-20260802145600.zip` / `97396da7f6c99f6cea34e7ed40b05973b548ed38`
+**Build / commit:** Azure beta package `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip` / `08de960c768463f2fea7c407d7bb39e6dcfacb3b`
 **Product Owner:** Cesar Olivera
 **Validation date:** 2026-08-02
-**Overall result:** Release-blocking gate corrected and deployed; manual Product Owner acceptance and unrelated Epic 1 operations remain open
+**Overall result:** Epic 1 engineering and operational closeout passed; Product Owner closure decision pending
 
 ## Controlled Test Roles
 
@@ -37,18 +37,18 @@ All tests used dedicated or synthetic beta identities. Passwords, OTPs, raw perm
 | --- | --- | --- |
 | Expected workflow | Open a fresh customer-residence request, verify identity, select authority, and Allow. The customer sees Private/audio-off education and a success state. | Pass at customer decision layer |
 | Decline | Decline a fresh request. Vendor and employee must show Declined and recording must remain locked. | **Corrected - focused server tests and desktop/mobile Playwright pass** |
-| Decide later | Choose Decide later. No decision is saved and recording stays locked. | Partial - customer/admin correct; vendor showed unsafe next-step copy |
-| Wrong recipient | Choose This request is not for me. The request becomes misdirected, not declined, and the vendor can correct contact details. | Partial - customer/admin correct; tested vendor UI did not expose correction |
+| Decide later | Choose Decide later. No decision is saved and recording stays locked. | Pass in canonical gate regression and live vendor status replay |
+| Wrong recipient | Choose This request is not for me. The request becomes misdirected, not declined, and the vendor can correct contact details. | Pass in controlled browser tests; recovery UI exposed live |
 | Matching account | Use the account matching the recipient email and continue without OTP. | Pass |
 | Email OTP | Use a controlled inbox, receive OTP, verify, select authority, and decide. | Pass |
 | SMS OTP | Send only to a controlled handset and complete the challenge. | Not run - provider accepted a send to a reserved fictional number; no handset existed |
-| Expiry/resend | Expire a request, resend as manager, and confirm old-link invalidation and current generation. | Automated pass; blocked in live UI after assignment |
-| Contact correction | Correct the intended recipient and confirm the prior request is superseded. | Automated pass; blocked in live UI after assignment |
+| Expiry/resend | Expire a request, resend as manager, and confirm old-link invalidation and current generation. | Pass in route and browser tests; action exposed live without mutating an existing request |
+| Contact correction | Correct the intended recipient and confirm the prior request is superseded. | Pass in route/browser tests; action exposed live and superseded copy verified |
 | One-channel failure | Fail one controlled delivery channel and confirm the other channel remains usable. | Automated pass only |
-| All-channel failure | Fail all channels and confirm recording stays locked with visible recovery. | Automated pass only; live retry scheduler is not configured |
+| All-channel failure | Fail all channels and confirm recording stays locked with visible recovery. | Automated pass; live scheduler configured and running, destructive live failure not forced |
 | Employee blocked states | Pending, Declined, Expired, Wrong recipient, Superseded, and no-channel states must not expose camera access. | **Corrected for the failed Declined residence case; canonical resolver preserves fail-closed handling for uncertain states** |
 | Employee allowed state | Verified Allow may unlock only after unrelated assignment and location gates also pass. | Partial - customer Allow and assignment passed; physical location gate was not completed |
-| Expected notifications | Email/SMS explain purpose, Private starting audience, audio off, and separate later publication. | Partial - email delivered; SMS provider accepted; retry scheduler absent |
+| Expected notifications | Email/SMS explain purpose, Private starting audience, audio off, and separate later publication. | Email and scheduler pass; SMS handset deferred until Telnyx is operational |
 | Expected dashboard updates | Vendor and employee show one canonical status and correct next action after every decision. | **Corrected in shared server decision and automated integration coverage** |
 | Expected database state | Store only hashes/masks and durable verification, authority, version, decision, and channel attempts. | Partial - automated/code/admin evidence passed; direct live DB inspection blocked by network policy |
 | Expected admin state | Permission Audit is read-only, masked, and shows verification method, authority, audio state, decision, events, and delivery attempts. | Pass |
@@ -64,26 +64,30 @@ All tests used dedicated or synthetic beta identities. Passwords, OTPs, raw perm
 - Camera and upload controls are absent.
 - Forced stage interaction creates zero media-session requests.
 - Production build passed and beta health returned HTTP 200 on the corrected package.
-- A fresh signed-in browser replay was attempted but not completed because the retained vendor session had expired and Chrome control timed out. This is recorded as unrun manual acceptance, not as a Reliance failure.
+- Fresh beta login and live email-code delivery passed.
+- The vendor jobs page loaded eight records without an error.
+- **Manage Recording Permission** opened for an assigned pending request and showed masked contact data, resend, correction, old-link invalidation, and recording-lock guidance.
+- Customer Playwright passed refresh, browser close/reopen, and superseded-link scenarios.
+- The Azure notification scheduler completed three consecutive five-minute runs after deployment.
 
-## Required Product Owner Retest After Correction
+## PRODUCT OWNER DEMO CHECKLIST - FINAL MANUAL REPLAY
 
-1. Create a new customer-residence record.
-2. Confirm the vendor card identifies permission as required before assignment and after assignment.
-3. Decline through the customer link.
-4. Confirm **Send Service Order** is absent or disabled with a truthful Declined reason.
-5. Confirm the employee cannot see stage camera controls or create a media session.
-6. Repeat with Decide later, Wrong recipient, Expired, Superseded, and no-channel states.
-7. Allow a separate record and confirm permission alone does not bypass assignment or location verification.
-8. Confirm Resend and Correct recipient are available when recovery is valid.
-9. Confirm Admin Permission Audit remains masked and immutable.
-10. Confirm no review, rating, Trust Score input, publication approval, or Public media is created.
+1. Sign in to beta as the controlled vendor manager and open `/vendor/jobs`.
+2. Open **Manage Recording Permission** on a controlled pending request; observe masked recipient, resend, and correction choices.
+3. For a fresh synthetic request, resend once and confirm the old link explains that it was replaced.
+4. Correct a synthetic recipient and confirm the previous request is superseded while recording stays locked.
+5. Open the customer link, refresh, close the browser, reopen the same link, and complete verification.
+6. Decline a fresh customer-residence request; confirm vendor and employee show Declined and expose no camera/media-session path.
+7. Allow a separate request; confirm assignment and location gates still apply.
+8. Open `/admin/permission-audit`; confirm masked immutable evidence and no override.
+9. Confirm no permission event creates a review, rating, Trust Score input, publication approval, or Public media.
+10. Record SMS handset validation as deferred until Telnyx is operational; do not treat provider absence as a successful handset test.
 
 ## Product Owner Decision
 
 - [ ] Approved to close this epic
-- [x] Changes required
+- [ ] Changes required
 - [ ] Blocked by canonical gate defect
 - [ ] Next epic authorized
 
-**Decision notes:** The approved canonical gate correction is deployed. Product Owner should rerun the ten steps above with a fresh signed-in session. Epic 1 remains open for the already-recorded resend/recovery, retry-scheduler, and live SMS evidence; Epic 2 remains unauthorized.
+**Decision notes:** Engineering replay, resend/correction UI, scheduler operation, email delivery, automated state coverage, and screenshot evidence are complete. SMS handset validation is deferred as an external provider dependency. Product Owner should perform the ten-step final manual replay and explicitly approve or reject Epic 1 closure. Epic 2 remains unauthorized.

@@ -2,18 +2,18 @@
 
 ## Epic 1 Operational Validation - 2026-08-02
 
-**Deployed package:** `reliance-beta-97396da-canonical-gate-complete-20260802145600.zip`
-**Epic 1 corrected application commit:** `97396da7f6c99f6cea34e7ed40b05973b548ed38`
+**Deployed package:** `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip`
+**Epic 1 corrected application commit:** `08de960c768463f2fea7c407d7bb39e6dcfacb3b`
 **Migration state:** All 34 repository migrations applied in Azure beta
-**Result:** Canonical gate defect corrected; Epic 1 remains open for other operational evidence and Product Owner acceptance
+**Result:** Epic 1 engineering and operational closeout complete; Product Owner closure decision pending
 **Primary evidence:** `Project Management/Epic 1 - Verified Permission Request/`
 
 Controlled live validation passed matching-account verification, email OTP, Allow, Decline, Decide later, Wrong recipient, and read-only masked Admin Permission Audit. Email delivery succeeded. SMS provider acceptance was recorded for a reserved fictional test number; handset receipt was not tested.
 
-The original live walkthrough found that a declined customer-residence record could be released and expose employee camera controls. Commit `97396da` replaces the divergent decisions with one immutable-scope server resolver used by vendor release/status, employee camera state, media-session creation, stage save, and upload routes. The corrected declined-residence fixture passes desktop/mobile Playwright and affected server regressions, and the corrected package is healthy on beta. Resend/contact-correction UI, retry scheduling, SMS handset evidence, and fresh signed-in Product Owner acceptance remain open.
+The original live walkthrough found that a declined customer-residence record could be released and expose employee camera controls. Commit `97396da` replaced the divergent decisions with one immutable-scope server resolver. Commit `08de960` added assigned-work-record resend/contact-correction UX, superseded-link guidance, and a corrected notification-worker query. The current package is healthy, the scheduler has three consecutive successful runs, and a fresh signed-in replay passed live email delivery, login, vendor jobs, and masked recovery controls. SMS handset validation is deferred until Telnyx is operational.
 
 - `CON-05`, `CON-06`, `CON-24`, `CON-25`, `CON-26`, `SEC-04`, `PROD-11`, `PROD-12`, `TEST-03`, and `TEST-06` remain `In Progress`, but the cross-role gate defect is resolved by deployed code and focused regression evidence.
-- `NOT-01` through `NOT-03`, `NOT-05` through `NOT-08`, and `TEST-09` remain `In Progress`; initial live delivery is evidenced but retry/callback/handset validation is incomplete.
+- `NOT-01` through `NOT-03`, `NOT-05` through `NOT-08`, and `TEST-09` remain `In Progress`; email and scheduler operation are evidenced, while SMS handset/callback validation is externally deferred.
 - `SHOT-01`, `SHOT-02`, `SHOT-03`, `SHOT-07`, and `DOC-01` through `DOC-07` gain corrected desktop/mobile evidence but remain `In Progress` pending complete role evidence and Product Owner approval.
 - No row is promoted to `Beta Ready`. Epic 2 remains unauthorized.
 

@@ -34,15 +34,17 @@
 - Add one canonical server-side function for determining whether permission is required and reuse it in booking cards, release authorization, employee lists, and media-session creation.
 - Treat live cross-role blocked-state tests as mandatory security tests, not only UX demonstrations.
 - Provision and monitor the notification retry scheduler before calling delivery recovery operational.
+- Verify deployment ZIP compatibility on the Azure Linux package mount before switching the active package.
+- Keep the provider path enabled when a provider is pending, but distinguish application readiness from live handset proof.
 
 ## Actions Carried Forward
 
 | Action                                       | Owner                       | Due before             | Status |
 | -------------------------------------------- | --------------------------- | ---------------------- | ------ |
 | Migration rehearsal and rollback evidence    | Engineering                 | Epic 1 beta deployment | Open   |
-| Controlled email/SMS delivery and retry test | Product Owner / Engineering | Epic 1 approval        | Open   |
-| Complete Product Owner Demo Checklist        | Product Owner               | Epic 1 closure         | Open   |
+| Controlled email/SMS delivery and retry test | Product Owner / Engineering | Epic 1 approval        | Email/retry complete; SMS handset deferred externally |
+| Complete Product Owner Demo Checklist        | Product Owner               | Epic 1 closure         | Engineering replay complete; approval pending |
 | Triage unrelated test/type/security debt     | Engineering / Product Owner | Private beta release   | Open   |
-| Correct customer-residence metadata/gate divergence | Engineering / Product Owner | Epic 1 closure | Blocked pending approval |
-| Expose resend and recipient correction after assignment | Engineering / Product Owner | Epic 1 closure | Blocked pending approval |
-| Configure retry worker secret and scheduler | Engineering / Operations | Epic 1 closure or explicit accepted deferral | Open |
+| Correct customer-residence metadata/gate divergence | Engineering / Product Owner | Epic 1 closure | Complete |
+| Expose resend and recipient correction after assignment | Engineering / Product Owner | Epic 1 closure | Complete |
+| Configure retry worker secret and scheduler | Engineering / Operations | Epic 1 closure or explicit accepted deferral | Complete; three consecutive runs succeeded |

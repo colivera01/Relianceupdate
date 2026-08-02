@@ -1,8 +1,8 @@
 # Epic 1 UX Review
 
 **Epic:** Verified Permission Request
-**Build reviewed:** Azure beta package `684dc79364b22aa984e7ed990feaedfd9bc9f406` on 2026-08-02
-**Status:** Live four-role review completed; not ready to close
+**Build reviewed:** Azure beta package `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip` on 2026-08-02
+**Status:** Operational UX corrections validated; Product Owner closure decision pending
 
 ## Customer
 
@@ -66,12 +66,12 @@ The assigned employee receives camera access only after a current verified Allow
 
 An authorized admin can inspect durable permission and delivery evidence. Admin cannot change the decision or broaden visibility.
 
-## Blocking UX Findings
+## Resolved UX Findings
 
-1. **Critical:** A declined customer-residence request appears to the vendor as "Consent not required," exposes **Send Service Order**, and can reach an employee with camera controls. The interface communicates the opposite of the customer decision.
-2. **High:** Decide-later records can show the same incorrect consent-not-required next step.
-3. **High:** Wrong-recipient records do not give the vendor a clear correction action in the tested assigned-job state.
-4. **High:** Resend and recipient-correction routes exist, but the tested vendor UI did not expose them after assignment.
+1. **Resolved:** Declined customer-residence records now use the canonical server gate and expose no camera or media-session path.
+2. **Resolved:** Decide-later and other uncertain states remain locked through the same gate.
+3. **Resolved:** Assigned work records expose a clear **Manage Recording Permission** recovery action.
+4. **Resolved:** Resend and recipient correction explain that a new secure link invalidates the old one; superseded links explain that a newer request replaced them.
 5. **Medium:** The registration verification email used an internal Azure hostname instead of the public beta hostname. This is outside the permission decision flow but confuses first-time test users.
 6. **Operational:** SMS provider acceptance is visible to admin, but there is no end-to-end handset confirmation for the reserved fictional test number.
 
@@ -82,8 +82,16 @@ An authorized admin can inspect durable permission and delivery evidence. Admin 
 - **Employee:** The page is clear when location fails, but a declined permission should stop the employee before camera controls appear.
 - **Admin:** Permission Audit provides a fair, readable evidence trail with masked contacts and no override. It does not reveal raw secrets.
 
+## Closeout UX Observations
+
+- The fresh signed-in vendor replay loaded eight work records without a dashboard error.
+- The recovery dialog displayed masked destinations, clear resend/correction choices, and an explicit recording-lock explanation.
+- Automated customer replay confirms refresh, browser close/reopen, and superseded-link states remain consistent.
+- The dialog is necessarily detailed, but its headings separate resend from recipient correction and keep the primary consequences visible.
+- SMS handset delivery cannot yet be evaluated as a human experience because Telnyx is not operational.
+
 ## UX Verdict
 
-**Result:** Customer decision UX meets the intent; cross-role enforcement does not.
-**Blocking confusion remains:** Yes, the vendor and employee experiences contradict a recorded decline.
-**Ready for Product Owner demo:** No. Correct the permission/location gate, expose recovery actions, and rerun the affected journey.
+**Result:** The Epic 1 customer, vendor, employee, and admin permission states are consistent and understandable in the validated scope.
+**Blocking confusion remains:** No Epic 1 engineering UX blocker remains.
+**Ready for Product Owner demo:** Yes, with SMS handset delivery explicitly deferred as an external dependency.

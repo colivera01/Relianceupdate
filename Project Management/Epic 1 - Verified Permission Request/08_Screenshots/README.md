@@ -19,6 +19,9 @@ They contain controlled synthetic data and no credentials, raw tokens, OTPs, or 
 | M02 | Wrong-recipient success | 390x844   | `Mobile/02-wrong-recipient-success.png` |
 | A01 | Declined residence locked | Desktop | `After/desktop-declined-residence-recording-locked.png` |
 | A02 | Declined residence locked | Mobile | `After/mobile-declined-residence-recording-locked.png` |
+| A03 | Permission recovery success | Desktop | `After/desktop-permission-recovery-success.png` |
+| A04 | Permission recovery | Mobile | `After/mobile-permission-recovery.png` |
+| D08 | Superseded request | Desktop | `Desktop/08-superseded-request.png` |
 
 ## Visual Review
 
@@ -40,7 +43,7 @@ The live browser walkthrough reviewed these controlled states without committing
 - employee recording page for a declined customer-residence record; and
 - Admin Permission Audit with masked evidence.
 
-The live review found a critical cross-role mismatch. The correction package now adds desktop and mobile evidence that the declined customer-residence assignment displays `Recording locked`, disables all stages, exposes no camera/upload control, and creates no media request after forced interaction. A fresh signed-in Product Owner browser replay remains pending.
+The live review originally found a critical cross-role mismatch. The correction package adds desktop and mobile evidence that the declined customer-residence assignment displays `Recording locked`, disables all stages, exposes no camera/upload control, and creates no media request after forced interaction. The operational package adds resend/correction and superseded-link evidence. A fresh signed-in beta replay then confirmed live email delivery, login, a healthy vendor jobs page, masked recovery controls, and recording-lock guidance.
 
 ## Before/After
 

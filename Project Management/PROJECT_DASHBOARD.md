@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-02 (Epic 1 canonical permission-gate correction)
+**Last updated:** 2026-08-02 (Epic 1 operational closeout)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Current Epic
@@ -9,9 +9,9 @@
 **Epic 1 - Verified Permission Request**
 
 - Planning: Approved
-- Implementation: Canonical permission-gate correction deployed
-- Product Owner demo: Failed gate items pass focused automated retest; manual signed-in acceptance pending
-- Next action: Product Owner reruns corrected Decline/employee-block/dashboard checks, then resolves or accepts remaining recovery, retry, and SMS evidence
+- Implementation: Operational closeout deployed
+- Product Owner demo: Engineering replay and evidence complete; final Product Owner decision pending
+- Next action: Product Owner performs the final manual checklist and approves or rejects Epic 1 closure; SMS handset proof remains deferred until Telnyx is operational
 
 ## Current Branch
 
@@ -19,9 +19,9 @@
 
 ## Current Commit
 
-Epic 1 corrected application commit: `97396da7f6c99f6cea34e7ed40b05973b548ed38`
+Epic 1 operational application commit: `08de960c768463f2fea7c407d7bb39e6dcfacb3b`
 
-Azure package: `reliance-beta-97396da-canonical-gate-complete-20260802145600.zip`
+Azure package: `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip`
 
 Latest baseline reconciliation commit: `cfc53e33cd112085fa8a1cc7a14db376d1851357`
 
@@ -40,7 +40,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 
 | Order | Epic                                                  | Status                                    | Engineering | UX          | Demo    | Git checkpoint     |
 | ----- | ----------------------------------------------------- | ----------------------------------------- | ----------- | ----------- | ------- | ------------------ |
-| 1     | Verified Permission Request                           | Gate correction deployed; other evidence open | Correction complete | Critical gate resolved | Retest pending | Application `97396da` |
+| 1     | Verified Permission Request                           | Operational closeout complete; approval pending | Complete | No engineering blocker | Final PO checklist pending | Application `08de960` |
 | 2     | Proof-First Platform Shell                            | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 3     | Trusted Accounts and Role Isolation                   | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 4     | Universal Work Record and Recording Gates             | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -67,23 +67,21 @@ The Beta Readiness Checklist remains the master acceptance tracker. It is not mo
 
 | Item                                  | Owner                       | Status  | Next action                                                                                |
 | ------------------------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------ |
-| Vendor resend/contact correction | Engineering / Product Owner | Blocked | Expose recovery actions in valid assigned-job states and verify old-link invalidation |
-| Notification retry scheduler | Engineering / Operations | Open | Configure worker secret, schedule, monitoring, and controlled failure recovery |
-| Controlled SMS handset validation | Engineering / Product Owner | Pending | Repeat SMS OTP with a dedicated beta handset; verify callbacks and masked evidence |
-| Product Owner demo rerun | Product Owner | Pending | Rerun the corrected Decline, employee-block, and dashboard checks in `03_Product_Owner_Demo.md` |
+| Controlled SMS handset validation | Engineering / Product Owner | Deferred - external dependency | Validate with a dedicated handset after Telnyx activation; application wiring remains enabled |
+| Product Owner closeout decision | Product Owner | Pending | Perform the final ten-step checklist in `03_Product_Owner_Demo.md` and approve or reject closure |
 
 ## Blocked Items
 
 | Item           | Blocker                                                                     | Owner  | Resolution                                             |
 | -------------- | --------------------------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| Epic 1 closure | Recovery actions, retry operations, SMS handset evidence, and manual corrected-gate acceptance remain open | Shared | Complete or explicitly accept remaining evidence and approve Epic 1 |
+| Epic 1 closure | Final Product Owner decision remains open; SMS handset proof is externally deferred | Product Owner | Complete final manual replay and approve or reject Epic 1 |
 | Epic 2 start | Epic 1 is not closed | Product Owner | Explicitly approve Epic 1 after corrected demo evidence |
 
 ## Technical Debt Summary
 
 | Epic |  Open debt |     Beta blocker | Reference                                                                                               |
 | ---- | ---------: | ---------------: | ------------------------------------------------------------------------------------------------------- |
-| 1    | 9 open; 1 resolved | 2 beta blockers | [Technical Debt](<Epic 1 - Verified Permission Request/05_Technical_Debt.md>)                          |
+| 1    | 7 open; 3 resolved; 1 external deferral | 0 engineering blockers | [Technical Debt](<Epic 1 - Verified Permission Request/05_Technical_Debt.md>)                          |
 | 2    | 0 recorded |       0 recorded | [Technical Debt](<Epic 2 - Proof-First Platform Shell/05_Technical_Debt.md>)                            |
 | 3    | 0 recorded |       0 recorded | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
 | 4    | 0 recorded |       0 recorded | [Technical Debt](<Epic 4 - Universal Work Record and Recording Gates/05_Technical_Debt.md>)             |
@@ -115,7 +113,7 @@ The Beta Readiness Checklist remains the master acceptance tracker. It is not mo
 
 ## Next Epic
 
-Epic 2 - Proof-First Platform Shell. It is not authorized to begin until recovery actions and retry operations are resolved or explicitly accepted, the Product Owner demo passes, and Epic 1 is approved closed.
+Epic 2 - Proof-First Platform Shell. It is not authorized to begin until the Product Owner approves Epic 1 closed.
 
 ## Required Update Cycle
 

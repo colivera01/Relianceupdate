@@ -15,6 +15,9 @@
 - Operational-validation documentation: recorded after this report commit
 - Canonical permission-gate correction: `97396da7f6c99f6cea34e7ed40b05973b548ed38`
 - Corrected Azure package: `reliance-beta-97396da-canonical-gate-complete-20260802145600.zip`
+- Operational recovery application: `08de960c768463f2fea7c407d7bb39e6dcfacb3b`
+- Operational Azure package: `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip`
+- Operational closeout documentation: recorded by the commit containing this file
 
 ## Build Status
 
@@ -40,6 +43,12 @@
 | Canonical gate focused suites | Pass: 62 |
 | Canonical gate Playwright | Pass: 2 desktop/mobile |
 | Current TypeScript | Pass |
+| Operational closeout Vitest | Pass: 21 |
+| Customer permission Playwright | Pass: 7 |
+| Vendor recovery Playwright | Pass: 2 desktop/mobile |
+| Operational production build | Pass with 6 GB heap; 197/197 pages |
+| Azure scheduler | Three consecutive five-minute runs succeeded |
+| Fresh signed-in beta replay | Pass; live email, login, jobs, recovery dialog |
 
 ## Commit Scope Verification
 
