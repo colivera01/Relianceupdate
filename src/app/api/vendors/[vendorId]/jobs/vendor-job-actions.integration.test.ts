@@ -637,6 +637,59 @@ describe("vendor job actions integration", () => {
     });
   });
 
+  it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER blocks a declined residence request despite mutable business metadata", async () => {
+    const metadata = JSON.stringify({
+      vendor_job_assigned_membership_ids: ["member-1"],
+      vendor_job_assigned_employees: ["Peter Parker"],
+      vendor_job_recording_location: "business",
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: metadata,
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      scheduledFor: null,
+      date: null,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      status: "PENDING",
+      customerMetadata: metadata,
+    });
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "permission-1",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      recipientMismatch: false,
+      decisionEvidence: { id: "evidence-1" },
+    });
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "RELEASE_EMPLOYEE_SERVICE_ORDER",
+      recordingCompliance: { location: "business", consentAccepted: true },
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
+    expect((json.details as any).recordingCompliance).toMatchObject({
+      location: "residence",
+      permissionRequired: true,
+      permissionStatus: "declined",
+      recordingUnlocked: false,
+    });
+    expect(sendJobAssignmentNotification).not.toHaveBeenCalled();
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
   it("PATCH UPDATE_RECORDING_COMPLIANCE snapshots the selected business address", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",
@@ -693,7 +746,7 @@ describe("vendor job actions integration", () => {
       latitude: 28.6984,
       longitude: -81.3081,
     });
-    expect(json.job.recordingCompliance.addressSnapshot.formattedAddress).toBe(
+    expect((json.job as any).recordingCompliance.addressSnapshot.formattedAddress).toBe(
       "407 Boxwood Circle, Winter Springs, FL, 32708"
     );
   });

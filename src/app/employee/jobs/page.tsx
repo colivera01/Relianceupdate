@@ -1534,7 +1534,10 @@ export default function EmployeeJobsPage() {
                         void startCameraRecording(job, stage.key);
                       }
                     }}
-                    disabled={Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))}
+                    disabled={
+                      permissionBlocked ||
+                      Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))
+                    }
                     className={`min-h-[168px] rounded-2xl border p-4 text-left transition ${
                       isUploadingThisStage
                         ? "border-blue-200 bg-blue-500/25 shadow-[0_0_0_1px_rgba(191,219,254,0.45)]"
@@ -1573,14 +1576,16 @@ export default function EmployeeJobsPage() {
                                 : "bg-white/10 text-blue-100"
                           }`}
                         >
-                          {getStageCardActionLabel({
-                            isOpening: isOpeningThisStage,
-                            isUploading: isUploadingThisStage,
-                            isSaved: done,
-                            hasDraft: Boolean(capturedDraft?.jobId === job.id && capturedDraft.stage === stage.key),
-                            hasCaptureToken,
-                            stage: stage.key,
-                          })}
+                          {permissionBlocked
+                            ? "Recording locked"
+                            : getStageCardActionLabel({
+                                isOpening: isOpeningThisStage,
+                                isUploading: isUploadingThisStage,
+                                isSaved: done,
+                                hasDraft: Boolean(capturedDraft?.jobId === job.id && capturedDraft.stage === stage.key),
+                                hasCaptureToken,
+                                stage: stage.key,
+                              })}
                         </p>
                         {cardFeedback ? (
                           <p
@@ -1635,9 +1640,11 @@ export default function EmployeeJobsPage() {
                 <p className="font-semibold text-blue-200">{getStageVideoLimitCopy()}</p>
               </div>
               <p className="mt-3 text-base leading-7 text-blue-50/75">
-                {hasCaptureToken
-                  ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
-                  : captureSupportCopy}
+                {permissionBlocked
+                  ? "The camera will become available only after the required recording permission is verified."
+                  : hasCaptureToken
+                    ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
+                    : captureSupportCopy}
               </p>
 
               {selectedStageDone ? (
@@ -1899,7 +1906,7 @@ export default function EmployeeJobsPage() {
           <div className="rounded-2xl border border-blue-400/30 bg-blue-950/35 p-4 text-blue-50 shadow-sm">
             <p className="text-sm font-semibold">3 short videos. Preview before saving.</p>
             <p className="mt-1 text-xs leading-5 text-blue-100/80">
-              Tap a stage card, allow camera access if your phone asks, then confirm the preview before moving on.
+              Review the status on each assignment. Camera controls appear only when recording is unlocked.
             </p>
           </div>
         ) : (

@@ -10,6 +10,7 @@ const hoisted = vi.hoisted(() => {
   const mediaAssetCreate = vi.fn();
   const bookingFindFirst = vi.fn();
   const bookingUpdate = vi.fn();
+  const consentRecordFindFirst = vi.fn();
 
   const prisma = {
     mediaSession: {
@@ -23,6 +24,9 @@ const hoisted = vi.hoisted(() => {
       findFirst: bookingFindFirst,
       update: bookingUpdate,
     },
+    consentRecord: {
+      findFirst: consentRecordFindFirst,
+    },
   };
 
   return {
@@ -32,6 +36,7 @@ const hoisted = vi.hoisted(() => {
     mediaAssetCreate,
     bookingFindFirst,
     bookingUpdate,
+    consentRecordFindFirst,
   };
 });
 
@@ -173,7 +178,7 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
       id: "session-1",
       vendorJobVideoStage: "INTRO",
       sessionType: "JOB_SERVICE_VIDEO",
-      bookingId: null,
+      bookingId: "booking-1",
     });
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
@@ -192,7 +197,14 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
       createdAt: new Date("2026-05-27T00:00:00.000Z"),
     });
     hoisted.bookingFindFirst.mockReset();
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "booking-1",
+      status: "PENDING",
+      customerMetadata: JSON.stringify({ vendor_job_recording_location: "business" }),
+    });
     hoisted.bookingUpdate.mockReset();
+    hoisted.consentRecordFindFirst.mockReset();
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
   });
 
   it("allows a staged video when the uploaded media probes under the 30-second limit", async () => {
@@ -251,6 +263,7 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     hoisted.mediaSessionFindFirst
       .mockResolvedValueOnce({
         id: "session-1",
+        bookingId: "booking-1",
         vendorJobVideoStage: "COMPLETED",
         sessionType: "JOB_SERVICE_VIDEO",
       })
@@ -280,7 +293,7 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "booking-1",
       status: "PENDING",
-      customerMetadata: null,
+      customerMetadata: JSON.stringify({ vendor_job_recording_location: "business" }),
     });
     hoisted.bookingUpdate.mockResolvedValue({
       id: "booking-1",
@@ -297,11 +310,34 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
       where: { id: "booking-1" },
       data: {
         customerMetadata: JSON.stringify({
+          vendor_job_recording_location: "business",
           reliance_ops: {
             operational_phase: "IN_PROGRESS",
           },
         }),
       },
     });
+  });
+
+  it("does not complete a staged upload after residence permission is declined", async () => {
+    vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationSeconds(12));
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "consent-1",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      decisionEvidenceId: "evidence-1",
+      decisionEvidence: { id: "evidence-1", decision: "declined" },
+    });
+
+    const res = await POST(buildRequest(12), {
+      params: Promise.resolve({ vendorId: VENDOR_ID }),
+    });
+    const json = await readJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json).toMatchObject({ error: expect.any(String), code: "VERIFIED_PERMISSION_REQUIRED" });
+    expect(hoisted.mediaAssetCreate).not.toHaveBeenCalled();
   });
 });

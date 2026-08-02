@@ -2,21 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { requireVendorManager } from "@/lib/membership-auth";
-
-function mapConsentStatus(record: any): string {
-  if (!record) return "not_requested";
-  const lifecycle = String(record.lifecycleStatus || "").trim().toLowerCase();
-  if (lifecycle) return lifecycle;
-  const raw = String(record.status || "").trim().toUpperCase();
-  if (raw === "ACCEPTED") return "accepted";
-  if (raw === "DECLINED") return "declined";
-  if (raw === "EXPIRED") return "expired";
-  if (raw === "REQUESTED" || raw === "PENDING") {
-    if (record.expiresAt && new Date(record.expiresAt) < new Date()) return "expired";
-    return "pending";
-  }
-  return "not_requested";
-}
+import { resolveRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
@@ -35,7 +21,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { id: true, vendorId: true, userId: true },
+      select: { id: true, vendorId: true, userId: true, customerMetadata: true },
     });
     if (!booking) {
       return NextResponse.json({ success: false, error: "Booking not found" }, { status: 404 });
@@ -51,33 +37,39 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const latest = await (prisma as any).consentRecord.findFirst({
-      where: { bookingId },
-      orderBy: { requestedAt: "desc" },
+      where: { bookingId, isCurrent: true },
+      orderBy: [{ generation: "desc" }, { requestedAt: "desc" }],
       select: {
         id: true,
         status: true,
         lifecycleStatus: true,
         verifiedDecision: true,
+        isCurrent: true,
+        scopeJson: true,
+        recipientMismatch: true,
         recipientEmailMasked: true,
         recipientPhoneMasked: true,
         acceptedAt: true,
         declinedAt: true,
         requestedAt: true,
         expiresAt: true,
+        decisionEvidence: { select: { id: true } },
       },
     });
 
-    const status = mapConsentStatus(latest);
+    const permissionGate = resolveRecordingPermissionGate({
+      customerMetadata: booking.customerMetadata,
+      consentRecord: latest,
+    });
     return NextResponse.json({
       success: true,
-      status,
+      status: permissionGate.permissionState,
       acceptedAt: latest?.acceptedAt || null,
       declinedAt: latest?.declinedAt || null,
       latestConsentId: latest?.id || null,
-      verifiedDecision: latest?.verifiedDecision === true,
-      recordingUnlocked:
-        latest?.verifiedDecision === true &&
-        String(latest?.lifecycleStatus || "").toUpperCase() === "ALLOWED",
+      verifiedDecision: permissionGate.verifiedAllowed,
+      permissionRequired: permissionGate.permissionRequired,
+      recordingUnlocked: permissionGate.recordingUnlocked,
       recipient: latest
         ? { email: latest.recipientEmailMasked || null, phone: latest.recipientPhoneMasked || null }
         : null,

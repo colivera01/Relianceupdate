@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { uploadBlobBuffer } from "@/lib/azure-blob-storage";
+import { prisma } from "@/server/db";
+import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -39,6 +41,27 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       vendorId,
       bookingId: bookingId || null,
     })) || (await requireVendorMembership(request, vendorId));
+
+    if (bookingId) {
+      const booking = await prisma.booking.findFirst({
+        where: { id: bookingId, vendorId },
+        select: { id: true, customerMetadata: true },
+      });
+      if (!booking) {
+        return NextResponse.json({ error: "Invalid bookingId for this vendor" }, { status: 422 });
+      }
+      const permissionGate = await loadRecordingPermissionGate({
+        bookingId: booking.id,
+        vendorId,
+        customerMetadata: booking.customerMetadata,
+      });
+      if (permissionGate.blockCode) {
+        return NextResponse.json(
+          { error: permissionGate.blockMessage, code: permissionGate.blockCode },
+          { status: permissionGate.blockCode === "RECORDING_LOCATION_REQUIRED" ? 422 : 409 }
+        );
+      }
+    }
 
     if (!assetId || !blobKey) {
       return NextResponse.json(

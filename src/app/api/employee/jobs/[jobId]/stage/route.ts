@@ -11,6 +11,7 @@ import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, setStageProgressMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
@@ -51,6 +52,18 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     const assigned = parseAssignmentMetadata(booking.customerMetadata);
     if (!assigned.assignedMembershipIds.some((id) => vendorMembershipIds.includes(id))) {
       return NextResponse.json({ error: "Forbidden: this job is not assigned to you" }, { status: 403 });
+    }
+
+    const permissionGate = await loadRecordingPermissionGate({
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      customerMetadata: booking.customerMetadata,
+    });
+    if (permissionGate.blockCode) {
+      return NextResponse.json(
+        { error: permissionGate.blockMessage, code: permissionGate.blockCode },
+        { status: permissionGate.blockCode === "RECORDING_LOCATION_REQUIRED" ? 422 : 409 }
+      );
     }
 
     const matchingSession = await (prisma as any).mediaSession.findFirst({

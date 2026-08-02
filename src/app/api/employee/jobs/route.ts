@@ -11,6 +11,10 @@ import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { resolveBookingCustomer } from "@/lib/booking-customer";
+import {
+  resolveRecordingPermissionGate,
+  type RecordingPermissionRecord,
+} from "@/lib/consent/recording-gate";
 
 type StageKey = "INTRO" | "IN_PROGRESS" | "COMPLETED";
 
@@ -92,19 +96,25 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     const permissionRecords = bookingIds.length
       ? await prisma.consentRecord.findMany({
-          where: { bookingId: { in: bookingIds } },
+          where: { bookingId: { in: bookingIds }, isCurrent: true },
           orderBy: { requestedAt: "desc" },
           select: {
+            id: true,
             bookingId: true,
+            status: true,
             lifecycleStatus: true,
             verifiedDecision: true,
+            isCurrent: true,
+            scopeJson: true,
+            expiresAt: true,
             recipientMismatch: true,
+            decisionEvidence: { select: { id: true } },
           },
         })
       : [];
     const permissionByBooking = new Map<
       string,
-      { lifecycleStatus: string; verifiedDecision: boolean; recipientMismatch: boolean }
+      RecordingPermissionRecord
     >();
     for (const record of permissionRecords) {
       if (!permissionByBooking.has(record.bookingId)) {
@@ -146,14 +156,12 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     const jobs = releasedBookings.map((booking) => {
       const stageProgress = stageByBooking.get(booking.id) || emptyStageProgress();
-      const recordingCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
       const permission = permissionByBooking.get(booking.id) || null;
-      const permissionRequired =
-        recordingCompliance.location === "residence" ||
-        recordingCompliance.location === "customer-business";
-      const recordingUnlocked =
-        !permissionRequired ||
-        Boolean(permission?.verifiedDecision && permission.lifecycleStatus === "ALLOWED");
+      const recordingCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
+      const permissionGate = resolveRecordingPermissionGate({
+        customerMetadata: booking.customerMetadata,
+        consentRecord: permission,
+      });
       const normalizedStatus = String(booking.status || "").trim().toUpperCase();
       const correctionRequested =
         normalizedStatus !== "COMPLETED" && Boolean(String((booking as any).rejectionReason || "").trim());
@@ -178,15 +186,15 @@ export async function GET(request: Request): Promise<NextResponse> {
         rejectionReason: (booking as any).rejectionReason || null,
         rejectedAt: (booking as any).rejectedAt || null,
         recordingCompliance: {
-          location: recordingCompliance.location,
+          location: permissionGate.location,
           locationVerified: recordingCompliance.locationVerified,
           locationVerifiedAt: recordingCompliance.locationVerifiedAt,
           serviceOrderReleasedAt: recordingCompliance.serviceOrderReleasedAt,
           releasedMembershipIds: recordingCompliance.releasedMembershipIds,
-          permissionRequired,
-          permissionStatus: permission?.lifecycleStatus || (permissionRequired ? "NOT_SENT" : "NOT_REQUIRED"),
-          recordingUnlocked,
-          recipientNeedsCorrection: Boolean(permission?.recipientMismatch),
+          permissionRequired: permissionGate.permissionRequired,
+          permissionStatus: permissionGate.permissionState,
+          recordingUnlocked: permissionGate.recordingUnlocked,
+          recipientNeedsCorrection: permissionGate.recipientNeedsCorrection,
         },
         stageProgress,
         canMarkComplete,

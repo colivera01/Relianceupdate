@@ -10,6 +10,7 @@ import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { STAGE_VIDEO_MAX_DURATION_SECONDS } from "@/lib/stage-video-guidance";
 import { probeVideoDurationSecondsFromBuffer } from "@/lib/server-video-duration";
+import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -145,6 +146,29 @@ export async function POST(
         Boolean(String(session.vendorJobVideoStage || "").trim()) ||
         String(session.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO";
       if (isStagedJobVideo) {
+        const booking = session.bookingId
+          ? await prisma.booking.findFirst({
+              where: { id: String(session.bookingId), vendorId },
+              select: { id: true, customerMetadata: true },
+            })
+          : null;
+        if (!booking) {
+          return NextResponse.json(
+            { error: "A valid work record is required for staged service video uploads." },
+            { status: 422 }
+          );
+        }
+        const permissionGate = await loadRecordingPermissionGate({
+          bookingId: booking.id,
+          vendorId,
+          customerMetadata: booking.customerMetadata,
+        });
+        if (permissionGate.blockCode) {
+          return NextResponse.json(
+            { error: permissionGate.blockMessage, code: permissionGate.blockCode },
+            { status: permissionGate.blockCode === "RECORDING_LOCATION_REQUIRED" ? 422 : 409 }
+          );
+        }
         if (!String(mimeType || "").toLowerCase().startsWith("video/")) {
           return NextResponse.json(
             {

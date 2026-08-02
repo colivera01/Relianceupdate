@@ -4,6 +4,18 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { uploadBlobBuffer } from "@/lib/azure-blob-storage";
 
+const hoisted = vi.hoisted(() => ({
+  bookingFindFirst: vi.fn(),
+  consentRecordFindFirst: vi.fn(),
+}));
+
+vi.mock("@/server/db", () => ({
+  prisma: {
+    booking: { findFirst: hoisted.bookingFindFirst },
+    consentRecord: { findFirst: hoisted.consentRecordFindFirst },
+  },
+}));
+
 vi.mock("@/lib/membership-auth", () => ({
   requireVendorMembership: vi.fn(),
 }));
@@ -45,6 +57,14 @@ describe("employee media upload proxy", () => {
     vi.mocked(requireVendorMembership).mockReset();
     vi.mocked(resolveEmployeeCaptureAccess).mockReset();
     vi.mocked(uploadBlobBuffer).mockReset();
+    hoisted.bookingFindFirst.mockReset();
+    hoisted.consentRecordFindFirst.mockReset();
+
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "booking-1",
+      customerMetadata: JSON.stringify({ vendor_job_recording_location: "business" }),
+    });
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
 
     vi.mocked(resolveEmployeeCaptureAccess).mockResolvedValue({
       vendorId: VENDOR_ID,
@@ -95,6 +115,29 @@ describe("employee media upload proxy", () => {
 
     expect(res.status).toBe(422);
     expect(json.error).toBe("Stage uploads must be video files.");
+    expect(uploadBlobBuffer).not.toHaveBeenCalled();
+  });
+
+  it("blocks a declined residence work record even when mutable metadata says business", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "booking-1",
+      customerMetadata: JSON.stringify({ vendor_job_recording_location: "business" }),
+    });
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "consent-1",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      decisionEvidenceId: "evidence-1",
+      decisionEvidence: { id: "evidence-1", decision: "declined" },
+    });
+
+    const res = await POST(buildRequest(), context as any);
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json).toMatchObject({ code: "VERIFIED_PERMISSION_REQUIRED" });
     expect(uploadBlobBuffer).not.toHaveBeenCalled();
   });
 });

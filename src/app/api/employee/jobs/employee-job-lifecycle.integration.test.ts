@@ -8,6 +8,7 @@ const hoisted = vi.hoisted(() => {
   const mediaSessionFindFirst = vi.fn();
   const mediaSessionFindMany = vi.fn();
   const consentRecordFindMany = vi.fn();
+  const consentRecordFindFirst = vi.fn();
   const resolveEmployeeCaptureAccess = vi.fn();
   const sendJobCorrectionReadyNotification = vi.fn();
   return {
@@ -18,6 +19,7 @@ const hoisted = vi.hoisted(() => {
     mediaSessionFindFirst,
     mediaSessionFindMany,
     consentRecordFindMany,
+    consentRecordFindFirst,
     resolveEmployeeCaptureAccess,
     sendJobCorrectionReadyNotification,
   };
@@ -39,6 +41,7 @@ vi.mock("@/server/db", () => ({
     },
     consentRecord: {
       findMany: hoisted.consentRecordFindMany,
+      findFirst: hoisted.consentRecordFindFirst,
     },
   },
 }));
@@ -59,6 +62,12 @@ vi.mock("@/lib/job-assignment", () => ({
     serviceOrderReleasedAt: "2026-07-12T00:00:00.000Z",
     releasedMembershipIds: ["membership-1"],
   })),
+  normalizeRecordingLocationChoice: vi.fn((value: unknown) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    return ["business", "residence", "customer-business"].includes(normalized)
+      ? normalized
+      : null;
+  }),
   setStageProgressMetadata: vi.fn(() => "{}"),
 }));
 
@@ -100,10 +109,12 @@ describe("employee job lifecycle routes", () => {
     hoisted.mediaSessionFindFirst.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.consentRecordFindMany.mockReset();
+    hoisted.consentRecordFindFirst.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockReset();
     hoisted.sendJobCorrectionReadyNotification.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue(null);
     hoisted.consentRecordFindMany.mockResolvedValue([]);
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
     hoisted.sendJobCorrectionReadyNotification.mockResolvedValue({
       anySuccess: true,
       phoneNumberUsed: "+14075550199",
@@ -185,6 +196,63 @@ describe("employee job lifecycle routes", () => {
       title: "Breaker Replacement",
       stageProgress: { INTRO: true, IN_PROGRESS: false, COMPLETED: false },
       canMarkComplete: false,
+    });
+  });
+
+  it("keeps employee camera access locked when immutable residence permission was declined", async () => {
+    const { GET } = await import("./route");
+    hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
+      vendorId: "vendor-1",
+      bookingId: "job-1",
+      membershipId: "membership-1",
+      userId: "employee-from-token",
+      role: "EMPLOYEE",
+      status: "ACTIVE",
+      employeeName: "Tech One",
+      token: {},
+    });
+    hoisted.vendorMembershipFindMany.mockResolvedValue([{
+      id: "membership-1",
+      vendorId: "vendor-1",
+      vendor: { name: "Electro LLC", businessName: "Electro LLC", accountStatus: "ACTIVE" },
+    }]);
+    hoisted.bookingFindMany.mockResolvedValue([{
+      id: "job-1",
+      vendorId: "vendor-1",
+      title: "Breaker Replacement",
+      status: "IN_PROGRESS",
+      customerMetadata: "{}",
+      scheduledFor: null,
+      date: null,
+      service: { id: "svc-1", name: "Breaker Replacement" },
+      user: { id: "customer-1", name: "Customer", email: null, phone: null },
+      vendor: { id: "vendor-1", name: "Electro LLC", businessName: "Electro LLC" },
+    }]);
+    hoisted.consentRecordFindMany.mockResolvedValue([{
+      id: "permission-1",
+      bookingId: "job-1",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      expiresAt: null,
+      recipientMismatch: false,
+      decisionEvidence: { id: "evidence-1" },
+    }]);
+    hoisted.mediaSessionFindMany.mockResolvedValue([]);
+
+    const response = await GET(
+      new Request("http://localhost/api/employee/jobs?ct=signed-token", { method: "GET" })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.jobs[0].recordingCompliance).toMatchObject({
+      location: "residence",
+      permissionRequired: true,
+      permissionStatus: "declined",
+      recordingUnlocked: false,
     });
   });
 

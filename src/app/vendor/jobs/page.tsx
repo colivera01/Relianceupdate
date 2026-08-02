@@ -296,14 +296,12 @@ export default function VendorJobs() {
       };
     }
     const snapshot = getSavedRecordingComplianceForJob(job);
-    const locationChoice = String(snapshot?.location || '').trim().toLowerCase();
     const consentState = getConsentStatusForJob(job, snapshot);
     const nextStage = getNextMissingVideoStageForJob(job);
     const stageLabel = nextStage ? formatVideoStageLabel(nextStage) : 'next stage';
     const isAssigned = isJobAssignedForVideoUpload(job);
-    const requiresConsent =
-      locationChoice === 'residence' ||
-      locationChoice === 'customer-business';
+    const requiresConsent = snapshot?.permissionRequired === true;
+    const locationChoice = String(snapshot?.location || '').trim().toLowerCase();
 
     if (!locationChoice) {
       return {
@@ -406,9 +404,7 @@ export default function VendorJobs() {
 
   const isJobBlockedByCustomerConsent = (job: any): boolean => {
     const snapshot = getSavedRecordingComplianceForJob(job);
-    const locationChoice = String(snapshot?.location || '').trim().toLowerCase();
-    if (locationChoice !== 'residence' && locationChoice !== 'customer-business') return false;
-    return getConsentStatusForJob(job, snapshot) !== CONSENT_STATE.ACCEPTED;
+    return Boolean(snapshot?.permissionRequired && !snapshot?.recordingUnlocked);
   };
 
   useEffect(() => {
@@ -606,6 +602,9 @@ export default function VendorJobs() {
         savedAt: string;
         serviceOrderReleasedAt?: string | null;
         releasedMembershipIds?: string[];
+        permissionRequired?: boolean;
+        permissionStatus?: string;
+        recordingUnlocked?: boolean;
       }
     >
   >({});
@@ -1462,6 +1461,9 @@ export default function VendorJobs() {
       savedAt: string;
       serviceOrderReleasedAt?: string | null;
       releasedMembershipIds?: string[];
+      permissionRequired?: boolean;
+      permissionStatus?: string;
+      recordingUnlocked?: boolean;
     }>
   ) => {
     const keys = getRecordingComplianceKeys(job);
@@ -1504,6 +1506,18 @@ export default function VendorJobs() {
             : Array.isArray(existing?.releasedMembershipIds)
             ? existing.releasedMembershipIds
             : [],
+        permissionRequired:
+          partial.permissionRequired !== undefined
+            ? partial.permissionRequired
+            : existing?.permissionRequired,
+        permissionStatus:
+          partial.permissionStatus !== undefined
+            ? partial.permissionStatus
+            : existing?.permissionStatus,
+        recordingUnlocked:
+          partial.recordingUnlocked !== undefined
+            ? partial.recordingUnlocked
+            : existing?.recordingUnlocked,
       };
       const next = { ...prev };
       keys.forEach((key) => {
@@ -1560,6 +1574,31 @@ export default function VendorJobs() {
   const getSavedRecordingComplianceForJob = (job: any) => {
     const keys = getRecordingComplianceKeys(job);
     if (!keys.length) return null;
+    const serverSnapshot = (job as any)?.recordingCompliance;
+    const serverLocation = String(serverSnapshot?.location || '').trim().toLowerCase();
+    if (
+      typeof serverSnapshot?.permissionRequired === 'boolean' &&
+      (serverLocation === 'business' ||
+        serverLocation === 'residence' ||
+        serverLocation === 'customer-business')
+    ) {
+      return {
+        location: serverLocation as 'business' | 'residence' | 'customer-business',
+        consentAccepted: Boolean(serverSnapshot?.consentAccepted),
+        consentRequestId: String(job?.latestConsentId || '').trim(),
+        locationVerified: Boolean(serverSnapshot?.locationVerified),
+        savedAt:
+          String(serverSnapshot?.locationVerifiedAt || serverSnapshot?.serviceOrderReleasedAt || job?.updatedAt || '').trim() ||
+          new Date().toISOString(),
+        serviceOrderReleasedAt: serverSnapshot?.serviceOrderReleasedAt || null,
+        releasedMembershipIds: Array.isArray(serverSnapshot?.releasedMembershipIds)
+          ? serverSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+          : [],
+        permissionRequired: serverSnapshot.permissionRequired,
+        permissionStatus: String(serverSnapshot?.permissionStatus || job?.consentStatus || '').trim(),
+        recordingUnlocked: serverSnapshot?.recordingUnlocked === true,
+      };
+    }
     const matches = keys
       .map((key) => ({ key, value: recordingComplianceByJobId[key] }))
       .filter((entry) => Boolean(entry.value));
@@ -1584,8 +1623,6 @@ export default function VendorJobs() {
       });
       return hit;
     }
-    const serverSnapshot = (job as any)?.recordingCompliance;
-    const serverLocation = String(serverSnapshot?.location || '').trim().toLowerCase();
     if (
       serverLocation === 'business' ||
       serverLocation === 'residence' ||
@@ -1603,6 +1640,9 @@ export default function VendorJobs() {
         releasedMembershipIds: Array.isArray(serverSnapshot?.releasedMembershipIds)
           ? serverSnapshot.releasedMembershipIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
           : [],
+        permissionRequired: Boolean(serverSnapshot?.permissionRequired),
+        permissionStatus: String(serverSnapshot?.permissionStatus || job?.consentStatus || '').trim(),
+        recordingUnlocked: serverSnapshot?.recordingUnlocked === true,
       };
       console.info('[recording-compliance] hydrated snapshot from backend job data', {
         requestedKeys: keys,
@@ -1647,6 +1687,9 @@ export default function VendorJobs() {
           consentAccepted: boolean;
           consentRequestId: string;
           locationVerified: boolean;
+          permissionRequired?: boolean;
+          permissionStatus?: string;
+          recordingUnlocked?: boolean;
         }
       | null
   ): boolean => {
@@ -1667,10 +1710,7 @@ export default function VendorJobs() {
       console.info('[recording-compliance] unsatisfied: invalid location', { locationChoice });
       return false;
     }
-    const consentSatisfied =
-      locationChoice === 'residence' || locationChoice === 'customer-business'
-        ? Boolean(snapshot.consentAccepted)
-        : true;
+    const consentSatisfied = snapshot.recordingUnlocked === true;
     if (!consentSatisfied) {
       console.info('[recording-compliance] unsatisfied: consent requirement not met', {
         locationChoice,
@@ -1690,13 +1730,14 @@ export default function VendorJobs() {
           consentRequestId: string;
           locationVerified: boolean;
           savedAt?: string;
+          permissionRequired?: boolean;
+          permissionStatus?: string;
+          recordingUnlocked?: boolean;
         }
       | null
   ) => {
     if (!snapshot) return null;
-    const locationChoice = String(snapshot.location || '').trim().toLowerCase();
-    const requiresConsent =
-      locationChoice === 'residence' || locationChoice === 'customer-business';
+    const requiresConsent = snapshot.permissionRequired === true;
     if (!requiresConsent) return snapshot;
     if (snapshot.consentAccepted) return snapshot;
     const bookingId = String(job?.bookingId || job?.id || '').trim();
@@ -1720,6 +1761,9 @@ export default function VendorJobs() {
       const refreshed = {
         ...snapshot,
         consentAccepted: accepted,
+        permissionRequired: payload?.permissionRequired === true,
+        permissionStatus: String(payload?.status || '').trim(),
+        recordingUnlocked: payload?.recordingUnlocked === true,
         consentRequestId: String(payload?.permission?.id || payload?.latestConsentId || snapshot.consentRequestId || '').trim(),
         savedAt: new Date().toISOString(),
       };

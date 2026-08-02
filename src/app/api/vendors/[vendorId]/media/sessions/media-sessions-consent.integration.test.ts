@@ -79,6 +79,29 @@ async function toJson(res: Response) {
   return res.json() as Promise<Record<string, unknown>>;
 }
 
+function mockBookingLocation(
+  location: "business" | "residence" | "customer-business",
+  vendor: Record<string, unknown> = {}
+) {
+  hoisted.bookingFindFirst.mockResolvedValue({
+    id: BOOKING_ID,
+    customerMetadata: JSON.stringify({
+      vendor_job_assigned_membership_ids: ["membership-1"],
+      vendor_job_recording_location: location,
+    }),
+    vendor: {
+      address: "123 Main St",
+      city: "Orlando",
+      state: "FL",
+      zipCode: "32801",
+      latitude: 28.5383,
+      longitude: -81.3792,
+      geocodedAt: new Date("2026-06-27T12:00:00.000Z"),
+      ...vendor,
+    },
+  });
+}
+
 describe("vendor media sessions consent enforcement integration", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
@@ -89,21 +112,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     hoisted.mediaSessionCreate.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
 
-    hoisted.bookingFindFirst.mockResolvedValue({
-      id: BOOKING_ID,
-      customerMetadata: JSON.stringify({
-        vendor_job_assigned_membership_ids: ["membership-1"],
-      }),
-      vendor: {
-        address: "123 Main St",
-        city: "Orlando",
-        state: "FL",
-        zipCode: "32801",
-        latitude: 28.5383,
-        longitude: -81.3792,
-        geocodedAt: new Date("2026-06-27T12:00:00.000Z"),
-      },
-    });
+    mockBookingLocation("residence");
     hoisted.vendorUpdate.mockReset();
     hoisted.mediaSessionFindFirst.mockResolvedValue(null);
     hoisted.mediaSessionCreate.mockResolvedValue({
@@ -132,6 +141,7 @@ describe("vendor media sessions consent enforcement integration", () => {
   });
 
   it("blocks customer-business location when consent is missing", async () => {
+    mockBookingLocation("customer-business");
     const { req, ctx } = buildPostRequest({
       locationContext: "customer-business",
     });
@@ -177,7 +187,16 @@ describe("vendor media sessions consent enforcement integration", () => {
   });
 
   it("allows staged session creation only when the scoped query finds verified decision evidence", async () => {
-    hoisted.consentRecordFindFirst.mockResolvedValue({ id: "permission-1" });
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "permission-1",
+      status: "accepted",
+      lifecycleStatus: "ALLOWED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      recipientMismatch: false,
+      decisionEvidence: { id: "evidence-1" },
+    });
     const { req, ctx } = buildPostRequest({
       locationContext: "residence",
       consentAccepted: false,
@@ -194,17 +213,44 @@ describe("vendor media sessions consent enforcement integration", () => {
       where: {
         bookingId: BOOKING_ID,
         vendorId: VENDOR_ID,
-        status: "accepted",
-        lifecycleStatus: "ALLOWED",
-        verifiedDecision: true,
-        decisionEvidence: { isNot: null },
+        isCurrent: true,
       },
-      select: { id: true },
-      orderBy: { acceptedAt: "desc" },
+      orderBy: [{ generation: "desc" }, { requestedAt: "desc" }],
+      select: expect.objectContaining({
+        id: true,
+        scopeJson: true,
+        decisionEvidence: { select: { id: true } },
+      }),
     });
   });
 
+  it("blocks a declined residence request when mutable metadata and browser input say business", async () => {
+    mockBookingLocation("business");
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "permission-1",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      recipientMismatch: false,
+      decisionEvidence: { id: "evidence-1" },
+    });
+    const { req, ctx } = buildPostRequest({
+      locationContext: "business",
+      locationProof: { latitude: 28.53831, longitude: -81.37919, accuracyMeters: 20 },
+    });
+
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
+  });
+
   it("blocks business location when geolocation proof is missing", async () => {
+    mockBookingLocation("business");
     const { req, ctx } = buildPostRequest({
       locationContext: "business",
     });
@@ -214,11 +260,12 @@ describe("vendor media sessions consent enforcement integration", () => {
 
     expect(res.status).toBe(409);
     expect(json.code).toBe("BUSINESS_LOCATION_PROOF_REQUIRED");
-    expect(hoisted.consentRecordFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.consentRecordFindFirst).toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
   it("blocks business location when the device is not near the registered address", async () => {
+    mockBookingLocation("business");
     const { req, ctx } = buildPostRequest({
       locationContext: "business",
       locationProof: {
@@ -237,6 +284,7 @@ describe("vendor media sessions consent enforcement integration", () => {
   });
 
   it("allows business location without customer consent when verified near registered address", async () => {
+    mockBookingLocation("business");
     const { req, ctx } = buildPostRequest({
       locationContext: "business",
       locationProof: {
@@ -251,7 +299,7 @@ describe("vendor media sessions consent enforcement integration", () => {
 
     expect(res.status).toBe(200);
     expect((json.session as any)?.id).toBe("session-1");
-    expect(hoisted.consentRecordFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.consentRecordFindFirst).toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
   });
 
@@ -260,6 +308,7 @@ describe("vendor media sessions consent enforcement integration", () => {
       id: BOOKING_ID,
       customerMetadata: JSON.stringify({
         vendor_job_assigned_membership_ids: ["membership-1"],
+        vendor_job_recording_location: "business",
       }),
       vendor: {
         address: "123 Main St",
@@ -320,6 +369,7 @@ describe("vendor media sessions consent enforcement integration", () => {
       id: BOOKING_ID,
       customerMetadata: JSON.stringify({
         vendor_job_assigned_membership_ids: ["membership-1"],
+        vendor_job_recording_location: "business",
       }),
       vendor: {
         address: "123 Main St",

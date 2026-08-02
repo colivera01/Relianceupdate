@@ -24,6 +24,7 @@ import {
 } from "@/lib/metrics-exclusion";
 import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
+import { resolveRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -164,24 +165,6 @@ function hasRejectedStagedMedia(packageState: ReturnType<typeof evaluateVendorJo
   return Object.values(packageState.stages || {}).some(
     (stage) => normalizeKey(stage?.latestModerationStatus) === "REJECTED"
   );
-}
-
-function mapConsentRecordToVendorUiState(
-  record: any
-): string {
-  if (!record) return "not_requested";
-  const lifecycle = String(record.lifecycleStatus || "").trim().toLowerCase();
-  if (lifecycle) return lifecycle;
-  const now = new Date();
-  const raw = String(record.status || "").trim().toUpperCase();
-  if (raw === "ACCEPTED") return "accepted";
-  if (raw === "DECLINED") return "declined";
-  if (raw === "EXPIRED") return "expired_or_unavailable";
-  if (raw === "REQUESTED" || raw === "PENDING") {
-    if (record.expiresAt && new Date(record.expiresAt) < now) return "expired_or_unavailable";
-    return "requested";
-  }
-  return "not_requested";
 }
 
 async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> {
@@ -585,19 +568,23 @@ export async function GET(
     const latestConsentRecords = bookingIds.length
       ? await withTransientDbRetry(() =>
           (prisma as any).consentRecord.findMany({
-            where: { bookingId: { in: bookingIds } },
+            where: { bookingId: { in: bookingIds }, isCurrent: true },
             select: {
               id: true,
               bookingId: true,
               status: true,
               lifecycleStatus: true,
               verifiedDecision: true,
+              isCurrent: true,
+              scopeJson: true,
               recipientEmailMasked: true,
               recipientPhoneMasked: true,
+              recipientMismatch: true,
               acceptedAt: true,
               declinedAt: true,
               requestedAt: true,
               expiresAt: true,
+              decisionEvidence: { select: { id: true } },
             },
             orderBy: [{ bookingId: "asc" }, { requestedAt: "desc" }],
           })
@@ -701,6 +688,10 @@ export async function GET(
       const uploadedVideoStages = extractUploadedVideoStagesFromMetadata(booking.customerMetadata);
       const customerContact = resolveCustomerContactForBooking(booking);
       const legacyCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
+      const permissionGate = resolveRecordingPermissionGate({
+        customerMetadata: booking.customerMetadata,
+        consentRecord: latestConsentRecord,
+      });
       const clientLabel = resolveOperationalClientLabel({
         clientName: booking.clientName,
         userName: booking.user?.name,
@@ -721,10 +712,11 @@ export async function GET(
         assignedMembershipIds,
         uploadedVideoStages,
         recordingCompliance: {
-          location: legacyCompliance.location,
-          consentAccepted:
-            latestConsentRecord?.verifiedDecision === true &&
-            String(latestConsentRecord?.lifecycleStatus || '').toUpperCase() === 'ALLOWED',
+          location: permissionGate.location,
+          consentAccepted: permissionGate.verifiedAllowed,
+          permissionRequired: permissionGate.permissionRequired,
+          permissionStatus: permissionGate.permissionState,
+          recordingUnlocked: permissionGate.recordingUnlocked,
           locationVerified: legacyCompliance.locationVerified,
           locationVerifiedAt: legacyCompliance.locationVerifiedAt,
           serviceOrderReleasedAt: legacyCompliance.serviceOrderReleasedAt,
@@ -732,11 +724,9 @@ export async function GET(
         },
         rejectionReason: booking.rejectionReason || null,
         rejectedAt: booking.rejectedAt?.toISOString?.() || null,
-        consentStatus: mapConsentRecordToVendorUiState(latestConsentRecord),
+        consentStatus: permissionGate.permissionState,
         latestConsentId: latestConsentRecord?.id || null,
-        permissionRecordingUnlocked:
-          latestConsentRecord?.verifiedDecision === true &&
-          String(latestConsentRecord?.lifecycleStatus || '').toUpperCase() === 'ALLOWED',
+        permissionRecordingUnlocked: permissionGate.recordingUnlocked,
         consentRecipient: latestConsentRecord
           ? {
               email: latestConsentRecord.recipientEmailMasked || null,

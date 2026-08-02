@@ -5,6 +5,7 @@ import { mapMediaSessionCreateFailure } from "@/lib/media-session-create-errors"
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { normalizeVendorJobVideoStage } from "@/lib/vendor-job-video-stages";
 import { parseRecordingLocationProof, verifyJobRecordingLocation } from "@/lib/job-recording-location";
+import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -75,7 +76,6 @@ export async function POST(
       startedAt,
       vendorJobVideoStage,
       replaceExisting,
-      locationContext,
     } = body;
     const tokenAccess = await resolveEmployeeCaptureAccess(request, {
       vendorId,
@@ -173,55 +173,29 @@ export async function POST(
         );
       }
 
-      const normalizedLocationContext = String(locationContext || "")
-        .trim()
-        .toLowerCase();
-      const validLocationContextValues = new Set(["business", "residence", "customer-business"]);
-      if (!validLocationContextValues.has(normalizedLocationContext)) {
+      const permissionGate = await loadRecordingPermissionGate({
+        bookingId: validBookingId,
+        vendorId,
+        customerMetadata: validBookingMetadata,
+      });
+      if (permissionGate.blockCode) {
         return NextResponse.json(
           {
             success: false,
-            code: "COMPLIANCE_LOCATION_REQUIRED",
-            message:
-              "Choose where recording will occur (Business Address, Customer Residence, or Customer Business) before creating a staged service video session.",
+            code: permissionGate.blockCode,
+            message: permissionGate.blockMessage,
           },
-          { status: 422 }
+          { status: permissionGate.blockCode === "RECORDING_LOCATION_REQUIRED" ? 422 : 409 }
         );
       }
-      const consentRequiredByLocation =
-        normalizedLocationContext === "residence" ||
-        normalizedLocationContext === "customer-business";
-      if (consentRequiredByLocation) {
-        const verifiedPermission = await (prisma as any).consentRecord.findFirst({
-          where: {
-            bookingId: String(validBookingId || ""),
-            vendorId: String(vendorId),
-            status: "accepted",
-            lifecycleStatus: "ALLOWED",
-            verifiedDecision: true,
-            decisionEvidence: { isNot: null },
-          },
-          select: { id: true },
-          orderBy: { acceptedAt: "desc" },
-        });
-        if (!verifiedPermission) {
-          return NextResponse.json(
-            {
-              success: false,
-              code: "VERIFIED_PERMISSION_REQUIRED",
-              message: "Verified customer recording permission is required before recording can proceed.",
-            },
-            { status: 409 }
-          );
-        }
-      }
-      if (normalizedLocationContext === "business" || normalizedLocationContext === "customer-business") {
+      const canonicalLocation = permissionGate.location!;
+      if (canonicalLocation === "business" || canonicalLocation === "customer-business") {
         const verification = await verifyJobRecordingLocation({
           vendorId,
           metadata: validBookingMetadata,
           vendorLocation: validBookingVendorLocation,
           proof: parseRecordingLocationProof(body),
-          location: normalizedLocationContext,
+          location: canonicalLocation,
         });
         if (!verification.ok) {
           return NextResponse.json(

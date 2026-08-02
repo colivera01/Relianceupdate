@@ -300,6 +300,48 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(vi.mocked(requireVendorMembership)).toHaveBeenCalledWith(req, "v1");
   });
 
+  it("reports the canonical declined residence state when mutable metadata has no matching location", async () => {
+    mockHappyPathData();
+    hoisted.consentRecordFindMany.mockResolvedValue([{
+      id: "permission-1",
+      bookingId: "job-1",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      recipientMismatch: false,
+      recipientEmailMasked: "p***@example.com",
+      recipientPhoneMasked: null,
+      acceptedAt: null,
+      declinedAt: new Date("2026-04-15T11:30:00.000Z"),
+      requestedAt: new Date("2026-04-15T11:00:00.000Z"),
+      expiresAt: null,
+      decisionEvidence: { id: "evidence-1" },
+    }]);
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    const body = await readJson(res);
+    const recentJobs = body.recentJobs as Array<Record<string, any>>;
+
+    expect(res.status).toBe(200);
+    expect(recentJobs[0]).toMatchObject({
+      consentStatus: "declined",
+      permissionRecordingUnlocked: false,
+      recordingCompliance: {
+        location: "residence",
+        consentAccepted: false,
+        permissionRequired: true,
+        permissionStatus: "declined",
+        recordingUnlocked: false,
+      },
+    });
+  });
+
   it("counts an approved package as an approved service order while keeping private proof out of public counts", async () => {
     mockHappyPathData();
     hoisted.mediaAssetFindMany.mockResolvedValue([
