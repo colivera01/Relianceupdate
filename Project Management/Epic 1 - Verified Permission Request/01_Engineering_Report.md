@@ -1,12 +1,36 @@
 # Epic 1 Engineering Report
 
 **Epic:** Verified Permission Request
-**Status:** Engineering implementation complete; migration deployment, live-provider validation, and Product Owner demo pending
+**Status:** Live operational validation completed; Epic closure blocked by a permission-gate defect
 **Branch:** `cursor-latest-build`
 **Starting commit:** `2ddc4f31560da791330fa67f753593f3962ca544`
 **Final commit:** This Epic 1 Git checkpoint; use `git log -1` after commit
-**Report date:** 2026-07-31
+**Report date:** 2026-08-02
 **Owner:** Codex / Product Owner
+
+## Operational Validation Update - 2026-08-02
+
+This update supersedes the earlier statements that migrations and live providers were unvalidated. Azure beta is running package commit `684dc79364b22aa984e7ed990feaedfd9bc9f406`, which contains Epic 1 commit `4c89192d806261def0acb05185050180db8006ac`. All 34 database migrations are applied.
+
+Controlled beta testing passed matching-account verification, email OTP, Allow, Decline, Decide later, Wrong recipient, masked admin evidence, and initial email/SMS provider acceptance. It also found a **release-blocking defect**: a customer-residence request can be stored with recording-compliance metadata that is later interpreted as vendor-business. The vendor card then says consent is not required and permits service-order release even after the customer declined. The employee receives normal camera controls. A denied browser geolocation prompt prevented media capture during the test, but permission was not the enforcing block.
+
+Epic 1 therefore remains open. No application patch or redeployment was made during this validation checkpoint. Product Owner approval is required before the localized gate/metadata correction is implemented.
+
+### Live Evidence Summary
+
+| Area | Result | Evidence |
+| --- | --- | --- |
+| Beta login and role access | Pass | Controlled vendor/customer, employee/customer, and admin accounts |
+| Matching signed-in customer | Pass | Verified authority flow and Allow decision |
+| Email OTP | Pass | Controlled inbox received and verified OTP |
+| SMS initiation | Partial | Provider accepted the send to a reserved fictional test number; handset receipt was not tested |
+| Decline / Decide later / Wrong recipient | Pass at decision layer | Correct customer terminal states and admin audit entries |
+| Employee recording lock | **Fail** | Declined customer-residence record could be released and exposed camera controls |
+| Resend / contact correction | **Blocked live** | Active vendor UI did not expose the recovery action after assignment; automated route coverage passes |
+| Retry worker | **Not operationally verified** | Worker route exists, but no beta scheduler or worker secret configuration was found |
+| Admin Permission Audit | Pass | Masked contacts, method, authority, audio-off, decision, and delivery timeline |
+| Raw token/OTP exposure | No UI/API/admin exposure observed | Hash-only automated coverage passed; direct live database inspection was blocked by network policy |
+| Review/rating/Trust/public side effects | None observed | Automated no-side-effect coverage passed; no media was created in live testing |
 
 ## Objective
 
@@ -44,7 +68,7 @@ Deliver one secure recording-permission request for an existing eligible work re
 | `20260731201500_add_verified_permission_infrastructure` | Add verified-permission schema, indexes, evidence, decision session, challenge, content version, and durable notification fields. | Additive; existing consent rows are not converted into verified decisions.                                                                          | Disable the feature flag first. A schema rollback must preserve decision evidence exported after deployment. |
 | `20260731203000_normalize_legacy_permission_secrets`    | Normalize legacy consent rows and remove recoverable raw secrets.                                                                 | Existing terminal decisions remain historical `legacyEvidence`; old pending rows are superseded; token/metadata/event secret remnants are scrubbed. | Restore only from a protected pre-migration backup. Raw secret restoration is intentionally not supported.   |
 
-The migrations were validated and generated locally but were not deployed to the configured database. `prisma migrate status` reports both Epic migrations pending.
+The migrations were validated locally and are applied in Azure beta. The migration history reports all 34 repository migrations applied. No database change was made during this operational-validation checkpoint.
 
 ## Security Impact
 
@@ -80,7 +104,8 @@ New evidence models are additive. `ConsentRecord.token` becomes nullable for leg
 - Every channel attempt stores channel, masked target, state, provider reference/error, attempt count, and timing.
 - Retries use idempotency, leases, backoff, maximum attempts, and dead-letter state.
 - Delivery failure never creates permission and keeps recording locked.
-- Live provider delivery was not executed in this run.
+- Controlled email delivery succeeded. SMS provider acceptance was recorded for a reserved fictional test number; end-to-end handset receipt was not claimed.
+- Retry processing remains an operational gap because no beta scheduler or worker-secret configuration was found.
 
 ## AI Impact
 
@@ -119,17 +144,19 @@ Frozen legal and design documents were not edited. Epic 1 stores the exact prese
 | Command / validation                                                                                            | Result                       | Evidence / notes                                                                                       |
 | --------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Focused Vitest command covering 15 Epic files                                                                   | **Pass: 99 tests**           | Permission, authorization, OTP, booking, notification, worker, media gate, and beta-gate coverage.     |
+| Current isolated Epic 1 Vitest rerun                                                                            | **Pass: 37 tests**           | Eleven consent, booking, gate, notification, worker, review, and Trust side-effect files.              |
+| Current broader focused rerun                                                                                   | **91 of 94 pass**            | Three unrelated existing employee-capture/lifecycle expectations failed.                               |
 | `node scripts/dev/run-playwright-live-aware.cjs --skip-global-db-setup e2e/verified-permission-request.spec.ts` | **Pass: 5 tests**            | Desktop/mobile loading, education, failure, authority, success, blocked, unavailable, wrong recipient. |
 | `npm test -- --reporter=dot`                                                                                    | **Fail: 13 unrelated tests** | Stale copy expectations and unrelated fixtures/mocks.                                                  |
 | `npx tsc --noEmit --pretty false --incremental false`                                                           | **Fail: 1 unrelated error**  | Existing `vendor-job-actions.integration.test.ts:696`: `json.job` is `unknown`.                        |
 | `npx prisma format` / `validate` / `generate`                                                                   | Pass                         | Schema formatted, valid, client generated.                                                             |
-| `npx prisma migrate status`                                                                                     | Pending                      | Two Epic migrations are not deployed.                                                                  |
+| Azure migration-history verification                                                                           | **Pass**                     | All 34 repository migrations are applied in beta.                                                       |
 | Migration hash verification                                                                                     | Pass                         | `a52a21a38b3832cc0d9b7cc6d4a430e593e6276b54a76cfe833a9ef9eb10cf0a`.                                    |
-| `npm run build` with 8 GB heap                                                                                  | **Pass**                     | Compiled; 197/197 static pages.                                                                        |
+| Current `npm run build`                                                                                        | **Inconclusive**             | Default heap exhausted at 2 GB; 4 GB rerun exceeded the command window. Prior Epic build evidence passed. |
 | `git diff --check`                                                                                              | Pass                         | No whitespace errors.                                                                                  |
 | `npm audit --omit=dev --json`                                                                                   | Findings                     | 25 known advisories.                                                                                   |
 | Lint                                                                                                            | Not run                      | No lint script/configured ESLint command.                                                              |
-| Live provider delivery                                                                                          | Not run                      | Controlled provider credentials/recipients were not used.                                              |
+| Live provider delivery                                                                                          | Partial                      | Controlled email delivered; SMS provider accepted a reserved fictional number; handset/callback not tested. |
 
 ## Screenshot Package
 
@@ -137,9 +164,11 @@ Generated binaries remain untracked under `output/epic1-screenshot-package/`. Th
 
 ## Known Limitations
 
-- Migrations are pending and not validated against deployed beta data.
-- Live email/SMS, callbacks, and production retry scheduling are not validated.
-- Product Owner demo is not yet run.
+- Live customer-residence permission can be bypassed at service-order release because recording-compliance location metadata is inconsistent with the permission scope.
+- Resend/contact-correction recovery is not exposed in the tested assigned-job UI state.
+- Production retry scheduling is not configured or evidenced in beta.
+- SMS handset receipt, provider callbacks, expired/no-channel live manipulation, and direct database secret inspection were not performed.
+- Product Owner approval is required before the blocking defect is corrected and the demo is rerun.
 - Dedicated vendor, employee, and admin screenshots remain part of the broader release package.
 - Guardian/minor authorization remains blocked.
 - Full test/type gates contain unrelated failures listed above.
@@ -191,10 +220,10 @@ Unrelated deleted frozen-document entries, `tsconfig.tsbuildinfo`, and `output/`
 
 ### Required Closing Declaration
 
-No known regression attributable to this epic remains after the executed validation. Migration deployment, live-provider delivery, Product Owner demo, and unrelated repository-wide failures remain open gates.
+A live Epic 1 regression remains: customer-residence permission state can diverge from recording-compliance metadata, allowing a declined record to be released to an employee. Recording safety cannot be certified until this is corrected and retested. Unrelated type/test debt and beta notification-scheduler configuration remain separately documented.
 
 ## Completion Decision
 
-**Engineering status:** Implemented and evidence-complete locally
-**Product Owner approval:** Pending demo
+**Engineering status:** Implemented, deployed, and live-tested; blocking correction required
+**Product Owner approval:** Pending correction and demo rerun
 **Next epic authorized:** No

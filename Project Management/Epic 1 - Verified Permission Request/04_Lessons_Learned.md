@@ -1,7 +1,7 @@
 # Epic 1 Lessons Learned
 
 **Epic:** Verified Permission Request
-**Date reviewed:** 2026-07-31
+**Date reviewed:** 2026-08-02
 **Participants:** Codex; Product Owner review pending
 
 ## What Went Well
@@ -16,6 +16,8 @@
 - Legacy raw permission tokens appeared in multiple field families, so normalization included metadata and event remnants.
 - Existing repository-wide tests contain stale fixture/copy assumptions unrelated to this epic.
 - Prisma formatting produces a large mechanical schema diff despite additive semantic changes.
+- The permission decision service could be correct while a separate booking metadata field caused the vendor and employee release path to behave as though consent were unnecessary.
+- Automated state-machine tests did not replace a live cross-role replay of Create -> Decide -> Release -> Employee camera access.
 
 ## What Slowed Development
 
@@ -29,6 +31,9 @@
 - Run the Product Owner demo with controlled live email/SMS recipients.
 - Establish a clean baseline for unrelated test and type failures.
 - Repair repository search/lint tooling in an approved maintenance task.
+- Add one canonical server-side function for determining whether permission is required and reuse it in booking cards, release authorization, employee lists, and media-session creation.
+- Treat live cross-role blocked-state tests as mandatory security tests, not only UX demonstrations.
+- Provision and monitor the notification retry scheduler before calling delivery recovery operational.
 
 ## Actions Carried Forward
 
@@ -38,3 +43,6 @@
 | Controlled email/SMS delivery and retry test | Product Owner / Engineering | Epic 1 approval        | Open   |
 | Complete Product Owner Demo Checklist        | Product Owner               | Epic 1 closure         | Open   |
 | Triage unrelated test/type/security debt     | Engineering / Product Owner | Private beta release   | Open   |
+| Correct customer-residence metadata/gate divergence | Engineering / Product Owner | Epic 1 closure | Blocked pending approval |
+| Expose resend and recipient correction after assignment | Engineering / Product Owner | Epic 1 closure | Blocked pending approval |
+| Configure retry worker secret and scheduler | Engineering / Operations | Epic 1 closure or explicit accepted deferral | Open |

@@ -26,6 +26,20 @@ They contain controlled synthetic data and no credentials, raw tokens, OTPs, or 
 - Loading, failure, blocked, empty, success, and recovery states are distinct.
 - Mobile is long but scannable; Product Owner should validate copy length on a real phone.
 
+## Live Beta Review - 2026-08-02
+
+The live browser walkthrough reviewed these controlled states without committing screenshot binaries:
+
+- customer authority selection;
+- customer recording allowed;
+- customer recording declined;
+- customer wrong-recipient confirmation;
+- vendor cards across Allowed, Declined, Decide later, and Wrong recipient;
+- employee recording page for a declined customer-residence record; and
+- Admin Permission Audit with masked evidence.
+
+The live review found a critical mismatch not represented by the automated screenshots: a declined customer-residence record could be released and the employee page exposed camera controls. The screenshot package is therefore evidence of individual customer states, not proof that the complete cross-role gate is safe.
+
 ## Before/After
 
 No reliable frozen before screenshot of the same legacy request was available. The package avoids a misleading comparison; the engineering report records the verified behavioral difference.

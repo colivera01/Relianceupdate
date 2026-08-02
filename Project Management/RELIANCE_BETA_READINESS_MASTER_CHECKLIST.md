@@ -1,5 +1,22 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
+## Epic 1 Operational Validation - 2026-08-02
+
+**Deployed package source:** `684dc79364b22aa984e7ed990feaedfd9bc9f406`
+**Epic 1 application commit:** `4c89192d806261def0acb05185050180db8006ac`
+**Migration state:** All 34 repository migrations applied in Azure beta
+**Result:** Blocked - Epic 1 cannot close
+**Primary evidence:** `Project Management/Epic 1 - Verified Permission Request/`
+
+Controlled live validation passed matching-account verification, email OTP, Allow, Decline, Decide later, Wrong recipient, and read-only masked Admin Permission Audit. Email delivery succeeded. SMS provider acceptance was recorded for a reserved fictional test number; handset receipt was not tested.
+
+The end-to-end employee recording gate failed for a declined customer-residence record. Recording-compliance location metadata was interpreted as though consent were unnecessary, allowing the vendor to release the service order and exposing employee camera controls. No media was created because browser location permission was denied, but permission was not the blocking gate. Resend/contact-correction UI was also unavailable in the tested assigned-job state, and no beta retry scheduler/worker secret configuration was found.
+
+- `CON-05`, `CON-06`, `CON-24`, `CON-25`, `CON-26`, `SEC-04`, `PROD-11`, `PROD-12`, `TEST-03`, and `TEST-06` remain `In Progress` and are blocked from completion by the cross-role gate defect.
+- `NOT-01` through `NOT-03`, `NOT-05` through `NOT-08`, and `TEST-09` remain `In Progress`; initial live delivery is evidenced but retry/callback/handset validation is incomplete.
+- `SHOT-01`, `SHOT-02`, `SHOT-03`, `SHOT-07`, and `DOC-01` through `DOC-07` gain operational evidence but remain `In Progress` pending correction, retest, and Product Owner approval.
+- No row is promoted to `Beta Ready`. Epic 2 remains unauthorized.
+
 
 ## Beta Feedback Checkpoint - Updates 7-31-26
 
@@ -16,7 +33,7 @@
 
 **Implementation date:** 2026-07-31
 **Starting commit:** `2ddc4f31560da791330fa67f753593f3962ca544`
-**Engineering state:** Implemented and validated in the repository; Product Owner demo and production migration/provider validation remain open.
+**Engineering state:** Implemented and deployed; live operational validation found a blocking customer-residence permission-gate defect.
 **Primary evidence:** `Project Management/Epic 1 - Verified Permission Request/`
 
 Epic 1 added a verified, Private-by-default recording-permission request with hashed action links, consent-specific OTP or matching-account verification, authority-role evidence, wrong-recipient handling, durable notification attempts, read-only admin evidence, and recording gates based on canonical verified permission. It did not add publication approval, reviews, ratings, Trust Score inputs, audio recording, withdrawal, or later consent phases.

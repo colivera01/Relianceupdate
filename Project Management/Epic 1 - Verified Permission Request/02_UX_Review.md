@@ -1,8 +1,8 @@
 # Epic 1 UX Review
 
 **Epic:** Verified Permission Request
-**Build reviewed:** Epic 1 working tree at 2026-07-31
-**Status:** Reviewed; ready for Product Owner demo after beta deployment prerequisites
+**Build reviewed:** Azure beta package `684dc79364b22aa984e7ed990feaedfd9bc9f406` on 2026-08-02
+**Status:** Live four-role review completed; not ready to close
 
 ## Customer
 
@@ -68,10 +68,22 @@ An authorized admin can inspect durable permission and delivery evidence. Admin 
 
 ## Blocking UX Findings
 
-No code-level blocking confusion was found in the controlled customer flow. Live vendor, employee, admin, and provider walkthroughs remain Product Owner validation items.
+1. **Critical:** A declined customer-residence request appears to the vendor as "Consent not required," exposes **Send Service Order**, and can reach an employee with camera controls. The interface communicates the opposite of the customer decision.
+2. **High:** Decide-later records can show the same incorrect consent-not-required next step.
+3. **High:** Wrong-recipient records do not give the vendor a clear correction action in the tested assigned-job state.
+4. **High:** Resend and recipient-correction routes exist, but the tested vendor UI did not expose them after assignment.
+5. **Medium:** The registration verification email used an internal Azure hostname instead of the public beta hostname. This is outside the permission decision flow but confuses first-time test users.
+6. **Operational:** SMS provider acceptance is visible to admin, but there is no end-to-end handset confirmation for the reserved fictional test number.
+
+## Live Role Observations
+
+- **Customer:** The education, identity verification, authority selection, Allow, Decline, Decide later, and Wrong recipient pages were understandable and reassuring. Private and audio-off were clear.
+- **Vendor:** Canonical decision badges are useful, but the incorrect next-step derivation is unsafe and must block release rather than merely change copy.
+- **Employee:** The page is clear when location fails, but a declined permission should stop the employee before camera controls appear.
+- **Admin:** Permission Audit provides a fair, readable evidence trail with masked contacts and no override. It does not reveal raw secrets.
 
 ## UX Verdict
 
-**Result:** Controlled flow meets Epic 1 UX intent.
-**Blocking confusion remains:** None in automated screenshot states; live-role validation pending.
-**Ready for Product Owner demo:** Yes, after migrations and controlled provider configuration.
+**Result:** Customer decision UX meets the intent; cross-role enforcement does not.
+**Blocking confusion remains:** Yes, the vendor and employee experiences contradict a recorded decline.
+**Ready for Product Owner demo:** No. Correct the permission/location gate, expose recovery actions, and rerun the affected journey.

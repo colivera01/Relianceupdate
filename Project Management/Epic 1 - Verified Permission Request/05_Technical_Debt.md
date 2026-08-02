@@ -1,13 +1,15 @@
 # Epic 1 Technical Debt
 
 **Epic:** Verified Permission Request
-**Last reviewed:** 2026-07-31
+**Last reviewed:** 2026-08-02
 
 | Issue                                  | Reason                                             | Impact                                        | Recommended resolution                                            | Target Epic                      | Status        |
 | -------------------------------------- | -------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------- | -------------------------------- | ------------- |
-| Epic migrations not deployed           | Deployment was outside this local run              | Feature cannot operate on beta                | Rehearse, deploy in order, verify counts/hashes and rollback flag | Epic 1 operations                | Approval gate |
-| Live email/SMS not validated           | No controlled provider credentials/recipients used | Delivery behavior uncertain                   | Run delivery, invalid target, retry, and dead-letter demo         | Epic 1 / Epic 10                 | Approval gate |
-| Retry scheduler not validated          | Scheduler ownership is environment-specific        | Queued attempts may not process automatically | Configure worker secret, scheduler, and monitoring                | Epic 10                          | Open          |
+| Customer-residence permission gate divergence | Recording-compliance metadata can disagree with canonical permission scope | A declined record can be released and show employee camera controls | Derive all release/employee/media gates from one canonical server-side rule; backfill or normalize affected beta records; add live regression coverage | Epic 1 | **Beta blocker** |
+| Recovery actions unavailable after assignment | Active vendor card did not expose resend/correction despite route support | Wrong-recipient and failed-delivery recovery cannot be completed in normal UI | Expose authorized Resend and Correct recipient actions in valid assigned states | Epic 1 | **Beta blocker** |
+| SMS handset delivery not validated     | Reserved fictional test number was used safely     | Provider acceptance is known, handset delivery is not | Repeat with a dedicated controlled beta handset and verify callbacks | Epic 1 / Epic 10 | Approval gate |
+| Retry scheduler not configured         | Worker route exists but beta has no identified scheduler or worker secret | Retries/dead-letter progression may never run | Configure worker secret, scheduler, monitoring, and controlled failure test | Epic 1 / Epic 10 | **Beta blocker unless explicitly deferred** |
+| Registration email uses internal Azure host | Public-base URL is not applied in the registration email path | First-time beta users receive an unusable verification link | Use the approved public beta origin and add template/link regression coverage | Epic 2 or approved maintenance | Open unrelated |
 | Guardian/minor remains blocked         | Protected-participant scope is later               | Guardian declaration cannot unlock recording  | Implement approved protected-participant workflow                 | Later protected-participant epic | By design     |
 | Full tests have 13 failures            | Stale copy and unrelated fixtures                  | Full-suite gate unavailable                   | Scoped maintenance triage                                         | Epic 12                          | Open          |
 | Type check has one existing test error | Untyped unrelated test JSON                        | Type gate not green                           | Scoped maintenance fix                                            | Epic 12                          | Open          |
