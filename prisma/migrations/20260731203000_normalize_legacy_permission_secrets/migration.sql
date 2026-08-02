@@ -45,13 +45,25 @@ SET [metadata] = JSON_MODIFY(
 )
 WHERE [metadata] IS NOT NULL AND ISJSON([metadata]) = 1;
 
-IF EXISTS (
-  SELECT 1 FROM sys.key_constraints
-  WHERE [name] = N'UQ_consent_records_token'
-    AND [parent_object_id] = OBJECT_ID(N'dbo.consent_records')
-)
+DECLARE @tokenConstraintName sysname;
+
+SELECT TOP (1) @tokenConstraintName = kc.[name]
+FROM sys.key_constraints kc
+INNER JOIN sys.indexes i
+  ON i.[object_id] = kc.[parent_object_id]
+ AND i.[index_id] = kc.[unique_index_id]
+WHERE kc.[parent_object_id] = OBJECT_ID(N'dbo.consent_records')
+  AND (
+    kc.[name] = N'UQ_consent_records_token'
+    OR i.[name] = N'consent_records_token_key'
+  );
+
+IF @tokenConstraintName IS NOT NULL
 BEGIN
-  ALTER TABLE [dbo].[consent_records] DROP CONSTRAINT [UQ_consent_records_token];
+  DECLARE @dropTokenConstraintSql nvarchar(max);
+  SET @dropTokenConstraintSql = N'ALTER TABLE [dbo].[consent_records] DROP CONSTRAINT '
+    + QUOTENAME(@tokenConstraintName);
+  EXEC sys.sp_executesql @dropTokenConstraintSql;
 END;
 
 IF EXISTS (

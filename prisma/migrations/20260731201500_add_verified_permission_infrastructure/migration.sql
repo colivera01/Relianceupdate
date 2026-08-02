@@ -183,25 +183,28 @@ CREATE INDEX [booking_notification_attempts_consentRecordId_attemptedAt_idx]
 CREATE INDEX [booking_notification_attempts_status_attemptedAt_idx]
   ON [dbo].[booking_notification_attempts]([status], [attemptedAt]);
 
-CREATE INDEX [booking_notifications_status_nextAttemptAt_idx]
-  ON [dbo].[booking_notifications]([status], [nextAttemptAt]);
-CREATE INDEX [booking_notifications_idempotencyKey_idx]
-  ON [dbo].[booking_notifications]([idempotencyKey]);
+-- SQL Server compiles the full migration batch before executing the ALTER TABLE
+-- statements above. Defer objects that reference newly added columns so they
+-- are compiled only after those columns exist.
+EXEC(N'CREATE INDEX [booking_notifications_status_nextAttemptAt_idx]
+  ON [dbo].[booking_notifications]([status], [nextAttemptAt])');
+EXEC(N'CREATE INDEX [booking_notifications_idempotencyKey_idx]
+  ON [dbo].[booking_notifications]([idempotencyKey])');
 
-CREATE INDEX [consent_records_lifecycleStatus_expiresAt_idx]
-  ON [dbo].[consent_records]([lifecycleStatus], [expiresAt]);
-CREATE INDEX [consent_records_bookingId_isCurrent_idx]
-  ON [dbo].[consent_records]([bookingId], [isCurrent]);
-CREATE UNIQUE INDEX [consent_records_one_current_per_booking_key]
+EXEC(N'CREATE INDEX [consent_records_lifecycleStatus_expiresAt_idx]
+  ON [dbo].[consent_records]([lifecycleStatus], [expiresAt])');
+EXEC(N'CREATE INDEX [consent_records_bookingId_isCurrent_idx]
+  ON [dbo].[consent_records]([bookingId], [isCurrent])');
+EXEC(N'CREATE UNIQUE INDEX [consent_records_one_current_per_booking_key]
   ON [dbo].[consent_records]([bookingId])
-  WHERE [isCurrent] = 1;
-CREATE INDEX [consent_records_recipientEmailHash_idx]
-  ON [dbo].[consent_records]([recipientEmailHash]);
-CREATE INDEX [consent_records_recipientPhoneHash_idx]
-  ON [dbo].[consent_records]([recipientPhoneHash]);
-CREATE INDEX [consent_records_contentVersionId_idx]
-  ON [dbo].[consent_records]([contentVersionId]);
+  WHERE [isCurrent] = 1');
+EXEC(N'CREATE INDEX [consent_records_recipientEmailHash_idx]
+  ON [dbo].[consent_records]([recipientEmailHash])');
+EXEC(N'CREATE INDEX [consent_records_recipientPhoneHash_idx]
+  ON [dbo].[consent_records]([recipientPhoneHash])');
+EXEC(N'CREATE INDEX [consent_records_contentVersionId_idx]
+  ON [dbo].[consent_records]([contentVersionId])');
 
-ALTER TABLE [dbo].[consent_records]
+EXEC(N'ALTER TABLE [dbo].[consent_records]
   ADD CONSTRAINT [consent_records_contentVersionId_fkey]
-  FOREIGN KEY ([contentVersionId]) REFERENCES [dbo].[consent_content_versions]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+  FOREIGN KEY ([contentVersionId]) REFERENCES [dbo].[consent_content_versions]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION');
