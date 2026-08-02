@@ -1,20 +1,28 @@
 # Epic 1 Engineering Report
 
 **Epic:** Verified Permission Request
-**Status:** Live operational validation completed; Epic closure blocked by a permission-gate defect
+**Status:** Canonical permission-gate correction deployed; Epic closure remains pending unrelated operational evidence
 **Branch:** `cursor-latest-build`
 **Starting commit:** `2ddc4f31560da791330fa67f753593f3962ca544`
-**Final commit:** This Epic 1 Git checkpoint; use `git log -1` after commit
+**Final application commit:** `97396da7f6c99f6cea34e7ed40b05973b548ed38`
 **Report date:** 2026-08-02
 **Owner:** Codex / Product Owner
 
 ## Operational Validation Update - 2026-08-02
 
-This update supersedes the earlier statements that migrations and live providers were unvalidated. Azure beta is running package commit `684dc79364b22aa984e7ed990feaedfd9bc9f406`, which contains Epic 1 commit `4c89192d806261def0acb05185050180db8006ac`. All 34 database migrations are applied.
+### Canonical Recording-Gate Correction
 
-Controlled beta testing passed matching-account verification, email OTP, Allow, Decline, Decide later, Wrong recipient, masked admin evidence, and initial email/SMS provider acceptance. It also found a **release-blocking defect**: a customer-residence request can be stored with recording-compliance metadata that is later interpreted as vendor-business. The vendor card then says consent is not required and permits service-order release even after the customer declined. The employee receives normal camera controls. A denied browser geolocation prompt prevented media capture during the test, but permission was not the enforcing block.
+The approved release-blocking correction is deployed in Azure beta as package `reliance-beta-97396da-canonical-gate-complete-20260802145600.zip`, sourced from commit `97396da7f6c99f6cea34e7ed40b05973b548ed38`. The health endpoint returned HTTP 200 after restart, and the mounted package metadata matches that commit.
 
-Epic 1 therefore remains open. No application patch or redeployment was made during this validation checkpoint. Product Owner approval is required before the localized gate/metadata correction is implemented.
+One server-side resolver now determines recording eligibility for vendor release, vendor dashboard status, employee assignment/camera state, consent status, media-session creation, stage save, upload initialization, upload proxying, and upload completion. It uses the immutable current permission-request scope before mutable booking metadata. A permission-required work record unlocks only when the current request has a verified `ALLOWED` decision, accepted status, and linked decision evidence. Missing or conflicting evidence fails closed.
+
+A declined customer-residence fixture now remains locked on desktop and mobile, exposes no camera/upload controls, keeps all stages disabled, and creates no media-session request when a stage is force-clicked. No migration was required, no beta data was rewritten, and no review, rating, Trust Score, publication, retention, deletion, location, or later consent behavior changed.
+
+The initial operational-validation package was commit `684dc79364b22aa984e7ed990feaedfd9bc9f406`, which contained Epic 1 commit `4c89192d806261def0acb05185050180db8006ac`. All 34 database migrations were applied before the correction and remain applied; the correction created no migration.
+
+Controlled beta testing passed matching-account verification, email OTP, Allow, Decline, Decide later, Wrong recipient, masked admin evidence, and initial email/SMS provider acceptance. It also found the now-corrected release-blocking defect: mutable recording-compliance metadata could be interpreted as vendor-business even when the immutable permission request described a customer residence.
+
+Epic 1 remains open for the separate recovery, retry-scheduler, live SMS, and manual acceptance items recorded below. The canonical gate defect itself is corrected and deployed.
 
 ### Live Evidence Summary
 
@@ -25,7 +33,7 @@ Epic 1 therefore remains open. No application patch or redeployment was made dur
 | Email OTP | Pass | Controlled inbox received and verified OTP |
 | SMS initiation | Partial | Provider accepted the send to a reserved fictional test number; handset receipt was not tested |
 | Decline / Decide later / Wrong recipient | Pass at decision layer | Correct customer terminal states and admin audit entries |
-| Employee recording lock | **Fail** | Declined customer-residence record could be released and exposed camera controls |
+| Employee recording lock | **Corrected** | Canonical desktop/mobile regression proves declined customer-residence stages are disabled, camera controls are absent, and no media request occurs |
 | Resend / contact correction | **Blocked live** | Active vendor UI did not expose the recovery action after assignment; automated route coverage passes |
 | Retry worker | **Not operationally verified** | Worker route exists, but no beta scheduler or worker secret configuration was found |
 | Admin Permission Audit | Pass | Masked contacts, method, authority, audio-off, decision, and delivery timeline |
@@ -157,6 +165,14 @@ Frozen legal and design documents were not edited. Epic 1 stores the exact prese
 | `npm audit --omit=dev --json`                                                                                   | Findings                     | 25 known advisories.                                                                                   |
 | Lint                                                                                                            | Not run                      | No lint script/configured ESLint command.                                                              |
 | Live provider delivery                                                                                          | Partial                      | Controlled email delivered; SMS provider accepted a reserved fictional number; handset/callback not tested. |
+| Canonical resolver unit tests                                                                                   | **Pass: 5 tests**            | Declined, missing evidence, and immutable-scope precedence fail closed.                                  |
+| Affected permission/booking/media/upload regression suite                                                       | **Pass: 56 tests**           | Six focused files covering all corrected server consumers.                                               |
+| Focused employee lifecycle regression                                                                          | **Pass: 6; 4 skipped**       | Permission-gate cases pass; unrelated full-file expectations remain documented.                         |
+| Canonical-gate Playwright                                                                                       | **Pass: 2 tests**            | Desktop and mobile declined-residence lock; no media request after forced interaction.                   |
+| Current TypeScript check                                                                                        | **Pass**                     | `npx tsc --noEmit --pretty false --incremental false`.                                                    |
+| Current production build                                                                                       | **Pass**                     | `npm run build`; 197 pages. Optional metric prerender logged transient database reachability warnings.   |
+| Live beta health after corrected deployment                                                                    | **Pass**                     | `/api/health` returned HTTP 200 and `mode: live`.                                                         |
+| Live Product Owner browser replay                                                                               | **Not completed**            | Existing vendor session expired and Chrome control timed out on the retained admin tab; not counted as an app failure. |
 
 ## Screenshot Package
 
@@ -164,11 +180,10 @@ Generated binaries remain untracked under `output/epic1-screenshot-package/`. Th
 
 ## Known Limitations
 
-- Live customer-residence permission can be bypassed at service-order release because recording-compliance location metadata is inconsistent with the permission scope.
 - Resend/contact-correction recovery is not exposed in the tested assigned-job UI state.
 - Production retry scheduling is not configured or evidenced in beta.
 - SMS handset receipt, provider callbacks, expired/no-channel live manipulation, and direct database secret inspection were not performed.
-- Product Owner approval is required before the blocking defect is corrected and the demo is rerun.
+- The corrected cross-role gate passed automated desktop/mobile validation, but a fresh signed-in Product Owner browser replay is still required for manual acceptance.
 - Dedicated vendor, employee, and admin screenshots remain part of the broader release package.
 - Guardian/minor authorization remains blocked.
 - Full test/type gates contain unrelated failures listed above.
@@ -220,10 +235,10 @@ Unrelated deleted frozen-document entries, `tsconfig.tsbuildinfo`, and `output/`
 
 ### Required Closing Declaration
 
-A live Epic 1 regression remains: customer-residence permission state can diverge from recording-compliance metadata, allowing a declined record to be released to an employee. Recording safety cannot be certified until this is corrected and retested. Unrelated type/test debt and beta notification-scheduler configuration remain separately documented.
+The customer-residence gate regression is corrected in application commit `97396da` and passes the affected server and desktop/mobile browser suites. Recording safety for this defect is enforced by one fail-closed server decision. Unrelated recovery, notification scheduling, live SMS, manual acceptance, and repository-wide test/security debt remain separately documented.
 
 ## Completion Decision
 
-**Engineering status:** Implemented, deployed, and live-tested; blocking correction required
-**Product Owner approval:** Pending correction and demo rerun
+**Engineering status:** Canonical gate correction implemented, tested, deployed, and healthy
+**Product Owner approval:** Pending fresh signed-in demo replay and disposition of remaining Epic 1 operational items
 **Next epic authorized:** No

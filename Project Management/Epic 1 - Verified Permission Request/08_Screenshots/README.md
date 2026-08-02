@@ -17,6 +17,8 @@ They contain controlled synthetic data and no credentials, raw tokens, OTPs, or 
 | D07 | Unavailable / empty     | 1440x900  | `Desktop/07-not-available-empty.png`    |
 | M01 | Permission education    | 390x844   | `Mobile/01-permission-education.png`    |
 | M02 | Wrong-recipient success | 390x844   | `Mobile/02-wrong-recipient-success.png` |
+| A01 | Declined residence locked | Desktop | `After/desktop-declined-residence-recording-locked.png` |
+| A02 | Declined residence locked | Mobile | `After/mobile-declined-residence-recording-locked.png` |
 
 ## Visual Review
 
@@ -38,7 +40,7 @@ The live browser walkthrough reviewed these controlled states without committing
 - employee recording page for a declined customer-residence record; and
 - Admin Permission Audit with masked evidence.
 
-The live review found a critical mismatch not represented by the automated screenshots: a declined customer-residence record could be released and the employee page exposed camera controls. The screenshot package is therefore evidence of individual customer states, not proof that the complete cross-role gate is safe.
+The live review found a critical cross-role mismatch. The correction package now adds desktop and mobile evidence that the declined customer-residence assignment displays `Recording locked`, disables all stages, exposes no camera/upload control, and creates no media request after forced interaction. A fresh signed-in Product Owner browser replay remains pending.
 
 ## Before/After
 

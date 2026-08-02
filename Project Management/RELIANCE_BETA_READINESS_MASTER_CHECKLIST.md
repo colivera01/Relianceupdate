@@ -2,19 +2,19 @@
 
 ## Epic 1 Operational Validation - 2026-08-02
 
-**Deployed package source:** `684dc79364b22aa984e7ed990feaedfd9bc9f406`
-**Epic 1 application commit:** `4c89192d806261def0acb05185050180db8006ac`
+**Deployed package:** `reliance-beta-97396da-canonical-gate-complete-20260802145600.zip`
+**Epic 1 corrected application commit:** `97396da7f6c99f6cea34e7ed40b05973b548ed38`
 **Migration state:** All 34 repository migrations applied in Azure beta
-**Result:** Blocked - Epic 1 cannot close
+**Result:** Canonical gate defect corrected; Epic 1 remains open for other operational evidence and Product Owner acceptance
 **Primary evidence:** `Project Management/Epic 1 - Verified Permission Request/`
 
 Controlled live validation passed matching-account verification, email OTP, Allow, Decline, Decide later, Wrong recipient, and read-only masked Admin Permission Audit. Email delivery succeeded. SMS provider acceptance was recorded for a reserved fictional test number; handset receipt was not tested.
 
-The end-to-end employee recording gate failed for a declined customer-residence record. Recording-compliance location metadata was interpreted as though consent were unnecessary, allowing the vendor to release the service order and exposing employee camera controls. No media was created because browser location permission was denied, but permission was not the blocking gate. Resend/contact-correction UI was also unavailable in the tested assigned-job state, and no beta retry scheduler/worker secret configuration was found.
+The original live walkthrough found that a declined customer-residence record could be released and expose employee camera controls. Commit `97396da` replaces the divergent decisions with one immutable-scope server resolver used by vendor release/status, employee camera state, media-session creation, stage save, and upload routes. The corrected declined-residence fixture passes desktop/mobile Playwright and affected server regressions, and the corrected package is healthy on beta. Resend/contact-correction UI, retry scheduling, SMS handset evidence, and fresh signed-in Product Owner acceptance remain open.
 
-- `CON-05`, `CON-06`, `CON-24`, `CON-25`, `CON-26`, `SEC-04`, `PROD-11`, `PROD-12`, `TEST-03`, and `TEST-06` remain `In Progress` and are blocked from completion by the cross-role gate defect.
+- `CON-05`, `CON-06`, `CON-24`, `CON-25`, `CON-26`, `SEC-04`, `PROD-11`, `PROD-12`, `TEST-03`, and `TEST-06` remain `In Progress`, but the cross-role gate defect is resolved by deployed code and focused regression evidence.
 - `NOT-01` through `NOT-03`, `NOT-05` through `NOT-08`, and `TEST-09` remain `In Progress`; initial live delivery is evidenced but retry/callback/handset validation is incomplete.
-- `SHOT-01`, `SHOT-02`, `SHOT-03`, `SHOT-07`, and `DOC-01` through `DOC-07` gain operational evidence but remain `In Progress` pending correction, retest, and Product Owner approval.
+- `SHOT-01`, `SHOT-02`, `SHOT-03`, `SHOT-07`, and `DOC-01` through `DOC-07` gain corrected desktop/mobile evidence but remain `In Progress` pending complete role evidence and Product Owner approval.
 - No row is promoted to `Beta Ready`. Epic 2 remains unauthorized.
 
 
@@ -33,7 +33,7 @@ The end-to-end employee recording gate failed for a declined customer-residence 
 
 **Implementation date:** 2026-07-31
 **Starting commit:** `2ddc4f31560da791330fa67f753593f3962ca544`
-**Engineering state:** Implemented and deployed; live operational validation found a blocking customer-residence permission-gate defect.
+**Engineering state:** Implemented and deployed; the customer-residence permission-gate defect found during live validation is corrected in `97396da`.
 **Primary evidence:** `Project Management/Epic 1 - Verified Permission Request/`
 
 Epic 1 added a verified, Private-by-default recording-permission request with hashed action links, consent-specific OTP or matching-account verification, authority-role evidence, wrong-recipient handling, durable notification attempts, read-only admin evidence, and recording gates based on canonical verified permission. It did not add publication approval, reviews, ratings, Trust Score inputs, audio recording, withdrawal, or later consent phases.
