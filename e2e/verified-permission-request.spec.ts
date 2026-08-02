@@ -162,6 +162,34 @@ test.describe("verified permission request UX", () => {
     await capture(page, path.join("Desktop", "07-not-available-empty.png"));
   });
 
+  test("explains that a superseded link was replaced", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await installControlledPermissionApi(page, { state: "superseded", canDecide: false });
+    await page.goto(`/consent/${TOKEN}`);
+    await expect(page.getByRole("heading", { name: "This permission request was replaced" })).toBeVisible();
+    await expect(page.getByText(/Please use the newest link or contact the business/)).toBeVisible();
+    await capture(page, path.join("Desktop", "08-superseded-request.png"));
+  });
+
+  test("survives refresh and reopening before the customer completes the flow", async ({ page, context }) => {
+    await installControlledPermissionApi(page);
+    await page.goto(`/consent/${TOKEN}`);
+    await expect(page.getByRole("heading", { name: "Choose whether this service may be recorded" })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Choose whether this service may be recorded" })).toBeVisible();
+
+    await page.close();
+    const reopened = await context.newPage();
+    await installControlledPermissionApi(reopened);
+    await reopened.goto(`/consent/${TOKEN}`);
+    await reopened.getByRole("button", { name: /Email code to/ }).click();
+    await reopened.getByLabel("6-digit code").fill("123456");
+    await reopened.getByRole("button", { name: "Verify code" }).click();
+    await reopened.getByLabel("I am the customer").check();
+    await reopened.getByRole("button", { name: "Allow recording" }).click();
+    await expect(reopened.getByRole("heading", { name: "Recording is allowed" })).toBeVisible();
+  });
+
   test("captures mobile education and wrong-recipient success", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installControlledPermissionApi(page);

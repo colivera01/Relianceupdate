@@ -104,6 +104,19 @@ const formatPhoneNumber = (value: string) => {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 };
 
+const maskPermissionEmail = (value: unknown) => {
+  const email = String(value || '').trim();
+  const [local, domain] = email.split('@');
+  if (!local || !domain) return '';
+  return `${local.slice(0, 1)}${'*'.repeat(Math.min(Math.max(local.length - 1, 3), 8))}@${domain}`;
+};
+
+const maskPermissionPhone = (value: unknown) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return `***-***-${digits.slice(-4).padStart(4, '*')}`;
+};
+
 const JOB_WORKFLOW_GUIDE_DISMISSED_KEY = 'reliance.vendorJobs.workflowGuideDismissed';
 const VENDOR_JOBS_TIMEOUT_MS = 20000;
 const VENDOR_TEAM_TIMEOUT_MS = 15000;
@@ -611,6 +624,19 @@ export default function VendorJobs() {
   const [consentStatusByBookingId, setConsentStatusByBookingId] = useState<Record<string, string>>({});
   const [showModal, setShowModal] = useState(false);
   const [showComplianceModal, setShowComplianceModal] = useState(false);
+  const [showPermissionRecoveryModal, setShowPermissionRecoveryModal] = useState(false);
+  const [permissionRecoveryJob, setPermissionRecoveryJob] = useState<any>(null);
+  const [permissionRecoveryRequestId, setPermissionRecoveryRequestId] = useState('');
+  const [permissionRecoveryForm, setPermissionRecoveryForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+  });
+  const [permissionRecoveryLoading, setPermissionRecoveryLoading] = useState<
+    '' | 'resend' | 'correct'
+  >('');
+  const [permissionRecoveryError, setPermissionRecoveryError] = useState('');
+  const [permissionRecoverySuccess, setPermissionRecoverySuccess] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -2022,6 +2048,95 @@ export default function VendorJobs() {
     setPreferredReplaceStage(false);
     setActiveJobActionMenuId(null);
     setShowComplianceModal(true);
+  };
+
+  const openPermissionRecoveryForJob = (job: any) => {
+    const contact = getCustomerContactForJob(job);
+    const requestId = String(
+      job?.latestConsentId || getSavedRecordingComplianceForJob(job)?.consentRequestId || ''
+    ).trim();
+    setSelectedJob(job);
+    setPermissionRecoveryJob(job);
+    setPermissionRecoveryRequestId(requestId);
+    setPermissionRecoveryForm({
+      name: String(job?.client || job?.clientName || '').trim(),
+      email: contact.email,
+      phone: contact.phone,
+    });
+    setPermissionRecoveryError('');
+    setPermissionRecoverySuccess('');
+    setActiveJobActionMenuId(null);
+    setShowPermissionRecoveryModal(true);
+  };
+
+  const runPermissionRecovery = async (mode: 'resend' | 'correct') => {
+    const job = permissionRecoveryJob;
+    const requestId = String(permissionRecoveryRequestId || '').trim();
+    if (!job || !requestId) {
+      setPermissionRecoveryError(
+        'This work record does not have a recoverable permission request. Open the recording-permission step to send the first request.'
+      );
+      return;
+    }
+    const email = getUsableCustomerEmail(permissionRecoveryForm.email);
+    const phone = String(permissionRecoveryForm.phone || '').trim();
+    if (mode === 'correct' && !email && !phone) {
+      setPermissionRecoveryError('Enter a customer email address or mobile phone before sending the corrected request.');
+      return;
+    }
+
+    setPermissionRecoveryLoading(mode);
+    setPermissionRecoveryError('');
+    setPermissionRecoverySuccess('');
+    try {
+      const response = await fetch(
+        `/api/consent/requests/${encodeURIComponent(requestId)}/${mode === 'correct' ? 'recipient' : 'resend'}`,
+        {
+          method: mode === 'correct' ? 'PATCH' : 'POST',
+          headers: getRequestHeaders(),
+          ...(mode === 'correct'
+            ? {
+                body: JSON.stringify({
+                  name: String(permissionRecoveryForm.name || '').trim(),
+                  email: email || null,
+                  phone: phone || null,
+                }),
+              }
+            : {}),
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.success === false) {
+        throw new Error(
+          String(
+            payload?.error ||
+              (mode === 'correct'
+                ? 'Unable to correct the permission recipient'
+                : 'Unable to resend the permission request')
+          )
+        );
+      }
+
+      const nextRequestId = String(payload?.permission?.id || requestId).trim();
+      setPermissionRecoveryRequestId(nextRequestId);
+      applyConsentStatusFromBackend(payload?.permission?.state || 'pending');
+      await reloadJobsFromBackend({ silent: true });
+      setPermissionRecoverySuccess(
+        mode === 'correct'
+          ? 'The corrected recipient was sent a new secure request. The previous link no longer works.'
+          : 'A new secure permission link was sent to the current recipient. The previous link no longer works.'
+      );
+    } catch (error) {
+      setPermissionRecoveryError(
+        error instanceof Error
+          ? error.message
+          : mode === 'correct'
+          ? 'Unable to correct the permission recipient.'
+          : 'Unable to resend the permission request.'
+      );
+    } finally {
+      setPermissionRecoveryLoading('');
+    }
   };
 
   const openComplianceForSpecificStage = (
@@ -6507,6 +6622,161 @@ export default function VendorJobs() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={showPermissionRecoveryModal}
+        onOpenChange={(open) => {
+          if (permissionRecoveryLoading) return;
+          setShowPermissionRecoveryModal(open);
+          if (!open) {
+            setPermissionRecoveryJob(null);
+            setPermissionRecoveryRequestId('');
+            setPermissionRecoveryError('');
+            setPermissionRecoverySuccess('');
+          }
+        }}
+      >
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-blue-600" />
+              Manage Recording Permission
+            </DialogTitle>
+            <DialogDescription>
+              Recording remains locked while you resend the current request or correct who should receive it.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+              <div className="font-semibold">{String(permissionRecoveryJob?.title || 'Selected work record')}</div>
+              <div className="mt-1 text-blue-800">
+                Status: {String(
+                  getConsentStatusForJob(
+                    permissionRecoveryJob,
+                    getSavedRecordingComplianceForJob(permissionRecoveryJob)
+                  ) || 'pending'
+                ).replace(/_/g, ' ')}
+              </div>
+            </div>
+
+            {permissionRecoveryError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+                {permissionRecoveryError}
+              </div>
+            ) : null}
+            {permissionRecoverySuccess ? (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+                {permissionRecoverySuccess}
+              </div>
+            ) : null}
+
+            <section className="space-y-3 border-b border-slate-200 pb-5">
+              <div>
+                <h3 className="font-semibold text-slate-950">Resend to the current recipient</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Current destination:{' '}
+                  {[maskPermissionEmail(permissionRecoveryForm.email), maskPermissionPhone(permissionRecoveryForm.phone)]
+                    .filter(Boolean)
+                    .join(' / ') || 'No digital contact available'}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Resending creates a new secure link. The previous link stops working.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void runPermissionRecovery('resend')}
+                disabled={Boolean(permissionRecoveryLoading) || !permissionRecoveryRequestId}
+              >
+                {permissionRecoveryLoading === 'resend' ? 'Resending...' : 'Resend Permission Request'}
+              </Button>
+            </section>
+
+            <section className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-slate-950">Correct the recipient</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Use this when the request went to the wrong person or the customer contact changed.
+                  The original request remains in the audit history and cannot be used again.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label htmlFor="permission-recipient-name" className="mb-1 block text-sm font-medium text-slate-800">
+                    Customer or authorized representative
+                  </label>
+                  <Input
+                    id="permission-recipient-name"
+                    value={permissionRecoveryForm.name}
+                    onChange={(event) =>
+                      setPermissionRecoveryForm((current) => ({ ...current, name: event.target.value }))
+                    }
+                    autoComplete="name"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="permission-recipient-email" className="mb-1 block text-sm font-medium text-slate-800">
+                    Email
+                  </label>
+                  <Input
+                    id="permission-recipient-email"
+                    type="email"
+                    value={permissionRecoveryForm.email}
+                    onChange={(event) =>
+                      setPermissionRecoveryForm((current) => ({ ...current, email: event.target.value }))
+                    }
+                    autoComplete="email"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="permission-recipient-phone" className="mb-1 block text-sm font-medium text-slate-800">
+                    Mobile phone
+                  </label>
+                  <Input
+                    id="permission-recipient-phone"
+                    inputMode="tel"
+                    value={permissionRecoveryForm.phone}
+                    onChange={(event) =>
+                      setPermissionRecoveryForm((current) => ({
+                        ...current,
+                        phone: formatPhoneNumber(event.target.value),
+                      }))
+                    }
+                    autoComplete="tel"
+                  />
+                </div>
+              </div>
+              <Button
+                type="button"
+                onClick={() => void runPermissionRecovery('correct')}
+                disabled={
+                  Boolean(permissionRecoveryLoading) ||
+                  !permissionRecoveryRequestId ||
+                  (!getUsableCustomerEmail(permissionRecoveryForm.email) &&
+                    !String(permissionRecoveryForm.phone || '').trim())
+                }
+              >
+                {permissionRecoveryLoading === 'correct'
+                  ? 'Sending Corrected Request...'
+                  : 'Correct Recipient and Send New Request'}
+              </Button>
+            </section>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPermissionRecoveryModal(false)}
+              disabled={Boolean(permissionRecoveryLoading)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Compliance Modal - Legal Security Flow */}
       <Dialog
         open={showComplianceModal}
@@ -7652,6 +7922,26 @@ export default function VendorJobs() {
                            const isAwaitingReview = status === 'awaiting_review' || status === 'awaiting review';
                            const isArchived = status === 'archived';
                            const isConsentBlocked = isJobBlockedByCustomerConsent(job);
+                           const permissionState = getConsentStatusForJob(
+                             job,
+                             getSavedRecordingComplianceForJob(job)
+                           );
+                           const hasPermissionRequest = Boolean(
+                             String(
+                               job?.latestConsentId ||
+                                 getSavedRecordingComplianceForJob(job)?.consentRequestId ||
+                                 ''
+                             ).trim()
+                           );
+                           const canRecoverPermission =
+                             hasPermissionRequest &&
+                             [
+                               CONSENT_STATE.REQUESTED,
+                               CONSENT_STATE.EXPIRED_OR_UNAVAILABLE,
+                               CONSENT_STATE.DELIVERY_FAILED,
+                               CONSENT_STATE.WRONG_RECIPIENT,
+                               CONSENT_STATE.NO_DIGITAL_CHANNEL,
+                             ].includes(permissionState as any);
 
                           if (isCompleted) {
                             return (
@@ -7783,9 +8073,15 @@ export default function VendorJobs() {
                                     </div>
                                     <button
                                       className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white"
-                                      onClick={() => openCustomerConsentForJob(job)}
+                                      onClick={() =>
+                                        canRecoverPermission
+                                          ? openPermissionRecoveryForJob(job)
+                                          : openCustomerConsentForJob(job)
+                                      }
                                     >
-                                      Open / Resend Recording Permission
+                                      {canRecoverPermission
+                                        ? 'Manage Recording Permission'
+                                        : 'View Recording Permission'}
                                     </button>
                                   </>
                                 ) : (

@@ -31,18 +31,27 @@ export async function POST(request: Request) {
       status: "FAILED",
       deadLetteredAt: null,
       OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
-      consentRecord: {
-        decisionEvidence: { is: null },
-        lifecycleStatus: "DELIVERY_FAILED",
-      },
+      consentRecordId: { not: null },
     },
     orderBy: { createdAt: "asc" },
     take: 10,
-    include: { consentRecord: { select: { id: true, generation: true } } },
+    select: { id: true, consentRecordId: true, attemptCount: true, maxAttempts: true },
   });
 
   const results: Array<Record<string, unknown>> = [];
   for (const candidate of candidates) {
+    const consentRecordId = String(candidate.consentRecordId || "").trim();
+    if (!consentRecordId) continue;
+    const consentRecord = await (prisma as any).consentRecord.findFirst({
+      where: {
+        id: consentRecordId,
+        decisionEvidence: { is: null },
+        lifecycleStatus: "DELIVERY_FAILED",
+      },
+      select: { id: true, generation: true },
+    });
+    if (!consentRecord) continue;
+
     const maxAttempts = Math.max(1, Number(candidate.maxAttempts || 4));
     if (Number(candidate.attemptCount || 0) >= maxAttempts) {
       await (prisma as any).bookingNotification.update({
@@ -61,7 +70,7 @@ export async function POST(request: Request) {
 
     try {
       const rotated = await rotateVerifiedPermissionLink({
-        consentRecordId: candidate.consentRecord.id,
+        consentRecordId: consentRecord.id,
         actorUserId: "permission-notification-worker",
       });
       const delivery = await deliverVerifiedPermissionRequest({

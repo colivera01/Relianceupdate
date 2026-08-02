@@ -37,7 +37,10 @@ function stateMessage(state: string) {
     declined: { title: "Recording was declined", detail: "Reliance recording stays locked. The service may continue without recording." },
     later: { title: "No decision was saved", detail: "Recording stays locked. You can return to this secure link before it expires if you want to decide." },
     expired: { title: "This secure link expired", detail: "Ask the service provider to send a new recording-permission request." },
-    superseded: { title: "A newer request is available", detail: "This link was replaced and cannot be used." },
+    superseded: {
+      title: "This permission request was replaced",
+      detail: "A newer request was sent. Please use the newest link or contact the business if you need another one.",
+    },
     wrong_recipient: { title: "This request was reported as misdirected", detail: "The service provider must correct the recipient before sending another request." },
   };
   return messages[state] || { title: "This request is not available", detail: "Ask the service provider to review the permission status." };

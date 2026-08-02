@@ -4,15 +4,19 @@ import { POST } from "./route";
 
 const hoisted = vi.hoisted(() => {
   const findMany = vi.fn();
+  const findConsentRecord = vi.fn();
   const update = vi.fn();
   const updateMany = vi.fn();
   const rotate = vi.fn();
   const deliver = vi.fn();
-  return { findMany, update, updateMany, rotate, deliver };
+  return { findMany, findConsentRecord, update, updateMany, rotate, deliver };
 });
 
 vi.mock("@/server/db", () => ({
-  prisma: { bookingNotification: { findMany: hoisted.findMany, update: hoisted.update, updateMany: hoisted.updateMany } },
+  prisma: {
+    bookingNotification: { findMany: hoisted.findMany, update: hoisted.update, updateMany: hoisted.updateMany },
+    consentRecord: { findFirst: hoisted.findConsentRecord },
+  },
 }));
 vi.mock("@/lib/consent/request-service", () => ({ rotateVerifiedPermissionLink: hoisted.rotate }));
 vi.mock("@/lib/consent/delivery-service", () => ({ deliverVerifiedPermissionRequest: hoisted.deliver }));
@@ -30,6 +34,7 @@ describe("permission notification worker", () => {
     process.env.INTERNAL_NOTIFICATION_WORKER_SECRET = "worker-secret";
     hoisted.update.mockResolvedValue({});
     hoisted.updateMany.mockResolvedValue({ count: 1 });
+    hoisted.findConsentRecord.mockResolvedValue({ id: "permission-1", generation: 7 });
     hoisted.rotate.mockResolvedValue({
       consentRecordId: "permission-1",
       notificationId: "notification-new",
@@ -51,9 +56,9 @@ describe("permission notification worker", () => {
   it("rotates the action link before retrying delivery", async () => {
     hoisted.findMany.mockResolvedValue([{
       id: "notification-old",
+      consentRecordId: "permission-1",
       attemptCount: 1,
       maxAttempts: 4,
-      consentRecord: { id: "permission-1", generation: 7 },
     }]);
     const response = await POST(workerRequest());
     const json = await response.json();
@@ -67,9 +72,9 @@ describe("permission notification worker", () => {
   it("dead-letters based on delivery attempts, not link generation", async () => {
     hoisted.findMany.mockResolvedValue([{
       id: "notification-old",
+      consentRecordId: "permission-1",
       attemptCount: 4,
       maxAttempts: 4,
-      consentRecord: { id: "permission-1", generation: 1 },
     }]);
     const response = await POST(workerRequest());
     const json = await response.json();
@@ -80,5 +85,23 @@ describe("permission notification worker", () => {
       where: { id: "notification-old" },
       data: { deadLetteredAt: expect.any(Date), lastError: "permission_delivery_retry_limit_reached" },
     });
+  });
+
+  it("skips notifications whose permission request is no longer retryable", async () => {
+    hoisted.findMany.mockResolvedValue([{
+      id: "notification-old",
+      consentRecordId: "permission-1",
+      attemptCount: 1,
+      maxAttempts: 4,
+    }]);
+    hoisted.findConsentRecord.mockResolvedValue(null);
+
+    const response = await POST(workerRequest());
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.processed).toBe(0);
+    expect(hoisted.rotate).not.toHaveBeenCalled();
+    expect(hoisted.deliver).not.toHaveBeenCalled();
   });
 });
