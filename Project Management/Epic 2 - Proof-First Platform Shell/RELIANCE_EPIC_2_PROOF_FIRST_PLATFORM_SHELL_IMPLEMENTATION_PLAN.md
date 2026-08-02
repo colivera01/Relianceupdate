@@ -1,9 +1,9 @@
 # RELIANCE EPIC 2 PROOF-FIRST PLATFORM SHELL IMPLEMENTATION PLAN
 
-**Status:** Approved and executed  
-**Planning baseline:** `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0` on `cursor-latest-build`  
-**Implementation status:** Complete; Product Owner demo pending  
-**Migration status:** None proposed  
+**Status:** Approved and executed
+**Planning baseline:** `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0` on `cursor-latest-build`
+**Implementation status:** Complete; Product Owner demo pending
+**Migration status:** None proposed
 **Deployment status:** No deployment authorized by this plan
 
 ## Baseline And Ordering Note
@@ -918,55 +918,55 @@ Any debt accepted at completion must be recorded in `05_Technical_Debt.md` with 
 
 ## 19. Estimated Implementation Sequence
 
-1. **Baseline checkpoint**  
+1. **Baseline checkpoint**
    Record branch, commit, worktree, deployment baseline, and unrelated changes to preserve.
 
-2. **Rendered-language inventory**  
+2. **Rendered-language inventory**
    Reproduce all affected routes in current beta/local build, classify visible conflicts, and save before captures. Do not edit internal-only terms.
 
-3. **Shared terminology and navigation contract**  
+3. **Shared terminology and navigation contract**
    Finalize the small approved label map by role, route destination, active-state rule, mobile behavior, and Help destination.
 
-4. **Public shell**  
+4. **Public shell**
    Update header, footer, homepage, auth shell, and Help entry points. Verify signed-out links before moving on.
 
-5. **Browse and Discover complete experience**  
+5. **Browse and Discover complete experience**
    Reframe hierarchy and cards around existing public proof. Reuse existing APIs unless a narrowly additive safe field is proven necessary.
 
-6. **Vendor and service/work-type public pages**  
+6. **Vendor and service/work-type public pages**
    Reorder credibility/proof and keep Services Offered/contact as supporting context. Verify public filtering after each route.
 
-7. **Customer shell**  
+7. **Customer shell**
    Apply the approved proof-exploration label, responsive navigation, return labels, and affected states without changing account behavior.
 
-8. **Vendor shell**  
+8. **Vendor shell**
    Correct hierarchy and responsive navigation only where verified necessary. Replay Epic 1 Manage Jobs states immediately.
 
-9. **Employee shell**  
+9. **Employee shell**
    Improve focused orientation, mobile behavior, and blocked-state readability without altering recording logic.
 
-10. **Admin shell**  
+10. **Admin shell**
     Correct only labels proven inconsistent with actual page function. Preserve every role gate and operational control.
 
-11. **Accessibility and responsive hardening**  
+11. **Accessibility and responsive hardening**
     Run automated and manual checks, then fix affected Critical/High issues without unrelated refactors.
 
-12. **Regression and privacy validation**  
+12. **Regression and privacy validation**
     Run route, authorization, public/private, role, Epic 1, Trust Score, review, type, lint, build, and golden-journey tests.
 
-13. **Evidence and honest UX review**  
+13. **Evidence and honest UX review**
     Capture screenshot matrix, complete the four-role critique and journey summaries, and identify any first-time-user confusion.
 
-14. **Documentation and checklist**  
+14. **Documentation and checklist**
     Update only affected checklist rows based on evidence; complete all Epic 2 Project Management records and Dashboard.
 
-15. **Scoped Git checkpoint**  
+15. **Scoped Git checkpoint**
     Review diff/status, commit only Epic 2 implementation and approved documentation, push current branch, and report actual results.
 
-Estimated complexity: **Large**.  
-Estimated risk: **Medium**, primarily from shared layouts and public filtering.  
-Expected migration count: **0**.  
-Expected file impact: approximately **25-45 files**, reduced when current surfaces already conform.  
+Estimated complexity: **Large**.
+Estimated risk: **Medium**, primarily from shared layouts and public filtering.
+Expected migration count: **0**.
+Expected file impact: approximately **25-45 files**, reduced when current surfaces already conform.
 Expected screenshot count: approximately **20-30 indexed captures**, plus only practical comparable before/after pairs.
 
 ## 20. Approval Gate

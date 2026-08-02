@@ -36,7 +36,9 @@ Azure package: `reliance-beta-08de960-epic1-operational-closeout-202608021730.zi
 
 Latest baseline reconciliation commit: `cfc53e33cd112085fa8a1cc7a14db376d1851357`
 
-Epic 2 starting commit: `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0`; scoped checkpoint hash will be recorded after Git commit.
+Epic 2 starting commit: `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0`
+
+Epic 2 implementation commit: `cb44c9eaeef905b6cd06b2218fd923e5cc43875d`
 
 ## Latest Beta Feedback Maintenance
 
@@ -54,7 +56,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 | Order | Epic                                                  | Status                                    | Engineering | UX          | Demo    | Git checkpoint     |
 | ----- | ----------------------------------------------------- | ----------------------------------------- | ----------- | ----------- | ------- | ------------------ |
 | 1     | Verified Permission Request                           | **Completed** | Complete | Complete | Approved | Application `08de960` |
-| 2     | Proof-First Platform Shell                            | Implementation complete; Product Owner review pending | Complete | Complete | Pending | Checkpoint pending |
+| 2     | Proof-First Platform Shell                            | Implementation complete; Product Owner review pending | Complete | Complete | Pending | `cb44c9e` |
 | 3     | Trusted Accounts and Role Isolation                   | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 4     | Universal Work Record and Recording Gates             | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 5     | Safe Capture Through Private Service Videos           | Not started                               | Not started | Not started | Not run | Not recorded       |

@@ -1,7 +1,7 @@
 # Epic 2 Product Owner Demo
 
 **Epic:** Proof-First Platform Shell
-**Build / commit:** Epic 2 scoped checkpoint, hash reported after commit
+**Build / commit:** `cb44c9eaeef905b6cd06b2218fd923e5cc43875d`
 **Demo date:** Pending Product Owner replay
 **Product Owner:** Cesar Olivera
 **Overall result:** Ready to run

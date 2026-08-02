@@ -9,9 +9,10 @@
 ## Commit
 
 - Starting commit: `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0`
-- Final commit: This scoped Epic 2 checkpoint; exact hash reported after commit
+- Implementation commit: `cb44c9eaeef905b6cd06b2218fd923e5cc43875d`
+- Documentation-finalization commit: this follow-up checkpoint; exact hash reported after commit
 - Remote: current upstream branch
-- Push result: Pending Git checkpoint
+- Push result: Pending documentation checkpoint
 
 ## Files Changed
 

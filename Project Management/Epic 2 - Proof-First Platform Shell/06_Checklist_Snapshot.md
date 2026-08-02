@@ -3,7 +3,7 @@
 **Epic:** Proof-First Platform Shell
 **Snapshot date:** 2026-08-02
 **Starting commit:** `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0`
-**Ending commit:** Scoped Epic 2 checkpoint reported after commit
+**Implementation commit:** `cb44c9eaeef905b6cd06b2218fd923e5cc43875d`
 
 ## Row Status Snapshot
 
