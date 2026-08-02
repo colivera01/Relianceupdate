@@ -132,7 +132,7 @@ export function buildVendorGrowthSummary(
       promotionStatus = {
         label: "Publish a service before requesting promotion",
         detail:
-          "Promotions only help once customers can click into a published service offered from Browse Services.",
+          "Featured placements only help once customers can open a published Service Offered from Explore Proof.",
         tone: "warning",
       };
     } else if (input.promotionBrowseReadiness && !input.promotionBrowseReadiness.desktopBrowseEligible) {

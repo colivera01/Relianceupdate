@@ -248,10 +248,10 @@ const fallbackPackageOptions: PromotionPackageOption[] = [
     packageKey: 'browse-local-30-day',
     name: '30-day local spotlight',
     publicSummary: 'Month-long browse feature for broader local coverage.',
-    adminDescription: 'Best for vendors ready for a longer local campaign while Reliance is still proving early marketplace volume.',
+    adminDescription: 'Best for vendors ready for a longer local campaign while Reliance is still validating early proof-exploration traffic.',
     bestFor: 'Sustained local visibility and stronger package-popularity signal.',
     placementExplanation: 'Appears in browse with up to 30 miles of radius targeting.',
-    audience: 'Established local vendors who want a longer promoted listing run.',
+    audience: 'Established local vendors who want a longer featured proof placement.',
     placementType: 'BROWSE_FEATURED',
     durationDays: 30,
     defaultRadiusMiles: 20,
@@ -486,9 +486,9 @@ export default function AdminPromotedListingsPage() {
       setError(
         err instanceof Error
           ? err.name === 'AbortError'
-            ? 'Promoted listing inventory timed out while loading. Retry once the admin route settles.'
+        ? 'Featured proof inventory timed out while loading. Retry once the admin route settles.'
             : err.message
-          : 'Failed to load promoted listings'
+        : 'Failed to load featured proof placements'
       );
     } finally {
       window.clearTimeout(timeoutId);
@@ -670,11 +670,11 @@ export default function AdminPromotedListingsPage() {
       if (!response.ok) {
         throw new Error(json?.error || json?.message || `Status ${response.status}`);
       }
-      setMessage('Promoted listing campaign created.');
+      setMessage('Featured proof campaign created.');
       setForm(defaultForm(packageOptions));
       await fetchCampaigns();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create promoted listing');
+      setError(err instanceof Error ? err.message : 'Failed to create featured proof placement');
     } finally {
       setSaving(false);
     }
@@ -915,7 +915,7 @@ export default function AdminPromotedListingsPage() {
       <header className="space-y-2">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-[#204080]">Promoted Listings</h1>
+            <h1 className="text-2xl font-semibold text-[#204080]">Featured Proof Placements</h1>
             <p className="text-sm text-gray-600">
               Admin-controlled promoted placement for eligible public vendors. Use this page to manage packages, reserve inventory, track payment, and activate campaigns after payment is confirmed.
             </p>
@@ -930,7 +930,7 @@ export default function AdminPromotedListingsPage() {
         </div>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Promoted listing top line metrics">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Featured proof placement top line metrics">
         {topLineMetrics.map((metric) => (
           <Card key={metric.label} className="border-blue-100 bg-white">
             <CardContent className="space-y-2 pt-6">
@@ -1016,7 +1016,7 @@ export default function AdminPromotedListingsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Promoted listings admin guidance">
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Featured proof placement admin guidance">
         <Card>
           <CardHeader>
             <CardTitle>Operator Checklist</CardTitle>
@@ -1229,7 +1229,7 @@ export default function AdminPromotedListingsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3" aria-label="Promoted listings summary">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-3" aria-label="Featured proof placement summary">
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-[#204080]">{activeCount}</div>
@@ -1599,10 +1599,10 @@ export default function AdminPromotedListingsPage() {
           </div>
 
           {loading ? (
-            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">Loading promoted listing inventory...</div>
+          <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">Loading featured proof inventory...</div>
           ) : campaigns.length === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
-              <div>No promoted listing campaigns found.</div>
+            <div>No featured proof campaigns found.</div>
               <div className="mt-2 text-xs text-gray-500">
                 Start by creating a featured campaign, or review package pricing before launching the first placement.
               </div>

@@ -66,7 +66,7 @@ export default function FavoritesPage() {
               </Badge>
             </div>
             <Link href="/discover">
-              <Button size="sm">Browse Services</Button>
+                <Button size="sm">Explore Proof</Button>
             </Link>
         </div>
       </div>
@@ -123,7 +123,7 @@ export default function FavoritesPage() {
               {searchQuery.trim() ? 'Try a different search.' : 'Save vendors or services offered when you want to revisit them.'}
             </p>
             <Link href="/discover">
-              <Button>Browse Services</Button>
+              <Button>Explore Proof</Button>
             </Link>
           </div>
             ) : (

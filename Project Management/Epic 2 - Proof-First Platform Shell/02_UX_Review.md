@@ -1,88 +1,81 @@
 # Epic 2 UX Review
 
 **Epic:** Proof-First Platform Shell
-**Build / commit reviewed:** TBD
-**Review date:** TBD
-**Status:** Not started
+**Build reviewed:** Local Epic 2 worktree from `abe9d0d6`
+**Review date:** 2026-08-02
+**Status:** Engineering review complete; independent visitor review pending
 
-Review the implementation as a first-time user. Working code is not sufficient evidence of good UX.
+## First-Time Visitor Review
+
+| Page | Five-second result | Thirty-second result | Primary decisions | Rating | Evidence |
+|---|---|---|---:|---|---|
+| Homepage | Reliance and real completed work are immediately visible. | Visitor can distinguish Service Videos, reviews, and Trust Score and choose Explore Proof. | 2 | Excellent | `Desktop/home-after.png`, `Mobile/home-after.png` |
+| Explore Proof | Clearly a place to inspect completed work before choosing a provider. | Results explain the four trust/service signals and next action. | 3 | Good | `Desktop/explore-proof-after.png`, mobile state set |
+| Public work detail | Clearly a completed-work proof page. | Proof is primary; provider/service request are secondary. | 2 | Good | `Desktop/public-work-detail-after.png` |
+| Provider profile | Clearly explains why the provider may be trusted. | Trust Score, reviews, videos, and Services Offered remain distinct. | 3 | Good | `Desktop/provider-profile-after.png` |
+| Signed-out role block | Clearly explains why access is unavailable and what to do. | Safe sign-in path is visible; no protected content leaks. | 1 | Good | `Blocked/vendor-access-required-mobile.png` |
+
+The scripted evaluation passed. A real five-person comprehension exercise is still required; no human-study result is claimed here.
+
+## Cognitive Load Review
+
+- Homepage: two immediate choices, Explore Proof or learn how Reliance helps.
+- Explore Proof: search/filter, open proof, or open provider; controls are grouped.
+- Public work detail: view proof first; provider and service request remain secondary.
+- Provider profile: inspect trust evidence, then Services Offered or public videos.
+- Role block: one recovery decision.
+
+No reviewed page asks for more than three primary decisions at once.
 
 ## Customer
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Why am I here? | TBD | TBD | TBD | TBD |
-| What is happening? | TBD | TBD | TBD | TBD |
-| What do I need to do? | TBD | TBD | TBD | TBD |
-| What happens if I do nothing? | TBD | TBD | TBD | TBD |
-| What happens next? | TBD | TBD | TBD | TBD |
-| What stays private? | TBD | TBD | TBD | TBD |
-| Wording/hierarchy/anxiety/accessibility/recovery | TBD | TBD | TBD | TBD |
+| Area | Observation | Severity | Disposition |
+|---|---|---|---|
+| Purpose | “See real completed work before you decide who to trust” answers why the page exists. | None | Keep. |
+| Signal distinction | Public Service Videos, reviews, Trust Score, and Services Offered are named separately. | None | Keep. |
+| Privacy | Public pages describe public proof; private-account behavior was not broadened. | None | Keep. |
+| Recovery | Loading, empty, failure, and blocked states use plain language. | Low | Five-person review should test whether “proof” needs a short tooltip. |
 
 ## Vendor
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Current status and next action | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Controls and button placement | TBD | TBD | TBD | TBD |
-| Privacy reassurance and failure recovery | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+The vendor dashboard keeps operational actions and metrics intact while public-growth guidance now points to Explore Proof and featured proof placements. This avoids implying that Reliance is a marketplace. Authenticated vendor visual replay is limited by the local role-fixture issue, so the Product Owner should verify the updated labels in beta after deployment.
 
 ## Employee
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Assignment and allowed action | TBD | TBD | TBD | TBD |
-| Recording boundaries / blocked reason | TBD | TBD | TBD | TBD |
-| Wording and hierarchy | TBD | TBD | TBD | TBD |
-| Recovery and manager escalation | TBD | TBD | TBD | TBD |
-| Accessibility and mobile behavior | TBD | TBD | TBD | TBD |
+Employee recording screens were intentionally not rewritten. Epic 1 recording-gate tests passed on desktop and mobile, confirming that shell work did not replace assignment, permission, or blocked-state guidance. The employee journey remains intentionally task-focused.
 
 ## Admin
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Evidence available for a fair decision | TBD | TBD | TBD | TBD |
-| Authority and non-override boundaries | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Failure/recovery/audit visibility | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
-
-## Cross-Role Consistency
-
-- Status names consistent: TBD
-- Next action consistent: TBD
-- Private/Public meaning consistent: TBD
-- Notifications match dashboards: TBD
-- No role sees broader data than needed: TBD
+Admin navigation says Featured Proof instead of Promoted Listings while preserving the route and controls. Recommendation-only AI prompts use the same terminology. A complete authenticated admin screenshot is pending the broader role fixture/release package.
 
 ## Journey Summaries
 
 ### Customer Journey
 
-TBD
+The visitor learns what Reliance is, explores completed public proof, distinguishes evidence types, opens a completed-work page, and may then inspect the provider or make a supporting service request. Signed-in customer navigation uses Explore Proof consistently.
 
 ### Vendor Journey
 
-TBD
+The vendor continues managing jobs, proof, reviews, and visibility through existing routes. Shell guidance presents public evidence as the reason customers trust the business; no work-record or publication rule changed.
 
 ### Employee Journey
 
-TBD
+The employee still enters through the assigned work view and sees only authorized capture actions. Permission uncertainty remains blocking. Epic 2 adds no customer/vendor navigation or broader access.
 
 ### Admin Journey
 
-TBD
+The admin retains the same review and publishing tools, now described as featured proof and public proof visibility. Admin decision authority and evidence remain unchanged.
 
-## Blocking UX Findings
+## Honest UX Observations
 
-| Finding | Role | Owner | Resolution | Retest |
-|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD |
+- The homepage is materially clearer than beta’s “future promotional video” placeholder.
+- “Explore Proof” is accurate but unfamiliar; the supporting line must remain nearby until visitor testing confirms recognition.
+- Browse filtering is usable but dense on small screens; it remains within three grouped decisions and does not overflow.
+- Provider profiles still contain substantial information below the fold; trust evidence appears first, which is the correct hierarchy.
+- No critical first-time confusion was found in scripted inspection.
 
 ## UX Verdict
 
-**Result:** Not reviewed
-**Blocking confusion remains:** TBD
-**Ready for Product Owner demo:** No
+**Result:** Good, ready for Product Owner demo
+**Blocking confusion:** None found in scripted review
+**Pending evidence:** Independent five-person comprehension test and authenticated beta role replay

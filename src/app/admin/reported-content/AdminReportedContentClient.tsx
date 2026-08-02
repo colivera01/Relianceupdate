@@ -355,7 +355,7 @@ export default function AdminReportedContentClient({
               Admin moderation
             </div>
             <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
-              Reported content review stays inside the same trust marketplace system
+          Reported content review stays inside the same proof-of-service trust system
             </h1>
             <p className="text-sm leading-7 text-white/72 sm:text-base">
               Review persisted content reports and jump into the existing review or media moderation tools.

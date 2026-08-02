@@ -40,7 +40,7 @@ const trustPillars = [
 export default function HomePage() {
   const [browserLocationOrigin, setBrowserLocationOrigin] = useState<BrowserLocationOrigin | null>(null);
   const [locationStatus, setLocationStatus] = useState<string>(
-    'Use your current location to see how close approved recent posts are.'
+    'Use your current location to find Public Service Videos shared near you.'
   );
   const hasBrowserLocationOrigin = Boolean(browserLocationOrigin);
   const {
@@ -80,10 +80,10 @@ export default function HomePage() {
           return;
         }
         setBrowserLocationOrigin({ latitude, longitude });
-        setLocationStatus('Showing approved recent posts within 50 miles of your current location.');
+        setLocationStatus('Showing approved Public Service Videos within 50 miles of your current location.');
       },
       () => {
-        setLocationStatus('Location was not allowed. Recent posts are shown without distance.');
+        setLocationStatus('Location was not allowed. Public Service Videos are shown without distance.');
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 5 * 60 * 1000 }
     );
@@ -96,11 +96,37 @@ export default function HomePage() {
         <div className="relative w-full px-2 pb-20 pt-6 sm:px-6 lg:px-6 lg:pb-24 xl:px-8 2xl:px-10">
           <PublicSiteHeader
             tone="dark"
-            links={[]}
             className="mb-10"
             ctaLabel="Create Account"
             ctaHref="/auth/register?type=user"
           />
+
+          <div className="mb-10 max-w-5xl">
+            <div className="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--reliance-blue-soft)]">
+              Proof-of-service platform
+            </div>
+            <h1 className="mt-4 font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl lg:text-7xl">
+              Reliance
+            </h1>
+            <p className="mt-5 max-w-4xl text-2xl font-semibold leading-tight text-white sm:text-3xl lg:text-4xl">
+              See real completed work before you decide who to trust.
+            </p>
+            <p className="mt-5 max-w-3xl text-lg leading-8 text-white/72 sm:text-xl">
+              Compare approved Public Service Videos, genuine customer reviews, and the Reliance Trust Score as separate trust signals.
+            </p>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <Link href="/browse">
+                <Button size="lg" className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto">
+                  Explore Proof
+                </Button>
+              </Link>
+              <Link href="#how-reliance-helps">
+                <Button size="lg" variant="outline" className="w-full border-white/20 bg-white/5 text-white hover:bg-white/10 sm:w-auto">
+                  See How Reliance Helps
+                </Button>
+              </Link>
+            </div>
+          </div>
 
           <div className="grid gap-8 lg:grid-cols-[minmax(620px,1fr)_minmax(620px,1fr)] lg:items-start xl:gap-10 2xl:grid-cols-[minmax(700px,1fr)_minmax(700px,1fr)]">
             <div className="flex w-full flex-col">
@@ -114,19 +140,6 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="mt-8 w-full lg:mt-24">
-                <div className="reliance-glass rounded-[32px] border border-white/10 bg-[rgba(6,17,31,0.72)] px-8 py-10 shadow-[0_30px_80px_rgba(4,9,20,0.32)] sm:px-10 sm:py-12">
-                  <div className="inline-flex rounded-full border border-white/10 bg-white/6 px-5 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-white/64">
-                    Promotional Video
-                  </div>
-                  <h2 className="mt-6 font-display text-4xl font-semibold leading-tight text-white sm:text-5xl">
-                    Future promotional video coming soon
-                  </h2>
-                  <p className="mt-4 max-w-3xl text-xl leading-8 text-white/68">
-                    This space is reserved for a Reliance promotional video.
-                  </p>
-                </div>
-              </div>
             </div>
 
             <div className="grid gap-5 lg:pt-2">
@@ -136,7 +149,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="w-full overflow-hidden px-4 py-20 sm:px-6 sm:py-28 lg:px-6 xl:px-8 2xl:px-10">
+      <section id="how-reliance-helps" className="w-full scroll-mt-8 overflow-hidden px-4 py-20 sm:px-6 sm:py-28 lg:px-6 xl:px-8 2xl:px-10">
         <div className="mb-12">
           <div className="inline-flex max-w-full rounded-full border border-white/10 bg-white/6 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white/70 sm:px-5 sm:text-sm sm:tracking-[0.26em]">
             How Reliance helps you compare
@@ -164,20 +177,19 @@ export default function HomePage() {
           <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-0">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/62 sm:text-sm sm:tracking-[0.28em]">
-                Recent posts
+                Public Service Videos
               </div>
               <h2 className="mt-5 max-w-6xl font-display text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
-                Approved service posts customers can review
+                Real completed work shared publicly
               </h2>
               <p className="mt-6 max-w-7xl text-lg leading-8 text-white/76 sm:text-2xl sm:leading-10">
-                This preview only shows completed three-stage service video posts after manager
-                completion and public approval. Published services without an approved public video
-                package stay in Browse, not here.
+                These examples show completed three-stage Service Videos only after manager review and public approval.
+                Services Offered without an approved Public Service Video remain available as supporting provider information.
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-start gap-4 xl:items-end">
               <span className="text-lg font-semibold text-white/72 sm:text-2xl">
-                {marketplaceLoading ? 'Loading posts...' : `${totalPublicServices} recent posts live`}
+                {marketplaceLoading ? 'Loading examples...' : `${totalPublicServices} public example${totalPublicServices === 1 ? '' : 's'}`}
               </span>
               <Button
                 type="button"
@@ -200,7 +212,7 @@ export default function HomePage() {
                 <Card key={index} className="overflow-hidden rounded-[26px] border-slate-200">
                   <div className="h-44 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)]" />
                   <CardContent className="space-y-3 p-5">
-                    <div className="text-sm font-semibold text-slate-900">Loading service examples</div>
+                    <div className="text-sm font-semibold text-slate-900">Loading completed-service examples</div>
                     <div className="text-sm leading-6 text-slate-600">
                       Reliance is checking approved public examples, provider details, and any public
                       service videos.
@@ -210,7 +222,7 @@ export default function HomePage() {
               ))
             ) : marketplaceError && !hasMarketplaceResults ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-5 text-sm text-amber-900">
-                We could not load public service details right now. You can still open Browse Services.
+                We could not load Public Service Videos right now. You can still explore provider proof and Services Offered.
               </div>
             ) : marketplaceResults.length === 0 ? (
               <div className="md:col-span-2 xl:col-span-4 rounded-[26px] border border-white/10 bg-white/6 px-5 py-6 text-lg leading-8 text-white/76 sm:rounded-[30px] sm:px-8 sm:py-7 sm:text-2xl sm:leading-9">

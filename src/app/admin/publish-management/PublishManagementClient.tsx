@@ -217,8 +217,8 @@ export default function PublishManagementClient({
   const pendingActionDescription =
     pendingAction?.kind === 'vendor'
       ? pendingAction.next
-        ? `This will make ${pendingAction.vendor.businessName || pendingAction.vendor.name || 'this vendor'} visible in the public Reliance marketplace.`
-        : `This will remove ${pendingAction.vendor.businessName || pendingAction.vendor.name || 'this vendor'} from the public Reliance marketplace. Existing internal records stay intact.`
+        ? `This will make ${pendingAction.vendor.businessName || pendingAction.vendor.name || 'this vendor'} visible in public Reliance proof exploration.`
+        : `This will remove ${pendingAction.vendor.businessName || pendingAction.vendor.name || 'this vendor'} from public Reliance proof exploration. Existing internal records stay intact.`
       : pendingAction?.kind === 'service'
         ? pendingAction.next
           ? `This will publish ${pendingAction.service.name} so it can appear in public Reliance service discovery.`

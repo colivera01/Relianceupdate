@@ -297,7 +297,7 @@ export default function UserDashboardPage() {
                 Welcome, {profile.firstName} {profile.lastName}!
               </h2>
               <p className="text-white/72">
-                Browse vendor services, track service records, and check review progress from one place.
+              Explore completed work, track Service Records, and check review progress from one place.
               </p>
               <p className="mt-1 text-sm text-white/58">
                 Profile &amp; Settings keeps your contact details, saved address, and account preferences together.
@@ -401,11 +401,11 @@ export default function UserDashboardPage() {
 
   const quickActions = [
     {
-      title: 'Browse Services',
+      title: 'Explore Proof',
       description: 'Compare vendor services, service videos, reviews, and provider details before choosing who to contact.',
       href: '/discover',
       icon: Search,
-      buttonLabel: 'Open Browse Services',
+      buttonLabel: 'Explore Proof',
       iconClassName: quickActionIconStyles[0],
     },
     {
@@ -550,12 +550,12 @@ export default function UserDashboardPage() {
                 <Search className="h-5 w-5 text-blue-700" />
               </div>
               <h3 className="mb-1 font-semibold text-gray-900">Request a Service</h3>
-              <p className="mb-3 flex-1 text-sm text-gray-600">Browse vendor services and choose a provider that fits your needs.</p>
+              <p className="mb-3 flex-1 text-sm text-gray-600">Review completed work and trust signals before choosing a provider.</p>
               <Link
                 href="/discover"
                 className="mt-auto inline-flex w-full items-center justify-center rounded-full bg-[var(--reliance-blue)] px-3 py-2 text-sm font-medium text-white hover:bg-[#1a58db]"
               >
-                Browse Services
+                  Explore Proof
               </Link>
             </div>
 

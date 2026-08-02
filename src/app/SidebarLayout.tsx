@@ -40,7 +40,7 @@ const adminNav: AdminNavItem[] = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: Home, iconClassName: 'text-blue-200' },
   { href: '/admin/accounts', label: 'All Accounts', icon: Users, iconClassName: 'text-emerald-200' },
   { href: '/admin/publish-management', label: 'Publish Management', icon: Megaphone, iconClassName: 'text-sky-200' },
-  { href: '/admin/promoted-listings', label: 'Promoted Listings', icon: MapPinned, iconClassName: 'text-orange-200' },
+  { href: '/admin/promoted-listings', label: 'Featured Proof', icon: MapPinned, iconClassName: 'text-orange-200' },
   { href: '/admin/media-moderation', label: 'Media Moderation', icon: Clapperboard, iconClassName: 'text-cyan-200' },
   { href: '/admin/reviews', label: 'Review Moderation', icon: Star, iconClassName: 'text-amber-200' },
   { href: '/admin/review-audit', label: 'Review Audit', icon: Search, iconClassName: 'text-yellow-200' },

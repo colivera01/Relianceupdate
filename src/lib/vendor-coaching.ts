@@ -147,7 +147,7 @@ export function buildVendorCoachingPlan(
 
   if (publicReviewCount === 0 && completedJobs > 0) {
     operationalNotes.push(
-      "Completed jobs exist, but there are no recent public reviews in the current dashboard slice. Keep the review request loop healthy for broader marketplace trust."
+      "Completed jobs exist, but there are no recent public reviews in the current dashboard slice. Keep the optional review request loop healthy so customers can see genuine feedback alongside other trust signals."
     );
   } else if (publicReviewCount > 0 && completedJobs > 0) {
     operationalNotes.push(

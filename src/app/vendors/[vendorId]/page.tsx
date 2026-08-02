@@ -102,7 +102,7 @@ export default function PublicVendorProfilePage() {
   const userId = resolveCustomerUserId(user?.id);
   const isSignedIn = Boolean(userId);
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null) || '/browse';
-  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Browse Services';
+  const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null) || 'Back to Explore Proof';
 
   const [payload, setPayload] = useState<PublicVendorPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -220,11 +220,11 @@ export default function PublicVendorProfilePage() {
             className="mb-10"
             links={[
               { href: '/', label: 'Home' },
-              { href: '/browse', label: 'Browse Services' },
+              { href: '/browse', label: 'Explore Proof' },
               { href: '/help', label: 'Help' },
             ]}
             ctaHref="/browse"
-            ctaLabel="Browse Services"
+            ctaLabel="Explore Proof"
           />
 
           <div className="mb-8">
@@ -491,7 +491,7 @@ export default function PublicVendorProfilePage() {
                     <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
                       Services Offered
                     </div>
-                    <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Available service lineup</h2>
+                    <h2 className="mt-3 font-display text-3xl font-semibold text-slate-950">Services Offered</h2>
                   </div>
                   <Badge className="rounded-full bg-slate-100 text-slate-700 hover:bg-slate-100">
                     {services.length} live
@@ -524,7 +524,7 @@ export default function PublicVendorProfilePage() {
                             </div>
                             <Link href={`/service/${service.serviceId}?returnTo=${encodeURIComponent(`/vendors/${vendorId}`)}&returnLabel=Back%20to%20Vendor%20Page`}>
                               <Button size="sm" className="rounded-full bg-[var(--reliance-blue)] text-white hover:bg-[#1a58db]">
-                                View Service Details
+                                View Work Type
                               </Button>
                             </Link>
                           </div>

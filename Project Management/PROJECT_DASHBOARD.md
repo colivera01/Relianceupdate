@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-02 (Epic 1 approved and completed)
+**Last updated:** 2026-08-02 (Epic 2 implementation checkpoint prepared)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Completed Epic
@@ -19,9 +19,10 @@
 
 **Epic 2 - Proof-First Platform Shell**
 
-- Status: Active for approved epic planning only
-- Implementation: Not started
-- Required next action: Prepare and present the Epic 2 implementation plan before changing code
+- Status: **Implementation complete; Product Owner review pending**
+- Implementation: Proof-first public and role shell complete with focused tests and screenshots
+- Required next action: Run the Product Owner demo and independent first-time visitor comprehension review
+- Next epic authorization: No
 
 ## Current Branch
 
@@ -34,6 +35,8 @@ Epic 1 operational application commit: `08de960c768463f2fea7c407d7bb39e6dcfacb3b
 Azure package: `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip`
 
 Latest baseline reconciliation commit: `cfc53e33cd112085fa8a1cc7a14db376d1851357`
+
+Epic 2 starting commit: `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0`; scoped checkpoint hash will be recorded after Git commit.
 
 ## Latest Beta Feedback Maintenance
 
@@ -51,7 +54,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 | Order | Epic                                                  | Status                                    | Engineering | UX          | Demo    | Git checkpoint     |
 | ----- | ----------------------------------------------------- | ----------------------------------------- | ----------- | ----------- | ------- | ------------------ |
 | 1     | Verified Permission Request                           | **Completed** | Complete | Complete | Approved | Application `08de960` |
-| 2     | Proof-First Platform Shell                            | Next active epic; implementation not started | Not started | Not started | Not run | Not recorded       |
+| 2     | Proof-First Platform Shell                            | Implementation complete; Product Owner review pending | Complete | Complete | Pending | Checkpoint pending |
 | 3     | Trusted Accounts and Role Isolation                   | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 4     | Universal Work Record and Recording Gates             | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 5     | Safe Capture Through Private Service Videos           | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -65,7 +68,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 
 ## Beta Readiness Progress
 
-The Beta Readiness Checklist remains the master acceptance tracker. It is not modified by this workspace-creation task.
+The Beta Readiness Checklist remains the master acceptance tracker and has been updated with verified Epic 2 evidence.
 
 - Completed epics: 1 of 12
 - Beta Ready release: No; later epics and release gates remain open
@@ -79,19 +82,20 @@ The Beta Readiness Checklist remains the master acceptance tracker. It is not mo
 | Item                                  | Owner                       | Status  | Next action                                                                                |
 | ------------------------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------ |
 | Controlled SMS handset validation | Engineering / Product Owner | Deferred - External Provider Dependency | Validate after Telnyx activation; do not classify as an application defect |
+| Epic 2 comprehension review | Product Owner | Pending | Run the five-person five-second/thirty-second script and record results |
 
 ## Blocked Items
 
 | Item           | Blocker                                                                     | Owner  | Resolution                                             |
 | -------------- | --------------------------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| Epic 2 implementation | Epic 2 implementation plan has not been presented or approved | Product Owner / Engineering | Prepare the plan and wait for Product Owner approval before code changes |
+| Epic 2 closure | Product Owner demo and five-person comprehension review are pending | Product Owner | Run `Epic 2/03_Product_Owner_Demo.md`; approve or request focused corrections |
 
 ## Technical Debt Summary
 
 | Epic |  Open debt |     Beta blocker | Reference                                                                                               |
 | ---- | ---------: | ---------------: | ------------------------------------------------------------------------------------------------------- |
 | 1    | 7 open; 3 resolved; 1 external deferral | 0 engineering blockers | [Technical Debt](<Epic 1 - Verified Permission Request/05_Technical_Debt.md>)                          |
-| 2    | 0 recorded |       0 recorded | [Technical Debt](<Epic 2 - Proof-First Platform Shell/05_Technical_Debt.md>)                            |
+| 2    | 7 open | 0 confirmed application blockers; PO evidence pending | [Technical Debt](<Epic 2 - Proof-First Platform Shell/05_Technical_Debt.md>)                            |
 | 3    | 0 recorded |       0 recorded | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
 | 4    | 0 recorded |       0 recorded | [Technical Debt](<Epic 4 - Universal Work Record and Recording Gates/05_Technical_Debt.md>)             |
 | 5    | 0 recorded |       0 recorded | [Technical Debt](<Epic 5 - Safe Capture Through Private Service Videos/05_Technical_Debt.md>)           |
@@ -108,7 +112,7 @@ The Beta Readiness Checklist remains the master acceptance tracker. It is not mo
 | Epic | Key lesson                                                                                          | Action carried forward                                      | Reference                                                                                                 |
 | ---- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | 1    | Decision state alone is insufficient if booking metadata independently drives release and employee camera access | Use one canonical gate and require live cross-role blocked-state replay | [Lessons Learned](<Epic 1 - Verified Permission Request/04_Lessons_Learned.md>) |
-| 2    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 2 - Proof-First Platform Shell/04_Lessons_Learned.md>)                            |
+| 2    | Preserve effective copy and change only proven product-identity conflicts | Reconcile DB/test fixtures before relying on broad authenticated smoke | [Lessons Learned](<Epic 2 - Proof-First Platform Shell/04_Lessons_Learned.md>) |
 | 3    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 3 - Trusted Accounts and Role Isolation/04_Lessons_Learned.md>)                   |
 | 4    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 4 - Universal Work Record and Recording Gates/04_Lessons_Learned.md>)             |
 | 5    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 5 - Safe Capture Through Private Service Videos/04_Lessons_Learned.md>)           |
@@ -122,7 +126,7 @@ The Beta Readiness Checklist remains the master acceptance tracker. It is not mo
 
 ## Next Epic
 
-Epic 2 - Proof-First Platform Shell is the next active epic. Implementation has not begun and still requires its approved implementation plan.
+Epic 2 - Proof-First Platform Shell remains the active epic until the Product Owner demo and independent comprehension review are approved. Epic 3 is not authorized.
 
 ## Required Update Cycle
 

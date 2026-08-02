@@ -655,7 +655,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           "rating/reviewCount are vendor-level aggregates from reviews where moderationStatus=approved and visibilityStatus=public.",
         ranking:
           proofFirstRankingRequested
-            ? "Public discovery only returns completed public proof packages, then prioritizes public service videos, reviews, Trust Score maturity, and vendor credibility."
+            ? "Public discovery only returns completed Public Service Videos, then prioritizes Service Videos, reviews, Trust Score maturity, and provider credibility."
             : "Explicit sort and location filters preserve the selected ordering while cards still show proof context.",
       },
     });

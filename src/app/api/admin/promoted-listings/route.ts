@@ -609,7 +609,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
       return forbiddenResponse(error);
     }
-    return NextResponse.json({ success: false, error: "Failed to fetch promoted listings" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Failed to fetch featured proof placements" }, { status: 500 });
   }
 }
 
@@ -674,7 +674,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
     if (status === "active" && !isPromotionPaymentAcceptable(paymentStatus)) {
       return NextResponse.json(
-        { success: false, error: "Active promoted listings require paid or waived payment status." },
+        { success: false, error: "Active featured proof placements require paid or waived payment status." },
         { status: 422 }
       );
     }
@@ -770,7 +770,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
       return forbiddenResponse(error);
     }
-    return NextResponse.json({ success: false, error: "Failed to create promoted listing" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Failed to create featured proof placement" }, { status: 500 });
   }
 }
 
@@ -935,7 +935,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     }
     if (nextStatus === "active" && !isPromotionPaymentAcceptable(nextPaymentStatus)) {
       return NextResponse.json(
-        { success: false, error: "Active promoted listings require paid or waived payment status." },
+        { success: false, error: "Active featured proof placements require paid or waived payment status." },
         { status: 422 }
       );
     }
@@ -1085,6 +1085,6 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
       return forbiddenResponse(error);
     }
-    return NextResponse.json({ success: false, error: "Failed to update promoted listing" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Failed to update featured proof placement" }, { status: 500 });
   }
 }

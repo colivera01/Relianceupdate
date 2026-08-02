@@ -20,7 +20,7 @@ type PublicSiteHeaderProps = {
 
 const defaultLinks: HeaderLink[] = [
   { href: "/", label: "Home" },
-  { href: "/browse", label: "Browse Services" },
+  { href: "/browse", label: "Explore Proof" },
   { href: "/help", label: "Help" },
 ];
 

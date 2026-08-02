@@ -605,7 +605,7 @@ export default function VendorDashboard() {
                 </div>
                 <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                   Browse promotions can put your business in front of more customers, but they only render when Reliance
-                  still has enough organic service results to keep discovery trustworthy. Desktop Browse Services currently needs
+                    still has enough organic proof results to keep discovery trustworthy. Desktop Explore Proof currently needs
                   at least 4 organic listings, and category-filtered browse needs at least 3, before featured paid
                   placements can appear.
                 </div>
@@ -794,7 +794,7 @@ export default function VendorDashboard() {
                   ))}
                 </div>
                 <p className="mt-3 text-xs text-gray-600">
-                  Admin still confirms eligibility, package details, payment reference, and activation before any promoted listing appears.
+                  Admin still confirms eligibility, package details, payment reference, and activation before any featured proof placement appears.
                 </p>
               </div>
             ) : null}

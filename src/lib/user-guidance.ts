@@ -50,7 +50,7 @@ const EMPLOYEE_SERVICE_ORDER_TUTORIAL: TutorialGuide["video"] = {
 
 const ADMIN_PROMOTED_LISTINGS_TUTORIAL: TutorialGuide["video"] = {
   src: `/tutorials/admin-promoted-listings.mp4?v=${APPROVED_TUTORIAL_VERSION}`,
-  title: "How Admin Promoted Listings Work",
+  title: "How Featured Proof Placements Work",
 };
 
 export const tutorialGuides = {
@@ -115,10 +115,10 @@ export const tutorialGuides = {
     futureVideoNote: "Tutorial video placeholder: Vendor registration and launch checklist",
   },
   browseMarketplace: {
-    badge: "Browse services",
+    badge: "Explore proof",
     title: "How to compare providers on Reliance",
     summary:
-      "Browse Services shows public service cards, public vendor pages, customer ratings, service videos, and the Reliance Trust Score side by side so customers can compare trust signals before choosing who to contact.",
+      "Explore Proof shows completed work, public vendor pages, customer reviews, Public Service Videos, and the Reliance Trust Score side by side so customers can compare distinct trust signals before choosing who to contact.",
     video: BROWSE_AND_CHOOSE_SERVICES_TUTORIAL,
 
     steps: [
@@ -136,7 +136,7 @@ export const tutorialGuides = {
       },
     ],
     reminders: [
-      "Promoted listings are clearly labeled and can still be suppressed when browse inventory is too thin.",
+      "Featured proof placements are clearly labeled and can still be suppressed when public inventory is too thin.",
       "Public videos are visible here only when approved for public viewing.",
     ],
     futureVideoNote: "Tutorial video placeholder: How to compare providers on browse",
@@ -408,7 +408,7 @@ export const tutorialGuides = {
   },
   adminPromotedListings: {
     badge: "Admin promotions",
-    title: "How promoted listings go live",
+    title: "How featured proof placements go live",
     summary:
       "Promotions need vendor eligibility, service eligibility, payment readiness, and enough organic browse inventory before they can render publicly.",
     video: ADMIN_PROMOTED_LISTINGS_TUTORIAL,
@@ -429,7 +429,7 @@ export const tutorialGuides = {
     reminders: [
       "Suppressed browse rendering does not always mean the campaign is invalid.",
     ],
-    futureVideoNote: "Tutorial video placeholder: Promoted listings readiness and activation",
+    futureVideoNote: "Tutorial video placeholder: Featured proof placement readiness and activation",
   },
 } satisfies Record<string, TutorialGuide>;
 

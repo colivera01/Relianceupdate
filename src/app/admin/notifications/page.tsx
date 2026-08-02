@@ -635,7 +635,7 @@ export default function AdminNotificationsPage() {
                                   href="/admin/promoted-listings"
                                   className="inline-flex text-[#204080] font-medium hover:underline"
                                 >
-                                  Open promoted listings
+                  Open featured proof
                                 </Link>
                               </div>
                             )}

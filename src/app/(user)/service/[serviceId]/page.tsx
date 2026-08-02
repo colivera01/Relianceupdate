@@ -80,7 +80,7 @@ function ServiceDetailLoadingState() {
   const returnTo = sanitizeReturnPath(searchParams?.get('returnTo') || null);
   const returnLabel = sanitizeReturnLabel(searchParams?.get('returnLabel') || null);
   const resolvedBackHref = returnTo || (user?.id ? '/discover' : '/');
-  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Browse Services' : 'Back to Home Page');
+  const resolvedBackLabel = returnLabel || (user?.id ? 'Back to Explore Proof' : 'Back to Home Page');
 
   return (
     <div className="reliance-marketplace-shell min-h-screen bg-[var(--reliance-paper)]">
@@ -383,7 +383,7 @@ function ServiceDetailPageContent() {
     }
   };
   const resolvedBackHref = returnTo || (isSignedIn ? '/discover' : '/');
-  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Browse Services' : 'Back to Home Page');
+  const resolvedBackLabel = returnLabel || (isSignedIn ? 'Back to Explore Proof' : 'Back to Home Page');
   const handleBack = () => {
     router.push(resolvedBackHref);
   };
@@ -402,7 +402,7 @@ function ServiceDetailPageContent() {
           <h1 className="font-display text-3xl font-semibold text-slate-950">This service page is not ready yet</h1>
           <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">{error}</p>
           <p className="mt-2 text-sm text-slate-500">
-            This usually means the service details page is having trouble loading right now, not that the service offered was removed. You can retry in a moment or go back to Browse Services.
+            The service details could not load right now. The Service Offered may still be available. Try again or return to Explore Proof.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <button
@@ -525,7 +525,7 @@ function ServiceDetailPageContent() {
     vendorResponseTime
       ? { label: 'Response Time', value: vendorResponseTime }
       : { label: 'Response Time', value: 'Contact vendor' },
-    service?.vendor?.isPubliclyListed ? { label: 'Reliance Listing', value: 'Public' } : null,
+    service?.vendor?.isPubliclyListed ? { label: 'Public profile', value: 'Visible' } : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
 
   return (

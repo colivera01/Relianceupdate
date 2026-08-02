@@ -411,10 +411,10 @@ export default function PublicBrowsePage() {
           <div className="grid gap-8 lg:grid-cols-[0.86fr_1.14fr] lg:items-end">
             <div className="max-w-2xl">
               <h1 className="font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl">
-                Browse vendor services with reviews, videos, and <span className="text-[var(--reliance-blue-soft)]">clear provider details</span>
+                Explore real completed work before you <span className="text-[var(--reliance-blue-soft)]">choose who to trust</span>
               </h1>
               <p className="mt-5 max-w-xl text-lg leading-8 text-white/72">
-                Search services, compare providers, and see available trust signals before you decide who to contact.
+                Compare approved Public Service Videos, genuine customer reviews, Reliance Trust Score, and Services Offered as separate signals.
               </p>
             </div>
 
@@ -422,17 +422,17 @@ export default function PublicBrowsePage() {
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Available now</div>
                 <div className="mt-3 text-3xl font-semibold">{browseResultsLoading ? 'Loading' : totalCount}</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Services customers can review right now.</p>
+                <p className="mt-2 text-sm leading-6 text-white/68">Provider and work-type results customers can explore.</p>
               </div>
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">Categories</div>
                 <div className="mt-3 text-3xl font-semibold">{categoryCardsLoading ? 'Loading' : categories.length}</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Groups with approved public proof.</p>
+                <p className="mt-2 text-sm leading-6 text-white/68">Work types with approved Public Service Videos.</p>
               </div>
               <div className="rounded-[28px] border border-white/10 bg-white/8 px-5 py-5 text-white backdrop-blur-xl">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/58">What you can compare</div>
                 <div className="mt-3 text-lg font-semibold">Reviews, videos, and provider details</div>
-                <p className="mt-2 text-sm leading-6 text-white/68">Promoted listings stay clearly labeled while regular results continue below.</p>
+                <p className="mt-2 text-sm leading-6 text-white/68">Featured placements stay clearly labeled while regular proof results continue below.</p>
               </div>
             </div>
           </div>
@@ -447,7 +447,7 @@ export default function PublicBrowsePage() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                 <input
                   type="text"
-                  placeholder="Search services, providers, reviews, or videos"
+                  placeholder="Search completed work, providers, reviews, or services offered"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -692,7 +692,7 @@ export default function PublicBrowsePage() {
             </div>
           ) : categoriesError && !hasCategoryData ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              We could not load category counts right now. You can still browse services and search services offered.
+              We could not load work-type counts right now. You can still explore available proof and search Services Offered.
             </div>
           ) : categories.length === 0 ? (
             <div className="rounded-2xl border bg-white p-4 text-sm text-gray-600">
@@ -741,8 +741,8 @@ export default function PublicBrowsePage() {
         <div className="mb-12">
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h2 className="font-display text-3xl font-semibold text-slate-950">Available Vendor Services</h2>
-              <p className="text-sm text-gray-600">Compare completed work, public service videos, reviews, and provider fit.</p>
+              <h2 className="font-display text-3xl font-semibold text-slate-950">Completed work and provider context</h2>
+              <p className="text-sm text-gray-600">Compare completed work, Public Service Videos, reviews, Trust Score, and Services Offered.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <TutorialEntryPoint guide={tutorialGuides.browseMarketplace} surface="light" />
@@ -760,7 +760,7 @@ export default function PublicBrowsePage() {
                 <Card key={i} className="rounded-[28px] border-slate-200 bg-white">
                   <div className="h-48 bg-[linear-gradient(135deg,#0d1b35,#123b78_60%,#1d6dff)] rounded-t-[28px]" />
                   <CardContent className="p-4">
-                    <div className="text-sm font-semibold text-slate-900">Loading services</div>
+                    <div className="text-sm font-semibold text-slate-900">Loading proof results</div>
                     <div className="mt-2 text-sm leading-6 text-slate-600">
                       Reliance is refreshing live service cards, customer reviews, and public service video availability.
                     </div>
@@ -773,7 +773,7 @@ export default function PublicBrowsePage() {
             </div>
           ) : isError && !hasBrowseResults ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
-              We could not load vendor services right now.
+              We could not load proof results right now.
               {error instanceof Error ? ` ${error.message}` : ''}
             </div>
           ) : displayResults.length === 0 ? (
@@ -781,17 +781,17 @@ export default function PublicBrowsePage() {
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Search className="w-8 h-8 text-gray-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No services found</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching proof results</h3>
               <p className="text-gray-600 mb-4">
                 {hasActiveFilters
                   ? 'Try changing your search or category filter to broaden results.'
-                  : 'No services are available yet. Check back soon.'}
+                  : 'No Public Service Videos or Services Offered are available yet. Check back soon.'}
               </p>
               <button
                 onClick={clearFilters}
                 className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
               >
-                {hasActiveFilters ? 'Clear Filters' : 'Refresh Services'}
+                {hasActiveFilters ? 'Clear Filters' : 'Refresh Results'}
               </button>
             </div>
           ) : (
@@ -800,8 +800,8 @@ export default function PublicBrowsePage() {
                 <ProofFirstCard
                   key={item.serviceId}
                   item={item}
-                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Browse%20Services`}
-                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Browse%20Services`}
+                  proofHref={`/service/${item.serviceId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`}
+                  providerHref={`/vendors/${item.vendorId}?returnTo=%2Fbrowse&returnLabel=Back%20to%20Explore%20Proof`}
                   secondaryAction={
                     <Button
                       size="sm"
@@ -848,8 +848,8 @@ export default function PublicBrowsePage() {
             <div className="reliance-light-card rounded-[28px] p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-blue-900 mb-2">Ready to contact a provider?</h3>
-                <p className="text-blue-700 text-sm">Create a free account to save proof examples, contact vendors, and manage service records.</p>
+                <h3 className="text-lg font-semibold text-blue-900 mb-2">Ready for your next step?</h3>
+                <p className="text-blue-700 text-sm">Create a free account to save proof examples, contact providers, and manage your Service Records.</p>
               </div>
               <Link href="/auth/register?type=user">
                 <Button className="bg-blue-600 hover:bg-blue-700 text-white">Sign Up Now</Button>

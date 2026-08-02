@@ -80,7 +80,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       success: true,
       message: isPubliclyListed
         ? "Vendor is now publicly listed"
-        : "Vendor has been removed from public marketplace",
+        : "Vendor has been removed from public proof exploration",
       vendor: updated,
     });
   } catch (error: any) {

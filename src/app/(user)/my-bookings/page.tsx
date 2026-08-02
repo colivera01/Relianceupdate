@@ -358,10 +358,10 @@ export default function MyBookingsPage() {
             </ButtonLike>
             <Link
               href="/discover"
-              title="Browse vendor services"
+                      title="Explore provider proof"
               className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
             >
-              Browse Services
+                      Explore Proof
             </Link>
           </div>
         </div>
@@ -490,7 +490,7 @@ export default function MyBookingsPage() {
                     ? 'These are services whose scheduled date passed without a completed vendor closeout.'
                     : activeTab === 'archived'
                     ? 'These are older retained service records kept for reference.'
-                    : 'Try another tab or browse vendor services.'
+                  : 'Try another tab or explore provider proof.'
             }
           />
         ) : (

@@ -1971,7 +1971,7 @@ function RegisterPageInner() {
                     {userType === 'user' ? 'Customer Registration' : 'Vendor Registration'}
                   </CardTitle>
                   <CardDescription>
-                    {userType === 'user' ? 'Join to browse vendor services' : 'Join to build customer confidence'}
+                    {userType === 'user' ? 'Join to explore completed work' : 'Join to build customer confidence'}
                   </CardDescription>
                 </div>
               </div>

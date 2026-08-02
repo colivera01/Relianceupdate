@@ -330,7 +330,7 @@ export default function UserDiscoverPage() {
     }
   };
   const serviceReturnHref = '/discover';
-  const serviceReturnLabel = 'Back to Browse Services';
+  const serviceReturnLabel = 'Back to Explore Proof';
 
   const renderServiceCard = (item: DiscoverServiceResult) => {
     return (
@@ -364,8 +364,8 @@ export default function UserDiscoverPage() {
     <div className="pt-4 sm:pt-6">
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold mb-6 text-gray-900">Browse Vendor Services</h1>
-          <p className="text-gray-600">Compare services, customer reviews, service videos, and provider details before choosing who to contact.</p>
+          <h1 className="mb-3 text-3xl font-semibold text-gray-900">Explore Proof</h1>
+          <p className="max-w-3xl text-gray-600">See completed work, Public Service Videos, customer reviews, Reliance Trust Score, and Services Offered before choosing who to contact.</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex w-full items-center justify-center gap-2 sm:w-auto">
@@ -379,7 +379,7 @@ export default function UserDiscoverPage() {
         <Search className="absolute left-3 top-6 h-5 w-5 -translate-y-1/2 text-gray-400 sm:top-1/2" />
         <input
           type="text"
-          placeholder="Search services, vendors, reviews, or videos..."
+          placeholder="Search completed work, providers, reviews, or services offered..."
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           onKeyDown={(e) => {
@@ -448,7 +448,7 @@ export default function UserDiscoverPage() {
 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-gray-600">
-          {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount} services`}
+          {isFetching ? 'Refreshing...' : `Showing ${results.length} of ${totalCount} results`}
         </div>
       </div>
       {favoriteActionError ? (
@@ -460,8 +460,8 @@ export default function UserDiscoverPage() {
       <section className="mb-10 rounded-2xl border border-blue-100 bg-blue-50 p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Services near you</p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-950">Vendor Services Near You</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Local proof</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">Providers with proof near you</h2>
             <p className="mt-2 text-sm leading-6 text-blue-900">{nearbyDescription}</p>
             {browserLocationMessage ? (
               <p className="mt-2 text-sm font-medium text-amber-800">{browserLocationMessage}</p>
@@ -490,7 +490,7 @@ export default function UserDiscoverPage() {
         {effectiveLocationSource === 'none' ? (
           <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm text-slate-700">
             Reliance will not show fake nearby results. Turn on location or add your address to see
-            vendor services within 50 miles.
+            providers and Public Service Videos within 50 miles.
           </div>
         ) : nearbyLoading ? (
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -508,7 +508,7 @@ export default function UserDiscoverPage() {
           </div>
         ) : displayNearbyServices.length === 0 ? (
           <div className="mt-4 rounded-xl border border-blue-200 bg-white p-4 text-sm text-slate-700">
-            No vendor services were found within 50 miles of your{' '}
+            No providers with matching public results were found within 50 miles of your{' '}
             {effectiveLocationSource === 'current' ? 'current location' : 'saved address'} yet.
           </div>
         ) : (
@@ -533,12 +533,12 @@ export default function UserDiscoverPage() {
         </div>
       ) : isError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 mb-10 text-red-700">
-          Failed to load discover results.
+          We could not load proof results.
           {error instanceof Error ? ` ${error.message}` : ''}
         </div>
       ) : displayResults.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border mb-10">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No services found</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">No matching proof results</h3>
           <p className="text-gray-600 mb-4">Try adjusting your search terms or filters.</p>
           <Button variant="outline" onClick={clearFilters}>
             Clear Filters

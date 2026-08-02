@@ -138,7 +138,7 @@ export function getAuthEntryBackLabel(nextPath: string | null | undefined): stri
   if (safeNextPath.startsWith('/booking/')) return 'Back to Service Request';
   if (safeNextPath.startsWith('/service/')) return 'Back to Service Detail';
   if (safeNextPath.startsWith('/vendor/')) return 'Back to Vendor Area';
-  if (safeNextPath.startsWith('/browse')) return 'Back to Browse Services';
+  if (safeNextPath.startsWith('/browse')) return 'Back to Explore Proof';
   if (safeNextPath.startsWith('/help')) return 'Back to Help Center';
   return 'Back to Requested Page';
 }
