@@ -1,8 +1,8 @@
 # RELIANCE EPIC 2 PROOF-FIRST PLATFORM SHELL IMPLEMENTATION PLAN
 
-**Status:** Approved and executed
+**Status:** Completed, approved, and frozen
 **Planning baseline:** `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0` on `cursor-latest-build`
-**Implementation status:** Complete; Product Owner demo pending
+**Implementation status:** Complete; Product Owner approved on 2026-08-02
 **Migration status:** None proposed
 **Deployment status:** No deployment authorized by this plan
 
@@ -357,7 +357,7 @@ The following defines direction, not final pixel design. Every page must answer 
 
 ### 8.1 First-Time Visitor Evaluation Requirement
 
-Epic 2 is not complete until the implemented experience receives a documented first-time visitor comprehension review. This is an evaluation gate, not permission to redesign the approved workflow.
+Epic 2 engineering completion requires a documented first-time visitor comprehension review. The structured engineering review is complete; independent five-person validation is deferred to private beta user feedback and is not an engineering blocker.
 
 The review applies to the homepage, Explore Proof/Browse, vendor profile, service/work-type detail, login, and customer registration. Signed-in role shells receive the same five-second and cognitive-load review using their intended role perspective.
 
@@ -423,7 +423,7 @@ Rate every reviewed page:
 
 The Epic 2 UX Review must include the rating, evidence, cognitive-load count, confusion found, and disposition for every primary page.
 
-Codex will perform a structured heuristic and browser-based replay and will report it honestly. A five-person comprehension study must use actual independent participants and may not be simulated or fabricated. The Product Owner Demo will include a short test script so Cesar can run that field validation. Any page that fails the field test remains open for an evidence-based correction before final Epic acceptance.
+Codex performed a structured heuristic and browser-based replay and reported it honestly. A five-person comprehension study must use actual independent participants and may not be simulated or fabricated. The Product Owner deferred that field validation to private beta user feedback; it is not an engineering blocker. Measurable confusion found during beta may create a focused defect or follow-up without reopening the epic generally.
 
 ## 9. Page-By-Page Language Plan
 

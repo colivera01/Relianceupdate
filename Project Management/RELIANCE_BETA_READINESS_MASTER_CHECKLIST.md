@@ -1,5 +1,20 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
+## Epic 2 Completed - Proof-First Platform Shell
+
+**Epic status:** **Completed**
+**Product Owner decision:** Approved on 2026-08-02
+**Implementation commit:** `cb44c9eaeef905b6cd06b2218fd923e5cc43875d`
+**Primary evidence:** `Project Management/Epic 2 - Proof-First Platform Shell/`
+
+Epic 2 aligned the active public and role shell with Reliance's proof-of-service identity while preserving effective copy, stable routes, role boundaries, operational workflows, and the Epic 1 recording gate. The focused implementation, regression, build, UX, and screenshot evidence are complete for the epic.
+
+**Independent five-person comprehension validation:** **Deferred to private beta user feedback.** This is an evidence-gathering activity, not an engineering blocker or application defect. Beta feedback may create a focused follow-up only when it identifies measurable confusion or a genuine defect.
+
+- `PROD-01`, `PROD-02`, and `PROD-09` are complete for the active Epic 2 shell; their release-wide `Beta Ready` state remains `No` until the master release gates pass.
+- Shared navigation, accessibility, responsive, screenshot, documentation, and role-journey rows remain `In Progress` where later epics or private-beta hardening own additional evidence.
+- No further Epic 2 changes are planned unless private beta identifies a genuine defect.
+
 ## Epic 1 Completed - Verified Permission Request
 
 **Deployed package:** `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip`
@@ -188,7 +203,7 @@ No item should move to **Beta Ready** solely because a route or screen exists.
 
 | ID | Item | Description | Current implementation | Required work | Risk | Status | Beta Ready | Owner |
 |---|---|---|---|---|---|---|---|---|
-| PROD-01 | Platform identity | Present Reliance consistently as a proof-of-service, transparency, and trust platform. | Epic 2 aligns active public and role-shell identity and removes audited marketplace conflicts. | Product Owner first-time comprehension review remains before epic approval. | Critical | Complete | No | Shared |
+| PROD-01 | Platform identity | Present Reliance consistently as a proof-of-service, transparency, and trust platform. | Epic 2 aligns active public and role-shell identity and removes audited marketplace conflicts. | Independent five-person validation is deferred to private beta feedback and is not an engineering blocker. | Critical | Complete | No | Shared |
 | PROD-02 | Proof-of-service positioning | Make completed work, service videos, reviews, and Trust Score distinct proof signals. | Homepage, Explore Proof, work detail, and provider profile now lead with completed proof and distinguish all four signals. | Preserve this hierarchy as later workflow epics add capabilities. | Critical | Complete | No | Shared |
 | PROD-03 | Navigation | Use role-appropriate proof-first navigation and preserve route compatibility. | Epic 2 applies proof-first labels while preserving stable hrefs; focused route tests pass. | Restore the missing authenticated route-smoke fixture and complete the release-wide link matrix. | High | In Progress | No | Shared |
 | PROD-04 | Language guide | Apply the frozen communication standard across every user-facing channel. | Epic 2 aligns active shell, affected Help, errors, empty states, and recommendation-only AI guidance. | Notification/template and full Help alignment remain owned by Epic 10. | High | In Progress | No | Shared |
@@ -196,7 +211,7 @@ No item should move to **Beta Ready** solely because a route or screen exists.
 | PROD-06 | Accessibility | Provide keyboard, screen-reader, contrast, focus, status-announcement, and media accessibility. | Radix components and some accessible labels exist; full WCAG AA audit is unavailable. | Complete automated and manual accessibility audit and remediate all Critical/High failures. | High | In Progress | No | Future QA |
 | PROD-07 | Responsive layouts | Support mobile and desktop without overlap, clipping, stale controls, or hidden actions. | Epic 2 public shell passes desktop and 390px mobile checks with no horizontal overflow; screenshots are indexed. | Complete tablet, wide-desktop, authenticated-role, zoom, and physical-device matrices. | High | In Progress | No | Shared |
 | PROD-08 | Dark theme consistency | Maintain readable, accessible dark-theme surfaces across signed-in platform pages. | Dark styling exists but historical screenshots show inconsistent light cards and low-contrast states. | Audit colors, badges, cards, inputs, videos, banners, and all dynamic states. | Medium | In Progress | No | Future Designer |
-| PROD-09 | Homepage | Explain proof-of-service first and remove marketplace identity. | First viewport now identifies Reliance, real completed work, distinct trust signals, and Explore Proof on desktop/mobile. | Product Owner runs the independent five-person comprehension script before epic approval. | Critical | Complete | No | Shared |
+| PROD-09 | Homepage | Explain proof-of-service first and remove marketplace identity. | First viewport now identifies Reliance, real completed work, distinct trust signals, and Explore Proof on desktop/mobile. | Gather independent comprehension feedback during private beta; reopen only for measurable confusion or a genuine defect. | Critical | Complete | No | Shared |
 | PROD-10 | Customer dashboard | Prioritize service history, service videos, decisions, reviews, and trust context. | Dashboard exists but alignment audit identifies booking/service-first framing. | Implement UX-spec organization, synchronized statuses, and proof-first language. | High | In Progress | No | Shared |
 | PROD-11 | Vendor dashboard | Show current workflow step, responsible participant, and next valid action. | Dashboard and metrics exist; complete consent-phase status alignment is not implemented. | Align tabs/cards/metrics to confirmed workflow states and prevent stale actions. | High | In Progress | No | Shared |
 | PROD-12 | Employee dashboard | Show assignment, approved scope, block reason, stage, and safe next action. | Assigned-job and recording experiences exist; durable certification and protected-person guidance are incomplete. | Implement UX specification and test correction, reassignment, blocked, and offline/error paths. | Critical | In Progress | No | Shared |
@@ -287,7 +302,7 @@ The screenshot package is release evidence, not decoration. Capture only control
 | SHOT-07 | Empty/loading/success/failure | Capture non-happy states defined by the UX specification. | Such states exist in parts; complete inventory is absent. | Capture every consequential screen's loading, empty, success, failure, and recovery states. | High | In Progress | No | Future QA |
 | SHOT-08 | Before/after | Document material UX corrections when a trustworthy comparison exists. | Historical user screenshots may provide references but are not uniformly reproducible. | Use only comparable build/state/viewport pairs and explain the changed outcome. | Medium | Not Started | No | Shared |
 | SHOT-09 | Index and redaction | Make every image traceable, reviewable, and safe to share. | Epic 2 has an indexed, redaction-reviewed shell package; a release-wide master index remains absent. | Merge each epic package into the release manifest and complete second-person review. | High | In Progress | No | Future QA |
-| SHOT-10 | UX observations | Pair screenshots with honest first-time-user findings and severity. | Epic 2 records scripted first-time and four-role observations with evidence. | Add Product Owner comprehension results and later workflow-epic observations. | High | In Progress | No | Shared |
+| SHOT-10 | UX observations | Pair screenshots with honest first-time-user findings and severity. | Epic 2 records scripted first-time and four-role observations with evidence. | Add private-beta comprehension feedback and later workflow-epic observations to the release-wide package. | High | In Progress | No | Shared |
 
 ### Release controls
 

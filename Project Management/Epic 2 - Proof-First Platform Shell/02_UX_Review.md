@@ -3,7 +3,7 @@
 **Epic:** Proof-First Platform Shell
 **Build reviewed:** Local Epic 2 worktree from `abe9d0d6`
 **Review date:** 2026-08-02
-**Status:** Engineering review complete; independent visitor review pending
+**Status:** Completed and approved; independent visitor validation deferred to private beta
 
 ## First-Time Visitor Review
 
@@ -15,7 +15,7 @@
 | Provider profile | Clearly explains why the provider may be trusted. | Trust Score, reviews, videos, and Services Offered remain distinct. | 3 | Good | `Desktop/provider-profile-after.png` |
 | Signed-out role block | Clearly explains why access is unavailable and what to do. | Safe sign-in path is visible; no protected content leaks. | 1 | Good | `Blocked/vendor-access-required-mobile.png` |
 
-The scripted evaluation passed. A real five-person comprehension exercise is still required; no human-study result is claimed here.
+The scripted evaluation passed. No human-study result is claimed here. Independent five-person validation is deferred to private beta user feedback and does not block the completed engineering epic.
 
 ## Cognitive Load Review
 
@@ -34,7 +34,7 @@ No reviewed page asks for more than three primary decisions at once.
 | Purpose | “See real completed work before you decide who to trust” answers why the page exists. | None | Keep. |
 | Signal distinction | Public Service Videos, reviews, Trust Score, and Services Offered are named separately. | None | Keep. |
 | Privacy | Public pages describe public proof; private-account behavior was not broadened. | None | Keep. |
-| Recovery | Loading, empty, failure, and blocked states use plain language. | Low | Five-person review should test whether “proof” needs a short tooltip. |
+| Recovery | Loading, empty, failure, and blocked states use plain language. | Low | Private-beta feedback should test whether “proof” needs a short tooltip. |
 
 ## Vendor
 
@@ -76,6 +76,6 @@ The admin retains the same review and publishing tools, now described as feature
 
 ## UX Verdict
 
-**Result:** Good, ready for Product Owner demo
+**Result:** Good; approved for Epic 2 closeout
 **Blocking confusion:** None found in scripted review
-**Pending evidence:** Independent five-person comprehension test and authenticated beta role replay
+**Deferred evidence:** Independent five-person comprehension validation during private beta; not an engineering blocker

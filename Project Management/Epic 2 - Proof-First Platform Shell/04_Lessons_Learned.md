@@ -35,7 +35,7 @@
 
 | Action | Owner | Due before | Status |
 |---|---|---|---|
-| Run five-person comprehension review | Product Owner | Epic 2 approval | Open |
+| Gather independent comprehension feedback | Product Owner / Beta participants | Private beta feedback cycle | Deferred - not an engineering blocker |
 | Reconcile local DB migration baseline | Engineering | Epic 3 implementation | Open |
 | Restore authenticated route-smoke fixture | Engineering | Epic 3 validation | Open |
 | Triage 13 full-suite failures | Engineering | Private beta hardening | Open |
