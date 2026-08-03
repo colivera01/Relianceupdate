@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-02 (Epic 3 Phase A locally validated)
+**Last updated:** 2026-08-03 (Epic 3 Phase A deployment readiness reassessed)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Completed Epics
@@ -27,13 +27,14 @@
 
 **Epic 3 - Trusted Accounts and Role Isolation**
 
-- Status: **Phase A implemented locally; Product Owner review pending**
+- Status: **Phase A engineering approved; deployment security remediation pending**
 - Phase A: Canonical database actor, ownership/membership authorization, IDOR protection, and database-backed admin isolation implemented
 - Phase A implementation commit: `0ffc9648e41e6e9b8be8d907f2ddb5aaefd62db2`
 - Validation: 206 focused unit/integration tests and 5 Playwright scenarios pass
-- Deployment: Blocked by unrelated legacy page exports in `pages/support` and `pages/notifications`
+- Production build: Passed with 6 GB heap; the earlier Support/Notifications blocker was not reproducible and required no source change
+- Deployment: Blocked by the reachable Critical advisory in `next@15.3.3`; scoped remediation requires Product Owner approval
 - Phase B: Not authorized
-- Required next action: Product Owner reviews Phase A evidence and decides whether to authorize the narrow build repair
+- Required next action: Product Owner decides whether to authorize a scoped `next@15.5.21` dependency checkpoint and required regression
 
 ## Current Branch
 
@@ -70,7 +71,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 | ----- | ----------------------------------------------------- | ----------------------------------------- | ----------- | ----------- | ------- | ------------------ |
 | 1     | Verified Permission Request                           | **Completed** | Complete | Complete | Approved | Application `08de960` |
 | 2     | Proof-First Platform Shell                            | **Completed** | Complete | Complete | Approved | `cb44c9e` |
-| 3     | Trusted Accounts and Role Isolation                   | **Phase A awaiting Product Owner review** | Phase A complete locally | Reviewed | Automated rehearsal passed | Pending scoped commit |
+| 3     | Trusted Accounts and Role Isolation                   | **Phase A engineering approved; deployment blocked** | Phase A complete locally | Reviewed | Automated rehearsal passed | Phase A recorded; readiness evidence pending |
 | 4     | Universal Work Record and Recording Gates             | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 5     | Safe Capture Through Private Service Videos           | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 6     | Exact-Media Public Proof and Admin Moderation         | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -98,14 +99,15 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | ------------------------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------ |
 | Controlled SMS handset validation | Engineering / Product Owner | Deferred - External Provider Dependency | Validate after Telnyx activation; do not classify as an application defect |
 | Independent comprehension validation | Product Owner / Beta participants | Deferred to private beta user feedback | Gather natural beta feedback; reopen Epic 2 only for measurable confusion or a genuine defect |
-| Epic 3 production build blocker | Product Owner / Engineering | Awaiting approval | Approve a narrow repair for two untouched legacy Pages Router files before deployment |
-| Dependency security advisories | Product Owner / Engineering | Open release gate | Approve a separately scoped upgrade and full regression plan |
+| Epic 3 production build | Engineering | Passed | Preserve current Support/Notifications routes; no source correction required |
+| Critical Next.js advisory | Product Owner / Engineering | Blocking release gate | Approve scoped `next@15.5.21` checkpoint and full build/Epic 1/2/3 regression |
+| High dependency advisories | Product Owner / Engineering | Assessed; remediation pending | Follow package-by-package readiness report; do not use blind or forced upgrade |
 
 ## Blocked Items
 
 | Item           | Blocker                                                                     | Owner  | Resolution                                             |
 | -------------- | --------------------------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| Epic 3 Phase A deployment | `pages/support` and `pages/notifications` are not valid React page exports | Product Owner / Engineering | Approve narrowly scoped repair, rebuild, deploy, and smoke-test Phase A |
+| Epic 3 Phase A deployment | Reachable Critical Next.js advisory remains open | Product Owner / Engineering | Approve scoped dependency remediation, validate, then reassess deployment |
 
 ## Technical Debt Summary
 
@@ -113,7 +115,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | ---- | ---------: | ---------------: | ------------------------------------------------------------------------------------------------------- |
 | 1    | 7 open; 3 resolved; 1 external deferral | 0 engineering blockers | [Technical Debt](<Epic 1 - Verified Permission Request/05_Technical_Debt.md>)                          |
 | 2    | 6 open; 1 beta-validation deferral | 0 engineering blockers | [Technical Debt](<Epic 2 - Proof-First Platform Shell/05_Technical_Debt.md>)                            |
-| 3    | 8 recorded | 2 deployment/release gates | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
+| 3    | 9 recorded | 1 deployment blocker plus assessed High advisories | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
 | 4    | 0 recorded |       0 recorded | [Technical Debt](<Epic 4 - Universal Work Record and Recording Gates/05_Technical_Debt.md>)             |
 | 5    | 0 recorded |       0 recorded | [Technical Debt](<Epic 5 - Safe Capture Through Private Service Videos/05_Technical_Debt.md>)           |
 | 6    | 0 recorded |       0 recorded | [Technical Debt](<Epic 6 - Exact-Media Public Proof and Admin Moderation/05_Technical_Debt.md>)         |
@@ -143,7 +145,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 
 ## Next Engineering Decision
 
-Review Epic 3 Phase A. Phase B and Epic 4 remain unauthorized. Before Phase A can be deployed, the Product Owner must authorize a narrowly scoped repair of the two unrelated legacy page exports and separately disposition the dependency advisories.
+Epic 3 Phase A engineering is approved. Phase B and Epic 4 remain unauthorized. Before Phase A can be deployed, the Product Owner must authorize and review a narrowly scoped Next.js dependency remediation; the production build itself is currently clean.
 
 ## Required Update Cycle
 

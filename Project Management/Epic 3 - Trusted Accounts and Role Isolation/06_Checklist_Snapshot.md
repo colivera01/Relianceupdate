@@ -1,6 +1,6 @@
 # Epic 3 Phase A Checklist Snapshot
 
-**Snapshot date:** 2026-08-02
+**Snapshot date:** 2026-08-03
 **Starting commit:** `43c18f9282d14567ce4c40b1fab32bfb97126817`
 
 | Checklist item | Phase A state | Evidence | Remaining owner |
@@ -16,7 +16,7 @@
 | PROD-03 Role navigation boundaries | Improved | Desktop/mobile direct-route screenshots | Full release link matrix remains |
 | TEST-01/02/03 | Improved | 206 focused tests plus 5 Playwright passes | Full release matrix remains |
 | TEST-11 | Partial | 12 unrelated full-suite failures documented | Owning epics |
-| TEST-14 | Partial | Auth matrix pass; dependency audit has open critical/high findings | Pre-beta hardening |
+| TEST-14 | Partial | Auth matrix and production build pass; dependency audit has one reachable Critical and 16 classified High findings | Approved dependency remediation |
 | SHOT-05/07 | Partial | Phase A desktop/mobile success and blocked states | Release-wide state package remains |
 
-No item is marked Beta Ready solely because Phase A code exists. Epic 3 remains in progress and Phase B is unauthorized.
+No item is marked Beta Ready solely because Phase A code exists. The previously reported legacy-page build blocker is cleared by fresh evidence without a source change. Epic 3 remains in progress, deployment is blocked by Critical dependency remediation, and Phase B is unauthorized.

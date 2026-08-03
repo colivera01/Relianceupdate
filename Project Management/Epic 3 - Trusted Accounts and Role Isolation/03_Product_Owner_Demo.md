@@ -35,13 +35,13 @@ Open `08_Screenshots/SCREENSHOT_INDEX.md` and verify the customer blocked states
 
 | ID | Severity | Description | Required before deployment? |
 |---|---|---|---|
-| E3A-BUILD-01 | High | Untouched `pages/support` and `pages/notifications` block production build. | Yes |
-| E3A-SCA-01 | Critical/High | Existing dependency audit advisories require a separate upgrade and regression plan. | Yes for release security gate |
+| E3A-BUILD-01 | Resolved by verification | Fresh production build passes and both legacy routes are emitted; no source repair was necessary. | No |
+| E3A-SCA-01 | Critical/High | Reachable Critical Next.js advisory and classified High findings require separately approved remediation. | Yes for release security gate |
 
 ## Product Owner Decision
 
-- [ ] Approve Phase A implementation
-- [ ] Authorize a narrowly scoped build-blocker repair
+- [x] Approve Phase A engineering implementation
+- [x] Accept build-blocker verification: no source repair required
 - [ ] Authorize dependency remediation planning
 - [ ] Authorize Phase B after Phase A deployment validation
 

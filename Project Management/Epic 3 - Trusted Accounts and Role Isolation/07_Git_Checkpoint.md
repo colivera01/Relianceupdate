@@ -27,7 +27,7 @@ Excluded intentionally: `tsconfig.tsbuildinfo`, `output/`, `test-results/`, `.en
 | Command | Result | Notes |
 |---|---|---|
 | `npx tsc --noEmit --pretty false --incremental false` | Pass | Clean |
-| `npm run build` with 6 GB heap | Blocked | Compile/type/lint pass; untouched `pages/support` and `pages/notifications` have invalid page exports |
+| `npm run build` with 6 GB heap | Pass on 2026-08-03 | 197 pages generated; `/support` and `/notifications` emitted without source changes |
 
 ## Test Status
 
@@ -44,7 +44,15 @@ Excluded intentionally: `tsconfig.tsbuildinfo`, `output/`, `test-results/`, `.en
 
 ## Known Issues
 
-Deployment is not permitted until the unrelated production-build blocker is resolved or explicitly dispositioned. Dependency advisories remain a release security gate. Phase B remains unauthorized.
+The earlier production-build blocker was not reproducible and required no code correction. Deployment is not permitted while the reachable Critical Next.js advisory remains unresolved. Dependency changes require separate Product Owner approval. Phase B remains unauthorized.
+
+## Deployment Readiness Correction Checkpoint
+
+- Starting commit: `568132cd38918ac8efe889acb5909266f7561e71`
+- Application source changes: None
+- Dependency changes: None
+- Build-correction commit: Not created because no source defect exists in the current pages
+- Evidence commit: Recorded after this document is finalized
 
 ## Commit Scope Verification
 
