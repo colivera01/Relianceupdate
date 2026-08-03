@@ -251,15 +251,41 @@ model User {
   accountStatusAdminNotes   String?   @db.NVarChar(Max)
 
   // Relations
-  authCredential AuthCredential?
-  bookings       Booking[]
-  reviews        Review[]
-  memberships    VendorMembership[]
-  invitesCreated VendorInvite[]     @relation("InvitesCreated")
-  mediaSessions  MediaSession[]
-  favorites      Favorite[]
+  authCredential       AuthCredential?
+  bookings             Booking[]
+  reviews              Review[]
+  memberships          VendorMembership[]
+  platformRoleGrants   PlatformRoleGrant[] @relation("PlatformRoleGrantUser")
+  platformRolesGranted PlatformRoleGrant[] @relation("PlatformRoleGrantGrantedBy")
+  invitesCreated       VendorInvite[]      @relation("InvitesCreated")
+  mediaSessions        MediaSession[]
+  favorites            Favorite[]
 
   @@map("users")
+}
+
+// PlatformRole: "ADMIN"
+// PlatformRoleStatus: "ACTIVE" | "REVOKED"
+model PlatformRoleGrant {
+  id              String    @id @default(cuid())
+  userId          String
+  role            String
+  status          String    @default("ACTIVE")
+  grantedAt       DateTime  @default(now())
+  grantedByUserId String?
+  revokedAt       DateTime?
+  revokedByUserId String?
+  reason          String?   @db.NVarChar(1000)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user      User  @relation("PlatformRoleGrantUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  grantedBy User? @relation("PlatformRoleGrantGrantedBy", fields: [grantedByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([userId, role])
+  @@index([role, status])
+  @@index([userId, status])
+  @@map("platform_role_grants")
 }
 
 model AuthCredential {

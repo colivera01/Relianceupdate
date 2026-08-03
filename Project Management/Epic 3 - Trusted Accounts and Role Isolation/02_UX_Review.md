@@ -1,88 +1,55 @@
-# Epic 3 UX Review
+# Epic 3 Phase A UX Review
 
-**Epic:** Trusted Accounts and Role Isolation
-**Build / commit reviewed:** TBD
-**Review date:** TBD
-**Status:** Not started
-
-Review the implementation as a first-time user. Working code is not sufficient evidence of good UX.
+**Status:** Completed local review; Product Owner review pending
+**Review date:** 2026-08-02
 
 ## Customer
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Why am I here? | TBD | TBD | TBD | TBD |
-| What is happening? | TBD | TBD | TBD | TBD |
-| What do I need to do? | TBD | TBD | TBD | TBD |
-| What happens if I do nothing? | TBD | TBD | TBD | TBD |
-| What happens next? | TBD | TBD | TBD | TBD |
-| What stays private? | TBD | TBD | TBD | TBD |
-| Wording/hierarchy/anxiety/accessibility/recovery | TBD | TBD | TBD | TBD |
+Wrong-role vendor and admin pages clearly say that the required access is unavailable and do not render protected content. The primary recovery is sign-in or return to the appropriate account area. The desktop and mobile blocked layouts are readable and do not expose vendor or admin data. Improvement for Phase B: session-expired and account-switching recovery should become more specific once durable sessions exist.
 
 ## Vendor
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Current status and next action | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Controls and button placement | TBD | TBD | TBD | TBD |
-| Privacy reassurance and failure recovery | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+An active manager reaches the existing vendor shell without a new authorization prompt. This preserves the familiar workflow. The vendor boundary fails closed when membership is missing or inactive. The current dashboard may remain in a loading state for several seconds against Azure SQL; latency messaging is truthful but could feel slow and is not caused by Phase A.
 
 ## Employee
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Assignment and allowed action | TBD | TBD | TBD | TBD |
-| Recording boundaries / blocked reason | TBD | TBD | TBD | TBD |
-| Wording and hierarchy | TBD | TBD | TBD | TBD |
-| Recovery and manager escalation | TBD | TBD | TBD | TBD |
-| Accessibility and mobile behavior | TBD | TBD | TBD | TBD |
+An employee remains a valid vendor team member but receives `403` when attempting a manager-only profile update. This is the correct boundary, though API denial is stronger than the current visible employee recovery experience. Phase B and later employee UX work should ensure revoked or reassigned employees see a reason-specific message instead of a generic access failure.
 
 ## Admin
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Evidence available for a fair decision | TBD | TBD | TBD | TBD |
-| Authority and non-override boundaries | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Failure/recovery/audit visibility | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+Only an admin-scoped signed session backed by an active database grant opens the admin dashboard. A general customer/vendor session receives the admin-access-required state. The rule is fair and understandable, but Phase B must add durable revocation and session-management UX.
 
 ## Cross-Role Consistency
 
-- Status names consistent: TBD
-- Next action consistent: TBD
-- Private/Public meaning consistent: TBD
-- Notifications match dashboards: TBD
-- No role sees broader data than needed: TBD
+- Current database state is the authority across all four roles.
+- Wrong-role pages do not expose protected content before redirect/recovery.
+- Existing product language, private/public meaning, notification copy, and workflow statuses are unchanged.
+- No role is granted broader data because a browser, URL, or session claims a role.
 
 ## Journey Summaries
 
-### Customer Journey
+### Customer
 
-TBD
+Sign in, use customer routes, and receive a clear blocked state if a vendor or admin URL is entered directly.
 
-### Vendor Journey
+### Vendor
 
-TBD
+Sign in, current active manager membership is resolved from the database, and the exact vendor workspace opens.
 
-### Employee Journey
+### Employee
 
-TBD
+Current membership permits employee work but does not permit manager profile administration.
 
-### Admin Journey
+### Admin
 
-TBD
+Use the admin-scoped session; the server verifies the active user and active database grant before rendering admin content.
 
 ## Blocking UX Findings
 
-| Finding | Role | Owner | Resolution | Retest |
-|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD |
+No Phase A-specific blocking confusion was found in the captured states. Product Owner replay remains required. Build/dependency blockers are engineering issues, not UX findings.
 
 ## UX Verdict
 
-**Result:** Not reviewed
-**Blocking confusion remains:** TBD
-**Ready for Product Owner demo:** No
+**Result:** Good for Phase A boundary states
+**Ready for Product Owner demo:** Yes, locally
+**Ready for beta deployment review:** No, until the unrelated build blocker is resolved

@@ -45,27 +45,7 @@ export function getCurrentAdminActor(): AdminActorMetadata {
 }
 
 export function getAdminRequestHeaders(): HeadersInit {
-  const headers: Record<string, string> = {
+  return {
     'Content-Type': 'application/json',
   };
-
-  if (typeof window === 'undefined') return headers;
-
-  const actor = getCurrentAdminActor();
-  const token = sessionStorage.getItem('authToken') || sessionStorage.getItem('auth_token');
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const isDev = process.env.NODE_ENV !== 'production';
-  if (!token && isDev) {
-    headers['x-user-role'] = 'admin';
-    headers['x-admin'] = 'true';
-  }
-
-  if (!token && actor.adminId) {
-    headers['x-user-id'] = actor.adminId;
-  }
-
-  return headers;
 }

@@ -12,6 +12,7 @@ import { requireVendorManager, requireVendorMembership } from "@/lib/membership-
 import { requireAdmin } from "@/lib/admin-auth";
 import { createAdminAuditLog } from "@/lib/admin-audit";
 import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregates";
+import { requireRequestActor } from "@/lib/request-actor";
 
 const hoisted = vi.hoisted(() => {
   const userFindUnique = vi.fn();
@@ -87,6 +88,11 @@ vi.mock("@/lib/public-review-aggregates", () => ({
   getVendorReviewAggregatesForPublic: vi.fn(),
 }));
 
+vi.mock("@/lib/request-actor", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/request-actor")>();
+  return { ...actual, requireRequestActor: vi.fn() };
+});
+
 async function readJson(res: Response) {
   return res.json() as Promise<Record<string, any>>;
 }
@@ -116,6 +122,16 @@ function mockActiveMembershipForVendorStatus(accountStatus: string) {
 
 describe("restricted vendor regressions", () => {
   beforeEach(() => {
+    vi.mocked(requireRequestActor).mockReset();
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "user-1",
+      email: "manager@reliance.test",
+      accountStatus: "active",
+      platformRoles: [],
+      vendorMemberships: [
+        { id: "membership-1", vendorId: "vendor-1", role: "MANAGER" },
+      ],
+    });
     vi.mocked(getUserIdFromRequest).mockReset();
     vi.mocked(getUserIdFromRequest).mockResolvedValue("user-1");
     vi.mocked(verifyJwt).mockReset();

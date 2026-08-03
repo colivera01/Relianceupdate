@@ -9,9 +9,8 @@ import type {
 type BookingsHttpError = Error & { status?: number };
 
 /**
- * Customer booking APIs resolve the actor via `getUserIdFromRequest` (cookies/session) **or** `x-user-id`.
- * Pass `useAuth().user.id` here so SDK calls match live pages (`/my-bookings`, wizard, confirmation), which
- * send `x-user-id` and (for list) `userId` query. Omitted → `resolveCustomerUserId(undefined)` (storage fallbacks).
+ * Customer booking APIs derive the actor from the signed server session and verify current database ownership.
+ * A caller id may narrow a query, but it never establishes identity or authorization.
  */
 async function bookingsRequestJson<T>(
   path: string,
@@ -66,7 +65,7 @@ function buildListQuery(
   return q ? `?${q}` : '';
 }
 
-// Bookings SDK — aligned with customer `fetch` + `x-user-id` + `resolveCustomerUserId` (see BOOKING_SDK_IDENTITY_ALIGNMENT_NOTES.md).
+// Bookings SDK: server-side session identity and current database ownership remain authoritative.
 export const bookingsSDK = {
   async listBookings(
     params?: {

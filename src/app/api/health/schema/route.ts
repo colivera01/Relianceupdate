@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import { requireAdmin } from "@/lib/admin-auth";
 
 type SchemaCheck = {
   key: string;
@@ -16,8 +17,9 @@ const REQUIRED_REVIEW_COLUMNS = [
 
 const FILTERED_BOOKING_UNIQUE_INDEX_NAME = "reviews_bookingId_unique_not_null";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await requireAdmin(request);
     const columnRows = (await (prisma as any).$queryRawUnsafe(
       `
       SELECT COLUMN_NAME
@@ -73,6 +75,13 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
+    const message = String(error?.message || "");
+    if (message === "Unauthorized") {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    if (message.startsWith("Forbidden")) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
     return NextResponse.json(
       {
         success: false,

@@ -164,15 +164,30 @@ export async function GET(request: NextRequest) {
     const skip = (safePage - 1) * safeLimit;
 
     const authUserId = await getUserIdFromRequest(request);
-    const userId = authUserId || (requestedUserId ? String(requestedUserId) : null);
-    if (!userId && !vendorId) {
+    if (!authUserId) {
       return NextResponse.json(
         { error: 'Unauthorized: user context is required' },
         { status: 401 }
       );
     }
-    if (userId) {
-      await ensureUserAccountCanAct(userId);
+    await ensureUserAccountCanAct(authUserId);
+
+    let userId: string | null = authUserId;
+    if (vendorId) {
+      const membership = await prisma.vendorMembership.findFirst({
+        where: {
+          vendorId: String(vendorId),
+          userId: authUserId,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      });
+      if (!membership) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      userId = requestedUserId ? String(requestedUserId) : null;
+    } else if (requestedUserId && String(requestedUserId) !== authUserId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const where: any = {
@@ -332,15 +347,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const authUserId = await getUserIdFromRequest(request);
-    if (authUserId) {
-      await ensureUserAccountCanAct(authUserId);
-      const verificationGate = await requireVerifiedEmailForAction({
-        userId: authUserId,
-        action: 'create_booking',
-      });
-      if (verificationGate) {
-        return verificationGate;
-      }
+    if (!authUserId) {
+      return NextResponse.json(
+        { error: 'Unauthorized: user context is required for booking creation' },
+        { status: 401 }
+      );
+    }
+    await ensureUserAccountCanAct(authUserId);
+    const verificationGate = await requireVerifiedEmailForAction({
+      userId: authUserId,
+      action: 'create_booking',
+    });
+    if (verificationGate) {
+      return verificationGate;
     }
     const body = await request.json();
     const {
@@ -442,7 +461,12 @@ export async function POST(request: NextRequest) {
     let isVendorStaffForThisVendor = false;
     if (authUserId) {
       const staffMembership = await prisma.vendorMembership.findFirst({
-        where: { vendorId, userId: String(authUserId), status: 'ACTIVE' },
+        where: {
+          vendorId,
+          userId: String(authUserId),
+          status: 'ACTIVE',
+          role: 'MANAGER',
+        },
         select: { id: true },
       });
       isVendorStaffForThisVendor = Boolean(staffMembership);
@@ -559,7 +583,10 @@ export async function POST(request: NextRequest) {
         (bodyUserIdCamel != null && String(bodyUserIdCamel).trim()
           ? String(bodyUserIdCamel).trim()
           : null);
-      bookingUserId = authUserId || fromBody;
+      if (fromBody && fromBody !== authUserId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      bookingUserId = authUserId;
     }
 
     if (!bookingUserId && !placeholderCustomerName) {

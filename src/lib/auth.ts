@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { registeredUsers, syncRegisteredUsersFromDisk } from "@/lib/dev-registered-users";
 import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "@/lib/auth-session";
 import { getVendorSessionTimeoutStatus, hasVendorAccessInSession } from "@/lib/vendor-security";
+import { resolveRequestActor } from "@/lib/request-actor";
 
 export interface JWTPayload {
   sub?: string;
@@ -112,32 +113,18 @@ async function resolveDevRegistryUserId(userId: string | null): Promise<string |
  * 1) signed session cookie
  * 2) signed bearer token
  * 3) dev-only unsigned JWT compatibility
- * 4) cookie/session compatibility values
+ * 4) dev-only cookie/session compatibility values
  * 5) dev-only x-user-id fallback
  */
 export async function getUserIdFromRequest(request: Request): Promise<string | null> {
-  const signedSession = getAuthSessionClaimsFromRequest(request);
-  if (signedSession?.userId) {
-    return await resolveDevRegistryUserId(signedSession.userId);
+  try {
+    const actor = await resolveRequestActor(request);
+    if (actor?.userId) return actor.userId;
+  } catch {
+    return null;
   }
 
-  const bearerToken = getBearerTokenFromRequest(request);
-  if (bearerToken) {
-    const signedClaims = verifyAuthBearerToken(bearerToken);
-    if (signedClaims?.userId) {
-      return await resolveDevRegistryUserId(signedClaims.userId);
-    }
-
-    if (IS_DEV) {
-      try {
-        const payload = await verifyJwt(bearerToken);
-        const jwtUserId = (payload.userId || payload.sub) as string | undefined;
-        if (jwtUserId) return await resolveDevRegistryUserId(jwtUserId);
-      } catch {
-        // Fall through to cookie/header extraction for dev compatibility.
-      }
-    }
-  }
+  if (!IS_DEV) return null;
 
   const cookieMap = parseCookieHeader(request);
   const cookieUserId = getCookieCandidate(cookieMap, [
@@ -160,52 +147,25 @@ export async function getUserIdFromRequest(request: Request): Promise<string | n
  * Extract vendorId from request in this order:
  * 1) signed session / signed bearer context
  * 2) dev-only unsigned JWT compatibility
- * 3) cookie/session compatibility values
+ * 3) dev-only cookie/session compatibility values
  * 4) dev-only x-vendor-id fallback
  */
 export async function getVendorIdFromRequest(request: Request): Promise<string | null> {
-  const signedSession = getAuthSessionClaimsFromRequest(request);
-  if (await isVendorSessionTimedOut(signedSession)) {
+  let actor = null;
+  try {
+    actor = await resolveRequestActor(request);
+  } catch {
     return null;
   }
-  const signedUserId = signedSession?.userId ? await resolveDevRegistryUserId(signedSession.userId) : null;
+  if (!actor) return null;
 
-  const bearerToken = getBearerTokenFromRequest(request);
-  if (bearerToken) {
-    const signedClaims = verifyAuthBearerToken(bearerToken);
-    if (await isVendorSessionTimedOut(signedClaims)) {
-      return null;
-    }
-    if (signedClaims?.userId) {
-      const activeMembership = await (prisma as any).vendorMembership.findFirst({
-        where: {
-          userId: await resolveDevRegistryUserId(signedClaims.userId),
-          status: "ACTIVE",
-          vendor: {
-            accountStatus: "active",
-          },
-        },
-        select: {
-          vendorId: true,
-        },
-        orderBy: [{ approvedAt: "desc" }, { requestedAt: "desc" }],
-      });
+  const signedSession = getAuthSessionClaimsFromRequest(request);
+  if (await isVendorSessionTimedOut(signedSession)) return null;
 
-      if (activeMembership?.vendorId) {
-        return String(activeMembership.vendorId);
-      }
-    }
+  const memberships = actor.vendorMemberships;
+  if (memberships.length === 1) return memberships[0].vendorId;
 
-    if (IS_DEV) {
-      try {
-        const payload = await verifyJwt(bearerToken);
-        const jwtVendorId = payload.vendorId as string | undefined;
-        if (jwtVendorId) return jwtVendorId;
-      } catch {
-        // Fall through to cookie/header extraction for dev compatibility.
-      }
-    }
-  }
+  if (!IS_DEV) return null;
 
   const cookieMap = parseCookieHeader(request);
   const cookieVendorId = getCookieCandidate(cookieMap, [
@@ -214,33 +174,19 @@ export async function getVendorIdFromRequest(request: Request): Promise<string |
     "vid",
     "session_vendor_id",
   ]);
-  if (cookieVendorId) return cookieVendorId;
+  if (
+    cookieVendorId &&
+    memberships.some((membership) => membership.vendorId === cookieVendorId)
+  ) {
+    return cookieVendorId;
+  }
 
   const headerVendorId = request.headers.get("x-vendor-id");
-  if (IS_DEV && headerVendorId && headerVendorId.trim()) return headerVendorId.trim();
-
-  // Active vendor context fallback:
-  // when vendorId is not explicitly present in token/cookie/header, derive it from
-  // the user's ACTIVE vendor membership.
-  const userId = signedUserId || (await getUserIdFromRequest(request));
-  if (userId) {
-    const activeMembership = await (prisma as any).vendorMembership.findFirst({
-      where: {
-        userId,
-        status: "ACTIVE",
-        vendor: {
-          accountStatus: "active",
-        },
-      },
-      select: {
-        vendorId: true,
-      },
-      orderBy: [{ approvedAt: "desc" }, { requestedAt: "desc" }],
-    });
-
-    if (activeMembership?.vendorId) {
-      return String(activeMembership.vendorId);
-    }
+  if (
+    headerVendorId &&
+    memberships.some((membership) => membership.vendorId === headerVendorId.trim())
+  ) {
+    return headerVendorId.trim();
   }
 
   return null;

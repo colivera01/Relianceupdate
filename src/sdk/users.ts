@@ -87,7 +87,7 @@ export const usersSDK = {
 
   /**
    * Lists favorites for the authenticated user (`GET /api/users/favorites`).
-   * Prefer `@/sdk/favorites` + `favoritesSDK` when you need `x-user-id` / storage fallbacks.
+   * Prefer `@/sdk/favorites` + `favoritesSDK` for the shared favorites client behavior.
    * `type` is accepted for call-site compatibility but is not sent (API is service-favorites only).
    */
   async listFavorites(params?: {
@@ -155,4 +155,3 @@ export const {
   removeFavorite,
   getUserActivity
 } = usersSDK;
-

@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-02 (Epic 2 approved and closed)
+**Last updated:** 2026-08-02 (Epic 3 Phase A locally validated)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Completed Epics
@@ -23,14 +23,16 @@
 - Independent five-person comprehension validation: **Deferred to private beta user feedback**; not an engineering blocker
 - Maintenance rule: No further Epic 2 changes unless a genuine beta defect or measurable beta confusion is discovered
 
-## Next Active Epic
+## Current Active Epic
 
 **Epic 3 - Trusted Accounts and Role Isolation**
 
-- Status: **Active for planning only**
-- Implementation: Not started
-- Required next action: Produce the Epic 3 implementation plan and obtain Product Owner approval
-- Implementation authorization: No
+- Status: **Phase A implemented locally; Product Owner review pending**
+- Phase A: Canonical database actor, ownership/membership authorization, IDOR protection, and database-backed admin isolation implemented
+- Validation: 206 focused unit/integration tests and 5 Playwright scenarios pass
+- Deployment: Blocked by unrelated legacy page exports in `pages/support` and `pages/notifications`
+- Phase B: Not authorized
+- Required next action: Product Owner reviews Phase A evidence and decides whether to authorize the narrow build repair
 
 ## Current Branch
 
@@ -67,7 +69,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 | ----- | ----------------------------------------------------- | ----------------------------------------- | ----------- | ----------- | ------- | ------------------ |
 | 1     | Verified Permission Request                           | **Completed** | Complete | Complete | Approved | Application `08de960` |
 | 2     | Proof-First Platform Shell                            | **Completed** | Complete | Complete | Approved | `cb44c9e` |
-| 3     | Trusted Accounts and Role Isolation                   | Planning active; implementation not authorized | Not started | Not started | Not run | Not recorded       |
+| 3     | Trusted Accounts and Role Isolation                   | **Phase A awaiting Product Owner review** | Phase A complete locally | Reviewed | Automated rehearsal passed | Pending scoped commit |
 | 4     | Universal Work Record and Recording Gates             | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 5     | Safe Capture Through Private Service Videos           | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 6     | Exact-Media Public Proof and Admin Moderation         | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -82,7 +84,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 
 The Beta Readiness Checklist remains the master acceptance tracker and has been updated with verified Epic 2 evidence.
 
-- Completed epics: 2 of 12
+- Completed epics: 2 of 12; Epic 3 Phase A is in review and Epic 3 is not complete
 - Beta Ready release: No; later epics and release gates remain open
 - Current checklist: [Beta Readiness Master Checklist](RELIANCE_BETA_READINESS_MASTER_CHECKLIST.md)
 - Completed Epic 1 snapshot: [Epic 1 Checklist Snapshot](<Epic 1 - Verified Permission Request/06_Checklist_Snapshot.md>)
@@ -95,12 +97,14 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | ------------------------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------ |
 | Controlled SMS handset validation | Engineering / Product Owner | Deferred - External Provider Dependency | Validate after Telnyx activation; do not classify as an application defect |
 | Independent comprehension validation | Product Owner / Beta participants | Deferred to private beta user feedback | Gather natural beta feedback; reopen Epic 2 only for measurable confusion or a genuine defect |
+| Epic 3 production build blocker | Product Owner / Engineering | Awaiting approval | Approve a narrow repair for two untouched legacy Pages Router files before deployment |
+| Dependency security advisories | Product Owner / Engineering | Open release gate | Approve a separately scoped upgrade and full regression plan |
 
 ## Blocked Items
 
 | Item           | Blocker                                                                     | Owner  | Resolution                                             |
 | -------------- | --------------------------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| None | No epic-level blocker is currently recorded | Shared | Prepare the Epic 3 implementation plan before any code changes |
+| Epic 3 Phase A deployment | `pages/support` and `pages/notifications` are not valid React page exports | Product Owner / Engineering | Approve narrowly scoped repair, rebuild, deploy, and smoke-test Phase A |
 
 ## Technical Debt Summary
 
@@ -108,7 +112,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | ---- | ---------: | ---------------: | ------------------------------------------------------------------------------------------------------- |
 | 1    | 7 open; 3 resolved; 1 external deferral | 0 engineering blockers | [Technical Debt](<Epic 1 - Verified Permission Request/05_Technical_Debt.md>)                          |
 | 2    | 6 open; 1 beta-validation deferral | 0 engineering blockers | [Technical Debt](<Epic 2 - Proof-First Platform Shell/05_Technical_Debt.md>)                            |
-| 3    | 0 recorded |       0 recorded | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
+| 3    | 8 recorded | 2 deployment/release gates | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
 | 4    | 0 recorded |       0 recorded | [Technical Debt](<Epic 4 - Universal Work Record and Recording Gates/05_Technical_Debt.md>)             |
 | 5    | 0 recorded |       0 recorded | [Technical Debt](<Epic 5 - Safe Capture Through Private Service Videos/05_Technical_Debt.md>)           |
 | 6    | 0 recorded |       0 recorded | [Technical Debt](<Epic 6 - Exact-Media Public Proof and Admin Moderation/05_Technical_Debt.md>)         |
@@ -125,7 +129,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | ---- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | 1    | Decision state alone is insufficient if booking metadata independently drives release and employee camera access | Use one canonical gate and require live cross-role blocked-state replay | [Lessons Learned](<Epic 1 - Verified Permission Request/04_Lessons_Learned.md>) |
 | 2    | Preserve effective copy and change only proven product-identity conflicts | Reconcile DB/test fixtures before relying on broad authenticated smoke | [Lessons Learned](<Epic 2 - Proof-First Platform Shell/04_Lessons_Learned.md>) |
-| 3    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 3 - Trusted Accounts and Role Isolation/04_Lessons_Learned.md>)                   |
+| 3    | Database authority and focused fixtures produced clear isolation evidence                           | Keep Phase B separate; resolve build/security gates first   | [Lessons Learned](<Epic 3 - Trusted Accounts and Role Isolation/04_Lessons_Learned.md>)                   |
 | 4    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 4 - Universal Work Record and Recording Gates/04_Lessons_Learned.md>)             |
 | 5    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 5 - Safe Capture Through Private Service Videos/04_Lessons_Learned.md>)           |
 | 6    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 6 - Exact-Media Public Proof and Admin Moderation/04_Lessons_Learned.md>)         |
@@ -136,9 +140,9 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | 11   | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 11 - Legal Documents and Agreements/04_Lessons_Learned.md>)                       |
 | 12   | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 12 - Private Beta Hardening and Release/04_Lessons_Learned.md>)                   |
 
-## Next Epic
+## Next Engineering Decision
 
-Epic 3 - Trusted Accounts and Role Isolation is the next active epic for planning only. No Epic 3 implementation may begin until its implementation plan is reviewed and approved by the Product Owner.
+Review Epic 3 Phase A. Phase B and Epic 4 remain unauthorized. Before Phase A can be deployed, the Product Owner must authorize a narrowly scoped repair of the two unrelated legacy page exports and separately disposition the dependency advisories.
 
 ## Required Update Cycle
 

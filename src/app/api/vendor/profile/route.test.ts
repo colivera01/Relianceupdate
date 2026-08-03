@@ -34,6 +34,12 @@ vi.mock("@/lib/vendor-context", () => ({
   isVendorContextDbTimeoutError: vi.fn(() => false),
 }));
 
+vi.mock("@/lib/request-actor", () => ({
+  requireRequestActor: vi.fn(),
+  requireActorVendorManager: vi.fn(),
+  authorizationErrorResponse: vi.fn(() => null),
+}));
+
 vi.mock("@/lib/review-attribution-aggregates", () => ({
   getVendorRatingStats: vi.fn(async () => ({
     averageRating: 4.9,
@@ -111,9 +117,25 @@ describe("vendor profile onboarding access", () => {
   beforeEach(async () => {
     const { getUserIdFromRequest } = await import("@/lib/auth");
     const { resolveVendorAccessForUser } = await import("@/lib/vendor-context");
+    const {
+      authorizationErrorResponse,
+      requireActorVendorManager,
+      requireRequestActor,
+    } = await import("@/lib/request-actor");
 
     vi.mocked(getUserIdFromRequest).mockReset();
     vi.mocked(getUserIdFromRequest).mockResolvedValue("user-1");
+    vi.mocked(requireRequestActor).mockReset();
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "user-1",
+      email: "rosa.vendor@reliance.test",
+      accountStatus: "active",
+      platformRoles: [],
+      vendorMemberships: [],
+    });
+    vi.mocked(requireActorVendorManager).mockReset();
+    vi.mocked(authorizationErrorResponse).mockReset();
+    vi.mocked(authorizationErrorResponse).mockReturnValue(null);
     vi.mocked(resolveVendorAccessForUser).mockReset();
     vi.mocked(resolveVendorAccessForUser).mockResolvedValue({
       state: "PENDING",
@@ -177,5 +199,76 @@ describe("vendor profile onboarding access", () => {
         }),
       })
     );
+  });
+
+  it("does not let a platform admin open a vendor profile", async () => {
+    const { requireRequestActor } = await import("@/lib/request-actor");
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "admin-1",
+      email: "admin@reliance.test",
+      accountStatus: "active",
+      platformRoles: ["ADMIN"],
+      vendorMemberships: [],
+    });
+
+    const response = await GET(
+      new Request("http://localhost/api/vendor/profile")
+    );
+
+    expect(response.status).toBe(403);
+    expect(await readJson(response)).toMatchObject({ code: "ADMIN_ONLY_ACCOUNT" });
+    expect(hoisted.vendorFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("does not let an active employee update the vendor profile", async () => {
+    const {
+      authorizationErrorResponse,
+      requireActorVendorManager,
+      requireRequestActor,
+    } = await import("@/lib/request-actor");
+    const { resolveVendorAccessForUser } = await import("@/lib/vendor-context");
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "employee-1",
+      email: "employee@reliance.test",
+      accountStatus: "active",
+      platformRoles: [],
+      vendorMemberships: [
+        { id: "membership-employee", vendorId: "vendor-1", role: "EMPLOYEE" },
+      ],
+    });
+    vi.mocked(resolveVendorAccessForUser).mockResolvedValue({
+      state: "ACTIVE",
+      userId: "employee-1",
+      vendorId: "vendor-1",
+      membershipId: "membership-employee",
+      membershipStatus: "ACTIVE",
+      accountStatus: "active",
+      restrictedAccountType: null,
+      role: "EMPLOYEE",
+      businessName: "Rosa Plumbing Co",
+    } as any);
+    const denied = new Error("Manager access required.");
+    vi.mocked(requireActorVendorManager).mockImplementation(() => {
+      throw denied;
+    });
+    vi.mocked(authorizationErrorResponse).mockImplementation((error) =>
+      error === denied
+        ? Response.json(
+            { success: false, code: "FORBIDDEN", error: "Manager access required." },
+            { status: 403 }
+          )
+        : null
+    );
+
+    const response = await PUT(
+      new Request("http://localhost/api/vendor/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bio: "Unauthorized update" }),
+      })
+    );
+
+    expect(response.status).toBe(403);
+    expect(hoisted.vendorUpdate).not.toHaveBeenCalled();
   });
 });

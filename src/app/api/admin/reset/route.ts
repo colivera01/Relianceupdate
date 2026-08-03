@@ -12,7 +12,11 @@ export async function POST(request: NextRequest) {
 
   // Check authorization
   const authHeader = request.headers.get('authorization');
-  const expectedToken = `Bearer ${process.env.SEED_SECRET}`;
+  const seedSecret = String(process.env.SEED_SECRET || '').trim();
+  if (!seedSecret) {
+    return NextResponse.json({ error: 'Reset tooling is not configured' }, { status: 503 });
+  }
+  const expectedToken = `Bearer ${seedSecret}`;
   
   if (authHeader !== expectedToken) {
     return NextResponse.json(

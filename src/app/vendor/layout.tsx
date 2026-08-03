@@ -19,7 +19,6 @@ import ProfileToggle from '@/components/ProfileToggle';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { RelianceLogo } from '@/components/public/RelianceLogo';
 import VendorSessionGuard from '@/components/vendor/VendorSessionGuard';
-import { isOwnerAdminUserId } from '@/lib/internal-identities';
 
 // TODO Future mobile: convert this sidebar into a bottom nav or slide-out
 // drawer for an app-like experience on small screens. The sidebar is hidden
@@ -68,7 +67,7 @@ const sidebarLinks: SidebarLink[] = [
 ];
 
 export default function VendorLayout({ children }: { children: React.ReactNode }) {
-  const { user: authUser, isLoading: authLoading, logout } = useAuth();
+  const { user: authUser, isLoading: authLoading } = useAuth();
   const {
     data: vendorProfile,
     error,
@@ -79,12 +78,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
   } = useVendorProfile();
   const { availableRoles, userId } = useAvailableRoles('vendor');
   const pathname = usePathname() || '';
-  const sessionAllowsVendor =
-    authUser?.userType === 'vendor' ||
-    authUser?.userType === 'both' ||
-    authUser?.availableProfiles?.includes('vendor');
   const hasLiveVendorAccess =
-    sessionAllowsVendor ||
     Boolean(vendorProfile?.id) ||
     approvalPending ||
     hasResolvedVendorContext;
@@ -139,33 +133,6 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
             >
               Create account
             </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const isAdminOnlyAccount =
-    isOwnerAdminUserId(authUser.id) ||
-    authUser.userType === 'admin' ||
-    authUser.availableProfiles?.includes('admin');
-
-  if (isAdminOnlyAccount) {
-    return (
-      <div className="reliance-operator-shell reliance-grid-lines min-h-screen px-6 py-12">
-        <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl items-center justify-center">
-          <div className="w-full rounded-xl border border-blue-300/20 bg-slate-950/85 p-7 text-white shadow-2xl shadow-black/20">
-            <h1 className="text-2xl font-semibold">Admin account</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-300">
-              This browser is currently signed in as {authUser.email}. That Admin session is separate from the Electro LLC Vendor account.
-            </p>
-            <button
-              type="button"
-              onClick={() => void logout()}
-              className="mt-6 inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              Sign out and switch account
-            </button>
           </div>
         </div>
       </div>

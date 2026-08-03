@@ -172,6 +172,7 @@ describe('GET /api/bookings', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.bookingCount.mockReset();
     hoisted.bookingFindMany.mockReset();
+    hoisted.vendorMembershipFindFirst.mockReset();
   });
 
   it('returns 401 when neither user nor vendor context is available', async () => {
@@ -184,8 +185,17 @@ describe('GET /api/bookings', () => {
     expect(hoisted.bookingCount).not.toHaveBeenCalled();
   });
 
-  it('returns 200 listing by vendorId without authenticated user', async () => {
+  it('returns 401 listing by vendorId without authenticated user', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue(null);
+    const req = new NextRequest('http://localhost/api/bookings?vendorId=ven-1');
+    const res = await bookingsListGET(req);
+    expect(res.status).toBe(401);
+    expect(hoisted.bookingCount).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 listing by vendorId for an active vendor member', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
     hoisted.bookingCount.mockResolvedValue(1);
     hoisted.bookingFindMany.mockResolvedValue([
       {
@@ -204,18 +214,12 @@ describe('GET /api/bookings', () => {
     expect(bookings).toHaveLength(1);
   });
 
-  it('scopes user listing to auth user when query userId differs', async () => {
+  it('rejects a customer query that attempts to select another user', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('alice');
-    hoisted.bookingCount.mockResolvedValue(0);
-    hoisted.bookingFindMany.mockResolvedValue([]);
     const req = new NextRequest('http://localhost/api/bookings?userId=bob');
     const res = await bookingsListGET(req);
-    expect(res.status).toBe(200);
-    expect(hoisted.bookingFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ userId: 'alice' }),
-      })
-    );
+    expect(res.status).toBe(403);
+    expect(hoisted.bookingFindMany).not.toHaveBeenCalled();
   });
 
   it('returns 200 with pagination and mapped contracts', async () => {

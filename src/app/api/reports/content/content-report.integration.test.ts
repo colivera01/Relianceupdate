@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
-import { getUserIdFromRequest, getVendorIdFromRequest } from "@/lib/auth";
+import { requireRequestActor } from "@/lib/request-actor";
 
 const hoisted = vi.hoisted(() => {
   const reviewFindUnique = vi.fn();
@@ -28,10 +28,13 @@ vi.mock("@/server/db", () => ({
   prisma: hoisted.prisma,
 }));
 
-vi.mock("@/lib/auth", () => ({
-  getUserIdFromRequest: vi.fn(),
-  getVendorIdFromRequest: vi.fn(),
-}));
+vi.mock("@/lib/request-actor", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/request-actor")>();
+  return {
+    ...actual,
+    requireRequestActor: vi.fn(),
+  };
+});
 
 async function readJson(res: Response) {
   return res.json() as Promise<Record<string, any>>;
@@ -39,10 +42,14 @@ async function readJson(res: Response) {
 
 describe("POST /api/reports/content", () => {
   beforeEach(() => {
-    vi.mocked(getUserIdFromRequest).mockReset();
-    vi.mocked(getVendorIdFromRequest).mockReset();
-    vi.mocked(getUserIdFromRequest).mockResolvedValue("user-1");
-    vi.mocked(getVendorIdFromRequest).mockResolvedValue(null);
+    vi.mocked(requireRequestActor).mockReset();
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "user-1",
+      email: "customer@reliance.test",
+      accountStatus: "active",
+      platformRoles: [],
+      vendorMemberships: [],
+    });
     hoisted.reviewFindUnique.mockReset();
     hoisted.mediaAssetFindUnique.mockReset();
     hoisted.contentReportCreate.mockReset();
@@ -142,8 +149,10 @@ describe("POST /api/reports/content", () => {
   });
 
   it("defers guest reporting by requiring authentication", async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue(null);
-    vi.mocked(getVendorIdFromRequest).mockResolvedValue(null);
+    const { AuthorizationError } = await import("@/lib/request-actor");
+    vi.mocked(requireRequestActor).mockRejectedValue(
+      new AuthorizationError("UNAUTHENTICATED", "Sign in required.", 401)
+    );
 
     const res = await POST(
       new Request("http://localhost/api/reports/content", {
@@ -158,9 +167,73 @@ describe("POST /api/reports/content", () => {
 
     expect(res.status).toBe(401);
     const json = await readJson(res);
-    expect(json.message).toContain("Guest reporting is deferred");
+    expect(json).toMatchObject({
+      success: false,
+      code: "UNAUTHENTICATED",
+      error: "Sign in required.",
+    });
     expect(hoisted.contentReportCreate).not.toHaveBeenCalled();
     expect(hoisted.adminNotificationCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not accept a client-supplied admin role", async () => {
+    hoisted.reviewFindUnique.mockResolvedValue({
+      id: "review-1",
+      userId: "review-author-1",
+      vendorId: "vendor-1",
+      bookingId: "booking-1",
+      moderationStatus: "approved",
+      visibilityStatus: "public",
+    });
+    hoisted.contentReportCreate.mockResolvedValue({
+      id: "report-1",
+      targetType: "review",
+      targetId: "review-1",
+      status: "open",
+      severity: "medium",
+    });
+    hoisted.adminNotificationCreate.mockResolvedValue({ id: "notification-1" });
+    hoisted.contentReportUpdate.mockResolvedValue({
+      id: "report-1",
+      reporterRole: "customer",
+    });
+
+    const res = await POST(
+      new Request("http://localhost/api/reports/content", {
+        method: "POST",
+        headers: { "x-user-role": "admin", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetType: "review",
+          targetId: "review-1",
+          reasonCategory: "privacy",
+          reporterRole: "admin",
+        }),
+      })
+    );
+
+    expect(res.status).toBe(201);
+    expect(hoisted.contentReportCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ reporterRole: "customer", reporterVendorId: null }),
+    });
+  });
+
+  it("requires exact current membership for a vendor report", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/reports/content", {
+        method: "POST",
+        headers: { "x-vendor-id": "vendor-foreign", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetType: "review",
+          targetId: "review-1",
+          reasonCategory: "privacy",
+          reporterRole: "vendor",
+          reporterVendorId: "vendor-foreign",
+        }),
+      })
+    );
+
+    expect(res.status).toBe(403);
+    expect(hoisted.contentReportCreate).not.toHaveBeenCalled();
   });
 
   it("returns a truthful temporary-unavailable response on transient DB failures", async () => {

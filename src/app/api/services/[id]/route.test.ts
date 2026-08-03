@@ -23,12 +23,13 @@ vi.mock("@/server/db", () => ({
   prisma: hoisted.prisma,
 }));
 
-vi.mock("@/lib/auth", () => ({
-  getUserIdFromRequest: vi.fn(),
-}));
-
-vi.mock("@/lib/vendor-context", () => ({
-  resolveVendorAccessForUser: vi.fn(),
+vi.mock("@/lib/request-actor", () => ({
+  requireRequestActor: vi.fn(),
+  requireActorVendorManager: vi.fn(),
+  authorizationErrorResponse: (error: any) =>
+    error?.statusCode
+      ? Response.json({ error: error.message }, { status: error.statusCode })
+      : null,
 }));
 
 async function readJson(response: Response) {
@@ -37,12 +38,10 @@ async function readJson(response: Response) {
 
 describe("vendor-owned service mutation access", () => {
   beforeEach(async () => {
-    const { getUserIdFromRequest } = await import("@/lib/auth");
-    const { resolveVendorAccessForUser } = await import("@/lib/vendor-context");
-
-    vi.mocked(getUserIdFromRequest).mockReset();
-    vi.mocked(getUserIdFromRequest).mockResolvedValue("user-1");
-    vi.mocked(resolveVendorAccessForUser).mockReset();
+    const { requireRequestActor, requireActorVendorManager } = await import("@/lib/request-actor");
+    vi.mocked(requireRequestActor).mockReset();
+    vi.mocked(requireRequestActor).mockResolvedValue({ userId: "user-1" } as any);
+    vi.mocked(requireActorVendorManager).mockReset();
 
     hoisted.serviceFindUnique.mockReset();
     hoisted.serviceUpdate.mockReset();
@@ -50,7 +49,7 @@ describe("vendor-owned service mutation access", () => {
   });
 
   it("rejects updates when the signed-in vendor does not own the draft", async () => {
-    const { resolveVendorAccessForUser } = await import("@/lib/vendor-context");
+    const { requireActorVendorManager } = await import("@/lib/request-actor");
 
     hoisted.serviceFindUnique.mockResolvedValue({
       id: "service-1",
@@ -59,11 +58,9 @@ describe("vendor-owned service mutation access", () => {
       publishedAt: null,
       vendor: { accountStatus: "active" },
     });
-    vi.mocked(resolveVendorAccessForUser).mockResolvedValue({
-      state: "PENDING",
-      userId: "user-1",
-      vendorId: "vendor-2",
-    } as any);
+    vi.mocked(requireActorVendorManager).mockImplementation(() => {
+      throw Object.assign(new Error("Manager access required."), { statusCode: 403 });
+    });
 
     const response = await PUT(
       new Request("http://localhost/api/services/service-1", {
@@ -76,12 +73,11 @@ describe("vendor-owned service mutation access", () => {
 
     expect(response.status).toBe(403);
     const json = await readJson(response);
-    expect(json.error).toContain("Vendor ownership required");
+    expect(json.error).toContain("Manager access required");
     expect(hoisted.serviceUpdate).not.toHaveBeenCalled();
   });
 
-  it("allows a pending vendor owner to delete their own draft service", async () => {
-    const { resolveVendorAccessForUser } = await import("@/lib/vendor-context");
+  it("allows an active vendor manager to delete their own draft service", async () => {
 
     hoisted.serviceFindUnique.mockResolvedValue({
       id: "service-1",
@@ -92,12 +88,6 @@ describe("vendor-owned service mutation access", () => {
       vendor: { accountStatus: "active" },
     });
     hoisted.serviceDelete.mockResolvedValue({ id: "service-1" });
-    vi.mocked(resolveVendorAccessForUser).mockResolvedValue({
-      state: "PENDING",
-      userId: "user-1",
-      vendorId: "vendor-1",
-    } as any);
-
     const response = await DELETE(
       new Request("http://localhost/api/services/service-1", {
         method: "DELETE",
@@ -113,7 +103,6 @@ describe("vendor-owned service mutation access", () => {
   });
 
   it("archives a published service without deleting its work history", async () => {
-    const { resolveVendorAccessForUser } = await import("@/lib/vendor-context");
     const publishedAt = new Date("2026-07-01T12:00:00.000Z");
 
     hoisted.serviceFindUnique.mockResolvedValue({
@@ -125,12 +114,6 @@ describe("vendor-owned service mutation access", () => {
       vendor: { accountStatus: "active" },
     });
     hoisted.serviceUpdate.mockResolvedValue({ id: "service-1", isPublished: false });
-    vi.mocked(resolveVendorAccessForUser).mockResolvedValue({
-      state: "ACTIVE",
-      userId: "user-1",
-      vendorId: "vendor-1",
-    } as any);
-
     const response = await DELETE(
       new Request("http://localhost/api/services/service-1", {
         method: "DELETE",

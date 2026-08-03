@@ -1,71 +1,56 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const authSessionMocks = vi.hoisted(() => ({
-  getAdminAuthSessionClaimsFromRequest: vi.fn(),
-  verifyAuthBearerToken: vi.fn(),
+const actorMocks = vi.hoisted(() => ({
+  resolveRequestActor: vi.fn(),
 }));
 
-const authMocks = vi.hoisted(() => ({
-  getUserIdFromRequest: vi.fn(),
-  verifyJwt: vi.fn(),
-}));
-
-const prismaMocks = vi.hoisted(() => ({
-  user: {
-    findUnique: vi.fn(),
-  },
-}));
-
-vi.mock("./auth-session", () => authSessionMocks);
-vi.mock("./auth", () => authMocks);
-vi.mock("@/server/db", () => ({
-  prisma: prismaMocks,
-}));
+vi.mock("@/lib/request-actor", () => actorMocks);
 
 describe("readAdminAccess", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authSessionMocks.verifyAuthBearerToken.mockReturnValue(null);
-    authMocks.getUserIdFromRequest.mockResolvedValue(null);
-    prismaMocks.user.findUnique.mockResolvedValue(null);
+    actorMocks.resolveRequestActor.mockResolvedValue(null);
   });
 
-  it("allows the registered owner admin user id even when cached profiles are stale", async () => {
-    authSessionMocks.getAdminAuthSessionClaimsFromRequest.mockReturnValue({
-      userId: "D43B6BB3-1A72-45EC-A362-A6E1E0580EA0",
-      email: "colivera080124@gmail.com",
-      userType: "customer",
-      availableProfiles: ["customer"],
-      issuedAt: 1,
-      expiresAt: 9999999999,
-      version: 1,
+  it("allows an active actor with a database ADMIN grant", async () => {
+    actorMocks.resolveRequestActor.mockResolvedValue({
+      userId: "db-admin",
+      platformRoles: ["ADMIN"],
+      vendorMemberships: [],
     });
-    authMocks.getUserIdFromRequest.mockResolvedValue("D43B6BB3-1A72-45EC-A362-A6E1E0580EA0");
 
     const { readAdminAccess } = await import("./admin-auth");
     const access = await readAdminAccess(new Request("http://localhost/admin"));
 
-    expect(access.isAdmin).toBe(true);
-    expect(access.role).toBe("customer");
-    expect(prismaMocks.user.findUnique).not.toHaveBeenCalled();
+    expect(access).toEqual({ userId: "db-admin", role: "admin", isAdmin: true });
+    expect(actorMocks.resolveRequestActor).toHaveBeenCalledWith(
+      expect.any(Request),
+      { adminScope: true }
+    );
   });
 
-  it("does not promote a different account that shares the owner email", async () => {
-    authSessionMocks.getAdminAuthSessionClaimsFromRequest.mockReturnValue({
-      userId: "electro-vendor-row",
-      email: "colivera080124@gmail.com",
-      userType: "customer",
-      availableProfiles: ["customer"],
-      issuedAt: 1,
-      expiresAt: 9999999999,
-      version: 1,
+  it("does not authorize a hardcoded owner identity without a database grant", async () => {
+    actorMocks.resolveRequestActor.mockResolvedValue({
+      userId: "D43B6BB3-1A72-45EC-A362-A6E1E0580EA0",
+      platformRoles: [],
+      vendorMemberships: [],
     });
-    authMocks.getUserIdFromRequest.mockResolvedValue("electro-vendor-row");
 
     const { readAdminAccess } = await import("./admin-auth");
     const access = await readAdminAccess(new Request("http://localhost/admin"));
 
     expect(access.isAdmin).toBe(false);
-    expect(prismaMocks.user.findUnique).not.toHaveBeenCalled();
+    expect(access.role).toBeNull();
+  });
+
+  it("fails closed when actor resolution fails", async () => {
+    actorMocks.resolveRequestActor.mockRejectedValue(new Error("database unavailable"));
+
+    const { readAdminAccess } = await import("./admin-auth");
+    await expect(readAdminAccess(new Request("http://localhost/admin"))).resolves.toEqual({
+      userId: null,
+      role: null,
+      isAdmin: false,
+    });
   });
 });

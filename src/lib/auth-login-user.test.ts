@@ -13,6 +13,9 @@ vi.mock("@/server/db", () => ({
     user: {
       findUnique: vi.fn(),
     },
+    platformRoleGrant: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
@@ -20,6 +23,8 @@ describe("buildAuthLoginUserPayload", () => {
   beforeEach(() => {
     vi.mocked(resolveVendorAccessForUser).mockReset();
     vi.mocked((prisma as any).user.findUnique).mockReset();
+    vi.mocked((prisma as any).platformRoleGrant.findMany).mockReset();
+    vi.mocked((prisma as any).platformRoleGrant.findMany).mockResolvedValue([]);
     vi.mocked((prisma as any).user.findUnique).mockResolvedValue({
       id: "user-1",
       name: "Brand Newvendor",
@@ -28,7 +33,7 @@ describe("buildAuthLoginUserPayload", () => {
     });
   });
 
-  it("treats pending vendor memberships as vendor-capable during MFA session hydration", async () => {
+  it("keeps customer access while treating pending vendor onboarding as vendor-capable", async () => {
     vi.mocked(resolveVendorAccessForUser).mockResolvedValue({
       state: "PENDING",
       userId: "user-1",
@@ -47,11 +52,12 @@ describe("buildAuthLoginUserPayload", () => {
       emailVerifiedAt: new Date("2026-06-05T12:00:00.000Z"),
     });
 
-    expect(payload.userType).toBe("vendor");
-    expect(payload.availableProfiles).toEqual(["vendor"]);
+    expect(payload.userType).toBe("both");
+    expect(payload.availableProfiles).toEqual(["customer", "vendor"]);
   });
 
-  it("keeps the designated Admin identity Admin-only even when a legacy vendor membership exists", async () => {
+  it("does not promote a formerly hardcoded owner identity without a database grant", async () => {
+    vi.mocked(resolveVendorAccessForUser).mockResolvedValue({ state: "NONE" } as any);
     vi.mocked((prisma as any).user.findUnique).mockResolvedValue({
       id: OWNER_ADMIN_USER_ID,
       name: "Reliance Admin",
@@ -64,13 +70,13 @@ describe("buildAuthLoginUserPayload", () => {
       email: "admin@reliance.test",
       emailVerifiedAt: new Date("2026-06-05T12:00:00.000Z"),
     });
-
-    expect(payload.userType).toBe("admin");
-    expect(payload.availableProfiles).toEqual(["admin"]);
-    expect(resolveVendorAccessForUser).not.toHaveBeenCalled();
+    expect(payload.userType).toBe("customer");
+    expect(payload.availableProfiles).toEqual(["customer"]);
+    expect(resolveVendorAccessForUser).toHaveBeenCalledWith(OWNER_ADMIN_USER_ID);
   });
 
   it("keeps the beta Admin database identity Admin-only", async () => {
+    vi.mocked((prisma as any).platformRoleGrant.findMany).mockResolvedValue([{ role: "ADMIN" }]);
     vi.mocked((prisma as any).user.findUnique).mockResolvedValue({
       id: OWNER_ADMIN_BETA_USER_ID,
       name: "Reliance Admin",

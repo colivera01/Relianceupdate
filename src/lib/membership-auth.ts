@@ -4,6 +4,11 @@
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest, getVendorIdFromRequest } from "./auth";
 import { ensureUserAccountCanAct, ensureVendorAccountCanOperate } from "@/lib/account-status";
+import {
+  requireActorVendorManager,
+  requireActorVendorMembership,
+  requireRequestActor,
+} from "@/lib/request-actor";
 export { getUserIdFromRequest };
 
 export type MembershipRole = "MANAGER" | "EMPLOYEE";
@@ -76,28 +81,17 @@ export async function requireVendorManager(
   request: Request,
   vendorId?: string
 ): Promise<{ vendorId: string; userId: string; membershipId: string }> {
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
-    throw new Error("Unauthorized");
-  }
-  await ensureUserAccountCanAct(userId);
-
+  const actor = await requireRequestActor(request);
   const targetVendorId = vendorId || (await getVendorIdFromRequest(request));
   if (!targetVendorId) {
     throw new Error("Vendor ID required");
   }
   await ensureVendorAccountCanOperate(targetVendorId);
-
-  const membership = await getVendorMembership(targetVendorId, userId);
-  const normalizedRole = String(membership?.role || "").trim().toUpperCase();
-  const normalizedStatus = String(membership?.status || "").trim().toUpperCase();
-  if (!membership || normalizedRole !== "MANAGER" || normalizedStatus !== "ACTIVE") {
-    throw new Error("Forbidden: Manager access required");
-  }
+  const membership = requireActorVendorManager(actor, targetVendorId);
 
   return {
     vendorId: targetVendorId,
-    userId,
+    userId: actor.userId,
     membershipId: membership.id,
   };
 }
@@ -109,30 +103,12 @@ export async function requireVendorMembership(
   request: Request,
   vendorId: string
 ): Promise<{ userId: string; membershipId: string; role: string }> {
-  const userId = await getUserIdFromRequest(request);
-  if (process.env.NODE_ENV === "development") {
-    console.log("[requireVendorMembership][dev]", {
-      vendorId,
-      extractedUserId: userId,
-      headerUserId: request.headers.get("x-user-id"),
-      headerVendorId: request.headers.get("x-vendor-id"),
-      hasAuthorization: Boolean(request.headers.get("authorization")),
-    });
-  }
-  if (!userId) {
-    throw new Error("Unauthorized");
-  }
-  await ensureUserAccountCanAct(userId);
+  const actor = await requireRequestActor(request);
   await ensureVendorAccountCanOperate(vendorId);
-
-  const membership = await getVendorMembership(vendorId, userId);
-  const normalizedStatus = String(membership?.status || "").trim().toUpperCase();
-  if (!membership || normalizedStatus !== "ACTIVE") {
-    throw new Error("Forbidden: Active membership required");
-  }
+  const membership = requireActorVendorMembership(actor, vendorId);
 
   return {
-    userId,
+    userId: actor.userId,
     membershipId: membership.id,
     role: membership.role,
   };
@@ -217,4 +193,3 @@ export async function getMembershipByPhoneDevice(
   // For now, we'll use a simpler approach in the API routes
   return membership;
 }
-

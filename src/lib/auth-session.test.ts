@@ -91,4 +91,18 @@ describe("auth-session", () => {
     expect(adminPageClaims?.userId).toBe("admin-user");
     expect(adminApiClaims?.userId).toBe("admin-user");
   });
+
+  it("does not treat the general session cookie as an admin-scoped session", () => {
+    const generalToken = createAuthSessionCookie({
+      userId: "claimed-admin",
+      email: "claimed@example.com",
+      userType: "admin",
+      availableProfiles: ["admin"],
+    });
+    const request = new Request("http://localhost/admin/dashboard", {
+      headers: { cookie: `reliance_session=${generalToken}` },
+    });
+
+    expect(getAdminAuthSessionClaimsFromRequest(request)).toBeNull();
+  });
 });

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addRegisteredUser, registeredUsers, syncRegisteredUsersFromDisk } from "@/lib/dev-registered-users";
 import { prisma } from "@/server/db";
-import { getUserIdFromRequest } from "@/lib/auth";
-import { getAuthSessionClaimsFromRequest, verifyAuthBearerToken } from "@/lib/auth-session";
 import { accountStatusErrorBody, AccountStatusError, isUserAccountRestricted } from "@/lib/account-status";
 import { addressChanged, geocodeAddress } from "@/lib/geocoding";
 import { findDbCredentialByUserId, upsertDbCredential } from "@/lib/auth-credentials";
 import { sendOrPreviewEmailVerification } from "@/lib/auth-email-verification";
-import { isOwnerAdminIdentity } from "@/lib/internal-identities";
+import {
+  authorizationErrorResponse,
+  requireRequestActor,
+} from "@/lib/request-actor";
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -34,22 +35,6 @@ async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> 
   }
 }
 
-function parseBearer(request: NextRequest): string | null {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  return authHeader.replace("Bearer ", "").trim();
-}
-
-function hasAcceptedSession(request: NextRequest): boolean {
-  const signedSession = getAuthSessionClaimsFromRequest(request);
-  if (signedSession?.userId) return true;
-
-  const token = parseBearer(request);
-  if (!token) return false;
-  if (verifyAuthBearerToken(token)?.userId) return true;
-  return process.env.NODE_ENV !== "production" && Boolean(request.headers.get("x-user-id")?.trim());
-}
-
 function splitDisplayName(name: string | null | undefined) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   const firstName = parts[0] || "";
@@ -61,22 +46,9 @@ export async function GET(request: NextRequest) {
   let resolvedUserId: string | null = null;
   try {
     syncRegisteredUsersFromDisk();
-    if (!hasAcceptedSession(request)) {
-      return NextResponse.json(
-        { error: "Unauthorized: sign in required" },
-        { status: 401 }
-      );
-    }
-
-    resolvedUserId = await getUserIdFromRequest(request);
-    if (!resolvedUserId) {
-      return NextResponse.json(
-        { error: "Unauthorized: missing authenticated user context" },
-        { status: 401 }
-      );
-    }
-    const signedSession = getAuthSessionClaimsFromRequest(request);
-    if (isOwnerAdminIdentity({ id: resolvedUserId, email: signedSession?.email })) {
+    const actor = await requireRequestActor(request);
+    resolvedUserId = actor.userId;
+    if (actor.platformRoles.includes("ADMIN")) {
       return NextResponse.json(
         { error: "This Admin account does not have a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
         { status: 403 }
@@ -105,12 +77,6 @@ export async function GET(request: NextRequest) {
         },
       })
     );
-    if (isOwnerAdminIdentity(dbUser)) {
-      return NextResponse.json(
-        { error: "This Admin account does not have a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
-        { status: 403 }
-      );
-    }
     const dbCredential = dbUser ? await findDbCredentialByUserId(dbUser.id).catch(() => null) : null;
 
     const devRow =
@@ -174,6 +140,8 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const err = error as any;
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse;
     console.error("[PROFILE_API_ERROR]", err);
     if (isTransientDbConnectivityError(err)) {
       syncRegisteredUsersFromDisk();
@@ -233,19 +201,9 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     syncRegisteredUsersFromDisk();
-    if (!hasAcceptedSession(request)) {
-      return NextResponse.json(
-        { error: "Unauthorized: sign in required" },
-        { status: 401 }
-      );
-    }
-
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const signedSession = getAuthSessionClaimsFromRequest(request);
-    if (isOwnerAdminIdentity({ id: userId, email: signedSession?.email })) {
+    const actor = await requireRequestActor(request);
+    const userId = actor.userId;
+    if (actor.platformRoles.includes("ADMIN")) {
       return NextResponse.json(
         { error: "This Admin account cannot update a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
         { status: 403 }
@@ -265,12 +223,6 @@ export async function PUT(request: NextRequest) {
         accountStatus: true,
       },
     });
-    if (isOwnerAdminIdentity(dbUser)) {
-      return NextResponse.json(
-        { error: "This Admin account cannot update a Customer profile.", code: "ADMIN_ONLY_ACCOUNT" },
-        { status: 403 }
-      );
-    }
     if (dbUser && isUserAccountRestricted((dbUser as any).accountStatus)) {
       const statusError = new AccountStatusError("user", (dbUser as any).accountStatus);
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
@@ -466,6 +418,8 @@ export async function PUT(request: NextRequest) {
         : {}),
     });
   } catch (error) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse;
     console.error("Error updating customer profile:", error);
     return NextResponse.json({ error: "Failed to update customer profile" }, { status: 500 });
   }

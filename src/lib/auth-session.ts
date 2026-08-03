@@ -125,8 +125,7 @@ export function getAdminAuthSessionClaimsFromRequest(request: Request): AuthSess
     const claims = verifyAuthSessionCookie(cookieMap[cookieName]);
     if (claims) return claims;
   }
-
-  return verifyAuthSessionCookie(cookieMap[SESSION_COOKIE_NAME]);
+  return null;
 }
 
 export function getAuthSessionCookieName(): string {

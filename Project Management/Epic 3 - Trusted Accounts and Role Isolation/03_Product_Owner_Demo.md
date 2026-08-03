@@ -1,39 +1,48 @@
-# Epic 3 Product Owner Demo
+# Epic 3 Phase A Product Owner Demo
 
-**Epic:** Trusted Accounts and Role Isolation
-**Build / commit:** TBD
-**Demo date:** TBD
-**Product Owner:** Cesar Olivera
-**Overall result:** Not run
+**Build:** Local Phase A worktree from `43c18f9`
+**Overall result:** Automated rehearsal passed; Product Owner replay pending
 
-For every row, record Pass, Fail, or Blocked plus evidence and disposition.
+| Step | Product Owner action | Expected observation | Automated evidence |
+|---|---|---|---|
+| 1 | Sign in as a customer and open `/vendor/dashboard`. | `Vendor access required`; no vendor data or controls. | Playwright pass; desktop/mobile screenshots |
+| 2 | With the same general session, open `/admin/dashboard`. | `Admin access required`; no admin data. | Playwright pass; screenshot |
+| 3 | Sign in as an active vendor manager and open `/vendor/dashboard`. | Exact current vendor dashboard opens. | Playwright pass; screenshot |
+| 4 | Remove or revoke the test manager membership, refresh, then retry. | Access fails closed. Restore the controlled fixture afterward. | Unit/integration matrix pass |
+| 5 | As an employee, attempt a manager-only vendor profile update. | Request is denied with `403`; profile remains unchanged. | Playwright API pass |
+| 6 | As an employee assigned to controlled work, verify employee actions remain available but manager actions do not. | Only assigned employee actions appear. | Focused membership/assignment suite pass |
+| 7 | Sign in through the admin-scoped flow using the approved admin account. | Admin dashboard opens because an active DB grant exists. | Playwright pass; screenshot |
+| 8 | Revoke a controlled admin grant and retry with the same signed session. | Admin access fails closed. Restore only in the controlled test fixture. | Admin grant/session unit matrix pass |
+| 9 | Attempt a cross-vendor/customer resource ID. | `403` or non-disclosing `404`; no other tenant data. | IDOR matrix pass |
+| 10 | Review permission, review, Trust Score, publication, and private-media records before/after these auth tests. | No synthetic or unrelated record is created. | 97/97 cross-epic regression pass |
 
-| Validate | Exact action and expected observation | Result | Evidence | Observation / defect | Owner | Disposition |
-|---|---|---|---|---|---|---|
-| Expected workflow | Complete the epic's approved end-to-end workflow and verify every decision and recovery state. | Not run | | | | |
-| Expected notifications | Trigger every affected notification and verify recipient, channel, copy, link, retry, failure, and delivery evidence. | Not run | | | | |
-| Expected dashboard updates | Keep affected role views open and verify confirmed state and next action update consistently. | Not run | | | | |
-| Expected database state | Inspect controlled test records and verify the exact models, state, evidence, and absence of fabricated activity. | Not run | | | | |
-| Expected admin state | Verify authorized admin visibility and actions, plus denial of prohibited overrides. | Not run | | | | |
-| Expected customer state | Verify control, privacy, understandable choices, and complete loading/success/failure/empty/blocked states. | Not run | | | | |
-| Expected vendor state | Verify the vendor always sees the current status, responsible participant, and correct next action. | Not run | | | | |
-| Expected employee state | Verify only assigned, approved actions are available and blocked reasons are clear. | Not run | | | | |
-| Expected Trust Score behavior | Verify only genuine approved inputs affect the score and all non-effects remain neutral. | Not run | | | | |
-| Expected review behavior | Verify genuine optional reviews remain separate and no review/rating is inferred or fabricated. | Not run | | | | |
-| Expected audit history | Reconstruct every consequential actor, version, decision, attempt, failure, and outcome. | Not run | | | | |
-| Expected screenshots | Review the indexed desktop/mobile/state/before-after package and confirm sensitive data is redacted. | Not run | | | | |
+## Expected State By Role
+
+- **Customer:** customer routes only; direct vendor/admin URLs are blocked.
+- **Vendor manager:** exact active vendor workspace and manager actions only.
+- **Employee:** active membership and assignment actions only; no manager authority.
+- **Admin:** admin-scoped signed session plus active database grant required.
+- **Database:** current `User`, `VendorMembership`, ownership/assignment, and `PlatformRoleGrant` determine authority.
+- **Audit:** consequential denials and admin grants contain actor/resource metadata, never credentials or raw secrets.
+- **Trust Score/reviews:** unchanged; no authorization event creates an input.
+- **Notifications:** unchanged.
+
+## Screenshot Review
+
+Open `08_Screenshots/SCREENSHOT_INDEX.md` and verify the customer blocked states, manager success state, admin success state, and mobile blocked state contain only synthetic data.
 
 ## Follow-Up Defects
 
-| ID | Severity | Description | Owner | Required before approval? | Status |
-|---|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD | TBD |
+| ID | Severity | Description | Required before deployment? |
+|---|---|---|---|
+| E3A-BUILD-01 | High | Untouched `pages/support` and `pages/notifications` block production build. | Yes |
+| E3A-SCA-01 | Critical/High | Existing dependency audit advisories require a separate upgrade and regression plan. | Yes for release security gate |
 
 ## Product Owner Decision
 
-- [ ] Approved to close this epic
-- [ ] Changes required
-- [ ] Blocked
-- [ ] Next epic authorized
+- [ ] Approve Phase A implementation
+- [ ] Authorize a narrowly scoped build-blocker repair
+- [ ] Authorize dependency remediation planning
+- [ ] Authorize Phase B after Phase A deployment validation
 
-**Decision notes:** TBD
+Phase B and Epic 4 remain unauthorized.

@@ -9,7 +9,6 @@ import {
   getAuthSessionCookieName,
   getAuthSessionCookieOptions,
 } from "@/lib/auth-session";
-import { isOwnerAdminUserId } from "@/lib/internal-identities";
 import { sendVendorLoginAlert } from "@/lib/vendor-security";
 
 export type AuthLoginUserPayload = {
@@ -49,9 +48,7 @@ export async function buildSuccessfulLoginResponse(params: {
     availableProfiles: params.user.availableProfiles,
   });
   const isAdminSession =
-    params.user.userType === "admin" ||
-    params.user.availableProfiles.includes("admin") ||
-    isOwnerAdminUserId(params.user.id);
+    params.user.userType === "admin" || params.user.availableProfiles.includes("admin");
 
   if (isAdminSession) {
     response.cookies.set(
@@ -70,16 +67,18 @@ export async function buildSuccessfulLoginResponse(params: {
       sessionCookie,
       getAuthSessionCookieOptions()
     );
-    response.cookies.set("userId", params.user.id, {
-      path: "/",
-      sameSite: "lax",
-      httpOnly: false,
-    });
-    response.cookies.set("session_user_id", params.user.id, {
-      path: "/",
-      sameSite: "lax",
-      httpOnly: false,
-    });
+    if (process.env.NODE_ENV !== "production") {
+      response.cookies.set("userId", params.user.id, {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: false,
+      });
+      response.cookies.set("session_user_id", params.user.id, {
+        path: "/",
+        sameSite: "lax",
+        httpOnly: false,
+      });
+    }
   }
 
   if (params.request) {

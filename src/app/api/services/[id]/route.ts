@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
-import { getUserIdFromRequest } from '@/lib/auth';
 import { accountStatusErrorBody, AccountStatusError, isVendorAccountRestricted } from '@/lib/account-status';
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from '@/lib/media-visibility';
 import { getVendorReviewAggregatesForPublic } from '@/lib/public-review-aggregates';
@@ -24,7 +23,11 @@ import {
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
   withTransientDbRetry,
 } from '@/lib/transient-db-errors';
-import { resolveVendorAccessForUser } from '@/lib/vendor-context';
+import {
+  authorizationErrorResponse,
+  requireActorVendorManager,
+  requireRequestActor,
+} from '@/lib/request-actor';
 
 export async function GET(
   request: NextRequest,
@@ -268,26 +271,12 @@ export async function PUT(
         { status: 404 }
       );
     }
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const actor = await requireRequestActor(request);
     if (isVendorAccountRestricted((existing as any).vendor?.accountStatus)) {
       const statusError = new AccountStatusError('vendor', (existing as any).vendor?.accountStatus);
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
-    const vendorAccess = await resolveVendorAccessForUser(userId, {
-      preferredVendorId: existing.vendorId,
-    });
-    const canMutateService =
-      vendorAccess.vendorId === existing.vendorId &&
-      (vendorAccess.state === 'ACTIVE' || vendorAccess.state === 'PENDING');
-    if (!canMutateService) {
-      return NextResponse.json(
-        { error: 'Forbidden: Vendor ownership required' },
-        { status: 403 }
-      );
-    }
+    requireActorVendorManager(actor, existing.vendorId);
 
     const nextName = body?.name !== undefined ? String(body.name || '').trim() : undefined;
     const nextDescription = body?.description !== undefined ? String(body.description || '').trim() : undefined;
@@ -329,6 +318,8 @@ export async function PUT(
       message: 'Service updated successfully',
     });
   } catch (error) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse;
     console.error('Error updating service:', error);
     return NextResponse.json(
       { error: 'Failed to update service' },
@@ -368,26 +359,12 @@ export async function DELETE(
         { status: 404 }
       );
     }
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const actor = await requireRequestActor(request);
     if (isVendorAccountRestricted((existing as any).vendor?.accountStatus)) {
       const statusError = new AccountStatusError('vendor', (existing as any).vendor?.accountStatus);
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
-    const vendorAccess = await resolveVendorAccessForUser(userId, {
-      preferredVendorId: existing.vendorId,
-    });
-    const canMutateService =
-      vendorAccess.vendorId === existing.vendorId &&
-      (vendorAccess.state === 'ACTIVE' || vendorAccess.state === 'PENDING');
-    if (!canMutateService) {
-      return NextResponse.json(
-        { error: 'Forbidden: Vendor ownership required' },
-        { status: 403 }
-      );
-    }
+    requireActorVendorManager(actor, existing.vendorId);
 
     const referenceCount =
       existing._count.bookings +
@@ -425,6 +402,8 @@ export async function DELETE(
       message: 'Service archived. Existing work records and customer history were preserved.',
     });
   } catch (error) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse;
     console.error('Error deleting service:', error);
     return NextResponse.json(
       { error: 'Failed to delete service' },

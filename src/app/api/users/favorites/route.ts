@@ -27,10 +27,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const requestedUserId = String(searchParams.get("userId") || "").trim();
     const countsOnly = searchParams.get("countsOnly") === "1";
-    const authUserId = await getUserIdFromRequest(request);
-    const userId = authUserId || requestedUserId || null;
+    const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (requestedUserId && requestedUserId !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     await ensureUserAccountCanAct(userId);
 
@@ -189,26 +191,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authUserId = await getUserIdFromRequest(request);
+    const userId = await getUserIdFromRequest(request);
     const { searchParams } = new URL(request.url);
-    const headerUserId = String(request.headers.get("x-user-id") || "").trim();
 
     const body = await request.json();
     const requestedUserId = String(body?.userId || searchParams.get("userId") || "").trim();
-    const userId = authUserId || headerUserId || requestedUserId || null;
     if (!userId) {
-      return NextResponse.json(
-        {
-          error: "Authentication required",
-          ...(process.env.NODE_ENV === "development"
-            ? {
-                details:
-                  "No user identity found from auth token/cookies, x-user-id header, or userId fallback",
-              }
-            : {}),
-        },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (requestedUserId && requestedUserId !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     await ensureUserAccountCanAct(userId);
     const serviceId = String(body?.serviceId || body?.service_id || "").trim();
@@ -241,19 +233,6 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json({ error: "Service unavailable" }, { status: 404 });
     }
-
-    // Transitional compatibility: ensure user row exists for FK-backed favorites.
-    // Some signed-in customer surfaces currently operate with local auth context IDs.
-    await prisma.user.upsert({
-      where: { id: userId },
-      update: {},
-      create: {
-        id: userId,
-        name: String(body?.userName || "Customer"),
-        email: String(body?.userEmail || `${userId}@reliance.local`),
-      },
-      select: { id: true },
-    });
 
     const favorite = await prisma.favorite.upsert({
       where: {

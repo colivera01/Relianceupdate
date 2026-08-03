@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { prisma } from "@/server/db";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import { normalizeAccountStatus } from "@/lib/account-status-shared";
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 14;
 const TOKEN_VERSION = 1;
@@ -126,13 +127,16 @@ export async function resolveEmployeeCaptureAccess(
       userId: true,
       role: true,
       status: true,
-      user: { select: { name: true } },
+      user: { select: { name: true, accountStatus: true } },
+      vendor: { select: { accountStatus: true } },
     },
   });
   const normalizedRole = String(membership?.role || "").trim().toUpperCase();
   const normalizedStatus = String(membership?.status || "").trim().toUpperCase();
   if (!membership || membership.vendorId !== claims.vendorId || normalizedRole !== "EMPLOYEE") return null;
-  if (normalizedStatus === "DENIED" || normalizedStatus === "REVOKED") return null;
+  if (normalizedStatus !== "ACTIVE") return null;
+  if (normalizeAccountStatus(membership.user?.accountStatus) !== "active") return null;
+  if (normalizeAccountStatus(membership.vendor?.accountStatus) !== "active") return null;
 
   const booking = await prisma.booking.findFirst({
     where: { id: claims.bookingId, vendorId: claims.vendorId },

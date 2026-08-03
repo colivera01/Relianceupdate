@@ -1,7 +1,6 @@
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { isUserAccountRestricted, isVendorAccountRestricted, normalizeAccountStatus } from "@/lib/account-status";
-import { isOwnerAdminIdentity, isOwnerAdminUserId } from "@/lib/internal-identities";
 
 export type VendorAccessState = "ACTIVE" | "PENDING" | "RESTRICTED" | "NONE";
 
@@ -94,18 +93,11 @@ export async function resolveVendorAccessForUser(
   userId: string,
   options?: ResolveVendorAccessOptions
 ): Promise<VendorAccessContext> {
-  if (isOwnerAdminUserId(userId)) {
-    return toVendorAccessContext(userId, null, "NONE");
-  }
-
   const preferredVendorId = options?.preferredVendorId?.trim();
   const user = await (prisma as any).user.findUnique({
     where: { id: userId },
     select: { id: true, email: true, phone: true, accountStatus: true },
   });
-  if (isOwnerAdminIdentity(user)) {
-    return toVendorAccessContext(userId, null, "NONE");
-  }
   if (user && isUserAccountRestricted(user.accountStatus)) {
     return {
       state: "RESTRICTED",
@@ -135,25 +127,9 @@ export async function resolveVendorAccessForUser(
     },
   });
 
-  const fallbackMemberships =
-    memberships.length === 0 && preferredVendorId
-      ? await (prisma as any).vendorMembership.findMany({
-          where: { userId },
-          select: {
-            id: true,
-            vendorId: true,
-            status: true,
-            role: true,
-            requestedAt: true,
-            approvedAt: true,
-            vendor: { select: MEMBERSHIP_VENDOR_SELECT },
-          },
-        })
-      : memberships;
+  if (!memberships.length) return toVendorAccessContext(userId, null, "NONE");
 
-  if (!fallbackMemberships.length) return toVendorAccessContext(userId, null, "NONE");
-
-  const ranked = [...fallbackMemberships].sort((a: any, b: any) => {
+  const ranked = [...memberships].sort((a: any, b: any) => {
     const statusA = normalizeMembershipStatus(a.status, a.approvedAt);
     const statusB = normalizeMembershipStatus(b.status, b.approvedAt);
     const roleA = normalizeMembershipRole(a.role);

@@ -83,11 +83,9 @@ export default function ProfileToggle({
       } else {
         const error = await response.json().catch(() => ({}));
         console.error('Profile switch failed:', error);
-        navigateToRole();
       }
     } catch (error) {
       console.error('Profile switch error:', error);
-      navigateToRole();
     } finally {
       setIsLoading(false);
     }

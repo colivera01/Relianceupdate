@@ -1,5 +1,5 @@
 // Main SDK Index - Export all SDK modules
-// Favorites: canonical implementation is `favoritesSDK` (customer id + `x-user-id`); `usersSDK` mirrors list/add/remove via `api` client only.
+// Favorites: canonical implementation is `favoritesSDK`; the server derives identity from the signed session and current database ownership.
 export * from './auth';
 export * from './bookings';
 export * from './services';

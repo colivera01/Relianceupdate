@@ -9,22 +9,13 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   try {
     const authUserId = await getUserIdFromRequest(request);
     const { searchParams } = new URL(request.url);
-    const headerUserId = String(request.headers.get("x-user-id") || "").trim();
     const requestedUserId = String(searchParams.get("userId") || "").trim();
-    const userId = authUserId || headerUserId || requestedUserId || null;
+    const userId = authUserId;
     if (!userId) {
-      return NextResponse.json(
-        {
-          error: "Authentication required",
-          ...(process.env.NODE_ENV === "development"
-            ? {
-                details:
-                  "No user identity found from auth token/cookies, x-user-id header, or userId fallback",
-              }
-            : {}),
-        },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    if (requestedUserId && requestedUserId !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     await ensureUserAccountCanAct(userId);
 

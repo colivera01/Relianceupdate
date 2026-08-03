@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSessionClaimsFromRequest, getAuthSessionCookieName, getAuthSessionCookieOptions } from "@/lib/auth-session";
-import { getVendorSessionTimeoutStatus, hasVendorAccessInSession } from "@/lib/vendor-security";
+import { getVendorSessionTimeoutStatus } from "@/lib/vendor-security";
+import {
+  authorizationErrorResponse,
+  requireRequestActor,
+} from "@/lib/request-actor";
 
 function clearAuthCookies(response: NextResponse) {
   response.cookies.set(getAuthSessionCookieName(), "", {
@@ -21,19 +25,10 @@ function clearAuthCookies(response: NextResponse) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = getAuthSessionClaimsFromRequest(request);
-    if (!session?.userId) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "NO_ACTIVE_SESSION",
-          message: "Sign in to continue.",
-        },
-        { status: 401 }
-      );
-    }
+    const actor = await requireRequestActor(request);
+    const session = getAuthSessionClaimsFromRequest(request)!;
 
-    if (!hasVendorAccessInSession(session)) {
+    if (actor.vendorMemberships.length === 0) {
       return NextResponse.json({
         ok: true,
         applies: false,
@@ -67,6 +62,8 @@ export async function GET(request: NextRequest) {
         : 60_000,
     });
   } catch (error) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse as NextResponse;
     console.error("[vendor/session-guard] GET error", error);
     return NextResponse.json(
       {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "./route";
-import { requireVendorMembership } from "@/lib/membership-auth";
+import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
 import { requireVerifiedEmailForAction } from "@/lib/email-verification-enforcement";
 import { PROMOTION_HOME_LAUNCH_BLOCK_MESSAGE } from "@/lib/promoted-listings";
 
@@ -48,6 +48,7 @@ vi.mock("@/lib/admin-audit", () => ({
 }));
 
 vi.mock("@/lib/membership-auth", () => ({
+  requireVendorManager: vi.fn(),
   requireVendorMembership: vi.fn(),
 }));
 
@@ -68,6 +69,12 @@ describe("vendor promotion request route", () => {
       userId: "user-1",
       role: "manager",
     } as any);
+    vi.mocked(requireVendorManager).mockReset();
+    vi.mocked(requireVendorManager).mockResolvedValue({
+      membershipId: "membership-1",
+      vendorId: "vendor-1",
+      userId: "user-1",
+    });
     vi.mocked(requireVerifiedEmailForAction).mockReset();
     vi.mocked(requireVerifiedEmailForAction).mockResolvedValue(null);
 
@@ -191,5 +198,25 @@ describe("vendor promotion request route", () => {
     expect(json.error).toBe(PROMOTION_HOME_LAUNCH_BLOCK_MESSAGE);
     expect(hoisted.vendorFindUnique).not.toHaveBeenCalled();
     expect(hoisted.serviceFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("POST requires exact manager authority", async () => {
+    vi.mocked(requireVendorManager).mockRejectedValue(
+      new Error("Forbidden: Manager access required")
+    );
+
+    const res = await POST(
+      new Request("http://localhost/api/vendor/promotion-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          vendorId: "vendor-1",
+          serviceId: "service-1",
+          packageKey: "browse-local-7-day",
+        }),
+      })
+    );
+
+    expect(res.status).toBe(403);
+    expect(hoisted.promotionCampaignCreate).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   createAuthBearerToken,
   createAuthSessionCookie,
-  getAdminAuthSessionClaimsFromRequest,
   getAdminApiSessionCookieName,
   getAdminApiSessionCookieOptions,
   getAdminUiSessionCookieName,
@@ -10,30 +9,19 @@ import {
 } from "@/lib/auth-session";
 import { findDbCredentialByUserId } from "@/lib/auth-credentials";
 import { buildAuthLoginUserPayload } from "@/lib/auth-login-user";
-import { isOwnerAdminUserId } from "@/lib/internal-identities";
+import { requirePlatformRole } from "@/lib/request-actor";
 
 export async function GET(request: Request) {
   try {
-    const session = getAdminAuthSessionClaimsFromRequest(request);
-    const hasAdminProfile =
-      session?.userType === "admin" ||
-      session?.availableProfiles?.includes("admin") ||
-      isOwnerAdminUserId(session?.userId);
-
-    if (!session?.userId || !session.email || !hasAdminProfile) {
-      return NextResponse.json(
-        {
-          authenticated: false,
-          error: "No active admin session",
-        },
-        { status: 401 }
-      );
+    const actor = await requirePlatformRole(request, "ADMIN");
+    if (!actor.email) {
+      return NextResponse.json({ authenticated: false, error: "No active admin session" }, { status: 401 });
     }
 
-    const credential = await findDbCredentialByUserId(session.userId).catch(() => null);
+    const credential = await findDbCredentialByUserId(actor.userId).catch(() => null);
     const user = await buildAuthLoginUserPayload({
-      userId: session.userId,
-      email: session.email,
+      userId: actor.userId,
+      email: actor.email,
       emailVerifiedAt: credential?.emailVerifiedAt ?? null,
     });
 

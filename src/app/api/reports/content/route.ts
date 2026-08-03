@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { getUserIdFromRequest, getVendorIdFromRequest } from "@/lib/auth";
 import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
 import {
   accountStatusErrorBody,
   AccountStatusError,
-  ensureUserAccountCanAct,
-  ensureVendorAccountCanOperate,
 } from "@/lib/account-status";
 import { isTransientDbConnectivityError, PUBLIC_DB_UNAVAILABLE_CODE } from "@/lib/transient-db-errors";
+import {
+  authorizationErrorResponse,
+  AuthorizationError,
+  requireRequestActor,
+} from "@/lib/request-actor";
 
 const TARGET_TYPES = new Set(["review", "media_asset"]);
 const REASONS = new Set([
@@ -38,37 +40,35 @@ function normalizeTargetType(value: unknown): string {
 }
 
 async function resolveReporter(request: Request, body: any) {
-  const userId = await getUserIdFromRequest(request);
+  const actor = await requireRequestActor(request);
   const requestedRole = normalizeString(body?.reporterRole).toLowerCase();
-  const roleHeader = normalizeString(request.headers.get("x-user-role")).toLowerCase();
-  const explicitVendorId = normalizeString(body?.reporterVendorId || request.headers.get("x-vendor-id"));
-  let vendorId: string | null = explicitVendorId || null;
+  const explicitVendorId = normalizeString(body?.reporterVendorId);
 
-  if (!vendorId && (requestedRole === "vendor" || roleHeader === "vendor")) {
-    vendorId = await getVendorIdFromRequest(request);
+  if (actor.platformRoles.includes("ADMIN")) {
+    return { reporterRole: "admin", reporterUserId: actor.userId, reporterVendorId: null };
   }
 
-  if (!userId && !vendorId) {
-    return null;
-  }
-  if (userId) {
-    await ensureUserAccountCanAct(userId);
-  }
-  if (vendorId) {
-    await ensureVendorAccountCanOperate(vendorId);
+  if (requestedRole === "vendor") {
+    const vendorId = explicitVendorId ||
+      (actor.vendorMemberships.length === 1 ? actor.vendorMemberships[0].vendorId : "");
+    const membership = actor.vendorMemberships.find(
+      (candidate) => candidate.vendorId === vendorId
+    );
+    if (!membership) {
+      throw new AuthorizationError(
+        "FORBIDDEN",
+        "Vendor membership required.",
+        403
+      );
+    }
+    return {
+      reporterRole: "vendor",
+      reporterUserId: actor.userId,
+      reporterVendorId: membership.vendorId,
+    };
   }
 
-  if (requestedRole === "vendor" && vendorId) {
-    return { reporterRole: "vendor", reporterUserId: userId, reporterVendorId: vendorId };
-  }
-  if (roleHeader === "admin") {
-    return { reporterRole: "admin", reporterUserId: userId, reporterVendorId: vendorId };
-  }
-  if (vendorId && !userId) {
-    return { reporterRole: "vendor", reporterUserId: null, reporterVendorId: vendorId };
-  }
-
-  return { reporterRole: "customer", reporterUserId: userId, reporterVendorId: vendorId };
+  return { reporterRole: "customer", reporterUserId: actor.userId, reporterVendorId: null };
 }
 
 async function resolveTarget(targetType: string, targetId: string) {
@@ -122,7 +122,7 @@ async function resolveTarget(targetType: string, targetId: string) {
   };
 }
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   try {
     const body = await request.json().catch(() => ({}));
     const reporter = await resolveReporter(request, body);
@@ -242,6 +242,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: 201 }
     );
   } catch (error: any) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse;
     console.error("[reports/content] POST error:", error);
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });

@@ -1,30 +1,22 @@
-# Epic 3 Checklist Snapshot
+# Epic 3 Phase A Checklist Snapshot
 
-**Epic:** Trusted Accounts and Role Isolation
-**Snapshot date:** TBD
-**Starting checklist version / commit:** TBD
-**Ending checklist version / commit:** TBD
+**Snapshot date:** 2026-08-02
+**Starting commit:** `43c18f9282d14567ce4c40b1fab32bfb97126817`
 
-## Referenced Rows
+| Checklist item | Phase A state | Evidence | Remaining owner |
+|---|---|---|---|
+| SEC-01 Canonical identity | Implemented locally | Actor/session tests; protected-route inventory | Phase B for durable sessions |
+| SEC-02 Database authorization | Implemented locally | Membership/ownership matrices | Maintenance |
+| SEC-03 IDOR/direct routes | Implemented locally | Unit/integration/Playwright | Release security review |
+| SEC-06 Response minimization | Implemented for affected routes | Route tests and code review | Shared |
+| SEC-09 Security audit evidence | Partially implemented | Admin grants/denials; no raw secrets | Later audit epic |
+| ADM-02 Database admin authority | Implemented locally | Migration and DB verification | Maintenance |
+| ADM-03 Admin session isolation | Implemented locally | Unit and Playwright denial/success | Phase B revocation |
+| ADM-04 Admin direct-route/API protection | Implemented locally | Inventory and tests | Release review |
+| PROD-03 Role navigation boundaries | Improved | Desktop/mobile direct-route screenshots | Full release link matrix remains |
+| TEST-01/02/03 | Improved | 206 focused tests plus 5 Playwright passes | Full release matrix remains |
+| TEST-11 | Partial | 12 unrelated full-suite failures documented | Owning epics |
+| TEST-14 | Partial | Auth matrix pass; dependency audit has open critical/high findings | Pre-beta hardening |
+| SHOT-05/07 | Partial | Phase A desktop/mobile success and blocked states | Release-wide state package remains |
 
-SEC-01 through SEC-03, relevant SEC-06 and SEC-09, role-boundary portions of ADM-02 through ADM-04, PROD-03, TEST-01 through TEST-03, TEST-11, TEST-14, SHOT-05, SHOT-07, and related DOC-* deliverables.
-
-## Row Status Snapshot
-
-| Checklist ID / range | Starting status | Ending status | Evidence | Remaining owner / epic |
-|---|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD |
-
-## Completion Rules
-
-- Update every affected row in the master checklist after implementation.
-- Do not mark a row Beta Ready from code existence alone.
-- Shared rows remain In Progress when later epics still own acceptance criteria.
-- Link tests, screenshots, reports, demo results, and Git evidence.
-- Do not rewrite the roadmap from this snapshot.
-
-## Deferred or Unaffected Rows
-
-| Row | Why unchanged | Future epic |
-|---|---|---|
-| TBD | TBD | TBD |
+No item is marked Beta Ready solely because Phase A code exists. Epic 3 remains in progress and Phase B is unauthorized.

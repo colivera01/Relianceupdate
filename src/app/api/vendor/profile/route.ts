@@ -7,6 +7,11 @@ import { isVendorContextDbTimeoutError, resolveVendorAccessForUser } from "@/lib
 import { getVendorRatingStats } from "@/lib/review-attribution-aggregates";
 import { buildVendorOnboardingState } from "@/lib/vendor-onboarding-state";
 import { VendorProfileResponse, VendorProfileUpdateRequest } from "@/types/vendor";
+import {
+  authorizationErrorResponse,
+  requireActorVendorManager,
+  requireRequestActor,
+} from "@/lib/request-actor";
 
 const VENDOR_PROFILE_SELECT = {
   id: true,
@@ -71,6 +76,13 @@ function normalizeRequiredText(value: unknown): string {
 
 export async function GET(request: Request) {
   try {
+    const actor = await requireRequestActor(request);
+    if (actor.platformRoles.includes("ADMIN")) {
+      return NextResponse.json(
+        { code: "ADMIN_ONLY_ACCOUNT", error: "Admin accounts cannot open vendor profiles." },
+        { status: 403 }
+      );
+    }
     if (process.env.NODE_ENV !== "production") {
       const cookieHeader = request.headers.get("cookie") || "";
       const resolvedUserId = await getUserIdFromRequest(request);
@@ -83,13 +95,7 @@ export async function GET(request: Request) {
         resolvedUserId,
       });
     }
-    const resolvedUserId = await getUserIdFromRequest(request);
-    if (!resolvedUserId) {
-      return NextResponse.json(
-        { code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE", error: "Vendor session context unavailable. Please sign in again." },
-        { status: 401 }
-      );
-    }
+    const resolvedUserId = actor.userId;
     const vendorContext = await resolveVendorAccessForUser(resolvedUserId);
     if (vendorContext.state === "RESTRICTED") {
       const accountType = vendorContext.restrictedAccountType || "vendor";
@@ -241,6 +247,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(response);
   } catch (err) {
+    const authorizationResponse = authorizationErrorResponse(err);
+    if (authorizationResponse) return authorizationResponse;
     console.error("Vendor profile GET error:", err);
     const dbFailure = isVendorContextDbTimeoutError(err);
     return NextResponse.json(
@@ -258,6 +266,13 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    const actor = await requireRequestActor(request);
+    if (actor.platformRoles.includes("ADMIN")) {
+      return NextResponse.json(
+        { code: "ADMIN_ONLY_ACCOUNT", error: "Admin accounts cannot update vendor profiles." },
+        { status: 403 }
+      );
+    }
     if (process.env.NODE_ENV !== "production") {
       const cookieHeader = request.headers.get("cookie") || "";
       const resolvedUserId = await getUserIdFromRequest(request);
@@ -270,13 +285,7 @@ export async function PUT(request: Request) {
         resolvedUserId,
       });
     }
-    const resolvedUserId = await getUserIdFromRequest(request);
-    if (!resolvedUserId) {
-      return NextResponse.json(
-        { code: "VENDOR_SESSION_CONTEXT_UNAVAILABLE", error: "Vendor session context unavailable. Please sign in again." },
-        { status: 401 }
-      );
-    }
+    const resolvedUserId = actor.userId;
     const vendorContext = await resolveVendorAccessForUser(resolvedUserId);
     if (vendorContext.state === "RESTRICTED") {
       const accountType = vendorContext.restrictedAccountType || "vendor";
@@ -303,6 +312,14 @@ export async function PUT(request: Request) {
       );
     }
     const vendorId = vendorContext.vendorId;
+    if (membershipStatus === "ACTIVE") {
+      requireActorVendorManager(actor, vendorId);
+    } else if (String(vendorContext.role || "").toUpperCase() !== "MANAGER") {
+      return NextResponse.json(
+        { code: "VENDOR_MANAGER_REQUIRED", error: "Vendor manager access required." },
+        { status: 403 }
+      );
+    }
 
     const body = (await request.json()) as VendorProfileUpdateRequest;
 
@@ -569,6 +586,8 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(response);
   } catch (err) {
+    const authorizationResponse = authorizationErrorResponse(err);
+    if (authorizationResponse) return authorizationResponse;
     console.error("Vendor profile PUT error:", err);
     const dbFailure = isVendorContextDbTimeoutError(err);
     return NextResponse.json(

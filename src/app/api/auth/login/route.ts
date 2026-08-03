@@ -8,8 +8,8 @@ import {
 } from "@/lib/account-status";
 import {
   isInternalDemoUserRecord,
-  isOwnerAdminUserId,
 } from "@/lib/internal-identities";
+import { getActivePlatformRolesForUser } from "@/lib/request-actor";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { clearFailedLoginAttempts, getAuthRateLimitKey, getLoginThrottleState, recordFailedLoginAttempt } from "@/lib/auth-rate-limit";
 import { findDbCredentialByEmail, upsertDbCredential } from "@/lib/auth-credentials";
@@ -25,34 +25,6 @@ function normalizeEmail(value: unknown): string {
   return String(value ?? "")
     .trim()
     .toLowerCase();
-}
-
-function getRegistryProfiles(user: any): Set<string> {
-  const profiles = new Set<string>();
-  const normalizedUserType = String(user?.userType ?? "")
-    .trim()
-    .toLowerCase();
-  const hasVendorSignals = Boolean(
-    user?.businessName || user?.category || user?.serviceTypes
-  );
-
-  if (normalizedUserType === "admin") {
-    profiles.add("admin");
-  }
-
-  if (normalizedUserType === "vendor" || normalizedUserType === "both" || hasVendorSignals) {
-    profiles.add("vendor");
-  }
-
-  if (normalizedUserType === "customer" || normalizedUserType === "both") {
-    profiles.add("customer");
-  }
-
-  if (!profiles.size && !hasVendorSignals) {
-    profiles.add("customer");
-  }
-
-  return profiles;
 }
 
 function toSessionUserType(profiles: Set<string>, fallbackUserType: string | undefined): string {
@@ -259,10 +231,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const profileSet = getRegistryProfiles(user);
-    const isOwnerAdminIdentity =
-      isOwnerAdminUserId(resolvedUserId) ||
-      isOwnerAdminUserId(user?.id);
+    // The signed session records the candidate user only. Current database
+    // grants and memberships determine which account views may be advertised.
+    const profileSet = new Set<string>(["customer"]);
+    const platformRoles = await getActivePlatformRolesForUser(resolvedUserId);
+    const isOwnerAdminIdentity = platformRoles.includes("ADMIN");
 
     if (isOwnerAdminIdentity) {
       profileSet.clear();

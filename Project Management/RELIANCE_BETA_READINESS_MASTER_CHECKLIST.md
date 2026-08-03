@@ -1,5 +1,20 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
+## Epic 3 Phase A - Identity Foundation
+
+**Phase status:** **Implemented locally; Product Owner review pending**
+**Starting commit:** `43c18f9282d14567ce4c40b1fab32bfb97126817`
+**Deployment status:** Blocked by unrelated production-build defects
+**Primary evidence:** `Project Management/Epic 3 - Trusted Accounts and Role Isolation/`
+
+Phase A establishes the permanent authorization rule: a signed session identifies the candidate user, while current database state determines authority. Canonical actor, active account, ownership, exact vendor membership, employee membership/assignment, database-backed admin grants, admin/general session separation, direct-route protection, and IDOR controls are implemented and validated locally.
+
+- 206 focused unit/integration regression tests and 5 Playwright role-isolation scenarios pass.
+- All 35 repository migrations are applied and current.
+- Epic 3 is not complete. Phase B remains unauthorized.
+- Deployment is not claimed because untouched `pages/support` and `pages/notifications` block the production build after compilation/type/lint.
+- Existing dependency audit findings remain a release security gate and require separately approved remediation.
+
 ## Epic 2 Completed - Proof-First Platform Shell
 
 **Epic status:** **Completed**
@@ -234,6 +249,23 @@ No item should move to **Beta Ready** solely because a route or screen exists.
 | PROD-11 | Consent/publication/withdrawal phases | vendor dashboard/jobs components and APIs | P4-P6 / PX | Each work record appears in one correct state; counts/cards refresh immediately after actions. | Vendor journey E2E; mutation refresh tests; mobile | Yes | No |
 | PROD-12 | P2/P4/P7; capture authorization | employee pages/APIs; capture token; location; upload | P4 / P7 / PX | Employee always sees scope, audio, stage, stop rules, and reason-specific block recovery. | Employee E2E; camera/device manual; reassignment; failures | Yes | No |
 | PROD-13 | P5-P8; audit evidence | admin dashboard/moderation/accounts/reporting routes | P5-P8 / PX | Admin sees exact version and every required decision; cannot widen missing authority. | Admin E2E; authorization; moderation/dispute scenarios | Yes | No |
+
+## 4A. Security And Admin Isolation
+
+These rows were added narrowly because no authoritative SEC/ADM row table was present in the current checklist. Existing unrelated IDs and rows are unchanged.
+
+| ID | Item | Current implementation | Remaining work | Risk | Status | Beta Ready | Owner |
+|---|---|---|---|---|---|---|---|
+| SEC-01 | Canonical authentication identity | Signed sessions identify only the candidate user; current active `User` is loaded for protected requests. | Durable sessions and lifecycle belong to Phase B. | Critical | Phase A Complete | No | Epic 3 |
+| SEC-02 | Database-derived authorization | Customer ownership, exact active vendor membership, manager role, employee membership/assignment, and platform grants determine authority. | Maintain inventory as routes change. | Critical | Phase A Complete | No | Epic 3 |
+| SEC-03 | API/direct-route and IDOR protection | Affected routes fail closed with ownership/membership/resource-first checks; focused matrices and Playwright pass. | Complete release-wide independent security review. | Critical | Phase A Complete | No | Shared |
+| SEC-06 | Response minimization | Affected denials use 401/403/non-disclosing 404 and do not return unrelated tenant data. | Extend consistency to future routes. | High | In Progress | No | Shared |
+| SEC-09 | Security audit evidence | Admin grants and consequential authorization decisions carry actor/resource evidence without raw secrets. | Complete release-wide immutable audit coverage. | High | In Progress | No | Shared |
+| ADM-02 | Database-backed admin authority | Active `PlatformRoleGrant(ADMIN)` plus current active user is required. | Add lifecycle management in approved future scope. | Critical | Phase A Complete | No | Epic 3 |
+| ADM-03 | Admin session isolation | Admin requires path-scoped signed admin session; general session and bearer fallback are denied. | Durable revocation/logout-everywhere is Phase B. | Critical | Phase A Complete | No | Epic 3 |
+| ADM-04 | Admin route/API protection | Admin layout and affected APIs require the canonical admin policy. | Finish release-wide admin attack-surface review. | Critical | In Progress | No | Shared |
+
+Phase A completion here does not mark Epic 3 or the release Beta Ready. Deployment and Product Owner replay remain open.
 
 ## 5. Legal
 

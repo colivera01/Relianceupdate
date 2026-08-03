@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { createAdminAuditLog } from "@/lib/admin-audit";
 import { createAdminNotificationWithEmail } from "@/lib/admin-notifications";
-import { requireVendorMembership } from "@/lib/membership-auth";
+import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
 import {
   createPromotionPackageSnapshot,
   getPromotionPackageDefinition,
@@ -197,7 +197,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ success: false, error: "vendorId and serviceId are required" }, { status: 400 });
     }
 
-    const membership = await requireVendorMembership(request, vendorId);
+    const membership = await requireVendorManager(request, vendorId);
     const verificationGate = await requireVerifiedEmailForAction({
       userId: membership.userId,
       action: "submit_promotion_request",

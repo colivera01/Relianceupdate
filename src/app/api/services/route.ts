@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db';
-import { getUserIdFromRequest } from '@/lib/auth';
 import { accountStatusErrorBody, AccountStatusError, isVendorAccountRestricted } from '@/lib/account-status';
-import { resolveVendorAccessForUser } from '@/lib/vendor-context';
+import {
+  authorizationErrorResponse,
+  requireActorVendorMembership,
+  requireActorVendorManager,
+  requireRequestActor,
+  resolveRequestActor,
+} from '@/lib/request-actor';
 
 function parsePositiveNumber(value: string | null): number | null {
   if (!value) return null;
@@ -57,9 +62,30 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
     const sortBy = String(searchParams.get('sortBy') || 'created_at').trim().toLowerCase();
     const sortOrder = String(searchParams.get('sortOrder') || 'desc').trim().toLowerCase() === 'asc' ? 'asc' : 'desc';
+    let canViewVendorPrivate = false;
+    if (vendorId) {
+      try {
+        const actor = await resolveRequestActor(request);
+        if (actor) {
+          requireActorVendorMembership(actor, vendorId);
+          canViewVendorPrivate = true;
+        }
+      } catch {
+        canViewVendorPrivate = false;
+      }
+    }
 
     const where: any = {
       ...(vendorId ? { vendorId } : {}),
+      ...(!canViewVendorPrivate
+        ? {
+            isPublished: true,
+            vendor: {
+              isPubliclyListed: true,
+              accountStatus: 'active',
+            },
+          }
+        : {}),
       ...(search
         ? {
             OR: [
@@ -156,10 +182,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const actor = await requireRequestActor(request);
     const vendor = await prisma.vendor.findUnique({
       where: { id: vendorId },
       select: { id: true, accountStatus: true },
@@ -175,12 +198,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(accountStatusErrorBody(statusError), { status: statusError.statusCode });
     }
 
-    const vendorAccess = await resolveVendorAccessForUser(String(userId), {
-      preferredVendorId: vendorId,
-    });
-    if (!vendorAccess.vendorId || vendorAccess.vendorId !== vendorId || (vendorAccess.state !== 'ACTIVE' && vendorAccess.state !== 'PENDING')) {
-      return NextResponse.json({ error: 'Forbidden: Vendor ownership required' }, { status: 403 });
-    }
+    requireActorVendorManager(actor, vendorId);
 
     const created = await prisma.service.create({
       data: {
@@ -211,6 +229,8 @@ export async function POST(request: NextRequest) {
       message: 'Service created successfully',
     });
   } catch (error) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse;
     console.error('Error creating service:', error);
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });

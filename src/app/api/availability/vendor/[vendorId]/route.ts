@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getVendorAvailabilitySlots } from '@/lib/availability-slots';
+import { requireVendorManager } from '@/lib/membership-auth';
 
 export async function GET(
   request: NextRequest,
@@ -19,6 +20,8 @@ export async function GET(
         { status: 400 }
       );
     }
+
+    await requireVendorManager(request, vendorId);
 
     const payload = await getVendorAvailabilitySlots({
       vendorId,
@@ -53,15 +56,6 @@ export async function PUT(
       );
     }
 
-    // TODO: Validate vendor exists and user has permission
-    // const vendor = await VendorModel.findById(vendorId);
-    // if (!vendor) {
-    //   return NextResponse.json(
-    //     { error: 'Vendor not found' },
-    //     { status: 404 }
-    //   );
-    // }
-
     // TODO: Update availability in database
     // await AvailabilityModel.update(vendorId, {
     //   availability_schedule,
@@ -77,9 +71,16 @@ export async function PUT(
     });
   } catch (error) {
     console.error('Error updating availability:', error);
+    const message = error instanceof Error ? error.message : '';
+    if (message.includes('Unauthorized')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (message.includes('Forbidden') || message.includes('Manager access')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     return NextResponse.json(
       { error: 'Failed to update availability' },
       { status: 500 }
     );
   }
-} 
+}

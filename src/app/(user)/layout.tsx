@@ -8,14 +8,13 @@ import { getClientSessionHeaders } from '@/lib/client-session';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { AlertTriangle, LogIn, Video } from 'lucide-react';
-import { isOwnerAdminUserId } from '@/lib/internal-identities';
 import {
   appendAuthNext,
   getCustomerServiceVideoIntent,
 } from '@/lib/auth-next';
 
 function UserLayoutContent({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated, isLoading: authLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [restrictedMessage, setRestrictedMessage] = useState<string | null>(null);
   const pathname = usePathname() || '';
   const searchParams = useSearchParams();
@@ -191,33 +190,6 @@ function UserLayoutContent({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
           {children}
         </main>
-      </div>
-    );
-  }
-
-  const isAdminOnlyAccount =
-    isOwnerAdminUserId(user?.id) ||
-    user?.userType === 'admin' ||
-    user?.availableProfiles?.includes('admin');
-
-  if (isAdminOnlyAccount) {
-    return (
-      <div className="reliance-operator-shell reliance-grid-lines min-h-screen px-6 py-12">
-        <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl items-center justify-center">
-          <div className="w-full rounded-xl border border-blue-300/20 bg-slate-950/85 p-7 text-white shadow-2xl shadow-black/20">
-            <h1 className="text-2xl font-semibold">Admin account</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-300">
-              This browser is currently signed in as {user?.email}. That Admin session is separate from the Customer account.
-            </p>
-            <button
-              type="button"
-              onClick={() => void logout()}
-              className="mt-6 inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              Sign out and switch account
-            </button>
-          </div>
-        </div>
       </div>
     );
   }

@@ -13,41 +13,15 @@ const VENDOR_REGISTRATION_REQUIREMENTS = [
   "Complete admin approval before the vendor account goes live.",
 ];
 
-async function resolveCandidateUser(
-  authenticatedUserId: string | null,
-  legacyUserIdHint: string
-) {
-  if (authenticatedUserId) {
-    return prisma.user.findUnique({
-      where: { id: authenticatedUserId },
-      select: { id: true, email: true },
-    });
-  }
-
-  if (!legacyUserIdHint) {
-    return null;
-  }
-
-  if (legacyUserIdHint.includes("@")) {
-    return prisma.user.findFirst({
-      where: { email: legacyUserIdHint.toLowerCase() },
-      select: { id: true, email: true },
-    });
-  }
-
-  return prisma.user.findUnique({
-    where: { id: legacyUserIdHint },
-    select: { id: true, email: true },
-  });
-}
-
 export async function GET(request: NextRequest) {
   try {
     const authenticatedUserId = await getUserIdFromRequest(request).catch(() => null);
-    const { searchParams } = new URL(request.url);
-    const legacyUserIdHint = String(searchParams.get("userId") || "").trim();
-
-    const user = await resolveCandidateUser(authenticatedUserId, legacyUserIdHint);
+    const user = authenticatedUserId
+      ? await prisma.user.findUnique({
+          where: { id: authenticatedUserId },
+          select: { id: true, email: true },
+        })
+      : null;
     const vendorAccess = user ? await resolveVendorAccessForUser(user.id).catch(() => null) : null;
     const credential = user ? await findDbCredentialByUserId(user.id).catch(() => null) : null;
 

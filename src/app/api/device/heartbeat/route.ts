@@ -2,6 +2,11 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import {
+  authorizationErrorResponse,
+  requireActorVendorMembership,
+  requireRequestActor,
+} from "@/lib/request-actor";
 
 /**
  * POST /api/device/heartbeat
@@ -9,6 +14,7 @@ import { prisma } from "@/server/db";
  */
 export async function POST(request: Request): Promise<NextResponse> {
   try {
+    const actor = await requireRequestActor(request);
     const body = await request.json();
     const { phoneDeviceUid, deviceMeta = {} } = body;
 
@@ -45,22 +51,18 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    // Update lastSeenAt and latest device metadata
-    await (prisma as any).device.update({
-      where: { id: String(device.id) },
-      data: {
-        lastSeenAt: new Date(),
-        model: String(deviceMeta.model || device.model || ""),
-        os: String(deviceMeta.os || device.os || ""),
-        appVersion: String(deviceMeta.appVersion || device.appVersion || ""),
-      },
-    });
+    const actorMembership = requireActorVendorMembership(
+      actor,
+      String(device.vendorId || "")
+    );
 
     // Find active membership for this vendor and user
     // We need to find which user owns this device
     // For simplicity, we'll find by pendingPhoneDeviceUid or by device ownership
     const membership = await (prisma as any).vendorMembership.findFirst({
       where: {
+        id: actorMembership.id,
+        userId: actor.userId,
         vendorId: String(device.vendorId || ""),
         status: "ACTIVE",
         // Find membership where this device was registered
@@ -83,6 +85,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
+    // Only the authenticated device owner may update heartbeat metadata.
+    await (prisma as any).device.update({
+      where: { id: String(device.id) },
+      data: {
+        lastSeenAt: new Date(),
+        model: String(deviceMeta.model || device.model || ""),
+        os: String(deviceMeta.os || device.os || ""),
+        appVersion: String(deviceMeta.appVersion || device.appVersion || ""),
+      },
+    });
+
     return NextResponse.json({
       status: membership.status,
       vendorId: String(device.vendorId || ""),
@@ -90,11 +103,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       role: membership.role,
     });
   } catch (error: any) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse as NextResponse;
     console.error("[device/heartbeat] POST error:", error);
     return NextResponse.json(
-      { error: "Failed to process heartbeat", details: error.message },
+      { error: "Failed to process heartbeat" },
       { status: 500 }
     );
   }
 }
-

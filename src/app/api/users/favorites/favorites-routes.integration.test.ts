@@ -13,7 +13,6 @@ const hoisted = vi.hoisted(() => {
   const favoriteDelete = vi.fn();
   const mediaAssetFindMany = vi.fn();
   const serviceFindUnique = vi.fn();
-  const userUpsert = vi.fn();
 
   const prisma = {
     favorite: {
@@ -25,7 +24,6 @@ const hoisted = vi.hoisted(() => {
     },
     mediaAsset: { findMany: mediaAssetFindMany },
     service: { findUnique: serviceFindUnique },
-    user: { upsert: userUpsert },
   };
 
   return {
@@ -37,7 +35,6 @@ const hoisted = vi.hoisted(() => {
     favoriteDelete,
     mediaAssetFindMany,
     serviceFindUnique,
-    userUpsert,
   };
 });
 
@@ -114,28 +111,14 @@ describe('GET /api/users/favorites', () => {
     expect(hoisted.favoriteCount).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
   });
 
-  it('scopes list to authenticated user when query userId differs (auth wins)', async () => {
+  it('rejects a query that attempts to select another customer', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('alice');
-    hoisted.favoriteCount.mockResolvedValue(1);
-    hoisted.favoriteFindMany.mockResolvedValue([sampleFavoriteRow()]);
-    hoisted.mediaAssetFindMany.mockResolvedValue([]);
     const req = new NextRequest(
       'http://localhost/api/users/favorites?userId=bob&page=1&limit=20'
     );
     const res = await favoritesGET(req);
-    expect(res.status).toBe(200);
-    expect(hoisted.favoriteFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { userId: 'alice' },
-      })
-    );
-    const j = await getJson(res);
-    const favorites = j.favorites as Record<string, unknown>[];
-    expect(favorites).toHaveLength(1);
-    expect(favorites[0].favoriteId).toBe('fav-1');
-    expect(favorites[0].serviceId).toBe('svc-1');
-    expect(favorites[0].vendorName).toBe('Acme Co');
-    expect((j.pagination as { total: number }).total).toBe(1);
+    expect(res.status).toBe(403);
+    expect(hoisted.favoriteFindMany).not.toHaveBeenCalled();
   });
 
   it('returns 200 with normalized favorites and preview when media exists', async () => {
@@ -169,7 +152,6 @@ describe('POST /api/users/favorites', () => {
   beforeEach(() => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.serviceFindUnique.mockReset();
-    hoisted.userUpsert.mockReset();
     hoisted.favoriteUpsert.mockReset();
   });
 
@@ -185,19 +167,8 @@ describe('POST /api/users/favorites', () => {
     expect(hoisted.serviceFindUnique).not.toHaveBeenCalled();
   });
 
-  it('resolves user from x-user-id when auth cookie is absent', async () => {
+  it('does not accept x-user-id as route-level authority', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue(null);
-    hoisted.serviceFindUnique.mockResolvedValue({
-      id: 'svc-1',
-      isPublished: true,
-      vendor: { id: 'v1', isPubliclyListed: true, accountStatus: 'active' },
-    });
-    hoisted.userUpsert.mockResolvedValue({ id: 'header-user' });
-    hoisted.favoriteUpsert.mockResolvedValue({
-      id: 'f-new',
-      serviceId: 'svc-1',
-      createdAt: new Date('2024-04-01T12:00:00.000Z'),
-    });
     const req = new NextRequest('http://localhost/api/users/favorites', {
       method: 'POST',
       headers: {
@@ -207,17 +178,8 @@ describe('POST /api/users/favorites', () => {
       body: JSON.stringify({ serviceId: 'svc-1' }),
     });
     const res = await favoritesPOST(req);
-    expect(res.status).toBe(200);
-    expect(hoisted.userUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'header-user' },
-      })
-    );
-    expect(hoisted.favoriteUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { userId_serviceId: { userId: 'header-user', serviceId: 'svc-1' } },
-      })
-    );
+    expect(res.status).toBe(401);
+    expect(hoisted.favoriteUpsert).not.toHaveBeenCalled();
   });
 
   it('returns 400 when serviceId is missing', async () => {
@@ -243,7 +205,6 @@ describe('POST /api/users/favorites', () => {
     });
     const res = await favoritesPOST(req);
     expect(res.status).toBe(404);
-    expect(hoisted.userUpsert).not.toHaveBeenCalled();
   });
 
   it('returns 200 on upsert (idempotent / duplicate-friendly)', async () => {
@@ -253,7 +214,6 @@ describe('POST /api/users/favorites', () => {
       isPublished: true,
       vendor: { id: 'ven-1', isPubliclyListed: true, accountStatus: 'active' },
     });
-    hoisted.userUpsert.mockResolvedValue({ id: 'u1' });
     hoisted.favoriteUpsert.mockResolvedValue({
       id: 'existing-fav',
       serviceId: 'svc-1',
@@ -279,7 +239,6 @@ describe('POST /api/users/favorites', () => {
       isPublished: true,
       vendor: { id: 'v1', isPubliclyListed: true, accountStatus: 'active' },
     });
-    hoisted.userUpsert.mockResolvedValue({ id: 'u1' });
     hoisted.favoriteUpsert.mockResolvedValue({
       id: 'f2',
       serviceId: 'svc-2',

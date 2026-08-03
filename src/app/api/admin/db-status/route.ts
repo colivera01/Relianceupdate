@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import { requireAdmin } from "@/lib/admin-auth";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await requireAdmin(request);
     const url = process.env.DATABASE_URL || "";
     const provider =
       url.startsWith("sqlserver://") ? "sqlserver" :
@@ -31,7 +33,15 @@ export async function GET() {
       },
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
+    const status = String(e?.message || "").startsWith("Unauthorized")
+      ? 401
+      : String(e?.message || "").startsWith("Forbidden")
+        ? 403
+        : 500;
+    return NextResponse.json(
+      { error: status === 500 ? "Database status check failed" : String(e?.message || "Access denied") },
+      { status }
+    );
   }
 }
 

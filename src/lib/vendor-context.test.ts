@@ -1,9 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  OWNER_ADMIN_BETA_USER_ID,
-  OWNER_ADMIN_EMAIL,
-  OWNER_ADMIN_USER_ID,
-} from "@/lib/internal-identities";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 import { prisma } from "@/server/db";
 
@@ -22,50 +17,66 @@ describe("resolveVendorAccessForUser", () => {
   beforeEach(() => {
     vi.mocked((prisma as any).user.findUnique).mockReset();
     vi.mocked((prisma as any).vendorMembership.findMany).mockReset();
-  });
-
-  it("does not expose a legacy Vendor membership to the designated Admin identity", async () => {
-    const access = await resolveVendorAccessForUser(OWNER_ADMIN_USER_ID);
-
-    expect(access).toMatchObject({
-      state: "NONE",
-      userId: OWNER_ADMIN_USER_ID,
-      vendorId: null,
-      membershipId: null,
-    });
-    expect((prisma as any).user.findUnique).not.toHaveBeenCalled();
-    expect((prisma as any).vendorMembership.findMany).not.toHaveBeenCalled();
-  });
-
-  it("does not expose Vendor membership when the Admin is identified by email", async () => {
     vi.mocked((prisma as any).user.findUnique).mockResolvedValue({
-      id: "replacement-admin-id",
-      email: OWNER_ADMIN_EMAIL,
-      phone: "4075550000",
+      id: "user-1",
+      email: "user-1@example.test",
+      phone: null,
       accountStatus: "active",
     });
-
-    const access = await resolveVendorAccessForUser("replacement-admin-id");
-
-    expect(access).toMatchObject({
-      state: "NONE",
-      userId: "replacement-admin-id",
-      vendorId: null,
-      membershipId: null,
-    });
-    expect((prisma as any).vendorMembership.findMany).not.toHaveBeenCalled();
   });
 
-  it("does not expose legacy Vendor memberships to the beta Admin identity", async () => {
-    const access = await resolveVendorAccessForUser(OWNER_ADMIN_BETA_USER_ID);
+  it("returns no vendor authority when the database has no membership", async () => {
+    vi.mocked((prisma as any).vendorMembership.findMany).mockResolvedValue([]);
+
+    const access = await resolveVendorAccessForUser("user-1");
 
     expect(access).toMatchObject({
       state: "NONE",
-      userId: OWNER_ADMIN_BETA_USER_ID,
+      userId: "user-1",
       vendorId: null,
       membershipId: null,
     });
-    expect((prisma as any).user.findUnique).not.toHaveBeenCalled();
-    expect((prisma as any).vendorMembership.findMany).not.toHaveBeenCalled();
+  });
+
+  it("derives vendor authority from the current database membership", async () => {
+    vi.mocked((prisma as any).vendorMembership.findMany).mockResolvedValue([
+      {
+        id: "membership-1",
+        vendorId: "vendor-1",
+        status: "ACTIVE",
+        role: "MANAGER",
+        requestedAt: new Date("2026-08-02T00:00:00.000Z"),
+        approvedAt: new Date("2026-08-02T00:01:00.000Z"),
+        vendor: {
+          id: "vendor-1",
+          name: "Synthetic Vendor",
+          accountStatus: "active",
+          status: "approved",
+          onboardingStatus: "approved",
+          published: true,
+        },
+      },
+    ]);
+
+    const access = await resolveVendorAccessForUser("user-1");
+
+    expect(access).toMatchObject({
+      state: "ACTIVE",
+      userId: "user-1",
+      vendorId: "vendor-1",
+      membershipId: "membership-1",
+      role: "MANAGER",
+    });
+  });
+
+  it("does not fall back to another membership for an unauthorized preferred vendor", async () => {
+    vi.mocked((prisma as any).vendorMembership.findMany).mockResolvedValue([]);
+
+    const access = await resolveVendorAccessForUser("user-1", {
+      preferredVendorId: "vendor-not-owned",
+    });
+
+    expect(access.state).toBe("NONE");
+    expect((prisma as any).vendorMembership.findMany).toHaveBeenCalledTimes(1);
   });
 });

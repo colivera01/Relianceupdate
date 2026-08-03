@@ -5,6 +5,7 @@ import { resolveVendorAccessForUser } from "@/lib/vendor-context";
 
 const hoisted = vi.hoisted(() => {
   const userFindFirst = vi.fn();
+  const platformRoleGrantFindMany = vi.fn();
   const findDbCredentialByEmail = vi.fn();
   const upsertDbCredential = vi.fn();
   const findRegisteredUserByEmail = vi.fn();
@@ -14,8 +15,10 @@ const hoisted = vi.hoisted(() => {
   return {
     prisma: {
       user: { findFirst: userFindFirst },
+      platformRoleGrant: { findMany: platformRoleGrantFindMany },
     },
     userFindFirst,
+    platformRoleGrantFindMany,
     findDbCredentialByEmail,
     upsertDbCredential,
     findRegisteredUserByEmail,
@@ -58,6 +61,8 @@ async function readJson(res: Response) {
 describe("POST /api/auth/login account status", () => {
   beforeEach(() => {
     hoisted.userFindFirst.mockReset();
+    hoisted.platformRoleGrantFindMany.mockReset();
+    hoisted.platformRoleGrantFindMany.mockResolvedValue([]);
     hoisted.findDbCredentialByEmail.mockReset();
     hoisted.upsertDbCredential.mockReset();
     hoisted.findRegisteredUserByEmail.mockReset();

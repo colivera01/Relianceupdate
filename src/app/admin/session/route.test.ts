@@ -3,6 +3,7 @@ import { createAuthSessionCookie } from "@/lib/auth-session";
 import { findDbCredentialByUserId } from "@/lib/auth-credentials";
 import { buildAuthLoginUserPayload } from "@/lib/auth-login-user";
 import { GET } from "./route";
+import { requirePlatformRole } from "@/lib/request-actor";
 
 vi.mock("@/lib/auth-credentials", () => ({
   findDbCredentialByUserId: vi.fn(),
@@ -12,8 +13,19 @@ vi.mock("@/lib/auth-login-user", () => ({
   buildAuthLoginUserPayload: vi.fn(),
 }));
 
+vi.mock("@/lib/request-actor", () => ({
+  requirePlatformRole: vi.fn(),
+}));
+
 describe("GET /admin/session", () => {
   beforeEach(() => {
+    vi.mocked(requirePlatformRole).mockResolvedValue({
+      userId: "admin-user",
+      email: "admin@example.com",
+      accountStatus: "active",
+      platformRoles: ["ADMIN"],
+      vendorMemberships: [],
+    });
     vi.mocked(findDbCredentialByUserId).mockResolvedValue(null);
     vi.mocked(buildAuthLoginUserPayload).mockResolvedValue({
       id: "admin-user",

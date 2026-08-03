@@ -97,6 +97,15 @@ describe('GET /api/services/[id]', () => {
           sessionType: 'booking_stage_capture',
         },
       },
+      {
+        id: 'asset-progress',
+        mimeType: 'video/mp4',
+        blobUrl: 'https://cdn.example/progress.mp4',
+        mediaSession: {
+          vendorJobVideoStage: 'IN_PROGRESS',
+          sessionType: 'booking_stage_capture',
+        },
+      },
     ]);
 
     hoisted.reviewCount.mockResolvedValue(5);
@@ -113,7 +122,7 @@ describe('GET /api/services/[id]', () => {
     const json = await readJson(res);
     expect(json.service.publicReviewCount).toBe(5);
     expect(json.service.primaryProofVideoUrl).toBe('https://cdn.example/video.mp4');
-    expect(json.service.videoItems).toHaveLength(3);
+    expect(json.service.videoItems).toHaveLength(4);
     expect(json.service.videoItems.filter((item: any) => item.isPrimaryProofVideo)).toEqual([
       {
         createdAt: null,

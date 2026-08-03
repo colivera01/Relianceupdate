@@ -1,67 +1,31 @@
 import { NextResponse } from "next/server";
-import { getUserIdFromRequest, verifyJwt } from "@/lib/auth";
-import { verifyAuthBearerToken } from "@/lib/auth-session";
 import {
   isVendorContextDbTimeoutError,
   resolveVendorAccessForUser,
 } from "@/lib/vendor-context";
 import { getRestrictedAccountMessage } from "@/lib/account-status";
+import {
+  authorizationErrorResponse,
+  requireRequestActor,
+} from "@/lib/request-actor";
 
-function parseBearerToken(request: Request): string | null {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.toLowerCase().startsWith("bearer ")) return null;
-  return authHeader.slice("Bearer ".length).trim() || null;
-}
-
-function parseCookie(request: Request, keys: string[]): string | null {
-  const raw = request.headers.get("cookie");
-  if (!raw) return null;
-  const parts = raw.split(";").map((part) => part.trim());
-  for (const key of keys) {
-    const prefix = `${key}=`;
-    const match = parts.find((part) => part.startsWith(prefix));
-    if (match) {
-      const value = decodeURIComponent(match.slice(prefix.length)).trim();
-      if (value) return value;
-    }
+function getVendorIdHintFromRequest(request: Request): string | null {
+  const url = new URL(request.url);
+  const queryVendorId = String(url.searchParams.get("vendorId") || "").trim();
+  if (queryVendorId) return queryVendorId;
+  if (process.env.NODE_ENV !== "production") {
+    return String(request.headers.get("x-vendor-id") || "").trim() || null;
   }
   return null;
-}
-
-async function getVendorIdHintFromRequest(request: Request): Promise<string | null> {
-  const isDev = process.env.NODE_ENV !== "production";
-  const headerVendorId = request.headers.get("x-vendor-id")?.trim();
-  if (isDev && headerVendorId) return headerVendorId;
-
-  const token = parseBearerToken(request);
-  if (token) {
-    const signedClaims = verifyAuthBearerToken(token);
-    if (signedClaims?.userId) {
-      return null;
-    }
-    if (isDev) {
-      try {
-        const payload = await verifyJwt(token);
-        const jwtVendorId = String(payload?.vendorId || "").trim();
-        if (jwtVendorId) return jwtVendorId;
-      } catch {
-        // Ignore malformed bearer token here; user resolution handles auth outcomes.
-      }
-    }
-  }
-
-  return parseCookie(request, ["vendorId", "vendor_id", "vid", "session_vendor_id"]);
 }
 
 export async function GET(request: Request) {
   const isDev = process.env.NODE_ENV !== "production";
   const headerUserId = request.headers.get("x-user-id");
   const headerVendorId = request.headers.get("x-vendor-id");
-  const bearerToken = parseBearerToken(request);
-
   if (isDev) {
     console.info("[api/vendor/context] request headers", {
-      hasAuthorization: Boolean(bearerToken),
+      hasAuthorization: Boolean(request.headers.get("authorization")),
       hasCookie: Boolean(request.headers.get("cookie")),
       headerUserId: headerUserId || null,
       headerVendorId: headerVendorId || null,
@@ -69,29 +33,36 @@ export async function GET(request: Request) {
   }
 
   try {
-    const resolvedUserId = await getUserIdFromRequest(request);
-
-    const resolvedVendorId = await getVendorIdHintFromRequest(request);
+    const actor = await requireRequestActor(request);
+    if (actor.platformRoles.includes("ADMIN")) {
+      return NextResponse.json(
+        { success: false, code: "ADMIN_ONLY_ACCOUNT", message: "Admin accounts cannot open vendor workspaces." },
+        { status: 403 }
+      );
+    }
+    const requestedVendorId = getVendorIdHintFromRequest(request);
+    const resolvedVendorId = requestedVendorId ||
+      (actor.vendorMemberships.length === 1 ? actor.vendorMemberships[0].vendorId : null);
 
     if (isDev) {
       console.info("[api/vendor/context] resolved context identifiers", {
-        resolvedUserId: resolvedUserId || null,
+        resolvedUserId: actor.userId,
         resolvedVendorId: resolvedVendorId || null,
       });
     }
 
-    if (!resolvedUserId) {
+    if (!resolvedVendorId) {
       return NextResponse.json(
         {
           success: false,
-          code: "VENDOR_CONTEXT_ERROR",
-          message: "Missing user identity. Provide a valid signed session or Authorization bearer token.",
+          code: "VENDOR_CONTEXT_REQUIRED",
+          message: "Choose a business workspace to continue.",
         },
-        { status: 401 }
+        { status: 400 }
       );
     }
 
-    const context = await resolveVendorAccessForUser(resolvedUserId, {
+    const context = await resolveVendorAccessForUser(actor.userId, {
       preferredVendorId: resolvedVendorId,
     });
 
@@ -174,6 +145,8 @@ export async function GET(request: Request) {
       { status: 403 }
     );
   } catch (error: any) {
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse as NextResponse;
     const dbFailure = isVendorContextDbTimeoutError(error);
     const message = dbFailure
       ? "Database connection failure while resolving vendor context."

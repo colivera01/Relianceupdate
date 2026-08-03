@@ -27,7 +27,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const membership = await prisma.vendorMembership.findFirst({
       where: { userId, status: "ACTIVE", role: "EMPLOYEE" },
       orderBy: { approvedAt: "desc" },
-      select: { id: true, vendorId: true },
+      select: { id: true, vendorId: true, pendingPhoneDeviceUid: true },
     });
     if (!membership) {
       return NextResponse.json({ error: "Active employee membership required" }, { status: 403 });
@@ -35,6 +35,23 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const now = new Date();
     const existing = await (prisma as any).device.findUnique({ where: { deviceUid } });
+    if (existing) {
+      const activeOwner = await prisma.deviceAssignment.findFirst({
+        where: { deviceId: existing.id, unassignedAt: null },
+        select: { membershipId: true },
+      });
+      const isCurrentOwner = activeOwner?.membershipId === membership.id;
+      const isApprovedLegacyClaim =
+        !activeOwner &&
+        existing.vendorId === membership.vendorId &&
+        membership.pendingPhoneDeviceUid === deviceUid;
+      if (!isCurrentOwner && !isApprovedLegacyClaim) {
+        return NextResponse.json(
+          { error: "This device is already connected to another account." },
+          { status: 409 }
+        );
+      }
+    }
     const device = existing
       ? await (prisma as any).device.update({
           where: { id: existing.id },

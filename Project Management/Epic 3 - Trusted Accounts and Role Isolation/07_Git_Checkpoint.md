@@ -1,46 +1,56 @@
-# Epic 3 Git Checkpoint
-
-**Epic:** Trusted Accounts and Role Isolation
+# Epic 3 Phase A Git Checkpoint
 
 ## Branch
 
-TBD
+`cursor-latest-build`
 
 ## Commit
 
-- Starting commit: TBD
-- Final commit: TBD
-- Remote: TBD
-- Push result: Not run
+- Starting commit: `43c18f9282d14567ce4c40b1fab32bfb97126817`
+- Phase A commit: recorded after scoped commit
+- Remote: `origin` (`Relianceupdate`)
+- Push result: pending final validation
 
 ## Files Changed
 
-| File | Type | Included intentionally |
-|---|---|---|
-| TBD | TBD | Yes / No |
+- Canonical actor, session capability, membership, and admin authorization libraries.
+- Protected customer/vendor layouts and server role boundaries.
+- Affected protected APIs and compatibility SDK callers.
+- Additive `PlatformRoleGrant` schema/migration.
+- Characterization, unit, integration, and Playwright tests.
+- Epic 3 Phase A project-management evidence and controlled screenshots.
+
+Excluded intentionally: `tsconfig.tsbuildinfo`, `output/`, `test-results/`, `.env*`, logs, credentials, and unrelated generated files.
 
 ## Build Status
 
-| Command | Result | Date | Notes |
-|---|---|---|---|
-| Not run | Not run | TBD | |
+| Command | Result | Notes |
+|---|---|---|
+| `npx tsc --noEmit --pretty false --incremental false` | Pass | Clean |
+| `npm run build` with 6 GB heap | Blocked | Compile/type/lint pass; untouched `pages/support` and `pages/notifications` have invalid page exports |
 
 ## Test Status
 
-| Suite / command | Result | Date | Notes |
-|---|---|---|---|
-| Not run | Not run | TBD | |
+| Suite | Result |
+|---|---|
+| Focused auth/security | 42/42 pass |
+| Broad Phase A | 109/109 pass |
+| Epic 1/review/Trust Score | 97/97 pass |
+| Vendor-context | 4/4 pass |
+| Playwright role isolation | 5/5 pass |
+| Full suite | 12 known unrelated failures |
+| Prisma migration status | 35/35 applied |
+| Dependency audit | Existing 1 critical, 16 high, 7 moderate, 1 low advisories |
 
 ## Known Issues
 
-| Issue | Epic-related? | Severity | Blocks approval? | Owner |
-|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD |
+Deployment is not permitted until the unrelated production-build blocker is resolved or explicitly dispositioned. Dependency advisories remain a release security gate. Phase B remains unauthorized.
 
 ## Commit Scope Verification
 
-- [ ] No `.env`, credentials, tokens, private keys, or connection strings.
-- [ ] No logs, temporary folders, generated artifacts, or screenshots unless explicitly approved.
-- [ ] No unrelated worktree changes.
-- [ ] Frozen design documents were not rewritten.
-- [ ] Checklist/report changes match executed evidence.
+- [x] No `.env`, credentials, tokens, private keys, or connection strings.
+- [x] No logs or temporary test folders.
+- [x] Screenshots are explicitly required Epic evidence and use synthetic data.
+- [x] Unrelated `tsconfig.tsbuildinfo` and `output/` changes are excluded.
+- [x] Frozen design documents were not rewritten.
+- [x] Checklist/report changes match executed evidence.

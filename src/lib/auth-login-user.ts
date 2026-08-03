@@ -1,6 +1,6 @@
-import { isOwnerAdminUserId } from "@/lib/internal-identities";
 import { sanitizeCustomerFacingAvatar } from "@/lib/avatar-display";
 import { resolveVendorAccessForUser } from "@/lib/vendor-context";
+import { getActivePlatformRolesForUser } from "@/lib/request-actor";
 import { prisma } from "@/server/db";
 
 function toSessionUserType(profiles: Set<string>): "customer" | "vendor" | "admin" | "both" {
@@ -31,9 +31,10 @@ export async function buildAuthLoginUserPayload(params: {
     },
   });
 
-  const profileSet = new Set<string>();
-  const isOwnerAdminIdentity = isOwnerAdminUserId(userId);
-  if (isOwnerAdminIdentity) {
+  const profileSet = new Set<string>(["customer"]);
+  const platformRoles = await getActivePlatformRolesForUser(userId);
+  if (platformRoles.includes("ADMIN")) {
+    profileSet.clear();
     profileSet.add("admin");
   } else {
     try {
@@ -44,12 +45,6 @@ export async function buildAuthLoginUserPayload(params: {
     } catch {
       // Fall through; the caller can still sign in with the non-vendor profile set.
     }
-  }
-
-  if (!profileSet.size) {
-    profileSet.add("customer");
-  } else if (!profileSet.has("admin") && !profileSet.has("vendor")) {
-    profileSet.add("customer");
   }
 
   const availableProfiles = (["customer", "vendor", "admin"] as const).filter((profile) =>
