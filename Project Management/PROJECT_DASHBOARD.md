@@ -29,6 +29,7 @@
 
 - Status: **Phase A implemented locally; Product Owner review pending**
 - Phase A: Canonical database actor, ownership/membership authorization, IDOR protection, and database-backed admin isolation implemented
+- Phase A implementation commit: `0ffc9648e41e6e9b8be8d907f2ddb5aaefd62db2`
 - Validation: 206 focused unit/integration tests and 5 Playwright scenarios pass
 - Deployment: Blocked by unrelated legacy page exports in `pages/support` and `pages/notifications`
 - Phase B: Not authorized

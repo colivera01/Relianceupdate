@@ -7,9 +7,9 @@
 ## Commit
 
 - Starting commit: `43c18f9282d14567ce4c40b1fab32bfb97126817`
-- Phase A commit: recorded after scoped commit
+- Phase A implementation commit: `0ffc9648e41e6e9b8be8d907f2ddb5aaefd62db2`
 - Remote: `origin` (`Relianceupdate`)
-- Push result: pending final validation
+- Push target: `origin/cursor-latest-build`; final push result is reported after this checkpoint document is committed
 
 ## Files Changed
 
