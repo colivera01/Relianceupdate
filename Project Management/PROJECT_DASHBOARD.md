@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-03 (Next.js 15.5.21 security checkpoint validated)
+**Last updated:** 2026-08-03 (Epic 3 Phase A beta admin grant correction validated in isolation)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Completed Epics
@@ -27,16 +27,17 @@
 
 **Epic 3 - Trusted Accounts and Role Isolation**
 
-- Status: **Phase A engineering approved; Critical framework advisory resolved; packaging review pending**
+- Status: **Phase A engineering approved; beta admin grant correction validated; deployment remains pending**
 - Phase A: Canonical database actor, ownership/membership authorization, IDOR protection, and database-backed admin isolation implemented
 - Phase A implementation commit: `0ffc9648e41e6e9b8be8d907f2ddb5aaefd62db2`
 - Validation: 206 focused unit/integration tests and 5 Playwright scenarios pass
 - Production build: Passed with 6 GB heap; the earlier Support/Notifications blocker was not reproducible and required no source change
 - Dependency security: Next upgraded from 15.3.3 to 15.5.21 in `ff5f7e9`; Critical production audit count reduced from 1 to 0
+- Database readiness: A later additive beta admin grant migration passed isolated migration and exact-package authorization validation; it has not been applied to beta
 - Production build: Pass with 197/197 App Router static pages and both legacy compatibility routes
 - Deployment: Not approved; raw standalone output contains `.env`, and remaining runtime High advisories await their separate decision
 - Phase B: Not authorized
-- Required next action: Verify Azure ZIP assembly excludes `.env*`, then complete the separately scoped runtime High-advisory decision
+- Required next action: Obtain Product Owner approval to apply the verified pending role-grant migrations to beta; package deployment and secret rotation remain separate checkpoints
 
 ## Current Branch
 

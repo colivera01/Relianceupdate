@@ -72,3 +72,16 @@ The earlier production-build blocker was not reproducible and required no code c
 - Current deployment decision: Do not deploy; standalone environment-file exclusion and remaining High-advisory decision are open
 - Dependency commit: `ff5f7e9` (`chore(security): upgrade next to 15.5.21`)
 - Evidence report: `NEXT_15_5_21_SECURITY_REMEDIATION_REPORT.md`
+
+## Beta Admin Grant Migration Correction
+
+- Starting commit: `59d696f55f01e670846800822d295aa558a36f03`
+- Corrective migration: `20260803200000_correct_beta_admin_platform_role_grant`
+- Original migration checksum preserved: `28D32FA8BFE2DE77D893B8C192544C2A32768A39F4A33DB91FB546C46CEEAE77`
+- Isolated migration result: Pass
+- Idempotency result: Pass
+- Focused authorization tests: 28/28 pass
+- Exact-package Epic 3 Playwright: 5/5 pass
+- Beta database changed: No
+- Deployment performed: No
+- Checkpoint commit: Recorded after final validation
