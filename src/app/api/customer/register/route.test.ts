@@ -6,13 +6,23 @@ const hoisted = vi.hoisted(() => {
   const userFindUnique = vi.fn();
   const bookingFindUnique = vi.fn();
   const bookingUpdateMany = vi.fn();
+  const recordCustomerRegistrationEvidence = vi.fn();
+  const transaction = vi.fn(async (callback: (tx: any) => Promise<any>) =>
+    callback({
+      user: { upsert: userUpsert },
+      booking: { updateMany: bookingUpdateMany },
+    })
+  );
 
   return {
     userUpsert,
     userFindUnique,
     bookingFindUnique,
     bookingUpdateMany,
+    recordCustomerRegistrationEvidence,
+    transaction,
     prisma: {
+      $transaction: transaction,
       user: {
         upsert: userUpsert,
         findUnique: userFindUnique,
@@ -49,6 +59,12 @@ vi.mock("@/lib/auth-email-verification", () => ({
   })),
 }));
 
+vi.mock("@/lib/legal/customer-registration-policy-evidence", () => ({
+  parseRegistrationBoolean: (value: unknown) =>
+    value === true || String(value || "").trim().toLowerCase() === "true",
+  recordCustomerRegistrationEvidence: hoisted.recordCustomerRegistrationEvidence,
+}));
+
 vi.mock("@/lib/geocoding", () => ({
   hasCompleteAddress: vi.fn(() => false),
   geocodeAddress: vi.fn(),
@@ -64,6 +80,9 @@ function createCustomerRegisterRequest(overrides: Record<string, unknown> = {}) 
       email: "beta.customer@reliance.test",
       phone: "407-555-0199",
       password: "CustomerTest1!",
+      termsAccepted: true,
+      privacyAcknowledged: true,
+      smsConsent: false,
       address: "123 Main St",
       city: "Orlando",
       state: "Florida",
@@ -88,6 +107,9 @@ describe("POST /api/customer/register", () => {
     hoisted.userFindUnique.mockResolvedValue(null);
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdateMany.mockReset();
+    hoisted.recordCustomerRegistrationEvidence.mockReset();
+    hoisted.recordCustomerRegistrationEvidence.mockResolvedValue({ id: "evidence-1" });
+    hoisted.transaction.mockClear();
   });
 
   afterEach(() => {
@@ -138,6 +160,55 @@ describe("POST /api/customer/register", () => {
       })
     );
     expect(addRegisteredUser).not.toHaveBeenCalled();
+    expect(hoisted.recordCustomerRegistrationEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "customer-1",
+        actorEmail: "beta.customer@reliance.test",
+        smsOptIn: false,
+      })
+    );
+  });
+
+  it("rejects customer registration when Terms acceptance is missing", async () => {
+    const response = await POST(
+      createCustomerRegisterRequest({ termsAccepted: false })
+    );
+    const json = await readJson(response);
+
+    expect(response.status).toBe(400);
+    expect(json).toMatchObject({ code: "CUSTOMER_TERMS_ACCEPTANCE_REQUIRED" });
+    expect(hoisted.userFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.userUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects customer registration when Privacy acknowledgment is missing", async () => {
+    const response = await POST(
+      createCustomerRegisterRequest({ privacyAcknowledged: false })
+    );
+    const json = await readJson(response);
+
+    expect(response.status).toBe(400);
+    expect(json).toMatchObject({
+      code: "CUSTOMER_PRIVACY_ACKNOWLEDGMENT_REQUIRED",
+    });
+    expect(hoisted.userFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.userUpsert).not.toHaveBeenCalled();
+  });
+
+  it("keeps SMS optional and records an affirmative opt-in when selected", async () => {
+    hoisted.userUpsert.mockResolvedValueOnce({ id: "customer-sms" });
+
+    const response = await POST(
+      createCustomerRegisterRequest({ smsConsent: true })
+    );
+
+    expect(response.status).toBe(200);
+    expect(hoisted.recordCustomerRegistrationEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "customer-sms",
+        smsOptIn: true,
+      })
+    );
   });
 
   it("connects an emailed completed work order to the matching new customer account", async () => {

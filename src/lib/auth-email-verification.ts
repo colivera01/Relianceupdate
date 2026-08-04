@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { prisma } from "@/server/db";
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from "@/lib/email/reliance-template";
 import { sanitizeAuthNextPath } from "@/lib/auth-next";
+import { markCustomerRegistrationEvidenceVerified } from "@/lib/legal/customer-registration-policy-evidence";
 
 const EMAIL_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24;
 
@@ -108,6 +109,8 @@ export async function consumeEmailVerificationToken(rawToken: string) {
         emailVerifiedAt: true,
       },
     });
+
+    await markCustomerRegistrationEvidenceVerified(tx, credential.userId, now);
 
     return {
       ok: true as const,

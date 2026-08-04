@@ -6,6 +6,7 @@ const hoisted = vi.hoisted(() => {
   const findUnique = vi.fn();
   const update = vi.fn();
   const authCredentialUpdate = vi.fn();
+  const registrationEvidenceUpdateMany = vi.fn();
   const transaction = vi.fn(async (callback: (tx: any) => Promise<any>) =>
     callback({
       emailVerificationToken: {
@@ -16,6 +17,9 @@ const hoisted = vi.hoisted(() => {
       },
       authCredential: {
         update: authCredentialUpdate,
+      },
+      customerRegistrationEvidence: {
+        updateMany: registrationEvidenceUpdateMany,
       },
     })
   );
@@ -31,6 +35,7 @@ const hoisted = vi.hoisted(() => {
     findUnique,
     update,
     authCredentialUpdate,
+    registrationEvidenceUpdateMany,
     transaction,
     sendEmail,
   };
@@ -51,6 +56,7 @@ describe("auth email verification", () => {
     hoisted.findUnique.mockReset();
     hoisted.update.mockReset();
     hoisted.authCredentialUpdate.mockReset();
+    hoisted.registrationEvidenceUpdateMany.mockReset();
     hoisted.transaction.mockClear();
     hoisted.sendEmail.mockReset();
   });
@@ -107,6 +113,14 @@ describe("auth email verification", () => {
     }
     expect(hoisted.update).toHaveBeenCalledTimes(1);
     expect(hoisted.authCredentialUpdate).toHaveBeenCalledTimes(1);
+    expect(hoisted.registrationEvidenceUpdateMany).toHaveBeenCalledWith({
+      where: {
+        userId: "user-2",
+        verificationMethod: "EMAIL_VERIFICATION_LINK",
+        verificationCompletedAt: null,
+      },
+      data: { verificationCompletedAt: expect.any(Date) },
+    });
   });
 
   it("sends a verification email and returns a preview link in development", async () => {

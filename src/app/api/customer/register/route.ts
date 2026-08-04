@@ -14,6 +14,10 @@ import {
   parseCustomerBookingClaimMetadata,
   validateCustomerBookingClaim,
 } from "@/lib/customer-booking-claim";
+import {
+  parseRegistrationBoolean,
+  recordCustomerRegistrationEvidence,
+} from "@/lib/legal/customer-registration-policy-evidence";
 
 const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || "";
 
@@ -66,10 +70,36 @@ export async function POST(request: NextRequest) {
       bio,
       recaptchaToken,
       userType,
-      registrationNextPath
+      registrationNextPath,
+      termsAccepted,
+      privacyAcknowledged,
+      smsConsent,
     } = body;
     const safeNextPath = sanitizeAuthNextPath(registrationNextPath);
     const serviceVideoIntent = getCustomerServiceVideoIntent(safeNextPath);
+    const acceptedTerms = parseRegistrationBoolean(termsAccepted);
+    const acknowledgedPrivacy = parseRegistrationBoolean(privacyAcknowledged);
+    const smsOptIn = parseRegistrationBoolean(smsConsent);
+
+    if (!acceptedTerms) {
+      return NextResponse.json(
+        {
+          error: "You must agree to the Terms of Use to create a customer account.",
+          code: "CUSTOMER_TERMS_ACCEPTANCE_REQUIRED",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!acknowledgedPrivacy) {
+      return NextResponse.json(
+        {
+          error: "You must acknowledge the Privacy Policy to create a customer account.",
+          code: "CUSTOMER_PRIVACY_ACKNOWLEDGMENT_REQUIRED",
+        },
+        { status: 400 }
+      );
+    }
 
     // Temporarily disable reCAPTCHA verification for development
     // TODO: Re-enable reCAPTCHA verification in production
@@ -286,70 +316,83 @@ export async function POST(request: NextRequest) {
             }
           : {};
       const staleCoordinateClear = { latitude: null, longitude: null, geocodedAt: null };
-      const persistedUser = await (prisma as any).user.upsert({
-        where: { email: normalizedEmail },
-        create: {
-          name: `${firstName} ${lastName}`.trim(),
-          email: normalizedEmail,
-          phone,
-          address: addressInput.address || null,
-          city: addressInput.city || null,
-          state: addressInput.state || null,
-          zipCode: addressInput.zipCode || null,
-          locationPreferenceEnabled: false,
-          ...coordinateData,
-        },
-        update: {
-          name: `${firstName} ${lastName}`.trim(),
-          phone,
-          address: addressInput.address || null,
-          city: addressInput.city || null,
-          state: addressInput.state || null,
-          zipCode: addressInput.zipCode || null,
-          ...(geocodeResult?.status === "success" ? coordinateData : staleCoordinateClear),
-          ...(restoringDeactivatedAccount
-            ? {
-                accountStatus: "active",
-                accountStatusUpdatedAt: new Date(),
-                accountStatusReason: null,
-                accountStatusAdminNotes: null,
-              }
-            : {}),
-        },
-        select: {
-          id: true,
-        },
-      });
-      persistedCustomerId = String(persistedUser?.id || registryFallbackId);
-      const credential = await upsertDbCredential({
-        userId: persistedCustomerId,
-        email: normalizedEmail,
-        passwordHash,
-        ...(restoringDeactivatedAccount ? { emailVerifiedAt: null } : {}),
-      });
-      if (claimBooking && claimBooking.userId !== persistedCustomerId) {
-        const claimMetadata = parseCustomerBookingClaimMetadata(
-          claimBooking.customerMetadata
-        );
-        const claimed = await prisma.booking.updateMany({
-          where: {
-            id: claimBooking.id,
-            userId: claimBooking.userId,
-          },
-          data: {
-            userId: persistedCustomerId,
-            customerMetadata: JSON.stringify(
-              markCustomerBookingClaimed(
-                claimMetadata,
-                persistedCustomerId
-              )
-            ),
-          },
-        });
-        if (claimed.count !== 1) {
-          throw new Error("CUSTOMER_BOOKING_CLAIM_CONFLICT");
+      const registrationWrite = await (prisma as any).$transaction(
+        async (tx: any) => {
+          const persistedUser = await tx.user.upsert({
+            where: { email: normalizedEmail },
+            create: {
+              name: `${firstName} ${lastName}`.trim(),
+              email: normalizedEmail,
+              phone,
+              address: addressInput.address || null,
+              city: addressInput.city || null,
+              state: addressInput.state || null,
+              zipCode: addressInput.zipCode || null,
+              locationPreferenceEnabled: false,
+              ...coordinateData,
+            },
+            update: {
+              name: `${firstName} ${lastName}`.trim(),
+              phone,
+              address: addressInput.address || null,
+              city: addressInput.city || null,
+              state: addressInput.state || null,
+              zipCode: addressInput.zipCode || null,
+              ...(geocodeResult?.status === "success"
+                ? coordinateData
+                : staleCoordinateClear),
+              ...(restoringDeactivatedAccount
+                ? {
+                    accountStatus: "active",
+                    accountStatusUpdatedAt: new Date(),
+                    accountStatusReason: null,
+                    accountStatusAdminNotes: null,
+                  }
+                : {}),
+            },
+            select: { id: true },
+          });
+          const customerId = String(persistedUser?.id || registryFallbackId);
+          const credential = await upsertDbCredential({
+            userId: customerId,
+            email: normalizedEmail,
+            passwordHash,
+            ...(restoringDeactivatedAccount ? { emailVerifiedAt: null } : {}),
+            db: tx,
+          });
+          await recordCustomerRegistrationEvidence({
+            request,
+            userId: customerId,
+            actorEmail: normalizedEmail,
+            smsOptIn,
+            db: tx,
+          });
+
+          if (claimBooking && claimBooking.userId !== customerId) {
+            const claimMetadata = parseCustomerBookingClaimMetadata(
+              claimBooking.customerMetadata
+            );
+            const claimed = await tx.booking.updateMany({
+              where: {
+                id: claimBooking.id,
+                userId: claimBooking.userId,
+              },
+              data: {
+                userId: customerId,
+                customerMetadata: JSON.stringify(
+                  markCustomerBookingClaimed(claimMetadata, customerId)
+                ),
+              },
+            });
+            if (claimed.count !== 1) {
+              throw new Error("CUSTOMER_BOOKING_CLAIM_CONFLICT");
+            }
+          }
+
+          return { customerId, credentialId: String(credential.id) };
         }
-      }
+      );
+      persistedCustomerId = registrationWrite.customerId;
       if (!isProductionRuntime) {
         addRegisteredUser({
           ...customerData,
@@ -358,7 +401,7 @@ export async function POST(request: NextRequest) {
       }
       verification = await sendOrPreviewEmailVerification({
         email: normalizedEmail,
-        credentialId: String(credential.id),
+        credentialId: registrationWrite.credentialId,
         recipientName: `${firstName} ${lastName}`.trim() || null,
         baseUrl: request.nextUrl.origin,
         audience: "customer",

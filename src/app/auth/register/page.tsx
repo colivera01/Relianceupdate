@@ -1003,6 +1003,10 @@ function RegisterPageInner() {
   const [templateServicesError, setTemplateServicesError] = useState('');
   const [customServices, setCustomServices] = useState<CustomServiceDraft[]>([]);
   const [customServicesError, setCustomServicesError] = useState('');
+  const [customerPolicyChoices, setCustomerPolicyChoices] = useState({
+    termsAccepted: false,
+    privacyAcknowledged: false,
+  });
   const registerIntroCopy =
     userType === 'vendor'
       ? 'Create your vendor account and launch your dashboard.'
@@ -1075,6 +1079,10 @@ function RegisterPageInner() {
     setTemplateServicesError('');
     setCustomServices([]);
     setCustomServicesError('');
+    setCustomerPolicyChoices({
+      termsAccepted: false,
+      privacyAcknowledged: false,
+    });
     setBusinessHours(defaultBusinessHours());
     setCitySuggestions([]);
     setShowCitySuggestions(false);
@@ -1354,8 +1362,14 @@ function RegisterPageInner() {
     else if (formData.phone.trim() && !/^[\+]?[1-9][\d]{0,15}$/.test(formData.phone.replace(/[\s\-\(\)]/g, ''))) {
       newErrors.phone = 'Please enter a valid phone number (e.g., 555-123-4567)';
     }
-    if (formData.phone.trim() && !formData.smsConsent) {
+    if (userType === 'vendor' && formData.phone.trim() && !formData.smsConsent) {
       newErrors.smsConsent = 'Check the SMS consent box before continuing with a mobile phone number.';
+    }
+    if (userType === 'user' && !customerPolicyChoices.termsAccepted) {
+      newErrors.termsAccepted = 'Agree to the Terms of Use before continuing.';
+    }
+    if (userType === 'user' && !customerPolicyChoices.privacyAcknowledged) {
+      newErrors.privacyAcknowledged = 'Acknowledge the Privacy Policy before continuing.';
     }
 
     if (!formData.password) newErrors.password = 'Password is required';
@@ -1524,6 +1538,10 @@ function RegisterPageInner() {
         insuranceStatus: String(formData.insuranceStatus),
         bondingStatus: String(formData.bondingStatus),
         smsConsent: String(formData.smsConsent),
+        termsAccepted:
+          userType === 'user' ? String(customerPolicyChoices.termsAccepted) : undefined,
+        privacyAcknowledged:
+          userType === 'user' ? String(customerPolicyChoices.privacyAcknowledged) : undefined,
         userType,
         registrationNextPath: safeNextPath,
         recaptchaToken: token // Include reCAPTCHA token if available
@@ -2171,7 +2189,7 @@ function RegisterPageInner() {
                       <label
                         htmlFor="smsConsent"
                         className={`mt-3 flex gap-3 rounded-xl border p-3 text-sm leading-6 ${
-                          errors.smsConsent
+                          userType === 'vendor' && errors.smsConsent
                             ? 'border-red-400 bg-red-950/25 text-red-100'
                             : 'border-blue-300/35 bg-blue-950/35 text-blue-50'
                         }`}
@@ -2185,12 +2203,17 @@ function RegisterPageInner() {
                         />
                         <span>
                           <span className="font-semibold text-white">
-                            I agree to receive transactional SMS from Reliance.
+                            {userType === 'user'
+                              ? 'SMS notifications (optional)'
+                              : 'I agree to receive transactional SMS from Reliance.'}
                           </span>{' '}
                           Reliance may text me account access, service-record updates, invite links,
                           customer video consent requests, approved video availability, review reminders,
                           support updates. Message frequency varies. Msg &amp; data
-                          rates may apply. Reply STOP to opt out or HELP for help. This SMS consent is required when a mobile phone number is provided. See{' '}
+                          rates may apply. Reply STOP to opt out or HELP for help.
+                          {userType === 'user'
+                            ? ' I can create and use my customer account without choosing SMS. Email remains my required account channel. See '
+                            : ' This SMS consent is required when a mobile phone number is provided. See '}
                           <Link href={buildPolicyDocumentHref('/sms-policy', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
                             SMS Policy
                           </Link>
@@ -2205,11 +2228,85 @@ function RegisterPageInner() {
                           .
                         </span>
                       </label>
-                      {errors.smsConsent && (
+                      {userType === 'vendor' && errors.smsConsent && (
                         <p className="text-red-500 text-sm mt-1 flex items-center">
                           <AlertCircle className="w-4 h-4 mr-1" />
                           {errors.smsConsent}
                         </p>
+                      )}
+                      {userType === 'user' && (
+                        <div className="mt-3 space-y-3">
+                          <label
+                            htmlFor="termsAccepted"
+                            className={`flex gap-3 rounded-xl border p-3 text-sm leading-6 ${
+                              errors.termsAccepted
+                                ? 'border-red-400 bg-red-950/25 text-red-100'
+                                : 'border-white/15 bg-slate-950/55 text-blue-50'
+                            }`}
+                          >
+                            <input
+                              id="termsAccepted"
+                              type="checkbox"
+                              checked={customerPolicyChoices.termsAccepted}
+                              onChange={(event) => {
+                                setCustomerPolicyChoices((current) => ({
+                                  ...current,
+                                  termsAccepted: event.target.checked,
+                                }));
+                                setErrors((current) => ({ ...current, termsAccepted: '' }));
+                              }}
+                              className="mt-1 h-4 w-4 rounded border-blue-300 bg-slate-950 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span>
+                              I agree to the{' '}
+                              <Link href={buildPolicyDocumentHref('/terms', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                                Terms of Use
+                              </Link>
+                              .
+                            </span>
+                          </label>
+                          {errors.termsAccepted && (
+                            <p className="text-red-500 text-sm flex items-center">
+                              <AlertCircle className="w-4 h-4 mr-1" />
+                              {errors.termsAccepted}
+                            </p>
+                          )}
+                          <label
+                            htmlFor="privacyAcknowledged"
+                            className={`flex gap-3 rounded-xl border p-3 text-sm leading-6 ${
+                              errors.privacyAcknowledged
+                                ? 'border-red-400 bg-red-950/25 text-red-100'
+                                : 'border-white/15 bg-slate-950/55 text-blue-50'
+                            }`}
+                          >
+                            <input
+                              id="privacyAcknowledged"
+                              type="checkbox"
+                              checked={customerPolicyChoices.privacyAcknowledged}
+                              onChange={(event) => {
+                                setCustomerPolicyChoices((current) => ({
+                                  ...current,
+                                  privacyAcknowledged: event.target.checked,
+                                }));
+                                setErrors((current) => ({ ...current, privacyAcknowledged: '' }));
+                              }}
+                              className="mt-1 h-4 w-4 rounded border-blue-300 bg-slate-950 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span>
+                              I acknowledge the{' '}
+                              <Link href={buildPolicyDocumentHref('/privacy', registrationReturnPath)} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-200 underline">
+                                Privacy Policy
+                              </Link>
+                              .
+                            </span>
+                          </label>
+                          {errors.privacyAcknowledged && (
+                            <p className="text-red-500 text-sm flex items-center">
+                              <AlertCircle className="w-4 h-4 mr-1" />
+                              {errors.privacyAcknowledged}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -2479,7 +2576,10 @@ function RegisterPageInner() {
                       onClick={handleNextStep} 
                       className="w-full"
                       disabled={!formData.firstName || !formData.lastName || !formData.email || 
-                               !formData.phone || !formData.smsConsent ||
+                               !formData.phone || (userType === 'vendor' && !formData.smsConsent) ||
+                               (userType === 'user' &&
+                                 (!customerPolicyChoices.termsAccepted ||
+                                  !customerPolicyChoices.privacyAcknowledged)) ||
                                !formData.password || !formData.confirmPassword || !passwordStrength.meetsRequirements ||
                                (addressRequired && (!formData.address || !formData.city || !formData.state || !formData.zipCode))}
                     >

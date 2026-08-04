@@ -251,17 +251,67 @@ model User {
   accountStatusAdminNotes   String?   @db.NVarChar(Max)
 
   // Relations
-  authCredential       AuthCredential?
-  bookings             Booking[]
-  reviews              Review[]
-  memberships          VendorMembership[]
-  platformRoleGrants   PlatformRoleGrant[] @relation("PlatformRoleGrantUser")
-  platformRolesGranted PlatformRoleGrant[] @relation("PlatformRoleGrantGrantedBy")
-  invitesCreated       VendorInvite[]      @relation("InvitesCreated")
-  mediaSessions        MediaSession[]
-  favorites            Favorite[]
+  authCredential               AuthCredential?
+  bookings                     Booking[]
+  reviews                      Review[]
+  memberships                  VendorMembership[]
+  platformRoleGrants           PlatformRoleGrant[]            @relation("PlatformRoleGrantUser")
+  platformRolesGranted         PlatformRoleGrant[]            @relation("PlatformRoleGrantGrantedBy")
+  invitesCreated               VendorInvite[]                 @relation("InvitesCreated")
+  mediaSessions                MediaSession[]
+  favorites                    Favorite[]
+  customerRegistrationEvidence CustomerRegistrationEvidence[]
 
   @@map("users")
+}
+
+model PolicyDocumentVersion {
+  id              String   @id
+  policyId        String
+  version         String
+  effectiveAt     DateTime
+  contentHash     String   @unique
+  contentSnapshot String   @db.NVarChar(Max)
+  sourceRevision  String?
+  createdAt       DateTime @default(now())
+
+  termsAcceptances   CustomerRegistrationEvidence[] @relation("CustomerRegistrationTermsPolicy")
+  privacyAcceptances CustomerRegistrationEvidence[] @relation("CustomerRegistrationPrivacyPolicy")
+  smsAcceptances     CustomerRegistrationEvidence[] @relation("CustomerRegistrationSmsPolicy")
+
+  @@unique([policyId, version])
+  @@index([policyId, effectiveAt])
+  @@map("policy_document_versions")
+}
+
+model CustomerRegistrationEvidence {
+  id                      String    @id @default(cuid())
+  userId                  String
+  actorEmail              String
+  actorRole               String    @default("CUSTOMER")
+  registeredAt            DateTime
+  termsPolicyVersionId    String
+  privacyPolicyVersionId  String
+  smsPolicyVersionId      String?
+  termsAcceptedAt         DateTime
+  privacyAcknowledgedAt   DateTime
+  smsOptIn                Boolean   @default(false)
+  smsDecisionAt           DateTime
+  registrationIp          String?
+  userAgent               String?
+  verificationMethod      String
+  verificationCompletedAt DateTime?
+  createdAt               DateTime  @default(now())
+
+  user          User                   @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  termsPolicy   PolicyDocumentVersion  @relation("CustomerRegistrationTermsPolicy", fields: [termsPolicyVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  privacyPolicy PolicyDocumentVersion  @relation("CustomerRegistrationPrivacyPolicy", fields: [privacyPolicyVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  smsPolicy     PolicyDocumentVersion? @relation("CustomerRegistrationSmsPolicy", fields: [smsPolicyVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([userId, registeredAt])
+  @@index([actorEmail, registeredAt])
+  @@index([verificationCompletedAt])
+  @@map("customer_registration_evidence")
 }
 
 // PlatformRole: "ADMIN"

@@ -63,6 +63,7 @@ export async function upsertDbCredential(params: {
   email: string;
   passwordHash: string;
   emailVerifiedAt?: Date | null;
+  db?: any;
 }) {
   const normalizedEmail = normalizeEmail(params.email);
   if (!params.userId || !normalizedEmail || !params.passwordHash) {
@@ -78,7 +79,8 @@ export async function upsertDbCredential(params: {
     updateData.emailVerifiedAt = params.emailVerifiedAt;
   }
 
-  return (prisma as any).authCredential.upsert({
+  const db = params.db || (prisma as any);
+  return db.authCredential.upsert({
     where: { userId: params.userId },
     create: {
       id: createCredentialId(),
