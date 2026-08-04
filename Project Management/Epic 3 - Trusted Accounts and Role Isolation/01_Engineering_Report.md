@@ -2,7 +2,7 @@
 
 **Epic:** Trusted Accounts and Role Isolation
 **Phase:** A - Identity Foundation
-**Status:** Implemented and validated locally; build passes; deployment blocked by Critical dependency remediation
+**Status:** Implemented and validated locally; Critical Next.js advisory resolved; deployment packaging review remains open
 **Branch:** `cursor-latest-build`
 **Starting commit:** `43c18f9282d14567ce4c40b1fab32bfb97126817`
 **Report date:** 2026-08-02
@@ -100,7 +100,7 @@ Rollback the application to the starting commit while leaving the additive table
 | `npx prisma migrate status` | Pass | 35 migrations; schema current |
 | Full `npm test -- --run` | Partial: 12 known unrelated failures | Phase A-focused suites pass; failures cataloged below |
 | `npm run build` with 6 GB heap | Pass on 2026-08-03 | Fresh build generated 197 pages and emitted `/support` and `/notifications`; prior blocker was not reproducible |
-| `npm audit --omit=dev --audit-level=high` | Blocked by existing advisories | 25 advisories: 1 critical, 16 high, 7 moderate, 1 low; dependency remediation is outside Phase A |
+| Next.js 15.5.21 security checkpoint | Pass with remaining gates | Critical count reduced from 1 to 0; 17 high, 7 moderate, and 1 low remain; standalone packaging review remains open |
 | `git diff --check` | Pass | No whitespace errors |
 
 ## Screenshot Package
@@ -111,7 +111,8 @@ See `08_Screenshots/SCREENSHOT_INDEX.md`. Controlled synthetic data only; no cre
 
 - Phase B identity lifecycle remains intentionally unimplemented.
 - The previously reported Support/Notifications build blocker was not reproducible; both routes are valid and the fresh production build passes without source changes.
-- Repository dependency advisories require a separately approved upgrade plan and regression cycle.
+- The raw generated standalone directory contains `.env`; Azure package assembly must prove that environment files are excluded before deployment.
+- Remaining High dependency advisories require a separately approved package-by-package decision.
 - Full suite has 12 known unrelated failures in stale copy/fixture and non-Phase-A workflow tests.
 
 ## REGRESSION STATEMENT
@@ -156,14 +157,15 @@ See `08_Screenshots/SCREENSHOT_INDEX.md`. Controlled synthetic data only; no cre
 |---|---|---|
 | Earlier Support/Notifications build failure | Fresh build and route inspection prove both pages have valid default component exports | No; historical report superseded by the 2026-08-03 readiness correction |
 | 12 full-suite failures | Failures are outside changed Phase A authorization surfaces; focused suites pass | No for local Phase A correctness; must remain visible |
-| Dependency advisories | 1 Critical and 16 High production-tree findings assessed; no dependency files changed | Yes; reachable Critical Next.js advisory requires separately approved remediation |
+| Dependency advisories | Next upgraded to 15.5.21; Critical count is now zero, with 17 High findings remaining | Critical blocker resolved; remaining runtime High findings need their approved separate assessment |
+| Standalone environment-file trace | `.next/standalone/.env` exists; contents were not inspected or exposed | Yes until Azure packaging proves `.env*` exclusion |
 
 No known regression attributable to this epic remains after the executed validation.
 
 ## Completion Decision
 
 **Engineering status:** Phase A implemented and locally validated
-**Deployment status:** Build-ready, but blocked by Critical dependency remediation
+**Deployment status:** Framework/build ready; deployment blocked pending environment-file package sanitization and remaining runtime High-advisory decision
 **Product Owner approval:** Phase A engineering approved; deployment not approved
 **Epic 3 completed:** No
 **Phase B authorized:** No

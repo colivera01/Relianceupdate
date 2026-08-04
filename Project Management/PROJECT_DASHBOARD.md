@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-03 (Epic 3 Phase A deployment readiness reassessed)
+**Last updated:** 2026-08-03 (Next.js 15.5.21 security checkpoint validated)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Completed Epics
@@ -27,14 +27,16 @@
 
 **Epic 3 - Trusted Accounts and Role Isolation**
 
-- Status: **Phase A engineering approved; deployment security remediation pending**
+- Status: **Phase A engineering approved; Critical framework advisory resolved; packaging review pending**
 - Phase A: Canonical database actor, ownership/membership authorization, IDOR protection, and database-backed admin isolation implemented
 - Phase A implementation commit: `0ffc9648e41e6e9b8be8d907f2ddb5aaefd62db2`
 - Validation: 206 focused unit/integration tests and 5 Playwright scenarios pass
 - Production build: Passed with 6 GB heap; the earlier Support/Notifications blocker was not reproducible and required no source change
-- Deployment: Blocked by the reachable Critical advisory in `next@15.3.3`; scoped remediation requires Product Owner approval
+- Dependency security: Next upgraded from 15.3.3 to 15.5.21 in `ff5f7e9`; Critical production audit count reduced from 1 to 0
+- Production build: Pass with 197/197 App Router static pages and both legacy compatibility routes
+- Deployment: Not approved; raw standalone output contains `.env`, and remaining runtime High advisories await their separate decision
 - Phase B: Not authorized
-- Required next action: Product Owner decides whether to authorize a scoped `next@15.5.21` dependency checkpoint and required regression
+- Required next action: Verify Azure ZIP assembly excludes `.env*`, then complete the separately scoped runtime High-advisory decision
 
 ## Current Branch
 
@@ -71,7 +73,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 | ----- | ----------------------------------------------------- | ----------------------------------------- | ----------- | ----------- | ------- | ------------------ |
 | 1     | Verified Permission Request                           | **Completed** | Complete | Complete | Approved | Application `08de960` |
 | 2     | Proof-First Platform Shell                            | **Completed** | Complete | Complete | Approved | `cb44c9e` |
-| 3     | Trusted Accounts and Role Isolation                   | **Phase A engineering approved; deployment blocked** | Phase A complete locally | Reviewed | Automated rehearsal passed | Phase A recorded; readiness evidence pending |
+| 3     | Trusted Accounts and Role Isolation                   | **Phase A engineering approved; packaging review pending** | Phase A complete locally | Reviewed | Automated rehearsal passed | Next 15.5.21 application `ff5f7e9` |
 | 4     | Universal Work Record and Recording Gates             | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 5     | Safe Capture Through Private Service Videos           | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 6     | Exact-Media Public Proof and Admin Moderation         | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -100,14 +102,15 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | Controlled SMS handset validation | Engineering / Product Owner | Deferred - External Provider Dependency | Validate after Telnyx activation; do not classify as an application defect |
 | Independent comprehension validation | Product Owner / Beta participants | Deferred to private beta user feedback | Gather natural beta feedback; reopen Epic 2 only for measurable confusion or a genuine defect |
 | Epic 3 production build | Engineering | Passed | Preserve current Support/Notifications routes; no source correction required |
-| Critical Next.js advisory | Product Owner / Engineering | Blocking release gate | Approve scoped `next@15.5.21` checkpoint and full build/Epic 1/2/3 regression |
-| High dependency advisories | Product Owner / Engineering | Assessed; remediation pending | Follow package-by-package readiness report; do not use blind or forced upgrade |
+| Critical Next.js advisory | Engineering | Resolved | Next 15.5.21 installed; Critical audit count is zero |
+| Standalone `.env` trace | Engineering | Blocking release gate | Prove Azure package assembly excludes `.env` and `.env.*` before deployment |
+| High dependency advisories | Product Owner / Engineering | 17 remain; remediation pending | Follow package-by-package readiness report; do not use blind or forced upgrade |
 
 ## Blocked Items
 
 | Item           | Blocker                                                                     | Owner  | Resolution                                             |
 | -------------- | --------------------------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| Epic 3 Phase A deployment | Reachable Critical Next.js advisory remains open | Product Owner / Engineering | Approve scoped dependency remediation, validate, then reassess deployment |
+| Epic 3 Phase A deployment | Raw standalone output contains `.env`; remaining runtime High decision is open | Product Owner / Engineering | Prove package sanitization and complete the separately scoped advisory review |
 
 ## Technical Debt Summary
 
@@ -115,7 +118,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | ---- | ---------: | ---------------: | ------------------------------------------------------------------------------------------------------- |
 | 1    | 7 open; 3 resolved; 1 external deferral | 0 engineering blockers | [Technical Debt](<Epic 1 - Verified Permission Request/05_Technical_Debt.md>)                          |
 | 2    | 6 open; 1 beta-validation deferral | 0 engineering blockers | [Technical Debt](<Epic 2 - Proof-First Platform Shell/05_Technical_Debt.md>)                            |
-| 3    | 9 recorded | 1 deployment blocker plus assessed High advisories | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
+| 3    | 10 recorded | 1 packaging blocker plus 17 assessed High advisories | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
 | 4    | 0 recorded |       0 recorded | [Technical Debt](<Epic 4 - Universal Work Record and Recording Gates/05_Technical_Debt.md>)             |
 | 5    | 0 recorded |       0 recorded | [Technical Debt](<Epic 5 - Safe Capture Through Private Service Videos/05_Technical_Debt.md>)           |
 | 6    | 0 recorded |       0 recorded | [Technical Debt](<Epic 6 - Exact-Media Public Proof and Admin Moderation/05_Technical_Debt.md>)         |
@@ -145,7 +148,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 
 ## Next Engineering Decision
 
-Epic 3 Phase A engineering is approved. Phase B and Epic 4 remain unauthorized. Before Phase A can be deployed, the Product Owner must authorize and review a narrowly scoped Next.js dependency remediation; the production build itself is currently clean.
+Epic 3 Phase A engineering is approved. Phase B and Epic 4 remain unauthorized. The Next.js Critical advisory is resolved and the production build is clean. Before deployment, Azure package assembly must prove environment-file exclusion and the remaining runtime High advisories must receive their separate decision.
 
 ## Required Update Cycle
 

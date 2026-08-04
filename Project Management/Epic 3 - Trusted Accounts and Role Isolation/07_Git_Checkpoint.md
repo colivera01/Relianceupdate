@@ -62,3 +62,13 @@ The earlier production-build blocker was not reproducible and required no code c
 - [x] Unrelated `tsconfig.tsbuildinfo` and `output/` changes are excluded.
 - [x] Frozen design documents were not rewritten.
 - [x] Checklist/report changes match executed evidence.
+
+## Next.js 15.5.21 Security Checkpoint
+
+- Starting commit: `43e7ef152ba24afc6a96f4d70e7b44f7bfe5cd02`
+- Dependency target: `next@15.5.21`
+- Critical audit result: 1 before, 0 after
+- Production build: Pass; 197/197 App Router static pages plus `/support` and `/notifications`
+- Current deployment decision: Do not deploy; standalone environment-file exclusion and remaining High-advisory decision are open
+- Dependency commit: `ff5f7e9` (`chore(security): upgrade next to 15.5.21`)
+- Evidence report: `NEXT_15_5_21_SECURITY_REMEDIATION_REPORT.md`
