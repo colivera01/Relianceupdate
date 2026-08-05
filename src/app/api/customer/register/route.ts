@@ -403,7 +403,9 @@ export async function POST(request: NextRequest) {
         email: normalizedEmail,
         credentialId: registrationWrite.credentialId,
         recipientName: `${firstName} ${lastName}`.trim() || null,
-        baseUrl: request.nextUrl.origin,
+        baseUrl:
+          String(process.env.APP_BASE_URL || "").trim().replace(/\/+$/, "") ||
+          request.nextUrl.origin,
         audience: "customer",
         nextPath: safeNextPath,
       }).catch((sendError) => {

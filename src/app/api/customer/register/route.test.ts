@@ -102,6 +102,7 @@ async function readJson(response: Response) {
 describe("POST /api/customer/register", () => {
   beforeEach(() => {
     vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("APP_BASE_URL", "https://beta.relianceonline.org");
     hoisted.userUpsert.mockReset();
     hoisted.userFindUnique.mockReset();
     hoisted.userFindUnique.mockResolvedValue(null);
@@ -165,6 +166,27 @@ describe("POST /api/customer/register", () => {
         userId: "customer-1",
         actorEmail: "beta.customer@reliance.test",
         smsOptIn: false,
+      })
+    );
+  });
+
+  it("uses the configured public origin for customer verification emails", async () => {
+    const { sendOrPreviewEmailVerification } = await import(
+      "@/lib/auth-email-verification"
+    );
+    vi.mocked(sendOrPreviewEmailVerification).mockClear();
+    hoisted.userUpsert.mockResolvedValueOnce({ id: "customer-public-origin" });
+    const request = createCustomerRegisterRequest();
+    request.nextUrl = new URL(
+      "https://internal-app-container:8080/api/customer/register"
+    );
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(sendOrPreviewEmailVerification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseUrl: "https://beta.relianceonline.org",
       })
     );
   });
