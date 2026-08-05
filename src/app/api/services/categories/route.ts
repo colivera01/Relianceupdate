@@ -6,6 +6,7 @@ import {
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
 import { resolveVendorJobVideoStageFromSession } from "@/lib/vendor-job-video-stages";
+import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
 import {
   countableMediaAssetWhere,
   countableServiceWhere,
@@ -33,7 +34,7 @@ type ProofStageAvailability = {
  * Counts only services that are currently visible in public discovery:
  * - vendor is publicly listed and active
  * - service is explicitly published
- * - service has approved, active, public videos for all three proof stages
+ * - service has an exact approved, active Public Final Result video
  */
 export async function GET(): Promise<NextResponse> {
   try {
@@ -72,9 +73,11 @@ export async function GET(): Promise<NextResponse> {
     }
 
     const serviceIds = services.map((service) => service.id);
+    const canonicalPublicAssetIds = await resolveCanonicalPublicAssetIds();
     const publicAssets = await withTransientDbRetry<any[]>(() =>
       (prisma as any).mediaAsset.findMany({
         where: countableMediaAssetWhere({
+          id: { in: canonicalPublicAssetIds },
           ...getApprovedActiveBaseWhere(),
           visibilityStatus: {
             in: getVisibilityStatusesForAudience("public"),
@@ -120,7 +123,7 @@ export async function GET(): Promise<NextResponse> {
       const serviceId = String(mediaSession?.serviceId || "");
       if (!serviceId) continue;
 
-      if (String(asset?.blobUrl || "").trim() && isCompletedStageProofVideo(mediaSession)) {
+      if (isCompletedStageProofVideo(mediaSession)) {
         completedPublicPreviewServiceIds.add(serviceId);
       }
 
@@ -133,12 +136,7 @@ export async function GET(): Promise<NextResponse> {
 
     const proofEligibleServices = services.filter((service) => {
       const availability = stageAvailabilityByServiceId.get(service.id);
-      return Boolean(
-        completedPublicPreviewServiceIds.has(service.id) &&
-          availability?.startingCondition &&
-          availability?.workInProgress &&
-          availability?.finalResult
-      );
+      return Boolean(completedPublicPreviewServiceIds.has(service.id) && availability?.finalResult);
     });
 
     if (proofEligibleServices.length === 0) {
@@ -149,7 +147,7 @@ export async function GET(): Promise<NextResponse> {
           countedServices: 0,
           scannedPublishedServices: services.length,
           eligibilityRule:
-            "No service categories are shown until a published service has approved, active, public videos for Starting Condition, Work in Progress, and Final Result.",
+            "No service categories are shown until a published service has an exact approved Public Final Result video.",
         },
       });
     }
@@ -205,7 +203,7 @@ export async function GET(): Promise<NextResponse> {
         countedServices: proofEligibleServices.length,
         scannedPublishedServices: services.length,
         eligibilityRule:
-          "Only published services from active public vendors with approved public Starting Condition, Work in Progress, and Final Result videos are counted.",
+          "Only published services from active public vendors with an exact approved Public Final Result video are counted.",
       },
     });
   } catch (error: any) {

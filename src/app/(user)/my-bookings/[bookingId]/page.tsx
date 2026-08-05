@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { getClientSessionHeaders } from '@/lib/client-session';
 import { appendAuthNext } from '@/lib/auth-next';
+import { PublicationWorkflowCard } from '@/components/service-video/PublicationWorkflowCard';
 
 type BookingDetail = {
   id: string;
@@ -1356,6 +1357,8 @@ function BookingMediaDetailPageContent() {
             {activeStage ? <p className="text-xs text-gray-500">Current stage: {stageLabel(activeStage)}</p> : null}
           </div>
         ) : null}
+
+        <PublicationWorkflowCard role="customer" bookingId={bookingId} />
 
         {hasExistingCustomerReview ? (
           <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-3">

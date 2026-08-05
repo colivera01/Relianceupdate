@@ -1872,6 +1872,18 @@ export default function EmployeeJobsPage() {
                 {helperText}
               </span>
             ) : null}
+            {isCompletedStatus(normalizedStatus) ? (
+              <Link
+                href={`/employee/jobs/${encodeURIComponent(job.id)}/publication`}
+                className={`rounded-xl border px-4 py-3 text-center text-sm font-semibold transition ${
+                  hasCaptureToken
+                    ? "border-blue-300/40 bg-blue-500/15 text-blue-50 hover:bg-blue-500/25"
+                    : "border-blue-300 text-blue-700 hover:bg-blue-50"
+                }`}
+              >
+                Review Public sharing request
+              </Link>
+            ) : null}
           </div>
         ) : null}
       </div>

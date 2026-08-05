@@ -10,7 +10,6 @@ import {
   MODERATION_REJECTED,
   VISIBILITY_CUSTOMER_ONLY,
   VISIBILITY_PRIVATE,
-  VISIBILITY_PUBLIC,
   VISIBILITY_VENDOR_ARCHIVE_ONLY,
 } from "@/lib/media-visibility";
 
@@ -70,6 +69,17 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       );
     }
 
+    if (action === "approve_public" || action === "set_visibility_public") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "EXACT_MEDIA_PUBLICATION_REQUIRED",
+          message: "Public visibility cannot be granted from a stage shortcut. Use the exact-media publication review.",
+        },
+        { status: 409 }
+      );
+    }
+
     if (action === "reject" && !moderationReason) {
       return NextResponse.json(
         { success: false, error: "moderationReason is required for reject", message: "moderationReason is required for reject" },
@@ -108,11 +118,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       moderatedByUserId: userId,
     };
 
-    if (action === "approve_public") {
-      data.moderationStatus = MODERATION_APPROVED;
-      data.visibilityStatus = VISIBILITY_PUBLIC;
-      data.moderationReason = moderationReason || null;
-    } else if (action === "approve_customer_only") {
+    if (action === "approve_customer_only") {
       data.moderationStatus = MODERATION_APPROVED;
       data.visibilityStatus = VISIBILITY_CUSTOMER_ONLY;
       data.moderationReason = moderationReason || null;
@@ -123,9 +129,6 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     } else if (action === "approve_private") {
       data.moderationStatus = MODERATION_APPROVED;
       data.visibilityStatus = VISIBILITY_PRIVATE;
-      data.moderationReason = moderationReason || null;
-    } else if (action === "set_visibility_public") {
-      data.visibilityStatus = VISIBILITY_PUBLIC;
       data.moderationReason = moderationReason || null;
     } else if (action === "set_visibility_customer_only") {
       data.visibilityStatus = VISIBILITY_CUSTOMER_ONLY;

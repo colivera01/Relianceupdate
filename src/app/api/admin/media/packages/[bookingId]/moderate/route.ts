@@ -111,6 +111,17 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       );
     }
 
+    if (action === "approve" && visibility === "public") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "EXACT_MEDIA_PUBLICATION_REQUIRED",
+          message: "Public visibility requires the exact-media customer, participant, vendor, and admin approval chain.",
+        },
+        { status: 409 }
+      );
+    }
+
     if (action === "reject" && !moderationReason) {
       return NextResponse.json(
         { success: false, error: "moderationReason is required for reject", message: "moderationReason is required for reject" },
@@ -157,15 +168,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       );
     }
     const bookingMetadata = parseMetadata(booking.customerMetadata);
-    const customerVisibilityChoice = String(
-      bookingMetadata.vendor_job_customer_visibility_choice || ""
-    ).trim().toLowerCase();
-    const effectiveVisibility: VisibilityLevel =
-      action === "approve" && customerVisibilityChoice === "public"
-        ? "public"
-        : action === "approve" && customerVisibilityChoice === "private"
-        ? "private"
-        : visibility;
+    // Advance booking metadata is not post-capture exact-media approval.
+    const effectiveVisibility: VisibilityLevel = visibility;
 
     const packageAssets = await (prisma as any).mediaAsset.findMany({
       where: {

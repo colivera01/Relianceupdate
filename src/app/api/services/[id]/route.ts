@@ -13,6 +13,7 @@ import {
   cleanPublicServicePrice,
 } from '@/lib/launch-content-cleanup';
 import { countableReviewWhere } from '@/lib/metrics-exclusion';
+import { resolveCanonicalPublicAssetIds } from '@/lib/service-video-publication';
 import {
   VENDOR_JOB_VIDEO_STAGE_LABELS,
   normalizeVendorJobVideoStage,
@@ -74,9 +75,11 @@ export async function GET(
       // Public-safe media only: approved + public + active.
       let publicAssets: any[] = [];
       try {
+        const canonicalPublicAssetIds = await resolveCanonicalPublicAssetIds({ serviceId: dbService.id });
         publicAssets = await withTransientDbRetry<any[]>(() =>
           (prisma as any).mediaAsset.findMany({
             where: {
+              id: { in: canonicalPublicAssetIds },
               ...getApprovedActiveBaseWhere(),
               visibilityStatus: {
                 in: getVisibilityStatusesForAudience('public'),
@@ -110,12 +113,12 @@ export async function GET(
       );
 
       const mediaUrls = proofSafeAssets
-        .map((asset: any) => String(asset?.blobUrl || '').trim())
+        .map((asset: any) => asset?.id ? `/api/public/media/${asset.id}` : '')
         .filter(Boolean);
 
       const images = proofSafeAssets
         .filter((asset: any) => String(asset?.mimeType || '').startsWith('image/'))
-        .map((asset: any) => String(asset.blobUrl));
+        .map((asset: any) => `/api/public/media/${asset.id}`);
       const videoAssets = proofSafeAssets.filter((asset: any) =>
         String(asset?.mimeType || '').startsWith('video/')
       );
@@ -124,17 +127,14 @@ export async function GET(
           .map((asset: any) => normalizeVendorJobVideoStage(asset?.mediaSession?.vendorJobVideoStage))
           .filter(Boolean)
       );
-      const hasCompletedPublicProofPackage =
-        completedStageKeys.has('INTRO') &&
-        completedStageKeys.has('IN_PROGRESS') &&
-        completedStageKeys.has('COMPLETED');
+      const hasCompletedPublicProofPackage = completedStageKeys.size > 0;
       if (!hasCompletedPublicProofPackage) {
         return NextResponse.json({ error: 'Service not found' }, { status: 404 });
       }
       const primaryProofVideo = videoAssets.find((asset: any) =>
         isCompletedStageProofVideo(asset?.mediaSession || null)
       );
-      const videos = videoAssets.map((asset: any) => String(asset.blobUrl));
+      const videos = videoAssets.map((asset: any) => `/api/public/media/${asset.id}`);
       const videoItems = videoAssets.map((asset: any) => ({
         stageKey: String(asset?.mediaSession?.vendorJobVideoStage || '').trim().toUpperCase() || null,
         stageLabel:
@@ -144,7 +144,7 @@ export async function GET(
           })(),
         createdAt: asset?.createdAt?.toISOString?.() || null,
         id: String(asset?.id || ''),
-        url: String(asset?.blobUrl || ''),
+        url: asset?.id ? `/api/public/media/${asset.id}` : '',
         isPrimaryProofVideo: Boolean(primaryProofVideo?.id) && String(asset?.id || '') === String(primaryProofVideo.id),
       }));
       let vendorReviewAggMap = new Map<string, { rating: number | null; reviewCount: number }>();
@@ -217,7 +217,7 @@ export async function GET(
           images,
           videos,
           videoItems,
-          primaryProofVideoUrl: primaryProofVideo ? String(primaryProofVideo.blobUrl || '') : null,
+          primaryProofVideoUrl: primaryProofVideo?.id ? `/api/public/media/${primaryProofVideo.id}` : null,
           hasPrimaryProofVideo: Boolean(primaryProofVideo),
           publicReviewCount,
           mediaCount: mediaUrls.length,

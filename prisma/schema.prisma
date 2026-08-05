@@ -810,6 +810,206 @@ model PrivateProofAccessGrant {
   @@map("private_proof_access_grants")
 }
 
+// Immutable proposal for making exact, already-approved Private proof Public.
+// A new proposal version is required whenever media or presentation changes.
+model ServiceVideoPublicationProposal {
+  id                     String    @id @default(cuid())
+  bookingId              String
+  vendorId               String
+  packageId              String
+  packageVersion         Int
+  packageHash            String
+  version                Int
+  isCurrent              Boolean   @default(true)
+  status                 String    @default("AWAITING_CUSTOMER_DECISION")
+  audience               String    @default("PUBLIC")
+  proposalHash           String
+  proposedByUserId       String
+  proposedByMembershipId String
+  submittedAt            DateTime  @default(now())
+  supersededAt           DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([bookingId, version])
+  @@index([bookingId, isCurrent])
+  @@index([vendorId, status, updatedAt])
+  @@index([packageId, packageHash])
+  @@index([proposalHash])
+  @@map("service_video_publication_proposals")
+}
+
+model ServiceVideoPublicationStage {
+  id                       String   @id @default(cuid())
+  proposalId               String
+  bookingId                String
+  stage                    String
+  stageEvidenceId          String
+  mediaAssetId             String
+  stageVersion             Int
+  contentHash              String
+  presentationJson         String   @db.NVarChar(Max)
+  presentationHash         String
+  containsCustomerLikeness Boolean  @default(false)
+  containsEmployeeLikeness Boolean  @default(false)
+  containsMinor            Boolean  @default(false)
+  containsBystander        Boolean  @default(false)
+  includesAudio            Boolean  @default(false)
+  createdAt                DateTime @default(now())
+
+  @@unique([proposalId, stage])
+  @@index([bookingId, stage])
+  @@index([stageEvidenceId, contentHash])
+  @@index([mediaAssetId, stageVersion])
+  @@index([presentationHash])
+  @@map("service_video_publication_stages")
+}
+
+model ServiceVideoPublicationCustomerDecision {
+  id                 String   @id @default(cuid())
+  proposalId         String   @unique
+  bookingId          String
+  customerUserId     String
+  authorityRole      String   @default("CUSTOMER")
+  decision           String
+  decisionJson       String   @db.NVarChar(Max)
+  decisionHash       String
+  packageHash        String
+  proposalHash       String
+  verificationMethod String
+  reason             String?  @db.NVarChar(Max)
+  decidedAt          DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  @@index([bookingId, customerUserId, decidedAt])
+  @@index([proposalHash, decision])
+  @@map("service_video_publication_customer_decisions")
+}
+
+model ServiceVideoPublicationParticipantDecision {
+  id                 String   @id @default(cuid())
+  proposalId         String
+  stageId            String
+  bookingId          String
+  actorUserId        String
+  authorityType      String
+  decision           String
+  decisionHash       String
+  proposalHash       String
+  presentationHash   String
+  verificationMethod String
+  decidedAt          DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  @@unique([proposalId, stageId, actorUserId, authorityType])
+  @@index([bookingId, actorUserId, decidedAt])
+  @@index([proposalHash, decision])
+  @@map("service_video_publication_participant_decisions")
+}
+
+model ServiceVideoPublicationVendorDecision {
+  id                  String   @id @default(cuid())
+  proposalId          String   @unique
+  bookingId           String
+  vendorId            String
+  managerUserId       String
+  managerMembershipId String
+  decision            String
+  decisionHash        String
+  proposalHash        String
+  reason              String?  @db.NVarChar(Max)
+  decidedAt           DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  @@index([vendorId, decision, decidedAt])
+  @@index([proposalHash])
+  @@map("service_video_publication_vendor_decisions")
+}
+
+model ServiceVideoPublicationAdminDecision {
+  id               String   @id @default(cuid())
+  proposalId       String   @unique
+  bookingId        String
+  adminUserId      String
+  decision         String
+  approvedAudience String?
+  decisionHash     String
+  proposalHash     String
+  reason           String?  @db.NVarChar(Max)
+  decidedAt        DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  @@index([decision, decidedAt])
+  @@index([proposalHash])
+  @@map("service_video_publication_admin_decisions")
+}
+
+model PublicServiceVideoEligibility {
+  id                         String    @id @default(cuid())
+  proposalId                 String
+  stageId                    String    @unique
+  bookingId                  String
+  vendorId                   String
+  mediaAssetId               String
+  packageId                  String
+  packageHash                String
+  proposalHash               String
+  presentationHash           String
+  contentHash                String
+  eligibilityHash            String
+  audience                   String    @default("PUBLIC")
+  status                     String    @default("ACTIVE")
+  adminDecisionId            String
+  customerDecisionId         String
+  vendorDecisionId           String
+  participantDecisionIdsJson String    @db.NVarChar(Max)
+  eligibleAt                 DateTime  @default(now())
+  invalidatedAt              DateTime?
+  invalidationReason         String?   @db.NVarChar(Max)
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  @@index([vendorId, status, eligibleAt])
+  @@index([bookingId, status])
+  @@index([mediaAssetId, contentHash])
+  @@index([eligibilityHash])
+  @@map("public_service_video_eligibility")
+}
+
+model ServiceVideoPublicationAuditEvent {
+  id           String   @id @default(cuid())
+  proposalId   String
+  bookingId    String
+  vendorId     String
+  actorUserId  String?
+  actorRole    String
+  eventType    String
+  evidenceHash String
+  metadataJson String   @db.NVarChar(Max)
+  createdAt    DateTime @default(now())
+
+  @@index([proposalId, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([evidenceHash])
+  @@map("service_video_publication_audit_events")
+}
+
+model LegacyPublicRestrictionEvidence {
+  id                 String   @id @default(cuid())
+  mediaAssetId       String
+  vendorId           String
+  bookingId          String?
+  previousVisibility String
+  reason             String
+  restrictedAt       DateTime @default(now())
+
+  @@unique([mediaAssetId])
+  @@index([vendorId, restrictedAt])
+  @@index([bookingId, restrictedAt])
+  @@map("legacy_public_restriction_evidence")
+}
+
 model PrivateProofAccessEvent {
   id            String   @id @default(cuid())
   accessGrantId String

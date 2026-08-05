@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useAuth } from "@/contexts/AuthContext";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
+import { PublicationWorkflowCard } from "@/components/service-video/PublicationWorkflowCard";
 import {
   STAGE_VIDEO_MAX_DURATION_SECONDS,
   formatStageVideoDuration,
@@ -563,6 +564,10 @@ export default function VendorJobDetailPage() {
                   <p className="mt-2 text-xs text-amber-700">This completed work order is closed as rejected and will not move to public moderation.</p>
                 </CardContent>
               </Card>
+            ) : null}
+
+            {normalizedStatus === "COMPLETED" && effectiveVendorId ? (
+              <PublicationWorkflowCard role="vendor" bookingId={jobId} vendorId={effectiveVendorId} />
             ) : null}
 
             <Card>

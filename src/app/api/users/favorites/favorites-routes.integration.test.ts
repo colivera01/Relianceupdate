@@ -4,6 +4,7 @@ import { GET as favoritesGET, POST as favoritesPOST } from './route';
 import { DELETE as favoriteDELETE } from './[id]/route';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { getVendorReviewAggregatesForPublic } from '@/lib/public-review-aggregates';
+import { resolveCanonicalPublicAssetIds } from '@/lib/service-video-publication';
 
 const hoisted = vi.hoisted(() => {
   const favoriteCount = vi.fn();
@@ -50,6 +51,10 @@ vi.mock('@/lib/public-review-aggregates', () => ({
   getVendorReviewAggregatesForPublic: vi.fn(),
 }));
 
+vi.mock('@/lib/service-video-publication', () => ({
+  resolveCanonicalPublicAssetIds: vi.fn(),
+}));
+
 function getJson(res: Response) {
   return res.json() as Promise<Record<string, unknown>>;
 }
@@ -85,6 +90,8 @@ describe('GET /api/users/favorites', () => {
     hoisted.mediaAssetFindMany.mockReset();
     vi.mocked(getVendorReviewAggregatesForPublic).mockReset();
     vi.mocked(getVendorReviewAggregatesForPublic).mockResolvedValue(new Map());
+    vi.mocked(resolveCanonicalPublicAssetIds).mockReset();
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue([]);
   });
 
   it('returns 401 when no identity (no auth, no userId query)', async () => {
@@ -125,9 +132,11 @@ describe('GET /api/users/favorites', () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
     hoisted.favoriteCount.mockResolvedValue(1);
     hoisted.favoriteFindMany.mockResolvedValue([sampleFavoriteRow()]);
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue(['asset-preview']);
     hoisted.mediaAssetFindMany.mockResolvedValue([
       {
-        blobUrl: 'https://cdn.example/p.jpg',
+        id: 'asset-preview',
+        mimeType: 'image/jpeg',
         mediaSession: { serviceId: 'svc-1' },
       },
     ]);
@@ -141,7 +150,7 @@ describe('GET /api/users/favorites', () => {
     expect(res.status).toBe(200);
     const j = await getJson(res);
     const favorites = j.favorites as Record<string, unknown>[];
-    expect(favorites[0].previewMediaUrl).toBe('https://cdn.example/p.jpg');
+    expect(favorites[0].previewMediaUrl).toBe('/api/public/media/asset-preview');
     expect(favorites[0].rating).toBe(4.5);
     expect(favorites[0].reviewCount).toBe(10);
     expect(hoisted.mediaAssetFindMany).toHaveBeenCalled();

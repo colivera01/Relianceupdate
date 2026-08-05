@@ -172,7 +172,7 @@ describe("PATCH /api/admin/media/[assetId]/moderate", () => {
     );
   });
 
-  it("rejects visibility-only action when media is not approved", async () => {
+  it("rejects the legacy Public visibility shortcut", async () => {
     hoisted.mediaAssetFindUnique.mockResolvedValue({ id: "asset-4", moderationStatus: "pending_review" });
     const req = new Request("http://localhost/api/admin/media/asset-4/moderate", {
       method: "PATCH",
@@ -180,7 +180,7 @@ describe("PATCH /api/admin/media/[assetId]/moderate", () => {
       body: JSON.stringify({ action: "set_visibility_public" }),
     });
     const res = await moderatePATCH(req, { params: Promise.resolve({ assetId: "asset-4" }) });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(409);
     expect(hoisted.mediaAssetUpdate).not.toHaveBeenCalled();
   });
 });
@@ -230,7 +230,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Intro walk-through",
           vendorJobVideoStage: "INTRO",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "CONFIRMED" },
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e1", name: "Tech A" },
         },
@@ -254,7 +254,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "In-progress update",
           vendorJobVideoStage: "IN_PROGRESS",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "CONFIRMED" },
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e2", name: "Tech B" },
         },
@@ -278,7 +278,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Completion proof",
           vendorJobVideoStage: "COMPLETED",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "CONFIRMED" },
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex Johnson", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e3", name: "Tech C" },
         },
@@ -317,7 +317,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
     expect(packages).toHaveLength(1);
     expect(packages[0].bookingId).toBe("b1");
     expect(packages[0].vendorName).toBe("A Heating");
-    expect(packages[0].bookingStatus).toBe("CONFIRMED");
+    expect(packages[0].bookingStatus).toBe("COMPLETED");
     expect(packages[0].packageReadiness).toBe("READY_FOR_ADMIN_REVIEW");
     expect((packages[0].videosByStage as Record<string, Record<string, unknown>>).INTRO.assetId).toBe("a-intro");
     expect((packages[0].videosByStage as Record<string, Record<string, unknown>>).IN_PROGRESS.assetId).toBe("a-progress");
@@ -345,7 +345,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Completed",
           vendorJobVideoStage: "COMPLETED",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b2", title: "Drain cleaning", clientName: "Morgan", status: "IN_PROGRESS" },
+          booking: { id: "b2", title: "Drain cleaning", clientName: "Morgan", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s2", name: "Plumbing" },
           employee: { id: "e2", name: "Tech B" },
         },
@@ -369,7 +369,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Progress",
           vendorJobVideoStage: "IN_PROGRESS",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b2", title: "Drain cleaning", clientName: "Morgan", status: "IN_PROGRESS" },
+          booking: { id: "b2", title: "Drain cleaning", clientName: "Morgan", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s2", name: "Plumbing" },
           employee: { id: "e2", name: "Tech B" },
         },
@@ -393,7 +393,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Intro",
           vendorJobVideoStage: "INTRO",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b2", title: "Drain cleaning", clientName: "Morgan", status: "IN_PROGRESS" },
+          booking: { id: "b2", title: "Drain cleaning", clientName: "Morgan", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s2", name: "Plumbing" },
           employee: { id: "e2", name: "Tech B" },
         },
@@ -417,7 +417,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Completed",
           vendorJobVideoStage: "COMPLETED",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex", status: "CONFIRMED" },
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e1", name: "Tech A" },
         },
@@ -441,7 +441,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Progress",
           vendorJobVideoStage: "IN_PROGRESS",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex", status: "CONFIRMED" },
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e1", name: "Tech A" },
         },
@@ -465,7 +465,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Intro",
           vendorJobVideoStage: "INTRO",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex", status: "CONFIRMED" },
+          booking: { id: "b1", title: "HVAC tune-up", clientName: "Alex", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e1", name: "Tech A" },
         },
@@ -509,7 +509,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Intro",
           vendorJobVideoStage: "INTRO",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "CONFIRMED" },
+          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e1", name: "Tech A" },
         },
@@ -533,7 +533,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Progress",
           vendorJobVideoStage: "IN_PROGRESS",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "CONFIRMED" },
+          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e1", name: "Tech A" },
         },
@@ -557,7 +557,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
           title: "Completed",
           vendorJobVideoStage: "COMPLETED",
           sessionType: "JOB_SERVICE_VIDEO",
-          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "CONFIRMED" },
+          booking: { id: "b1", title: "Furnace install", clientName: "Pat", status: "COMPLETED", customerMetadata: JSON.stringify({ reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" } }) },
           service: { id: "s1", name: "HVAC" },
           employee: { id: "e1", name: "Tech A" },
         },
@@ -675,6 +675,17 @@ describe("PATCH /api/admin/media/packages/[bookingId]/moderate", () => {
     });
     const res = await packageModeratePATCH(req, { params: Promise.resolve({ bookingId: "b1" }) });
     expect(res.status).toBe(422);
+  });
+
+  it("rejects package-level Public approval without an exact-media evidence chain", async () => {
+    const req = new Request("http://localhost/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "approve", visibility: "public" }),
+    });
+    const res = await packageModeratePATCH(req, { params: Promise.resolve({ bookingId: "b1" }) });
+    expect(res.status).toBe(409);
+    expect(hoisted.mediaAssetUpdate).not.toHaveBeenCalled();
   });
 
   it("approves package by applying action to INTRO/IN_PROGRESS/COMPLETED", async () => {

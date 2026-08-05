@@ -36,6 +36,7 @@ import {
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
   withTransientDbRetry,
 } from "@/lib/transient-db-errors";
+import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 12;
@@ -308,9 +309,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let publicAssets: any[] = [];
     if (serviceIds.length) {
       try {
+        const canonicalPublicAssetIds = await resolveCanonicalPublicAssetIds();
         publicAssets = await withTransientDbRetry<any[]>(() =>
           (prisma as any).mediaAsset.findMany({
             where: countableMediaAssetWhere({
+              id: { in: canonicalPublicAssetIds },
               ...getApprovedActiveBaseWhere(),
               visibilityStatus: {
                 in: getVisibilityStatusesForAudience("public"),
@@ -321,6 +324,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             }),
             orderBy: { createdAt: "desc" },
             select: {
+              id: true,
               mimeType: true,
               blobUrl: true,
               createdAt: true,
@@ -362,7 +366,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
-      const blobUrl = String(asset?.blobUrl || "").trim();
+      const blobUrl = asset?.id ? `/api/public/media/${asset.id}` : "";
       if (!serviceId || !blobUrl || primaryProofPreviewByServiceId.has(serviceId)) continue;
       if (!String(asset?.mimeType || "").startsWith("video/")) continue;
       if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
@@ -379,7 +383,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
     for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
-      const blobUrl = String(asset?.blobUrl || "").trim();
+      const blobUrl = asset?.id ? `/api/public/media/${asset.id}` : "";
       if (!serviceId || !blobUrl || previewByServiceId.has(serviceId)) continue;
       previewByServiceId.set(serviceId, {
         url: blobUrl,

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from './route';
 import { getVendorReviewAggregatesForPublic } from '@/lib/public-review-aggregates';
+import { resolveCanonicalPublicAssetIds } from '@/lib/service-video-publication';
 
 const hoisted = vi.hoisted(() => {
   const serviceFindUnique = vi.fn();
@@ -34,6 +35,10 @@ vi.mock('@/lib/public-review-aggregates', () => ({
   getVendorReviewAggregatesForPublic: vi.fn(),
 }));
 
+vi.mock('@/lib/service-video-publication', () => ({
+  resolveCanonicalPublicAssetIds: vi.fn(),
+}));
+
 async function readJson(res: Response) {
   return res.json() as Promise<Record<string, any>>;
 }
@@ -44,9 +49,17 @@ describe('GET /api/services/[id]', () => {
     hoisted.mediaAssetFindMany.mockReset();
     hoisted.reviewCount.mockReset();
     vi.mocked(getVendorReviewAggregatesForPublic).mockReset();
+    vi.mocked(resolveCanonicalPublicAssetIds).mockReset();
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue([]);
   });
 
   it('returns one canonical featured video item and a public review count', async () => {
+    vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue([
+      'asset-featured',
+      'asset-other-completed',
+      'asset-intro',
+      'asset-progress',
+    ]);
     hoisted.serviceFindUnique.mockResolvedValue({
       id: 'svc-1',
       name: 'Metro Apartment Deep Clean',
@@ -121,7 +134,7 @@ describe('GET /api/services/[id]', () => {
     expect(res.status).toBe(200);
     const json = await readJson(res);
     expect(json.service.publicReviewCount).toBe(5);
-    expect(json.service.primaryProofVideoUrl).toBe('https://cdn.example/video.mp4');
+    expect(json.service.primaryProofVideoUrl).toBe('/api/public/media/asset-featured');
     expect(json.service.videoItems).toHaveLength(4);
     expect(json.service.videoItems.filter((item: any) => item.isPrimaryProofVideo)).toEqual([
       {
@@ -129,7 +142,7 @@ describe('GET /api/services/[id]', () => {
         id: 'asset-featured',
         stageKey: 'COMPLETED',
         stageLabel: 'Final Result',
-        url: 'https://cdn.example/video.mp4',
+        url: '/api/public/media/asset-featured',
         isPrimaryProofVideo: true,
       },
     ]);

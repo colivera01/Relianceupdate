@@ -10,6 +10,7 @@ import {
   isCompletedStageProofVideo,
   shouldIncludeAssetForCustomerPublicProof,
 } from "@/lib/proof-media-policy";
+import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -94,6 +95,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
         ...(audience === "customer" && bookingId ? { bookingId } : {}),
       },
     };
+    if (audience === "public") {
+      where.id = { in: await resolveCanonicalPublicAssetIds({ serviceId }) };
+    }
 
     const assets = await (prisma as any).mediaAsset.findMany({
       where,
@@ -137,7 +141,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       bytes: typeof asset.bytes === "bigint" ? asset.bytes.toString() : String(asset.bytes || "0"),
       mimeType: asset.mimeType,
       blobKey: asset.blobKey,
-      blobUrl: asset.blobUrl,
+      blobUrl: audience === "public" ? `/api/public/media/${asset.id}` : asset.blobUrl,
       moderationStatus: asset.moderationStatus,
       visibilityStatus: asset.visibilityStatus,
       archiveStatus: asset.archiveStatus,

@@ -696,7 +696,7 @@ export default function PublicBrowsePage() {
             </div>
           ) : categories.length === 0 ? (
             <div className="rounded-2xl border bg-white p-4 text-sm text-gray-600">
-              No public service categories are available yet. Categories appear after vendors complete all three staged videos and Reliance approves the proof for public view.
+              No public service categories are available yet. Categories appear when an exact Service Video is approved for Public viewing.
             </div>
           ) : (
             <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4">

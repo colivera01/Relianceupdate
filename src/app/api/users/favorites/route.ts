@@ -9,6 +9,7 @@ import {
 } from "@/lib/account-status";
 import { getApprovedActiveBaseWhere, getVisibilityStatusesForAudience } from "@/lib/media-visibility";
 import { getVendorReviewAggregatesForPublic } from "@/lib/public-review-aggregates";
+import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
 import { cleanPublicServiceDescription } from "@/lib/launch-content-cleanup";
 
 function normalizePage(value: string | null): number {
@@ -107,9 +108,11 @@ export async function GET(request: NextRequest) {
     ]);
 
     const serviceIds = favorites.map((fav) => fav.service.id);
+    const canonicalPublicAssetIds = serviceIds.length ? await resolveCanonicalPublicAssetIds() : [];
     const media = serviceIds.length
       ? await (prisma as any).mediaAsset.findMany({
           where: {
+            id: { in: canonicalPublicAssetIds },
             ...getApprovedActiveBaseWhere(),
             visibilityStatus: { in: getVisibilityStatusesForAudience("public") },
             mediaSession: {
@@ -118,7 +121,7 @@ export async function GET(request: NextRequest) {
           },
           orderBy: { createdAt: "desc" },
           select: {
-            blobUrl: true,
+            id: true,
             mimeType: true,
             mediaSession: { select: { serviceId: true } },
           },
@@ -128,10 +131,10 @@ export async function GET(request: NextRequest) {
     const previewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
     for (const item of media) {
       const serviceId = String(item?.mediaSession?.serviceId || "");
-      const blobUrl = String(item?.blobUrl || "").trim();
-      if (!serviceId || !blobUrl || previewByServiceId.has(serviceId)) continue;
+      const publicUrl = item?.id ? `/api/public/media/${item.id}` : "";
+      if (!serviceId || !publicUrl || previewByServiceId.has(serviceId)) continue;
       previewByServiceId.set(serviceId, {
-        url: blobUrl,
+        url: publicUrl,
         type: String(item?.mimeType || "").startsWith("video/") ? "video" : "image",
       });
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -122,11 +123,9 @@ function buildInitialPackageVisibilityById(packages: QueuePackage[]) {
 }
 
 type ModerationAction =
-  | 'approve_public'
   | 'approve_customer_only'
   | 'approve_vendor_archive_only'
   | 'approve_private'
-  | 'set_visibility_public'
   | 'set_visibility_customer_only'
   | 'set_visibility_vendor_archive_only'
   | 'set_visibility_private'
@@ -136,28 +135,21 @@ type ModerationAction =
 type PackageModerationAction = 'approve' | 'reject' | 'flag';
 
 /** Visibility tier when approving or updating an already-approved asset (maps to API enums). */
-type VisibilityLevel = 'public' | 'customer_only' | 'vendor_archive_only' | 'private';
+type VisibilityLevel = 'customer_only' | 'vendor_archive_only' | 'private';
 
 const APPROVE_BY_VISIBILITY: Record<VisibilityLevel, ModerationAction> = {
-  public: 'approve_public',
   customer_only: 'approve_customer_only',
   vendor_archive_only: 'approve_vendor_archive_only',
   private: 'approve_private',
 };
 
 const SET_VISIBILITY_BY_LEVEL: Record<VisibilityLevel, ModerationAction> = {
-  public: 'set_visibility_public',
   customer_only: 'set_visibility_customer_only',
   vendor_archive_only: 'set_visibility_vendor_archive_only',
   private: 'set_visibility_private',
 };
 
 const VISIBILITY_OPTIONS: { value: VisibilityLevel; label: string; shortHint: string }[] = [
-  {
-    value: 'public',
-    label: 'Public',
-    shortHint: 'Public + customer + vendor (discovery & booking-safe media APIs)',
-  },
   {
     value: 'customer_only',
     label: 'Customer only',
@@ -177,7 +169,6 @@ const VISIBILITY_OPTIONS: { value: VisibilityLevel; label: string; shortHint: st
 
 function visibilityLevelFromAsset(status: string): VisibilityLevel {
   const n = String(status || '').trim().toLowerCase();
-  if (n === 'public') return 'public';
   if (n === 'customer_only') return 'customer_only';
   if (n === 'vendor_archive_only') return 'vendor_archive_only';
   return 'private';
@@ -957,6 +948,16 @@ export default function AdminMediaModerationClient({
         ]}
         tone="blue"
       />
+
+      <div className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold">Public sharing uses a separate exact-media review.</p>
+          <p className="mt-1 text-sm text-blue-800">This queue controls Private package moderation only. It cannot make a clip Public.</p>
+        </div>
+        <Button asChild className="bg-blue-600 text-white hover:bg-blue-700">
+          <Link href="/admin/publication-moderation">Open Public Proof Review</Link>
+        </Button>
+      </div>
 
       <Card>
         <CardContent className="pt-6">

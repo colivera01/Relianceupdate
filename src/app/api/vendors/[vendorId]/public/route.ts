@@ -21,6 +21,7 @@ import {
   VENDOR_JOB_VIDEO_STAGE_LABELS,
   normalizeVendorJobVideoStage,
 } from "@/lib/vendor-job-video-stages";
+import { resolveCanonicalPublicAssetIds } from "@/lib/service-video-publication";
 import { getBusinessHoursStatus } from "@/lib/business-hours";
 import {
   isTransientDbConnectivityError,
@@ -80,9 +81,11 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     const serviceIds = services.map((service) => service.id);
     let publicAssets: any[] = [];
     try {
+      const canonicalPublicAssetIds = await resolveCanonicalPublicAssetIds({ vendorId: vendor.id });
       publicAssets = await withTransientDbRetry<any[]>(() =>
         (prisma as any).mediaAsset.findMany({
           where: countableMediaAssetWhere({
+            id: { in: canonicalPublicAssetIds },
             vendorId: vendor.id,
             ...getApprovedActiveBaseWhere(),
             visibilityStatus: {
@@ -119,7 +122,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     const primaryProofPreviewByServiceId = new Map<string, { url: string; type: "image" | "video" }>();
     for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
-      const url = String(asset?.blobUrl || "").trim();
+      const url = asset?.id ? `/api/public/media/${asset.id}` : "";
       if (!serviceId || !url || primaryProofPreviewByServiceId.has(serviceId)) continue;
       if (!String(asset?.mimeType || "").startsWith("video/")) continue;
       if (!isCompletedStageProofVideo(asset?.mediaSession || null)) continue;
@@ -127,7 +130,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     }
     for (const asset of proofSafePublicAssets) {
       const serviceId = String(asset?.mediaSession?.serviceId || "");
-      const url = String(asset?.blobUrl || "").trim();
+      const url = asset?.id ? `/api/public/media/${asset.id}` : "";
       if (!serviceId || !url || previewByServiceId.has(serviceId)) continue;
       previewByServiceId.set(serviceId, {
         url,
@@ -171,7 +174,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
     >();
 
     for (const asset of proofSafePublicAssets) {
-      const url = String(asset?.blobUrl || "").trim();
+      const url = asset?.id ? `/api/public/media/${asset.id}` : "";
       if (!url) continue;
 
       const serviceId = asset?.mediaSession?.serviceId ? String(asset.mediaSession.serviceId) : null;
