@@ -11,10 +11,7 @@ import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { resolveBookingCustomer } from "@/lib/booking-customer";
-import {
-  resolveRecordingPermissionGate,
-  type RecordingPermissionRecord,
-} from "@/lib/consent/recording-gate";
+import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 type StageKey = "INTRO" | "IN_PROGRESS" | "COMPLETED";
 
@@ -75,52 +72,9 @@ export async function GET(request: Request): Promise<NextResponse> {
       const allowedMembershipIds = byVendor.get(booking.vendorId) || [];
       return assigned.assignedMembershipIds.some((id) => allowedMembershipIds.includes(id));
     });
-    const releasedBookings = assignedBookings.filter((booking) => {
-      const compliance = parseRecordingComplianceMetadata(booking.customerMetadata);
-      const allowedMembershipIds = byVendor.get(booking.vendorId) || [];
-      return allowedMembershipIds.some((id) => compliance.releasedMembershipIds.includes(id));
-    });
-
-    if (tokenAccess && assignedBookings.length > 0 && releasedBookings.length === 0) {
-      return NextResponse.json({
-        jobs: [],
-        membership: activeVendorMemberships[0],
-        placeholderData: false,
-        pendingServiceOrder: true,
-        message:
-          "This service order is assigned, but recording is still locked. Your manager must finish the required permission and release steps.",
-      });
-    }
-
-    const bookingIds = releasedBookings.map((b) => b.id);
-
-    const permissionRecords = bookingIds.length
-      ? await prisma.consentRecord.findMany({
-          where: { bookingId: { in: bookingIds }, isCurrent: true },
-          orderBy: { requestedAt: "desc" },
-          select: {
-            id: true,
-            bookingId: true,
-            status: true,
-            lifecycleStatus: true,
-            verifiedDecision: true,
-            isCurrent: true,
-            scopeJson: true,
-            expiresAt: true,
-            recipientMismatch: true,
-            decisionEvidence: { select: { id: true } },
-          },
-        })
-      : [];
-    const permissionByBooking = new Map<
-      string,
-      RecordingPermissionRecord
-    >();
-    for (const record of permissionRecords) {
-      if (!permissionByBooking.has(record.bookingId)) {
-        permissionByBooking.set(record.bookingId, record);
-      }
-    }
+    // Assigned work remains visible even while recording is blocked. The
+    // canonical gate below explains who must act and how the block is resolved.
+    const bookingIds = assignedBookings.map((b) => b.id);
 
     const sessions = bookingIds.length
       ? await (prisma as any).mediaSession.findMany({
@@ -139,7 +93,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       : [];
 
     const stageByBooking = new Map<string, Record<StageKey, boolean>>();
-    for (const booking of releasedBookings) {
+    for (const booking of assignedBookings) {
       stageByBooking.set(booking.id, emptyStageProgress());
     }
     for (const row of sessions) {
@@ -154,13 +108,20 @@ export async function GET(request: Request): Promise<NextResponse> {
       });
     }
 
-    const jobs = releasedBookings.map((booking) => {
+    const jobs = await Promise.all(assignedBookings.map(async (booking) => {
       const stageProgress = stageByBooking.get(booking.id) || emptyStageProgress();
-      const permission = permissionByBooking.get(booking.id) || null;
       const recordingCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
-      const permissionGate = resolveRecordingPermissionGate({
+      const allowedMembershipIds = byVendor.get(booking.vendorId) || [];
+      const assigned = parseAssignmentMetadata(booking.customerMetadata);
+      const membershipId = assigned.assignedMembershipIds.find((id) => allowedMembershipIds.includes(id)) || null;
+      const permissionGate = await loadRecordingPermissionGate({
+        bookingId: booking.id,
+        vendorId: booking.vendorId,
         customerMetadata: booking.customerMetadata,
-        consentRecord: permission,
+        membershipId,
+        surface: "employee_jobs",
+        capability: "record",
+        actorKind: "EMPLOYEE",
       });
       const normalizedStatus = String(booking.status || "").trim().toUpperCase();
       const correctionRequested =
@@ -195,11 +156,16 @@ export async function GET(request: Request): Promise<NextResponse> {
           permissionStatus: permissionGate.permissionState,
           recordingUnlocked: permissionGate.recordingUnlocked,
           recipientNeedsCorrection: permissionGate.recipientNeedsCorrection,
+          assessmentId: permissionGate.assessmentId,
+          riskLevel: permissionGate.riskLevel,
+          certificationActive: permissionGate.certificationActive,
+          scopeSummary: permissionGate.scopeSummary,
+          canonicalBlock: permissionGate.block,
         },
         stageProgress,
         canMarkComplete,
       };
-    });
+    }));
 
     return NextResponse.json({
       jobs,

@@ -6,7 +6,6 @@ import {
   PERMISSION_CONTENT_JSON,
   PERMISSION_CONTENT_VERSION,
   PERMISSION_SCOPE_SCHEMA_VERSION,
-  buildPermissionScope,
   stableJson,
 } from "./content-version";
 import { buildPermissionRecipient } from "./recipient";
@@ -60,10 +59,14 @@ export async function createVerifiedPermissionRequest(input: {
   const customer = input.recipientOverride || resolveBookingCustomer(booking);
   const recipient = buildPermissionRecipient(customer);
   const metadata = parseMetadata(booking.customerMetadata);
-  const recordingLocation = String(metadata.vendor_job_recording_location || "").trim().toLowerCase();
-  if (recordingLocation !== "residence" && recordingLocation !== "customer-business") {
+  const assessment = await (prisma as any).recordingScopeAssessment.findFirst({
+    where: { bookingId: booking.id, vendorId: booking.vendorId, isCurrent: true },
+    orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
+  });
+  if (!assessment || assessment.status !== "COMPLETE" || !assessment.permissionRequired) {
     throw new Error("This work record does not require a customer permission request");
   }
+  const recordingLocation = String(assessment.locationType || "").trim().toLowerCase();
 
   const recipientLookups = [
     ...(recipient.email ? [{ email: recipient.email }] : []),
@@ -83,18 +86,28 @@ export async function createVerifiedPermissionRequest(input: {
     : null;
   const recipientMismatch = Boolean(emailOwner && phoneOwner && emailOwner !== phoneOwner);
   const hasChannel = Boolean(recipient.email || recipient.phone);
-  const scope = buildPermissionScope({ recordingLocation, customerName: recipient.name });
-  const scopeJson = stableJson(scope);
-  const scopeHash = hashOpaqueSecret(scopeJson);
+  const scopeJson = stableJson({
+    ...JSON.parse(String(assessment.scopeJson || "{}")),
+    customerLabel: recipient.name || null,
+    recordingAssessmentId: assessment.id,
+  });
+  const scopeHash = String(assessment.scopeHash);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + PERMISSION_LINK_TTL_HOURS * 60 * 60 * 1000);
   const actionSecret = hasChannel && !recipientMismatch ? createOpaqueSecret() : null;
-  const latest = await (prisma as any).consentRecord.findFirst({
+  const [latest, current] = await Promise.all([
+    (prisma as any).consentRecord.findFirst({
     where: { bookingId: booking.id },
     orderBy: [{ generation: "desc" }, { requestedAt: "desc" }],
-    select: { generation: true, verifiedDecision: true, decisionEvidence: { select: { id: true } } },
-  });
-  if (latest?.verifiedDecision || latest?.decisionEvidence) {
+    select: { generation: true },
+    }),
+    (prisma as any).consentRecord.findFirst({
+      where: { bookingId: booking.id, isCurrent: true },
+      orderBy: [{ generation: "desc" }, { requestedAt: "desc" }],
+      select: { verifiedDecision: true, decisionEvidence: { select: { id: true } } },
+    }),
+  ]);
+  if (current?.verifiedDecision || current?.decisionEvidence) {
     throw new Error("A final recording permission decision already exists for this work record");
   }
   const generation = Number(latest?.generation || 0) + 1;

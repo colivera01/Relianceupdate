@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
-import { parseAssignmentMetadata, parseRecordingComplianceMetadata } from "@/lib/job-assignment";
-import { parseRecordingLocationProof, verifyJobRecordingLocation } from "@/lib/job-recording-location";
+import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import {
+  parseRecordingLocationProof,
+  recordJobRecordingLocationAttempt,
+  verifyJobRecordingLocation,
+} from "@/lib/job-recording-location";
+import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 
 type RouteContext = { params: Promise<{ jobId: string }> };
 
@@ -40,31 +45,78 @@ export async function POST(request: Request, context: RouteContext) {
     });
     const membership = tokenAccess || (await requireVendorMembership(request, booking.vendorId));
     const assignment = parseAssignmentMetadata(booking.customerMetadata);
-    const compliance = parseRecordingComplianceMetadata(booking.customerMetadata);
-    if (
-      !assignment.assignedMembershipIds.includes(membership.membershipId) ||
-      !compliance.releasedMembershipIds.includes(membership.membershipId)
-    ) {
+    if (!assignment.assignedMembershipIds.includes(membership.membershipId)) {
       return NextResponse.json(
-        { success: false, code: "JOB_CAPTURE_FORBIDDEN", message: "This service order is not released to this employee." },
+        { success: false, code: "JOB_CAPTURE_FORBIDDEN", message: "This service order is not assigned to this employee." },
         { status: 403 }
       );
     }
 
+    const gateBeforeVerification = await loadRecordingPermissionGate({
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      customerMetadata: booking.customerMetadata,
+      membershipId: membership.membershipId,
+      surface: "location_verify",
+      capability: "record",
+      actorKind: "EMPLOYEE",
+    });
+    if (
+      gateBeforeVerification.blockCode &&
+      !["LOCATION_VERIFICATION_REQUIRED", "LOCATION_EXCEPTION_PENDING"].includes(gateBeforeVerification.blockCode)
+    ) {
+      return NextResponse.json(recordingGateErrorBody(gateBeforeVerification), { status: 409 });
+    }
+    if (!gateBeforeVerification.assessmentId) {
+      return NextResponse.json(recordingGateErrorBody(gateBeforeVerification), { status: 409 });
+    }
+
+    const proof = parseRecordingLocationProof(body);
     const result = await verifyJobRecordingLocation({
       vendorId: booking.vendorId,
       metadata: booking.customerMetadata,
       vendorLocation: booking.vendor,
-      proof: parseRecordingLocationProof(body),
+      proof,
+    });
+    await recordJobRecordingLocationAttempt({
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      membershipId: membership.membershipId,
+      assessmentId: gateBeforeVerification.assessmentId,
+      actorUserId: membership.userId || tokenAccess?.userId || null,
+      proof,
+      result,
     });
     if (!result.ok) {
-      return NextResponse.json({ success: false, ...result }, { status: result.status });
+      const blockedGate = await loadRecordingPermissionGate({
+        bookingId: booking.id,
+        vendorId: booking.vendorId,
+        customerMetadata: booking.customerMetadata,
+        membershipId: membership.membershipId,
+        surface: "location_verify",
+        capability: "record",
+        actorKind: "EMPLOYEE",
+      });
+      return NextResponse.json(
+        { success: false, ...result, recordingGate: blockedGate, blocked: blockedGate.block },
+        { status: result.status },
+      );
     }
+    const recordingGate = await loadRecordingPermissionGate({
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      customerMetadata: booking.customerMetadata,
+      membershipId: membership.membershipId,
+      surface: "location_verify",
+      capability: "record",
+      actorKind: "EMPLOYEE",
+    });
     return NextResponse.json({
       success: true,
       verified: true,
       location: result.location,
       distanceMeters: Math.round(result.distanceMeters),
+      recordingGate,
     });
   } catch (error) {
     console.error("[employee/jobs/verify-location] POST error", error);

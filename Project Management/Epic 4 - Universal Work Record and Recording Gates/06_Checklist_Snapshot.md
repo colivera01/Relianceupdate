@@ -1,30 +1,27 @@
 # Epic 4 Checklist Snapshot
 
-**Epic:** Universal Work Record and Recording Gates
-**Snapshot date:** TBD
-**Starting checklist version / commit:** TBD
-**Ending checklist version / commit:** TBD
+**Snapshot date:** 2026-08-04
 
-## Referenced Rows
-
-CON-02, CON-04, CON-08 through CON-14, CON-22, CON-23, LEG-03, LEG-04, LEG-11, workflow portions of PROD-10 through PROD-12, HELP-02, HELP-03, HELP-06, relevant SEC-02, TEST-04, TEST-06, SHOT-01 through SHOT-03, SHOT-07, and related DOC-* deliverables.
+**Starting commit:** `c40bd55c87d14a783856a113dfdfbde8f7ba6c88`
+**Ending commit:** Scoped checkpoint at repository HEAD
 
 ## Row Status Snapshot
 
-| Checklist ID / range | Starting status | Ending status | Evidence | Remaining owner / epic |
+| Checklist ID / range | Starting status | Ending status | Epic 4 evidence | Remaining owner |
 |---|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD |
+| `CON-02`, `CON-04` | In Progress | Epic 4 Complete; release shared | Separate recording/public decisions and least-public scope preserved | Later consent/publication epics |
+| `CON-08`-`CON-14` | Not Started / In Progress | Epic 4 Complete; replay pending | Three-location assessment, authority, audio-off, protected-person and change rules | Product Owner replay / Epic 5 device proof |
+| `CON-22`, `CON-23` | In Progress | Epic 4 Complete; release shared | Durable evidence and canonical lock across runtime boundaries | Final RR-1A gate |
+| `PROD-11`, `PROD-12` portions | In Progress | In Progress with Epic 4 evidence | Vendor/employee block reason, owner, next action, assigned-job visibility | Epic 5 and release UX |
+| `SEC-02` | Phase A Complete | Preserved | Database-derived actor, membership, assignment, and admin decision authority | Shared security review |
+| `TEST-04`, `TEST-06` | Not Started / In Progress | In Progress | Automated three-location matrix; physical device matrix pending | Epic 5 / RR-1A |
+| `SHOT-03`, `SHOT-07` | Not Started / In Progress | In Progress with Epic 4 package | Desktop/mobile blocked plus loading/empty/failure/success | Release screenshot set |
+| `DOC-01`-`DOC-07` portions | In Progress | In Progress with Epic 4 reports | Engineering, UX, demo, journeys, lessons, debt, checkpoint | Release consolidation |
+| `LEG-03`, `LEG-04`, `LEG-11` | Not Started / In Progress | Unchanged except operational evidence | No legal agreement was implemented or claimed | Epic 11 |
 
-## Completion Rules
+No row is marked `Beta Ready` from local code alone. Migrations, deployment, Product Owner replay, and later shared-epic evidence remain required.
 
-- Update every affected row in the master checklist after implementation.
-- Do not mark a row Beta Ready from code existence alone.
-- Shared rows remain In Progress when later epics still own acceptance criteria.
-- Link tests, screenshots, reports, demo results, and Git evidence.
-- Do not rewrite the roadmap from this snapshot.
+## Deferred or Unaffected
 
-## Deferred or Unaffected Rows
-
-| Row | Why unchanged | Future epic |
-|---|---|---|
-| TBD | TBD | TBD |
+- Reviews, ratings, Trust Score, publication, retention, deletion, disputes, AI, and identity lifecycle were not changed.
+- Full A2/A4/A6/A7 replay remains deferred until Epics 4 and 5 can be tested once as a complete recording experience.

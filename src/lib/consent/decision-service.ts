@@ -44,14 +44,6 @@ export async function completePermissionDecision(input: {
   if (AUTHORITY_ROLE_SCOPES.get(claimedRole) !== authorityScope) {
     throw new PermissionDecisionError("AUTHORITY_REQUIRED", 422, "Confirm your role and authority before deciding.");
   }
-  if (input.decision === "allow" && claimedRole === "guardian") {
-    throw new PermissionDecisionError(
-      "MINOR_RECORDING_NOT_AVAILABLE",
-      422,
-      "Reliance recording involving a minor is not available in this beta workflow."
-    );
-  }
-
   const decisionSecret = readPermissionDecisionCookie(input.request);
   if (!decisionSecret) {
     throw new PermissionDecisionError("IDENTITY_VERIFICATION_REQUIRED", 401, "Verify your identity before deciding.");
@@ -126,6 +118,38 @@ export async function completePermissionDecision(input: {
         documentHash: contentHash,
       },
     });
+    const assessmentModel = (tx as any).recordingScopeAssessment;
+    const authorityModel = (tx as any).recordingAuthorityRequirement;
+    const assessment = assessmentModel?.findFirst
+      ? await assessmentModel.findFirst({
+          where: { bookingId: record.bookingId, isCurrent: true },
+          select: { id: true },
+        })
+      : null;
+    if (assessment && authorityModel?.updateMany) {
+      const authorityTypes = ["CUSTOMER_OR_REPRESENTATIVE"];
+      if (claimedRole === "customer") authorityTypes.push("CUSTOMER_LIKENESS");
+      if (claimedRole === "guardian") authorityTypes.push("VERIFIED_GUARDIAN");
+      await authorityModel.updateMany({
+        where: {
+          assessmentId: assessment.id,
+          authorityType: { in: authorityTypes },
+        },
+        data: accepted
+          ? {
+              status: "VERIFIED",
+              actorUserId: actorUserId || null,
+              evidenceReference: evidence.id,
+              verifiedAt: decidedAt,
+            }
+          : {
+              status: "DECLINED",
+              actorUserId: actorUserId || null,
+              evidenceReference: evidence.id,
+              verifiedAt: decidedAt,
+            },
+      });
+    }
     await (tx as any).consentRequestLink.updateMany({
       where: { consentRecordId: record.id, revokedAt: null },
       data: { revokedAt: decidedAt, revocationReason: "decision_recorded" },

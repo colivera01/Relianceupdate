@@ -7,6 +7,7 @@ import { checkVendorSlotAvailability } from '@/lib/availability-slots';
 import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-link';
 import { createVerifiedPermissionRequest } from '@/lib/consent/request-service';
 import { deliverVerifiedPermissionRequest } from '@/lib/consent/delivery-service';
+import { dispatchQueuedRecordingNotice } from '@/lib/recording/recording-notice';
 
 const hoisted = vi.hoisted(() => {
   const bookingCount = vi.fn();
@@ -33,6 +34,8 @@ const hoisted = vi.hoisted(() => {
   const bookingNotificationFindFirst = vi.fn();
   const bookingNotificationUpdateMany = vi.fn();
   const bookingNotificationUpdate = vi.fn();
+  const recordingScopeAssessmentCreate = vi.fn();
+  const recordingAuthorityRequirementCreateMany = vi.fn();
   const queryRaw = vi.fn();
 
   const prisma: any = {
@@ -59,6 +62,8 @@ const hoisted = vi.hoisted(() => {
       updateMany: bookingNotificationUpdateMany,
       update: bookingNotificationUpdate,
     },
+    recordingScopeAssessment: { create: recordingScopeAssessmentCreate },
+    recordingAuthorityRequirement: { createMany: recordingAuthorityRequirementCreateMany },
     $queryRaw: queryRaw,
   };
   const transaction = vi.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
@@ -90,6 +95,8 @@ const hoisted = vi.hoisted(() => {
     bookingNotificationFindFirst,
     bookingNotificationUpdateMany,
     bookingNotificationUpdate,
+    recordingScopeAssessmentCreate,
+    recordingAuthorityRequirementCreateMany,
     transaction,
     queryRaw,
   };
@@ -123,11 +130,46 @@ vi.mock('@/lib/consent/delivery-service', () => ({
   deliverVerifiedPermissionRequest: vi.fn(),
 }));
 
+vi.mock('@/lib/recording/recording-notice', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/recording/recording-notice')>();
+  return {
+    ...actual,
+    dispatchQueuedRecordingNotice: vi.fn(),
+  };
+});
+
 function jsonRequest(url: string, body?: unknown, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET') {
+  const suppliedFields =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? (((body as Record<string, unknown>).custom_fields as Record<string, unknown>) || {})
+      : {};
+  const normalizedBody =
+    method === 'POST' &&
+    url.endsWith('/api/bookings') &&
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    (body as Record<string, unknown>).vendor_id
+      ? {
+          ...(body as Record<string, unknown>),
+          custom_fields: {
+            recordingLocation:
+              suppliedFields.recordingLocation ||
+              suppliedFields.vendor_job_recording_location ||
+              'business',
+            propertyScope: 'vendor_owned',
+            peopleScope: 'none',
+            frameControl: 'controlled',
+            authorityHolderType: 'vendor_manager',
+            serviceCanContinueWithoutRecording: true,
+            ...suppliedFields,
+          },
+        }
+      : body;
   return new NextRequest(url, {
     method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers: normalizedBody !== undefined ? { 'Content-Type': 'application/json' } : {},
+    body: normalizedBody !== undefined ? JSON.stringify(normalizedBody) : undefined,
   });
 }
 
@@ -264,6 +306,8 @@ describe('POST /api/bookings', () => {
     hoisted.bookingNotificationFindFirst.mockReset();
     hoisted.bookingNotificationUpdateMany.mockReset();
     hoisted.bookingNotificationUpdate.mockReset();
+    hoisted.recordingScopeAssessmentCreate.mockReset();
+    hoisted.recordingAuthorityRequirementCreateMany.mockReset();
     hoisted.transaction.mockReset();
     hoisted.transaction.mockImplementation(async (callback: (tx: typeof hoisted.prisma) => unknown) =>
       callback(hoisted.prisma)
@@ -294,12 +338,30 @@ describe('POST /api/bookings', () => {
       lastAttemptAt: new Date('2024-07-01T12:00:00.000Z'),
       sentAt: new Date('2024-07-01T12:00:01.000Z'),
     });
+    hoisted.recordingScopeAssessmentCreate.mockResolvedValue({
+      id: 'assessment-1',
+      generation: 1,
+      scopeHash: 'scope-hash-1',
+    });
+    hoisted.recordingAuthorityRequirementCreateMany.mockResolvedValue({ count: 1 });
     hoisted.reviewFindFirst.mockResolvedValue(null);
     hoisted.queryRaw.mockResolvedValue([]);
     vi.mocked(sendConsentLinkNotification).mockResolvedValue({
       anySuccess: true,
       absoluteFallbackLink: 'https://beta.relianceonline.org/consent/token-1',
       channels: [{ channel: 'email', attempted: true, success: true }],
+    } as any);
+    vi.mocked(dispatchQueuedRecordingNotice).mockReset();
+    vi.mocked(dispatchQueuedRecordingNotice).mockResolvedValue({
+      claimed: true,
+      delivery: {
+        status: 'SENT',
+        attemptCount: 1,
+        channels: [{ channel: 'email', attempted: true, success: true }],
+        lastError: null,
+        lastAttemptAt: '2024-07-01T12:00:00.000Z',
+        sentAt: '2024-07-01T12:00:01.000Z',
+      },
     } as any);
     vi.mocked(createVerifiedPermissionRequest).mockReset();
     vi.mocked(createVerifiedPermissionRequest).mockResolvedValue({
@@ -444,8 +506,22 @@ describe('POST /api/bookings', () => {
         serviceId: 'svc-1',
         userId: 'customer-1',
         amount: 150,
-        customerMetadata: metaStr,
+        customerMetadata: expect.any(String),
       }),
+    });
+    const persistedMetadata = JSON.parse(
+      hoisted.bookingCreate.mock.calls[0][0].data.customerMetadata
+    ) as Record<string, any>;
+    expect(persistedMetadata).toMatchObject({
+      user_notes: 'Please bring supplies',
+      client_name: 'Pat',
+      client_email: 'pat@example.com',
+      client_phone: '555-0100',
+      custom_fields: {
+        service_address: '1 Main St',
+        recordingLocation: 'business',
+        propertyScope: 'vendor_owned',
+      },
     });
     const j = await readJson(res);
     const booking = j.booking as Record<string, unknown>;
@@ -623,6 +699,75 @@ describe('POST /api/bookings', () => {
       automaticConsent: { status: 'delivered', recordingLocked: true },
     });
     expect(JSON.stringify(json)).not.toContain('server-only-action-secret');
+  });
+
+  it('sends notice only and creates no permission request for controlled vendor-owned Level 1 recording', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue({
+      id: 'ven-1',
+      name: 'Vendor',
+      businessName: 'Vendor Co',
+    });
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.serviceFindUnique.mockResolvedValue({ id: 'svc-1', name: 'Outlet installation', price: 0 });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
+    hoisted.bookingCreate.mockResolvedValue({ id: 'vendor-level-one-book' });
+    hoisted.bookingFindUnique.mockResolvedValue(
+      baseHydratedBooking({
+        id: 'vendor-level-one-book',
+        userId: 'customer-by-email',
+      }),
+    );
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          title: 'Outlet installation',
+          client_name: 'Alex',
+          client_email: 'alex@example.com',
+          custom_fields: {
+            vendor_job_recording_location: 'business',
+            recording_property_scope: 'vendor_owned',
+            recording_people_scope: 'none',
+            recording_frame_control: 'controlled',
+            recording_authority_holder_type: 'vendor_manager',
+            service_can_continue_without_recording: true,
+          },
+        },
+        'POST',
+      ),
+    );
+
+    const json = await readJson(res);
+    expect(res.status).toBe(200);
+    expect(hoisted.bookingNotificationCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bookingId: 'vendor-level-one-book',
+        kind: 'CUSTOMER_RECORDING_NOTICE:1',
+        status: 'QUEUED',
+      }),
+    });
+    expect(dispatchQueuedRecordingNotice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: 'vendor-level-one-book',
+        customerEmail: 'alex@example.com',
+      }),
+    );
+    expect(createVerifiedPermissionRequest).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
+    expect(json).toMatchObject({
+      success: true,
+      automaticConsent: null,
+      recordingNotice: {
+        status: 'SENT',
+        responseRequired: false,
+        recordingPermissionCreated: false,
+      },
+    });
   });
 
   it('returns the existing work record when the same creation key is retried', async () => {

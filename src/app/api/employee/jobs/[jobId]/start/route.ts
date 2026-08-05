@@ -5,6 +5,7 @@ import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
@@ -33,8 +34,22 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       return NextResponse.json({ error: "Forbidden: active employee membership required" }, { status: 403 });
     }
     const assigned = parseAssignmentMetadata(booking.customerMetadata);
-    if (!assigned.assignedMembershipIds.some((id) => vendorMembershipIds.includes(id))) {
+    const membershipId = assigned.assignedMembershipIds.find((id) => vendorMembershipIds.includes(id)) || null;
+    if (!membershipId) {
       return NextResponse.json({ error: "Forbidden: this job is not assigned to you" }, { status: 403 });
+    }
+
+    const recordingGate = await loadRecordingPermissionGate({
+      bookingId: booking.id,
+      vendorId: booking.vendorId,
+      customerMetadata: booking.customerMetadata,
+      membershipId,
+      surface: "employee_start",
+      capability: "record",
+      actorKind: "EMPLOYEE",
+    });
+    if (recordingGate.blockCode) {
+      return NextResponse.json(recordingGateErrorBody(recordingGate), { status: 409 });
     }
 
     const previousStatus = String(booking.status || "").toUpperCase();
@@ -65,7 +80,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       newValue: { status: updated.status },
       metadata: {
         vendorId: booking.vendorId,
-        membershipIds: vendorMembershipIds,
+        membershipIds: [membershipId],
       },
     });
 

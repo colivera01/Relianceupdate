@@ -4,6 +4,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { deliverVerifiedPermissionRequest } from "@/lib/consent/delivery-service";
 import { rotateVerifiedPermissionLink } from "@/lib/consent/request-service";
+import {
+  CUSTOMER_RECORDING_NOTICE_KIND,
+  isCustomerRecordingNoticeKind,
+  retryRecordingNotice,
+} from "@/lib/recording/recording-notice";
 
 function secretMatches(supplied: string, expected: string): boolean {
   const left = crypto.createHash("sha256").update(supplied).digest();
@@ -27,19 +32,57 @@ export async function POST(request: Request) {
   const now = new Date();
   const candidates = await (prisma as any).bookingNotification.findMany({
     where: {
-      kind: { startsWith: "CUSTOMER_PERMISSION_REQUEST" },
+      OR: [
+        { kind: { startsWith: "CUSTOMER_PERMISSION_REQUEST" } },
+        { kind: { startsWith: CUSTOMER_RECORDING_NOTICE_KIND } },
+      ],
       status: "FAILED",
       deadLetteredAt: null,
-      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
-      consentRecordId: { not: null },
+      AND: [{ OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] }],
     },
     orderBy: { createdAt: "asc" },
     take: 10,
-    select: { id: true, consentRecordId: true, attemptCount: true, maxAttempts: true },
+    select: { id: true, kind: true, consentRecordId: true, attemptCount: true, maxAttempts: true },
   });
 
   const results: Array<Record<string, unknown>> = [];
   for (const candidate of candidates) {
+    const maxAttempts = Math.max(1, Number(candidate.maxAttempts || 4));
+    if (Number(candidate.attemptCount || 0) >= maxAttempts) {
+      const recordingNotice = isCustomerRecordingNoticeKind(candidate.kind);
+      await (prisma as any).bookingNotification.update({
+        where: { id: candidate.id },
+        data: {
+          deadLetteredAt: now,
+          lastError: recordingNotice
+            ? "recording_notice_retry_limit_reached"
+            : "permission_delivery_retry_limit_reached",
+        },
+      });
+      results.push({ notificationId: candidate.id, status: "dead_lettered" });
+      continue;
+    }
+
+    if (isCustomerRecordingNoticeKind(candidate.kind)) {
+      try {
+        const retried = await retryRecordingNotice(candidate.id, "recording-notice-worker");
+        results.push({
+          notificationId: candidate.id,
+          status: retried.delivery?.status || "FAILED",
+        });
+      } catch (error) {
+        await (prisma as any).bookingNotification.update({
+          where: { id: candidate.id },
+          data: {
+            nextAttemptAt: new Date(Date.now() + 15 * 60 * 1000),
+            lastError: error instanceof Error ? error.message.slice(0, 500) : "recording_notice_retry_failed",
+          },
+        });
+        results.push({ notificationId: candidate.id, status: "retry_failed" });
+      }
+      continue;
+    }
+
     const consentRecordId = String(candidate.consentRecordId || "").trim();
     if (!consentRecordId) continue;
     const consentRecord = await (prisma as any).consentRecord.findFirst({
@@ -51,16 +94,6 @@ export async function POST(request: Request) {
       select: { id: true, generation: true },
     });
     if (!consentRecord) continue;
-
-    const maxAttempts = Math.max(1, Number(candidate.maxAttempts || 4));
-    if (Number(candidate.attemptCount || 0) >= maxAttempts) {
-      await (prisma as any).bookingNotification.update({
-        where: { id: candidate.id },
-        data: { deadLetteredAt: now, lastError: "permission_delivery_retry_limit_reached" },
-      });
-      results.push({ notificationId: candidate.id, status: "dead_lettered" });
-      continue;
-    }
 
     const leased = await (prisma as any).bookingNotification.updateMany({
       where: { id: candidate.id, status: "FAILED", deadLetteredAt: null },

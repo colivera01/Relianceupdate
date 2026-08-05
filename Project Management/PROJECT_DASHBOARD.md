@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-03 (Epic 3 Phase A beta admin grant correction validated in isolation)
+**Last updated:** 2026-08-04 (Epic 4 implemented locally; deployment and Product Owner replay pending)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Completed Epics
@@ -23,39 +23,47 @@
 - Independent five-person comprehension validation: **Deferred to private beta user feedback**; not an engineering blocker
 - Maintenance rule: No further Epic 2 changes unless a genuine beta defect or measurable beta confusion is discovered
 
+**Epic 3 - Trusted Accounts and Role Isolation, Phase A**
+
+- Status: **Completed and deployed**
+- Delivered: Canonical database actor, ownership/membership authorization, IDOR protection, database-backed admin isolation, deterministic allow-list packaging, and live role-boundary validation
+- Deployment: `reliance-beta-59d696f-epic3-phase-a-202608040430.zip`
+- Source commit: `59d696f55f01e670846800822d295aa558a36f03`
+- Phase B: Deferred by Product Owner; it is not part of the current active objective
+- Evidence: [Epic 3 Phase A Deployment Report](<Epic 3 - Trusted Accounts and Role Isolation/EPIC_3_PHASE_A_DEPLOYMENT_REPORT.md>)
+
+**RR-1A A5 - Current Customer Onboarding**
+
+- Status: **Completed and deployed**
+- Delivered: Required Terms and Privacy decisions, optional SMS, durable registration evidence, email verification, duplicate protection, account restoration, service-record claiming, and permission-link onboarding compatibility
+- Deployed application commit: `df36f113d37149adab2373964663016e4cd845a6`
+- Database: 37 migrations applied after `20260804230000_add_customer_registration_evidence`
+- Evidence: [A5 Deployment Report](<RR-1A - Current Beta Readiness/A5 - Current Customer Onboarding/A5_DEPLOYMENT_REPORT.md>)
+
 ## Current Active Epic
 
-**Epic 3 - Trusted Accounts and Role Isolation**
+**Epic 4 - Universal Work Records and Recording Gates**
 
-- Status: **Phase A engineering approved; beta admin grant correction validated; deployment remains pending**
-- Phase A: Canonical database actor, ownership/membership authorization, IDOR protection, and database-backed admin isolation implemented
-- Phase A implementation commit: `0ffc9648e41e6e9b8be8d907f2ddb5aaefd62db2`
-- Validation: 206 focused unit/integration tests and 5 Playwright scenarios pass
-- Production build: Passed with 6 GB heap; the earlier Support/Notifications blocker was not reproducible and required no source change
-- Dependency security: Next upgraded from 15.3.3 to 15.5.21 in `ff5f7e9`; Critical production audit count reduced from 1 to 0
-- Database readiness: A later additive beta admin grant migration passed isolated migration and exact-package authorization validation; it has not been applied to beta
-- Production build: Pass with 197/197 App Router static pages and both legacy compatibility routes
-- Deployment: Not approved; raw standalone output contains `.env`, and remaining runtime High advisories await their separate decision
-- Phase B: Not authorized
-- Required next action: Obtain Product Owner approval to apply the verified pending role-grant migrations to beta; package deployment and secret rotation remain separate checkpoints
+- Status: **Implemented and validated locally; deployment and Product Owner replay pending**
+- Delivered: Three-location scope assessment, authority requirements, notice/permission routing, employee certification, durable location evidence, admin exception decisions, material-change supersession, canonical runtime gate, and reason-specific block UX
+- Diagnostics: Canonical block metrics are internal-only and cannot affect reviews, Trust Score, permission, publication, or dashboards
+- Validation: 76/76 final named tests, 4/4 Playwright states, type check, Prisma validation/generation, and production build passed
+- Plan: [Epic 4 Implementation Plan](<Epic 4 - Universal Work Record and Recording Gates/RELIANCE_EPIC_4_UNIVERSAL_WORK_RECORDS_AND_RECORDING_GATES_IMPLEMENTATION_PLAN.md>)
+- Evidence: [Engineering Report](<Epic 4 - Universal Work Record and Recording Gates/01_Engineering_Report.md>) and [Product Owner Demo](<Epic 4 - Universal Work Record and Recording Gates/03_Product_Owner_Demo.md>)
+- Migrations and deployment: Two additive migrations exist; neither is applied and no beta package is deployed
+- Product Owner direction: Full A2, A4, A6, and A7 replays are deferred until Epic 4 and Epic 5 are complete; their existing contracts remain implementation dependencies and receive focused regression protection
 
 ## Current Branch
 
-`cursor-latest-build`
+`codex/epic3-beta-admin-grant-correction`
 
 ## Current Commit
 
-Epic 1 operational application commit: `08de960c768463f2fea7c407d7bb39e6dcfacb3b`
+Current repository commit at planning start: `c40bd55c87d14a783856a113dfdfbde8f7ba6c88`
 
-Azure package: `reliance-beta-08de960-epic1-operational-closeout-202608021730.zip`
+Current beta application commit: `df36f113d37149adab2373964663016e4cd845a6`
 
-Latest baseline reconciliation commit: `cfc53e33cd112085fa8a1cc7a14db376d1851357`
-
-Epic 2 starting commit: `abe9d0d6fdd54f5942cb0f4511527b64bd04e1c0`
-
-Epic 2 implementation commit: `cb44c9eaeef905b6cd06b2218fd923e5cc43875d`
-
-Epic 2 Product Owner closeout commit: `e10f68a`
+Current beta package: `reliance-beta-df36f11-a5-202608042023.zip`
 
 ## Latest Beta Feedback Maintenance
 
@@ -74,8 +82,8 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 | ----- | ----------------------------------------------------- | ----------------------------------------- | ----------- | ----------- | ------- | ------------------ |
 | 1     | Verified Permission Request                           | **Completed** | Complete | Complete | Approved | Application `08de960` |
 | 2     | Proof-First Platform Shell                            | **Completed** | Complete | Complete | Approved | `cb44c9e` |
-| 3     | Trusted Accounts and Role Isolation                   | **Phase A engineering approved; packaging review pending** | Phase A complete locally | Reviewed | Automated rehearsal passed | Next 15.5.21 application `ff5f7e9` |
-| 4     | Universal Work Record and Recording Gates             | Not started                               | Not started | Not started | Not run | Not recorded       |
+| 3     | Trusted Accounts and Role Isolation                   | **Phase A completed and deployed; Phase B deferred** | Phase A complete | Reviewed | Live validation passed | `59d696f` |
+| 4     | Universal Work Record and Recording Gates             | **Implemented locally; deployment/demo pending** | Complete locally | Reviewed | Automated evidence passed; manual pending | Pending scoped commit |
 | 5     | Safe Capture Through Private Service Videos           | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 6     | Exact-Media Public Proof and Admin Moderation         | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 7     | Withdrawal, Disputes, Retention and Final Disposition | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -87,9 +95,10 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 
 ## Beta Readiness Progress
 
-The Beta Readiness Checklist remains the master acceptance tracker and has been updated with verified Epic 2 evidence.
+The Beta Readiness Checklist remains the master acceptance tracker. The Launch Readiness Review has been accepted, Epic 3 Phase A and A5 are deployed, and the active delivery objective is Epic 4.
 
-- Completed epics: 2 of 12; Epic 3 Phase A is in review and Epic 3 is not complete
+- Completed roadmap epics: 2 of 12; Epic 3 Phase A is complete and deployed while Phase B is intentionally deferred
+- Completed RR-1A gates: A3, A5, A8, A10, A11, and A14 have current evidence; the final status remains governed by the RR-1A tracker and Product Owner acceptance
 - Beta Ready release: No; later epics and release gates remain open
 - Current checklist: [Beta Readiness Master Checklist](RELIANCE_BETA_READINESS_MASTER_CHECKLIST.md)
 - Completed Epic 1 snapshot: [Epic 1 Checklist Snapshot](<Epic 1 - Verified Permission Request/06_Checklist_Snapshot.md>)
@@ -102,16 +111,30 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | ------------------------------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------ |
 | Controlled SMS handset validation | Engineering / Product Owner | Deferred - External Provider Dependency | Validate after Telnyx activation; do not classify as an application defect |
 | Independent comprehension validation | Product Owner / Beta participants | Deferred to private beta user feedback | Gather natural beta feedback; reopen Epic 2 only for measurable confusion or a genuine defect |
-| Epic 3 production build | Engineering | Passed | Preserve current Support/Notifications routes; no source correction required |
-| Critical Next.js advisory | Engineering | Resolved | Next 15.5.21 installed; Critical audit count is zero |
-| Standalone `.env` trace | Engineering | Blocking release gate | Prove Azure package assembly excludes `.env` and `.env.*` before deployment |
-| High dependency advisories | Product Owner / Engineering | 17 remain; remediation pending | Follow package-by-package readiness report; do not use blind or forced upgrade |
+| Epic 4 migration/deployment approval | Product Owner | Awaiting review | Review the implementation package; apply migrations before mounting application package |
+| Epic 4 Product Owner replay | Product Owner / Engineering | Pending | Execute the three-location demo after controlled beta deployment |
+| Epic 5 private-proof capture | Engineering | Not started | Begin only after Epic 4 is complete and approved |
+| Deferred A2/A4/A6/A7 replay | Product Owner / Engineering | Intentionally deferred | Execute once after Epic 4 and Epic 5 so the complete recording journey is validated together |
+| High dependency advisories | Product Owner / Engineering | Documented | Continue package-specific decisions; never use blind or forced upgrade |
 
 ## Blocked Items
 
 | Item           | Blocker                                                                     | Owner  | Resolution                                             |
 | -------------- | --------------------------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| Epic 3 Phase A deployment | Raw standalone output contains `.env`; remaining runtime High decision is open | Product Owner / Engineering | Prove package sanitization and complete the separately scoped advisory review |
+| Epic 4 beta replay | Application and schema are not deployed | Product Owner / Engineering | Approve a migration-plus-application deployment checkpoint, then run the demo |
+
+## Remaining Internal Beta Checkpoints
+
+| Order | Checkpoint | Current state | Completion evidence required |
+|---|---|---|---|
+| 1 | Confirm the current beta capability boundary (A1) | Needs Product Owner confirmation | Signed reachable-feature inventory and explicit deferred-feature list |
+| 2 | Epic 4 - Universal Work Records and Recording Gates | Implemented locally | Apply migrations before application package, run Product Owner demo, and record decision |
+| 3 | Epic 5 - Safe Capture Through Private Service Videos and A9 physical-device recording | Not started | Three-stage real-device capture, upload/retry, manager review, and Private customer proof evidence |
+| 4 | Consolidated A2, A4, A6, and A7 replay | Deferred by Product Owner until Epics 4-5 complete | One end-to-end authentication, vendor onboarding, employee onboarding, permission, recording, and role-isolation replay |
+| 5 | A12, A13, and A15-A17 current-feature safety and operational gates | Needs verification | Review/Trust non-creation and validity checks, notifications, monitoring, worker, rollback, and minimum restore evidence |
+| 6 | A18 candidate smoke and Internal Beta go/no-go | Not started | Final desktop/mobile role journey, release evidence, known-limitations review, and Product Owner acceptance |
+
+The deferred A2/A4/A6/A7 replay is not waived. Epic 4 and Epic 5 must preserve those contracts through focused automated regression while implementation is underway.
 
 ## Technical Debt Summary
 
@@ -120,7 +143,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | 1    | 7 open; 3 resolved; 1 external deferral | 0 engineering blockers | [Technical Debt](<Epic 1 - Verified Permission Request/05_Technical_Debt.md>)                          |
 | 2    | 6 open; 1 beta-validation deferral | 0 engineering blockers | [Technical Debt](<Epic 2 - Proof-First Platform Shell/05_Technical_Debt.md>)                            |
 | 3    | 10 recorded | 1 packaging blocker plus 17 assessed High advisories | [Technical Debt](<Epic 3 - Trusted Accounts and Role Isolation/05_Technical_Debt.md>)                   |
-| 4    | 0 recorded |       0 recorded | [Technical Debt](<Epic 4 - Universal Work Record and Recording Gates/05_Technical_Debt.md>)             |
+| 4    | 5 open | 0 confirmed code blockers; deployment/demo pending | [Technical Debt](<Epic 4 - Universal Work Record and Recording Gates/05_Technical_Debt.md>)             |
 | 5    | 0 recorded |       0 recorded | [Technical Debt](<Epic 5 - Safe Capture Through Private Service Videos/05_Technical_Debt.md>)           |
 | 6    | 0 recorded |       0 recorded | [Technical Debt](<Epic 6 - Exact-Media Public Proof and Admin Moderation/05_Technical_Debt.md>)         |
 | 7    | 0 recorded |       0 recorded | [Technical Debt](<Epic 7 - Withdrawal, Disputes, Retention and Final Disposition/05_Technical_Debt.md>) |
@@ -137,7 +160,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 | 1    | Decision state alone is insufficient if booking metadata independently drives release and employee camera access | Use one canonical gate and require live cross-role blocked-state replay | [Lessons Learned](<Epic 1 - Verified Permission Request/04_Lessons_Learned.md>) |
 | 2    | Preserve effective copy and change only proven product-identity conflicts | Reconcile DB/test fixtures before relying on broad authenticated smoke | [Lessons Learned](<Epic 2 - Proof-First Platform Shell/04_Lessons_Learned.md>) |
 | 3    | Database authority and focused fixtures produced clear isolation evidence                           | Keep Phase B separate; resolve build/security gates first   | [Lessons Learned](<Epic 3 - Trusted Accounts and Role Isolation/04_Lessons_Learned.md>)                   |
-| 4    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 4 - Universal Work Record and Recording Gates/04_Lessons_Learned.md>)             |
+| 4    | Canonical decisions prevent cross-surface drift; isolate Playwright servers                           | Preserve gate codes and reuse canonical fixtures in Epic 5 | [Lessons Learned](<Epic 4 - Universal Work Record and Recording Gates/04_Lessons_Learned.md>)             |
 | 5    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 5 - Safe Capture Through Private Service Videos/04_Lessons_Learned.md>)           |
 | 6    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 6 - Exact-Media Public Proof and Admin Moderation/04_Lessons_Learned.md>)         |
 | 7    | Not reviewed                                                                                        | None yet                                                    | [Lessons Learned](<Epic 7 - Withdrawal, Disputes, Retention and Final Disposition/04_Lessons_Learned.md>) |
@@ -149,7 +172,7 @@ The Beta Readiness Checklist remains the master acceptance tracker and has been 
 
 ## Next Engineering Decision
 
-Epic 3 Phase A engineering is approved. Phase B and Epic 4 remain unauthorized. The Next.js Critical advisory is resolved and the production build is clean. Before deployment, Azure package assembly must prove environment-file exclusion and the remaining runtime High advisories must receive their separate decision.
+Review the Epic 4 implementation package. If approved, authorize a controlled checkpoint that applies both additive migrations before mounting the Epic 4 application package, followed by the Product Owner demo. Epic 3 Phase B remains deferred, and Epic 5 must not begin until Epic 4 receives Product Owner approval.
 
 ## Required Update Cycle
 

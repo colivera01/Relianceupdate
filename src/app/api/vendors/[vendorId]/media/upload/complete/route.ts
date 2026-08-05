@@ -10,7 +10,7 @@ import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { STAGE_VIDEO_MAX_DURATION_SECONDS } from "@/lib/stage-video-guidance";
 import { probeVideoDurationSecondsFromBuffer } from "@/lib/server-video-duration";
-import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -162,12 +162,13 @@ export async function POST(
           bookingId: booking.id,
           vendorId,
           customerMetadata: booking.customerMetadata,
+          membershipId,
+          surface: "upload_complete",
+          capability: "record",
+          actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
         });
         if (permissionGate.blockCode) {
-          return NextResponse.json(
-            { error: permissionGate.blockMessage, code: permissionGate.blockCode },
-            { status: permissionGate.blockCode === "RECORDING_LOCATION_REQUIRED" ? 422 : 409 }
-          );
+          return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
         }
         if (!String(mimeType || "").toLowerCase().startsWith("video/")) {
           return NextResponse.json(

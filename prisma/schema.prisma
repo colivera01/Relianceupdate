@@ -90,25 +90,30 @@ model Vendor {
   accountStatusAdminNotes String?   @db.NVarChar(Max)
 
   // Relations
-  employees           Employee[]
-  services            Service[]
-  bookings            Booking[]
-  reviews             Review[]
-  devices             Device[]
-  devicePairingCodes  DevicePairingCode[]
-  memberships         VendorMembership[]
-  invites             VendorInvite[]
-  deviceAssignments   DeviceAssignment[]
-  mediaAssets         MediaAsset[]
-  mediaSessions       MediaSession[]
-  reviewWindows       ReviewWindow[]
-  consentRecords      ConsentRecord[]
-  storageAlerts       VendorStorageAlert[]
-  adminNotifications  AdminNotification[]
-  promotionCampaigns  PromotionCampaign[]
-  serviceIssues       BookingServiceIssue[]
-  operationalOutcomes VendorOperationalOutcome[]
-  trustScoreSnapshots VendorTrustScoreSnapshot[]
+  employees                   Employee[]
+  services                    Service[]
+  bookings                    Booking[]
+  reviews                     Review[]
+  devices                     Device[]
+  devicePairingCodes          DevicePairingCode[]
+  memberships                 VendorMembership[]
+  invites                     VendorInvite[]
+  deviceAssignments           DeviceAssignment[]
+  mediaAssets                 MediaAsset[]
+  mediaSessions               MediaSession[]
+  reviewWindows               ReviewWindow[]
+  consentRecords              ConsentRecord[]
+  storageAlerts               VendorStorageAlert[]
+  adminNotifications          AdminNotification[]
+  promotionCampaigns          PromotionCampaign[]
+  serviceIssues               BookingServiceIssue[]
+  operationalOutcomes         VendorOperationalOutcome[]
+  trustScoreSnapshots         VendorTrustScoreSnapshot[]
+  recordingAssessments        RecordingScopeAssessment[]
+  recordingCertifications     EmployeeRecordingCertification[]
+  recordingLocationAttempts   RecordingLocationAttempt[]
+  recordingLocationExceptions RecordingLocationException[]
+  recordingGateMetrics        RecordingGateMetric[]
 
   @@map("vendors")
 }
@@ -473,18 +478,182 @@ model Booking {
   creationRequestKey String?
 
   // Relations
-  user                User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service             Service                    @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  vendor              Vendor                     @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaSessions       MediaSession[]
-  reviewWindows       ReviewWindow[]
-  consentRecords      ConsentRecord[]
-  reviews             Review[]
-  serviceIssues       BookingServiceIssue[]
-  operationalOutcomes VendorOperationalOutcome[]
-  notifications       BookingNotification[]
+  user                        User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service                     Service                          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  vendor                      Vendor                           @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mediaSessions               MediaSession[]
+  reviewWindows               ReviewWindow[]
+  consentRecords              ConsentRecord[]
+  reviews                     Review[]
+  serviceIssues               BookingServiceIssue[]
+  operationalOutcomes         VendorOperationalOutcome[]
+  notifications               BookingNotification[]
+  recordingAssessments        RecordingScopeAssessment[]
+  recordingCertifications     EmployeeRecordingCertification[]
+  recordingLocationAttempts   RecordingLocationAttempt[]
+  recordingLocationExceptions RecordingLocationException[]
+  recordingGateMetrics        RecordingGateMetric[]
 
   @@map("bookings")
+}
+
+// Durable recording scope selected before a work record can be released.
+// Enum-like values remain strings because the production database is SQL Server.
+model RecordingScopeAssessment {
+  id                                 String    @id @default(cuid())
+  bookingId                          String
+  vendorId                           String
+  generation                         Int       @default(1)
+  isCurrent                          Boolean   @default(true)
+  status                             String    @default("COMPLETE")
+  locationType                       String
+  riskLevel                          String
+  propertyScope                      String
+  peopleScope                        String
+  frameControl                       String
+  subjectJson                        String    @db.NVarChar(Max)
+  scopeJson                          String    @db.NVarChar(Max)
+  scopeHash                          String
+  audioRequested                     Boolean   @default(false)
+  audioAllowed                       Boolean   @default(false)
+  permissionRequired                 Boolean
+  noticeRequired                     Boolean   @default(true)
+  serviceCanContinueWithoutRecording Boolean
+  essentialPrivateRecording          Boolean   @default(false)
+  authorityHolderType                String
+  completedByUserId                  String
+  completedAt                        DateTime  @default(now())
+  supersededAt                       DateTime?
+  createdAt                          DateTime  @default(now())
+  updatedAt                          DateTime  @updatedAt
+
+  booking            Booking                          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor             Vendor                           @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  authorities        RecordingAuthorityRequirement[]
+  certifications     EmployeeRecordingCertification[]
+  locationAttempts   RecordingLocationAttempt[]
+  locationExceptions RecordingLocationException[]
+
+  @@unique([bookingId, generation])
+  @@index([bookingId, isCurrent])
+  @@index([vendorId, createdAt])
+  @@index([scopeHash])
+  @@map("recording_scope_assessments")
+}
+
+model RecordingAuthorityRequirement {
+  id                String    @id @default(cuid())
+  assessmentId      String
+  authorityType     String
+  status            String    @default("PENDING")
+  required          Boolean   @default(true)
+  actorUserId       String?
+  evidenceReference String?
+  verifiedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, authorityType])
+  @@index([assessmentId, status])
+  @@map("recording_authority_requirements")
+}
+
+model EmployeeRecordingCertification {
+  id                   String    @id @default(cuid())
+  bookingId            String
+  vendorId             String
+  membershipId         String
+  assessmentId         String
+  assignmentGeneration Int
+  scopeHash            String
+  status               String    @default("ACTIVE")
+  certifiedByUserId    String
+  certifiedAt          DateTime  @default(now())
+  invalidatedAt        DateTime?
+  invalidationReason   String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor     Vendor                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([bookingId, membershipId, status])
+  @@index([assessmentId, status])
+  @@index([scopeHash])
+  @@map("employee_recording_certifications")
+}
+
+model RecordingLocationAttempt {
+  id             String   @id @default(cuid())
+  bookingId      String
+  vendorId       String
+  membershipId   String?
+  assessmentId   String
+  status         String
+  resultCode     String
+  method         String   @default("DEVICE_GEOLOCATION")
+  distanceMeters Int?
+  accuracyMeters Int?
+  actorUserId    String?
+  attemptedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor     Vendor                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([bookingId, membershipId, attemptedAt])
+  @@index([assessmentId, status, attemptedAt])
+  @@map("recording_location_attempts")
+}
+
+model RecordingLocationException {
+  id                      String    @id @default(cuid())
+  bookingId               String
+  vendorId                String
+  assessmentId            String
+  requestedByUserId       String
+  requestedByMembershipId String?
+  reason                  String    @db.NVarChar(Max)
+  evidenceJson            String?   @db.NVarChar(Max)
+  status                  String    @default("PENDING")
+  decidedByAdminUserId    String?
+  decisionNote            String?   @db.NVarChar(Max)
+  decidedAt               DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor     Vendor                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([bookingId, status, createdAt])
+  @@index([assessmentId, status])
+  @@index([decidedByAdminUserId, decidedAt])
+  @@map("recording_location_exceptions")
+}
+
+// Internal diagnostic event only. It is intentionally disconnected from
+// reviews, Trust Score, permissions, publication, and product dashboards.
+model RecordingGateMetric {
+  id                     String   @id @default(cuid())
+  bookingId              String
+  vendorId               String
+  surface                String
+  blockReason            String
+  responsibleParticipant String
+  actorKind              String?
+  createdAt              DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  vendor  Vendor  @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([blockReason, createdAt])
+  @@index([bookingId, createdAt])
+  @@map("recording_gate_metrics")
 }
 
 model BookingNotification {

@@ -23,7 +23,7 @@ const hoisted = vi.hoisted(() => {
     cb({
       mediaSession: { updateMany: txMediaSessionUpdateMany },
       mediaAsset: { updateMany: txMediaAssetUpdateMany },
-      booking: { delete: txBookingDelete },
+      booking: { delete: txBookingDelete, update: bookingUpdate },
     })
   );
 

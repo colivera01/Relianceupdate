@@ -240,6 +240,18 @@ describe("employee job lifecycle routes", () => {
       recipientMismatch: false,
       decisionEvidence: { id: "evidence-1" },
     }]);
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "permission-1",
+      bookingId: "job-1",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      expiresAt: null,
+      recipientMismatch: false,
+      decisionEvidence: { id: "evidence-1" },
+    });
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
 
     const response = await GET(
@@ -253,7 +265,13 @@ describe("employee job lifecycle routes", () => {
       permissionRequired: true,
       permissionStatus: "declined",
       recordingUnlocked: false,
+      canonicalBlock: {
+        why: expect.any(String),
+        responsibleParticipant: expect.any(String),
+        resolution: expect.any(String),
+      },
     });
+    expect(json.pendingServiceOrder).toBeUndefined();
   });
 
   it("enables manual manager submission for in-progress jobs with all three videos", async () => {
@@ -481,6 +499,41 @@ describe("employee job lifecycle routes", () => {
 
     expect(response.status).toBe(409);
     expect(json.code).toBe("INVALID_START_STATUS");
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("blocks job start when required recording permission was declined", async () => {
+    const { POST } = await import("./[jobId]/start/route");
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "job-1",
+      vendorId: "vendor-1",
+      status: "PENDING",
+      customerMetadata: JSON.stringify({ vendor_job_recording_location: "residence" }),
+    });
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "permission-1",
+      bookingId: "job-1",
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      expiresAt: null,
+      recipientMismatch: false,
+      decisionEvidence: { id: "evidence-1" },
+    });
+
+    const response = await POST(new Request("http://localhost/api/employee/jobs/job-1/start", { method: "POST" }), {
+      params: Promise.resolve({ jobId: "job-1" }),
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(json.blocked).toMatchObject({
+      why: expect.any(String),
+      responsibleParticipant: "CUSTOMER",
+      resolution: expect.any(String),
+    });
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 

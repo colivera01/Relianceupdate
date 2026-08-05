@@ -11,7 +11,7 @@ import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, setStageProgressMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
-import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
@@ -58,12 +58,13 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       bookingId: booking.id,
       vendorId: booking.vendorId,
       customerMetadata: booking.customerMetadata,
+      membershipId: assigned.assignedMembershipIds.find((id) => vendorMembershipIds.includes(id)) || null,
+      surface: "employee_stage",
+      capability: "record",
+      actorKind: "EMPLOYEE",
     });
     if (permissionGate.blockCode) {
-      return NextResponse.json(
-        { error: permissionGate.blockMessage, code: permissionGate.blockCode },
-        { status: permissionGate.blockCode === "RECORDING_LOCATION_REQUIRED" ? 422 : 409 }
-      );
+      return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
     }
 
     const matchingSession = await (prisma as any).mediaSession.findFirst({

@@ -35,6 +35,8 @@ export const PERMISSION_CONTENT_HASH = hashOpaqueSecret(
 export function buildPermissionScope(input: {
   recordingLocation: string;
   customerName?: string | null;
+  recordingAssessmentId?: string | null;
+  recordingAssessmentScopeHash?: string | null;
 }) {
   return {
     schemaVersion: PERMISSION_SCOPE_SCHEMA_VERSION,
@@ -46,5 +48,7 @@ export function buildPermissionScope(input: {
     initialAudience: "private",
     customerLabel: String(input.customerName || "").trim() || null,
     publicSharingIncluded: false,
+    recordingAssessmentId: input.recordingAssessmentId || null,
+    recordingAssessmentScopeHash: input.recordingAssessmentScopeHash || null,
   };
 }

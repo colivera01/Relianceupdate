@@ -8,6 +8,12 @@ const hoisted = vi.hoisted(() => {
   const mediaSessionFindFirst = vi.fn();
   const mediaSessionCreate = vi.fn();
   const consentRecordFindFirst = vi.fn();
+  const recordingScopeAssessmentFindFirst = vi.fn();
+  const employeeRecordingCertificationFindFirst = vi.fn();
+  const recordingLocationAttemptFindFirst = vi.fn();
+  const recordingLocationAttemptCreate = vi.fn();
+  const recordingLocationExceptionFindFirst = vi.fn();
+  const recordingGateMetricCreate = vi.fn();
   const geocodeAddress = vi.fn();
 
   const prisma = {
@@ -24,6 +30,14 @@ const hoisted = vi.hoisted(() => {
     consentRecord: {
       findFirst: consentRecordFindFirst,
     },
+    recordingScopeAssessment: { findFirst: recordingScopeAssessmentFindFirst },
+    employeeRecordingCertification: { findFirst: employeeRecordingCertificationFindFirst },
+    recordingLocationAttempt: {
+      findFirst: recordingLocationAttemptFindFirst,
+      create: recordingLocationAttemptCreate,
+    },
+    recordingLocationException: { findFirst: recordingLocationExceptionFindFirst },
+    recordingGateMetric: { create: recordingGateMetricCreate },
   };
 
   return {
@@ -33,6 +47,12 @@ const hoisted = vi.hoisted(() => {
     mediaSessionFindFirst,
     mediaSessionCreate,
     consentRecordFindFirst,
+    recordingScopeAssessmentFindFirst,
+    employeeRecordingCertificationFindFirst,
+    recordingLocationAttemptFindFirst,
+    recordingLocationAttemptCreate,
+    recordingLocationExceptionFindFirst,
+    recordingGateMetricCreate,
     geocodeAddress,
   };
 });
@@ -55,6 +75,8 @@ vi.mock("@/lib/geocoding", async () => {
 
 const VENDOR_ID = "vendor-1";
 const BOOKING_ID = "booking-1";
+let assessmentLocation: "business" | "residence" | "customer-business" = "residence";
+let latestLocationAttempt: Record<string, unknown> | null = null;
 
 function buildPostRequest(body: Record<string, unknown>) {
   return {
@@ -83,11 +105,25 @@ function mockBookingLocation(
   location: "business" | "residence" | "customer-business",
   vendor: Record<string, unknown> = {}
 ) {
+  assessmentLocation = location;
   hoisted.bookingFindFirst.mockResolvedValue({
     id: BOOKING_ID,
     customerMetadata: JSON.stringify({
       vendor_job_assigned_membership_ids: ["membership-1"],
+      vendor_job_assignment_generation: 1,
+      vendor_job_service_order_released_at: "2026-08-01T12:00:00.000Z",
+      vendor_job_service_order_released_membership_ids: ["membership-1"],
       vendor_job_recording_location: location,
+      vendor_job_recording_location_snapshot: {
+        type: location,
+        address: "123 Main St",
+        city: "Orlando",
+        state: "FL",
+        zip_code: "32801",
+        latitude: 28.5383,
+        longitude: -81.3792,
+        geocoded_at: "2026-06-27T12:00:00.000Z",
+      },
     }),
     vendor: {
       address: "123 Main St",
@@ -105,12 +141,22 @@ function mockBookingLocation(
 describe("vendor media sessions consent enforcement integration", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
-    vi.mocked(requireVendorMembership).mockResolvedValue({ userId: "user-1" } as any);
+    vi.mocked(requireVendorMembership).mockResolvedValue({
+      userId: "user-1",
+      membershipId: "membership-1",
+      role: "EMPLOYEE",
+    } as any);
 
     hoisted.bookingFindFirst.mockReset();
     hoisted.mediaSessionFindFirst.mockReset();
     hoisted.mediaSessionCreate.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
+    hoisted.recordingScopeAssessmentFindFirst.mockReset();
+    hoisted.employeeRecordingCertificationFindFirst.mockReset();
+    hoisted.recordingLocationAttemptFindFirst.mockReset();
+    hoisted.recordingLocationAttemptCreate.mockReset();
+    hoisted.recordingLocationExceptionFindFirst.mockReset();
+    hoisted.recordingGateMetricCreate.mockReset();
 
     mockBookingLocation("residence");
     hoisted.vendorUpdate.mockReset();
@@ -124,6 +170,38 @@ describe("vendor media sessions consent enforcement integration", () => {
       status: "CREATED",
     });
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
+    latestLocationAttempt = null;
+    hoisted.recordingScopeAssessmentFindFirst.mockImplementation(async () => ({
+      id: "assessment-1",
+      vendorId: VENDOR_ID,
+      status: "COMPLETE",
+      generation: 1,
+      locationType: assessmentLocation,
+      riskLevel: assessmentLocation === "business" ? "LEVEL_1" : "LEVEL_2",
+      permissionRequired: assessmentLocation !== "business",
+      propertyScope: assessmentLocation === "business" ? "vendor_owned" : "customer_owned",
+      peopleScope: "none",
+      frameControl: "controlled",
+      audioRequested: false,
+      audioAllowed: false,
+      serviceCanContinueWithoutRecording: true,
+      scopeHash: `scope-${assessmentLocation}`,
+      subjectJson: "{}",
+      completedAt: new Date("2026-08-01T11:00:00.000Z"),
+      authorities: [],
+    }));
+    hoisted.employeeRecordingCertificationFindFirst.mockResolvedValue({ id: "cert-1" });
+    hoisted.recordingLocationAttemptFindFirst.mockImplementation(async () => latestLocationAttempt);
+    hoisted.recordingLocationAttemptCreate.mockImplementation(async ({ data }: any) => {
+      latestLocationAttempt = {
+        id: "location-attempt-1",
+        status: data.status,
+        resultCode: data.resultCode,
+      };
+      return latestLocationAttempt;
+    });
+    hoisted.recordingLocationExceptionFindFirst.mockResolvedValue(null);
+    hoisted.recordingGateMetricCreate.mockResolvedValue({ id: "metric-1" });
     hoisted.geocodeAddress.mockReset();
   });
 
@@ -201,6 +279,7 @@ describe("vendor media sessions consent enforcement integration", () => {
       locationContext: "residence",
       consentAccepted: false,
       consentToken: "ignored-client-token",
+      locationProof: { latitude: 28.53831, longitude: -81.37919, accuracyMeters: 20 },
     });
 
     const res = await POST(req, ctx as any);
@@ -226,6 +305,7 @@ describe("vendor media sessions consent enforcement integration", () => {
 
   it("blocks a declined residence request when mutable metadata and browser input say business", async () => {
     mockBookingLocation("business");
+    assessmentLocation = "residence";
     hoisted.consentRecordFindFirst.mockResolvedValue({
       id: "permission-1",
       status: "declined",
@@ -304,10 +384,14 @@ describe("vendor media sessions consent enforcement integration", () => {
   });
 
   it("geocodes a complete vendor address before business location verification when saved coordinates are missing", async () => {
+    assessmentLocation = "business";
     hoisted.bookingFindFirst.mockResolvedValue({
       id: BOOKING_ID,
       customerMetadata: JSON.stringify({
         vendor_job_assigned_membership_ids: ["membership-1"],
+        vendor_job_assignment_generation: 1,
+        vendor_job_service_order_released_at: "2026-08-01T12:00:00.000Z",
+        vendor_job_service_order_released_membership_ids: ["membership-1"],
         vendor_job_recording_location: "business",
       }),
       vendor: {
@@ -365,10 +449,14 @@ describe("vendor media sessions consent enforcement integration", () => {
   });
 
   it("keeps blocking business recording when a complete vendor address cannot be geocoded", async () => {
+    assessmentLocation = "business";
     hoisted.bookingFindFirst.mockResolvedValue({
       id: BOOKING_ID,
       customerMetadata: JSON.stringify({
         vendor_job_assigned_membership_ids: ["membership-1"],
+        vendor_job_assignment_generation: 1,
+        vendor_job_service_order_released_at: "2026-08-01T12:00:00.000Z",
+        vendor_job_service_order_released_membership_ids: ["membership-1"],
         vendor_job_recording_location: "business",
       }),
       vendor: {

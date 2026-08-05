@@ -52,6 +52,24 @@ type RecordingComplianceState = {
   permissionStatus: string;
   recordingUnlocked: boolean;
   recipientNeedsCorrection: boolean;
+  assessmentId?: string | null;
+  riskLevel?: string | null;
+  certificationActive?: boolean;
+  scopeSummary?: {
+    propertyScope: string;
+    peopleScope: string;
+    frameControl: string;
+    sensitiveCapture: boolean;
+    minorPresent: boolean;
+    protectedParticipantPresent: boolean;
+  } | null;
+  canonicalBlock?: {
+    code: string;
+    why: string;
+    responsibleParticipant: "VENDOR_MANAGER" | "CUSTOMER" | "EMPLOYEE" | "ADMIN";
+    resolution: string;
+    serviceMayContinue: boolean;
+  } | null;
 };
 
 type StageFeedbackState = {
@@ -280,7 +298,6 @@ export default function EmployeeJobsPage() {
   const [jobs, setJobs] = useState<EmployeeJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pendingServiceOrderMessage, setPendingServiceOrderMessage] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [managerSubmitCompleteOpen, setManagerSubmitCompleteOpen] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -356,14 +373,6 @@ export default function EmployeeJobsPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to load assigned jobs.");
       setJobs(Array.isArray(json?.jobs) ? json.jobs : []);
-      setPendingServiceOrderMessage(
-        json?.pendingServiceOrder
-          ? String(
-              json?.message ||
-                "This service order is assigned, but recording is still locked. Your manager must finish any required delivery, identity, authority, and recording-permission checks first."
-            )
-          : null
-      );
     } catch (e) {
       const message =
         e instanceof Error && e.message === "Request timed out"
@@ -373,7 +382,6 @@ export default function EmployeeJobsPage() {
             : "Failed to load jobs";
       setError(message);
       setJobs([]);
-      setPendingServiceOrderMessage(null);
     } finally {
       setLoading(false);
     }
@@ -516,6 +524,23 @@ export default function EmployeeJobsPage() {
       return;
     }
     setActionMessage("Job started.");
+    await loadJobs();
+  };
+
+  const certifyRecordingScope = async (jobId: string) => {
+    setActionMessage(null);
+    setError(null);
+    const res = await fetch(`/api/employee/jobs/${jobId}/recording-certification`, {
+      method: "POST",
+      headers: employeeRequestHeaders(),
+      body: JSON.stringify({ accepted: true }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(json?.error || "Could not save the recording-scope confirmation.");
+      return;
+    }
+    setActionMessage("Recording scope confirmed. Location will be checked when you open a stage.");
     await loadJobs();
   };
 
@@ -1244,12 +1269,11 @@ export default function EmployeeJobsPage() {
     const openedFromAssignmentLink = !historyMode && focusedJobId === job.id;
     const normalizedStatus = String(job.status || "").trim().toUpperCase();
     const correctionRequested = isCorrectionRequested(job);
-    const permissionBlocked = Boolean(
-      job.recordingCompliance?.permissionRequired && !job.recordingCompliance?.recordingUnlocked
-    );
+    const recordingBlocked = !job.recordingCompliance?.recordingUnlocked;
+    const canonicalBlock = job.recordingCompliance?.canonicalBlock || null;
     const showUploadControls =
       !historyMode &&
-      !permissionBlocked &&
+      !recordingBlocked &&
       (shouldAllowStageUpload(normalizedStatus) || correctionRequested);
     const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
     const helperText = historyMode ? null : submitHelperText(job);
@@ -1468,15 +1492,41 @@ export default function EmployeeJobsPage() {
           ) : null}
         </div>
 
-        {permissionBlocked ? (
+        {recordingBlocked && canonicalBlock ? (
           <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950">
             <p className="text-sm font-bold">Recording is locked</p>
+            <p className="mt-1 text-sm leading-5"><strong>Why:</strong> {canonicalBlock.why}</p>
             <p className="mt-1 text-sm leading-5">
-              The customer or authorized representative has not completed the required recording
-              permission step. You can still view the service order, but the camera stays unavailable.
+              <strong>Who acts next:</strong> {canonicalBlock.responsibleParticipant.replaceAll("_", " ").toLowerCase()}
             </p>
-            <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
-              Status: {String(job.recordingCompliance?.permissionStatus || "Pending").replaceAll("_", " ")}
+            <p className="mt-1 text-sm leading-5"><strong>Next step:</strong> {canonicalBlock.resolution}</p>
+            <p className="mt-2 text-xs font-semibold text-amber-800">
+              {canonicalBlock.serviceMayContinue
+                ? "The service may continue without recording while this is resolved."
+                : "Do not continue this service step until the block is resolved."}
+            </p>
+            {canonicalBlock.code === "EMPLOYEE_CERTIFICATION_REQUIRED" ? (
+              <button
+                type="button"
+                onClick={() => void certifyRecordingScope(job.id)}
+                className="mt-3 rounded-lg bg-amber-900 px-4 py-2 text-sm font-bold text-white"
+              >
+                Confirm Recording Scope
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {!historyMode && job.recordingCompliance?.scopeSummary ? (
+          <div className="mt-3 rounded-xl border border-blue-300/30 bg-blue-950/40 px-4 py-3 text-blue-50">
+            <p className="text-sm font-bold">Approved recording scope</p>
+            <p className="mt-1 text-sm leading-5">
+              Record {job.recordingCompliance.scopeSummary.propertyScope.replaceAll("_", " ").toLowerCase()}.
+              {" "}People: {job.recordingCompliance.scopeSummary.peopleScope.replaceAll("_", " ").toLowerCase()}.
+              {" "}Keep audio off.
+            </p>
+            <p className="mt-1 text-xs leading-5 text-blue-100/80">
+              Avoid unrelated people, minors, documents, screens, private areas, identifiers, and anything outside this scope. Stop if conditions change.
             </p>
           </div>
         ) : null}
@@ -1535,7 +1585,7 @@ export default function EmployeeJobsPage() {
                       }
                     }}
                     disabled={
-                      permissionBlocked ||
+                      recordingBlocked ||
                       Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))
                     }
                     className={`min-h-[168px] rounded-2xl border p-4 text-left transition ${
@@ -1576,7 +1626,7 @@ export default function EmployeeJobsPage() {
                                 : "bg-white/10 text-blue-100"
                           }`}
                         >
-                          {permissionBlocked
+                          {recordingBlocked
                             ? "Recording locked"
                             : getStageCardActionLabel({
                                 isOpening: isOpeningThisStage,
@@ -1640,8 +1690,8 @@ export default function EmployeeJobsPage() {
                 <p className="font-semibold text-blue-200">{getStageVideoLimitCopy()}</p>
               </div>
               <p className="mt-3 text-base leading-7 text-blue-50/75">
-                {permissionBlocked
-                  ? "The camera will become available only after the required recording permission is verified."
+                {recordingBlocked
+                  ? canonicalBlock?.resolution || "Complete the stated recording requirement before opening the camera."
                   : hasCaptureToken
                     ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
                     : captureSupportCopy}
@@ -1954,32 +2004,18 @@ export default function EmployeeJobsPage() {
 
         {!loading && !error && jobs.length === 0 ? (
           <div className="rounded-lg border bg-white p-4 shadow-sm">
-            {pendingServiceOrderMessage ? (
-              <>
-                <p className="text-sm font-semibold text-gray-900">Service order not ready yet</p>
-                <p className="mt-1 text-sm text-gray-600">{pendingServiceOrderMessage}</p>
-                <ul className="mt-3 space-y-2 text-xs text-gray-700">
-                  <li>1. Keep this email link.</li>
-                  <li>2. Wait for your manager to finish the required checks.</li>
-                  <li>3. Open the link again when your manager confirms the order is ready.</li>
-                </ul>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-gray-900">Welcome to your work view</p>
-                <p className="mt-1 text-sm text-gray-600">
-                  You do not have any jobs assigned yet. When your manager assigns one, it will appear here.
-                </p>
-                <ul className="mt-3 space-y-2 text-xs text-gray-700">
-                  <li>1. Open the assigned job link on the phone you will use on-site.</li>
-                  <li>2. Keep the page open while you capture each short service-video stage.</li>
-                  <li>
-                    3. When a job appears, tap <span className="font-semibold">Start Job</span>, capture Starting
-                    Condition / Work in Progress / Final Result, then submit for manager review.
-                  </li>
-                </ul>
-              </>
-            )}
+            <p className="text-sm font-semibold text-gray-900">Welcome to your work view</p>
+            <p className="mt-1 text-sm text-gray-600">
+              You do not have any jobs assigned yet. When your manager assigns one, it will appear here.
+            </p>
+            <ul className="mt-3 space-y-2 text-xs text-gray-700">
+              <li>1. Open the assigned job link on the phone you will use on-site.</li>
+              <li>2. Keep the page open while you capture each short service-video stage.</li>
+              <li>
+                3. When a job appears, tap <span className="font-semibold">Start Job</span>, capture Starting
+                Condition / Work in Progress / Final Result, then submit for manager review.
+              </li>
+            </ul>
           </div>
         ) : null}
 

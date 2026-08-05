@@ -14,6 +14,25 @@ function parseMetadata(value: string | null | undefined): Record<string, unknown
     return {};
   }
 }
+
+function exactScopeSummary(assessment: any) {
+  if (!assessment) return null;
+  const subjects = parseMetadata(assessment.subjectJson);
+  return {
+    propertyScope: String(assessment.propertyScope || ""),
+    peopleScope: String(assessment.peopleScope || ""),
+    frameControl: String(assessment.frameControl || ""),
+    residenceInterior: Boolean(subjects.residenceInterior),
+    businessInterior: Boolean(subjects.businessInterior),
+    minorMayAppear: Boolean(subjects.minorMayAppear),
+    protectedNonParticipantMayAppear: Boolean(subjects.protectedNonParticipantMayAppear),
+    sensitiveInformationMayAppear: Boolean(subjects.sensitiveInformationMayAppear),
+    identifiersMayAppear: Boolean(subjects.identifiersMayAppear),
+    audioEnabled: false,
+    initialAudience: "private" as const,
+  };
+}
+
 export async function GET(_request: Request, context: Context) {
   const { token } = await context.params;
   const link = await findPermissionByActionSecret(String(token || ""));
@@ -32,6 +51,24 @@ export async function GET(_request: Request, context: Context) {
     });
   }
   await (prisma as any).consentRequestLink.update({ where: { id: link.id }, data: { lastViewedAt: new Date() } });
+  const assessmentModel = (prisma as any).recordingScopeAssessment;
+  const assessment = assessmentModel?.findFirst
+    ? await assessmentModel.findFirst({
+        where: {
+          bookingId: record.bookingId,
+          vendorId: record.vendorId,
+          isCurrent: true,
+          scopeHash: record.scopeHash || undefined,
+        },
+        orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
+        select: {
+          propertyScope: true,
+          peopleScope: true,
+          frameControl: true,
+          subjectJson: true,
+        },
+      })
+    : null;
   const metadata = parseMetadata(record.booking.customerMetadata);
   const summary = buildIdentitySafePermissionSummary({
     id: record.id,
@@ -60,6 +97,7 @@ export async function GET(_request: Request, context: Context) {
       },
       contentVersion: record.contentVersion?.version || null,
       content: record.contentVersion ? JSON.parse(record.contentVersion.contentJson) : null,
+      plannedScope: exactScopeSummary(assessment),
       canDecide: availability.active,
     },
   });

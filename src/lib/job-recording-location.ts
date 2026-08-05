@@ -23,7 +23,7 @@ type VendorLocation = {
 };
 
 export type RecordingLocationVerification =
-  | { ok: true; location: "business" | "customer-business"; distanceMeters: number }
+  | { ok: true; location: "business" | "residence" | "customer-business"; distanceMeters: number }
   | { ok: false; status: number; code: string; message: string; details?: Record<string, number> };
 
 function finite(value: unknown): number | null {
@@ -96,7 +96,7 @@ function customerBusinessLocation(metadataValue: string | null | undefined): Ven
 
 function recordingLocationSnapshot(
   metadataValue: string | null | undefined,
-  expectedType: "business" | "customer-business"
+  expectedType: "business" | "residence" | "customer-business"
 ): VendorLocation | null {
   const metadata = parseMetadata(metadataValue);
   const raw = metadata.vendor_job_recording_location_snapshot;
@@ -138,8 +138,8 @@ export async function verifyJobRecordingLocation(input: {
 }): Promise<RecordingLocationVerification> {
   const metadata = parseMetadata(input.metadata);
   const location = locationChoice(metadata.vendor_job_recording_location) || locationChoice(input.location);
-  if (location !== "business" && location !== "customer-business") {
-    return { ok: false, status: 422, code: "LOCATION_VERIFICATION_NOT_REQUIRED", message: "This service order does not require business-location verification." };
+  if (!location) {
+    return { ok: false, status: 422, code: "RECORDING_LOCATION_REQUIRED", message: "Choose the service location before verifying this device." };
   }
 
   const immutableSnapshot = recordingLocationSnapshot(input.metadata, location);
@@ -147,18 +147,36 @@ export async function verifyJobRecordingLocation(input: {
     ? await resolveImmutableSnapshotLocation(immutableSnapshot)
     : location === "business"
       ? await resolveVendorLocation(input.vendorId, input.vendorLocation)
-      : customerBusinessLocation(input.metadata);
-  const label = location === "business" ? "registered vendor business address" : "customer business address";
+      : location === "customer-business"
+        ? customerBusinessLocation(input.metadata)
+        : null;
+  const label =
+    location === "business"
+      ? "saved vendor business address"
+      : location === "customer-business"
+        ? "saved customer business address"
+        : "saved customer residence";
+  const codePrefix =
+    location === "business"
+      ? "BUSINESS_LOCATION"
+      : location === "customer-business"
+        ? "CUSTOMER_BUSINESS_LOCATION"
+        : "CUSTOMER_RESIDENCE_LOCATION";
   if (!expected || !hasValidCoordinates(expected)) {
     return {
       ok: false,
       status: 409,
-      code: location === "business" ? "BUSINESS_LOCATION_NOT_CONFIGURED" : "CUSTOMER_BUSINESS_LOCATION_NOT_CONFIGURED",
+      code:
+        location === "business"
+          ? "BUSINESS_LOCATION_NOT_CONFIGURED"
+          : location === "customer-business"
+            ? "CUSTOMER_BUSINESS_LOCATION_NOT_CONFIGURED"
+            : "CUSTOMER_RESIDENCE_LOCATION_NOT_CONFIGURED",
       message: `The ${label} must be verified before recording can begin.`,
     };
   }
   if (input.proof.latitude == null || input.proof.longitude == null || input.proof.accuracyMeters == null) {
-    return { ok: false, status: 409, code: "BUSINESS_LOCATION_PROOF_REQUIRED", message: `Allow location access so Reliance can confirm this device is at the ${label}.` };
+    return { ok: false, status: 409, code: `${codePrefix}_PROOF_REQUIRED`, message: `Allow precise location so Reliance can confirm this device is at the ${label}.` };
   }
   const distance = distanceMeters(
     { latitude: input.proof.latitude, longitude: input.proof.longitude },
@@ -168,10 +186,7 @@ export async function verifyJobRecordingLocation(input: {
     return {
       ok: false,
       status: 409,
-      code:
-        location === "business"
-          ? "BUSINESS_LOCATION_ACCURACY_TOO_LOW"
-          : "CUSTOMER_BUSINESS_LOCATION_ACCURACY_TOO_LOW",
+      code: `${codePrefix}_ACCURACY_TOO_LOW`,
       message: `The phone's location signal is not precise enough to verify the ${label}. Turn on precise location, move near a window or outdoors, and try again.`,
       details: {
         allowedRadiusMeters: RECORDING_LOCATION_RADIUS_METERS,
@@ -190,7 +205,7 @@ export async function verifyJobRecordingLocation(input: {
     return {
       ok: false,
       status: 403,
-      code: location === "business" ? "BUSINESS_LOCATION_MISMATCH" : "CUSTOMER_BUSINESS_LOCATION_MISMATCH",
+      code: `${codePrefix}_MISMATCH`,
       message: `This device is not close enough to the ${label}. Recording cannot begin at this location.`,
       details: {
         allowedRadiusMeters: RECORDING_LOCATION_RADIUS_METERS,
@@ -202,4 +217,31 @@ export async function verifyJobRecordingLocation(input: {
     };
   }
   return { ok: true, location, distanceMeters: distance };
+}
+
+export async function recordJobRecordingLocationAttempt(input: {
+  bookingId: string;
+  vendorId: string;
+  membershipId: string | null;
+  assessmentId: string;
+  actorUserId: string | null;
+  proof: RecordingLocationProof;
+  result: RecordingLocationVerification;
+}) {
+  return prisma.recordingLocationAttempt.create({
+    data: {
+      bookingId: input.bookingId,
+      vendorId: input.vendorId,
+      membershipId: input.membershipId,
+      assessmentId: input.assessmentId,
+      actorUserId: input.actorUserId,
+      status: input.result.ok ? "VERIFIED" : "FAILED",
+      resultCode: input.result.ok ? "LOCATION_VERIFIED" : input.result.code,
+      distanceMeters: input.result.ok
+        ? Math.round(input.result.distanceMeters)
+        : input.result.details?.distanceMeters ?? null,
+      accuracyMeters:
+        input.proof.accuracyMeters == null ? null : Math.round(input.proof.accuracyMeters),
+    },
+  });
 }

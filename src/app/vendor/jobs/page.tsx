@@ -234,6 +234,16 @@ export default function VendorJobs() {
     email: '',
     serviceId: '',
     recordingLocation: 'business',
+    propertyScope: '',
+    peopleScope: '',
+    frameControl: '',
+    authorityHolderType: '',
+    minorMayAppear: false,
+    protectedNonParticipantMayAppear: false,
+    sensitiveInformationMayAppear: false,
+    identifiersMayAppear: false,
+    serviceCanContinueWithoutRecording: true,
+    essentialPrivateRecording: false,
   });
 
   const getEmptyJobFieldErrors = () => ({
@@ -245,6 +255,7 @@ export default function VendorJobs() {
     email: '',
     serviceId: '',
     recordingLocation: '',
+    recordingAssessment: '',
   });
 
   const getConsentStatusForJob = (job: any, snapshot?: any) => {
@@ -440,6 +451,10 @@ export default function VendorJobs() {
   const [showSelectJobModal, setShowSelectJobModal] = useState(false);
   const [selectedJobForVideoId, setSelectedJobForVideoId] = useState<string>('');
   const [selectedJob, setSelectedJob] = useState(null);
+  const [locationExceptionJob, setLocationExceptionJob] = useState<any>(null);
+  const [locationExceptionReason, setLocationExceptionReason] = useState('');
+  const [locationExceptionSubmitting, setLocationExceptionSubmitting] = useState(false);
+  const [locationExceptionError, setLocationExceptionError] = useState('');
   const [newJob, setNewJob] = useState({
     title: '',
     client: '',
@@ -449,6 +464,16 @@ export default function VendorJobs() {
     email: '',
     serviceId: '',
     recordingLocation: 'business',
+    propertyScope: '',
+    peopleScope: '',
+    frameControl: '',
+    authorityHolderType: '',
+    minorMayAppear: false,
+    protectedNonParticipantMayAppear: false,
+    sensitiveInformationMayAppear: false,
+    identifiersMayAppear: false,
+    serviceCanContinueWithoutRecording: true,
+    essentialPrivateRecording: false,
   });
   const [newServiceForJob, setNewServiceForJob] = useState({
     name: '',
@@ -466,6 +491,8 @@ export default function VendorJobs() {
     phone: '',
     email: '',
     serviceId: '',
+    recordingLocation: '',
+    recordingAssessment: '',
   });
   const [serviceOptions, setServiceOptions] = useState<Array<{ id: string; name: string; isPublished?: boolean }>>([]);
   const [teamMembers, setTeamMembers] = useState<VendorTeamMember[]>([]);
@@ -2760,6 +2787,14 @@ export default function VendorJobs() {
         recordingLocation === 'customer-business'
           ? ''
           : 'Choose where the service video will be recorded.',
+      recordingAssessment:
+        newJob.propertyScope &&
+        newJob.peopleScope &&
+        newJob.frameControl &&
+        newJob.authorityHolderType &&
+        (newJob.serviceCanContinueWithoutRecording || newJob.essentialPrivateRecording)
+          ? ''
+          : 'Complete the recording subject assessment and explain whether Private recording is essential.',
     };
     setJobFieldErrors(nextJobErrors);
 
@@ -2772,6 +2807,7 @@ export default function VendorJobs() {
       nextJobErrors.email ||
       nextJobErrors.serviceId ||
       nextJobErrors.recordingLocation
+      || nextJobErrors.recordingAssessment
     ) {
       if (nextJobErrors.customerFirstName) {
         clientNameInputRef.current?.focus();
@@ -2833,6 +2869,21 @@ export default function VendorJobs() {
             title: selectedService?.name || newJob.title.trim() || 'Work record',
             clientName: client,
             serviceId: serviceId || undefined,
+            recordingAssessment: {
+              recordingLocation,
+              propertyScope: newJob.propertyScope,
+              peopleScope: newJob.peopleScope,
+              frameControl: newJob.frameControl,
+              authorityHolderType: newJob.authorityHolderType,
+              minorMayAppear: newJob.minorMayAppear,
+              protectedNonParticipantMayAppear: newJob.protectedNonParticipantMayAppear,
+              sensitiveInformationMayAppear: newJob.sensitiveInformationMayAppear,
+              identifiersMayAppear: newJob.identifiersMayAppear,
+              residenceInterior: recordingLocation === 'residence',
+              businessInterior: recordingLocation === 'customer-business',
+              serviceCanContinueWithoutRecording: newJob.serviceCanContinueWithoutRecording,
+              essentialPrivateRecording: newJob.essentialPrivateRecording,
+            },
           }
         );
         await reloadJobsFromBackend();
@@ -2924,6 +2975,21 @@ export default function VendorJobs() {
           recordingLocation === 'residence' || recordingLocation === 'customer-business'
             ? 'customer'
             : 'vendor_business',
+        recording_property_scope: newJob.propertyScope,
+        recording_people_scope: newJob.peopleScope,
+        recording_frame_control: newJob.frameControl,
+        recording_authority_holder_type: newJob.authorityHolderType,
+        recording_minor_may_appear: newJob.minorMayAppear,
+        recording_protected_non_participant_may_appear:
+          newJob.protectedNonParticipantMayAppear,
+        recording_sensitive_information_may_appear:
+          newJob.sensitiveInformationMayAppear,
+        recording_identifiers_may_appear: newJob.identifiersMayAppear,
+        recording_residence_interior: recordingLocation === 'residence',
+        recording_business_interior: recordingLocation === 'customer-business',
+        service_can_continue_without_recording:
+          newJob.serviceCanContinueWithoutRecording,
+        essential_private_recording: newJob.essentialPrivateRecording,
       },
     };
     const creationFingerprint = JSON.stringify(payload);
@@ -3255,6 +3321,7 @@ export default function VendorJobs() {
     setJobModalMode('edit');
     setJobFormTargetId(String(job?.id || ''));
     const splitName = splitCustomerName(job?.client || job?.clientName || '');
+    const scope = job?.recordingCompliance?.scopeSummary || {};
     setNewJob({
       title: String(job?.title || ''),
       client: String(job?.client || job?.clientName || ''),
@@ -3264,6 +3331,17 @@ export default function VendorJobs() {
       email: String(job?.email || ''),
       serviceId: String(job?.serviceId || ''),
       recordingLocation: String(job?.recordingCompliance?.location || 'business'),
+      propertyScope: String(scope.propertyScope || 'customer_owned'),
+      peopleScope: String(scope.peopleScope || 'none'),
+      frameControl: String(scope.frameControl || 'controlled'),
+      authorityHolderType: String(scope.authorityHolderType || 'customer'),
+      minorMayAppear: Boolean(scope.minorPresent),
+      protectedNonParticipantMayAppear: Boolean(scope.protectedParticipantPresent),
+      sensitiveInformationMayAppear: Boolean(scope.sensitiveCapture),
+      identifiersMayAppear: Boolean(scope.identifiersMayAppear),
+      serviceCanContinueWithoutRecording:
+        scope.serviceCanContinueWithoutRecording !== false,
+      essentialPrivateRecording: Boolean(scope.essentialPrivateRecording),
     });
     setCreateJobError('');
     setJobFieldErrors(getEmptyJobFieldErrors());
@@ -4458,6 +4536,38 @@ export default function VendorJobs() {
       throw new Error(payload?.error || payload?.message || `Job action failed (${res.status})`);
     }
     return payload;
+  };
+
+  const requestRecordingLocationException = async () => {
+    if (!vendorId || !locationExceptionJob) return;
+    const reason = locationExceptionReason.trim();
+    if (reason.length < 20) {
+      setLocationExceptionError('Explain why the employee cannot verify the saved service location (at least 20 characters).');
+      return;
+    }
+    setLocationExceptionSubmitting(true);
+    setLocationExceptionError('');
+    try {
+      const response = await fetch(
+        `/api/vendors/${vendorId}/jobs/${encodeURIComponent(String(locationExceptionJob.id))}/location-exception`,
+        {
+          method: 'POST',
+          headers: getRequestHeaders(),
+          body: JSON.stringify({ reason }),
+        }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || 'Unable to request the location exception');
+      setLocationExceptionJob(null);
+      setLocationExceptionReason('');
+      await reloadJobsFromBackend();
+    } catch (requestError) {
+      setLocationExceptionError(
+        requestError instanceof Error ? requestError.message : 'Unable to request the location exception'
+      );
+    } finally {
+      setLocationExceptionSubmitting(false);
+    }
   };
 
   const archiveJob = async (job: any) => {
@@ -5902,6 +6012,138 @@ export default function VendorJobs() {
               {jobFieldErrors.recordingLocation ? (
                 <p className="mt-2 text-sm text-red-600">{jobFieldErrors.recordingLocation}</p>
               ) : null}
+              <div className="mt-5 border-t border-slate-200 pt-4">
+                  <p className="text-sm font-semibold text-slate-900">What may appear in the recording?</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    This keeps the employee inside the approved scope. Audio remains off. Changing this scope replaces prior permission and employee certification.
+                  </p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="text-xs font-semibold text-slate-700">
+                      Property in frame
+                      <select
+                        value={newJob.propertyScope}
+                        onChange={(event) => {
+                          setNewJob({ ...newJob, propertyScope: event.target.value });
+                          setJobFieldErrors((current) => ({ ...current, recordingAssessment: '' }));
+                        }}
+                        className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
+                      >
+                        <option value="">Choose one</option>
+                        <option value="vendor_owned">Only vendor-owned property or work area</option>
+                        <option value="customer_owned">Customer-owned property</option>
+                        <option value="mixed">Both vendor and customer property</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      Identifiable people in frame
+                      <select
+                        value={newJob.peopleScope}
+                        onChange={(event) => {
+                          setNewJob({ ...newJob, peopleScope: event.target.value });
+                          setJobFieldErrors((current) => ({ ...current, recordingAssessment: '' }));
+                        }}
+                        className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
+                      >
+                        <option value="">Choose one</option>
+                        <option value="none">No identifiable people</option>
+                        <option value="customer">Customer</option>
+                        <option value="employee">Assigned employee</option>
+                        <option value="multiple">More than one person</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      Camera framing
+                      <select
+                        value={newJob.frameControl}
+                        onChange={(event) => {
+                          setNewJob({ ...newJob, frameControl: event.target.value });
+                          setJobFieldErrors((current) => ({ ...current, recordingAssessment: '' }));
+                        }}
+                        className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
+                      >
+                        <option value="">Choose one</option>
+                        <option value="controlled">Controlled work area</option>
+                        <option value="partial">Some surroundings may appear</option>
+                        <option value="uncontrolled">People may enter unexpectedly</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      Authority holder
+                      <select
+                        value={newJob.authorityHolderType}
+                        onChange={(event) => {
+                          setNewJob({ ...newJob, authorityHolderType: event.target.value });
+                          setJobFieldErrors((current) => ({ ...current, recordingAssessment: '' }));
+                        }}
+                        className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
+                      >
+                        <option value="">Choose one</option>
+                        <option value="customer">Customer</option>
+                        <option value="authorized_representative">Authorized customer representative</option>
+                        <option value="guardian">Guardian</option>
+                        <option value="vendor_manager">Vendor manager</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+                    {[
+                      ['minorMayAppear', 'A minor may appear'],
+                      ['protectedNonParticipantMayAppear', 'A bystander or protected non-participant may appear'],
+                      ['sensitiveInformationMayAppear', 'Sensitive documents, screens, or information may appear'],
+                      ['identifiersMayAppear', 'Addresses, plates, codes, keys, or security details may appear'],
+                    ].map(([field, label]) => (
+                      <label key={field} className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={Boolean((newJob as any)[field])}
+                          onChange={(event) =>
+                            setNewJob({ ...newJob, [field]: event.target.checked })
+                          }
+                          className="mt-1"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm text-slate-700">
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={newJob.serviceCanContinueWithoutRecording}
+                        onChange={(event) =>
+                          setNewJob({
+                            ...newJob,
+                            serviceCanContinueWithoutRecording: event.target.checked,
+                            essentialPrivateRecording: event.target.checked
+                              ? false
+                              : newJob.essentialPrivateRecording,
+                          })
+                        }
+                        className="mt-1"
+                      />
+                      <span>The service can continue if recording is declined or blocked.</span>
+                    </label>
+                    {!newJob.serviceCanContinueWithoutRecording ? (
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={newJob.essentialPrivateRecording}
+                          onChange={(event) =>
+                            setNewJob({ ...newJob, essentialPrivateRecording: event.target.checked })
+                          }
+                          className="mt-1"
+                        />
+                        <span>Private recording is essential to this service. The customer will be told before deciding.</span>
+                      </label>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950">
+                    Audio is off. Public sharing is never included in this assessment and requires a separate later decision.
+                  </div>
+                  {jobFieldErrors.recordingAssessment ? (
+                    <p className="mt-2 text-sm text-red-600">{jobFieldErrors.recordingAssessment}</p>
+                  ) : null}
+                </div>
             </div>
             {newJob.serviceId === ADD_NEW_SERVICE_VALUE ? (
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
@@ -6357,6 +6599,48 @@ export default function VendorJobs() {
               }
             >
               {jobMutationLoadingId === 'assign:bulk' ? 'Assigning...' : 'Assign Jobs'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(locationExceptionJob)}
+        onOpenChange={(open) => {
+          if (!open && !locationExceptionSubmitting) {
+            setLocationExceptionJob(null);
+            setLocationExceptionReason('');
+            setLocationExceptionError('');
+          }
+        }}
+      >
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Request a recording location exception</DialogTitle>
+            <DialogDescription>
+              Explain why the assigned employee cannot verify the saved service location. Recording stays locked while an independent Reliance admin reviews this request.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <p><strong>Who decides:</strong> Reliance admin</p>
+              <p className="mt-1"><strong>What resolves it:</strong> Admin approval or successful device location verification.</p>
+            </div>
+            <label className="block text-sm font-medium" htmlFor="location-exception-reason">Manager explanation</label>
+            <textarea
+              id="location-exception-reason"
+              value={locationExceptionReason}
+              onChange={(event) => setLocationExceptionReason(event.target.value)}
+              rows={5}
+              className="w-full rounded-md border border-slate-300 bg-white p-3 text-sm text-slate-950"
+              placeholder="Describe the device-location problem and the evidence an admin should review."
+            />
+            {locationExceptionError ? <p className="text-sm text-red-700">{locationExceptionError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLocationExceptionJob(null)} disabled={locationExceptionSubmitting}>Cancel</Button>
+            <Button onClick={() => void requestRecordingLocationException()} disabled={locationExceptionSubmitting || locationExceptionReason.trim().length < 20}>
+              {locationExceptionSubmitting ? 'Sending request...' : 'Send to Reliance Admin'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -7574,6 +7858,16 @@ export default function VendorJobs() {
                         </div>
                       );
                     })()}
+                    {job?.recordingCompliance?.canonicalBlock ? (
+                      <div className="mt-3 border border-amber-300/35 bg-amber-50 p-3 text-sm text-amber-950">
+                        <div className="font-semibold">Recording is locked</div>
+                        <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                          <div><dt className="font-semibold">Why</dt><dd>{job.recordingCompliance.canonicalBlock.why}</dd></div>
+                          <div><dt className="font-semibold">Who acts next</dt><dd>{String(job.recordingCompliance.canonicalBlock.responsibleParticipant || '').replaceAll('_', ' ')}</dd></div>
+                          <div><dt className="font-semibold">What resolves it</dt><dd>{job.recordingCompliance.canonicalBlock.resolution}</dd></div>
+                        </dl>
+                      </div>
+                    ) : null}
                     {(() => {
                       const jobRecoverySuggestion = jobRecoveryByJobId[String(job.id)] || null;
                       const jobRecoveryError = jobRecoveryErrorByJobId[String(job.id)] || '';
@@ -8107,6 +8401,23 @@ export default function VendorJobs() {
                                     title="Resend the employee's secure service order link by email/SMS when available."
                                   >
                                     Resend Service Order Link
+                                  </button>
+                                ) : null}
+                                {String(job?.recordingCompliance?.locationAttemptStatus || '').toUpperCase() === 'FAILED' &&
+                                !['PENDING', 'APPROVED'].includes(
+                                  String(job?.recordingCompliance?.locationExceptionStatus || '').toUpperCase()
+                                ) ? (
+                                  <button
+                                    className="w-full px-3 py-2.5 text-left text-sm text-amber-100 transition hover:bg-amber-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                    onClick={() => {
+                                      setActiveJobActionMenuId(null);
+                                      setLocationExceptionJob(job);
+                                      setLocationExceptionReason('');
+                                      setLocationExceptionError('');
+                                    }}
+                                    disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                  >
+                                    Request Location Exception
                                   </button>
                                 ) : null}
                                 <button

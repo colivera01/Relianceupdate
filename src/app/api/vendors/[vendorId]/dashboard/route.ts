@@ -24,7 +24,7 @@ import {
 } from "@/lib/metrics-exclusion";
 import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
-import { resolveRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -629,13 +629,13 @@ export async function GET(
       }
     }
 
-    const recentJobs = recentBookings
+    const recentJobs = await Promise.all(recentBookings
       .filter((booking: any) => {
         if (booking.status === "ARCHIVED") return false;
         if (!booking.serviceId || !booking.service) return true;
         return Boolean(booking.service.isPublished);
       })
-      .map((booking: any) => {
+      .map(async (booking: any) => {
       // Explicit mapping for all Booking.status values: PENDING, CONFIRMED, COMPLETED, CANCELED
       const statusMap: Record<
         string,
@@ -688,9 +688,15 @@ export async function GET(
       const uploadedVideoStages = extractUploadedVideoStagesFromMetadata(booking.customerMetadata);
       const customerContact = resolveCustomerContactForBooking(booking);
       const legacyCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
-      const permissionGate = resolveRecordingPermissionGate({
+      const permissionGate = await loadRecordingPermissionGate({
+        bookingId: String(booking.id),
+        vendorId,
         customerMetadata: booking.customerMetadata,
         consentRecord: latestConsentRecord,
+        membershipId: assignedMembershipIds[0] || undefined,
+        surface: "admin_evidence",
+        capability: "observe",
+        actorKind: "VENDOR_MANAGER",
       });
       const clientLabel = resolveOperationalClientLabel({
         clientName: booking.clientName,
@@ -719,6 +725,13 @@ export async function GET(
           recordingUnlocked: permissionGate.recordingUnlocked,
           locationVerified: legacyCompliance.locationVerified,
           locationVerifiedAt: legacyCompliance.locationVerifiedAt,
+          locationAttemptStatus: permissionGate.locationAttemptStatus,
+          locationAttemptResultCode: permissionGate.locationAttemptResultCode,
+          locationExceptionStatus: permissionGate.locationExceptionStatus,
+          assessmentId: permissionGate.assessmentId,
+          riskLevel: permissionGate.riskLevel,
+          scopeSummary: permissionGate.scopeSummary,
+          canonicalBlock: permissionGate.block,
           serviceOrderReleasedAt: legacyCompliance.serviceOrderReleasedAt,
           releasedMembershipIds: legacyCompliance.releasedMembershipIds,
         },
@@ -746,7 +759,7 @@ export async function GET(
           booking.scheduledFor?.toISOString() ||
           booking.createdAt.toISOString(),
       };
-    });
+    }));
 
     const archivedJobs = archivedBookings
       .filter((booking: any) => {

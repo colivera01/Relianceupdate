@@ -25,6 +25,17 @@ import {
   loadRecordingPermissionGate,
   type RecordingPermissionGate,
 } from "@/lib/consent/recording-gate";
+import { createVerifiedPermissionRequest } from "@/lib/consent/request-service";
+import { deliverVerifiedPermissionRequest } from "@/lib/consent/delivery-service";
+import {
+  createRecordingScopeAssessment,
+  deriveRecordingScopeAssessment,
+  parseRecordingScopeAssessmentInput,
+} from "@/lib/recording/scope-assessment";
+import {
+  CUSTOMER_RECORDING_NOTICE_KIND,
+  dispatchQueuedRecordingNotice,
+} from "@/lib/recording/recording-notice";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -177,16 +188,11 @@ function releaseFailureForCompliance(
   value: string | null | undefined,
   gate: RecordingPermissionGate
 ) {
-  if (!gate.location) {
+  if (gate.block) {
     return {
-      code: "RECORDING_LOCATION_REQUIRED",
-      message: "Choose where the service recording will happen before sending the employee service order.",
-    };
-  }
-  if (gate.permissionRequired && !gate.recordingUnlocked) {
-    return {
-      code: "VERIFIED_PERMISSION_REQUIRED",
-      message: "Verified recording permission is required before sending the employee service order.",
+      code: gate.block.code,
+      message: `${gate.block.why} ${gate.block.resolution}`,
+      blocked: gate.block,
     };
   }
   if (gate.location === "customer-business") {
@@ -215,6 +221,11 @@ function toSafeRecordingCompliance(
     permissionRequired: gate.permissionRequired,
     permissionStatus: gate.permissionState,
     recordingUnlocked: gate.recordingUnlocked,
+    assessmentId: gate.assessmentId,
+    riskLevel: gate.riskLevel,
+    certificationActive: gate.certificationActive,
+    scopeSummary: gate.scopeSummary,
+    canonicalBlock: gate.block,
     locationVerified: compliance.locationVerified,
     locationVerifiedAt: compliance.locationVerifiedAt,
     serviceOrderReleasedAt: compliance.serviceOrderReleasedAt,
@@ -440,7 +451,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         clientName: true,
         scheduledFor: true,
         date: true,
-        service: { select: { name: true } },
+        service: { select: { id: true, name: true } },
         vendor: {
           select: {
             name: true,
@@ -456,6 +467,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         },
         user: {
           select: {
+            id: true,
             name: true,
             email: true,
             phone: true,
@@ -569,6 +581,250 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         }
       }
 
+      const assessmentSource =
+        body?.recordingAssessment && typeof body.recordingAssessment === "object"
+          ? body.recordingAssessment
+          : null;
+      const parsedAssessment = assessmentSource
+        ? parseRecordingScopeAssessmentInput(assessmentSource)
+        : null;
+      if (assessmentSource && !parsedAssessment) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "RECORDING_ASSESSMENT_INCOMPLETE",
+            "Complete the location, subject, framing, and authority fields before saving the recording scope.",
+          ),
+          { status: 422 },
+        );
+      }
+      const nextAssessment = parsedAssessment
+        ? deriveRecordingScopeAssessment(parsedAssessment)
+        : null;
+      const currentAssessment = nextAssessment
+        ? await (prisma as any).recordingScopeAssessment.findFirst({
+            where: { bookingId: booking.id, vendorId, isCurrent: true },
+            orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
+          })
+        : null;
+      const materialScopeChange = Boolean(
+        nextAssessment && currentAssessment?.scopeHash !== nextAssessment.scopeHash,
+      );
+
+      if (nextAssessment && materialScopeChange) {
+        const now = new Date();
+        const metadata = parseCustomerMetadata(booking.customerMetadata);
+        metadata.vendor_job_recording_location = nextAssessment.recordingLocation;
+        metadata.recording_property_scope = nextAssessment.propertyScope;
+        metadata.recording_people_scope = nextAssessment.peopleScope;
+        metadata.recording_frame_control = nextAssessment.frameControl;
+        metadata.recording_authority_holder_type = nextAssessment.authorityHolderType;
+        metadata.recording_minor_may_appear = nextAssessment.minorMayAppear;
+        metadata.recording_protected_non_participant_may_appear =
+          nextAssessment.protectedNonParticipantMayAppear;
+        metadata.recording_sensitive_information_may_appear =
+          nextAssessment.sensitiveInformationMayAppear;
+        metadata.recording_identifiers_may_appear = nextAssessment.identifiersMayAppear;
+        metadata.recording_residence_interior = nextAssessment.residenceInterior;
+        metadata.recording_business_interior = nextAssessment.businessInterior;
+        metadata.service_can_continue_without_recording =
+          nextAssessment.serviceCanContinueWithoutRecording;
+        metadata.essential_private_recording = nextAssessment.essentialPrivateRecording;
+        delete metadata.vendor_job_service_order_released_membership_ids;
+        delete metadata.vendor_job_service_order_released_at;
+        delete metadata.vendor_job_consent_accepted;
+        delete metadata.vendor_job_consent_verified;
+        delete metadata.vendor_job_consent_decided_at;
+        metadata.vendor_job_consent_status = nextAssessment.permissionRequired
+          ? "pending"
+          : "not_required";
+
+        const scopeChange = await prisma.$transaction(async (tx) => {
+          if (currentAssessment) {
+            await (tx as any).recordingScopeAssessment.update({
+              where: { id: currentAssessment.id },
+              data: { isCurrent: false, status: "SUPERSEDED", supersededAt: now },
+            });
+          }
+          await (tx as any).employeeRecordingCertification.updateMany({
+            where: { bookingId: booking.id, status: "ACTIVE", invalidatedAt: null },
+            data: {
+              status: "INVALIDATED",
+              invalidatedAt: now,
+              invalidationReason: "RECORDING_SCOPE_CHANGED",
+            },
+          });
+          const priorPermissions = await (tx as any).consentRecord.findMany({
+            where: { bookingId: booking.id, isCurrent: true },
+            select: { id: true },
+          });
+          const priorPermissionIds = priorPermissions.map((item: any) => item.id);
+          if (priorPermissionIds.length) {
+            await (tx as any).consentRequestLink.updateMany({
+              where: { consentRecordId: { in: priorPermissionIds }, revokedAt: null },
+              data: { revokedAt: now, revocationReason: "recording_scope_changed" },
+            });
+            await (tx as any).consentRecord.updateMany({
+              where: { id: { in: priorPermissionIds } },
+              data: {
+                isCurrent: false,
+                status: "superseded",
+                lifecycleStatus: "SUPERSEDED",
+                supersededAt: now,
+              },
+            });
+            await (tx as any).bookingNotification.updateMany({
+              where: { consentRecordId: { in: priorPermissionIds }, deadLetteredAt: null },
+              data: {
+                status: "DEAD_LETTERED",
+                deadLetteredAt: now,
+                nextAttemptAt: null,
+                lastError: "superseded_by_recording_scope_change",
+              },
+            });
+            await Promise.all(
+              priorPermissionIds.map((consentRecordId: string) =>
+                (tx as any).consentEvent.create({
+                  data: {
+                    consentRecordId,
+                    eventType: "scope_superseded",
+                    metadata: JSON.stringify({
+                      previousAssessmentId: currentAssessment?.id || null,
+                      previousScopeHash: currentAssessment?.scopeHash || null,
+                      nextScopeHash: nextAssessment.scopeHash,
+                    }),
+                  },
+                }),
+              ),
+            );
+          }
+          const createdAssessment = await createRecordingScopeAssessment({
+            tx,
+            bookingId: booking.id,
+            vendorId,
+            completedByUserId: member.userId,
+            assessment: nextAssessment,
+            generation: Number(currentAssessment?.generation || 0) + 1,
+          });
+          const updated = await tx.booking.update({
+            where: { id: booking.id },
+            data: { ...data, customerMetadata: stringifyCustomerMetadata(metadata) },
+            select: {
+              id: true,
+              status: true,
+              title: true,
+              clientName: true,
+              serviceId: true,
+              updatedAt: true,
+            },
+          });
+          const notice = !nextAssessment.permissionRequired
+            ? await (tx as any).bookingNotification.create({
+                data: {
+                  bookingId: booking.id,
+                  consentRecordId: null,
+                  kind: `${CUSTOMER_RECORDING_NOTICE_KIND}:${createdAssessment.generation}`,
+                  status: "QUEUED",
+                  idempotencyKey: `recording-notice:${booking.id}:${createdAssessment.generation}`,
+                },
+              })
+            : null;
+          return { updated, createdAssessment, notice };
+        });
+
+        let workflowState: Record<string, unknown> = {
+          recordingLocked: true,
+          assessmentId: scopeChange.createdAssessment.id,
+          scopeHash: scopeChange.createdAssessment.scopeHash,
+        };
+        if (nextAssessment.permissionRequired) {
+          try {
+            const mediaSession = await prisma.mediaSession.create({
+              data: {
+                vendorId,
+                bookingId: booking.id,
+                serviceId: serviceId || booking.service?.id || null,
+                userId: booking.user?.id || undefined,
+                sessionType: "CONSENT_REQUEST",
+                status: "CREATED",
+                title: "Customer recording permission request",
+                description: "Replacement request after recording scope changed",
+              },
+            });
+            const createdPermission = await createVerifiedPermissionRequest({
+              bookingId: booking.id,
+              actorUserId: member.userId,
+              mediaSessionId: mediaSession.id,
+              reason: "create",
+            });
+            const delivery =
+              createdPermission.actionPath && createdPermission.notificationId
+                ? await deliverVerifiedPermissionRequest({
+                    request,
+                    notificationId: createdPermission.notificationId,
+                    consentRecordId: createdPermission.consentRecordId,
+                    actorUserId: member.userId,
+                    actionPath: createdPermission.actionPath,
+                    recipient: createdPermission.recipient,
+                    booking: createdPermission.booking,
+                  })
+                : null;
+            workflowState = {
+              ...workflowState,
+              permissionState: createdPermission.state,
+              deliveryStatus: delivery?.status || null,
+            };
+          } catch (permissionError) {
+            console.error("[vendor job update] replacement permission request failed", permissionError);
+            workflowState = {
+              ...workflowState,
+              permissionState: "needs_attention",
+            };
+          }
+        } else if (scopeChange.notice) {
+          const notice = await dispatchQueuedRecordingNotice({
+            notificationId: scopeChange.notice.id,
+            bookingId: booking.id,
+            actorUserId: member.userId,
+            customerName: booking.user?.name || booking.clientName,
+            customerEmail: booking.user?.email,
+            customerPhone: booking.user?.phone,
+            vendorName: booking.vendor?.businessName || booking.vendor?.name,
+            serviceName: booking.service?.name || booking.title,
+            scopeHash: scopeChange.createdAssessment.scopeHash,
+          });
+          workflowState = {
+            ...workflowState,
+            noticeStatus: notice.delivery?.status || "FAILED",
+          };
+        }
+        await recordLifecycleAudit({
+          actionType: "recording_scope_changed",
+          entityType: "booking",
+          entityId: booking.id,
+          actorUserId: member.userId,
+          newValue: {
+            assessmentId: scopeChange.createdAssessment.id,
+            scopeHash: scopeChange.createdAssessment.scopeHash,
+            riskLevel: nextAssessment.riskLevel,
+            permissionRequired: nextAssessment.permissionRequired,
+          },
+          metadata: {
+            vendorId,
+            previousAssessmentId: currentAssessment?.id || null,
+            previousScopeHash: currentAssessment?.scopeHash || null,
+          },
+        });
+        return NextResponse.json({
+          success: true,
+          action,
+          job: scopeChange.updated,
+          recordingWorkflow: workflowState,
+          message:
+            "Work details and recording scope updated. Previous permission and employee certification were replaced, and recording is locked until the current gates are complete.",
+        });
+      }
+
       const updated = await prisma.booking.update({
         where: { id: booking.id },
         data,
@@ -602,6 +858,12 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             .map((id) => String(id || "").trim())
             .filter(Boolean)
         : [];
+      const assignmentChanged =
+        [...previouslyAssignedIds].sort().join("|") !== [...membershipIds].sort().join("|");
+      if (assignmentChanged) {
+        metadata.vendor_job_assignment_generation =
+          Number(metadata.vendor_job_assignment_generation || 1) + 1;
+      }
       metadata.vendor_job_assigned_membership_ids = membershipIds;
       metadata.vendor_job_assigned_employees = displayNames;
       if (membershipIds[0]) {
@@ -634,10 +896,22 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         const ops = getRelianceOps(metadata);
         metadata.reliance_ops = { ...ops, operational_phase: "PENDING" };
       }
-      const updated = await prisma.booking.update({
-        where: { id: booking.id },
-        data: { customerMetadata: JSON.stringify(metadata) },
-        select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+      const updated = await prisma.$transaction(async (tx) => {
+        if (assignmentChanged && tx.employeeRecordingCertification?.updateMany) {
+          await tx.employeeRecordingCertification.updateMany({
+            where: { bookingId: booking.id, status: "ACTIVE", invalidatedAt: null },
+            data: {
+              status: "INVALIDATED",
+              invalidatedAt: new Date(),
+              invalidationReason: "EMPLOYEE_ASSIGNMENT_CHANGED",
+            },
+          });
+        }
+        return tx.booking.update({
+          where: { id: booking.id },
+          data: { customerMetadata: JSON.stringify(metadata) },
+          select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+        });
       });
       await recordLifecycleAudit({
         actionType: "job_assigned",
@@ -708,6 +982,9 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         bookingId: booking.id,
         vendorId,
         customerMetadata: updated.customerMetadata,
+        surface: "admin_evidence",
+        capability: "observe",
+        actorKind: "VENDOR_MANAGER",
       });
 
       await recordLifecycleAudit({
@@ -761,12 +1038,16 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         bookingId: booking.id,
         vendorId,
         customerMetadata: metadata,
+        surface: "vendor_release",
+        capability: "release",
+        actorKind: "VENDOR_MANAGER",
       });
       const complianceFailure = releaseFailureForCompliance(metadata, permissionGate);
       if (complianceFailure) {
         return NextResponse.json(
           apiResponse(false, complianceFailure.code, complianceFailure.message, {
             recordingCompliance: toSafeRecordingCompliance(metadata, permissionGate),
+            blocked: complianceFailure.blocked || null,
           }),
           { status: 409 }
         );

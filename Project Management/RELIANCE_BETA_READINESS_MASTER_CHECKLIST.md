@@ -1,5 +1,27 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
+## Epic 4 Implementation Checkpoint - Universal Work Records and Recording Gates
+
+**Checkpoint date:** 2026-08-04
+
+**Engineering status:** **Implemented and validated locally**
+
+**Deployment status:** Not deployed; two additive migrations remain unapplied
+
+**Product Owner demo:** Pending
+**Primary evidence:** `Project Management/Epic 4 - Universal Work Record and Recording Gates/`
+
+Epic 4 now applies one canonical server-side recording decision across work-record release, employee work/start/stage views, location verification, media-session creation, upload boundaries, vendor status, and admin evidence. The decision includes the current recording assessment, authority, verified permission basis, assignment, employee certification, location evidence, protected-person restrictions, and unresolved exception state.
+
+- Every canonical recording block provides the reason, responsible participant, resolution, and whether service may continue without recording.
+- Internal `RecordingGateMetric` evidence records the canonical block reason only and has no review, Trust Score, permission, publication, or dashboard effect.
+- Two additive migrations add assessment/authority and certification/location/metric evidence. Neither migration was applied by this checkpoint.
+- Final named regression package: 76 of 76 passed. Epic 4 Playwright package: 4 of 4 passed. Type check and production build passed.
+- `CON-02`, `CON-04`, `CON-08` through `CON-14`, `CON-22`, and `CON-23` gain complete Epic 4 implementation evidence but remain release-shared until migration, deployment, Product Owner replay, Epic 5 physical capture, and final RR-1A gates pass.
+- `PROD-11`, `PROD-12`, `TEST-04`, `TEST-06`, `SHOT-03`, `SHOT-07`, and `DOC-01` through `DOC-07` gain focused Epic 4 evidence and remain `In Progress` where later device/release evidence is required.
+- `LEG-03`, `LEG-04`, and `LEG-11` are not promoted; Epic 4 records operational evidence but does not implement or replace future legal agreements.
+- No checklist row is marked `Beta Ready` from local implementation alone. Epic 5 was not started.
+
 ## Epic 3 Phase A - Identity Foundation
 
 **Phase status:** **Implemented locally; Product Owner review pending**

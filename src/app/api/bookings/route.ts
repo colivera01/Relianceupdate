@@ -16,6 +16,15 @@ import { resolveBookingSchedule } from '@/lib/booking-schedule';
 import { toBookingNotificationState } from '@/lib/booking-notification-delivery';
 import { createVerifiedPermissionRequest } from '@/lib/consent/request-service';
 import { deliverVerifiedPermissionRequest } from '@/lib/consent/delivery-service';
+import {
+  createRecordingScopeAssessment,
+  deriveRecordingScopeAssessment,
+  parseRecordingScopeAssessmentInput,
+} from '@/lib/recording/scope-assessment';
+import {
+  CUSTOMER_RECORDING_NOTICE_KIND,
+  dispatchQueuedRecordingNotice,
+} from '@/lib/recording/recording-notice';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -656,9 +665,31 @@ export async function POST(request: NextRequest) {
     const recordingLocation = String(
       customerMetadataPayload?.vendor_job_recording_location || ''
     ).trim().toLowerCase();
+    const customFieldsRecord =
+      custom_fields && typeof custom_fields === 'object' && !Array.isArray(custom_fields)
+        ? (custom_fields as Record<string, unknown>)
+        : {};
+    const assessmentInput = isVendorStaffForThisVendor
+      ? parseRecordingScopeAssessmentInput(customFieldsRecord)
+      : null;
+    if (isVendorStaffForThisVendor && !assessmentInput) {
+      return NextResponse.json(
+        {
+          error:
+            'Complete the recording subject assessment before creating this work record.',
+          code: 'RECORDING_ASSESSMENT_REQUIRED',
+          responsibleParticipant: 'VENDOR_MANAGER',
+          resolution: 'Describe the planned property, people, frame control, and authority holder.',
+        },
+        { status: 422 }
+      );
+    }
+    const recordingAssessment = assessmentInput
+      ? deriveRecordingScopeAssessment(assessmentInput)
+      : null;
     const requiresCustomerConsent =
       isVendorStaffForThisVendor &&
-      (recordingLocation === 'residence' || recordingLocation === 'customer-business');
+      Boolean(recordingAssessment?.permissionRequired);
     const customerProfileLocation =
       recordingLocation === 'residence' && bookingUserId
         ? await prisma.user.findUnique({
@@ -744,11 +775,38 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      const createdAssessment = recordingAssessment
+        ? await createRecordingScopeAssessment({
+          tx,
+          bookingId: createdBooking.id,
+          vendorId,
+          completedByUserId: authUserId,
+          assessment: recordingAssessment,
+        })
+        : null;
+
       if (!requiresCustomerConsent) {
+        const noticeNotification =
+          isVendorStaffForThisVendor &&
+          createdAssessment &&
+          recordingAssessment?.noticeRequired &&
+          recordingAssessment.riskLevel === 'LEVEL_1'
+            ? await tx.bookingNotification.create({
+                data: {
+                  bookingId: createdBooking.id,
+                  consentRecordId: null,
+                  kind: `${CUSTOMER_RECORDING_NOTICE_KIND}:${createdAssessment.generation}`,
+                  status: 'QUEUED',
+                  idempotencyKey: `recording-notice:${createdBooking.id}:${createdAssessment.generation}`,
+                },
+              })
+            : null;
         return {
           booking: createdBooking,
           bookingUserId: resolvedBookingUserId,
           consentMediaSessionId: null,
+          noticeNotificationId: noticeNotification?.id || null,
+          assessmentScopeHash: createdAssessment?.scopeHash || null,
         };
       }
 
@@ -768,6 +826,8 @@ export async function POST(request: NextRequest) {
         booking: createdBooking,
         bookingUserId: resolvedBookingUserId,
         consentMediaSessionId: mediaSession.id,
+        noticeNotificationId: null,
+        assessmentScopeHash: createdAssessment?.scopeHash || null,
       };
       });
     } catch (transactionError: any) {
@@ -794,6 +854,7 @@ export async function POST(request: NextRequest) {
 
     const booking = transactionalCreate.booking;
     let automaticConsent: Record<string, unknown> | null = null;
+    let recordingNotice: Record<string, unknown> | null = null;
 
     if (transactionalCreate.consentMediaSessionId) {
       try {
@@ -845,6 +906,26 @@ export async function POST(request: NextRequest) {
           error: 'The work record was created, but the recording permission request needs attention.',
         };
       }
+    } else if (transactionalCreate.noticeNotificationId) {
+      const noticeResult = await dispatchQueuedRecordingNotice({
+        notificationId: transactionalCreate.noticeNotificationId,
+        bookingId: booking.id,
+        actorUserId: String(authUserId || transactionalCreate.bookingUserId),
+        customerName: typeof client_name === 'string' ? client_name : null,
+        customerEmail: clientEmailCombined,
+        customerPhone: clientPhoneCombined,
+        vendorName: vendor.businessName || vendor.name,
+        serviceName:
+          (await prisma.service.findUnique({ where: { id: serviceId }, select: { name: true } }))?.name ||
+          (typeof title === 'string' ? title : null),
+        scopeHash: transactionalCreate.assessmentScopeHash,
+      });
+      recordingNotice = {
+        status: noticeResult.delivery?.status || 'FAILED',
+        delivery: noticeResult.delivery,
+        responseRequired: false,
+        recordingPermissionCreated: false,
+      };
     }
 
     const hydrated = await prisma.booking.findUnique({
@@ -874,11 +955,16 @@ export async function POST(request: NextRequest) {
       success: true,
       booking: contract,
       automaticConsent,
+      recordingNotice,
       message: automaticConsent
         ? automaticConsent.deliveryConfirmed
           ? 'Booking created and customer consent request sent'
           : 'Booking created, but customer consent delivery needs attention'
-        : 'Booking created successfully',
+        : recordingNotice
+          ? recordingNotice.status === 'SENT' || recordingNotice.status === 'PARTIAL'
+            ? 'Work record created and customer recording notice sent'
+            : 'Work record created, but the informational recording notice needs attention'
+          : 'Booking created successfully',
       /** @deprecated Prefer `booking.customer_metadata` — kept for older clients. */
       meta: {
         user_notes: (contract.customer_metadata as { user_notes?: string } | null)?.user_notes ?? null,

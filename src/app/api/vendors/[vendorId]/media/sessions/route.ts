@@ -4,8 +4,12 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { mapMediaSessionCreateFailure } from "@/lib/media-session-create-errors";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { normalizeVendorJobVideoStage } from "@/lib/vendor-job-video-stages";
-import { parseRecordingLocationProof, verifyJobRecordingLocation } from "@/lib/job-recording-location";
-import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import {
+  parseRecordingLocationProof,
+  recordJobRecordingLocationAttempt,
+  verifyJobRecordingLocation,
+} from "@/lib/job-recording-location";
+import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -152,16 +156,6 @@ export async function POST(
         );
       }
       const assignedMembershipIds = getAssignedMembershipIdsFromMetadata(validBookingMetadata);
-      if (assignedMembershipIds.length === 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            code: "JOB_ASSIGNMENT_REQUIRED",
-            message: "Assign this job before uploading service videos.",
-          },
-          { status: 409 }
-        );
-      }
       if (tokenAccess && !assignedMembershipIds.includes(tokenAccess.membershipId)) {
         return NextResponse.json(
           {
@@ -173,36 +167,67 @@ export async function POST(
         );
       }
 
-      const permissionGate = await loadRecordingPermissionGate({
+      const membershipId = tokenAccess?.membershipId || membership.membershipId;
+      let permissionGate = await loadRecordingPermissionGate({
         bookingId: validBookingId,
         vendorId,
         customerMetadata: validBookingMetadata,
+        membershipId,
+        surface: "media_session",
+        capability: "record",
+        actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
       });
-      if (permissionGate.blockCode) {
-        return NextResponse.json(
-          {
-            success: false,
-            code: permissionGate.blockCode,
-            message: permissionGate.blockMessage,
-          },
-          { status: permissionGate.blockCode === "RECORDING_LOCATION_REQUIRED" ? 422 : 409 }
-        );
-      }
-      const canonicalLocation = permissionGate.location!;
-      if (canonicalLocation === "business" || canonicalLocation === "customer-business") {
+      if (permissionGate.blockCode === "LOCATION_VERIFICATION_REQUIRED") {
+        const canonicalLocation = permissionGate.location!;
+        const proof = parseRecordingLocationProof(body);
         const verification = await verifyJobRecordingLocation({
           vendorId,
           metadata: validBookingMetadata,
           vendorLocation: validBookingVendorLocation,
-          proof: parseRecordingLocationProof(body),
+          proof,
           location: canonicalLocation,
         });
+        if (permissionGate.assessmentId) {
+          await recordJobRecordingLocationAttempt({
+            bookingId: validBookingId,
+            vendorId,
+            membershipId,
+            assessmentId: permissionGate.assessmentId,
+            actorUserId: userId || null,
+            proof,
+            result: verification,
+          });
+        }
         if (!verification.ok) {
           return NextResponse.json(
-            { success: false, code: verification.code, message: verification.message, details: verification.details },
+            {
+              success: false,
+              code: verification.code,
+              message: verification.message,
+              why: verification.message,
+              responsibleParticipant: "EMPLOYEE",
+              resolution: "Allow precise location at the saved service address and try again, or ask the manager to request an admin-reviewed exception.",
+              serviceMayContinue: true,
+              details: verification.details,
+            },
             { status: verification.status }
           );
         }
+        permissionGate = await loadRecordingPermissionGate({
+          bookingId: validBookingId,
+          vendorId,
+          customerMetadata: validBookingMetadata,
+          membershipId,
+          surface: "media_session",
+          capability: "record",
+          actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
+        });
+      }
+      if (permissionGate.blockCode) {
+        return NextResponse.json(
+          { success: false, ...recordingGateErrorBody(permissionGate) },
+          { status: 409 },
+        );
       }
 
       const conflicting = await (prisma as any).mediaSession.findFirst({

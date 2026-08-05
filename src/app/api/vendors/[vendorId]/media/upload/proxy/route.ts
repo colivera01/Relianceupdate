@@ -3,7 +3,7 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { uploadBlobBuffer } from "@/lib/azure-blob-storage";
 import { prisma } from "@/server/db";
-import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -37,10 +37,11 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     ).trim();
     const mimeType = request.headers.get("content-type") || "video/mp4";
 
-    (await resolveEmployeeCaptureAccess(request, {
+    const tokenAccess = await resolveEmployeeCaptureAccess(request, {
       vendorId,
       bookingId: bookingId || null,
-    })) || (await requireVendorMembership(request, vendorId));
+    });
+    const membership = tokenAccess || (await requireVendorMembership(request, vendorId));
 
     if (bookingId) {
       const booking = await prisma.booking.findFirst({
@@ -54,12 +55,13 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         bookingId: booking.id,
         vendorId,
         customerMetadata: booking.customerMetadata,
+        membershipId: tokenAccess?.membershipId || membership.membershipId,
+        surface: "upload_proxy",
+        capability: "record",
+        actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
       });
       if (permissionGate.blockCode) {
-        return NextResponse.json(
-          { error: permissionGate.blockMessage, code: permissionGate.blockCode },
-          { status: permissionGate.blockCode === "RECORDING_LOCATION_REQUIRED" ? 422 : 409 }
-        );
+        return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
       }
     }
 

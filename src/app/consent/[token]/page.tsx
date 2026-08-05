@@ -20,6 +20,19 @@ type Permission = {
   customerName: string | null;
   actionExpiresAt: string;
   verificationOptions: { account: boolean; email: boolean; sms: boolean };
+  plannedScope: {
+    propertyScope: string;
+    peopleScope: string;
+    frameControl: string;
+    residenceInterior: boolean;
+    businessInterior: boolean;
+    minorMayAppear: boolean;
+    protectedNonParticipantMayAppear: boolean;
+    sensitiveInformationMayAppear: boolean;
+    identifiersMayAppear: boolean;
+    audioEnabled: false;
+    initialAudience: "private";
+  } | null;
   canDecide: boolean;
 };
 
@@ -44,6 +57,22 @@ function stateMessage(state: string) {
     wrong_recipient: { title: "This request was reported as misdirected", detail: "The service provider must correct the recipient before sending another request." },
   };
   return messages[state] || { title: "This request is not available", detail: "Ask the service provider to review the permission status." };
+}
+
+function scopeLabel(value: string) {
+  const labels: Record<string, string> = {
+    vendor_owned: "Vendor-owned property or controlled work area",
+    customer_owned: "Customer-owned property",
+    mixed: "Vendor and customer property",
+    none: "No identifiable people",
+    customer: "The customer may be identifiable",
+    employee: "The assigned employee may be identifiable",
+    multiple: "More than one person may be identifiable",
+    controlled: "Controlled frame",
+    partial: "Partially controlled frame",
+    uncontrolled: "Uncontrolled frame",
+  };
+  return labels[value] || value.replace(/_/g, " ");
 }
 
 export default function PermissionPage() {
@@ -182,6 +211,15 @@ export default function PermissionPage() {
           <div><span>Service</span><strong>{permission.serviceName}</strong></div>
           <div><span>Location type</span><strong>{permission.recordingLocation === "customer-business" ? "Customer business" : "Customer residence"}</strong></div>
         </div>
+
+        {permission.plannedScope ? (
+          <div className={styles.serviceCard} aria-label="Approved recording scope">
+            <div><span>Property or work area</span><strong>{scopeLabel(permission.plannedScope.propertyScope)}</strong></div>
+            <div><span>People in the approved scope</span><strong>{scopeLabel(permission.plannedScope.peopleScope)}</strong></div>
+            <div><span>Camera framing</span><strong>{scopeLabel(permission.plannedScope.frameControl)}</strong></div>
+            <div><span>Starting audience</span><strong>Private</strong></div>
+          </div>
+        ) : null}
 
         <div className={styles.education}>
           <article><ShieldCheck /><div><strong>Why you are being asked</strong><p>Reliance records Starting Condition, Work in Progress, and Final Result clips as proof of service.</p></div></article>
