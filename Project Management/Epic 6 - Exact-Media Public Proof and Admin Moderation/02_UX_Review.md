@@ -1,88 +1,62 @@
 # Epic 6 UX Review
 
-**Epic:** Exact-Media Public Proof and Admin Moderation
-**Build / commit reviewed:** TBD
-**Review date:** TBD
-**Status:** Not started
-
-Review the implementation as a first-time user. Working code is not sufficient evidence of good UX.
+**Review date:** 2026-08-05
+**Status:** Reviewed locally; live role replay pending
 
 ## Customer
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Why am I here? | TBD | TBD | TBD | TBD |
-| What is happening? | TBD | TBD | TBD | TBD |
-| What do I need to do? | TBD | TBD | TBD | TBD |
-| What happens if I do nothing? | TBD | TBD | TBD | TBD |
-| What happens next? | TBD | TBD | TBD | TBD |
-| What stays private? | TBD | TBD | TBD | TBD |
-| Wording/hierarchy/anxiety/accessibility/recovery | TBD | TBD | TBD | TBD |
+The page explains that the completed proof is already Private and that public sharing is optional. The customer can approve selected clips, keep everything Private, or request correction without pressure. The action hierarchy is clear on desktop and mobile. The strongest reassurance is explicit: doing nothing leaves the proof Private.
+
+**Observation:** A real video preview could not be included in the synthetic visual fixture, so physical playback remains a live-release check. No blocking copy or layout issue was found.
 
 ## Vendor
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Current status and next action | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Controls and button placement | TBD | TBD | TBD | TBD |
-| Privacy reassurance and failure recovery | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+The vendor sees Final Result as the only default and must intentionally add another stage. Status and next steps remain inside the work record instead of introducing a separate workflow. The vendor cannot override customer or participant refusal.
+
+**Observation:** The card is information-dense when all stages are selected. It remains readable, but beta feedback should determine whether progressive disclosure needs refinement.
 
 ## Employee
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Assignment and allowed action | TBD | TBD | TBD | TBD |
-| Recording boundaries / blocked reason | TBD | TBD | TBD | TBD |
-| Wording and hierarchy | TBD | TBD | TBD | TBD |
-| Recovery and manager escalation | TBD | TBD | TBD | TBD |
-| Accessibility and mobile behavior | TBD | TBD | TBD | TBD |
+Only the employee whose likeness/audio authority is implicated receives a decision. The screen says what is being requested and makes clear that the employee is not authorizing customer-controlled media generally. Mobile controls remain visible and stable.
 
 ## Admin
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Evidence available for a fair decision | TBD | TBD | TBD | TBD |
-| Authority and non-override boundaries | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Failure/recovery/audit visibility | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+The moderation page shows package, proposal, stage, content, presentation, and participant evidence before a decision. Admin can approve only a complete chain and cannot substitute its judgment for missing customer/vendor/participant authority.
+
+**Observation:** Hash evidence is necessarily technical. It is visually secondary, while decision blockers and stage labels lead the hierarchy.
 
 ## Cross-Role Consistency
 
-- Status names consistent: TBD
-- Next action consistent: TBD
-- Private/Public meaning consistent: TBD
-- Notifications match dashboards: TBD
-- No role sees broader data than needed: TBD
+- Private remains a complete outcome everywhere.
+- Final Result is the only default Public proposal.
+- Status names and next actions derive from one canonical publication view.
+- No role receives broader authority than its relationship to the work record.
+- Changed media cannot inherit an earlier approval.
 
 ## Journey Summaries
 
 ### Customer Journey
 
-TBD
+The customer opens a completed Private work record, previews the exact proposed clips, and chooses all, some, none, or correction. No action keeps the proof Private.
 
 ### Vendor Journey
 
-TBD
+The manager proposes exact media, receives each required decision, confirms official representation, and waits for admin moderation. Missing authority cannot be bypassed.
 
 ### Employee Journey
 
-TBD
+An applicable employee approves or declines only the exact stage containing that employee's likeness or authorized audio. Other employees cannot access the proposal.
 
 ### Admin Journey
 
-TBD
+Admin reviews only complete exact-version proposals, confirms the evidence chain, and approves, rejects, flags, or requests correction. Approval creates Public eligibility only for selected stages.
 
 ## Blocking UX Findings
 
-| Finding | Role | Owner | Resolution | Retest |
-|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD |
+None found in the controlled desktop/mobile review. Live playback, refresh behavior against beta data, and assistive-technology review remain release gates.
 
 ## UX Verdict
 
-**Result:** Not reviewed
-**Blocking confusion remains:** TBD
-**Ready for Product Owner demo:** No
+**Result:** Good
+**Blocking confusion remains:** No known local blocker
+**Ready for Product Owner demo:** Yes, after migration/deployment for live replay

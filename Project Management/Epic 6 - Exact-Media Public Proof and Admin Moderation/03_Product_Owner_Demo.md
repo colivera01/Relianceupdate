@@ -1,33 +1,36 @@
 # Epic 6 Product Owner Demo
 
-**Epic:** Exact-Media Public Proof and Admin Moderation
-**Build / commit:** TBD
-**Demo date:** TBD
-**Product Owner:** Cesar Olivera
-**Overall result:** Not run
+**Build / commit:** `d6edf5cee81b11d9c1eb9fc5ee9bbbe4fbe96e5d`
+**Demo date:** Pending live beta replay
+**Overall result:** Automated evidence ready; manual decision pending
 
-For every row, record Pass, Fail, or Blocked plus evidence and disposition.
+| Validate | Exact Product Owner action and expected observation | Current evidence |
+|---|---|---|
+| Workflow | Open a manager-approved Private package. Propose Final Result, approve it as customer, complete applicable employee and vendor decisions, approve as admin, then confirm only that exact clip appears publicly. | Automated pass; live replay pending. |
+| Exact version | Replace or alter the selected clip after approval. The old Public URL must stop serving it and the new version must require a new chain. | Unit/API pass. |
+| Customer choices | Repeat with selected stages, none/Private, and correction. No choice or no action may fabricate approval. | Unit/API and visual evidence pass. |
+| Vendor state | Confirm Final Result is the only default and another stage must be selected intentionally. Confirm vendor cannot override a decline. | Component screenshot and service tests pass. |
+| Employee state | Confirm only the implicated employee can decide likeness/audio for that exact stage. | API tests and desktop/mobile screenshots pass. |
+| Admin state | Confirm incomplete/stale proposals cannot be approved and admin cannot broaden missing authority. | Service/API tests and admin screenshot pass. |
+| Public serving | Open Explore Proof, service detail, vendor public profile, favorites, and direct media URL. Only active canonical eligibility may appear. | Public-route tests pass; live beta replay pending. |
+| Database | Verify proposal/stages, exact hashes/versions, customer, participant, vendor, admin, eligibility, and audit rows. | Schema/migration reviewed; beta migration pending. |
+| Legacy Public | After migration, verify former raw Public assets are inventoried and Private, not deleted or silently republished. | Migration review complete; beta reconciliation pending. |
+| Reviews | Confirm publication decisions create no review or rating and genuine review behavior is unchanged. | Regression pass. |
+| Trust Score | Confirm Private/declined/pending publication creates no Trust Score input. | Regression pass; full score certification remains Epic 8. |
+| Notifications | Confirm existing unrelated notifications remain unchanged. Publication lifecycle delivery is not part of this checkpoint and is recorded for Epic 10. | No notification code changed. |
+| Audit | Reconstruct proposal, exact versions, every decision, invalidation, eligibility, and legacy restriction without raw secrets. | Unit/API pass; live DB inspection pending. |
+| Screenshots | Review the nine indexed controlled desktop/mobile/state images. | Ready in `08_Screenshots/README.md`. |
 
-| Validate | Exact action and expected observation | Result | Evidence | Observation / defect | Owner | Disposition |
-|---|---|---|---|---|---|---|
-| Expected workflow | Complete the epic's approved end-to-end workflow and verify every decision and recovery state. | Not run | | | | |
-| Expected notifications | Trigger every affected notification and verify recipient, channel, copy, link, retry, failure, and delivery evidence. | Not run | | | | |
-| Expected dashboard updates | Keep affected role views open and verify confirmed state and next action update consistently. | Not run | | | | |
-| Expected database state | Inspect controlled test records and verify the exact models, state, evidence, and absence of fabricated activity. | Not run | | | | |
-| Expected admin state | Verify authorized admin visibility and actions, plus denial of prohibited overrides. | Not run | | | | |
-| Expected customer state | Verify control, privacy, understandable choices, and complete loading/success/failure/empty/blocked states. | Not run | | | | |
-| Expected vendor state | Verify the vendor always sees the current status, responsible participant, and correct next action. | Not run | | | | |
-| Expected employee state | Verify only assigned, approved actions are available and blocked reasons are clear. | Not run | | | | |
-| Expected Trust Score behavior | Verify only genuine approved inputs affect the score and all non-effects remain neutral. | Not run | | | | |
-| Expected review behavior | Verify genuine optional reviews remain separate and no review/rating is inferred or fabricated. | Not run | | | | |
-| Expected audit history | Reconstruct every consequential actor, version, decision, attempt, failure, and outcome. | Not run | | | | |
-| Expected screenshots | Review the indexed desktop/mobile/state/before-after package and confirm sensitive data is redacted. | Not run | | | | |
+## Expected Role States
+
+- **Customer:** Private until the customer affirmatively selects exact media.
+- **Vendor:** May propose and represent, but never override another authority holder.
+- **Employee:** May decide only applicable personal likeness/audio.
+- **Admin:** May moderate a complete chain, never repair or broaden missing authority.
 
 ## Follow-Up Defects
 
-| ID | Severity | Description | Owner | Required before approval? | Status |
-|---|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD | TBD |
+No confirmed Epic 6 application defect remains. Migration application, deployment, storage playback, cache checks, and live four-role replay are release gates.
 
 ## Product Owner Decision
 
@@ -36,4 +39,4 @@ For every row, record Pass, Fail, or Blocked plus evidence and disposition.
 - [ ] Blocked
 - [ ] Next epic authorized
 
-**Decision notes:** TBD
+**Decision notes:** Pending Product Owner review.

@@ -1,5 +1,32 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
+## Epic 6 Implementation Checkpoint - Exact-Media Public Proof and Admin Moderation
+
+**Checkpoint date:** 2026-08-05
+
+**Epic status:** **Engineering Complete; Product Owner review pending**
+
+**Deployment status:** Not deployed; additive migration `20260805213000_add_exact_media_publication_evidence` is not applied
+
+**Primary evidence:** `Project Management/Epic 6 - Exact-Media Public Proof and Admin Moderation/`
+
+Epic 6 replaces raw visibility flags as Public authority with one exact-media evidence chain: approved recording evidence, manager-approved Private package, exact customer decision, applicable participant decisions, vendor representation approval, admin moderation, and active canonical Public eligibility.
+
+- Final Result is the only default proposal; other stages require intentional selection.
+- Customer may approve all, some, none, or request correction. No action leaves proof Private.
+- Missing, stale, revoked, superseded, or inconsistent evidence fails closed at both mutation and read time.
+- Any presentation-affecting change requires a new media version and a new approval chain.
+- Legacy Public flags are inventoried and restricted to Private by migration; no media is deleted or silently approved.
+- Public service, discovery, category, favorites, vendor-profile, and direct-media paths use the canonical resolver.
+- Legacy direct-Public moderation shortcuts are blocked while Private moderation remains available.
+- Publication creates no review, rating, Trust Score input, permission, recording state, AI decision, or synthetic customer activity.
+- Validation passed: 45/45 Epic 6 focused tests, 331/331 Epic 1-6 regressions, 5/5 Playwright states, TypeScript, Prisma validation/generation, production build, and standalone package inspection.
+- Full suite result: 835/840; five untouched unrelated failures are documented in the Engineering Report.
+- `CON-15`, `CON-27`, `VID-07`, `VID-09` through `VID-13`, `ADM-01`, publication portions of `SEC-05` and `SEC-08`, `TEST-10`, `SHOT-01`, `SHOT-02`, `SHOT-04`, `SHOT-07`, and `DOC-01` through `DOC-07` gain local implementation evidence but remain release-shared until migration, deployment, live replay, and final release criteria pass.
+- Notifications were intentionally preserved under the final scope boundary; publication lifecycle delivery remains Epic 10 work.
+- No row is marked Beta Ready from local implementation alone.
+- Do not begin Epic 7 or deploy Epic 6 without Product Owner approval.
+
 ## Epic 5 Implementation Checkpoint - Safe Capture Through Private Service Videos
 
 **Checkpoint date:** 2026-08-05
@@ -260,7 +287,7 @@ Verified or documented readiness gaps include:
 - consent-request creation authorization and decision-maker identity are incomplete;
 - consent-specific OTP and authority-holder workflows are incomplete;
 - durable registration, vendor, and employee assent evidence is incomplete;
-- exact-video public approval is not implemented;
+- exact-video public approval is implemented locally in Epic 6; migration, deployment, and live replay remain pending;
 - withdrawal-to-unpublish is incomplete;
 - physical purge, retention scheduling, and evidence-only retention are incomplete;
 - minor, guardian, and protected-person workflows are incomplete;
@@ -286,10 +313,10 @@ No item should move to **Beta Ready** solely because a route or screen exists.
 | PROD-07 | Responsive layouts | Support mobile and desktop without overlap, clipping, stale controls, or hidden actions. | Epic 2 public shell passes desktop and 390px mobile checks with no horizontal overflow; screenshots are indexed. | Complete tablet, wide-desktop, authenticated-role, zoom, and physical-device matrices. | High | In Progress | No | Shared |
 | PROD-08 | Dark theme consistency | Maintain readable, accessible dark-theme surfaces across signed-in platform pages. | Dark styling exists but historical screenshots show inconsistent light cards and low-contrast states. | Audit colors, badges, cards, inputs, videos, banners, and all dynamic states. | Medium | In Progress | No | Future Designer |
 | PROD-09 | Homepage | Explain proof-of-service first and remove marketplace identity. | First viewport now identifies Reliance, real completed work, distinct trust signals, and Explore Proof on desktop/mobile. | Gather independent comprehension feedback during private beta; reopen only for measurable confusion or a genuine defect. | Critical | Complete | No | Shared |
-| PROD-10 | Customer dashboard | Prioritize service history, service videos, decisions, reviews, and trust context. | Dashboard exists but alignment audit identifies booking/service-first framing. | Implement UX-spec organization, synchronized statuses, and proof-first language. | High | In Progress | No | Shared |
-| PROD-11 | Vendor dashboard | Show current workflow step, responsible participant, and next valid action. | Dashboard and metrics exist; complete consent-phase status alignment is not implemented. | Align tabs/cards/metrics to confirmed workflow states and prevent stale actions. | High | In Progress | No | Shared |
+| PROD-10 | Customer dashboard | Prioritize service history, service videos, decisions, reviews, and trust context. | Customer work-record detail now includes exact-media Public choices while preserving Private as complete; full dashboard reconciliation remains open. | Complete release-wide synchronized statuses and proof-first organization. | High | In Progress | No | Shared |
+| PROD-11 | Vendor dashboard | Show current workflow step, responsible participant, and next valid action. | Vendor work detail now exposes canonical exact-media proposal status and next action; broader dashboard metrics remain unreconciled. | Complete release-wide tabs/cards/metrics and live refresh evidence. | High | In Progress | No | Shared |
 | PROD-12 | Employee dashboard | Show assignment, approved scope, block reason, stage, and safe next action. | Assigned-job and recording experiences exist; durable certification and protected-person guidance are incomplete. | Implement UX specification and test correction, reassignment, blocked, and offline/error paths. | Critical | In Progress | No | Shared |
-| PROD-13 | Admin dashboard | Provide fair-decision context for moderation, disputes, withdrawals, and operations. | Admin dashboards and consoles exist; evidence context and audit consistency are incomplete. | Align queues and cards to exact versions, permissions, restrictions, and current states. | Critical | In Progress | No | Shared |
+| PROD-13 | Admin dashboard | Provide fair-decision context for moderation, disputes, withdrawals, and operations. | Epic 6 adds an exact-version Public Proof Review queue with customer, participant, vendor, package, presentation, and content evidence. Dispute/withdrawal operations remain future work. | Complete later dispute/withdrawal context and release-wide admin evidence. | Critical | In Progress | No | Shared |
 
 ### Release controls
 
@@ -370,7 +397,7 @@ Phase A completion here does not mark Epic 3 or the release Beta Ready. Deployme
 | TEST-07 | Media/device/storage readiness | recording/upload/playback tests | P4-P8 / P10 | Approved media only; exact stages/versions persist; failures never fabricate success. | Real-device, MIME/duration/hash, outage, replacement, reassignment | Yes | No |
 | TEST-08 | Review Phase 1 and Trust Score | review/Trust Score/UI/template tests | P1 / P10 | Review is optional/non-expiring; no-review is neutral; genuine review rules remain intact. | Unit/integration/E2E; repository wording scan | Yes | No |
 | TEST-09 | Provider sandbox/live accounts | notification tests/templates/callbacks | P2-P9 / P10 | Intended recipient gets accurate content once; failures/retries are visible and audited. | Snapshot; provider; delivery callback; opt-out; duplicate | Yes | No |
-| TEST-10 | Admin auth and seeded evidence | admin test suites | P5-P8 / P10 | Unauthorized actions fail; authorized decisions use exact evidence and create immutable history. | Role matrix; direct API; moderation/dispute/report | Yes | No |
+| TEST-10 | Admin auth and seeded evidence | admin test suites | P5-P8 / P10 | Epic 6 exact-version moderation and denial tests pass locally; dispute/report coverage remains later work. | Role matrix; direct API; moderation/dispute/report | Yes | No |
 | TEST-11 | Agreed golden journeys | repository full suite/CI | Every phase / P10 | No approved existing journey regresses; failures are triaged as new or pre-existing. | Full CI/build plus golden E2E | Yes | No |
 | TEST-12 | Capacity assumptions/monitoring | load scripts/results/dashboards | OPS | Error/latency/resource use stays within approved threshold with no data/access corruption. | Ramp/spike/soak/media concurrency | Yes | No |
 | TEST-13 | Observable staging environment | fault/restore/rollback scripts and runbooks | P8 / OPS / P10 | Each injected failure preserves privacy/evidence and returns to a consistent recoverable state. | Chaos/fault injection; recovery/rollback drills | Yes | No |
@@ -384,10 +411,10 @@ The screenshot package is release evidence, not decoration. Capture only control
 
 | ID | Item | Description | Current implementation | Required work | Risk | Status | Beta Ready | Owner |
 |---|---|---|---|---|---|---|---|---|
-| SHOT-01 | Customer screens | Capture permission, wrong-recipient, decline/allow, private proof, publication, review, withdrawal, dispute, and recovery states. | Historical screenshots exist, but they are not a controlled frozen-workflow release package. | Capture approved screens after implementation and testing at desktop/mobile sizes. | High | In Progress | No | Future QA |
-| SHOT-02 | Vendor screens | Capture work-record creation, assessment, authority, assignment, status, review, correction, and outcomes. | Historical screenshots exist; current canonical set is absent. | Capture all location/subject paths and consequential status changes. | High | In Progress | No | Future QA |
+| SHOT-01 | Customer screens | Capture permission, wrong-recipient, decline/allow, private proof, publication, review, withdrawal, dispute, and recovery states. | Epic 6 adds controlled desktop/mobile exact-media and Private-outcome evidence; later review/withdrawal/dispute and release-wide states remain open. | Complete remaining release states and live replay captures. | High | In Progress | No | Future QA |
+| SHOT-02 | Vendor screens | Capture work-record creation, assessment, authority, assignment, status, review, correction, and outcomes. | Epic 6 adds a controlled Final Result-only proposal capture; full release-wide vendor set remains incomplete. | Complete live role/state and location-branch captures. | High | In Progress | No | Future QA |
 | SHOT-03 | Employee screens | Capture assignment, scope, certification, location, blocked, three stages, upload, retry, and submission. | Historical phone screenshots exist; release-quality device set is absent. | Capture supported real devices and permission/failure states. | High | Not Started | No | Future QA |
-| SHOT-04 | Admin screens | Capture moderation, evidence, restrictions, disputes, appeals, reporting, and audit history. | Historical admin screenshots exist; canonical release set is absent. | Capture exact-version evidence and authorized/unauthorized states. | High | Not Started | No | Future QA |
+| SHOT-04 | Admin screens | Capture moderation, evidence, restrictions, disputes, appeals, reporting, and audit history. | Epic 6 adds controlled exact-media evidence/moderation capture; live unauthorized, dispute, appeal, and reporting states remain open. | Complete release-wide admin package after deployment and later epics. | High | In Progress | No | Future QA |
 | SHOT-05 | Responsive layouts | Prove critical screens fit without overlap, clipping, unreadable chips, or hidden actions. | Responsive styling exists; systematic evidence is incomplete. | Capture supported narrow mobile, tablet, laptop, and wide desktop viewports. | High | Not Started | No | Future QA |
 | SHOT-06 | Accessibility states | Capture focus, zoom, contrast, validation, reduced-motion, and assistive text where visual evidence helps. | No verified package. | Add images alongside automated/manual accessibility results. | Medium | Not Started | No | Future QA |
 | SHOT-07 | Empty/loading/success/failure | Capture non-happy states defined by the UX specification. | Such states exist in parts; complete inventory is absent. | Capture every consequential screen's loading, empty, success, failure, and recovery states. | High | In Progress | No | Future QA |
@@ -418,9 +445,9 @@ These deliverables are mandatory after implementation and before the final beta 
 
 | ID | Item | Description | Current implementation | Required work | Risk | Status | Beta Ready | Owner |
 |---|---|---|---|---|---|---|---|---|
-| DOC-01 | Engineering report | Record implementation scope, architecture impact, migrations, security, tests, deployment, rollback, and known limitations. | Phase-specific reports exist in parts; one final release report does not. | Produce report from committed implementation and saved test evidence. | Critical | In Progress | No | Codex |
+| DOC-01 | Engineering report | Record implementation scope, architecture impact, migrations, security, tests, deployment, rollback, and known limitations. | Epic 6 engineering report is complete locally; final release report remains pending. | Consolidate committed/deployed evidence at release gate. | Critical | In Progress | No | Codex |
 | DOC-02 | Screenshot package | Provide indexed, redacted visual evidence for all roles and consequential states. | Not yet produced for the frozen workflow. | Complete SHOT-01 through SHOT-10. | High | In Progress | No | Future QA |
-| DOC-03 | UX observations | Critique the implemented experience honestly against the frozen UX specification. | UX specification exists; implementation critique is pending. | Identify confusion, severity, evidence, recommendation, and disposition. | High | In Progress | No | Shared |
+| DOC-03 | UX observations | Critique the implemented experience honestly against the frozen UX specification. | Epic 6 includes four-role UX review; release-wide critique remains pending. | Add live beta and later-epic findings. | High | In Progress | No | Shared |
 | DOC-04 | Customer journey summary | Summarize first-time customer paths, decisions, privacy, failure recovery, and final outcomes. | Not yet produced from implemented build. | Document tested paths and unresolved friction with screenshot references. | High | In Progress | No | Shared |
 | DOC-05 | Vendor journey summary | Summarize work-record creation through final disposition for all three location selections. | Not yet produced from implemented build. | Document tested paths, state transitions, and unresolved friction. | High | In Progress | No | Shared |
 | DOC-06 | Employee journey summary | Summarize assignment, scope, recording, upload, recovery, reassignment, and submission. | Not yet produced from implemented build. | Document supported devices and every tested blocking/recovery state. | High | In Progress | No | Shared |
@@ -446,7 +473,7 @@ These deliverables are mandatory after implementation and before the final beta 
 
 **Current status: Blocked**
 
-The current executable product includes substantial working foundations, but this checklist identifies unresolved Critical items in identity and authority verification, consent-request authorization, employee certification, exact-media publication approval, withdrawal and unpublishing, evidence integrity, retention and physical purge, security validation, production provider validation, recovery, and complete cross-role testing. Those gaps prevent a responsible **Beta Ready** designation.
+The current executable product includes substantial working foundations, but this checklist identifies unresolved Critical release gates in migration/deployment validation, withdrawal and unpublishing, evidence integrity, retention and physical purge, security validation, production provider validation, recovery, and complete cross-role testing. Epic 6 exact-media publication is implemented locally but is not release evidence until deployed and replayed. Those gaps prevent a responsible **Beta Ready** designation.
 
 This is a readiness judgment, not a statement that the current application has no usable features. The gate remains blocked until the criteria below are satisfied with implementation and evidence.
 
