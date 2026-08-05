@@ -1,7 +1,9 @@
 # Epic 6 Screenshot Index
 
-**Capture date:** 2026-08-05  
-**Data:** Controlled synthetic fixture only  
+**Capture date:** 2026-08-05
+
+**Data:** Controlled synthetic fixture only
+
 **Redaction:** No credentials, OTPs, raw tokens, private blob URLs, or real customer data
 
 | File | Role/state | Viewport |

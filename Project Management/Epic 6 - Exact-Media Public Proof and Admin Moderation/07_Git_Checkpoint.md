@@ -1,46 +1,42 @@
 # Epic 6 Git Checkpoint
 
-**Epic:** Exact-Media Public Proof and Admin Moderation
-
 ## Branch
 
-TBD
+`codex/epic3-beta-admin-grant-correction`
 
 ## Commit
 
-- Starting commit: TBD
-- Final commit: TBD
-- Remote: TBD
-- Push result: Not run
+- Starting commit: `2f3bcece9bff3b42ada75bd24b03cf04f88a9787`
+- Implementation commit: `d6edf5cee81b11d9c1eb9fc5ee9bbbe4fbe96e5d`
+- Evidence commit: `a0e1e4f68c2cf910932e17f6279470af87c67449`
+- Remote/push target: `origin/codex/epic3-beta-admin-grant-correction`
 
-## Files Changed
+## Scope
 
-| File | Type | Included intentionally |
-|---|---|---|
-| TBD | TBD | Yes / No |
+Only Epic 6 application, migration, tests, controlled screenshots, reports, dashboard, and checklist evidence belong in this checkpoint. Pre-existing Epic 4 and RR planning files remain untouched and unstaged.
 
-## Build Status
+## Build And Test Status
 
-| Command | Result | Date | Notes |
-|---|---|---|---|
-| Not run | Not run | TBD | |
-
-## Test Status
-
-| Suite / command | Result | Date | Notes |
-|---|---|---|---|
-| Not run | Not run | TBD | |
+| Validation | Result |
+|---|---|
+| Epic 6 focused tests | 45/45 passed |
+| Epic 1-6 focused regression | 331/331 passed |
+| Full suite | 835/840; five unrelated known failures |
+| Epic 6 Playwright | 5/5 passed |
+| TypeScript | Passed |
+| Prisma format/validate/generate | Passed |
+| Production build | Passed |
+| `git diff --check` | Passed after screenshot-index whitespace cleanup |
 
 ## Known Issues
 
-| Issue | Epic-related? | Severity | Blocks approval? | Owner |
-|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD |
+Migration application, beta deployment, live storage/cache validation, physical-device playback, and four-role Product Owner replay remain release gates. No known local Epic 6 regression remains.
 
 ## Commit Scope Verification
 
-- [ ] No `.env`, credentials, tokens, private keys, or connection strings.
-- [ ] No logs, temporary folders, generated artifacts, or screenshots unless explicitly approved.
-- [ ] No unrelated worktree changes.
-- [ ] Frozen design documents were not rewritten.
-- [ ] Checklist/report changes match executed evidence.
+- [x] No `.env`, credentials, tokens, private keys, or connection strings.
+- [x] No logs, temporary folders, or generated build artifacts.
+- [x] Controlled screenshots are included as required evidence.
+- [x] Unrelated worktree changes are excluded.
+- [x] Frozen design documents were not rewritten.
+- [x] Checklist/report statements match executed evidence.
