@@ -1,211 +1,140 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { POST } from "./route";
-import { requireVendorManager } from "@/lib/membership-auth";
 
-const hoisted = vi.hoisted(() => {
-  const bookingFindFirst = vi.fn();
-  const mediaSessionFindMany = vi.fn();
-  const txBookingUpdate = vi.fn();
-  const txMediaAssetUpdateMany = vi.fn();
-  const transaction = vi.fn(async (cb: any) =>
-    cb({
-      booking: { update: txBookingUpdate },
-      mediaAsset: { updateMany: txMediaAssetUpdateMany },
-    })
-  );
-
-  const prisma = {
-    booking: {
-      findFirst: bookingFindFirst,
-    },
-    mediaSession: {
-      findMany: mediaSessionFindMany,
-    },
-    $transaction: transaction,
-  };
-
-  return {
-    prisma,
-    bookingFindFirst,
-    mediaSessionFindMany,
-    txBookingUpdate,
-    txMediaAssetUpdateMany,
-    transaction,
-  };
-});
+const hoisted = vi.hoisted(() => ({
+  bookingFindFirst: vi.fn(),
+  privateProofAccessGrantFindFirst: vi.fn(),
+  approvePrivateServiceVideoPackage: vi.fn(),
+  sendVideoReadyNotification: vi.fn(),
+}));
 
 vi.mock("@/server/db", () => ({
-  prisma: hoisted.prisma,
+  prisma: {
+    booking: { findFirst: hoisted.bookingFindFirst },
+    privateProofAccessGrant: { findFirst: hoisted.privateProofAccessGrantFindFirst },
+  },
 }));
 
 vi.mock("@/lib/membership-auth", () => ({
-  requireVendorManager: vi.fn(),
+  requireVendorManager: vi.fn(async () => ({
+    vendorId: "v1",
+    userId: "manager-1",
+    membershipId: "manager-membership-1",
+  })),
 }));
 
-function postReq(vendorId: string, jobId: string) {
+vi.mock("@/lib/service-video-evidence", () => ({
+  approvePrivateServiceVideoPackage: hoisted.approvePrivateServiceVideoPackage,
+}));
+
+vi.mock("@/lib/notifications/send-video-ready", () => ({
+  sendVideoReadyNotification: hoisted.sendVideoReadyNotification,
+}));
+
+vi.mock("@/lib/lifecycle-audit", () => ({ recordLifecycleAudit: vi.fn(async () => undefined) }));
+vi.mock("@/lib/trust-score-outcome-foundation", () => ({
+  TRUST_OUTCOME_TYPES: { WORKFLOW_COMPLETED: "workflow_completed", LATE_COMPLETION: "late_completion" },
+  tryRecordFinalizedOperationalOutcome: vi.fn(async () => undefined),
+}));
+vi.mock("@/lib/trust-score-calculator", () => ({ tryRecalculateVendorTrustScore: vi.fn(async () => undefined) }));
+
+function request(vendorId = "v1", jobId = "job1") {
   return {
-    req: new Request(`http://localhost/api/vendors/${vendorId}/jobs/${jobId}/approve`, {
-      method: "POST",
-    }),
+    req: new Request(`http://localhost/api/vendors/${vendorId}/jobs/${jobId}/approve`, { method: "POST" }),
     ctx: { params: Promise.resolve({ vendorId, jobId }) },
   };
 }
 
-async function toJson(res: Response) {
-  return res.json() as Promise<Record<string, unknown>>;
+function booking(status: string) {
+  const now = new Date("2026-08-05T12:00:00.000Z");
+  return {
+    id: "job1",
+    userId: "customer-1",
+    status,
+    title: "Outlet Installation",
+    clientName: "Beta Customer",
+    customerMetadata: JSON.stringify({ client_email: "customer@example.test" }),
+    scheduledFor: now,
+    date: now,
+    updatedAt: now,
+    user: { name: "Beta Customer", email: "customer@example.test", phone: null },
+    service: { name: "Outlet Installation" },
+    vendor: { name: "Electro LLC", businessName: "Electro LLC" },
+  };
 }
 
-describe("vendor job approve integration", () => {
+describe("vendor job Private Service Video approval", () => {
   beforeEach(() => {
-    vi.mocked(requireVendorManager).mockReset();
-    vi.mocked(requireVendorManager).mockResolvedValue({} as any);
     hoisted.bookingFindFirst.mockReset();
-    hoisted.mediaSessionFindMany.mockReset();
-    hoisted.txBookingUpdate.mockReset();
-    hoisted.txMediaAssetUpdateMany.mockReset();
-    hoisted.transaction.mockClear();
+    hoisted.privateProofAccessGrantFindFirst.mockReset();
+    hoisted.approvePrivateServiceVideoPackage.mockReset();
+    hoisted.sendVideoReadyNotification.mockReset();
+    hoisted.sendVideoReadyNotification.mockResolvedValue({ ok: true, channels: [{ channel: "email", success: true }] });
   });
 
-  it("returns 403 when manager auth is forbidden", async () => {
-    vi.mocked(requireVendorManager).mockRejectedValue(new Error("Forbidden"));
-    const { req, ctx } = postReq("v1", "job1");
-    const res = await POST(req, ctx as any);
-    expect(res.status).toBe(403);
+  it("blocks jobs that are not awaiting manager review", async () => {
+    const { POST } = await import("./route");
+    hoisted.bookingFindFirst.mockResolvedValue(booking("CONFIRMED"));
+    const { req, ctx } = request();
+    const response = await POST(req, ctx as any);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "INVALID_APPROVAL_STATUS" });
   });
 
-  it("returns 409 when job is not awaiting review", async () => {
-    hoisted.bookingFindFirst.mockResolvedValue({
-      id: "job1",
-      status: "CONFIRMED",
-      customerMetadata: "{}",
-    });
-    const { req, ctx } = postReq("v1", "job1");
-    const res = await POST(req, ctx as any);
-    expect(res.status).toBe(409);
-    const j = await toJson(res);
-    expect(j.code).toBe("INVALID_APPROVAL_STATUS");
+  it("fails closed when the complete evidence chain cannot be verified", async () => {
+    const { POST } = await import("./route");
+    hoisted.bookingFindFirst.mockResolvedValue(booking("AWAITING_REVIEW"));
+    hoisted.approvePrivateServiceVideoPackage.mockRejectedValue(new Error("SERVICE_VIDEO_EVIDENCE_CHAIN_INCOMPLETE"));
+    const { req, ctx } = request();
+    const response = await POST(req, ctx as any);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "PRIVATE_PROOF_EVIDENCE_CHAIN_INCOMPLETE" });
+    expect(hoisted.sendVideoReadyNotification).not.toHaveBeenCalled();
   });
 
-  it("returns 409 when required stages are missing", async () => {
-    hoisted.bookingFindFirst.mockResolvedValue({
-      id: "job1",
-      status: "AWAITING_REVIEW",
-      customerMetadata: "{}",
-    });
-    hoisted.mediaSessionFindMany.mockResolvedValue([
-      {
-        id: "s1",
-        sessionType: "JOB_SERVICE_VIDEO",
-        vendorJobVideoStage: "INTRO",
-        mediaAssets: [{ id: "a1", moderationStatus: "pending_review", createdAt: new Date() }],
-      },
-    ]);
-    const { req, ctx } = postReq("v1", "job1");
-    const res = await POST(req, ctx as any);
-    expect(res.status).toBe(409);
-    const j = await toJson(res);
-    expect(j.code).toBe("COMPLETION_REQUIRES_COMPLETE_VIDEO_PACKAGE");
+  it("treats a completed work record with an active grant as already approved", async () => {
+    const { POST } = await import("./route");
+    hoisted.bookingFindFirst.mockResolvedValue(booking("COMPLETED"));
+    hoisted.privateProofAccessGrantFindFirst.mockResolvedValue({ id: "grant-1" });
+    const { req, ctx } = request();
+    const response = await POST(req, ctx as any);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ success: true, alreadyApproved: true });
+    expect(hoisted.approvePrivateServiceVideoPackage).not.toHaveBeenCalled();
   });
 
-  it("treats a repeated approval after the first request committed as success", async () => {
-    const completedAt = new Date("2026-08-01T12:00:00.000Z");
-    hoisted.bookingFindFirst.mockResolvedValue({
-      id: "job1",
-      status: "COMPLETED",
-      customerMetadata: "{}",
-      date: completedAt,
-      updatedAt: completedAt,
+  it("atomically approves customer-only Private proof and sends the customer notice", async () => {
+    const { POST } = await import("./route");
+    hoisted.bookingFindFirst.mockResolvedValue(booking("AWAITING_REVIEW"));
+    hoisted.approvePrivateServiceVideoPackage.mockResolvedValue({
+      package: { id: "package-1", version: 1, packageHash: "package-hash" },
+      grant: { id: "grant-1" },
+      booking: { id: "job1", status: "COMPLETED", date: new Date(), updatedAt: new Date() },
     });
-    hoisted.mediaSessionFindMany.mockResolvedValue([
-      {
-        id: "s1",
-        sessionType: "JOB_SERVICE_VIDEO",
-        vendorJobVideoStage: "INTRO",
-        mediaAssets: [{ id: "a1", moderationStatus: "pending_review", createdAt: completedAt }],
+    const { req, ctx } = request();
+    const response = await POST(req, ctx as any);
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      success: true,
+      privateProof: {
+        packageId: "package-1",
+        packageVersion: 1,
+        accessGrantId: "grant-1",
+        audience: "CUSTOMER_ONLY",
       },
-      {
-        id: "s2",
-        sessionType: "JOB_SERVICE_VIDEO",
-        vendorJobVideoStage: "IN_PROGRESS",
-        mediaAssets: [{ id: "a2", moderationStatus: "pending_review", createdAt: completedAt }],
-      },
-      {
-        id: "s3",
-        sessionType: "JOB_SERVICE_VIDEO",
-        vendorJobVideoStage: "COMPLETED",
-        mediaAssets: [{ id: "a3", moderationStatus: "pending_review", createdAt: completedAt }],
-      },
-    ]);
-
-    const { req, ctx } = postReq("v1", "job1");
-    const res = await POST(req, ctx as any);
-    const body = await toJson(res);
-
-    expect(res.status).toBe(200);
-    expect(body.alreadyApproved).toBe(true);
-    expect(hoisted.transaction).not.toHaveBeenCalled();
-    expect(hoisted.txBookingUpdate).not.toHaveBeenCalled();
-    expect(hoisted.txMediaAssetUpdateMany).not.toHaveBeenCalled();
-  });
-
-  it("completes job and re-queues package moderation", async () => {
-    hoisted.bookingFindFirst.mockResolvedValue({
-      id: "job1",
-      status: "AWAITING_REVIEW",
-      customerMetadata: "{}",
+      job: { status: "COMPLETED" },
     });
-    hoisted.mediaSessionFindMany.mockResolvedValue([
-      {
-        id: "s1",
-        sessionType: "JOB_SERVICE_VIDEO",
-        vendorJobVideoStage: "INTRO",
-        mediaAssets: [{ id: "a1", moderationStatus: "approved", createdAt: new Date() }],
-      },
-      {
-        id: "s2",
-        sessionType: "JOB_SERVICE_VIDEO",
-        vendorJobVideoStage: "IN_PROGRESS",
-        mediaAssets: [{ id: "a2", moderationStatus: "approved", createdAt: new Date() }],
-      },
-      {
-        id: "s3",
-        sessionType: "JOB_SERVICE_VIDEO",
-        vendorJobVideoStage: "COMPLETED",
-        mediaAssets: [{ id: "a3", moderationStatus: "approved", createdAt: new Date() }],
-      },
-    ]);
-    hoisted.txBookingUpdate.mockResolvedValue({
-      id: "job1",
-      status: "COMPLETED",
-      date: new Date(),
-      updatedAt: new Date(),
-    });
-    hoisted.txMediaAssetUpdateMany.mockResolvedValue({ count: 3 });
-
-    const { req, ctx } = postReq("v1", "job1");
-    const res = await POST(req, ctx as any);
-    expect(res.status).toBe(200);
-    expect(hoisted.txBookingUpdate).toHaveBeenCalledWith({
-      where: { id: "job1" },
-      data: {
-        status: "COMPLETED",
-        date: expect.any(Date),
-        customerMetadata: expect.any(String),
-      },
-      select: { id: true, status: true, date: true, updatedAt: true },
-    });
-    expect(hoisted.txMediaAssetUpdateMany).toHaveBeenCalledWith({
-      where: {
-        mediaSessionId: { in: ["s1", "s2", "s3"] },
-        deletedAt: null,
-      },
-      data: {
-        moderationStatus: "pending_review",
-        visibilityStatus: "private",
-        moderationReason: null,
-        moderatedAt: null,
-        moderatedByUserId: null,
-      },
-    });
+    expect(hoisted.approvePrivateServiceVideoPackage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "job1",
+        vendorId: "v1",
+        customerUserId: "customer-1",
+        managerUserId: "manager-1",
+        managerMembershipId: "manager-membership-1",
+        completedAt: expect.any(Date),
+        customerMetadata: expect.stringContaining("COMPLETED"),
+      }),
+    );
+    expect(hoisted.sendVideoReadyNotification).toHaveBeenCalledOnce();
   });
 });

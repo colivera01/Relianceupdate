@@ -7,14 +7,21 @@ const hoisted = vi.hoisted(() => {
   const userFindUnique = vi.fn();
   const bookingFindUnique = vi.fn();
   const bookingUpdate = vi.fn();
+  const privateProofAccessGrantUpdateMany = vi.fn();
 
   return {
     userFindUnique,
     bookingFindUnique,
     bookingUpdate,
+    privateProofAccessGrantUpdateMany,
     prisma: {
       user: { findUnique: userFindUnique },
       booking: { findUnique: bookingFindUnique, update: bookingUpdate },
+      privateProofAccessGrant: { updateMany: privateProofAccessGrantUpdateMany },
+      $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback({
+        booking: { update: bookingUpdate },
+        privateProofAccessGrant: { updateMany: privateProofAccessGrantUpdateMany },
+      })),
     },
   };
 });
@@ -70,6 +77,8 @@ describe("POST /api/bookings/claim", () => {
     hoisted.userFindUnique.mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.privateProofAccessGrantUpdateMany.mockReset();
+    hoisted.privateProofAccessGrantUpdateMany.mockResolvedValue({ count: 0 });
   });
 
   it("returns 401 without user context", async () => {
@@ -116,6 +125,14 @@ describe("POST /api/bookings/claim", () => {
         data: expect.objectContaining({ userId: "customer-1" }),
       })
     );
+    expect(hoisted.privateProofAccessGrantUpdateMany).toHaveBeenCalledWith({
+      where: {
+        bookingId: "booking-1",
+        customerUserId: "placeholder-1",
+        status: "ACTIVE",
+      },
+      data: { customerUserId: "customer-1" },
+    });
   });
 });
 

@@ -73,7 +73,7 @@ type RecordingComplianceState = {
 };
 
 type StageFeedbackState = {
-  status: "uploading" | "success" | "error";
+  status: "uploading" | "success" | "error" | "saved" | "retry_required" | "rejected";
   message: string;
 };
 
@@ -105,6 +105,7 @@ type CapturedVideoDraft = {
   previewUrl: string;
   durationSeconds: number;
   locationProof: LocationProof | null;
+  source: "native-camera" | "recorder";
 };
 
 type LocationProof = {
@@ -288,7 +289,7 @@ function getStageCardActionLabel(input: {
   if (input.isUploading) return "Uploading and saving...";
   if (input.isOpening) return "Opening camera...";
   if (input.hasDraft) return "Preview open - finish or retake";
-  if (input.isSaved) return "Recorded - tap to edit";
+  if (input.isSaved) return "Saved - tap to replace";
   if (input.hasCaptureToken) return `Tap to record ${getCaptureLinkStepLabel(input.stage)}`;
   return "Required";
 }
@@ -631,7 +632,8 @@ export default function EmployeeJobsPage() {
     stage: (typeof STAGES)[number]["key"],
     file: File,
     durationSeconds: number,
-    locationProof: LocationProof | null
+    locationProof: LocationProof | null,
+    source: CapturedVideoDraft["source"]
   ) => {
     const uploadKey = `${job.id}:${stage}`;
     const hadExistingStageVideo = Boolean(job.stageProgress?.[stage]);
@@ -640,8 +642,9 @@ export default function EmployeeJobsPage() {
     setActionMessage(null);
     setStageFeedback((prev) => ({
       ...prev,
-      [uploadKey]: { status: "uploading", message: "Uploading..." },
+      [uploadKey]: { status: "uploading", message: "Uploading" },
     }));
+    let initializedAssetId = "";
     try {
       const deviceIdForUpload = pairedDevice?.deviceId || null;
       const recordingLocation = getRecordingLocation(job);
@@ -675,20 +678,36 @@ export default function EmployeeJobsPage() {
           expectedBytes: file.size,
           mimeType: file.type || "video/mp4",
           bookingId: job.id,
+          mediaSessionId,
+          captureProvenance: source === "recorder" ? "LIVE_BROWSER_CAPTURE" : "PRERECORDED_FALLBACK",
         }),
       });
       const initJson = await initRes.json().catch(() => ({}));
       if (!initRes.ok || !initJson?.sasUrl || !initJson?.assetId || !initJson?.blobKey) {
         throw new Error(initJson?.error || "Failed to initialize upload");
       }
+      initializedAssetId = String(initJson.assetId);
 
-      await uploadStageBlob({
-        job,
-        file,
-        assetId: String(initJson.assetId),
-        blobKey: String(initJson.blobKey),
-        sasUrl: String(initJson.sasUrl),
-      });
+      try {
+        await uploadStageBlob({
+          job,
+          file,
+          assetId: initializedAssetId,
+          blobKey: String(initJson.blobKey),
+          sasUrl: String(initJson.sasUrl),
+        });
+      } catch (uploadError) {
+        await fetch(`/api/vendors/${job.vendorId}/media/upload/status`, {
+          method: "POST",
+          headers: employeeRequestHeaders(),
+          body: JSON.stringify({
+            assetId: initializedAssetId,
+            bookingId: job.id,
+            uploadState: "RETRY_REQUIRED",
+          }),
+        }).catch(() => undefined);
+        throw uploadError;
+      }
 
       const completeRes = await fetch(`/api/vendors/${job.vendorId}/media/upload/complete`, {
         method: "POST",
@@ -706,9 +725,11 @@ export default function EmployeeJobsPage() {
       });
       const completeJson = await completeRes.json().catch(() => ({}));
       if (!completeRes.ok || !completeJson?.success) {
-        throw new Error(
+        const finalizeError = new Error(
           completeJson?.message || completeJson?.error || "Failed to finalize upload"
         );
+        (finalizeError as any).uploadState = completeJson?.uploadState;
+        throw finalizeError;
       }
 
       const stageRes = await fetch(`/api/employee/jobs/${job.id}/stage`, {
@@ -729,8 +750,8 @@ export default function EmployeeJobsPage() {
       setStageFeedback((prev) => ({
         ...prev,
         [uploadKey]: {
-          status: "success",
-          message: hadExistingStageVideo ? "Stage video replaced successfully." : "Uploaded successfully",
+          status: "saved",
+          message: hadExistingStageVideo ? "Saved. This stage replaced the prior version." : "Saved",
         },
       }));
       setFocusedStageByJobId((current) => ({
@@ -741,14 +762,21 @@ export default function EmployeeJobsPage() {
         }),
       }));
       await loadJobs();
+      return true;
     } catch (e) {
       const uploadErrorMessage =
         e instanceof Error ? e.message : "Failed to upload stage video";
+      const responseState = String((e as any)?.uploadState || "").toUpperCase();
+      const feedbackStatus = responseState === "REJECTED" ? "rejected" : "retry_required";
       setError(uploadErrorMessage);
       setStageFeedback((prev) => ({
         ...prev,
-        [uploadKey]: { status: "error", message: uploadErrorMessage },
+        [uploadKey]: {
+          status: feedbackStatus,
+          message: feedbackStatus === "rejected" ? `Rejected: ${uploadErrorMessage}` : `Retry Required: ${uploadErrorMessage}`,
+        },
       }));
+      return false;
     } finally {
       setUploadingKey(null);
     }
@@ -1019,14 +1047,16 @@ export default function EmployeeJobsPage() {
     clearCapturedDraft();
     const previewUrl = URL.createObjectURL(file);
     capturedDraftUrlRef.current = previewUrl;
-    setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds, locationProof });
+    setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds, locationProof, source });
     setStageFeedback((prev) => ({
       ...prev,
       [nextRecordingKey]: {
-        status: durationWarning ? "uploading" : "success",
+        status: "success",
         message: durationWarning
           ? "Preview the video. Reliance will verify the 30-second limit when you confirm."
-          : "Preview the video. Confirm to save it to the project, or retake it.",
+          : source === "native-camera"
+            ? "Preview before saving. Phone-camera fallback is disclosed to the manager and remains Private."
+            : "Preview the video. Confirm to save it to the project, or retake it.",
       },
     }));
   };
@@ -1220,7 +1250,7 @@ export default function EmployeeJobsPage() {
         stopActiveCameraStream(stream);
         setRecordingKey(null);
         setRecordingStarted(false);
-        setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds, locationProof });
+        setCapturedDraft({ jobId: job.id, stage, file, previewUrl, durationSeconds, locationProof, source: "recorder" });
         setStageFeedback((prev) => ({
           ...prev,
           [nextRecordingKey]: {
@@ -1257,12 +1287,15 @@ export default function EmployeeJobsPage() {
   const confirmCapturedDraft = async (job: EmployeeJob) => {
     if (!capturedDraft || capturedDraft.jobId !== job.id) return;
     const draft = capturedDraft;
-    setCapturedDraft(null);
-    if (capturedDraftUrlRef.current === draft.previewUrl) {
-      capturedDraftUrlRef.current = null;
-    }
-    URL.revokeObjectURL(draft.previewUrl);
-    await uploadStageVideo(job, draft.stage, draft.file, draft.durationSeconds, draft.locationProof);
+    const saved = await uploadStageVideo(
+      job,
+      draft.stage,
+      draft.file,
+      draft.durationSeconds,
+      draft.locationProof,
+      draft.source
+    );
+    if (saved) clearCapturedDraft();
   };
 
   const renderJobCard = (job: EmployeeJob, historyMode = false) => {
@@ -1293,12 +1326,13 @@ export default function EmployeeJobsPage() {
     const isRecordingAnotherStage = Boolean(recordingKey && recordingKey !== selectedRecordingKey);
     const isOpeningSelectedStage = recordingOpeningKey === selectedRecordingKey;
     const selectedStageFeedback = stageFeedback[selectedStageFeedbackKey] || null;
+    const selectedDraftNeedsRetry = selectedStageFeedback?.status === "retry_required";
     const canOfferNativeCameraRetry =
       hasCaptureToken &&
       showUploadControls &&
       !selectedDraft &&
       !isRecordingSelectedStage &&
-      selectedStageFeedback?.status === "error";
+      ["error", "retry_required", "rejected"].includes(selectedStageFeedback?.status || "");
     const canStartStageFromCard =
       hasCaptureToken &&
       showUploadControls &&
@@ -1416,10 +1450,14 @@ export default function EmployeeJobsPage() {
       {selectedDraft ? (
         <div className="fixed inset-0 z-[100] flex flex-col bg-black text-white">
           <div className="pointer-events-none absolute left-0 right-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/30 to-transparent px-5 pb-10 pt-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-100">Preview before saving</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-100">
+              {selectedDraftNeedsRetry ? "Retry required" : "Preview before saving"}
+            </p>
             <h2 className="mt-1 text-2xl font-bold leading-tight">{selectedStage.label}</h2>
             <p className="mt-1 text-sm leading-5 text-blue-50/85">
-              Confirm to save this clip to the project, or retake it now.
+              {selectedDraftNeedsRetry
+                ? "The upload did not finish. Your preview is preserved so you can try saving again."
+                : "Confirm to save this clip to the project, or retake it now."}
             </p>
           </div>
           <video
@@ -1432,13 +1470,25 @@ export default function EmployeeJobsPage() {
             className="absolute bottom-0 left-0 right-0 z-20 space-y-3 bg-gradient-to-t from-black via-black/95 to-transparent px-5 pb-5 pt-16"
             style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
           >
+            {selectedDraftNeedsRetry ? (
+              <p
+                role="alert"
+                className="rounded-lg border border-rose-300/40 bg-rose-950/80 px-4 py-3 text-sm font-semibold text-rose-100"
+              >
+                {selectedStageFeedback?.message || "Retry Required: The upload did not finish."}
+              </p>
+            ) : null}
             <button
               type="button"
               onClick={() => void confirmCapturedDraft(job)}
               disabled={Boolean(uploadingKey)}
               className="w-full rounded-2xl border border-emerald-200 bg-emerald-600 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-950/40 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {uploadingKey === selectedStageFeedbackKey ? "Saving..." : "Confirm and Save"}
+              {uploadingKey === selectedStageFeedbackKey
+                ? "Uploading..."
+                : selectedDraftNeedsRetry
+                  ? "Retry Save"
+                  : "Confirm and Save"}
             </button>
             <button
               type="button"
@@ -1542,7 +1592,7 @@ export default function EmployeeJobsPage() {
                     : "bg-gray-200 text-gray-500"
                 }`}
               >
-                {stage.label}: {job.stageProgress[stage.key] ? "Uploaded" : "Missing"}
+                {stage.label}: {job.stageProgress[stage.key] ? "Saved" : "Missing"}
               </span>
             ))}
           </div>
@@ -1642,9 +1692,9 @@ export default function EmployeeJobsPage() {
                             role="status"
                             aria-live="polite"
                             className={`mt-3 flex items-center gap-2 text-sm font-semibold ${
-                              cardFeedback.status === "error"
+                              ["error", "rejected", "retry_required"].includes(cardFeedback.status)
                                 ? "text-red-200"
-                                : cardFeedback.status === "success"
+                                : ["success", "saved"].includes(cardFeedback.status)
                                   ? "text-emerald-200"
                                   : "text-blue-100"
                             }`}
@@ -1774,9 +1824,9 @@ export default function EmployeeJobsPage() {
               {selectedStageFeedback && !isRecordingSelectedStage && !selectedDraft ? (
                 <p
                   className={`mt-3 text-sm font-semibold ${
-                    selectedStageFeedback.status === "error"
+                    ["error", "rejected", "retry_required"].includes(selectedStageFeedback.status)
                       ? "text-red-200"
-                      : selectedStageFeedback.status === "success"
+                      : ["success", "saved"].includes(selectedStageFeedback.status)
                       ? "text-emerald-200"
                       : "text-blue-200"
                   }`}

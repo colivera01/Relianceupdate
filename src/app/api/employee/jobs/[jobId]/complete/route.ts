@@ -12,6 +12,7 @@ import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { sendJobCorrectionReadyNotification } from "@/lib/notifications/send-job-correction-ready";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
+import { submitServiceVideoPackage } from "@/lib/service-video-evidence";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
@@ -76,7 +77,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     const normalizedStatus = String(booking.status || "").trim().toUpperCase();
     if (
-      !["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(normalizedStatus)
+      !["PENDING", "CONFIRMED", "IN_PROGRESS", "REJECTED"].includes(normalizedStatus)
     ) {
       return NextResponse.json(
         {
@@ -88,27 +89,24 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       );
     }
 
-    const sessions = await (prisma as any).mediaSession.findMany({
-      where: { bookingId: booking.id, vendorId: booking.vendorId },
-      select: {
-        vendorJobVideoStage: true,
-        mediaAssets: { where: { deletedAt: null }, select: { id: true }, take: 1 },
-      },
-    });
-    const stages = new Set<string>();
-    for (const row of sessions) {
-      if (!row.mediaAssets || row.mediaAssets.length === 0) continue;
-      const stage = String(row.vendorJobVideoStage || "").trim().toUpperCase();
-      if (stage) stages.add(stage);
+    const submittingMembershipId = tokenAccess?.membershipId || vendorMembershipsForJobVendor[0]?.id;
+    if (!submittingMembershipId) {
+      return NextResponse.json({ error: "Active submitting membership is required" }, { status: 403 });
     }
-
-    const hasRequiredStages =
-      stages.has("INTRO") && stages.has("IN_PROGRESS") && stages.has("COMPLETED");
-    if (!hasRequiredStages) {
+    try {
+      await submitServiceVideoPackage({
+        bookingId: booking.id,
+        vendorId: booking.vendorId,
+        submittedByUserId: tokenAccess?.userId || userId || null,
+        submittedByMembershipId: submittingMembershipId,
+      });
+    } catch (packageError: any) {
       return NextResponse.json(
         {
-          error: "Cannot complete job until Starting Condition, Work in Progress, and Final Result videos are uploaded.",
-          code: "REQUIRED_STAGES_MISSING",
+          error:
+            "Cannot submit until Starting Condition, Work in Progress, and Final Result are saved with complete recording evidence.",
+          code: "SERVICE_VIDEO_EVIDENCE_CHAIN_INCOMPLETE",
+          details: packageError?.message || "Required stage evidence is missing.",
         },
         { status: 409 }
       );

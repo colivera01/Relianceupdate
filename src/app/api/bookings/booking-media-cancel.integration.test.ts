@@ -14,6 +14,8 @@ const hoisted = vi.hoisted(() => {
   const bookingFindUnique = vi.fn();
   const bookingUpdate = vi.fn();
   const mediaAssetFindMany = vi.fn();
+  const loadAuthorizedPrivateProof = vi.fn();
+  const recordPrivateProofAccess = vi.fn();
   const prisma = {
     booking: {
       findUnique: bookingFindUnique,
@@ -23,7 +25,14 @@ const hoisted = vi.hoisted(() => {
       findMany: mediaAssetFindMany,
     },
   };
-  return { prisma, bookingFindUnique, bookingUpdate, mediaAssetFindMany };
+  return {
+    prisma,
+    bookingFindUnique,
+    bookingUpdate,
+    mediaAssetFindMany,
+    loadAuthorizedPrivateProof,
+    recordPrivateProofAccess,
+  };
 });
 
 vi.mock('@/server/db', () => ({
@@ -32,6 +41,11 @@ vi.mock('@/server/db', () => ({
 
 vi.mock('@/lib/auth', () => ({
   getUserIdFromRequest: vi.fn(),
+}));
+
+vi.mock('@/lib/service-video-evidence', () => ({
+  loadAuthorizedPrivateProof: hoisted.loadAuthorizedPrivateProof,
+  recordPrivateProofAccess: hoisted.recordPrivateProofAccess,
 }));
 
 function mediaGetRequest(bookingId: string) {
@@ -57,6 +71,14 @@ describe('GET /api/bookings/[id]/media', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.mediaAssetFindMany.mockReset();
+    hoisted.loadAuthorizedPrivateProof.mockReset();
+    hoisted.recordPrivateProofAccess.mockReset();
+    hoisted.loadAuthorizedPrivateProof.mockResolvedValue({
+      grant: { id: 'grant-1' },
+      package: { id: 'package-1' },
+      assetIds: ['asset-img', 'asset-vid'],
+    });
+    hoisted.recordPrivateProofAccess.mockResolvedValue(undefined);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -143,6 +165,8 @@ describe('GET /api/bookings/[id]/media', () => {
           description: 'Before',
           bookingId: 'book-1',
           serviceId: 's1',
+          vendorJobVideoStage: 'INTRO',
+          sessionType: 'vendor_job_video',
         },
       },
       {
@@ -164,6 +188,8 @@ describe('GET /api/bookings/[id]/media', () => {
           description: '',
           bookingId: 'book-1',
           serviceId: 's1',
+          vendorJobVideoStage: 'COMPLETED',
+          sessionType: 'vendor_job_video',
         },
       },
     ]);

@@ -12,6 +12,7 @@ import {
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
   isTransientDbConnectivityError,
 } from "@/lib/transient-db-errors";
+import { loadAuthorizedPrivateProof, recordPrivateProofAccess } from "@/lib/service-video-evidence";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -53,8 +54,22 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
       );
     }
 
+    const privateProof = await loadAuthorizedPrivateProof({ bookingId, customerUserId: userId });
+    if (!privateProof) {
+      return NextResponse.json(
+        {
+          success: true,
+          assets: [],
+          privateProofStatus: "NOT_AVAILABLE",
+          message: "Private Service Video is not available because its approval evidence is incomplete.",
+        },
+        { status: 200 }
+      );
+    }
+
     const assets = await (prisma as any).mediaAsset.findMany({
       where: {
+        id: { in: privateProof.assetIds },
         ...getApprovedActiveBaseWhere(),
         visibilityStatus: {
           in: getVisibilityStatusesForAudience("customer"),
@@ -90,6 +105,16 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
         },
       },
     });
+
+    await recordPrivateProofAccess({
+      grantId: privateProof.grant.id,
+      packageId: privateProof.package.id,
+      bookingId,
+      actorUserId: userId,
+      eventType: "VIEW",
+      ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,
+      userAgent: request.headers.get("user-agent"),
+    }).catch(() => undefined);
 
     const proofSafeAssets = assets.filter((asset: any) =>
       shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
@@ -137,6 +162,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
 
     return NextResponse.json({
       success: true,
+      privateProofStatus: "AVAILABLE",
       bookingId,
       assets: normalized,
       images: normalized.filter((a: any) => a.type === "image"),

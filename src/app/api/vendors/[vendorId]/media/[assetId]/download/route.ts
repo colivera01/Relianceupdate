@@ -19,11 +19,12 @@ export async function GET(
 ): Promise<NextResponse> {
   try {
     const { vendorId, assetId } = await params;
-    await requireVendorMembership(request, vendorId);
+    const membership = await requireVendorMembership(request, vendorId);
 
     // Find asset and verify it belongs to this vendor
     const asset = await (prisma as any).mediaAsset.findUnique({
       where: { id: assetId },
+      include: { mediaSession: { select: { sessionType: true } } },
     });
 
     if (!asset) {
@@ -47,21 +48,20 @@ export async function GET(
       );
     }
 
-    const runtimeStorageConfig = {
-      accountConfigured: Boolean(process.env.AZURE_STORAGE_ACCOUNT_NAME?.trim()),
-      keyConfigured: Boolean(process.env.AZURE_STORAGE_ACCOUNT_KEY?.trim()),
-      containerName: process.env.AZURE_STORAGE_CONTAINER_NAME?.trim() || "media",
-    };
-    console.info("[media/download] runtime storage config", runtimeStorageConfig);
+    if (
+      String(asset.mediaSession?.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO" &&
+      String((membership as any).role || "").trim().toUpperCase() !== "MANAGER"
+    ) {
+      return NextResponse.json(
+        { error: "Only a vendor manager may open a submitted Private Service Video." },
+        { status: 403 }
+      );
+    }
 
     // Generate SAS URL for Azure Blob Storage (60 minute expiration)
     let downloadUrl: string;
     try {
       downloadUrl = await generateDownloadUrl(asset.blobKey, 60);
-      console.info("[media/download] generateDownloadUrl result", {
-        hasUrl: Boolean(downloadUrl),
-        isAzureBlobHost: /\.blob\.core\.windows\.net/i.test(downloadUrl || ""),
-      });
     } catch (error: any) {
       console.error("[media/download] Storage unavailable", {
         vendorId,
@@ -89,7 +89,6 @@ export async function GET(
       bytes: asset.bytes.toString(),
       expiresIn: 3600, // 60 minutes in seconds
     };
-    console.info("[media/download] response body", responseBody);
     return NextResponse.json(responseBody);
   } catch (error: any) {
     console.error("[media/download] GET error:", error);

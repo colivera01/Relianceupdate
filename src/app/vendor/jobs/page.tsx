@@ -1112,6 +1112,7 @@ export default function VendorJobs() {
   const [showRejectJobModal, setShowRejectJobModal] = useState(false);
   const [rejectJobTarget, setRejectJobTarget] = useState<any>(null);
   const [rejectReasonInput, setRejectReasonInput] = useState('');
+  const [rejectStageSelection, setRejectStageSelection] = useState<string[]>(['INTRO', 'IN_PROGRESS', 'COMPLETED']);
   const [rejectJobSubmitting, setRejectJobSubmitting] = useState(false);
   const [showApproveConfirmModal, setShowApproveConfirmModal] = useState(false);
   const [approveJobTarget, setApproveJobTarget] = useState<any>(null);
@@ -2429,6 +2430,11 @@ export default function VendorJobs() {
                 moderationStatus: asset?.moderationStatus ? String(asset.moderationStatus) : '',
                 moderationReason: asset?.moderationReason ? String(asset.moderationReason) : '',
                 moderatedAt: asset?.moderatedAt || null,
+                uploadState: asset?.uploadState ? String(asset.uploadState) : '',
+                contentHash: asset?.contentHash ? String(asset.contentHash) : '',
+                captureProvenance: asset?.captureProvenance ? String(asset.captureProvenance) : 'LEGACY_UNKNOWN',
+                publicEligible: asset?.publicEligible === true,
+                stageVersion: Number(asset?.stageVersion || 0) || null,
                 mediaSessionId: session.id,
                 mimeType: asset.mimeType || '',
                 mediaPurpose,
@@ -2641,7 +2647,12 @@ export default function VendorJobs() {
     const status = String(job?.status || '').trim().toLowerCase();
     if (phase === 'REJECTED' || status === 'rejected' || jobHasRejectedMedia(job)) return 'rejected';
     if (phase === 'AWAITING_ADMIN_REVIEW') return 'moderator_review';
-    if (phase === 'COMPLETED' || status === 'completed') return 'public_approved';
+    if (phase === 'COMPLETED' || status === 'completed') {
+      const hasPublicMedia = getJobVideos(job).some(
+        (video: any) => String(video?.visibilityStatus || '').trim().toLowerCase() === 'public'
+      );
+      return hasPublicMedia ? 'public_approved' : 'private_complete';
+    }
     if (phase === 'AWAITING_VENDOR_REVIEW' || status === 'awaiting_review' || status === 'awaiting review') return 'manager_review';
     return 'active';
   };
@@ -2651,6 +2662,7 @@ export default function VendorJobs() {
     { value: 'active', label: 'Active Work' },
     { value: 'manager_review', label: 'Manager Review' },
     { value: 'moderator_review', label: 'Moderator Review' },
+    { value: 'private_complete', label: 'Private Proof' },
     { value: 'public_approved', label: 'Public / Approved' },
     { value: 'rejected', label: 'Rejected' },
     { value: 'archived', label: 'Archived' },
@@ -4545,6 +4557,9 @@ export default function VendorJobs() {
       setLocationExceptionError('Explain why the employee cannot verify the saved service location (at least 20 characters).');
       return;
     }
+    if (bucket === 'private_complete') {
+      return '!border-teal-300/45 !bg-teal-500/20 !text-teal-50';
+    }
     setLocationExceptionSubmitting(true);
     setLocationExceptionError('');
     try {
@@ -4603,7 +4618,7 @@ export default function VendorJobs() {
     applyJobPatchLocally(job, {
       ...(payload?.job || {}),
       status: 'completed',
-      operationalPhase: 'AWAITING_ADMIN_REVIEW',
+      operationalPhase: 'COMPLETED',
     });
     return payload;
   };
@@ -4685,7 +4700,7 @@ export default function VendorJobs() {
     }
   };
 
-  const rejectJobCompletion = async (job: any, rejectionReason: string) => {
+  const rejectJobCompletion = async (job: any, rejectionReason: string, stages: string[]) => {
     if (!vendorId) {
       throw new Error("Vendor context is not ready");
     }
@@ -4696,7 +4711,7 @@ export default function VendorJobs() {
     const res = await fetch(`/api/vendors/${vendorId}/jobs/${encodeURIComponent(String(job.id))}/reject`, {
       method: "POST",
       headers: getRequestHeaders(),
-      body: JSON.stringify({ rejectionReason: trimmedReason }),
+      body: JSON.stringify({ rejectionReason: trimmedReason, stages }),
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -4709,6 +4724,7 @@ export default function VendorJobs() {
   const openRejectJobModal = (job: any) => {
     setRejectJobTarget(job);
     setRejectReasonInput('');
+    setRejectStageSelection(['INTRO', 'IN_PROGRESS', 'COMPLETED']);
     setShowRejectJobModal(true);
     setActiveJobActionMenuId(null);
   };
@@ -4727,7 +4743,7 @@ export default function VendorJobs() {
       await approveJobCompletion(approveJobTarget);
       setJobActionFeedback({
         type: 'success',
-        message: 'Job approved and marked completed. Media sent to moderation review.',
+        message: 'Private Service Video approved and made available to the customer.',
       });
       setShowApproveConfirmModal(false);
       setApproveJobTarget(null);
@@ -4748,10 +4764,14 @@ export default function VendorJobs() {
       setJobActionFeedback({ type: "error", message: "Please enter a rejection reason." });
       return;
     }
+    if (rejectStageSelection.length === 0) {
+      setJobActionFeedback({ type: "error", message: "Select at least one stage that needs correction." });
+      return;
+    }
     setRejectJobSubmitting(true);
     setJobActionFeedback(null);
     try {
-      const payload = await rejectJobCompletion(rejectJobTarget, trimmedReason);
+      const payload = await rejectJobCompletion(rejectJobTarget, trimmedReason, rejectStageSelection);
       setJobActionFeedback({
         type: "success",
         message: payload?.message || "Completed work order rejected.",
@@ -4759,6 +4779,7 @@ export default function VendorJobs() {
       setShowRejectJobModal(false);
       setRejectJobTarget(null);
       setRejectReasonInput('');
+      setRejectStageSelection(['INTRO', 'IN_PROGRESS', 'COMPLETED']);
     } catch (error) {
       setJobActionFeedback({
         type: "error",
@@ -6792,15 +6813,16 @@ export default function VendorJobs() {
           if (!open) {
             setRejectJobTarget(null);
             setRejectReasonInput('');
+            setRejectStageSelection(['INTRO', 'IN_PROGRESS', 'COMPLETED']);
             setRejectJobSubmitting(false);
           }
         }}
       >
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Reject Completed Work Order</DialogTitle>
+            <DialogTitle>Request Video Changes</DialogTitle>
             <DialogDescription>
-              Rejecting closes this completed work order. It will move to the Rejected tab and will not be sent to admin moderation.
+              Select only the stages that need correction. Saved stages you do not select will remain unchanged.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -6808,15 +6830,40 @@ export default function VendorJobs() {
               Job: <span className="font-medium text-gray-900">{String(rejectJobTarget?.title || "Selected job")}</span>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Rejection reason</label>
+              <p className="mb-2 text-sm font-medium text-gray-700">Stages to correct</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  ['INTRO', 'Starting Condition'],
+                  ['IN_PROGRESS', 'Work in Progress'],
+                  ['COMPLETED', 'Final Result'],
+                ].map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-800">
+                    <input
+                      type="checkbox"
+                      checked={rejectStageSelection.includes(value)}
+                      onChange={(event) =>
+                        setRejectStageSelection((current) =>
+                          event.target.checked
+                            ? Array.from(new Set([...current, value]))
+                            : current.filter((stage) => stage !== value)
+                        )
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">What needs to change?</label>
               <textarea
                 value={rejectReasonInput}
                 onChange={(e) => setRejectReasonInput(e.target.value)}
                 className="w-full min-h-[120px] rounded border border-gray-300 px-3 py-2 text-sm"
-                placeholder="Explain why this completed work order is being rejected."
+                placeholder="Tell the employee exactly what to correct in the selected stage or stages."
                 required
               />
-              <p className="mt-1 text-xs text-gray-500">This note stays on the rejected work record for manager reference.</p>
+              <p className="mt-1 text-xs text-gray-500">The employee receives this note with the secure service order link.</p>
             </div>
           </div>
           <DialogFooter>
@@ -6828,9 +6875,9 @@ export default function VendorJobs() {
               onClick={() => {
                 submitRejectJob().catch(() => undefined);
               }}
-              disabled={rejectJobSubmitting || !String(rejectReasonInput || '').trim()}
+              disabled={rejectJobSubmitting || !String(rejectReasonInput || '').trim() || rejectStageSelection.length === 0}
             >
-              {rejectJobSubmitting ? "Submitting..." : "Reject Work Order"}
+              {rejectJobSubmitting ? "Sending..." : "Request Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -6848,9 +6895,9 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Approve job completion?</DialogTitle>
+            <DialogTitle>Approve Private Service Video?</DialogTitle>
             <DialogDescription>
-              This will mark the service record completed and send the video package to admin moderation.
+              This marks the work record complete and gives the customer access to all three saved stages. It does not make any video public.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm text-gray-700">
@@ -8013,6 +8060,11 @@ export default function VendorJobs() {
                                   <p className={`text-xs ${stagePresent ? 'text-emerald-700' : 'text-red-700'}`}>
                                     {stagePresent ? 'Present' : 'Missing'}
                                   </p>
+                                  {stagePresent && String(stageVideo?.captureProvenance || '').toUpperCase() === 'PRERECORDED_FALLBACK' ? (
+                                    <p className="text-xs font-medium text-blue-700">
+                                      Phone-camera fallback. Manager review required; Private proof only.
+                                    </p>
+                                  ) : null}
                                 </div>
                                 {stagePresent ? (
                                   <Button
@@ -8061,7 +8113,7 @@ export default function VendorJobs() {
                                       }}
                                       disabled={!hasAllReviewStages || Boolean(jobMutationLoadingId) || jobActionLoading || approveJobSubmitting}
                                     >
-                                      Approve Completion
+                                      Approve Private Proof
                                     </Button>
                                     {!hasAllReviewStages ? (
                                       <p className="text-xs text-amber-900">
@@ -8081,7 +8133,7 @@ export default function VendorJobs() {
                                 }}
                                 disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
                               >
-                                Reject
+                                Request Changes
                               </Button>
                             </>
                           ) : (
@@ -8309,7 +8361,7 @@ export default function VendorJobs() {
                                         approveJobSubmitting
                                       }
                                     >
-                                      Approve Completion
+                                      Approve Private Proof
                                     </button>
                                     <button
                                       className="w-full px-3 py-2.5 text-left text-sm text-amber-100 transition hover:bg-amber-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -8319,7 +8371,7 @@ export default function VendorJobs() {
                                       }}
                                       disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
                                     >
-                                      Reject Work Order
+                                      Request Changes
                                     </button>
                                   </>
                                 ) : null}

@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => {
   const bookingUpdate = vi.fn();
   const vendorMembershipFindMany = vi.fn();
   const sendJobRejectionNotification = vi.fn();
+  const requestServiceVideoCorrection = vi.fn();
 
   const prisma = {
     booking: {
@@ -24,6 +25,7 @@ const hoisted = vi.hoisted(() => {
     bookingUpdate,
     vendorMembershipFindMany,
     sendJobRejectionNotification,
+    requestServiceVideoCorrection,
   };
 });
 
@@ -37,6 +39,11 @@ vi.mock("@/lib/membership-auth", () => ({
 
 vi.mock("@/lib/notifications/send-job-rejection", () => ({
   sendJobRejectionNotification: hoisted.sendJobRejectionNotification,
+}));
+
+vi.mock("@/lib/service-video-evidence", () => ({
+  REQUIRED_SERVICE_VIDEO_STAGES: ["INTRO", "IN_PROGRESS", "COMPLETED"],
+  requestServiceVideoCorrection: hoisted.requestServiceVideoCorrection,
 }));
 
 function postReq(vendorId: string, jobId: string, body?: Record<string, unknown>) {
@@ -65,6 +72,8 @@ describe("vendor job reject integration", () => {
     hoisted.bookingUpdate.mockReset();
     hoisted.vendorMembershipFindMany.mockReset();
     hoisted.sendJobRejectionNotification.mockReset();
+    hoisted.requestServiceVideoCorrection.mockReset();
+    hoisted.requestServiceVideoCorrection.mockResolvedValue({ package: { id: "package-1" }, decision: { id: "decision-1" } });
     hoisted.vendorMembershipFindMany.mockResolvedValue([]);
     hoisted.sendJobRejectionNotification.mockResolvedValue({
       anySuccess: true,
@@ -100,7 +109,7 @@ describe("vendor job reject integration", () => {
     expect(json.code).toBe("INVALID_REJECTION_STATUS");
   });
 
-  it("returns job to in-progress with rejection fields", async () => {
+  it("records a correction request with explicit rejected state", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",
       status: "AWAITING_REVIEW",
@@ -119,14 +128,15 @@ describe("vendor job reject integration", () => {
     expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
       where: { id: "job1" },
       data: {
-        status: "IN_PROGRESS",
+        status: "REJECTED",
+        customerMetadata: expect.any(String),
         rejectionReason: "Missing clear completed walkthrough.",
         rejectedAt: expect.any(Date),
         rejectedBy: "manager-1",
       },
     });
     const json = await toJson(res);
-    expect(json.code).toBe("JOB_REJECTED");
+    expect(json.code).toBe("SERVICE_VIDEO_CORRECTION_REQUESTED");
     expect(json.success).toBe(true);
   });
 
@@ -181,7 +191,7 @@ describe("vendor job reject integration", () => {
         employeePhone: "4075550123",
         vendorName: "Electro LLC",
         jobTitle: "Breaker Replacement",
-        rejectionReason: "Final result needs a clear wide shot.",
+        rejectionReason: "Final result needs a clear wide shot. Stages: INTRO, IN_PROGRESS, COMPLETED.",
       })
     );
     expect(hoisted.sendJobRejectionNotification.mock.calls[0][0].employeeJobLink).toContain(

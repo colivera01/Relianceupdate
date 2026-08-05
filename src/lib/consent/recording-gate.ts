@@ -37,8 +37,11 @@ export type RecordingPermissionGate = {
   releaseAllowed: boolean;
   verifiedAllowed: boolean;
   consentRecordId: string | null;
+  permissionDecisionEvidenceId: string | null;
   recipientNeedsCorrection: boolean;
   assessmentId: string | null;
+  assessmentGeneration: number | null;
+  scopeHash: string | null;
   assessmentStatus: string | null;
   riskLevel: string | null;
   scopeSummary: {
@@ -57,10 +60,14 @@ export type RecordingPermissionGate = {
   } | null;
   audioAllowed: false;
   certificationActive: boolean;
+  certificationId: string | null;
+  assignmentGeneration: number | null;
   locationVerified: boolean;
   locationAttemptStatus: string | null;
   locationAttemptResultCode: string | null;
+  locationAttemptId: string | null;
   locationExceptionStatus: string | null;
+  locationExceptionId: string | null;
   blockCode: string | null;
   blockMessage: string | null;
   block: RecordingGateBlock | null;
@@ -180,17 +187,24 @@ export function resolveRecordingPermissionGate(input: {
     releaseAllowed: recordingUnlocked,
     verifiedAllowed: facts.verifiedAllowed,
     consentRecordId: facts.currentRecord?.id || null,
+    permissionDecisionEvidenceId: facts.currentRecord?.decisionEvidence?.id || null,
     recipientNeedsCorrection: Boolean(facts.currentRecord?.recipientMismatch),
     assessmentId: null,
+    assessmentGeneration: null,
+    scopeHash: null,
     assessmentStatus: null,
     riskLevel: null,
     scopeSummary: null,
     audioAllowed: false,
     certificationActive: false,
+    certificationId: null,
+    assignmentGeneration: null,
     locationVerified: facts.compliance.locationVerified,
     locationAttemptStatus: facts.compliance.locationVerified ? "VERIFIED" : null,
     locationAttemptResultCode: null,
+    locationAttemptId: null,
     locationExceptionStatus: null,
+    locationExceptionId: null,
     blockCode,
     blockMessage: block ? `${block.why} ${block.resolution}` : null,
     block,
@@ -333,8 +347,11 @@ export async function loadCanonicalRecordingGate(input: {
     permissionState: facts.permissionState,
     verifiedAllowed: facts.verifiedAllowed,
     consentRecordId: facts.currentRecord?.id || null,
+    permissionDecisionEvidenceId: facts.currentRecord?.decisionEvidence?.id || null,
     recipientNeedsCorrection: Boolean(facts.currentRecord?.recipientMismatch),
     assessmentId: assessment?.id || null,
+    assessmentGeneration: assessment?.generation || null,
+    scopeHash: assessment?.scopeHash || null,
     assessmentStatus: assessment?.status || null,
     riskLevel: assessment?.riskLevel || null,
     scopeSummary: assessment
@@ -360,10 +377,14 @@ export async function loadCanonicalRecordingGate(input: {
       : null,
     audioAllowed: false as const,
     certificationActive: Boolean(certification),
+    certificationId: certification?.id || null,
+    assignmentGeneration,
     locationVerified: Boolean(locationAttempt?.status === "VERIFIED" || locationException?.status === "APPROVED"),
     locationAttemptStatus: locationAttempt?.status || null,
     locationAttemptResultCode: locationAttempt?.resultCode || null,
+    locationAttemptId: locationAttempt?.id || null,
     locationExceptionStatus: locationException?.status || null,
+    locationExceptionId: locationException?.id || null,
   };
   const capability = input.capability || "record";
   let decision: RecordingPermissionGate;

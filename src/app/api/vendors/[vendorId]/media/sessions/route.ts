@@ -10,6 +10,7 @@ import {
   verifyJobRecordingLocation,
 } from "@/lib/job-recording-location";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
+import { persistAllowedRecordingGateDecision } from "@/lib/service-video-evidence";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -132,6 +133,9 @@ export async function POST(
     const wantsStagedJobVideo =
       normalizedStage != null ||
       resolvedSessionType.toUpperCase() === "JOB_SERVICE_VIDEO";
+    let stagedPermissionGate: Awaited<ReturnType<typeof loadRecordingPermissionGate>> | null = null;
+    let stagedMembershipId: string | null = null;
+    let stagedActorKind: string | null = null;
 
     if (wantsStagedJobVideo) {
       if (!normalizedStage) {
@@ -168,6 +172,9 @@ export async function POST(
       }
 
       const membershipId = tokenAccess?.membershipId || membership.membershipId;
+      const actorKind = tokenAccess
+        ? "EMPLOYEE_LINK"
+        : String((membership as any).role || "VENDOR_MEMBER");
       let permissionGate = await loadRecordingPermissionGate({
         bookingId: validBookingId,
         vendorId,
@@ -175,7 +182,7 @@ export async function POST(
         membershipId,
         surface: "media_session",
         capability: "record",
-        actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
+        actorKind,
       });
       if (permissionGate.blockCode === "LOCATION_VERIFICATION_REQUIRED") {
         const canonicalLocation = permissionGate.location!;
@@ -220,7 +227,7 @@ export async function POST(
           membershipId,
           surface: "media_session",
           capability: "record",
-          actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
+          actorKind,
         });
       }
       if (permissionGate.blockCode) {
@@ -229,6 +236,9 @@ export async function POST(
           { status: 409 },
         );
       }
+      stagedPermissionGate = permissionGate;
+      stagedMembershipId = membershipId;
+      stagedActorKind = actorKind;
 
       const conflicting = await (prisma as any).mediaSession.findFirst({
         where: {
@@ -279,10 +289,11 @@ export async function POST(
       title: title || null,
       description: description || null,
       startedAt: startedAt ? new Date(startedAt) : undefined,
+      capturedByMembershipId: stagedMembershipId,
     };
 
-    const useReplaceTransaction =
-      wantsStagedJobVideo && normalizedStage && validBookingId && Boolean(replaceExisting);
+    const useEvidenceTransaction =
+      Boolean(wantsStagedJobVideo && normalizedStage && validBookingId && stagedPermissionGate && stagedMembershipId);
 
     if (process.env.NODE_ENV !== "production") {
       console.info("[media/sessions][POST] trace:before_create", {
@@ -296,7 +307,7 @@ export async function POST(
         resolvedSessionType: createSessionData.sessionType,
         wantsStagedJobVideo,
         replaceExisting: Boolean(replaceExisting),
-        createPath: useReplaceTransaction ? "transaction_with_optional_replace" : "direct_create",
+        createPath: useEvidenceTransaction ? "transaction_with_gate_evidence" : "direct_create",
         titleLength: createSessionData.title ? String(createSessionData.title).length : 0,
         descriptionLength: createSessionData.description ? String(createSessionData.description).length : 0,
         status: createSessionData.status,
@@ -305,30 +316,20 @@ export async function POST(
 
     let session: any;
     try {
-      if (useReplaceTransaction) {
-        const conflictingForTx = await (prisma as any).mediaSession.findFirst({
-          where: {
-            vendorId,
-            bookingId: validBookingId,
-            vendorJobVideoStage: normalizedStage,
-            status: { notIn: ["FAILED", "CANCELLED", "ARCHIVED"] },
-          },
-          select: { id: true },
-        });
-
+      if (useEvidenceTransaction) {
         session = await prisma.$transaction(async (tx: any) => {
-          if (conflictingForTx?.id) {
-            const endedAt = new Date();
-            await tx.mediaSession.update({
-              where: { id: String(conflictingForTx.id) },
-              data: { status: "ARCHIVED", endedAt },
-            });
-            await tx.mediaAsset.updateMany({
-              where: { mediaSessionId: String(conflictingForTx.id), deletedAt: null },
-              data: { deletedAt: endedAt },
-            });
-          }
-          return tx.mediaSession.create({ data: createSessionData });
+          const gateEvidence = await persistAllowedRecordingGateDecision({
+            bookingId: validBookingId!,
+            vendorId,
+            membershipId: stagedMembershipId!,
+            actorKind: stagedActorKind || "VENDOR_MEMBER",
+            surface: "media_session",
+            gate: stagedPermissionGate!,
+            tx,
+          });
+          return tx.mediaSession.create({
+            data: { ...createSessionData, recordingGateDecisionId: gateEvidence.id },
+          });
         });
       } else {
         session = await (prisma as any).mediaSession.create({

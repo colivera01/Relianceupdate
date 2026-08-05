@@ -174,6 +174,7 @@ function BookingMediaDetailPageContent() {
   const [customerLifecycle, setCustomerLifecycle] = useState<BookingLifecycleDetail | null>(null);
   const [assets, setAssets] = useState<BookingMediaAsset[]>([]);
   const [videos, setVideos] = useState<BookingMediaAsset[]>([]);
+  const [privateProofStatus, setPrivateProofStatus] = useState<'AVAILABLE' | 'NOT_AVAILABLE' | null>(null);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [hasConsent, setHasConsent] = useState(false);
   const [consentStatus, setConsentStatus] = useState<'idle' | 'checking' | 'granted' | 'required' | 'requesting'>('idle');
@@ -245,6 +246,7 @@ function BookingMediaDetailPageContent() {
             setCustomerLifecycle(null);
             setAssets([]);
             setVideos([]);
+            setPrivateProofStatus(null);
             setActiveVideoId(null);
             return;
           }
@@ -299,6 +301,9 @@ function BookingMediaDetailPageContent() {
       setCustomerLifecycle(nextLifecycle);
       setAssets(nextAssets);
       setVideos(nextVideos);
+      setPrivateProofStatus(
+        mediaJson?.privateProofStatus === 'AVAILABLE' ? 'AVAILABLE' : 'NOT_AVAILABLE'
+      );
 
       const approvedPlayableVideos = nextAssets.filter(
         (asset) =>
@@ -315,6 +320,7 @@ function BookingMediaDetailPageContent() {
       setCustomerLifecycle(null);
       setAssets([]);
       setVideos([]);
+      setPrivateProofStatus(null);
       setActiveVideoId(null);
     } finally {
       setLoading(false);
@@ -1022,6 +1028,20 @@ function BookingMediaDetailPageContent() {
             {videoReadyFromLink ? <Badge className="bg-emerald-100 text-emerald-800">Video ready</Badge> : null}
           </div>
         </div>
+
+        {privateProofStatus === 'AVAILABLE' && playableVideos.length > 0 ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-emerald-950">Private Service Video</p>
+                <p className="text-sm leading-6 text-emerald-900">
+                  Only you and the approved business team can access these manager-approved stages. Nothing here is Public.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {lifecycleGuidance ? (
           <GuidanceCallout

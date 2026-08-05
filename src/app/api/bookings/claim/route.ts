@@ -149,13 +149,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       claimed_user_id: userId,
     };
 
-    const updated = await prisma.booking.update({
-      where: { id: booking.id },
-      data: {
-        userId,
-        customerMetadata: JSON.stringify(updatedMetadata),
-      },
-      select: {
+    const updated = await prisma.$transaction(async (tx) => {
+      const claimedBooking = await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          userId,
+          customerMetadata: JSON.stringify(updatedMetadata),
+        },
+        select: {
         id: true,
         userId: true,
         vendorId: true,
@@ -183,7 +184,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             state: true,
           },
         },
-      },
+        },
+      });
+      await (tx as any).privateProofAccessGrant.updateMany({
+        where: { bookingId: booking.id, customerUserId: booking.userId, status: "ACTIVE" },
+        data: { customerUserId: userId },
+      });
+      return claimedBooking;
     });
 
     return NextResponse.json({

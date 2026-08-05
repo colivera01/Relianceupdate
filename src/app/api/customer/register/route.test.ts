@@ -6,11 +6,13 @@ const hoisted = vi.hoisted(() => {
   const userFindUnique = vi.fn();
   const bookingFindUnique = vi.fn();
   const bookingUpdateMany = vi.fn();
+  const privateProofAccessGrantUpdateMany = vi.fn();
   const recordCustomerRegistrationEvidence = vi.fn();
   const transaction = vi.fn(async (callback: (tx: any) => Promise<any>) =>
     callback({
       user: { upsert: userUpsert },
       booking: { updateMany: bookingUpdateMany },
+      privateProofAccessGrant: { updateMany: privateProofAccessGrantUpdateMany },
     })
   );
 
@@ -19,6 +21,7 @@ const hoisted = vi.hoisted(() => {
     userFindUnique,
     bookingFindUnique,
     bookingUpdateMany,
+    privateProofAccessGrantUpdateMany,
     recordCustomerRegistrationEvidence,
     transaction,
     prisma: {
@@ -108,6 +111,8 @@ describe("POST /api/customer/register", () => {
     hoisted.userFindUnique.mockResolvedValue(null);
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdateMany.mockReset();
+    hoisted.privateProofAccessGrantUpdateMany.mockReset();
+    hoisted.privateProofAccessGrantUpdateMany.mockResolvedValue({ count: 0 });
     hoisted.recordCustomerRegistrationEvidence.mockReset();
     hoisted.recordCustomerRegistrationEvidence.mockResolvedValue({ id: "evidence-1" });
     hoisted.transaction.mockClear();

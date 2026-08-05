@@ -1,26 +1,57 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
-## Epic 4 Implementation Checkpoint - Universal Work Records and Recording Gates
+## Epic 5 Implementation Checkpoint - Safe Capture Through Private Service Videos
 
-**Checkpoint date:** 2026-08-04
+**Checkpoint date:** 2026-08-05
 
 **Engineering status:** **Implemented and validated locally**
 
+**Deployment status:** Not deployed; additive migration `20260805193000_add_private_service_video_evidence` remains unapplied
+
+**Product Owner demo:** Pending controlled migration-first deployment and physical/four-role replay
+
+**Primary evidence:** `Project Management/Epic 5 - Safe Capture Through Private Service Videos/`
+
+Epic 5 binds every customer-visible Private Service Video to a complete server-verified evidence chain from work record and assessment generation through permission, canonical recording decision, assigned employee capture, exact package version, manager approval, and customer access grant.
+
+- Upload status is limited to truthful `Uploading`, `Saved`, `Retry Required`, or `Rejected` states.
+- Every accepted stage carries SHA-256 identity, capture provenance, stage version, session, employee, and canonical gate evidence.
+- Identical package resubmission is idempotent; correction targets named stages and preserves unrelated Saved stages.
+- Manager approval atomically creates the exact manager decision, customer-only access grant, Private asset visibility, and completed work-record state.
+- Customer and vendor-manager media paths fail closed when any evidence-chain link is missing or inconsistent.
+- Private approval creates no review, rating, Trust Score input, publication approval, Public media, AI decision, or admin Public moderation task.
+- Validation passed: 108/108 Epic 1-5 focused regressions, 85/85 final focused tests, 2/2 Epic 5 Playwright states, TypeScript, Prisma validation/generation, production build, and `git diff --check`.
+- Controlled employee desktop/mobile screenshots cover all-three-Saved and Retry-Required-with-preserved-preview states.
+- Shared `PROD-*`, `TEST-*`, `SHOT-*`, and `DOC-*` rows remain `In Progress` until physical-device, four-role, release-wide accessibility/security, and Product Owner evidence is complete.
+- No checklist row is marked Beta Ready from local implementation alone. Epic 6 was not started.
+
+## Epic 4 Implementation Checkpoint - Universal Work Records and Recording Gates
+
+**Checkpoint date:** 2026-08-05
+
+**Epic status:** **Completed and frozen**
+
+**Product Owner decision:** Approved on 2026-08-05
+
+**Engineering status:** Implemented and validated locally
+
 **Deployment status:** Not deployed; two additive migrations remain unapplied
 
-**Product Owner demo:** Pending
+**Product Owner demo:** Automated package accepted; the combined live recording/device replay is assigned to Epic 5 and RR-1A
 **Primary evidence:** `Project Management/Epic 4 - Universal Work Record and Recording Gates/`
 
 Epic 4 now applies one canonical server-side recording decision across work-record release, employee work/start/stage views, location verification, media-session creation, upload boundaries, vendor status, and admin evidence. The decision includes the current recording assessment, authority, verified permission basis, assignment, employee certification, location evidence, protected-person restrictions, and unresolved exception state.
 
 - Every canonical recording block provides the reason, responsible participant, resolution, and whether service may continue without recording.
 - Internal `RecordingGateMetric` evidence records the canonical block reason only and has no review, Trust Score, permission, publication, or dashboard effect.
-- Two additive migrations add assessment/authority and certification/location/metric evidence. Neither migration was applied by this checkpoint.
+- Two additive migrations add assessment/authority and certification/location/metric evidence. Deployment remains a prerequisite for the combined Epic 5/RR-1A live recording replay, not a reason to reopen Epic 4.
 - Final named regression package: 76 of 76 passed. Epic 4 Playwright package: 4 of 4 passed. Type check and production build passed.
 - `CON-02`, `CON-04`, `CON-08` through `CON-14`, `CON-22`, and `CON-23` gain complete Epic 4 implementation evidence but remain release-shared until migration, deployment, Product Owner replay, Epic 5 physical capture, and final RR-1A gates pass.
 - `PROD-11`, `PROD-12`, `TEST-04`, `TEST-06`, `SHOT-03`, `SHOT-07`, and `DOC-01` through `DOC-07` gain focused Epic 4 evidence and remain `In Progress` where later device/release evidence is required.
 - `LEG-03`, `LEG-04`, and `LEG-11` are not promoted; Epic 4 records operational evidence but does not implement or replace future legal agreements.
-- No checklist row is marked `Beta Ready` from local implementation alone. Epic 5 was not started.
+- Epic 4 is complete at the roadmap level. Shared release rows remain `In Progress` until Epic 5 device/capture evidence and final RR-1A gates pass.
+- Remaining physical-device, screenshot, manager-correction fixture, capture-copy, and dependency-advisory work is explicitly accepted in the Epic 4 Technical Debt record and assigned to Epic 5 or release hardening.
+- No further Epic 4 changes are authorized unless a genuine beta defect is discovered.
 
 ## Epic 3 Phase A - Identity Foundation
 

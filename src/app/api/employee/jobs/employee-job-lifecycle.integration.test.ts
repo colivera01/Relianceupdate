@@ -11,6 +11,7 @@ const hoisted = vi.hoisted(() => {
   const consentRecordFindFirst = vi.fn();
   const resolveEmployeeCaptureAccess = vi.fn();
   const sendJobCorrectionReadyNotification = vi.fn();
+  const submitServiceVideoPackage = vi.fn();
   return {
     vendorMembershipFindMany,
     bookingFindMany,
@@ -22,6 +23,7 @@ const hoisted = vi.hoisted(() => {
     consentRecordFindFirst,
     resolveEmployeeCaptureAccess,
     sendJobCorrectionReadyNotification,
+    submitServiceVideoPackage,
   };
 });
 
@@ -79,6 +81,10 @@ vi.mock("@/lib/notifications/send-job-correction-ready", () => ({
   sendJobCorrectionReadyNotification: hoisted.sendJobCorrectionReadyNotification,
 }));
 
+vi.mock("@/lib/service-video-evidence", () => ({
+  submitServiceVideoPackage: hoisted.submitServiceVideoPackage,
+}));
+
 vi.mock("@/lib/lifecycle-audit", () => ({
   recordLifecycleAudit: vi.fn(async () => undefined),
 }));
@@ -112,6 +118,8 @@ describe("employee job lifecycle routes", () => {
     hoisted.consentRecordFindFirst.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockReset();
     hoisted.sendJobCorrectionReadyNotification.mockReset();
+    hoisted.submitServiceVideoPackage.mockReset();
+    hoisted.submitServiceVideoPackage.mockResolvedValue({ id: "package-1", version: 1 });
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue(null);
     hoisted.consentRecordFindMany.mockResolvedValue([]);
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
@@ -558,7 +566,7 @@ describe("employee job lifecycle routes", () => {
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("allows corrected rejected jobs to be resent from a stale awaiting-review state", async () => {
+  it("allows corrected rejected jobs to be resent for manager review", async () => {
     const { POST } = await import("./[jobId]/complete/route");
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
       vendorId: "vendor-1",
@@ -585,7 +593,7 @@ describe("employee job lifecycle routes", () => {
     hoisted.bookingFindUnique.mockResolvedValue({
       id: "job-1",
       vendorId: "vendor-1",
-      status: "AWAITING_REVIEW",
+      status: "REJECTED",
       title: "Outlet Installation",
       customerMetadata: "{}",
       rejectionReason: "Redo stage 3",
@@ -624,10 +632,10 @@ describe("employee job lifecycle routes", () => {
       })
     );
     expect(JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata)).toMatchObject({
-      reliance_ops: { operational_phase: "AWAITING_ADMIN_REVIEW" },
+      reliance_ops: { operational_phase: "AWAITING_VENDOR_REVIEW" },
     });
     expect(json.notifications).toMatchObject({
-      correctionReady: true,
+      managerReviewReady: true,
       sentCount: 1,
     });
   });
@@ -711,7 +719,7 @@ describe("employee job lifecycle routes", () => {
       "/vendor/jobs/job-1"
     );
     expect(json.notifications).toMatchObject({
-      correctionReady: true,
+      managerReviewReady: true,
       sentCount: 1,
     });
   });

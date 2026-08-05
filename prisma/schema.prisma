@@ -656,6 +656,177 @@ model RecordingGateMetric {
   @@map("recording_gate_metrics")
 }
 
+// Immutable evidence that the canonical recording gate allowed a capture boundary.
+model RecordingGateDecisionEvidence {
+  id                   String   @id @default(cuid())
+  bookingId            String
+  vendorId             String
+  assessmentId         String
+  assessmentGeneration Int
+  scopeHash            String
+  permissionBasis      String
+  permissionEvidenceId String
+  consentRecordId      String?
+  certificationId      String
+  membershipId         String
+  assignmentGeneration Int
+  locationAttemptId    String?
+  locationExceptionId  String?
+  surface              String
+  actorKind            String?
+  decision             String   @default("ALLOWED")
+  evidenceHash         String
+  snapshotJson         String   @db.NVarChar(Max)
+  createdAt            DateTime @default(now())
+
+  @@index([bookingId, createdAt])
+  @@index([vendorId, createdAt])
+  @@index([assessmentId, membershipId])
+  @@index([evidenceHash])
+  @@map("recording_gate_decision_evidence")
+}
+
+model MediaUploadAttempt {
+  id                String    @id @default(cuid())
+  assetId           String    @unique
+  vendorId          String
+  bookingId         String
+  mediaSessionId    String
+  membershipId      String
+  stage             String
+  captureProvenance String
+  state             String    @default("UPLOADING")
+  blobKey           String
+  expectedBytes     BigInt
+  actualBytes       BigInt?
+  mimeType          String
+  durationSeconds   Float?
+  failureCode       String?
+  failureMessage    String?
+  attemptCount      Int       @default(1)
+  savedAt           DateTime?
+  rejectedAt        DateTime?
+  retryRequiredAt   DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([bookingId, stage, createdAt])
+  @@index([mediaSessionId, state])
+  @@index([vendorId, state, updatedAt])
+  @@map("media_upload_attempts")
+}
+
+model ServiceVideoStageEvidence {
+  id                      String   @id @default(cuid())
+  bookingId               String
+  vendorId                String
+  stage                   String
+  stageVersion            Int
+  isCurrent               Boolean  @default(true)
+  mediaSessionId          String
+  mediaAssetId            String   @unique
+  assessmentId            String
+  assessmentGeneration    Int
+  permissionBasis         String
+  permissionEvidenceId    String
+  recordingGateDecisionId String
+  employeeMembershipId    String
+  captureProvenance       String
+  contentHash             String
+  hashAlgorithm           String   @default("SHA-256")
+  verifiedDurationSeconds Float
+  uploadState             String   @default("SAVED")
+  replacesStageEvidenceId String?
+  publicEligible          Boolean  @default(false)
+  savedAt                 DateTime @default(now())
+  createdAt               DateTime @default(now())
+
+  @@unique([bookingId, stage, stageVersion])
+  @@index([bookingId, isCurrent])
+  @@index([recordingGateDecisionId])
+  @@index([contentHash])
+  @@map("service_video_stage_evidence")
+}
+
+model ServiceVideoPackageEvidence {
+  id                      String   @id @default(cuid())
+  bookingId               String
+  vendorId                String
+  version                 Int
+  isCurrent               Boolean  @default(true)
+  status                  String   @default("AWAITING_MANAGER_REVIEW")
+  stageEvidenceJson       String   @db.NVarChar(Max)
+  packageHash             String
+  submittedByUserId       String?
+  submittedByMembershipId String
+  submittedAt             DateTime @default(now())
+  managerDecisionId       String?
+  customerAccessGrantId   String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([bookingId, version])
+  @@index([bookingId, isCurrent])
+  @@index([vendorId, status, updatedAt])
+  @@index([packageHash])
+  @@map("service_video_package_evidence")
+}
+
+model ServiceVideoManagerDecisionEvidence {
+  id                  String   @id @default(cuid())
+  packageId           String
+  bookingId           String
+  vendorId            String
+  decision            String
+  targetedStagesJson  String   @db.NVarChar(Max)
+  reason              String?
+  managerUserId       String
+  managerMembershipId String
+  packageHash         String
+  decidedAt           DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  @@index([packageId, decidedAt])
+  @@index([bookingId, decidedAt])
+  @@map("service_video_manager_decision_evidence")
+}
+
+model PrivateProofAccessGrant {
+  id                String    @id @default(cuid())
+  packageId         String    @unique
+  bookingId         String
+  vendorId          String
+  customerUserId    String
+  managerDecisionId String
+  status            String    @default("ACTIVE")
+  grantedByUserId   String
+  grantedAt         DateTime  @default(now())
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([bookingId, customerUserId, status])
+  @@index([vendorId, status, grantedAt])
+  @@map("private_proof_access_grants")
+}
+
+model PrivateProofAccessEvent {
+  id            String   @id @default(cuid())
+  accessGrantId String
+  packageId     String
+  bookingId     String
+  mediaAssetId  String?
+  actorUserId   String
+  eventType     String
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now())
+
+  @@index([accessGrantId, createdAt])
+  @@index([bookingId, actorUserId, createdAt])
+  @@map("private_proof_access_events")
+}
+
 model BookingNotification {
   id              String    @id @default(cuid())
   bookingId       String
@@ -902,6 +1073,13 @@ model MediaAsset {
   moderationStatus       String    @default("pending_review")
   visibilityStatus       String    @default("private")
   archiveStatus          String    @default("active")
+  uploadState            String    @default("SAVED")
+  contentHash            String?
+  hashAlgorithm          String?   @default("SHA-256")
+  captureProvenance      String    @default("LEGACY_UNKNOWN")
+  stageVersion           Int?
+  replacesMediaAssetId   String?
+  publicEligible         Boolean?
   moderationReason       String?
   moderatedAt            DateTime?
   moderatedByUserId      String?
@@ -916,30 +1094,34 @@ model MediaAsset {
   @@index([mediaSessionId])
   @@index([membershipId])
   @@index([deviceId])
+  @@index([contentHash])
+  @@index([replacesMediaAssetId])
   @@map("media_assets")
 }
 
 model MediaSession {
-  id                  String    @id @default(cuid())
-  vendorId            String
-  userId              String?
-  employeeId          String?
-  bookingId           String?
-  serviceId           String?
-  deviceId            String?
-  deviceType          String? // "PHONE" | "HEADSET"
-  sessionType         String    @default("SERVICE_RECORD")
+  id                      String    @id @default(cuid())
+  vendorId                String
+  userId                  String?
+  employeeId              String?
+  bookingId               String?
+  serviceId               String?
+  deviceId                String?
+  deviceType              String? // "PHONE" | "HEADSET"
+  sessionType             String    @default("SERVICE_RECORD")
   /**
    * Vendor job service video stage: INTRO | IN_PROGRESS | COMPLETED (null = legacy / non-staged)
    */
-  vendorJobVideoStage String?
-  status              String    @default("CREATED")
-  title               String?
-  description         String?
-  startedAt           DateTime  @default(now())
-  endedAt             DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  vendorJobVideoStage     String?
+  status                  String    @default("CREATED")
+  title                   String?
+  description             String?
+  recordingGateDecisionId String?
+  capturedByMembershipId  String?
+  startedAt               DateTime  @default(now())
+  endedAt                 DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   vendor         Vendor          @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user           User?           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -957,6 +1139,7 @@ model MediaSession {
   @@index([vendorId, sessionType])
   @@index([deviceId])
   @@index([bookingId])
+  @@index([recordingGateDecisionId])
   @@map("media_sessions")
 }
 

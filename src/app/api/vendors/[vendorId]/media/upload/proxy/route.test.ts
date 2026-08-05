@@ -7,12 +7,15 @@ import { uploadBlobBuffer } from "@/lib/azure-blob-storage";
 const hoisted = vi.hoisted(() => ({
   bookingFindFirst: vi.fn(),
   consentRecordFindFirst: vi.fn(),
+  mediaUploadAttemptFindFirst: vi.fn(),
+  setUploadAttemptState: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
   prisma: {
     booking: { findFirst: hoisted.bookingFindFirst },
     consentRecord: { findFirst: hoisted.consentRecordFindFirst },
+    mediaUploadAttempt: { findFirst: hoisted.mediaUploadAttemptFindFirst },
   },
 }));
 
@@ -26,6 +29,10 @@ vi.mock("@/lib/employee-capture-token", () => ({
 
 vi.mock("@/lib/azure-blob-storage", () => ({
   uploadBlobBuffer: vi.fn(),
+}));
+
+vi.mock("@/lib/service-video-evidence", () => ({
+  setUploadAttemptState: hoisted.setUploadAttemptState,
 }));
 
 const VENDOR_ID = "vendor-1";
@@ -59,6 +66,10 @@ describe("employee media upload proxy", () => {
     vi.mocked(uploadBlobBuffer).mockReset();
     hoisted.bookingFindFirst.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
+    hoisted.mediaUploadAttemptFindFirst.mockReset();
+    hoisted.mediaUploadAttemptFindFirst.mockResolvedValue({ id: "attempt-1", state: "UPLOADING" });
+    hoisted.setUploadAttemptState.mockReset();
+    hoisted.setUploadAttemptState.mockResolvedValue({ count: 1 });
 
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "booking-1",

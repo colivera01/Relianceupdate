@@ -3,6 +3,10 @@ import { prisma } from "@/server/db";
 import { requireVendorManager } from "@/lib/membership-auth";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
+import { requestServiceVideoCorrection, REQUIRED_SERVICE_VIDEO_STAGES, type ServiceVideoStage } from "@/lib/service-video-evidence";
+import { parseAssignmentMetadata } from "@/lib/job-assignment";
+import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
+import { sendJobRejectionNotification } from "@/lib/notifications/send-job-rejection";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -18,6 +22,16 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     const manager = await requireVendorManager(request, vendorId);
     const body = await request.json().catch(() => ({}));
     const rejectionReason = String(body?.rejectionReason || "").trim();
+    const requestedStages = Array.isArray(body?.stages) ? body.stages : REQUIRED_SERVICE_VIDEO_STAGES;
+    const stages: ServiceVideoStage[] = Array.from(
+      new Set(
+        requestedStages
+          .map((stage: unknown) => String(stage || "").trim().toUpperCase())
+          .filter((stage: string): stage is ServiceVideoStage =>
+            REQUIRED_SERVICE_VIDEO_STAGES.includes(stage as ServiceVideoStage)
+          )
+      ) as Set<ServiceVideoStage>
+    );
 
     if (!rejectionReason) {
       return NextResponse.json(
@@ -25,6 +39,12 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
           error: "rejectionReason is required.",
           code: "REJECTION_REASON_REQUIRED",
         },
+        { status: 400 }
+      );
+    }
+    if (stages.length === 0) {
+      return NextResponse.json(
+        { error: "At least one stage must be selected.", code: "CORRECTION_STAGE_REQUIRED" },
         { status: 400 }
       );
     }
@@ -58,36 +78,23 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     }
 
     const rejectedAt = new Date();
-    await prisma.$transaction(async (tx) => {
-      await (tx as any).booking.update({
-        where: { id: booking.id },
-        data: {
-          status: "REJECTED",
-          customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "REJECTED"),
-          rejectionReason,
-          rejectedAt,
-          rejectedBy: manager.userId,
-        },
-      });
-
-      await (tx as any).mediaAsset.updateMany({
-        where: {
-          deletedAt: null,
-          mediaSession: {
-            is: {
-              bookingId: booking.id,
-              vendorId,
-            },
-          },
-        },
-        data: {
-          moderationStatus: "rejected",
-          visibilityStatus: "private",
-          moderationReason: rejectionReason,
-          moderatedAt: rejectedAt,
-          moderatedByUserId: manager.userId,
-        },
-      });
+    await requestServiceVideoCorrection({
+      bookingId: booking.id,
+      vendorId,
+      managerUserId: manager.userId,
+      managerMembershipId: manager.membershipId,
+      stages,
+      reason: rejectionReason,
+    });
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: "REJECTED",
+        customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "REJECTED"),
+        rejectionReason,
+        rejectedAt,
+        rejectedBy: manager.userId,
+      },
     });
 
     await recordLifecycleAudit({
@@ -100,15 +107,54 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       metadata: {
         vendorId,
         rejectionReason,
+        stages,
       },
     });
 
+    const assignment = parseAssignmentMetadata(booking.customerMetadata);
+    const assignedMembers = assignment.assignedMembershipIds.length
+      ? await prisma.vendorMembership.findMany({
+          where: {
+            vendorId,
+            id: { in: assignment.assignedMembershipIds },
+            status: { in: ["ACTIVE", "active", "PENDING", "pending"] },
+          },
+          include: { user: { select: { name: true, email: true, phone: true } } },
+        })
+      : [];
+    const baseUrl = String(process.env.APP_BASE_URL || new URL(request.url).origin).replace(/\/+$/, "");
+    const notifications = [];
+    for (const member of assignedMembers) {
+      const token = createEmployeeCaptureToken({ vendorId, bookingId: booking.id, membershipId: member.id });
+      const employeeJobLink = appendEmployeeCaptureToken(
+        `${baseUrl}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`,
+        token
+      );
+      const result = await sendJobRejectionNotification({
+        bookingId: booking.id,
+        actorUserId: manager.userId,
+        employeeName: member.user?.name || null,
+        employeeEmail: member.user?.email || null,
+        employeePhone: member.user?.phone || null,
+        employeeJobLink,
+        vendorName: String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor"),
+        jobTitle: String(booking.title || booking.service?.name || "Service order"),
+        rejectionReason: `${rejectionReason} Stages: ${stages.join(", ")}.`,
+      });
+      notifications.push({ membershipId: member.id, ...result });
+    }
+
     return NextResponse.json({
       success: true,
-      code: "JOB_REJECTED",
-      message: "Completed work order rejected.",
+      code: "SERVICE_VIDEO_CORRECTION_REQUESTED",
+      message: "Changes requested for the selected video stage or stages.",
       details: {
         rejectionReason,
+        stages,
+        notifications: {
+          sentCount: notifications.filter((result) => result.anySuccess).length,
+          results: notifications,
+        },
       },
     });
   } catch (error: any) {

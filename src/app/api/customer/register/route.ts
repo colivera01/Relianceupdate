@@ -387,6 +387,14 @@ export async function POST(request: NextRequest) {
             if (claimed.count !== 1) {
               throw new Error("CUSTOMER_BOOKING_CLAIM_CONFLICT");
             }
+            await (tx as any).privateProofAccessGrant.updateMany({
+              where: {
+                bookingId: claimBooking.id,
+                customerUserId: claimBooking.userId,
+                status: "ACTIVE",
+              },
+              data: { customerUserId: customerId },
+            });
           }
 
           return { customerId, credentialId: String(credential.id) };

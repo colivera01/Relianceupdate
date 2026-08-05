@@ -11,6 +11,10 @@ const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
   const bookingUpdate = vi.fn();
   const consentRecordFindFirst = vi.fn();
+  const mediaUploadAttemptFindFirst = vi.fn();
+  const saveVerifiedServiceVideoStage = vi.fn();
+  const setUploadAttemptState = vi.fn();
+  const loadRecordingPermissionGate = vi.fn();
 
   const prisma = {
     mediaSession: {
@@ -27,6 +31,7 @@ const hoisted = vi.hoisted(() => {
     consentRecord: {
       findFirst: consentRecordFindFirst,
     },
+    mediaUploadAttempt: { findFirst: mediaUploadAttemptFindFirst },
   };
 
   return {
@@ -37,6 +42,10 @@ const hoisted = vi.hoisted(() => {
     bookingFindFirst,
     bookingUpdate,
     consentRecordFindFirst,
+    mediaUploadAttemptFindFirst,
+    saveVerifiedServiceVideoStage,
+    setUploadAttemptState,
+    loadRecordingPermissionGate,
   };
 });
 
@@ -56,6 +65,23 @@ vi.mock("@/lib/azure-blob-storage", () => ({
 vi.mock("@/lib/storage-helpers", () => ({
   calculateStorageUsage: vi.fn(),
   checkAndCreateStorageAlerts: vi.fn(),
+}));
+
+vi.mock("@/lib/service-video-evidence", () => ({
+  REQUIRED_SERVICE_VIDEO_STAGES: ["INTRO", "IN_PROGRESS", "COMPLETED"],
+  saveVerifiedServiceVideoStage: hoisted.saveVerifiedServiceVideoStage,
+  setUploadAttemptState: hoisted.setUploadAttemptState,
+}));
+
+vi.mock("@/lib/consent/recording-gate", () => ({
+  loadRecordingPermissionGate: hoisted.loadRecordingPermissionGate,
+  recordingGateErrorBody: (gate: any) => ({
+    error: gate.blockMessage,
+    code: gate.blockCode,
+    why: gate.block?.why,
+    responsibleParticipant: gate.block?.responsibleParticipant,
+    resolution: gate.block?.resolution,
+  }),
 }));
 
 const VENDOR_ID = "vendor-1";
@@ -179,6 +205,8 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
       vendorJobVideoStage: "INTRO",
       sessionType: "JOB_SERVICE_VIDEO",
       bookingId: "booking-1",
+      recordingGateDecisionId: "gate-1",
+      capturedByMembershipId: "membership-1",
     });
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
@@ -205,6 +233,29 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     hoisted.bookingUpdate.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
+    hoisted.mediaUploadAttemptFindFirst.mockReset();
+    hoisted.mediaUploadAttemptFindFirst.mockResolvedValue({
+      id: "attempt-1",
+      state: "UPLOADING",
+      captureProvenance: "LIVE_BROWSER_CAPTURE",
+    });
+    hoisted.setUploadAttemptState.mockReset();
+    hoisted.setUploadAttemptState.mockResolvedValue({ count: 1 });
+    hoisted.loadRecordingPermissionGate.mockReset();
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({ blockCode: null, recordingUnlocked: true });
+    hoisted.saveVerifiedServiceVideoStage.mockReset();
+    hoisted.saveVerifiedServiceVideoStage.mockResolvedValue({
+      asset: {
+        id: "asset-1",
+        mediaSessionId: "session-1",
+        bytes: BigInt(1024),
+        mimeType: "video/mp4",
+        uploadState: "SAVED",
+        contentHash: "hash-1",
+        captureProvenance: "LIVE_BROWSER_CAPTURE",
+        stageVersion: 1,
+      },
+    });
   });
 
   it("allows a staged video when the uploaded media probes under the 30-second limit", async () => {
@@ -218,7 +269,8 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
     expect(downloadBlobToBuffer).toHaveBeenCalledWith("vendor/vendor-1/media/asset-1.mp4");
-    expect(hoisted.mediaAssetCreate).toHaveBeenCalledTimes(1);
+    expect(hoisted.saveVerifiedServiceVideoStage).toHaveBeenCalledTimes(1);
+    expect(json.uploadState).toBe("SAVED");
   });
 
   it("allows a Chrome MediaRecorder WebM without Info.Duration", async () => {
@@ -236,7 +288,7 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
     expect(downloadBlobToBuffer).toHaveBeenCalledWith(blobKey);
-    expect(hoisted.mediaAssetCreate).toHaveBeenCalledTimes(1);
+    expect(hoisted.saveVerifiedServiceVideoStage).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a staged video when the uploaded media probes over the 30-second limit", async () => {
@@ -251,7 +303,6 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     expect(json).toMatchObject({
       error: "STAGE_VIDEO_TOO_LONG",
       maxDurationSeconds: 30,
-      declaredDurationSeconds: 12,
       verifiedByServer: true,
     });
     expect(json.durationSeconds).toBe(31);
@@ -266,6 +317,8 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
         bookingId: "booking-1",
         vendorJobVideoStage: "COMPLETED",
         sessionType: "JOB_SERVICE_VIDEO",
+        recordingGateDecisionId: "gate-1",
+        capturedByMembershipId: "membership-1",
       })
       .mockResolvedValueOnce({
         bookingId: "booking-1",
@@ -329,6 +382,15 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
       scopeJson: JSON.stringify({ recordingLocation: "residence" }),
       decisionEvidenceId: "evidence-1",
       decisionEvidence: { id: "evidence-1", decision: "declined" },
+    });
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({
+      blockCode: "VERIFIED_PERMISSION_REQUIRED",
+      blockMessage: "Verified customer permission is required.",
+      block: {
+        why: "The customer declined recording.",
+        responsibleParticipant: "CUSTOMER",
+        resolution: "The service may continue without recording.",
+      },
     });
 
     const res = await POST(buildRequest(12), {

@@ -4,6 +4,7 @@ import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { uploadBlobBuffer } from "@/lib/azure-blob-storage";
 import { prisma } from "@/server/db";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
+import { setUploadAttemptState } from "@/lib/service-video-evidence";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -79,7 +80,34 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       );
     }
 
+    const membershipId = tokenAccess?.membershipId || membership.membershipId;
+    const uploadAttempt = bookingId
+      ? await (prisma as any).mediaUploadAttempt.findFirst({
+          where: {
+            assetId,
+            vendorId,
+            bookingId,
+            membershipId,
+            blobKey,
+            state: { in: ["UPLOADING", "RETRY_REQUIRED"] },
+          },
+        })
+      : null;
+    if (bookingId && !uploadAttempt) {
+      return NextResponse.json(
+        { error: "Upload evidence was not found for this staged recording." },
+        { status: 409 }
+      );
+    }
+
     if (!mimeType.toLowerCase().startsWith("video/")) {
+      await setUploadAttemptState({
+        assetId,
+        vendorId,
+        state: "REJECTED",
+        failureCode: "INVALID_MEDIA_TYPE",
+        failureMessage: "Stage uploads must be video files.",
+      }).catch(() => undefined);
       return NextResponse.json(
         { error: "Stage uploads must be video files." },
         { status: 422 }
@@ -88,6 +116,13 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     const bytes = Buffer.from(await request.arrayBuffer());
     if (!bytes.length || bytes.length > MAX_PROXY_UPLOAD_BYTES) {
+      await setUploadAttemptState({
+        assetId,
+        vendorId,
+        state: "REJECTED",
+        failureCode: "PROXY_UPLOAD_SIZE_LIMIT",
+        failureMessage: "The fallback upload was empty or exceeded the allowed size.",
+      }).catch(() => undefined);
       return NextResponse.json(
         {
           error: "PROXY_UPLOAD_SIZE_LIMIT",
@@ -98,13 +133,32 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       );
     }
 
-    await uploadBlobBuffer(blobKey, bytes, {
-      contentType: mimeType,
-      metadata: {
-        uploadPath: "employee_proxy_fallback",
+    try {
+      await uploadBlobBuffer(blobKey, bytes, {
+        contentType: mimeType,
+        metadata: {
+          uploadPath: "employee_proxy_fallback",
+          assetId,
+        },
+      });
+    } catch (uploadError: any) {
+      await setUploadAttemptState({
         assetId,
-      },
-    });
+        vendorId,
+        state: "RETRY_REQUIRED",
+        failureCode: "PROXY_UPLOAD_FAILED",
+        failureMessage: "The video did not reach secure storage. Retry is required.",
+      }).catch(() => undefined);
+      return NextResponse.json(
+        {
+          error: "PROXY_UPLOAD_FAILED",
+          message: "Upload did not finish. Retry this saved video.",
+          details: uploadError?.message || "Unknown upload error",
+          uploadState: "RETRY_REQUIRED",
+        },
+        { status: 503 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
@@ -113,6 +167,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       bytes: bytes.length,
       mimeType,
       uploadPath: "proxy",
+      uploadState: bookingId ? "UPLOADING" : undefined,
     });
   } catch (error: any) {
     console.error("[media/upload/proxy] POST error:", error);

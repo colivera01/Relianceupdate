@@ -7,6 +7,13 @@ import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { calculateStorageUsage, checkAndCreateStorageAlerts } from "@/lib/storage-helpers";
 import { generateUploadUrl } from "@/lib/azure-blob-storage";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
+import {
+  createUploadAttempt,
+  normalizeCaptureProvenance,
+  REQUIRED_SERVICE_VIDEO_STAGES,
+  setUploadAttemptState,
+  type ServiceVideoStage,
+} from "@/lib/service-video-evidence";
 import crypto from "crypto";
 
 interface RouteParams {
@@ -25,13 +32,20 @@ export async function POST(
   try {
     const { vendorId } = await context.params;
     const body = await request.json();
-    const { fileName, expectedBytes, mimeType, deviceId, bookingId } = body;
+    const { fileName, expectedBytes, mimeType, deviceId, bookingId, mediaSessionId } = body;
     const tokenAccess = await resolveEmployeeCaptureAccess(request, {
       vendorId,
       bookingId: bookingId ? String(bookingId) : null,
     });
     const membership = tokenAccess || await requireVendorMembership(request, vendorId);
 
+    let stagedUpload: {
+      bookingId: string;
+      mediaSessionId: string;
+      membershipId: string;
+      stage: ServiceVideoStage;
+      captureProvenance: ReturnType<typeof normalizeCaptureProvenance>;
+    } | null = null;
     if (bookingId) {
       const booking = await prisma.booking.findFirst({
         where: { id: String(bookingId), vendorId },
@@ -52,6 +66,39 @@ export async function POST(
       if (permissionGate.blockCode) {
         return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
       }
+
+      if (!mediaSessionId) {
+        return NextResponse.json(
+          { error: "mediaSessionId is required for a staged service-video upload" },
+          { status: 422 }
+        );
+      }
+      const membershipId = tokenAccess?.membershipId || membership.membershipId;
+      const mediaSession = await (prisma as any).mediaSession.findFirst({
+        where: {
+          id: String(mediaSessionId),
+          bookingId: booking.id,
+          vendorId,
+          sessionType: "JOB_SERVICE_VIDEO",
+          capturedByMembershipId: membershipId,
+          recordingGateDecisionId: { not: null },
+        },
+        select: { id: true, vendorJobVideoStage: true },
+      });
+      const stage = String(mediaSession?.vendorJobVideoStage || "").trim().toUpperCase();
+      if (!mediaSession || !REQUIRED_SERVICE_VIDEO_STAGES.includes(stage as ServiceVideoStage)) {
+        return NextResponse.json(
+          { error: "The staged recording session is invalid or is not assigned to this employee." },
+          { status: 409 }
+        );
+      }
+      stagedUpload = {
+        bookingId: booking.id,
+        mediaSessionId: mediaSession.id,
+        membershipId,
+        stage: stage as ServiceVideoStage,
+        captureProvenance: normalizeCaptureProvenance(body.captureProvenance),
+      };
     }
 
     if (!fileName || !mimeType) {
@@ -101,11 +148,35 @@ export async function POST(
     // Generate blob key with vendor prefix
     const blobKey = `vendor/${vendorId}/media/${assetId}.${ext}`;
 
+    if (stagedUpload) {
+      await createUploadAttempt({
+        assetId,
+        vendorId,
+        bookingId: stagedUpload.bookingId,
+        mediaSessionId: stagedUpload.mediaSessionId,
+        membershipId: stagedUpload.membershipId,
+        stage: stagedUpload.stage,
+        captureProvenance: stagedUpload.captureProvenance,
+        blobKey,
+        expectedBytes: BigInt(expectedBytes),
+        mimeType,
+      });
+    }
+
     // Generate SAS URL for Azure Blob Storage (60 minute expiration)
     let sasUrl: string;
     try {
       sasUrl = await generateUploadUrl(blobKey, 60);
     } catch (error: any) {
+      if (stagedUpload) {
+        await setUploadAttemptState({
+          assetId,
+          vendorId,
+          state: "RETRY_REQUIRED",
+          failureCode: "MEDIA_STORAGE_UNAVAILABLE",
+          failureMessage: "Secure storage did not accept the upload initialization.",
+        }).catch(() => undefined);
+      }
       console.error("[media/upload/init] Storage unavailable", {
         vendorId,
         blobKey,
@@ -127,6 +198,7 @@ export async function POST(
       blobKey,
       sasUrl,
       uploadUrl: sasUrl, // Alias for compatibility
+      uploadState: stagedUpload ? "UPLOADING" : undefined,
       storage: {
         usedBytes: usage.usedBytes.toString(),
         limitBytes: usage.limitBytes.toString(),

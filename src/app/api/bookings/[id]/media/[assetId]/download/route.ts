@@ -4,6 +4,7 @@ import { getUserIdFromRequest } from '@/lib/auth';
 import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from '@/lib/account-status';
 import { generateDownloadUrl } from '@/lib/azure-blob-storage';
 import { getVisibilityStatusesForAudience } from '@/lib/media-visibility';
+import { loadAuthorizedPrivateProof, recordPrivateProofAccess } from '@/lib/service-video-evidence';
 
 type RouteContext = {
   params: Promise<{ id: string; assetId: string }>;
@@ -31,6 +32,14 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
     }
     if (String(booking.userId) !== String(userId)) {
       return NextResponse.json({ success: false, error: 'Forbidden: booking does not belong to this user' }, { status: 403 });
+    }
+
+    const privateProof = await loadAuthorizedPrivateProof({ bookingId, customerUserId: userId });
+    if (!privateProof || !privateProof.assetIds.includes(assetId)) {
+      return NextResponse.json(
+        { success: false, error: 'Private Service Video approval evidence is incomplete' },
+        { status: 403 }
+      );
     }
 
     const asset = await (prisma as any).mediaAsset.findUnique({
@@ -72,6 +81,17 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
     if (!secureUrl) {
       return NextResponse.json({ success: false, error: 'Playable URL is unavailable for this media asset' }, { status: 500 });
     }
+
+    await recordPrivateProofAccess({
+      grantId: privateProof.grant.id,
+      packageId: privateProof.package.id,
+      bookingId,
+      mediaAssetId: assetId,
+      actorUserId: userId,
+      eventType: 'DOWNLOAD',
+      ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
+      userAgent: request.headers.get('user-agent'),
+    }).catch(() => undefined);
 
     return NextResponse.redirect(secureUrl, { status: 302 });
   } catch (error: any) {

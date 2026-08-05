@@ -14,6 +14,8 @@ const hoisted = vi.hoisted(() => {
   const recordingLocationAttemptCreate = vi.fn();
   const recordingLocationExceptionFindFirst = vi.fn();
   const recordingGateMetricCreate = vi.fn();
+  const recordingGateDecisionEvidenceCreate = vi.fn();
+  const transaction = vi.fn();
   const geocodeAddress = vi.fn();
 
   const prisma = {
@@ -38,6 +40,8 @@ const hoisted = vi.hoisted(() => {
     },
     recordingLocationException: { findFirst: recordingLocationExceptionFindFirst },
     recordingGateMetric: { create: recordingGateMetricCreate },
+    recordingGateDecisionEvidence: { create: recordingGateDecisionEvidenceCreate },
+    $transaction: transaction,
   };
 
   return {
@@ -53,6 +57,8 @@ const hoisted = vi.hoisted(() => {
     recordingLocationAttemptCreate,
     recordingLocationExceptionFindFirst,
     recordingGateMetricCreate,
+    recordingGateDecisionEvidenceCreate,
+    transaction,
     geocodeAddress,
   };
 });
@@ -157,6 +163,10 @@ describe("vendor media sessions consent enforcement integration", () => {
     hoisted.recordingLocationAttemptCreate.mockReset();
     hoisted.recordingLocationExceptionFindFirst.mockReset();
     hoisted.recordingGateMetricCreate.mockReset();
+    hoisted.recordingGateDecisionEvidenceCreate.mockReset();
+    hoisted.recordingGateDecisionEvidenceCreate.mockResolvedValue({ id: "gate-evidence-1" });
+    hoisted.transaction.mockReset();
+    hoisted.transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => callback(hoisted.prisma));
 
     mockBookingLocation("residence");
     hoisted.vendorUpdate.mockReset();
