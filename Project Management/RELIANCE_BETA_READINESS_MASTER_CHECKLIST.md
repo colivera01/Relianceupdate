@@ -4,11 +4,15 @@
 
 **Checkpoint date:** 2026-08-05
 
-**Engineering status:** **Implemented and validated locally**
+**Epic status:** **Completed and frozen**
 
-**Deployment status:** Not deployed; additive migration `20260805193000_add_private_service_video_evidence` remains unapplied
+**Product Owner decision:** Approved on 2026-08-05
 
-**Product Owner demo:** Pending controlled migration-first deployment and physical/four-role replay
+**Engineering status:** **Engineering Complete**
+
+**Deployment/release gates:** Additive migration `20260805193000_add_private_service_video_evidence`, application deployment, physical-device replay, and four-role Product Owner replay remain pending
+
+**Gate classification:** The remaining migration, deployment, physical-device replay, and four-role replay are deployment/release gates, not Epic 5 engineering defects
 
 **Primary evidence:** `Project Management/Epic 5 - Safe Capture Through Private Service Videos/`
 
@@ -23,7 +27,9 @@ Epic 5 binds every customer-visible Private Service Video to a complete server-v
 - Validation passed: 108/108 Epic 1-5 focused regressions, 85/85 final focused tests, 2/2 Epic 5 Playwright states, TypeScript, Prisma validation/generation, production build, and `git diff --check`.
 - Controlled employee desktop/mobile screenshots cover all-three-Saved and Retry-Required-with-preserved-preview states.
 - Shared `PROD-*`, `TEST-*`, `SHOT-*`, and `DOC-*` rows remain `In Progress` until physical-device, four-role, release-wide accessibility/security, and Product Owner evidence is complete.
-- No checklist row is marked Beta Ready from local implementation alone. Epic 6 was not started.
+- No checklist row is marked Beta Ready from local implementation alone. Epic 6 implementation has not started; planning is active.
+- Epic 5 is frozen. Do not reopen it unless beta validation identifies a genuine defect.
+- The next active objective is Epic 6 planning. No Epic 6 implementation is authorized by this checkpoint.
 
 ## Epic 4 Implementation Checkpoint - Universal Work Records and Recording Gates
 
