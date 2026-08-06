@@ -18,6 +18,9 @@ export async function GET(_request: Request, context: Context) {
   if (!asset?.blobKey) {
     return NextResponse.json({ success: false, error: "Public Service Video is not available" }, { status: 404 });
   }
-  const secureUrl = await generateDownloadUrl(String(asset.blobKey), 5);
-  return NextResponse.redirect(secureUrl, { status: 302 });
+  const secureUrl = await generateDownloadUrl(String(asset.blobKey), 2);
+  return NextResponse.redirect(secureUrl, {
+    status: 302,
+    headers: { "Cache-Control": "private, no-store, max-age=0" },
+  });
 }

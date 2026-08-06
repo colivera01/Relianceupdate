@@ -39,7 +39,7 @@ describe("GET /api/public/media/[assetId]", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("https://blob.example/final-v3.webm?sig=short-lived");
-    expect(generateDownloadUrl).toHaveBeenCalledWith("proof/final-v3.webm", 5);
+    expect(generateDownloadUrl).toHaveBeenCalledWith("proof/final-v3.webm", 2);
   });
 
   it("fails closed when the approval chain is stale, revoked, superseded, or inconsistent", async () => {

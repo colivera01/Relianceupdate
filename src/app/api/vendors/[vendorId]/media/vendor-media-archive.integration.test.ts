@@ -4,6 +4,8 @@ import { DELETE as mediaDelete, PATCH as mediaPatch } from "./[assetId]/route";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { calculateStorageUsage } from "@/lib/storage-helpers";
 import { ARCHIVE_ACTIVE, ARCHIVE_ARCHIVED } from "@/lib/media-visibility";
+import { requestMediaDeletion } from "@/lib/media-lifecycle";
+import { requireRequestActor } from "@/lib/request-actor";
 
 const hoisted = vi.hoisted(() => {
   const mediaAssetFindMany = vi.fn();
@@ -39,6 +41,20 @@ vi.mock("@/lib/storage-helpers", () => ({
   calculateStorageUsage: vi.fn(),
 }));
 
+vi.mock("@/lib/media-lifecycle", () => ({
+  requestMediaDeletion: vi.fn(),
+}));
+
+vi.mock("@/lib/request-actor", () => ({
+  requireRequestActor: vi.fn(),
+  requireActorVendorManager: vi.fn((actor: any, vendorId: string) => {
+    if (!actor?.vendorMemberships?.some((membership: any) => membership.vendorId === vendorId && membership.isManager)) {
+      throw new Error("Forbidden");
+    }
+  }),
+  authorizationErrorResponse: vi.fn(() => null),
+}));
+
 async function readJson(res: Response) {
   return res.json() as Promise<Record<string, unknown>>;
 }
@@ -47,6 +63,16 @@ describe("GET /api/vendors/[vendorId]/media", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
     vi.mocked(requireVendorMembership).mockResolvedValue({} as any);
+    vi.mocked(requireRequestActor).mockReset();
+    vi.mocked(requireRequestActor).mockResolvedValue({
+      userId: "manager-user",
+      vendorMemberships: [{ vendorId: "v1", isManager: true }],
+    } as any);
+    vi.mocked(requestMediaDeletion).mockReset();
+    vi.mocked(requestMediaDeletion).mockResolvedValue({
+      id: "deletion-1",
+      status: "REQUESTED",
+    } as any);
     hoisted.mediaAssetFindMany.mockReset();
     hoisted.mediaAssetAggregate.mockReset();
   });
@@ -164,36 +190,44 @@ describe("DELETE/PATCH /api/vendors/[vendorId]/media/[assetId]", () => {
       id: "asset-1",
       vendorId: "other-vendor",
       deletedAt: null,
+      mediaSession: { bookingId: "booking-1" },
     });
     const req = new Request("http://localhost/api/vendors/v1/media/asset-1", { method: "DELETE" });
     const res = await mediaDelete(req, {
       params: Promise.resolve({ vendorId: "v1", assetId: "asset-1" }),
     });
     expect(res.status).toBe(403);
-    expect(hoisted.mediaAssetUpdate).not.toHaveBeenCalled();
+    expect(requestMediaDeletion).not.toHaveBeenCalled();
   });
 
-  it("DELETE sets archiveStatus=archived and returns storage payload", async () => {
+  it("DELETE creates a restricted deletion request without claiming the blob is deleted", async () => {
     hoisted.mediaAssetFindUnique.mockResolvedValue({
       id: "asset-1",
       vendorId: "v1",
       deletedAt: null,
-    });
-    hoisted.mediaAssetUpdate.mockResolvedValue({
-      id: "asset-1",
-      deletedAt: new Date("2026-04-15T12:00:00.000Z"),
+      mediaSession: { bookingId: "booking-1" },
     });
     const req = new Request("http://localhost/api/vendors/v1/media/asset-1", { method: "DELETE" });
     const res = await mediaDelete(req, {
       params: Promise.resolve({ vendorId: "v1", assetId: "asset-1" }),
     });
     expect(res.status).toBe(200);
-    expect(hoisted.mediaAssetUpdate).toHaveBeenCalledWith({
-      where: { id: "asset-1" },
-      data: { deletedAt: expect.any(Date), archiveStatus: ARCHIVE_ARCHIVED },
+    expect(requestMediaDeletion).toHaveBeenCalledWith({
+      bookingId: "booking-1",
+      vendorId: "v1",
+      mediaAssetId: "asset-1",
+      actorUserId: "manager-user",
+      actorRole: "VENDOR_MANAGER",
+      reason: "Vendor manager requested media deletion.",
+      request: req,
     });
     const j = await readJson(res);
-    expect((j.storage as Record<string, unknown>).usedBytes).toBe("1024");
+    expect(j).toMatchObject({
+      success: true,
+      deletion: { id: "deletion-1", status: "REQUESTED" },
+    });
+    expect(String(j.message)).toContain("not deleted until Reliance verifies");
+    expect(hoisted.mediaAssetUpdate).not.toHaveBeenCalled();
   });
 
   it("PATCH returns 422 for unsupported action", async () => {

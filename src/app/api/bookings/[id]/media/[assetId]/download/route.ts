@@ -93,7 +93,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
       userAgent: request.headers.get('user-agent'),
     }).catch(() => undefined);
 
-    return NextResponse.redirect(secureUrl, { status: 302 });
+    return NextResponse.redirect(secureUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
   } catch (error: any) {
     console.error('[bookings/:id/media/:assetId/download] GET error:', error);
     if (error instanceof AccountStatusError) {

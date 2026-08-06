@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
+  Archive,
   ArrowRight,
   BarChart3,
   CheckSquare,
@@ -110,6 +111,13 @@ const quickLinks: AdminQuickLink[] = [
     description: "Review submitted review and service-media reports.",
     icon: ShieldAlert,
     accentClass: "bg-[rgba(255,120,140,0.16)] text-[#ffb8c2]",
+  },
+  {
+    href: "/admin/media-lifecycle",
+    label: "Media Lifecycle",
+    description: "Review withdrawals, disputes, evidence holds, appeals, and truthful deletion states.",
+    icon: Archive,
+    accentClass: "bg-[rgba(177,129,255,0.16)] text-[#d9c2ff]",
   },
   {
     href: "/admin/reports",

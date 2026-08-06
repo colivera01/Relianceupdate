@@ -1027,6 +1027,256 @@ model PrivateProofAccessEvent {
   @@map("private_proof_access_events")
 }
 
+// Epic 7 lifecycle evidence. Enum-like values remain strings for SQL Server.
+// These records narrow access or preserve evidence; they never create permission,
+// publication approval, reviews, ratings, or Trust Score inputs.
+model MediaLifecycleCase {
+  id                  String    @id @default(cuid())
+  bookingId           String
+  vendorId            String
+  packageId           String?
+  proposalId          String?
+  mediaAssetId        String?
+  contentReportId     String?
+  category            String
+  status              String    @default("SUBMITTED")
+  exposureOutcome     String    @default("RESTRICTED")
+  reasonDetail        String?   @db.NVarChar(Max)
+  openedByUserId      String
+  openedByRole        String
+  assignedAdminUserId String?
+  decision            String?
+  decisionReason      String?   @db.NVarChar(Max)
+  lifecycleVersion    Int       @default(1)
+  submittedAt         DateTime  @default(now())
+  restrictedAt        DateTime?
+  decidedAt           DateTime?
+  finalizedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([bookingId, status, createdAt])
+  @@index([vendorId, status, createdAt])
+  @@index([mediaAssetId, status])
+  @@index([assignedAdminUserId, status])
+  @@map("media_lifecycle_cases")
+}
+
+model MediaLifecycleRestriction {
+  id               String    @id @default(cuid())
+  caseId           String?
+  bookingId        String
+  vendorId         String
+  mediaAssetId     String?
+  scope            String
+  outcome          String    @default("RESTRICTED")
+  reasonCode       String
+  active           Boolean   @default(true)
+  appliedByUserId  String
+  appliedByRole    String
+  appliedAt        DateTime  @default(now())
+  releasedByUserId String?
+  releasedAt       DateTime?
+  releaseReason    String?   @db.NVarChar(Max)
+  evidenceHash     String
+  createdAt        DateTime  @default(now())
+
+  @@index([bookingId, active, scope])
+  @@index([mediaAssetId, active, scope])
+  @@index([caseId, active])
+  @@index([evidenceHash])
+  @@map("media_lifecycle_restrictions")
+}
+
+model MediaWithdrawalEvidence {
+  id             String    @id @default(cuid())
+  bookingId      String
+  vendorId       String
+  packageId      String?
+  proposalId     String?
+  stageId        String?
+  mediaAssetId   String?
+  actorUserId    String
+  actorRole      String
+  authorityType  String
+  scope          String
+  status         String    @default("APPLIED")
+  reason         String?   @db.NVarChar(Max)
+  evidenceHash   String
+  appliedAt      DateTime  @default(now())
+  supersededAt   DateTime?
+  supersededById String?
+  createdAt      DateTime  @default(now())
+
+  @@index([bookingId, scope, status, appliedAt])
+  @@index([mediaAssetId, scope, status])
+  @@index([actorUserId, appliedAt])
+  @@index([evidenceHash])
+  @@map("media_withdrawal_evidence")
+}
+
+model MediaRetentionSchedule {
+  id                  String    @id @default(cuid())
+  bookingId           String
+  vendorId            String
+  mediaAssetId        String    @unique
+  materialClass       String
+  status              String    @default("ACTIVE")
+  retainUntil         DateTime?
+  evidenceRetainUntil DateTime?
+  approvalActive      Boolean   @default(false)
+  scheduledAt         DateTime  @default(now())
+  lastEvaluatedAt     DateTime?
+  dispositionReason   String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([status, retainUntil])
+  @@index([bookingId, status])
+  @@map("media_retention_schedules")
+}
+
+model MediaEvidenceHold {
+  id               String    @id @default(cuid())
+  caseId           String?
+  bookingId        String
+  vendorId         String
+  mediaAssetId     String?
+  scopeJson        String    @db.NVarChar(Max)
+  purpose          String    @db.NVarChar(Max)
+  authority        String
+  status           String    @default("ACTIVE")
+  startedByUserId  String
+  startedAt        DateTime  @default(now())
+  reviewDueAt      DateTime
+  releasedByUserId String?
+  releasedAt       DateTime?
+  releaseReason    String?   @db.NVarChar(Max)
+  evidenceHash     String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([bookingId, status, reviewDueAt])
+  @@index([mediaAssetId, status])
+  @@index([caseId, status])
+  @@map("media_evidence_holds")
+}
+
+model MediaDeletionRequest {
+  id                String    @id @default(cuid())
+  bookingId         String
+  vendorId          String
+  mediaAssetId      String
+  requestedByUserId String
+  requestedByRole   String
+  status            String    @default("REQUESTED")
+  reason            String?   @db.NVarChar(Max)
+  requestedAt       DateTime  @default(now())
+  restrictedAt      DateTime?
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  deniedReason      String?   @db.NVarChar(Max)
+  completedAt       DateTime?
+  evidenceHash      String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([bookingId, status, requestedAt])
+  @@index([mediaAssetId, status])
+  @@index([vendorId, status])
+  @@map("media_deletion_requests")
+}
+
+model MediaDeletionJob {
+  id                String    @id @default(cuid())
+  deletionRequestId String    @unique
+  bookingId         String
+  vendorId          String
+  mediaAssetId      String
+  status            String    @default("QUEUED")
+  attemptCount      Int       @default(0)
+  maxAttempts       Int       @default(5)
+  nextAttemptAt     DateTime?
+  leaseExpiresAt    DateTime?
+  verifiedAbsentAt  DateTime?
+  lastErrorCode     String?
+  lastErrorDetail   String?   @db.NVarChar(Max)
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([mediaAssetId, status])
+  @@map("media_deletion_jobs")
+}
+
+model MediaDeletionAttempt {
+  id             String    @id @default(cuid())
+  deletionJobId  String
+  attemptNumber  Int
+  status         String
+  deleteAccepted Boolean   @default(false)
+  verifiedAbsent Boolean   @default(false)
+  errorCode      String?
+  errorDetail    String?   @db.NVarChar(Max)
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([deletionJobId, attemptNumber])
+  @@index([deletionJobId, createdAt])
+  @@map("media_deletion_attempts")
+}
+
+model MediaLifecycleAppeal {
+  id              String    @id @default(cuid())
+  caseId          String
+  bookingId       String
+  vendorId        String
+  appellantUserId String
+  appellantRole   String
+  status          String    @default("SUBMITTED")
+  reason          String    @db.NVarChar(Max)
+  reviewerUserId  String?
+  decision        String?
+  decisionReason  String?   @db.NVarChar(Max)
+  submittedAt     DateTime  @default(now())
+  decidedAt       DateTime?
+  evidenceHash    String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([caseId, appellantUserId])
+  @@index([status, submittedAt])
+  @@index([bookingId, status])
+  @@map("media_lifecycle_appeals")
+}
+
+model MediaLifecycleAuditEvent {
+  id             String   @id @default(cuid())
+  bookingId      String
+  vendorId       String
+  caseId         String?
+  mediaAssetId   String?
+  actorUserId    String?
+  actorRole      String
+  eventType      String
+  priorState     String?
+  resultingState String
+  evidenceHash   String
+  metadataJson   String   @db.NVarChar(Max)
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  @@index([bookingId, createdAt])
+  @@index([caseId, createdAt])
+  @@index([mediaAssetId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([evidenceHash])
+  @@map("media_lifecycle_audit_events")
+}
+
 model BookingNotification {
   id              String    @id @default(cuid())
   bookingId       String

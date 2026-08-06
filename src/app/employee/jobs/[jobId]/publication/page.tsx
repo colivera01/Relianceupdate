@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { PublicationWorkflowCard } from "@/components/service-video/PublicationWorkflowCard";
+import { MediaLifecycleCard } from "@/components/service-video/MediaLifecycleCard";
 
 export default function EmployeePublicationDecisionPage() {
   const params = useParams<{ jobId: string }>();
@@ -23,6 +24,7 @@ export default function EmployeePublicationDecisionPage() {
           </p>
         </header>
         {jobId ? <PublicationWorkflowCard role="employee" bookingId={jobId} /> : null}
+        {jobId ? <MediaLifecycleCard role="employee" bookingId={jobId} /> : null}
       </main>
     </div>
   );

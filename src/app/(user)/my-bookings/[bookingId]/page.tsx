@@ -26,6 +26,7 @@ import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { getClientSessionHeaders } from '@/lib/client-session';
 import { appendAuthNext } from '@/lib/auth-next';
 import { PublicationWorkflowCard } from '@/components/service-video/PublicationWorkflowCard';
+import { MediaLifecycleCard } from '@/components/service-video/MediaLifecycleCard';
 
 type BookingDetail = {
   id: string;
@@ -1359,6 +1360,7 @@ function BookingMediaDetailPageContent() {
         ) : null}
 
         <PublicationWorkflowCard role="customer" bookingId={bookingId} />
+        <MediaLifecycleCard role="customer" bookingId={bookingId} />
 
         {hasExistingCustomerReview ? (
           <div id="leave-review" className="rounded-lg border bg-white p-4 space-y-3">

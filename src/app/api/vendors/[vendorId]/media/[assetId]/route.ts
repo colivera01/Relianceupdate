@@ -3,7 +3,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
-import { ARCHIVE_ACTIVE, ARCHIVE_ARCHIVED } from "@/lib/media-visibility";
+import { ARCHIVE_ACTIVE } from "@/lib/media-visibility";
+import { requestMediaDeletion } from "@/lib/media-lifecycle";
+import {
+  authorizationErrorResponse,
+  requireActorVendorManager,
+  requireRequestActor,
+} from "@/lib/request-actor";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; assetId: string }>;
@@ -11,7 +17,9 @@ interface RouteParams {
 
 /**
  * DELETE /api/vendors/[vendorId]/media/[assetId]
- * Soft delete a media asset (vendor-scoped)
+ * Request deletion of a media asset (vendor-manager scoped).
+ * Physical deletion is completed only by the lifecycle worker after blob
+ * absence is independently verified.
  */
 export async function DELETE(
   request: Request,
@@ -19,11 +27,13 @@ export async function DELETE(
 ): Promise<NextResponse> {
   try {
     const { vendorId, assetId } = await params;
-    await requireVendorMembership(request, vendorId);
+    const actor = await requireRequestActor(request);
+    requireActorVendorManager(actor, vendorId);
 
     // Find asset and verify it belongs to this vendor
     const asset = await (prisma as any).mediaAsset.findUnique({
       where: { id: assetId },
+      include: { mediaSession: { select: { bookingId: true } } },
     });
 
     if (!asset) {
@@ -40,43 +50,32 @@ export async function DELETE(
       );
     }
 
-    if (asset.deletedAt) {
+    if (asset.deletedAt || !asset.mediaSession?.bookingId) {
       return NextResponse.json(
-        { error: "Asset is already deleted" },
+        { error: asset.deletedAt ? "Asset is already archived or deleted" : "This media is not connected to a work record and requires admin review." },
         { status: 422 }
       );
     }
 
-    // Soft delete (always allowed, even if over limit)
-    const updatedAsset = await (prisma as any).mediaAsset.update({
-      where: { id: assetId },
-      data: {
-        deletedAt: new Date(),
-        archiveStatus: ARCHIVE_ARCHIVED,
-      },
+    const deletion = await requestMediaDeletion({
+      bookingId: asset.mediaSession.bookingId,
+      vendorId,
+      mediaAssetId: assetId,
+      actorUserId: actor.userId,
+      actorRole: "VENDOR_MANAGER",
+      reason: "Vendor manager requested media deletion.",
+      request,
     });
-
-    // Recalculate storage (usage drops immediately since deletedAt IS NULL filter)
-    const { calculateStorageUsage } = await import("@/lib/storage-helpers");
-    const usage = await calculateStorageUsage(vendorId);
 
     return NextResponse.json({
       success: true,
-      asset: {
-        id: updatedAsset.id,
-        deletedAt: updatedAsset.deletedAt,
-      },
-      storage: {
-        usedBytes: usage.usedBytes.toString(),
-        limitBytes: usage.limitBytes.toString(),
-        percentUsed: usage.percentUsed,
-        isOverLimit: usage.isOverLimit,
-        totalMB: (Number(usage.usedBytes) / (1024 * 1024)).toFixed(2),
-        totalGB: (Number(usage.usedBytes) / (1024 * 1024 * 1024)).toFixed(2),
-      },
+      message: "Deletion requested. Access is restricted, but the media is not deleted until Reliance verifies that the stored file is absent.",
+      deletion,
     });
   } catch (error: any) {
     console.error("[media] DELETE error:", error);
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse as NextResponse;
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
@@ -126,6 +125,17 @@ export async function PATCH(
       return NextResponse.json(
         { success: true, message: "Asset is already active", asset: { id: asset.id, deletedAt: null } },
         { status: 200 }
+      );
+    }
+
+    const lifecycleDeletion = await (prisma as any).mediaDeletionRequest?.findFirst?.({
+      where: { mediaAssetId: assetId, status: { notIn: ["DENIED"] } },
+      orderBy: { requestedAt: "desc" },
+    });
+    if (lifecycleDeletion) {
+      return NextResponse.json(
+        { error: "This asset has a lifecycle deletion record and cannot be restored through the legacy archive action." },
+        { status: 409 },
       );
     }
 

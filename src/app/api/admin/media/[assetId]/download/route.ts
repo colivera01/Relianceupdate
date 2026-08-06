@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { generateDownloadUrl } from "@/lib/azure-blob-storage";
+import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
 
 interface RouteParams {
   params: Promise<{ assetId: string }>;
@@ -26,6 +27,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         mimeType: true,
         bytes: true,
         deletedAt: true,
+        mediaSession: { select: { bookingId: true } },
       },
     });
 
@@ -35,6 +37,16 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
 
     if (asset.deletedAt) {
       return NextResponse.json({ error: "Asset has been deleted", message: "Asset has been deleted" }, { status: 410 });
+    }
+    if (asset.mediaSession?.bookingId) {
+      const lifecycle = await resolveCanonicalMediaLifecycle({
+        bookingId: String(asset.mediaSession.bookingId),
+        mediaAssetId: asset.id,
+        intendedAudience: "PRIVATE",
+      });
+      if (lifecycle.outcome === "DELETED") {
+        return NextResponse.json({ error: "Stored media is no longer available", message: "Stored media is no longer available" }, { status: 410 });
+      }
     }
 
     let downloadUrl = "";

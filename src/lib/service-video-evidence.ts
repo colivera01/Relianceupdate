@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
 import { prisma } from "@/server/db";
 import type { RecordingPermissionGate, RecordingGateSurface } from "@/lib/consent/recording-gate";
 
@@ -498,6 +499,12 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
       },
     });
     if (!gate || !session || !asset) return null;
+    const lifecycle = await resolveCanonicalMediaLifecycle({
+      bookingId: input.bookingId,
+      mediaAssetId: stage.mediaAssetId,
+      intendedAudience: "PRIVATE",
+    });
+    if (!lifecycle.privateAllowed) return null;
   }
   const assetIds = REQUIRED_SERVICE_VIDEO_STAGES.map(
     (stage) => packageStages.find((row) => row.stage === stage)?.mediaAssetId || "",

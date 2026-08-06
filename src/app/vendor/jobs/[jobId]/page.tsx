@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
 import { PublicationWorkflowCard } from "@/components/service-video/PublicationWorkflowCard";
+import { MediaLifecycleCard } from "@/components/service-video/MediaLifecycleCard";
 import {
   STAGE_VIDEO_MAX_DURATION_SECONDS,
   formatStageVideoDuration,
@@ -567,7 +568,10 @@ export default function VendorJobDetailPage() {
             ) : null}
 
             {normalizedStatus === "COMPLETED" && effectiveVendorId ? (
-              <PublicationWorkflowCard role="vendor" bookingId={jobId} vendorId={effectiveVendorId} />
+              <>
+                <PublicationWorkflowCard role="vendor" bookingId={jobId} vendorId={effectiveVendorId} />
+                <MediaLifecycleCard role="vendor" bookingId={jobId} />
+              </>
             ) : null}
 
             <Card>

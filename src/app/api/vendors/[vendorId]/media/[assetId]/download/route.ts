@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { generateDownloadUrl } from "@/lib/azure-blob-storage";
+import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; assetId: string }>;
@@ -24,7 +25,7 @@ export async function GET(
     // Find asset and verify it belongs to this vendor
     const asset = await (prisma as any).mediaAsset.findUnique({
       where: { id: assetId },
-      include: { mediaSession: { select: { sessionType: true } } },
+      include: { mediaSession: { select: { sessionType: true, bookingId: true } } },
     });
 
     if (!asset) {
@@ -56,6 +57,24 @@ export async function GET(
         { error: "Only a vendor manager may open a submitted Private Service Video." },
         { status: 403 }
       );
+    }
+
+    if (asset.mediaSession?.bookingId) {
+      const lifecycle = await resolveCanonicalMediaLifecycle({
+        bookingId: String(asset.mediaSession.bookingId),
+        mediaAssetId: asset.id,
+        intendedAudience: "PRIVATE",
+      });
+      if (!lifecycle.privateAllowed) {
+        return NextResponse.json(
+          {
+            error: "This media is restricted by an active lifecycle decision.",
+            status: lifecycle.outcome,
+            nextAction: lifecycle.nextAction || "Review the work record lifecycle status.",
+          },
+          { status: 403 },
+        );
+      }
     }
 
     // Generate SAS URL for Azure Blob Storage (60 minute expiration)

@@ -7,6 +7,7 @@ import {
   type RecordingLocationChoice,
 } from "@/lib/job-assignment";
 import { derivePermissionState, type PermissionState } from "./state-machine";
+import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
 
 export type RecordingPermissionRecord = {
   id?: string | null;
@@ -269,7 +270,7 @@ export async function loadCanonicalRecordingGate(input: {
   if (!assessmentModel?.findFirst) {
     return loadLegacyPermissionGate(input);
   }
-  const [assessment, consentRecord] = await Promise.all([
+  const [assessment, consentRecord, lifecycle] = await Promise.all([
     assessmentModel.findFirst({
       where: {
         bookingId: input.bookingId,
@@ -297,6 +298,10 @@ export async function loadCanonicalRecordingGate(input: {
         recipientMismatch: true,
         decisionEvidence: { select: { id: true } },
       },
+    }),
+    resolveCanonicalMediaLifecycle({
+      bookingId: input.bookingId,
+      intendedAudience: "PRIVATE",
     }),
   ]);
   const facts = permissionFacts({ ...input, assessment, consentRecord });
@@ -388,7 +393,15 @@ export async function loadCanonicalRecordingGate(input: {
   };
   const capability = input.capability || "record";
   let decision: RecordingPermissionGate;
-  if (!assessment || assessment.status !== "COMPLETE") {
+  if (!lifecycle.recordingAllowed) {
+    decision = blocked(base, {
+      code: "RECORDING_WITHDRAWN_OR_RESTRICTED",
+      why: "Recording has been stopped for this work record by an active withdrawal or lifecycle restriction.",
+      responsibleParticipant: (lifecycle.responsibleParticipant || "ADMIN") as RecordingGateParticipant,
+      resolution: lifecycle.nextAction || "Review the lifecycle case before attempting to record again.",
+      serviceMayContinue: assessment?.serviceCanContinueWithoutRecording !== false,
+    });
+  } else if (!assessment || assessment.status !== "COMPLETE") {
     decision = blocked(base, {
       code: "RECORDING_ASSESSMENT_REQUIRED",
       why: "The recording subject and scope have not been assessed.",

@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { prisma } from "@/server/db";
+import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
 import {
   REQUIRED_SERVICE_VIDEO_STAGES,
   type ServiceVideoStage,
@@ -717,7 +718,13 @@ export async function resolveCanonicalPublicAssetIds(filters: { bookingId?: stri
   });
   const valid: string[] = [];
   for (const row of rows) {
-    if (await canonicalEligibilityValid(prisma as any, row, { serviceId: filters.serviceId })) valid.push(row.mediaAssetId);
+    if (!(await canonicalEligibilityValid(prisma as any, row, { serviceId: filters.serviceId }))) continue;
+    const lifecycle = await resolveCanonicalMediaLifecycle({
+      bookingId: row.bookingId,
+      mediaAssetId: row.mediaAssetId,
+      intendedAudience: "PUBLIC",
+    });
+    if (lifecycle.publicAllowed) valid.push(row.mediaAssetId);
   }
   return valid;
 }
