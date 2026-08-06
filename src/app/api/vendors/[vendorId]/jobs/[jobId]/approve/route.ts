@@ -8,6 +8,7 @@ import { tryRecalculateVendorTrustScore } from "@/lib/trust-score-calculator";
 import { approvePrivateServiceVideoPackage } from "@/lib/service-video-evidence";
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { isUnclaimedBookingUserEmail, issueCustomerBookingClaimToken } from "@/lib/customer-booking-claim";
+import { ensureRetentionSchedulesForBooking } from "@/lib/media-lifecycle";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -69,6 +70,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         select: { id: true },
       });
       if (existingGrant) {
+        await ensureRetentionSchedulesForBooking(booking.id);
         return NextResponse.json({
           success: true,
           alreadyApproved: true,
@@ -119,6 +121,8 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         { status: 409 }
       );
     }
+
+    await ensureRetentionSchedulesForBooking(booking.id);
 
     await recordLifecycleAudit({
       actionType: "private_service_video_approved",

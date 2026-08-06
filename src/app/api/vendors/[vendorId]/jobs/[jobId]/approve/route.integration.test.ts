@@ -5,6 +5,7 @@ const hoisted = vi.hoisted(() => ({
   privateProofAccessGrantFindFirst: vi.fn(),
   approvePrivateServiceVideoPackage: vi.fn(),
   sendVideoReadyNotification: vi.fn(),
+  ensureRetentionSchedulesForBooking: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -28,6 +29,10 @@ vi.mock("@/lib/service-video-evidence", () => ({
 
 vi.mock("@/lib/notifications/send-video-ready", () => ({
   sendVideoReadyNotification: hoisted.sendVideoReadyNotification,
+}));
+
+vi.mock("@/lib/media-lifecycle", () => ({
+  ensureRetentionSchedulesForBooking: hoisted.ensureRetentionSchedulesForBooking,
 }));
 
 vi.mock("@/lib/lifecycle-audit", () => ({ recordLifecycleAudit: vi.fn(async () => undefined) }));
@@ -68,7 +73,9 @@ describe("vendor job Private Service Video approval", () => {
     hoisted.privateProofAccessGrantFindFirst.mockReset();
     hoisted.approvePrivateServiceVideoPackage.mockReset();
     hoisted.sendVideoReadyNotification.mockReset();
+    hoisted.ensureRetentionSchedulesForBooking.mockReset();
     hoisted.sendVideoReadyNotification.mockResolvedValue({ ok: true, channels: [{ channel: "email", success: true }] });
+    hoisted.ensureRetentionSchedulesForBooking.mockResolvedValue([]);
   });
 
   it("blocks jobs that are not awaiting manager review", async () => {
@@ -100,6 +107,7 @@ describe("vendor job Private Service Video approval", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ success: true, alreadyApproved: true });
     expect(hoisted.approvePrivateServiceVideoPackage).not.toHaveBeenCalled();
+    expect(hoisted.ensureRetentionSchedulesForBooking).toHaveBeenCalledWith("job1");
   });
 
   it("atomically approves customer-only Private proof and sends the customer notice", async () => {
@@ -135,6 +143,7 @@ describe("vendor job Private Service Video approval", () => {
         customerMetadata: expect.stringContaining("COMPLETED"),
       }),
     );
+    expect(hoisted.ensureRetentionSchedulesForBooking).toHaveBeenCalledWith("job1");
     expect(hoisted.sendVideoReadyNotification).toHaveBeenCalledOnce();
   });
 });
