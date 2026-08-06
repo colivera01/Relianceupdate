@@ -87,6 +87,7 @@
 - Governing outcomes: Exposure never increases automatically; Requested/Queued/Attempting/Retry Required are not Deleted; Completed requires verified blob absence
 - Validation: focused lifecycle/API tests, 4/4 Playwright states, TypeScript, Prisma validation/generation, production build, and screenshot review passed; full suite has five unrelated baseline failures
 - Application checkpoints: `27fa324ddab3e39222d30b470b2fc42b643ff604`, `5b83125`
+- Evidence checkpoint: `f27a3ff2d23b5c5e873631ab67e18a63b1da8a5c`
 - Evidence: [Engineering Report](<Epic 7 - Withdrawal, Disputes, Retention and Final Disposition/01_Engineering_Report.md>) and [Product Owner Demo](<Epic 7 - Withdrawal, Disputes, Retention and Final Disposition/03_Product_Owner_Demo.md>)
 - Release gates: migration-first deployment, worker scheduling, live Blob/cache verification, and signed-in four-role replay
 - Next gate: Product Owner review; Epic 8 is not authorized
@@ -100,6 +101,8 @@
 Current repository commit at Epic 6 implementation start: `2f3bcece9bff3b42ada75bd24b03cf04f88a9787`
 
 Epic 6 final checkpoint: `946ee5d2b981bf63afb93a5f0a30ddd528d3747c`
+
+Epic 7 local evidence checkpoint: `f27a3ff2d23b5c5e873631ab67e18a63b1da8a5c`
 
 Current beta application commit: `df36f113d37149adab2373964663016e4cd845a6`
 

@@ -6,10 +6,11 @@
 
 - Starting commit: `acd1ad07f60a36284244fe3edef6c6a79cd8fab1`
 - Core implementation: `27fa324ddab3e39222d30b470b2fc42b643ff604`
-- Retention integration: `5b83125`
-- Evidence package: pending this checkpoint
+- Retention integration: `5b83125b3f04106c2c4a80365d906b81c1f3990f`
+- Evidence package: `f27a3ff2d23b5c5e873631ab67e18a63b1da8a5c`
+- Git-record update: this document's scoped follow-up commit
 - Remote: `origin` (`colivera01/Relianceupdate`)
-- Push: pending final evidence commit
+- Push: pending final scope verification
 
 ## Validation
 
