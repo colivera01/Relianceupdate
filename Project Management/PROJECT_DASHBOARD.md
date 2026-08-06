@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-05 (Epic 6 engineering complete; Product Owner and release gates pending)
+**Last updated:** 2026-08-05 (Epic 6 approved and frozen; Epic 7 planning active)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Completed Epics
@@ -67,22 +67,25 @@
 
 **Epic 6 - Exact-Media Public Proof and Admin Moderation**
 
-- Status: **Engineering complete locally; Product Owner review pending**
+- Status: **Completed and frozen**
+- Product Owner decision: Approved on 2026-08-05
 - Delivered: Exact-version proposals, all/some/none/correction customer decisions, applicable participant decisions, vendor representation approval, admin moderation, canonical Public eligibility, and fail-closed public serving
 - Governing rule: A Public Service Video must retain the complete unchanged evidence chain; any presentation-affecting change requires a new version and approval chain
 - Validation: 45/45 Epic 6 focused tests, 331/331 cross-epic regressions, 5/5 Playwright states, TypeScript, Prisma validation/generation, and production build passed
 - Application checkpoint: `d6edf5cee81b11d9c1eb9fc5ee9bbbe4fbe96e5d`
 - Evidence: [Engineering Report](<Epic 6 - Exact-Media Public Proof and Admin Moderation/01_Engineering_Report.md>), [UX Review](<Epic 6 - Exact-Media Public Proof and Admin Moderation/02_UX_Review.md>), and [Product Owner Demo](<Epic 6 - Exact-Media Public Proof and Admin Moderation/03_Product_Owner_Demo.md>)
-- Release gates: Apply/reconcile the additive migration, deploy the package, and complete live customer/vendor/employee/admin plus storage/cache replay
+- Release gates: Apply/reconcile the additive migration, deploy the package, validate storage and cache behavior, complete physical-device replay, and complete the four-role Product Owner replay
+- Release-gate classification: Migration, deployment, storage validation, cache validation, physical-device replay, and four-role replay are release gates, not Epic 6 engineering defects
+- Maintenance rule: No further Epic 6 implementation unless a genuine beta defect is discovered
 
 ## Current Active Epic
 
-**Epic 6 - Exact-Media Public Proof and Admin Moderation**
+**Epic 7 - Withdrawal, Disputes, Retention and Final Disposition**
 
-- Status: **Engineering complete locally; Product Owner review pending**
-- Objective delivered: Exact completed media can become Public only after matching customer, applicable participant, vendor, and admin decisions
-- Migration/deployment: Not applied or deployed
-- Next gate: Product Owner evidence review, then a separately approved migration/deployment/live-replay checkpoint
+- Status: **Planning only; implementation not authorized**
+- Objective: Design the complete reversible-access and defensible-disposition experience on top of Epic 6 canonical exact-media eligibility
+- Governing outcomes: Immediate unpublishing, scoped disputes and holds, truthful deletion states, verified physical purge, preserved immutable history, and neutral appeals
+- Next gate: Product Owner review of the Epic 7 implementation plan
 
 ## Current Branch
 
@@ -92,7 +95,7 @@
 
 Current repository commit at Epic 6 implementation start: `2f3bcece9bff3b42ada75bd24b03cf04f88a9787`
 
-Epic 6 application commit: `d6edf5cee81b11d9c1eb9fc5ee9bbbe4fbe96e5d`
+Epic 6 final checkpoint: `946ee5d2b981bf63afb93a5f0a30ddd528d3747c`
 
 Current beta application commit: `df36f113d37149adab2373964663016e4cd845a6`
 
@@ -118,8 +121,8 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 | 3     | Trusted Accounts and Role Isolation                   | **Phase A completed and deployed; Phase B deferred** | Phase A complete | Reviewed | Live validation passed | `59d696f` |
 | 4     | Universal Work Record and Recording Gates             | **Completed and frozen** | Complete | Reviewed | Product Owner approved | `98c50ae` |
 | 5     | Safe Capture Through Private Service Videos           | **Completed and frozen** | Complete | Reviewed | Product Owner approved; release replay pending | `dcf6347` |
-| 6     | Exact-Media Public Proof and Admin Moderation         | **Engineering complete; review pending** | Complete locally | Reviewed | Automated evidence ready | Pending final checkpoint |
-| 7     | Withdrawal, Disputes, Retention and Final Disposition | Not started                               | Not started | Not started | Not run | Not recorded       |
+| 6     | Exact-Media Public Proof and Admin Moderation         | **Completed and frozen** | Complete | Reviewed | Product Owner approved; release replay pending | `946ee5d` |
+| 7     | Withdrawal, Disputes, Retention and Final Disposition | **Planning active** | Not started | Not started | Not run | Not recorded       |
 | 8     | Trust Score and Evidence-Based Dashboards             | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 9     | Responsible AI and Fair Admin Support                 | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 10    | Notifications and Help Alignment                      | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -128,7 +131,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 
 ## Beta Readiness Progress
 
-The Beta Readiness Checklist remains the master acceptance tracker. Epic 3 Phase A and A5 are deployed, Epics 4 and 5 are approved and frozen, and Epic 6 is engineering-complete locally with release gates pending.
+The Beta Readiness Checklist remains the master acceptance tracker. Epic 3 Phase A and A5 are deployed; Epics 4, 5, and 6 are approved and frozen; Epic 6 release gates remain pending; and Epic 7 is in planning only.
 
 - Engineering-complete roadmap epics: 6 of 12; Epic 3 Phase B is intentionally deferred and does not reopen Phase A
 - Completed RR-1A gates: A3, A5, A8, A10, A11, and A14 have current evidence; the final status remains governed by the RR-1A tracker and Product Owner acceptance
@@ -155,7 +158,7 @@ The Beta Readiness Checklist remains the master acceptance tracker. Epic 3 Phase
 
 | Item | Blocker | Owner | Resolution |
 |---|---|---|---|
-| Epic 6 formal closure | Local evidence is complete; migration, deployment, and live replay have not run | Product Owner / Engineering | Review the evidence package and authorize or revise the release checkpoint |
+| Epic 7 implementation | Complete implementation plan requires Product Owner review | Product Owner | Approve, revise, or reject the Epic 7 plan before any code or migration work begins |
 
 ## Remaining Internal Beta Checkpoints
 
@@ -206,7 +209,7 @@ The deferred A2/A4/A6/A7 replay is not waived. Epic 4 and Epic 5 must preserve t
 
 ## Next Engineering Decision
 
-Review the Epic 6 evidence package. Epic 3 Phase B remains deferred; Epics 4 and 5 remain frozen. Do not apply the migration, deploy Epic 6, or begin Epic 7 without Product Owner approval.
+Review the Epic 7 implementation plan. Epic 3 Phase B remains deferred; Epics 4, 5, and 6 remain frozen. Do not implement Epic 7, apply its migrations, or begin Epic 8 without Product Owner approval.
 
 ## Required Update Cycle
 

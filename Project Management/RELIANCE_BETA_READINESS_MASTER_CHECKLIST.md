@@ -4,7 +4,11 @@
 
 **Checkpoint date:** 2026-08-05
 
-**Epic status:** **Engineering Complete; Product Owner review pending**
+**Epic status:** **Completed and frozen**
+
+**Product Owner decision:** Approved on 2026-08-05
+
+**Engineering status:** **Engineering Complete**
 
 **Deployment status:** Not deployed; additive migration `20260805213000_add_exact_media_publication_evidence` is not applied
 
@@ -22,10 +26,12 @@ Epic 6 replaces raw visibility flags as Public authority with one exact-media ev
 - Publication creates no review, rating, Trust Score input, permission, recording state, AI decision, or synthetic customer activity.
 - Validation passed: 45/45 Epic 6 focused tests, 331/331 Epic 1-6 regressions, 5/5 Playwright states, TypeScript, Prisma validation/generation, production build, and standalone package inspection.
 - Full suite result: 835/840; five untouched unrelated failures are documented in the Engineering Report.
+- Migration, deployment, storage validation, cache validation, physical-device replay, and four-role Product Owner replay remain release gates rather than Epic 6 engineering defects.
 - `CON-15`, `CON-27`, `VID-07`, `VID-09` through `VID-13`, `ADM-01`, publication portions of `SEC-05` and `SEC-08`, `TEST-10`, `SHOT-01`, `SHOT-02`, `SHOT-04`, `SHOT-07`, and `DOC-01` through `DOC-07` gain local implementation evidence but remain release-shared until migration, deployment, live replay, and final release criteria pass.
 - Notifications were intentionally preserved under the final scope boundary; publication lifecycle delivery remains Epic 10 work.
 - No row is marked Beta Ready from local implementation alone.
-- Do not begin Epic 7 or deploy Epic 6 without Product Owner approval.
+- Epic 6 is frozen. Do not reopen it unless beta validation identifies a genuine defect.
+- The next active objective is Epic 7 planning. No Epic 7 implementation is authorized by this checkpoint.
 
 ## Epic 5 Implementation Checkpoint - Safe Capture Through Private Service Videos
 
