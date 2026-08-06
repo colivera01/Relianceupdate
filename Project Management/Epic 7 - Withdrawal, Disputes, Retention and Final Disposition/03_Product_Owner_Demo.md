@@ -1,39 +1,43 @@
 # Epic 7 Product Owner Demo
 
-**Epic:** Withdrawal, Disputes, Retention and Final Disposition
-**Build / commit:** TBD
-**Demo date:** TBD
-**Product Owner:** Cesar Olivera
-**Overall result:** Not run
+**Build:** `27fa324` plus `5b83125`
+**Prepared:** 2026-08-05
+**Overall result:** Automated evidence complete; signed-in beta replay pending
 
-For every row, record Pass, Fail, or Blocked plus evidence and disposition.
+| Validate | Product Owner action and expected observation | Current result | Evidence |
+|---|---|---|---|
+| Customer Private outcome | Open completed Private proof. Confirm it remains valid and no Public pressure appears. | Pass (fixture) | `08_Screenshots/Desktop/01-customer-private-empty.png` |
+| Public withdrawal | Withdraw publication. Refresh and reopen. Public access stops and status says Public withdrawn/Private, not deleted. | Pass (automated) | `02-customer-public-withdrawn.png` |
+| Deletion request | Request deletion. Confirm status is Requested/Restricted and does not claim deletion. | Pass (automated) | desktop/mobile deletion screenshots |
+| Dispute restriction | Submit privacy/identity/safety concern. Public and direct media reads fail closed pending admin review. | Pass (tests) | lifecycle API and public route tests |
+| Employee state | Assigned employee sees likeness-only authority; recording withdrawal blocks canonical gate. | Pass (fixture/tests) | `Mobile/02-employee-likeness-only.png` |
+| Vendor state | Vendor sees least-exposure status and cannot restore Public or bypass restrictions. | Pass (tests) | role API tests |
+| Admin state | Open `/admin/media-lifecycle`; verify case, hold, appeal, deletion, retry, and final evidence. | Pass (fixture) | `Desktop/04-admin-lifecycle-queue.png` |
+| Hold | Create hold, approve deletion, and confirm job remains Held until an authorized release. | Pass (tests) | core lifecycle tests |
+| Verified deletion | Run controlled worker against a test blob. Confirm Completed only after `exists=false`. | Blocked | Requires beta migration/storage fixture |
+| Retention | Approve Private proof and confirm one schedule per asset; Public approval pauses expiry. | Pass (tests); live pending | manager-approval and core tests |
+| Notifications | Confirm current page state; lifecycle-specific outbound notices are not claimed. | Deferred | Epic 10 alignment |
+| Trust Score | Confirm no lifecycle action adds/recalculates a Trust Score input. | Pass (code/tests) | no Trust Score mutation in lifecycle paths |
+| Reviews | Confirm no withdrawal, dispute, hold, or deletion creates/changes a review. | Pass (code/tests) | no Review mutation in lifecycle paths |
+| Audit | Reconstruct actor, role, prior/resulting state, evidence hash, request context, deletion attempts, and verified result. | Pass (tests) | lifecycle audit models/tests |
+| Screenshots | Review all eight desktop/mobile/status screenshots; confirm synthetic data only. | Pass | `08_Screenshots/README.md` |
 
-| Validate | Exact action and expected observation | Result | Evidence | Observation / defect | Owner | Disposition |
-|---|---|---|---|---|---|---|
-| Expected workflow | Complete the epic's approved end-to-end workflow and verify every decision and recovery state. | Not run | | | | |
-| Expected notifications | Trigger every affected notification and verify recipient, channel, copy, link, retry, failure, and delivery evidence. | Not run | | | | |
-| Expected dashboard updates | Keep affected role views open and verify confirmed state and next action update consistently. | Not run | | | | |
-| Expected database state | Inspect controlled test records and verify the exact models, state, evidence, and absence of fabricated activity. | Not run | | | | |
-| Expected admin state | Verify authorized admin visibility and actions, plus denial of prohibited overrides. | Not run | | | | |
-| Expected customer state | Verify control, privacy, understandable choices, and complete loading/success/failure/empty/blocked states. | Not run | | | | |
-| Expected vendor state | Verify the vendor always sees the current status, responsible participant, and correct next action. | Not run | | | | |
-| Expected employee state | Verify only assigned, approved actions are available and blocked reasons are clear. | Not run | | | | |
-| Expected Trust Score behavior | Verify only genuine approved inputs affect the score and all non-effects remain neutral. | Not run | | | | |
-| Expected review behavior | Verify genuine optional reviews remain separate and no review/rating is inferred or fabricated. | Not run | | | | |
-| Expected audit history | Reconstruct every consequential actor, version, decision, attempt, failure, and outcome. | Not run | | | | |
-| Expected screenshots | Review the indexed desktop/mobile/state/before-after package and confirm sensitive data is redacted. | Not run | | | | |
+## Exact Live Replay Order
 
-## Follow-Up Defects
-
-| ID | Severity | Description | Owner | Required before approval? | Status |
-|---|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD | TBD |
+1. Apply the Epic 7 migration before mounting the application package.
+2. Use controlled customer, vendor, assigned employee, and admin accounts.
+3. Create synthetic completed Private proof and one approved Public proposal.
+4. Replay customer Public withdrawal, refresh, direct URL, and customer access.
+5. Replay employee likeness withdrawal and vendor dispute.
+6. Review the admin queue; create/release a hold and decide a deletion request.
+7. Run the worker on a controlled Blob first with forced failure, then successful deletion and independent absence verification.
+8. Confirm no review, rating, Trust Score input, permission, recording approval, or new Public eligibility was created.
 
 ## Product Owner Decision
 
-- [ ] Approved to close this epic
+- [ ] Approved to close/freeze Epic 7
 - [ ] Changes required
 - [ ] Blocked
-- [ ] Next epic authorized
+- [ ] Epic 8 authorized
 
-**Decision notes:** TBD
+**Decision notes:** Pending signed-in beta replay and Product Owner review.

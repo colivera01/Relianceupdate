@@ -1,88 +1,62 @@
 # Epic 7 UX Review
 
-**Epic:** Withdrawal, Disputes, Retention and Final Disposition
-**Build / commit reviewed:** TBD
-**Review date:** TBD
-**Status:** Not started
-
-Review the implementation as a first-time user. Working code is not sufficient evidence of good UX.
+**Build reviewed:** `27fa324` plus `5b83125`
+**Review date:** 2026-08-05
+**Status:** Controlled desktop/mobile review complete; live role replay pending
 
 ## Customer
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Why am I here? | TBD | TBD | TBD | TBD |
-| What is happening? | TBD | TBD | TBD | TBD |
-| What do I need to do? | TBD | TBD | TBD | TBD |
-| What happens if I do nothing? | TBD | TBD | TBD | TBD |
-| What happens next? | TBD | TBD | TBD | TBD |
-| What stays private? | TBD | TBD | TBD | TBD |
-| Wording/hierarchy/anxiety/accessibility/recovery | TBD | TBD | TBD | TBD |
+The lifecycle card explains whether proof is Private, Public withdrawn, restricted, held, or pending deletion. Public withdrawal is immediate and does not falsely imply physical deletion. A deletion request explains that evidence may remain restricted while reviewed. The primary action is clear and destructive actions use confirmation.
+
+**Finding:** The customer does not yet receive a lifecycle-specific outbound confirmation. This does not make the in-app state false, but Epic 10 should align delivery and copy. Severity: medium, non-blocking for local engineering.
 
 ## Vendor
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Current status and next action | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Controls and button placement | TBD | TBD | TBD | TBD |
-| Privacy reassurance and failure recovery | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+The vendor sees the current outcome and next responsible participant without receiving authority to reverse a customer withdrawal or admin restriction. The vendor can report a dispute and request deletion, but cannot silently make restricted media Public.
+
+**Finding:** The lifecycle card shares space with existing job controls on dense pages. Mobile hierarchy is acceptable in the fixture, but a real populated vendor job needs beta screenshot review. Severity: low.
 
 ## Employee
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Assignment and allowed action | TBD | TBD | TBD | TBD |
-| Recording boundaries / blocked reason | TBD | TBD | TBD | TBD |
-| Wording and hierarchy | TBD | TBD | TBD | TBD |
-| Recovery and manager escalation | TBD | TBD | TBD | TBD |
-| Accessibility and mobile behavior | TBD | TBD | TBD | TBD |
+The assigned employee receives only the likeness-withdrawal action, not customer publication or deletion authority. The mobile fixture clearly identifies the restricted scope. Recording withdrawal also feeds the existing canonical recording gate.
+
+**Finding:** A real assigned-work replay is required to confirm the lifecycle card does not push stage controls below an awkward fold. Severity: low, release gate.
 
 ## Admin
 
-| Review area | Observation | Severity | Required change | Evidence |
-|---|---|---|---|---|
-| Evidence available for a fair decision | TBD | TBD | TBD | TBD |
-| Authority and non-override boundaries | TBD | TBD | TBD | TBD |
-| Wording and information hierarchy | TBD | TBD | TBD | TBD |
-| Failure/recovery/audit visibility | TBD | TBD | TBD | TBD |
-| Accessibility and responsive behavior | TBD | TBD | TBD | TBD |
+The queue separates case, hold, deletion, and appeal evidence. Statuses distinguish request, hold, retry, failure, and verified completion. Admin cannot make a failed deletion appear complete, and an appeal requires a second reviewer.
+
+**Finding:** The queue is operationally dense. Filters and paging are minimal; acceptable for controlled beta volume, but should be revisited when case volume is known. Severity: low.
 
 ## Cross-Role Consistency
 
-- Status names consistent: TBD
-- Next action consistent: TBD
-- Private/Public meaning consistent: TBD
-- Notifications match dashboards: TBD
-- No role sees broader data than needed: TBD
+- Status names are derived from the same canonical resolver.
+- Exposure never increases automatically.
+- Private remains a complete outcome.
+- `Requested`, `Queued`, `Retry Required`, and `Held` never say `Deleted`.
+- No role gains broader data or authority from the UI.
+- Loading and failure states preserve the last safe assumption and provide retry.
 
 ## Journey Summaries
 
 ### Customer Journey
 
-TBD
+Open completed work, review current audience, withdraw Public visibility or recording authority, report a concern, or request deletion. The page immediately shows the least-exposure truthful outcome and identifies what happens next.
 
 ### Vendor Journey
 
-TBD
+Open the work record, see that access has narrowed, understand who must act, and submit a scoped dispute/deletion request without overriding customer or admin authority.
 
 ### Employee Journey
 
-TBD
+Open assigned work, understand whether recording remains allowed, and withdraw personal likeness authorization without controlling the customer's property or publication decision.
 
 ### Admin Journey
 
-TBD
-
-## Blocking UX Findings
-
-| Finding | Role | Owner | Resolution | Retest |
-|---|---|---|---|---|
-| None / TBD | TBD | TBD | TBD | TBD |
+Open Permission and Media Lifecycle evidence, review immutable history, manage holds/cases/deletion decisions, and verify final disposition without fabricating completion.
 
 ## UX Verdict
 
-**Result:** Not reviewed
-**Blocking confusion remains:** TBD
-**Ready for Product Owner demo:** No
+**Result:** Good for controlled beta engineering evidence
+**Blocking confusion:** None found in controlled fixtures
+**Ready for Product Owner demo:** Yes, after migration/deployment creates a live role-safe environment

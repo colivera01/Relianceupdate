@@ -1,5 +1,33 @@
 # RELIANCE BETA READINESS MASTER CHECKLIST
 
+## Epic 7 Implementation Checkpoint - Withdrawal, Disputes, Retention and Final Disposition
+
+**Checkpoint date:** 2026-08-05
+
+**Epic status:** **Engineering Complete; Product Owner review pending**
+
+**Deployment status:** Not deployed; additive migration `20260805233000_add_media_lifecycle_evidence` is not applied
+
+**Primary evidence:** `Project Management/Epic 7 - Withdrawal, Disputes, Retention and Final Disposition/`
+
+Epic 7 adds one canonical least-exposure lifecycle across recording withdrawal, Public withdrawal, likeness withdrawal, disputes, holds, retention, deletion, appeals, and final disposition.
+
+- Exposure may narrow `Public -> Private -> Restricted -> Held -> Deleted`; it never increases automatically.
+- Public withdrawal invalidates canonical Public eligibility immediately and read-time media checks fail closed.
+- `Requested`, `Queued`, `Attempting`, `Verifying`, `Retry Required`, and `Held` are truthful non-deleted states.
+- `Completed` is written only after the storage provider independently verifies blob absence.
+- Private retention schedules start or refresh when manager approval creates customer-visible Private proof.
+- Customer, vendor, assigned employee, and admin actions remain ownership/membership/role scoped.
+- No lifecycle action creates a review, rating, Trust Score input, permission, recording approval, publication approval, Public video, or AI decision.
+- Local validation passed focused lifecycle/API tests, 4/4 Playwright states, TypeScript, Prisma validation/generation, production build, and screenshot review.
+- Full suite result: 850 passed and five unrelated baseline failures; details are in the Engineering Report.
+- `CON-16` through `CON-21`, `VID-12`, `VID-16`, `VID-18`, `ADM-03`, `ADM-05`, `ADM-06`, relevant `SEC-05`, `SEC-08`, `DEP-03`, `TEST-13`, `SHOT-01`, `SHOT-02`, `SHOT-04`, `SHOT-07`, and `DOC-*` gain local evidence.
+- The current master checklist does not represent every referenced plan ID as an individual row; the Epic 7 checklist snapshot records the approved mapping without inventing Beta Ready rows.
+- Migration-first deployment, Azure worker scheduling, live Blob/cache validation, and signed-in four-role Product Owner replay remain release gates.
+- Lifecycle-specific outbound notifications remain Epic 10 work and are not claimed here.
+- No row is marked Beta Ready from local implementation alone.
+- Epic 7 is not frozen. Product Owner review is required, and Epic 8 is not authorized.
+
 ## Epic 6 Implementation Checkpoint - Exact-Media Public Proof and Admin Moderation
 
 **Checkpoint date:** 2026-08-05
