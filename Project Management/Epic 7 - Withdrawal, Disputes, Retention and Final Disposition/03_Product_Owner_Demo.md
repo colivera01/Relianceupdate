@@ -2,7 +2,7 @@
 
 **Build:** `27fa324` plus `5b83125`
 **Prepared:** 2026-08-05
-**Overall result:** Automated evidence complete; signed-in beta replay pending
+**Overall result:** Product Owner approved Epic 7 engineering; signed-in beta replay remains a release gate
 
 | Validate | Product Owner action and expected observation | Current result | Evidence |
 |---|---|---|---|
@@ -35,9 +35,9 @@
 
 ## Product Owner Decision
 
-- [ ] Approved to close/freeze Epic 7
+- [x] Approved to close/freeze Epic 7
 - [ ] Changes required
 - [ ] Blocked
-- [ ] Epic 8 authorized
+- [x] Epic 8 planning authorized
 
-**Decision notes:** Pending signed-in beta replay and Product Owner review.
+**Decision notes:** Approved on 2026-08-05. Migration, deployment, lifecycle worker scheduling, live Blob validation, cache validation, and signed-in four-role replay remain release gates rather than engineering defects. Epic 8 implementation is not authorized until its plan receives Product Owner approval.

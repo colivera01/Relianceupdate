@@ -2,7 +2,7 @@
 
 **Snapshot date:** 2026-08-05
 **Starting commit:** `acd1ad07f60a36284244fe3edef6c6a79cd8fab1`
-**Status:** Local engineering evidence complete; release gates open
+**Status:** Completed and frozen; release gates open
 
 ## Evidence Movement
 
@@ -24,4 +24,5 @@ The current master checklist does not contain each plan identifier as an individ
 - No row is Beta Ready from code existence alone.
 - Migration, deployment, live storage/cache verification, worker scheduling, and four-role replay remain release gates.
 - Reviews, Trust Score, AI, permission, recording approval, and publication approval remain unaffected.
-- Epic 8 is not authorized by this snapshot.
+- Product Owner approved and froze Epic 7 on 2026-08-05.
+- Epic 8 planning is active; implementation remains unauthorized until the plan is approved.

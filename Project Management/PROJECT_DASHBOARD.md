@@ -1,7 +1,7 @@
 # Reliance Project Dashboard
 
 **Purpose:** Permanent master record for implementation progress through private beta.
-**Last updated:** 2026-08-05 (Epic 7 engineering complete; Product Owner review and release gates pending)
+**Last updated:** 2026-08-05 (Epic 7 approved and frozen; Epic 8 implementation planning active)
 **Update rule:** Update this dashboard after every completed epic and link the final evidence in that epic folder.
 
 ## Completed Epics
@@ -78,19 +78,28 @@
 - Release-gate classification: Migration, deployment, storage validation, cache validation, physical-device replay, and four-role replay are release gates, not Epic 6 engineering defects
 - Maintenance rule: No further Epic 6 implementation unless a genuine beta defect is discovered
 
-## Current Active Epic
-
 **Epic 7 - Withdrawal, Disputes, Retention and Final Disposition**
 
-- Status: **Engineering complete; Product Owner review pending**
+- Status: **Completed and frozen**
+- Product Owner decision: Approved on 2026-08-05
 - Delivered: Canonical least-exposure lifecycle resolution, scoped withdrawal, immediate Public invalidation, disputes, evidence holds, retention schedules, deletion requests/jobs/attempts, verified physical-deletion completion, appeals, and cross-role status UX
 - Governing outcomes: Exposure never increases automatically; Requested/Queued/Attempting/Retry Required are not Deleted; Completed requires verified blob absence
 - Validation: focused lifecycle/API tests, 4/4 Playwright states, TypeScript, Prisma validation/generation, production build, and screenshot review passed; full suite has five unrelated baseline failures
 - Application checkpoints: `27fa324ddab3e39222d30b470b2fc42b643ff604`, `5b83125`
 - Evidence checkpoint: `f27a3ff2d23b5c5e873631ab67e18a63b1da8a5c`
 - Evidence: [Engineering Report](<Epic 7 - Withdrawal, Disputes, Retention and Final Disposition/01_Engineering_Report.md>) and [Product Owner Demo](<Epic 7 - Withdrawal, Disputes, Retention and Final Disposition/03_Product_Owner_Demo.md>)
-- Release gates: migration-first deployment, worker scheduling, live Blob/cache verification, and signed-in four-role replay
-- Next gate: Product Owner review; Epic 8 is not authorized
+- Release gates: additive migration, application deployment, lifecycle worker scheduling, live Blob validation, cache validation, and signed-in four-role replay
+- Release-gate classification: These remaining items are deployment and release validation, not Epic 7 engineering defects
+- Maintenance rule: No further Epic 7 implementation unless a genuine beta defect is discovered
+
+## Current Active Epic
+
+**Epic 8 - Trust Score and Evidence-Based Dashboards**
+
+- Status: **Implementation planning active; Product Owner approval required before code**
+- Objective: Reconcile customer, vendor, public, and admin metrics to one explainable evidence dictionary while preserving genuine review and privacy neutrality
+- Plan: [Epic 8 Implementation Plan](<Epic 8 - Trust Score and Evidence-Based Dashboards/RELIANCE_EPIC_8_TRUST_SCORE_AND_EVIDENCE_BASED_DASHBOARDS_IMPLEMENTATION_PLAN.md>)
+- Implementation boundary: No code, migration, deployment, or recalculation begins until Product Owner approval
 
 ## Current Branch
 
@@ -129,8 +138,8 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 | 4     | Universal Work Record and Recording Gates             | **Completed and frozen** | Complete | Reviewed | Product Owner approved | `98c50ae` |
 | 5     | Safe Capture Through Private Service Videos           | **Completed and frozen** | Complete | Reviewed | Product Owner approved; release replay pending | `dcf6347` |
 | 6     | Exact-Media Public Proof and Admin Moderation         | **Completed and frozen** | Complete | Reviewed | Product Owner approved; release replay pending | `946ee5d` |
-| 7     | Withdrawal, Disputes, Retention and Final Disposition | **Engineering complete; review pending** | Complete | Reviewed | Controlled evidence complete; live replay pending | `27fa324`, `5b83125` |
-| 8     | Trust Score and Evidence-Based Dashboards             | Not started                               | Not started | Not started | Not run | Not recorded       |
+| 7     | Withdrawal, Disputes, Retention and Final Disposition | **Completed and frozen** | Complete | Reviewed | Product Owner approved; release replay pending | `27fa324`, `5b83125` |
+| 8     | Trust Score and Evidence-Based Dashboards             | **Planning active** | Not started | Not started | Not run | Planning checkpoint pending |
 | 9     | Responsible AI and Fair Admin Support                 | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 10    | Notifications and Help Alignment                      | Not started                               | Not started | Not started | Not run | Not recorded       |
 | 11    | Legal Documents and Agreements                        | Not started                               | Not started | Not started | Not run | Not recorded       |
@@ -138,7 +147,7 @@ The six issues in `Updates 7-31-26.docx` were corrected without beginning Epic 2
 
 ## Beta Readiness Progress
 
-The Beta Readiness Checklist remains the master acceptance tracker. Epic 3 Phase A and A5 are deployed; Epics 4, 5, and 6 are approved and frozen; Epic 7 engineering is complete locally and awaits Product Owner review plus release gates.
+The Beta Readiness Checklist remains the master acceptance tracker. Epic 3 Phase A and A5 are deployed; Epics 4 through 7 are approved and frozen; Epic 8 implementation planning is active.
 
 - Engineering-complete roadmap epics: 7 of 12; Epic 3 Phase B is intentionally deferred and does not reopen Phase A
 - Completed RR-1A gates: A3, A5, A8, A10, A11, and A14 have current evidence; the final status remains governed by the RR-1A tracker and Product Owner acceptance
@@ -158,7 +167,7 @@ The Beta Readiness Checklist remains the master acceptance tracker. Epic 3 Phase
 | Epic 5 additive migration/deployment | Product Owner / Engineering | Release gate | Apply migration before mounting the application package; verify exact schema and rollback readiness without reopening Epic 5 engineering |
 | Epic 5 physical-device and four-role replay | Product Owner / Engineering | Release gate | Run physical Android/iOS capture, upload interruption/retry, manager correction/approval, Private customer access, and role denials |
 | Epic 6 migration/deployment/live replay | Product Owner / Engineering | Release gate | Apply and reconcile exact-media evidence migration, deploy, and verify four-role decisions plus direct Public storage/cache behavior |
-| Epic 7 migration/deployment/live replay | Product Owner / Engineering | Release gate | Apply the additive migration before the package, configure the worker, verify live Blob absence/cache behavior, and replay customer/vendor/employee/admin states |
+| Epic 7 migration/deployment/live replay | Product Owner / Engineering | Release gate | Apply the additive migration before the package, deploy, schedule the lifecycle worker, verify live Blob absence and cache behavior, and replay customer/vendor/employee/admin states |
 | Deferred A2/A4/A6/A7 replay | Product Owner / Engineering | Intentionally deferred | Execute once after Epic 4 and Epic 5 so the complete recording journey is validated together |
 | High dependency advisories | Product Owner / Engineering | Documented | Continue package-specific decisions; never use blind or forced upgrade |
 
@@ -166,7 +175,7 @@ The Beta Readiness Checklist remains the master acceptance tracker. Epic 3 Phase
 
 | Item | Blocker | Owner | Resolution |
 |---|---|---|---|
-| Epic 7 closure | Migration, deployment, live storage/cache evidence, and Product Owner replay are not complete | Product Owner / Engineering | Review local evidence, then authorize a separate migration-first deployment checkpoint |
+| Epic 8 implementation | Product Owner approval of the implementation plan has not yet been recorded | Product Owner | Review the Epic 8 plan; authorize or revise before any code, migration, or deployment work |
 
 ## Remaining Internal Beta Checkpoints
 

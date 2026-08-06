@@ -1,12 +1,13 @@
 # Epic 7 Engineering Report
 
 **Epic:** Withdrawal, Disputes, Retention and Final Disposition
-**Status:** Engineering complete; Product Owner review pending
+**Status:** Completed and frozen; release gates pending
 **Branch:** `codex/epic3-beta-admin-grant-correction`
 **Starting commit:** `acd1ad07f60a36284244fe3edef6c6a79cd8fab1`
 **Application commits:** `27fa324ddab3e39222d30b470b2fc42b643ff604`, `5b83125b3f04106c2c4a80365d906b81c1f3990f`
 **Evidence package:** `f27a3ff2d23b5c5e873631ab67e18a63b1da8a5c`
 **Report date:** 2026-08-05
+**Product Owner decision:** Approved on 2026-08-05
 
 ## Objective
 

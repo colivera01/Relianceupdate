@@ -4,7 +4,9 @@
 
 **Checkpoint date:** 2026-08-05
 
-**Epic status:** **Engineering Complete; Product Owner review pending**
+**Epic status:** **Completed and frozen**
+
+**Product Owner decision:** Approved on 2026-08-05
 
 **Deployment status:** Not deployed; additive migration `20260805233000_add_media_lifecycle_evidence` is not applied
 
@@ -23,10 +25,11 @@ Epic 7 adds one canonical least-exposure lifecycle across recording withdrawal, 
 - Full suite result: 850 passed and five unrelated baseline failures; details are in the Engineering Report.
 - `CON-16` through `CON-21`, `VID-12`, `VID-16`, `VID-18`, `ADM-03`, `ADM-05`, `ADM-06`, relevant `SEC-05`, `SEC-08`, `DEP-03`, `TEST-13`, `SHOT-01`, `SHOT-02`, `SHOT-04`, `SHOT-07`, and `DOC-*` gain local evidence.
 - The current master checklist does not represent every referenced plan ID as an individual row; the Epic 7 checklist snapshot records the approved mapping without inventing Beta Ready rows.
-- Migration-first deployment, Azure worker scheduling, live Blob/cache validation, and signed-in four-role Product Owner replay remain release gates.
+- Additive migration, application deployment, lifecycle worker scheduling, live Blob validation, cache validation, and signed-in four-role Product Owner replay remain release gates rather than engineering defects.
 - Lifecycle-specific outbound notifications remain Epic 10 work and are not claimed here.
 - No row is marked Beta Ready from local implementation alone.
-- Epic 7 is not frozen. Product Owner review is required, and Epic 8 is not authorized.
+- Epic 7 is frozen. Do not reopen it unless beta validation identifies a genuine defect.
+- The next active objective is Epic 8 implementation planning. No Epic 8 code, migration, or deployment is authorized by this checkpoint.
 
 ## Epic 6 Implementation Checkpoint - Exact-Media Public Proof and Admin Moderation
 
