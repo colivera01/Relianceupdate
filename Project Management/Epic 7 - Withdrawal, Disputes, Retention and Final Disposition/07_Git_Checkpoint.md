@@ -8,9 +8,9 @@
 - Core implementation: `27fa324ddab3e39222d30b470b2fc42b643ff604`
 - Retention integration: `5b83125b3f04106c2c4a80365d906b81c1f3990f`
 - Evidence package: `f27a3ff2d23b5c5e873631ab67e18a63b1da8a5c`
-- Git-record update: this document's scoped follow-up commit
+- Git-record update: `b7fa6a0`
 - Remote: `origin` (`colivera01/Relianceupdate`)
-- Push: pending final scope verification
+- Push: successful to `origin/codex/epic3-beta-admin-grant-correction` on 2026-08-05
 
 ## Validation
 
