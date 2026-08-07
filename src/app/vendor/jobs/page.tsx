@@ -953,7 +953,7 @@ export default function VendorJobs() {
     location === 'residence' || location === 'customer-business';
   const consentSatisfiedForCompliance = !consentRequiredForCompliance || customerConsentReceived;
   const locationRequiredForCompliance =
-    location === 'business' || location === 'customer-business';
+    location === 'business' || location === 'residence' || location === 'customer-business';
   const locationSatisfiedForCompliance = true;
   const allComplianceChecksPassed =
     assignmentSatisfiedForCompliance &&
@@ -7164,7 +7164,7 @@ export default function VendorJobs() {
                       if (selectedJob) persistLocationChoiceForJob(selectedJob, 'residence');
                     }} 
                   />
-                  <span>At Customer Residence (Verified recording permission required)</span>
+                  <span>At Customer Residence (Recording permission + location verification)</span>
                 </label>
                 <label className="flex items-center space-x-3">
                   <input 

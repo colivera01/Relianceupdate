@@ -64,6 +64,25 @@ const unlockedJob = {
   },
 };
 
+const locationBlockedJob = {
+  ...blockedJob,
+  id: "epic4-location-blocked-residence-job",
+  title: "Residence outlet installation",
+  recordingCompliance: {
+    ...blockedJob.recordingCompliance,
+    serviceOrderReleasedAt: "2026-08-04T14:04:00.000Z",
+    permissionStatus: "allowed",
+    certificationActive: true,
+    canonicalBlock: {
+      code: "LOCATION_VERIFICATION_REQUIRED",
+      why: "The employee device has not verified the saved service location.",
+      responsibleParticipant: "EMPLOYEE",
+      resolution: "Allow precise location and verify the saved service address.",
+      serviceMayContinue: true,
+    },
+  },
+};
+
 async function installJobsResponse(
   page: Page,
   options: { jobs?: unknown[]; delayMs?: number; status?: number; error?: string } = {}
@@ -163,6 +182,39 @@ test.describe("Epic 4 canonical recording gate UX", () => {
     await expect(page.getByRole("button", { name: /Work in Progress/ })).toBeEnabled();
     await expect(page.getByRole("button", { name: /Final Result/ })).toBeEnabled();
     await capture(page, "Desktop", "05-recording-unlocked-success.png");
+  });
+
+  test("lets the employee resolve a residence location block from a stage", async ({ page, context }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await context.grantPermissions(["geolocation"]);
+    await context.setGeolocation({ latitude: 28.6989, longitude: -81.3081 });
+    await installJobsResponse(page, { jobs: [locationBlockedJob] });
+
+    let verificationRequestCount = 0;
+    await page.route(`**/api/employee/jobs/${locationBlockedJob.id}/verify-location`, async (route) => {
+      verificationRequestCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          verified: true,
+          location: "residence",
+          distanceMeters: 8,
+          recordingGate: { recordingUnlocked: true, blockCode: null, block: null },
+        }),
+      });
+    });
+
+    await page.goto(`/employee/jobs?jobId=${locationBlockedJob.id}&ct=${CAPTURE_TOKEN}`);
+    await expect(page.getByText("Recording is locked", { exact: true })).toBeVisible();
+    const startingCondition = page.getByRole("button", { name: /Starting Condition/ });
+    await expect(startingCondition).toBeEnabled();
+    await expect(startingCondition.getByText("Verify location to record", { exact: true })).toBeVisible();
+    await capture(page, "Mobile", "06-residence-location-verification-action.png");
+
+    await startingCondition.click();
+    await expect.poll(() => verificationRequestCount).toBe(1);
   });
 
   test("explains a declined residence block on desktop", async ({ page }) => {

@@ -124,7 +124,7 @@ function getRecordingLocation(job: EmployeeJob): RecordingLocationChoice {
 
 function employeePhoneLocationRequired(job: EmployeeJob): boolean {
   const location = getRecordingLocation(job);
-  return location === "business" || location === "customer-business";
+  return location === "business" || location === "residence" || location === "customer-business";
 }
 
 const EMPLOYEE_JOBS_TIMEOUT_MS = 20000;
@@ -982,6 +982,8 @@ export default function EmployeeJobsPage() {
         message:
           getRecordingLocation(job) === "customer-business"
             ? "Allow location access so Reliance can confirm this phone is at the customer business address."
+            : getRecordingLocation(job) === "residence"
+              ? "Allow location access so Reliance can confirm this phone is at the customer residence."
             : "Allow location access so Reliance can confirm this phone is at the registered vendor business address.",
       },
     }));
@@ -1304,6 +1306,7 @@ export default function EmployeeJobsPage() {
     const correctionRequested = isCorrectionRequested(job);
     const recordingBlocked = !job.recordingCompliance?.recordingUnlocked;
     const canonicalBlock = job.recordingCompliance?.canonicalBlock || null;
+    const canResolveLocationFromStage = canonicalBlock?.code === "LOCATION_VERIFICATION_REQUIRED";
     const showUploadControls =
       !historyMode &&
       !recordingBlocked &&
@@ -1335,7 +1338,7 @@ export default function EmployeeJobsPage() {
       ["error", "retry_required", "rejected"].includes(selectedStageFeedback?.status || "");
     const canStartStageFromCard =
       hasCaptureToken &&
-      showUploadControls &&
+      (showUploadControls || canResolveLocationFromStage) &&
       !selectedDraft &&
       !recordingKey &&
       !recordingOpeningKey &&
@@ -1635,7 +1638,7 @@ export default function EmployeeJobsPage() {
                       }
                     }}
                     disabled={
-                      recordingBlocked ||
+                      (recordingBlocked && !canResolveLocationFromStage) ||
                       Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))
                     }
                     className={`min-h-[168px] rounded-2xl border p-4 text-left transition ${
@@ -1677,7 +1680,9 @@ export default function EmployeeJobsPage() {
                           }`}
                         >
                           {recordingBlocked
-                            ? "Recording locked"
+                            ? canResolveLocationFromStage
+                              ? "Verify location to record"
+                              : "Recording locked"
                             : getStageCardActionLabel({
                                 isOpening: isOpeningThisStage,
                                 isUploading: isUploadingThisStage,
