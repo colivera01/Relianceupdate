@@ -74,7 +74,22 @@ export async function persistAllowedRecordingGateDecision(input: {
   const db = input.tx || (prisma as any);
   return db.recordingGateDecisionEvidence.create({
     data: {
-      ...snapshot,
+      bookingId: input.bookingId,
+      vendorId: input.vendorId,
+      assessmentId: gate.assessmentId,
+      assessmentGeneration: gate.assessmentGeneration,
+      scopeHash: gate.scopeHash,
+      permissionBasis,
+      permissionEvidenceId,
+      consentRecordId: gate.consentRecordId,
+      certificationId: gate.certificationId,
+      membershipId: input.membershipId,
+      assignmentGeneration: gate.assignmentGeneration,
+      locationAttemptId: gate.locationAttemptId,
+      locationExceptionId: gate.locationExceptionId,
+      surface: input.surface,
+      actorKind: input.actorKind,
+      decision: "ALLOWED",
       evidenceHash: sha256(snapshotJson),
       snapshotJson,
     },

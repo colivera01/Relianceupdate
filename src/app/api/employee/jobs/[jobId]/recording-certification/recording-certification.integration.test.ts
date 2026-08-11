@@ -50,6 +50,19 @@ const metadata = JSON.stringify({
   vendor_job_service_order_released_membership_ids: ["membership-1"],
   vendor_job_service_order_released_at: "2026-08-04T12:00:00.000Z",
   vendor_job_assignment_generation: 2,
+  vendor_job_recording_location: "business",
+  vendor_job_recording_location_snapshot: {
+    type: "business",
+    source: "vendor_profile",
+    status: "verified_coordinates",
+    address: "123 Main St",
+    city: "Orlando",
+    state: "FL",
+    zip_code: "32801",
+    latitude: 28.5383,
+    longitude: -81.3792,
+    captured_at: "2026-08-04T11:00:00.000Z",
+  },
 });
 
 const assessment = {

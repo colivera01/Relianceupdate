@@ -112,6 +112,12 @@ function mockBookingLocation(
   vendor: Record<string, unknown> = {}
 ) {
   assessmentLocation = location;
+  const snapshotSource =
+    location === "business"
+      ? "vendor_profile"
+      : location === "residence"
+        ? "customer_profile"
+        : "customer_supplied";
   hoisted.bookingFindFirst.mockResolvedValue({
     id: BOOKING_ID,
     customerMetadata: JSON.stringify({
@@ -122,12 +128,15 @@ function mockBookingLocation(
       vendor_job_recording_location: location,
       vendor_job_recording_location_snapshot: {
         type: location,
+        source: snapshotSource,
+        status: "verified_coordinates",
         address: "123 Main St",
         city: "Orlando",
         state: "FL",
         zip_code: "32801",
         latitude: 28.5383,
         longitude: -81.3792,
+        captured_at: "2026-06-27T12:00:00.000Z",
         geocoded_at: "2026-06-27T12:00:00.000Z",
       },
     }),
@@ -313,7 +322,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     });
   });
 
-  it("blocks a declined residence request when mutable metadata and browser input say business", async () => {
+  it("blocks a mismatched residence assessment before mutable metadata or browser input can override it", async () => {
     mockBookingLocation("business");
     assessmentLocation = "residence";
     hoisted.consentRecordFindFirst.mockResolvedValue({
@@ -335,7 +344,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
+    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_REQUIRED");
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
@@ -393,7 +402,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("geocodes a complete vendor address before business location verification when saved coordinates are missing", async () => {
+  it("does not create a business snapshot at recording time when the immutable snapshot is missing", async () => {
     assessmentLocation = "business";
     hoisted.bookingFindFirst.mockResolvedValue({
       id: BOOKING_ID,
@@ -436,29 +445,14 @@ describe("vendor media sessions consent enforcement integration", () => {
     const res = await POST(req, ctx as any);
     const json = await toJson(res);
 
-    expect(res.status).toBe(200);
-    expect((json.session as any)?.id).toBe("session-1");
-    expect(hoisted.geocodeAddress).toHaveBeenCalledWith({
-      address: "123 Main St",
-      city: "Orlando",
-      state: "FL",
-      zipCode: "32801",
-      latitude: null,
-      longitude: null,
-      geocodedAt: null,
-    });
-    expect(hoisted.vendorUpdate).toHaveBeenCalledWith({
-      where: { id: VENDOR_ID },
-      data: {
-        latitude: 28.5383,
-        longitude: -81.3792,
-        geocodedAt,
-      },
-    });
-    expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_REQUIRED");
+    expect(hoisted.geocodeAddress).not.toHaveBeenCalled();
+    expect(hoisted.vendorUpdate).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
-  it("keeps blocking business recording when a complete vendor address cannot be geocoded", async () => {
+  it("does not fall back to the mutable vendor profile when the business snapshot is missing", async () => {
     assessmentLocation = "business";
     hoisted.bookingFindFirst.mockResolvedValue({
       id: BOOKING_ID,
@@ -498,7 +492,8 @@ describe("vendor media sessions consent enforcement integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("BUSINESS_LOCATION_NOT_CONFIGURED");
+    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_REQUIRED");
+    expect(hoisted.geocodeAddress).not.toHaveBeenCalled();
     expect(hoisted.vendorUpdate).not.toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });

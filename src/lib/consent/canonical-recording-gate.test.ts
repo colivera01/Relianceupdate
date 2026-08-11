@@ -135,6 +135,20 @@ describe("database-backed canonical recording gate", () => {
     expect(gate.recordingUnlocked).toBe(false);
   });
 
+  it("keeps recording locked when the approved scope requests or allows audio", async () => {
+    db.assessmentFindFirst.mockResolvedValue({
+      ...assessment,
+      audioRequested: true,
+      audioAllowed: true,
+    });
+    const gate = await load();
+    expect(gate).toMatchObject({
+      blockCode: "AUDIO_NOT_SUPPORTED",
+      recordingUnlocked: false,
+      audioAllowed: false,
+    });
+  });
+
   it("requires employee certification for the current assignment and scope", async () => {
     db.certificationFindFirst.mockResolvedValue(null);
     const gate = await load();
