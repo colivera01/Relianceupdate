@@ -160,6 +160,8 @@ export async function GET(request: Request): Promise<NextResponse> {
           riskLevel: permissionGate.riskLevel,
           certificationActive: permissionGate.certificationActive,
           scopeSummary: permissionGate.scopeSummary,
+          serviceLocation: recordingCompliance.addressSnapshot?.formattedAddress || null,
+          serviceLocationType: recordingCompliance.addressSnapshot?.type || permissionGate.location,
           canonicalBlock: permissionGate.block,
         },
         stageProgress,

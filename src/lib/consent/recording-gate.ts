@@ -4,6 +4,7 @@ import {
   parseAssignmentMetadata,
   parseCustomerMetadata,
   parseRecordingComplianceMetadata,
+  validateRecordingLocationSnapshot,
   type RecordingLocationChoice,
 } from "@/lib/job-assignment";
 import { derivePermissionState, type PermissionState } from "./state-machine";
@@ -305,6 +306,11 @@ export async function loadCanonicalRecordingGate(input: {
     }),
   ]);
   const facts = permissionFacts({ ...input, assessment, consentRecord });
+  const assessmentLocation = normalizeRecordingLocationChoice(assessment?.locationType);
+  const locationSnapshot = validateRecordingLocationSnapshot(
+    input.customerMetadata,
+    assessmentLocation,
+  );
   const assignment = parseAssignmentMetadata(input.customerMetadata);
   const metadata = parseCustomerMetadata(input.customerMetadata);
   const assignmentGeneration = Number(metadata.vendor_job_assignment_generation || 1);
@@ -407,6 +413,22 @@ export async function loadCanonicalRecordingGate(input: {
       why: "The recording subject and scope have not been assessed.",
       responsibleParticipant: "VENDOR_MANAGER",
       resolution: "Complete the recording assessment for this work record.",
+      serviceMayContinue: true,
+    });
+  } else if (!locationSnapshot.ok) {
+    const locationLabel =
+      assessmentLocation === "business"
+        ? "vendor business address"
+        : assessmentLocation === "customer-business"
+          ? "customer business address"
+          : assessmentLocation === "residence"
+            ? "customer residence"
+            : "selected service location";
+    decision = blocked(base, {
+      code: "RECORDING_LOCATION_SNAPSHOT_REQUIRED",
+      why: `The ${locationLabel} does not have a matching verified location snapshot saved with this work record.`,
+      responsibleParticipant: "VENDOR_MANAGER",
+      resolution: "Correct the work record with the complete address for the selected location before releasing it for recording.",
       serviceMayContinue: true,
     });
   } else if (assessment.audioRequested || assessment.audioAllowed) {

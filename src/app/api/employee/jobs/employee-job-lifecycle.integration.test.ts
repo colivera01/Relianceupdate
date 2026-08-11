@@ -63,6 +63,13 @@ vi.mock("@/lib/job-assignment", () => ({
     locationVerifiedAt: "2026-07-12T00:00:00.000Z",
     serviceOrderReleasedAt: "2026-07-12T00:00:00.000Z",
     releasedMembershipIds: ["membership-1"],
+    addressSnapshot: {
+      type: "residence",
+      source: "customer_supplied",
+      status: "verified_coordinates",
+      formattedAddress: "407 Boxwood Circle, Winter Springs, FL, 32708",
+      capturedAt: "2026-08-11T12:00:00.000Z",
+    },
   })),
   normalizeRecordingLocationChoice: vi.fn((value: unknown) => {
     const normalized = String(value || "").trim().toLowerCase();
@@ -229,7 +236,20 @@ describe("employee job lifecycle routes", () => {
       vendorId: "vendor-1",
       title: "Breaker Replacement",
       status: "IN_PROGRESS",
-      customerMetadata: "{}",
+      customerMetadata: JSON.stringify({
+        vendor_job_recording_location: "residence",
+        vendor_job_recording_location_snapshot: {
+          type: "residence",
+          source: "customer_supplied",
+          status: "verified_coordinates",
+          address: "407 Boxwood Circle",
+          city: "Winter Springs",
+          state: "FL",
+          zip_code: "32708",
+          latitude: 28.698,
+          longitude: -81.305,
+        },
+      }),
       scheduledFor: null,
       date: null,
       service: { id: "svc-1", name: "Breaker Replacement" },
@@ -273,6 +293,8 @@ describe("employee job lifecycle routes", () => {
       permissionRequired: true,
       permissionStatus: "declined",
       recordingUnlocked: false,
+      serviceLocation: "407 Boxwood Circle, Winter Springs, FL, 32708",
+      serviceLocationType: "residence",
       canonicalBlock: {
         why: expect.any(String),
         responsibleParticipant: expect.any(String),

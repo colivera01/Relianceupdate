@@ -55,6 +55,8 @@ type RecordingComplianceState = {
   assessmentId?: string | null;
   riskLevel?: string | null;
   certificationActive?: boolean;
+  serviceLocation?: string | null;
+  serviceLocationType?: RecordingLocationChoice | null;
   scopeSummary?: {
     propertyScope: string;
     peopleScope: string;
@@ -1580,6 +1582,18 @@ export default function EmployeeJobsPage() {
             </p>
             <p className="mt-1 text-xs leading-5 text-blue-100/80">
               Avoid unrelated people, minors, documents, screens, private areas, identifiers, and anything outside this scope. Stop if conditions change.
+            </p>
+          </div>
+        ) : null}
+
+        {!historyMode && job.recordingCompliance?.serviceLocation ? (
+          <div className="mt-3 rounded-xl border border-emerald-300/30 bg-emerald-950/30 px-4 py-3 text-emerald-50">
+            <p className="text-xs font-bold uppercase text-emerald-200">Service location to verify</p>
+            <p className="mt-1 text-sm font-semibold leading-5">
+              {job.recordingCompliance.serviceLocation}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-emerald-100/80">
+              Location verification compares this device with the address saved on this work record.
             </p>
           </div>
         ) : null}

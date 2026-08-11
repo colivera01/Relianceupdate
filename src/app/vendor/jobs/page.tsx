@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive, Sparkles } from 'lucide-react';
@@ -234,6 +235,18 @@ export default function VendorJobs() {
     email: '',
     serviceId: '',
     recordingLocation: 'business',
+    customerResidenceAddress: '',
+    customerResidenceCity: '',
+    customerResidenceState: '',
+    customerResidenceZipCode: '',
+    customerResidenceLatitude: null,
+    customerResidenceLongitude: null,
+    customerBusinessAddress: '',
+    customerBusinessCity: '',
+    customerBusinessState: '',
+    customerBusinessZipCode: '',
+    customerBusinessLatitude: null,
+    customerBusinessLongitude: null,
     propertyScope: '',
     peopleScope: '',
     frameControl: '',
@@ -255,6 +268,8 @@ export default function VendorJobs() {
     email: '',
     serviceId: '',
     recordingLocation: '',
+    customerResidenceAddress: '',
+    customerBusinessAddress: '',
     recordingAssessment: '',
   });
 
@@ -464,6 +479,18 @@ export default function VendorJobs() {
     email: '',
     serviceId: '',
     recordingLocation: 'business',
+    customerResidenceAddress: '',
+    customerResidenceCity: '',
+    customerResidenceState: '',
+    customerResidenceZipCode: '',
+    customerResidenceLatitude: null,
+    customerResidenceLongitude: null,
+    customerBusinessAddress: '',
+    customerBusinessCity: '',
+    customerBusinessState: '',
+    customerBusinessZipCode: '',
+    customerBusinessLatitude: null,
+    customerBusinessLongitude: null,
     propertyScope: '',
     peopleScope: '',
     frameControl: '',
@@ -492,6 +519,8 @@ export default function VendorJobs() {
     email: '',
     serviceId: '',
     recordingLocation: '',
+    customerResidenceAddress: '',
+    customerBusinessAddress: '',
     recordingAssessment: '',
   });
   const [serviceOptions, setServiceOptions] = useState<Array<{ id: string; name: string; isPublished?: boolean }>>([]);
@@ -2799,6 +2828,24 @@ export default function VendorJobs() {
         recordingLocation === 'customer-business'
           ? ''
           : 'Choose where the service video will be recorded.',
+      customerResidenceAddress:
+        jobModalMode !== 'edit' &&
+        recordingLocation === 'residence' &&
+        (!newJob.customerResidenceAddress.trim() ||
+          !newJob.customerResidenceCity.trim() ||
+          !newJob.customerResidenceState.trim() ||
+          !newJob.customerResidenceZipCode.trim())
+          ? 'Enter the complete customer residence where this service will be recorded.'
+          : '',
+      customerBusinessAddress:
+        jobModalMode !== 'edit' &&
+        recordingLocation === 'customer-business' &&
+        (!newJob.customerBusinessAddress.trim() ||
+          !newJob.customerBusinessCity.trim() ||
+          !newJob.customerBusinessState.trim() ||
+          !newJob.customerBusinessZipCode.trim())
+          ? 'Enter the complete customer business address where this service will be recorded.'
+          : '',
       recordingAssessment:
         newJob.propertyScope &&
         newJob.peopleScope &&
@@ -2819,6 +2866,8 @@ export default function VendorJobs() {
       nextJobErrors.email ||
       nextJobErrors.serviceId ||
       nextJobErrors.recordingLocation
+      || nextJobErrors.customerResidenceAddress
+      || nextJobErrors.customerBusinessAddress
       || nextJobErrors.recordingAssessment
     ) {
       if (nextJobErrors.customerFirstName) {
@@ -2981,6 +3030,30 @@ export default function VendorJobs() {
       amount: 0,
       custom_fields: {
         vendor_job_recording_location: recordingLocation,
+        vendor_job_customer_residence_address:
+          recordingLocation === 'residence' ? newJob.customerResidenceAddress.trim() : undefined,
+        vendor_job_customer_residence_city:
+          recordingLocation === 'residence' ? newJob.customerResidenceCity.trim() : undefined,
+        vendor_job_customer_residence_state:
+          recordingLocation === 'residence' ? newJob.customerResidenceState.trim() : undefined,
+        vendor_job_customer_residence_zip_code:
+          recordingLocation === 'residence' ? newJob.customerResidenceZipCode.trim() : undefined,
+        vendor_job_customer_residence_latitude:
+          recordingLocation === 'residence' ? newJob.customerResidenceLatitude : undefined,
+        vendor_job_customer_residence_longitude:
+          recordingLocation === 'residence' ? newJob.customerResidenceLongitude : undefined,
+        vendor_job_customer_business_address:
+          recordingLocation === 'customer-business' ? newJob.customerBusinessAddress.trim() : undefined,
+        vendor_job_customer_business_city:
+          recordingLocation === 'customer-business' ? newJob.customerBusinessCity.trim() : undefined,
+        vendor_job_customer_business_state:
+          recordingLocation === 'customer-business' ? newJob.customerBusinessState.trim() : undefined,
+        vendor_job_customer_business_zip_code:
+          recordingLocation === 'customer-business' ? newJob.customerBusinessZipCode.trim() : undefined,
+        vendor_job_customer_business_latitude:
+          recordingLocation === 'customer-business' ? newJob.customerBusinessLatitude : undefined,
+        vendor_job_customer_business_longitude:
+          recordingLocation === 'customer-business' ? newJob.customerBusinessLongitude : undefined,
         vendor_job_customer_controls_visibility:
           recordingLocation === 'residence' || recordingLocation === 'customer-business',
         vendor_job_visibility_owner:
@@ -6032,6 +6105,124 @@ export default function VendorJobs() {
               </div>
               {jobFieldErrors.recordingLocation ? (
                 <p className="mt-2 text-sm text-red-600">{jobFieldErrors.recordingLocation}</p>
+              ) : null}
+              {newJob.recordingLocation === 'residence' && jobModalMode !== 'edit' ? (
+                <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p className="text-sm font-semibold text-blue-950">Customer residence for this work record</p>
+                  <p className="mt-1 text-xs leading-5 text-blue-900/75">
+                    This exact service address is saved with the work record and verified from the assigned employee's phone. It is not taken from the vendor address.
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    <AddressAutocompleteInput
+                      value={newJob.customerResidenceAddress}
+                      onChange={(value) => {
+                        setNewJob({
+                          ...newJob,
+                          customerResidenceAddress: value,
+                          customerResidenceLatitude: null,
+                          customerResidenceLongitude: null,
+                        });
+                        setJobFieldErrors((current) => ({ ...current, customerResidenceAddress: '' }));
+                      }}
+                      onSelectAddress={(suggestion) => {
+                        setNewJob({
+                          ...newJob,
+                          customerResidenceAddress: suggestion.address,
+                          customerResidenceCity: suggestion.city,
+                          customerResidenceState: suggestion.state,
+                          customerResidenceZipCode: suggestion.zipCode,
+                          customerResidenceLatitude: suggestion.latitude ?? null,
+                          customerResidenceLongitude: suggestion.longitude ?? null,
+                        });
+                        setJobFieldErrors((current) => ({ ...current, customerResidenceAddress: '' }));
+                      }}
+                      placeholder="Start typing the service street address"
+                      inputClassName="bg-white text-slate-950"
+                    />
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Input
+                        value={newJob.customerResidenceCity}
+                        onChange={(event) => setNewJob({ ...newJob, customerResidenceCity: event.target.value, customerResidenceLatitude: null, customerResidenceLongitude: null })}
+                        placeholder="City"
+                        className="bg-white text-slate-950"
+                      />
+                      <Input
+                        value={newJob.customerResidenceState}
+                        onChange={(event) => setNewJob({ ...newJob, customerResidenceState: event.target.value, customerResidenceLatitude: null, customerResidenceLongitude: null })}
+                        placeholder="State"
+                        className="bg-white text-slate-950"
+                      />
+                      <Input
+                        value={newJob.customerResidenceZipCode}
+                        onChange={(event) => setNewJob({ ...newJob, customerResidenceZipCode: event.target.value, customerResidenceLatitude: null, customerResidenceLongitude: null })}
+                        placeholder="ZIP code"
+                        className="bg-white text-slate-950"
+                      />
+                    </div>
+                  </div>
+                  {jobFieldErrors.customerResidenceAddress ? (
+                    <p className="mt-2 text-sm text-red-700">{jobFieldErrors.customerResidenceAddress}</p>
+                  ) : null}
+                </div>
+              ) : null}
+              {newJob.recordingLocation === 'customer-business' && jobModalMode !== 'edit' ? (
+                <div className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+                  <p className="text-sm font-semibold text-cyan-950">Customer business address for this work record</p>
+                  <p className="mt-1 text-xs leading-5 text-cyan-900/75">
+                    This exact customer business address is saved with the work record. Reliance will not substitute the customer residence or vendor address.
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    <AddressAutocompleteInput
+                      value={newJob.customerBusinessAddress}
+                      onChange={(value) => {
+                        setNewJob({
+                          ...newJob,
+                          customerBusinessAddress: value,
+                          customerBusinessLatitude: null,
+                          customerBusinessLongitude: null,
+                        });
+                        setJobFieldErrors((current) => ({ ...current, customerBusinessAddress: '' }));
+                      }}
+                      onSelectAddress={(suggestion) => {
+                        setNewJob({
+                          ...newJob,
+                          customerBusinessAddress: suggestion.address,
+                          customerBusinessCity: suggestion.city,
+                          customerBusinessState: suggestion.state,
+                          customerBusinessZipCode: suggestion.zipCode,
+                          customerBusinessLatitude: suggestion.latitude ?? null,
+                          customerBusinessLongitude: suggestion.longitude ?? null,
+                        });
+                        setJobFieldErrors((current) => ({ ...current, customerBusinessAddress: '' }));
+                      }}
+                      placeholder="Start typing the customer business street address"
+                      inputClassName="bg-white text-slate-950"
+                    />
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Input
+                        value={newJob.customerBusinessCity}
+                        onChange={(event) => setNewJob({ ...newJob, customerBusinessCity: event.target.value, customerBusinessLatitude: null, customerBusinessLongitude: null })}
+                        placeholder="City"
+                        className="bg-white text-slate-950"
+                      />
+                      <Input
+                        value={newJob.customerBusinessState}
+                        onChange={(event) => setNewJob({ ...newJob, customerBusinessState: event.target.value, customerBusinessLatitude: null, customerBusinessLongitude: null })}
+                        placeholder="State"
+                        className="bg-white text-slate-950"
+                      />
+                      <Input
+                        value={newJob.customerBusinessZipCode}
+                        onChange={(event) => setNewJob({ ...newJob, customerBusinessZipCode: event.target.value, customerBusinessLatitude: null, customerBusinessLongitude: null })}
+                        placeholder="ZIP code"
+                        className="bg-white text-slate-950"
+                      />
+                    </div>
+                  </div>
+                  {jobFieldErrors.customerBusinessAddress ? (
+                    <p className="mt-2 text-sm text-red-700">{jobFieldErrors.customerBusinessAddress}</p>
+                  ) : null}
+                </div>
               ) : null}
               <div className="mt-5 border-t border-slate-200 pt-4">
                   <p className="text-sm font-semibold text-slate-900">What may appear in the recording?</p>

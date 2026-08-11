@@ -3,13 +3,18 @@ import { verifyJobRecordingLocation } from "./job-recording-location";
 
 const customerBusinessMetadata = JSON.stringify({
   vendor_job_recording_location: "customer-business",
-  vendor_job_customer_business_address: "123 Main St",
-  vendor_job_customer_business_city: "Orlando",
-  vendor_job_customer_business_state: "FL",
-  vendor_job_customer_business_zip_code: "32801",
-  vendor_job_customer_business_latitude: 28.5383,
-  vendor_job_customer_business_longitude: -81.3792,
-  vendor_job_customer_business_geocoded_at: "2026-07-22T12:00:00.000Z",
+  vendor_job_recording_location_snapshot: {
+    type: "customer-business",
+    source: "customer_supplied",
+    status: "verified_coordinates",
+    address: "123 Main St",
+    city: "Orlando",
+    state: "FL",
+    zip_code: "32801",
+    latitude: 28.5383,
+    longitude: -81.3792,
+    captured_at: "2026-07-22T12:00:00.000Z",
+  },
 });
 
 describe("verifyJobRecordingLocation", () => {
@@ -105,5 +110,76 @@ describe("verifyJobRecordingLocation", () => {
     });
 
     expect(result).toMatchObject({ ok: true, location: "business" });
+  });
+
+  it("does not fall back from a customer residence to the vendor profile", async () => {
+    const result = await verifyJobRecordingLocation({
+      vendorId: "vendor-1",
+      metadata: JSON.stringify({ vendor_job_recording_location: "residence" }),
+      vendorLocation: {
+        address: "100 Vendor Ave",
+        city: "Orlando",
+        state: "FL",
+        zipCode: "32801",
+        latitude: 28.5383,
+        longitude: -81.3792,
+      },
+      proof: { latitude: 28.5383, longitude: -81.3792, accuracyMeters: 20 },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "CUSTOMER_RESIDENCE_LOCATION_NOT_CONFIGURED",
+    });
+  });
+
+  it("does not accept a residence snapshot for a customer business selection", async () => {
+    const result = await verifyJobRecordingLocation({
+      vendorId: "vendor-1",
+      metadata: JSON.stringify({
+        vendor_job_recording_location: "customer-business",
+        vendor_job_recording_location_snapshot: {
+          type: "residence",
+          source: "customer_profile",
+          status: "verified_coordinates",
+          address: "407 Boxwood Circle",
+          city: "Winter Springs",
+          state: "FL",
+          zip_code: "32708",
+          latitude: 28.7,
+          longitude: -81.3,
+          captured_at: "2026-08-11T12:00:00.000Z",
+        },
+      }),
+      vendorLocation: null,
+      proof: { latitude: 28.7, longitude: -81.3, accuracyMeters: 20 },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      code: "CUSTOMER_BUSINESS_LOCATION_NOT_CONFIGURED",
+    });
+  });
+
+  it("does not accept a customer location for a vendor business selection", async () => {
+    const result = await verifyJobRecordingLocation({
+      vendorId: "vendor-1",
+      metadata: JSON.stringify({
+        vendor_job_recording_location: "business",
+        vendor_job_recording_location_snapshot: {
+          type: "business",
+          source: "customer_supplied",
+          status: "verified_coordinates",
+          address: "123 Customer Rd",
+          city: "Orlando",
+          state: "FL",
+          zip_code: "32801",
+          latitude: 28.5383,
+          longitude: -81.3792,
+          captured_at: "2026-08-11T12:00:00.000Z",
+        },
+      }),
+      vendorLocation: null,
+      proof: { latitude: 28.5383, longitude: -81.3792, accuracyMeters: 20 },
+    });
+    expect(result).toMatchObject({ ok: false, code: "BUSINESS_LOCATION_NOT_CONFIGURED" });
   });
 });

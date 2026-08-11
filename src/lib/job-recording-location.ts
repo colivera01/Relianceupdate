@@ -1,6 +1,9 @@
 import { prisma } from "@/server/db";
-import { distanceMeters, hasValidCoordinates } from "@/lib/distance";
-import { geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
+import { distanceMeters } from "@/lib/distance";
+import {
+  normalizeRecordingLocationChoice,
+  validateRecordingLocationSnapshot,
+} from "@/lib/job-assignment";
 
 export const RECORDING_LOCATION_RADIUS_METERS = 150;
 export const RECORDING_LOCATION_MAX_ACCURACY_METERS = 500;
@@ -65,70 +68,6 @@ export function parseRecordingLocationProof(body: Record<string, unknown>): Reco
   };
 }
 
-async function resolveVendorLocation(vendorId: string, location: VendorLocation | null) {
-  if (!location) return null;
-  if (location.geocodedAt && hasValidCoordinates(location)) return location;
-  if (!hasCompleteAddress(location)) return location;
-  const result = await geocodeAddress(location);
-  if (result.status !== "success") return location;
-  await prisma.vendor.update({
-    where: { id: vendorId },
-    data: { latitude: result.latitude, longitude: result.longitude, geocodedAt: result.geocodedAt },
-  });
-  return { ...location, latitude: result.latitude, longitude: result.longitude, geocodedAt: result.geocodedAt };
-}
-
-function customerBusinessLocation(metadataValue: string | null | undefined): VendorLocation | null {
-  const metadata = parseMetadata(metadataValue);
-  const location = {
-    address: String(metadata.vendor_job_customer_business_address || "").trim() || null,
-    city: String(metadata.vendor_job_customer_business_city || "").trim() || null,
-    state: String(metadata.vendor_job_customer_business_state || "").trim() || null,
-    zipCode: String(metadata.vendor_job_customer_business_zip_code || "").trim() || null,
-    latitude: finite(metadata.vendor_job_customer_business_latitude),
-    longitude: finite(metadata.vendor_job_customer_business_longitude),
-    geocodedAt: metadata.vendor_job_customer_business_geocoded_at
-      ? new Date(String(metadata.vendor_job_customer_business_geocoded_at))
-      : null,
-  };
-  return hasCompleteAddress(location) ? location : null;
-}
-
-function recordingLocationSnapshot(
-  metadataValue: string | null | undefined,
-  expectedType: "business" | "residence" | "customer-business"
-): VendorLocation | null {
-  const metadata = parseMetadata(metadataValue);
-  const raw = metadata.vendor_job_recording_location_snapshot;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const snapshot = raw as Record<string, unknown>;
-  if (locationChoice(snapshot.type) !== expectedType) return null;
-  const location = {
-    address: String(snapshot.address || "").trim() || null,
-    city: String(snapshot.city || "").trim() || null,
-    state: String(snapshot.state || "").trim() || null,
-    zipCode: String(snapshot.zip_code || snapshot.zipCode || "").trim() || null,
-    latitude: finite(snapshot.latitude),
-    longitude: finite(snapshot.longitude),
-    geocodedAt: snapshot.geocoded_at ? new Date(String(snapshot.geocoded_at)) : null,
-  };
-  return hasCompleteAddress(location) || hasValidCoordinates(location) ? location : null;
-}
-
-async function resolveImmutableSnapshotLocation(location: VendorLocation | null) {
-  if (!location) return null;
-  if (hasValidCoordinates(location)) return location;
-  if (!hasCompleteAddress(location)) return location;
-  const result = await geocodeAddress(location);
-  if (result.status !== "success") return location;
-  return {
-    ...location,
-    latitude: result.latitude,
-    longitude: result.longitude,
-    geocodedAt: result.geocodedAt,
-  };
-}
-
 export async function verifyJobRecordingLocation(input: {
   vendorId: string;
   metadata: string | null | undefined;
@@ -137,19 +76,15 @@ export async function verifyJobRecordingLocation(input: {
   location?: unknown;
 }): Promise<RecordingLocationVerification> {
   const metadata = parseMetadata(input.metadata);
-  const location = locationChoice(metadata.vendor_job_recording_location) || locationChoice(input.location);
+  const location =
+    normalizeRecordingLocationChoice(metadata.vendor_job_recording_location) ||
+    locationChoice(input.location);
   if (!location) {
     return { ok: false, status: 422, code: "RECORDING_LOCATION_REQUIRED", message: "Choose the service location before verifying this device." };
   }
 
-  const immutableSnapshot = recordingLocationSnapshot(input.metadata, location);
-  const expected = immutableSnapshot
-    ? await resolveImmutableSnapshotLocation(immutableSnapshot)
-    : location === "business"
-      ? await resolveVendorLocation(input.vendorId, input.vendorLocation)
-      : location === "customer-business"
-        ? customerBusinessLocation(input.metadata)
-        : null;
+  const snapshotValidation = validateRecordingLocationSnapshot(input.metadata, location);
+  const expected = snapshotValidation.ok ? snapshotValidation.snapshot : null;
   const label =
     location === "business"
       ? "saved vendor business address"
@@ -162,7 +97,7 @@ export async function verifyJobRecordingLocation(input: {
       : location === "customer-business"
         ? "CUSTOMER_BUSINESS_LOCATION"
         : "CUSTOMER_RESIDENCE_LOCATION";
-  if (!expected || !hasValidCoordinates(expected)) {
+  if (!expected) {
     return {
       ok: false,
       status: 409,
@@ -172,7 +107,7 @@ export async function verifyJobRecordingLocation(input: {
           : location === "customer-business"
             ? "CUSTOMER_BUSINESS_LOCATION_NOT_CONFIGURED"
             : "CUSTOMER_RESIDENCE_LOCATION_NOT_CONFIGURED",
-      message: `The ${label} must be verified before recording can begin.`,
+      message: `The ${label} is missing a matching verified work-record snapshot. The vendor manager must correct the work record before recording can begin.`,
     };
   }
   if (input.proof.latitude == null || input.proof.longitude == null || input.proof.accuracyMeters == null) {
@@ -180,7 +115,7 @@ export async function verifyJobRecordingLocation(input: {
   }
   const distance = distanceMeters(
     { latitude: input.proof.latitude, longitude: input.proof.longitude },
-    { latitude: expected.latitude!, longitude: expected.longitude! }
+    { latitude: expected.latitude, longitude: expected.longitude }
   );
   if (input.proof.accuracyMeters > RECORDING_LOCATION_MAX_ACCURACY_METERS) {
     return {

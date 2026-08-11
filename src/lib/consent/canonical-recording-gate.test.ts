@@ -27,6 +27,19 @@ const metadata = JSON.stringify({
   vendor_job_service_order_released_membership_ids: ["member-1"],
   vendor_job_service_order_released_at: "2026-08-04T12:00:00.000Z",
   vendor_job_assignment_generation: 1,
+  vendor_job_recording_location: "residence",
+  vendor_job_recording_location_snapshot: {
+    type: "residence",
+    source: "customer_profile",
+    status: "verified_coordinates",
+    address: "407 Boxwood Circle",
+    city: "Winter Springs",
+    state: "FL",
+    zip_code: "32708",
+    latitude: 28.698,
+    longitude: -81.308,
+    captured_at: "2026-08-04T12:00:00.000Z",
+  },
 });
 
 const assessment = {
@@ -128,6 +141,36 @@ describe("database-backed canonical recording gate", () => {
     expect(gate.blockCode).toBe("EMPLOYEE_CERTIFICATION_REQUIRED");
     expect(gate.releaseAllowed).toBe(true);
     expect(gate.recordingUnlocked).toBe(false);
+  });
+
+  it("stays locked when the selected location has no immutable snapshot", async () => {
+    const gate = await load({
+      customerMetadata: JSON.stringify({
+        vendor_job_assigned_membership_ids: ["member-1"],
+        vendor_job_service_order_released_membership_ids: ["member-1"],
+        vendor_job_service_order_released_at: "2026-08-04T12:00:00.000Z",
+        vendor_job_assignment_generation: 1,
+        vendor_job_recording_location: "residence",
+      }),
+    });
+    expect(gate).toMatchObject({
+      blockCode: "RECORDING_LOCATION_SNAPSHOT_REQUIRED",
+      recordingUnlocked: false,
+      releaseAllowed: false,
+    });
+    expect(gate.block).toMatchObject({ responsibleParticipant: "VENDOR_MANAGER" });
+  });
+
+  it("stays locked despite a verified attempt when the snapshot source is wrong", async () => {
+    const invalidMetadata = JSON.parse(metadata);
+    invalidMetadata.vendor_job_recording_location_snapshot.source = "vendor_profile";
+    const gate = await load({ customerMetadata: JSON.stringify(invalidMetadata) });
+    expect(db.locationAttemptFindFirst).toHaveBeenCalled();
+    expect(gate).toMatchObject({
+      locationAttemptStatus: "VERIFIED",
+      blockCode: "RECORDING_LOCATION_SNAPSHOT_REQUIRED",
+      recordingUnlocked: false,
+    });
   });
 
   it("records the latest failed location attempt and stays locked", async () => {

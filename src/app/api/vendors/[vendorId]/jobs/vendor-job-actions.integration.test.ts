@@ -690,7 +690,7 @@ describe("vendor job actions integration", () => {
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("PATCH UPDATE_RECORDING_COMPLIANCE snapshots the selected business address", async () => {
+  it("PATCH UPDATE_RECORDING_COMPLIANCE cannot manufacture a snapshot from mutable profile data", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",
       vendorId: "v1",
@@ -715,13 +715,6 @@ describe("vendor job actions integration", () => {
       user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
     });
     hoisted.bookingFindUnique.mockResolvedValue({ customerMetadata: JSON.stringify({}) });
-    hoisted.bookingUpdate.mockImplementation(async (args: any) => ({
-      id: "job1",
-      status: "PENDING",
-      customerMetadata: args.data.customerMetadata,
-      updatedAt: new Date("2026-06-11T12:10:00.000Z"),
-    }));
-
     const { req, ctx } = patchReqBody("v1", "job1", {
       action: "UPDATE_RECORDING_COMPLIANCE",
       recordingCompliance: {
@@ -732,23 +725,11 @@ describe("vendor job actions integration", () => {
     });
     const response = await PATCH(req, ctx as any);
     const json = await toJson(response);
-    const savedMetadata = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
 
-    expect(response.status).toBe(200);
-    expect(savedMetadata.vendor_job_recording_location_snapshot).toMatchObject({
-      type: "business",
-      source: "vendor_profile",
-      status: "verified_coordinates",
-      address: "407 Boxwood Circle",
-      city: "Winter Springs",
-      state: "FL",
-      zip_code: "32708",
-      latitude: 28.6984,
-      longitude: -81.3081,
-    });
-    expect((json.job as any).recordingCompliance.addressSnapshot.formattedAddress).toBe(
-      "407 Boxwood Circle, Winter Springs, FL, 32708"
-    );
+    expect(response.status).toBe(409);
+    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_IMMUTABLE");
+    expect(json.message).toContain("cannot be replaced");
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
   it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER sends the service order after business location verification", async () => {

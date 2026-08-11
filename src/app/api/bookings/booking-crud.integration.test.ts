@@ -209,6 +209,19 @@ function baseHydratedBooking(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+const vendorWithVerifiedBusinessLocation = {
+  id: 'ven-1',
+  name: 'Vendor',
+  businessName: 'Vendor Co',
+  address: '100 Main St',
+  city: 'Orlando',
+  state: 'FL',
+  zipCode: '32801',
+  latitude: 28.54,
+  longitude: -81.38,
+  geocodedAt: new Date('2026-08-01T12:00:00.000Z'),
+};
+
 describe('GET /api/bookings', () => {
   beforeEach(() => {
     vi.mocked(getUserIdFromRequest).mockReset();
@@ -462,7 +475,7 @@ describe('POST /api/bookings', () => {
 
   it('persists customerMetadata JSON string and explicit amount on happy path', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
-    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
     hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
     hoisted.bookingCreate.mockResolvedValue({ id: 'new-book' });
     const metaStr = JSON.stringify({
@@ -534,7 +547,7 @@ describe('POST /api/bookings', () => {
 
   it('resolves amount from service price when amount omitted', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
-    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
     hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
     hoisted.serviceFindUnique.mockResolvedValue({ price: 88 });
     hoisted.bookingCreate.mockResolvedValue({ id: 'book-price' });
@@ -562,7 +575,7 @@ describe('POST /api/bookings', () => {
   it('links vendor-staff-created bookings to the customer user resolved from client_email', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
-    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
     hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
     hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
     hoisted.bookingCreate.mockResolvedValue({ id: 'vendor-created-book' });
@@ -603,7 +616,7 @@ describe('POST /api/bookings', () => {
   it('allows vendor staff to create a work record for a customer whose account is inactive', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
-    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
     hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
     hoisted.userFindFirst.mockResolvedValue({ id: 'inactive-customer' });
     hoisted.userFindUnique.mockResolvedValue({
@@ -667,7 +680,15 @@ describe('POST /api/bookings', () => {
           title: 'Electrical Service Recording Test',
           client_name: 'Alex',
           client_email: 'alex@example.com',
-          custom_fields: { vendor_job_recording_location: 'residence' },
+          custom_fields: {
+            vendor_job_recording_location: 'residence',
+            vendor_job_customer_residence_address: '407 Boxwood Circle',
+            vendor_job_customer_residence_city: 'Winter Springs',
+            vendor_job_customer_residence_state: 'FL',
+            vendor_job_customer_residence_zip_code: '32708',
+            vendor_job_customer_residence_latitude: 28.698,
+            vendor_job_customer_residence_longitude: -81.305,
+          },
         },
         'POST'
       )
@@ -701,14 +722,90 @@ describe('POST /api/bookings', () => {
     expect(JSON.stringify(json)).not.toContain('server-only-action-secret');
   });
 
+  it('rejects a customer-residence work record without an explicit or saved residence', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-without-address' });
+    hoisted.userFindUnique.mockResolvedValue(null);
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          client_name: 'Customer Without Address',
+          client_email: 'customer@example.com',
+          custom_fields: { vendor_job_recording_location: 'residence' },
+        },
+        'POST'
+      )
+    );
+
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toMatchObject({
+      code: 'CUSTOMER_RESIDENCE_ADDRESS_REQUIRED',
+    });
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
+  });
+
+  it('freezes an explicit customer residence as the immutable service-location snapshot', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-without-profile-address' });
+    hoisted.userFindUnique.mockResolvedValue(null);
+    hoisted.bookingCreate.mockResolvedValue({ id: 'residence-book' });
+    hoisted.mediaSessionCreate.mockResolvedValue({ id: 'consent-session-1' });
+    hoisted.bookingUpdate.mockResolvedValue({ id: 'residence-book' });
+    hoisted.bookingFindUnique.mockResolvedValue(baseHydratedBooking({ id: 'residence-book' }));
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          client_name: 'Residence Customer',
+          client_email: 'customer@example.com',
+          custom_fields: {
+            vendor_job_recording_location: 'residence',
+            vendor_job_customer_residence_address: '407 Boxwood Circle',
+            vendor_job_customer_residence_city: 'Winter Springs',
+            vendor_job_customer_residence_state: 'FL',
+            vendor_job_customer_residence_zip_code: '32708',
+            vendor_job_customer_residence_latitude: 28.698,
+            vendor_job_customer_residence_longitude: -81.305,
+          },
+        },
+        'POST'
+      )
+    );
+
+    expect(res.status).toBe(200);
+    const createArgs = hoisted.bookingCreate.mock.calls[0][0];
+    const metadata = JSON.parse(createArgs.data.customerMetadata);
+    expect(metadata.vendor_job_recording_location).toBe('residence');
+    expect(metadata.vendor_job_recording_location_snapshot).toMatchObject({
+      type: 'residence',
+      source: 'customer_supplied',
+      status: 'verified_coordinates',
+      address: '407 Boxwood Circle',
+      city: 'Winter Springs',
+      state: 'FL',
+      zip_code: '32708',
+      latitude: 28.698,
+      longitude: -81.305,
+    });
+  });
+
   it('sends notice only and creates no permission request for controlled vendor-owned Level 1 recording', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
-    hoisted.vendorFindUnique.mockResolvedValue({
-      id: 'ven-1',
-      name: 'Vendor',
-      businessName: 'Vendor Co',
-    });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
     hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
     hoisted.serviceFindUnique.mockResolvedValue({ id: 'svc-1', name: 'Outlet installation', price: 0 });
     hoisted.userFindFirst.mockResolvedValue({ id: 'customer-by-email' });
@@ -858,7 +955,15 @@ describe('POST /api/bookings', () => {
           service_id: 'svc-1',
           client_name: 'Alex',
           client_email: 'alex@example.com',
-          custom_fields: { vendor_job_recording_location: 'customer-business' },
+          custom_fields: {
+            vendor_job_recording_location: 'customer-business',
+            vendor_job_customer_business_address: '500 Customer Business Blvd',
+            vendor_job_customer_business_city: 'Orlando',
+            vendor_job_customer_business_state: 'FL',
+            vendor_job_customer_business_zip_code: '32801',
+            vendor_job_customer_business_latitude: 28.55,
+            vendor_job_customer_business_longitude: -81.37,
+          },
         },
         'POST'
       )
@@ -874,7 +979,7 @@ describe('POST /api/bookings', () => {
   it('creates an unclaimed booking placeholder when client_email has no existing account', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
-    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
     hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
     hoisted.userFindFirst.mockResolvedValue(null);
     hoisted.queryRaw.mockResolvedValue([]);
@@ -921,7 +1026,7 @@ describe('POST /api/bookings', () => {
   it('creates an unclaimed booking placeholder when vendor staff provides only client_phone', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
-    hoisted.vendorFindUnique.mockResolvedValue({ id: 'ven-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
     hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
     hoisted.userCreate.mockResolvedValue({ id: 'placeholder-customer-phone' });
     hoisted.bookingCreate.mockResolvedValue({ id: 'book-phone-only' });

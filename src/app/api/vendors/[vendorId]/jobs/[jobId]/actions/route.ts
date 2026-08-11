@@ -92,78 +92,12 @@ function stringifyCustomerMetadata(metadata: Record<string, unknown>) {
   return JSON.stringify(metadata);
 }
 
-function buildRecordingLocationSnapshot(
-  location: "business" | "residence" | "customer-business",
-  source: Record<string, unknown> | null | undefined
-) {
-  const latitude = Number(source?.latitude);
-  const longitude = Number(source?.longitude);
-  const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
-  const address = String(source?.address || "").trim() || null;
-  const city = String(source?.city || "").trim() || null;
-  const state = String(source?.state || "").trim() || null;
-  const zipCode = String(source?.zipCode || "").trim() || null;
-  const hasAddress = Boolean(address && city && state && zipCode);
-  return {
-    type: location,
-    source:
-      location === "business"
-        ? "vendor_profile"
-        : location === "residence"
-          ? "customer_profile"
-          : "customer_supplied",
-    status:
-      location === "customer-business" && !hasAddress
-        ? "pending_customer_input"
-        : hasCoordinates
-          ? "verified_coordinates"
-          : hasAddress
-            ? "address_only"
-            : "not_available",
-    address,
-    city,
-    state,
-    zip_code: zipCode,
-    latitude: hasCoordinates ? latitude : null,
-    longitude: hasCoordinates ? longitude : null,
-    geocoded_at:
-      source?.geocodedAt instanceof Date
-        ? source.geocodedAt.toISOString()
-        : String(source?.geocodedAt || "").trim() || null,
-    captured_at: new Date().toISOString(),
-  };
-}
-
 function mergeRecordingComplianceMetadata(
   value: string | null | undefined,
   input: Record<string, unknown>,
   locationVerification?: Record<string, unknown>,
-  locationSources?: {
-    vendor?: Record<string, unknown> | null;
-    customer?: Record<string, unknown> | null;
-  }
 ) {
   const metadata = parseCustomerMetadata(value);
-  const location = normalizeRecordingLocationChoice(input.location);
-  if (location) {
-    metadata.vendor_job_recording_location = location;
-    const existingSnapshot =
-      metadata.vendor_job_recording_location_snapshot &&
-      typeof metadata.vendor_job_recording_location_snapshot === "object" &&
-      !Array.isArray(metadata.vendor_job_recording_location_snapshot)
-        ? (metadata.vendor_job_recording_location_snapshot as Record<string, unknown>)
-        : null;
-    if (normalizeRecordingLocationChoice(existingSnapshot?.type) !== location) {
-      metadata.vendor_job_recording_location_snapshot = buildRecordingLocationSnapshot(
-        location,
-        location === "business"
-          ? locationSources?.vendor
-          : location === "residence"
-            ? locationSources?.customer
-            : null
-      );
-    }
-  }
   // Customer permission is derived from immutable server evidence. A manager
   // may configure location details here, but cannot assert a customer decision.
   delete metadata.vendor_job_consent_token;
@@ -601,6 +535,26 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       const nextAssessment = parsedAssessment
         ? deriveRecordingScopeAssessment(parsedAssessment)
         : null;
+      const currentCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
+      if (
+        nextAssessment &&
+        currentCompliance.location &&
+        nextAssessment.recordingLocation !== currentCompliance.location
+      ) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "RECORDING_LOCATION_SNAPSHOT_IMMUTABLE",
+            "The service location cannot be changed after its verified snapshot is saved. Create a corrected work record so permission and location evidence remain truthful.",
+            {
+              currentLocation: currentCompliance.location,
+              requestedLocation: nextAssessment.recordingLocation,
+              responsibleParticipant: "VENDOR_MANAGER",
+            },
+          ),
+          { status: 409 },
+        );
+      }
       const currentAssessment = nextAssessment
         ? await (prisma as any).recordingScopeAssessment.findFirst({
             where: { bookingId: booking.id, vendorId, isCurrent: true },
@@ -967,11 +921,29 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         where: { id: booking.id },
         select: { customerMetadata: true },
       });
+      const requestedLocation = normalizeRecordingLocationChoice(input.location);
+      const currentCompliance = parseRecordingComplianceMetadata(
+        existing?.customerMetadata || booking.customerMetadata,
+      );
+      if (requestedLocation && requestedLocation !== currentCompliance.location) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "RECORDING_LOCATION_SNAPSHOT_IMMUTABLE",
+            "The service location cannot be replaced after the work record snapshot is saved. Create a corrected work record with the required location source.",
+            {
+              currentLocation: currentCompliance.location,
+              requestedLocation,
+              responsibleParticipant: "VENDOR_MANAGER",
+            },
+          ),
+          { status: 409 },
+        );
+      }
       const metadata = mergeRecordingComplianceMetadata(
         existing?.customerMetadata || booking.customerMetadata,
         input,
         locationVerification,
-        { vendor: booking.vendor, customer: booking.user }
       );
       const updated = await prisma.booking.update({
         where: { id: booking.id },

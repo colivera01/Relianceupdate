@@ -7,6 +7,24 @@ export type AssignmentMetadata = {
 
 export type RecordingLocationChoice = "business" | "residence" | "customer-business";
 
+export type RecordingLocationSnapshot = {
+  type: RecordingLocationChoice;
+  source: "vendor_profile" | "customer_profile" | "customer_supplied";
+  status: "verified_coordinates";
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  latitude: number;
+  longitude: number;
+  capturedAt: string;
+  formattedAddress: string;
+};
+
+export type RecordingLocationSnapshotValidation =
+  | { ok: true; snapshot: RecordingLocationSnapshot }
+  | { ok: false; code: string };
+
 export type RecordingComplianceMetadata = {
   location: RecordingLocationChoice | null;
   consentAccepted: boolean;
@@ -68,6 +86,87 @@ export function normalizeRecordingLocationChoice(value: unknown): RecordingLocat
   return null;
 }
 
+function finiteCoordinate(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+const APPROVED_LOCATION_SOURCES: Record<RecordingLocationChoice, Set<string>> = {
+  business: new Set(["vendor_profile"]),
+  residence: new Set(["customer_profile", "customer_supplied"]),
+  "customer-business": new Set(["customer_supplied"]),
+};
+
+export function validateRecordingLocationSnapshot(
+  value: string | null | undefined,
+  expectedLocation?: RecordingLocationChoice | null,
+): RecordingLocationSnapshotValidation {
+  const parsed = parseCustomerMetadata(value);
+  const configuredLocation = normalizeRecordingLocationChoice(
+    parsed.vendor_job_recording_location,
+  );
+  const expected = expectedLocation || configuredLocation;
+  if (!expected || configuredLocation !== expected) {
+    return { ok: false, code: "RECORDING_LOCATION_TYPE_MISMATCH" };
+  }
+
+  const raw = parsed.vendor_job_recording_location_snapshot;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_MISSING" };
+  }
+  const snapshot = raw as Record<string, unknown>;
+  const type = normalizeRecordingLocationChoice(snapshot.type);
+  if (type !== expected) {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_TYPE_MISMATCH" };
+  }
+
+  const source = String(snapshot.source || "").trim();
+  if (!APPROVED_LOCATION_SOURCES[expected].has(source)) {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_SOURCE_MISMATCH" };
+  }
+  if (String(snapshot.status || "").trim() !== "verified_coordinates") {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_UNVERIFIED" };
+  }
+
+  const address = String(snapshot.address || "").trim();
+  const city = String(snapshot.city || "").trim();
+  const state = String(snapshot.state || "").trim();
+  const zipCode = String(snapshot.zip_code || snapshot.zipCode || "").trim();
+  const latitude = finiteCoordinate(snapshot.latitude);
+  const longitude = finiteCoordinate(snapshot.longitude);
+  const capturedAt = String(snapshot.captured_at || "").trim();
+  if (!address || !city || !state || !zipCode || !capturedAt) {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_INCOMPLETE" };
+  }
+  if (
+    latitude == null ||
+    longitude == null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_COORDINATES_INVALID" };
+  }
+
+  return {
+    ok: true,
+    snapshot: {
+      type,
+      source: source as RecordingLocationSnapshot["source"],
+      status: "verified_coordinates",
+      address,
+      city,
+      state,
+      zipCode,
+      latitude,
+      longitude,
+      capturedAt,
+      formattedAddress: [address, city, state, zipCode].join(", "),
+    },
+  };
+}
+
 export function parseRecordingComplianceMetadata(
   value: string | null | undefined
 ): RecordingComplianceMetadata {
@@ -77,22 +176,12 @@ export function parseRecordingComplianceMetadata(
         .map((id) => String(id || "").trim())
         .filter(Boolean)
     : [];
-  const rawSnapshot = parsed.vendor_job_recording_location_snapshot;
-  const snapshot =
-    rawSnapshot && typeof rawSnapshot === "object" && !Array.isArray(rawSnapshot)
-      ? (rawSnapshot as Record<string, unknown>)
-      : null;
-  const snapshotAddress = snapshot
-    ? [
-        String(snapshot.address || "").trim(),
-        String(snapshot.city || "").trim(),
-        String(snapshot.state || "").trim(),
-        String(snapshot.zip_code || snapshot.zipCode || "").trim(),
-      ].filter(Boolean)
-    : [];
+  const location = normalizeRecordingLocationChoice(parsed.vendor_job_recording_location);
+  const snapshotValidation = validateRecordingLocationSnapshot(value, location);
+  const snapshot = snapshotValidation.ok ? snapshotValidation.snapshot : null;
 
   return {
-    location: normalizeRecordingLocationChoice(parsed.vendor_job_recording_location),
+    location,
     consentAccepted: parsed.vendor_job_consent_accepted === true,
     locationVerified: parsed.vendor_job_location_verified === true,
     locationVerifiedAt: String(parsed.vendor_job_location_verified_at || "").trim() || null,
@@ -101,11 +190,11 @@ export function parseRecordingComplianceMetadata(
     releasedMembershipIds: Array.from(new Set(releasedMembershipIds)),
     addressSnapshot: snapshot
       ? {
-          type: normalizeRecordingLocationChoice(snapshot.type),
-          source: String(snapshot.source || "").trim() || null,
-          status: String(snapshot.status || "").trim() || null,
-          formattedAddress: snapshotAddress.length ? snapshotAddress.join(", ") : null,
-          capturedAt: String(snapshot.captured_at || "").trim() || null,
+          type: snapshot.type,
+          source: snapshot.source,
+          status: snapshot.status,
+          formattedAddress: snapshot.formattedAddress,
+          capturedAt: snapshot.capturedAt,
         }
       : null,
   };
