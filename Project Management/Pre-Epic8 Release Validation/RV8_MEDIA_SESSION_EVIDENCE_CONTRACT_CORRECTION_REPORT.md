@@ -63,7 +63,8 @@ The successful media-session integration path runs with a deliberately narrow mo
 | Prisma validate | Passed |
 | Prisma generate | Passed, Prisma Client 6.19.0 |
 | TypeScript | Passed |
-| Production build with 6 GB heap | Passed, Next.js 15.5.21; 205 generated App Router entries plus `/support` and `/notifications` |
+| Production build with 6 GB heap in the prepared validation worktree | Passed, Next.js 15.5.21; 205 generated App Router entries plus `/support` and `/notifications` |
+| Fresh detached packaging worktree at correction commit `813204a717772cd3865340ae2678c909db234250` | `npm ci` passed; the clean production build compiled application source, then failed type checking because active source imports undeclared `@radix-ui/react-toast` |
 | `git diff --check` | Passed; line-ending conversion notices only |
 
 One unrelated existing assertion in `src/lib/employee-stage-capture.test.ts` expects `Paired phone` while the untouched implementation returns `This phone`. That file is unchanged by this checkpoint and is not part of the media-session contract correction.
@@ -79,5 +80,8 @@ One unrelated existing assertion in `src/lib/employee-stage-capture.test.ts` exp
 
 ## Deployment Status
 
-Local validation is complete. A scoped commit, deterministic allow-list package, package inspection/hash verification, beta deployment, health check, and mounted-commit verification remain to be completed before RV-8 can resume.
+The correction was committed as `813204a717772cd3865340ae2678c909db234250` with message `fix: correct recording gate evidence payload` and pushed to `origin/codex/rv8-residence-location-correction`.
 
+Deployment is blocked by a separate clean-build reproducibility defect discovered while building the required deterministic package. `src/components/ui/toast.tsx` imports `@radix-ui/react-toast`, but the package is absent from both `package.json` and `package-lock.json`; `npm ls @radix-ui/react-toast --depth=0` is empty after a clean `npm ci`. The build therefore stops with `Cannot find module '@radix-ui/react-toast' or its corresponding type declarations`.
+
+No ZIP was assembled, uploaded, or mounted, and beta was not changed. Under the mandatory stop rule, this checkpoint cannot add the missing dependency without separate Product Owner approval. RV-8 remains paused, and RV-9 and Epic 8 have not begun.
