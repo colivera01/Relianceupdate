@@ -464,3 +464,53 @@ RV-8 remains paused pending Product Owner approval of a narrowly scoped settings
 - `Project Management/Pre-Epic8 Release Validation/RV8_CONTROLLED_DEPLOYMENT_RETRY_INCIDENT_REPORT.md`
 - `C:/Users/Cesar Olivera/Documents/Codex/release-packages/pre-epic8/reliance-beta-970cd10-rv8-deployment-retry-20260812125040-1.zip`
 - `C:/Users/Cesar Olivera/Documents/Codex/release-evidence/pre-epic8/rv8-deploy-970cd10/`
+
+## RV-8 Admin Audit Compatibility Deployment And Smoke - 2026-08-12
+
+**Result:** Pass - corrected cumulative package is mounted; admin audit canonical path is operationally validated; physical RV-8 may resume
+
+### Package and Azure state
+
+- Deployed commit: `211142b736f487a88c219a7ef41d5d2ff21c6170`
+- Package: `reliance-beta-211142b-rv8-admin-audit-20260812.zip`
+- SHA-256: `26105abf44413d8a4300083d6979f289e6fe7b0d2cb58157ebef0d7e23a52544`
+- Size: 69,949,869 bytes
+- Entries: 3,349
+- Two clean deterministic builds produced the same SHA-256.
+- Exact-ZIP startup outside every Git worktree passed with package-internal Next.js resolution, HTTP 200 homepage/health responses, three successful optimizer requests, and no `.next/cache` creation.
+- Local and downloaded remote package hashes matched exactly.
+- The structured JSON App Settings update preserved all 53 settings. Only `WEBSITE_RUN_FROM_PACKAGE`, `DEPLOYED_COMMIT`, and `DEPLOYED_PACKAGE` changed; all 50 unrelated fingerprints remained identical.
+- App Service is `Running`; both custom and Azure hostnames returned HTTP 200 for five consecutive `/` and `/api/health` probes.
+- The beta database remains current with all 42 repository migrations applied.
+
+### Immediate smoke
+
+- Homepage, Explore Proof, Support, Notifications, login, customer/vendor/employee/admin boundaries, and a public permission route returned their expected non-mutating responses.
+- Notification and lifecycle worker endpoints rejected unauthorized POST requests with HTTP 401.
+- Three consecutive live image-optimizer requests returned HTTP 200.
+- The post-deployment log scan found no new optimizer cache-write error, unhandled rejection, module-resolution error, package-mount error, or startup failure.
+
+### Controlled admin audit validation
+
+- Used the controlled synthetic `Epic One Customer` account, which was already active and remained active.
+- Performed the approved no-notification `reactivate` action with a controlled audit note.
+- The API returned HTTP 200.
+- The matching `ACCOUNT_ACTIVE` audit-row count changed from 0 to 1: exactly one record was created.
+- The new identifier begins with `audit_`, proving the canonical SQL insert succeeded instead of the Prisma fallback.
+- Actor, action type, entity type/target, timestamp, previous state, resulting state, and metadata were present and matched the controlled action.
+- Stored audit evidence contained no raw OTP, permission token, SAS value, credential, worker secret, session secret, or password.
+- Historical `Invalid column name 'action'` entries remain preserved in Azure logs. Their latest relevant timestamp predates the corrected controlled action. The corrected action at `2026-08-12T22:20:23.455Z` produced no new legacy-column error, canonical-insert failure, duplicate, or audit exception.
+
+### Physical RV-8 resume state
+
+- Controlled booking: `RV-8 Residence Location Validation`
+- Current customer permission: `ALLOWED`, current, and verified.
+- Employee recording-scope certification: active for the current assessment.
+- Recent device-location attempts: verified at 44-51 meters with 14-15 meter accuracy.
+- Staged media sessions: 0.
+- Saved staged media assets: 0.
+- The prior media-session failure did not create duplicate or partial staged media evidence.
+
+The existing employee browser may retry the preserved Starting Condition preview if it remains available. If browser/device state no longer retains that preview, the Product Owner must create one fresh controlled Starting Condition recording through the normal UI. Database state must not be manipulated to force recovery.
+
+RV-8 is not yet Passed. Physical capture, upload/retry, duplicate protection, manager correction/replacement/approval, Private customer playback, and unauthorized-role denial remain required. RV-9 and Epic 8 remain unstarted.
