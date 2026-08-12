@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db";
 
 type AdminAuditEntry = {
@@ -34,70 +35,32 @@ function isAdminAuditSchemaMismatch(error: unknown): boolean {
   );
 }
 
-function sqlLiteral(value: string | null): string {
-  if (value == null) return "NULL";
-  return `N'${value.replace(/'/g, "''")}'`;
-}
-
 export async function createAdminAuditLog(entry: AdminAuditEntry): Promise<void> {
   const serializedPreviousValue = entry.previousValue ? JSON.stringify(entry.previousValue) : null;
   const serializedNewValue = entry.newValue ? JSON.stringify(entry.newValue) : null;
   const serializedMetadata = entry.metadata ? JSON.stringify(entry.metadata) : null;
 
-  // Schema-safe raw insert first: some environments still require the legacy
-  // non-null `action` column, and Prisma logs that failed create loudly before
-  // the compatibility fallback can recover. Using the compatibility block
-  // first avoids noisy false-negative errors in healthy user-facing flows.
+  // Use only the canonical schema here. SQL Server compiles column references
+  // in every conditional branch, so a legacy identifier cannot safely share
+  // this statement with the current table shape.
   const id = `audit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  const actionType = sqlLiteral(entry.actionType);
-  const entityType = sqlLiteral(entry.entityType);
-  const entityId = sqlLiteral(entry.entityId);
-  const actorUserId = sqlLiteral(entry.actorUserId);
-  const previousValue = sqlLiteral(serializedPreviousValue);
-  const newValue = sqlLiteral(serializedNewValue);
-  const metadata = sqlLiteral(serializedMetadata);
-  const auditId = sqlLiteral(id);
 
   try {
-    await (prisma as any).$executeRawUnsafe(`
-IF OBJECT_ID(N'dbo.admin_audit_logs', N'U') IS NOT NULL
-BEGIN
-  IF COL_LENGTH('dbo.admin_audit_logs', 'action') IS NOT NULL
-     AND COL_LENGTH('dbo.admin_audit_logs', 'actionType') IS NOT NULL
-  BEGIN
-    INSERT INTO dbo.admin_audit_logs (
-      id, action, actionType, entityType, entityId, actorUserId, metadata, createdAt
-    )
-    VALUES (
-      ${auditId}, ${actionType}, ${actionType}, ${entityType}, ${entityId}, ${actorUserId}, ${metadata}, SYSUTCDATETIME()
-    );
-  END
-  ELSE IF COL_LENGTH('dbo.admin_audit_logs', 'action') IS NOT NULL
-  BEGIN
-    INSERT INTO dbo.admin_audit_logs (
-      id, action, entityType, entityId, actorUserId, metadata, createdAt
-    )
-    VALUES (
-      ${auditId}, ${actionType}, ${entityType}, ${entityId}, ${actorUserId}, ${metadata}, SYSUTCDATETIME()
-    );
-  END
-  ELSE IF COL_LENGTH('dbo.admin_audit_logs', 'actionType') IS NOT NULL
-  BEGIN
-    INSERT INTO dbo.admin_audit_logs (
-      id, actionType, entityType, entityId, actorUserId, previousValue, newValue, metadata, createdAt
-    )
-    VALUES (
-      ${auditId}, ${actionType}, ${entityType}, ${entityId}, ${actorUserId}, ${previousValue}, ${newValue}, ${metadata}, SYSUTCDATETIME()
-    );
-  END
-END
-`);
+    await (prisma as any).$executeRaw(Prisma.sql`
+      INSERT INTO dbo.admin_audit_logs (
+        id, actionType, entityType, entityId, actorUserId, previousValue, newValue, metadata, createdAt
+      )
+      VALUES (
+        ${id}, ${entry.actionType}, ${entry.entityType}, ${entry.entityId}, ${entry.actorUserId},
+        ${serializedPreviousValue}, ${serializedNewValue}, ${serializedMetadata}, SYSUTCDATETIME()
+      )
+    `);
     return;
   } catch (error) {
-    // Fall back to Prisma create for environments whose table shape is fully
-    // aligned with the current Prisma model but reject the compatibility SQL.
+    // Preserve the model-backed fallback as defense in depth if the canonical
+    // raw write fails independently of the supported table shape.
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[admin-audit] raw compatibility insert failed, falling back to Prisma create", {
+      console.warn("[admin-audit] canonical insert failed, falling back to Prisma create", {
         actionType: entry.actionType,
         entityType: entry.entityType,
         entityId: entry.entityId,
