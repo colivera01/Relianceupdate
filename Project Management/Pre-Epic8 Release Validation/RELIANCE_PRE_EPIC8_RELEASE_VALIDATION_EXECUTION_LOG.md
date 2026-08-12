@@ -428,3 +428,39 @@ The correction is not yet deployed. RV-8 remains incomplete until the existing b
 
 - `Project Management/Pre-Epic8 Release Validation/RV8_RECORDING_LOCATION_DEADLOCK_CORRECTION_REPORT.md`
 - `C:/Users/Cesar Olivera/Documents/Codex/release-evidence/pre-epic8/rv5-rerun-845e247/screenshots/rv8-05-residence-location-verification-action.png`
+
+## RV-8 Controlled Deployment Retry - 2026-08-12
+
+**Result:** Fail - mandatory deployment safety gate; candidate not mounted and RV-8 remains paused
+
+### Passed before Azure mutation
+
+- Approved commit `970cd10f34684dbf1299ff0324e0716e5011f19f` was pushed and reproduced from a clean detached worktree.
+- The production-only dependency audit reported zero Critical advisories.
+- The production build passed.
+- Two deterministic allow-list builds produced the same 69,951,193-byte package and SHA-256 `11d341d77db85cce9c8552f5614b3ef0eeb64bc8453ba7cfeabaa9cc95e51491`.
+- The package passed forbidden-entry, secret-material, internal dependency-resolution, read-only-root startup, homepage, health, and repeated image-optimizer validation.
+- Remote upload/download hash verification passed.
+- The settings dry run retrieved all 53 settings, selected exactly the three approved deployment keys, and preserved every unrelated value.
+
+### Mandatory failure
+
+The scoped settings apply path did not transmit the complete SAS-bearing package URL. Azure CLI parsed `&` separators in the `KEY=VALUE` argument and persisted only the first query parameter. This produced a 403 package reference and a partial approved-setting update: the run-from-package value changed while the commit and package markers remained on the rollback values.
+
+The candidate package was not validated or classified as mounted. Immediate candidate smoke and physical-device RV-8 replay were not started.
+
+### Recovery and current state
+
+- Restored the known-good rollback package reference using scoped JSON-file input.
+- Preserved all 53 App Settings and all unrelated setting fingerprints.
+- Confirmed rollback commit `90a21ab3e6f8ef3b78d319fb9533aea491369466` and package `reliance-beta-90a21ab-homepage-20260811225759.zip`.
+- Confirmed the App Service is Running.
+- All 20 bounded recovery probes passed across the custom and Azure hostnames: five homepage and five `/api/health` requests per hostname.
+
+RV-8 remains paused pending Product Owner approval of a narrowly scoped settings-transport correction. RV-9 and Epic 8 remain unstarted.
+
+### Evidence
+
+- `Project Management/Pre-Epic8 Release Validation/RV8_CONTROLLED_DEPLOYMENT_RETRY_INCIDENT_REPORT.md`
+- `C:/Users/Cesar Olivera/Documents/Codex/release-packages/pre-epic8/reliance-beta-970cd10-rv8-deployment-retry-20260812125040-1.zip`
+- `C:/Users/Cesar Olivera/Documents/Codex/release-evidence/pre-epic8/rv8-deploy-970cd10/`

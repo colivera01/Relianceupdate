@@ -3,25 +3,30 @@
 
 The script reads the complete setting collection from Azure's ``/list``
 endpoint, changes only the approved keys, and compares all unrelated values in
-memory. Secret values, package URLs, and fingerprints are never persisted.
-Dry-run is the default; ``--apply`` is required to perform a write.
+memory. Apply mode uses an owner-restricted temporary JSON file for the three
+approved values and removes it immediately after the Azure operation. Dry-run
+is the default; ``--apply`` is required to perform a write.
 """
 
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import hmac
 import json
 import os
 import secrets
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from collections.abc import Iterator
+from typing import Any, Callable
 
 
 API_VERSION = "2025-03-01"
@@ -113,6 +118,117 @@ def compare_preserved(before: dict[str, str], after: dict[str, str]) -> list[str
     return sorted(name for name in names if before.get(name) != after.get(name))
 
 
+@contextmanager
+def secure_temporary_directory(parent: str | None = None) -> Iterator[str]:
+    directory = tempfile.mkdtemp(prefix="reliance-appsettings-", dir=parent)
+    try:
+        if os.name == "nt":
+            identity = subprocess.run(
+                ["whoami"], check=True, text=True, capture_output=True
+            ).stdout.strip()
+            if not identity:
+                raise RuntimeError("Unable to identify the current Windows account")
+            subprocess.run(
+                [
+                    "icacls",
+                    directory,
+                    "/inheritance:r",
+                    "/grant:r",
+                    f"{identity}:(OI)(CI)F",
+                ],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        else:
+            os.chmod(directory, stat.S_IRWXU)
+        yield directory
+    finally:
+        shutil.rmtree(directory, ignore_errors=False)
+        if os.path.exists(directory):
+            raise RuntimeError("The temporary App Settings directory could not be removed")
+
+
+def apply_scoped_settings(
+    resource_group: str,
+    app: str,
+    updates: dict[str, str],
+    *,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    temporary_directory: str | None = None,
+) -> None:
+    if set(updates) != APPROVED_KEYS or any(not isinstance(value, str) or not value for value in updates.values()):
+        raise RuntimeError("The scoped App Settings update must contain exactly the three approved values")
+
+    with secure_temporary_directory(temporary_directory) as secure_directory:
+        descriptor, temporary_path = tempfile.mkstemp(
+            prefix="values-",
+            suffix=".json",
+            dir=secure_directory,
+            text=True,
+        )
+        try:
+            if os.name != "nt":
+                os.chmod(temporary_path, stat.S_IRUSR | stat.S_IWUSR)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as temporary_file:
+                descriptor = -1
+                json.dump(updates, temporary_file, separators=(",", ":"))
+                temporary_file.flush()
+
+            # Structured @file input prevents '&', '=', '?', '%', and '+' in a
+            # SAS-bearing value from being interpreted as CLI argument separators.
+            runner(
+                [
+                    azure_cli(),
+                    "webapp",
+                    "config",
+                    "appsettings",
+                    "set",
+                    "--resource-group",
+                    resource_group,
+                    "--name",
+                    app,
+                    "--settings",
+                    f"@{temporary_path}",
+                    "--output",
+                    "none",
+                ],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        finally:
+            if descriptor != -1:
+                os.close(descriptor)
+            try:
+                os.unlink(temporary_path)
+            except FileNotFoundError:
+                pass
+            if os.path.exists(temporary_path):
+                raise RuntimeError("The temporary App Settings input could not be removed")
+
+
+def verify_post_update(
+    before: dict[str, str],
+    after: dict[str, str],
+    candidate: dict[str, str],
+    fingerprint_key: bytes,
+) -> tuple[str, str]:
+    preserved_before = {name: value for name, value in before.items() if name not in APPROVED_KEYS}
+    preserved_after = {name: value for name, value in after.items() if name not in APPROVED_KEYS}
+    before_fingerprint = collection_fingerprint(preserved_before, fingerprint_key)
+    after_fingerprint = collection_fingerprint(preserved_after, fingerprint_key)
+    mismatches = compare_preserved(before, after)
+    approved_match = all(after.get(name) == candidate[name] for name in APPROVED_KEYS)
+
+    if len(after) != len(before) or mismatches or not approved_match or before_fingerprint != after_fingerprint:
+        raise RuntimeError(
+            "Post-update preservation verification failed. Stop before any explicit restart and use the active "
+            "Azure revision/history for recovery; this tool will not perform a destructive full-collection PUT."
+        )
+    return before_fingerprint, after_fingerprint
+
+
 def main() -> int:
     args = parse_args()
     if args.reuse_current_package_url and args.apply:
@@ -172,42 +288,13 @@ def main() -> int:
         )
         return 0
 
-    # Invoke Azure CLI without a shell so the SAS query string remains one
-    # argument. This command updates only the named settings rather than
-    # replacing the collection from a partial local snapshot.
-    subprocess.run(
-        [
-            azure_cli(),
-            "webapp",
-            "config",
-            "appsettings",
-            "set",
-            "--resource-group",
-            args.resource_group,
-            "--name",
-            args.app,
-            "--settings",
-            f"WEBSITE_RUN_FROM_PACKAGE={package_url}",
-            f"DEPLOYED_COMMIT={args.commit}",
-            f"DEPLOYED_PACKAGE={args.package}",
-            "--output",
-            "none",
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
+    apply_scoped_settings(
+        args.resource_group,
+        args.app,
+        {name: candidate[name] for name in APPROVED_KEYS},
     )
     after = load_settings(list_url, token)
-    preserved_after = {name: value for name, value in after.items() if name not in APPROVED_KEYS}
-    after_fingerprint = collection_fingerprint(preserved_after, fingerprint_key)
-    mismatches = compare_preserved(before, after)
-    approved_match = all(after.get(name) == candidate[name] for name in APPROVED_KEYS)
-
-    if len(after) != len(before) or mismatches or not approved_match or before_fingerprint != after_fingerprint:
-        raise RuntimeError(
-            "Post-update preservation verification failed. Stop before any explicit restart and use the active "
-            "Azure revision/history for recovery; this tool will not perform a destructive full-collection PUT."
-        )
+    before_fingerprint, after_fingerprint = verify_post_update(before, after, candidate, fingerprint_key)
 
     print(
         json.dumps(
