@@ -133,7 +133,7 @@ export default function HomePage() {
               <div className="reliance-glass -mx-1 overflow-hidden rounded-[26px] border border-white/10 bg-[rgba(6,17,31,0.78)] p-1 shadow-[0_30px_90px_rgba(4,9,20,0.42)] sm:mx-0 sm:rounded-[34px] sm:p-2">
                 <div className="relative overflow-hidden rounded-[22px] bg-[#05101d] sm:rounded-[28px]">
                   <img
-                    src="/homepage/hero-concepts/reliance-multitrade-collage-hero-v11.png"
+                    src="/homepage/hero-concepts/reliance-multitrade-collage-hero-v12.png"
                     alt="Reliance proof platform showing local professionals across electrical, plumbing, HVAC, cleaning, lawn care, beauty, auto, and appliance services."
                     className="block w-full"
                   />

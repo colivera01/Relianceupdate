@@ -26,6 +26,7 @@ describe('proof-first platform shell', () => {
     const source = read('src/app/page.tsx');
 
     expect(source).toContain('See real completed work before you decide who to trust.');
+    expect(source).toContain('reliance-multitrade-collage-hero-v12.png');
     expect(source).toContain('Customer Reviews');
     expect(source).toContain('Public Service Videos');
     expect(source).toContain('Reliance Trust Score');
