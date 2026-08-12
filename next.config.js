@@ -3,6 +3,11 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   outputFileTracingRoot: __dirname,
+  images: {
+    // Azure Run From Package mounts .next read-only. Keep optimization active,
+    // but prevent the optimizer from writing its runtime disk cache there.
+    maximumDiskCacheSize: 0,
+  },
   async rewrites() {
     return [
       {
