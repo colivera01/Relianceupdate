@@ -10,7 +10,10 @@ import {
   verifyJobRecordingLocation,
 } from "@/lib/job-recording-location";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
-import { persistAllowedRecordingGateDecision } from "@/lib/service-video-evidence";
+import {
+  assertServiceVideoStageMutationAllowed,
+  persistAllowedRecordingGateDecision,
+} from "@/lib/service-video-evidence";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -82,12 +85,10 @@ export async function POST(
       vendorJobVideoStage,
       replaceExisting,
     } = body;
-    const tokenAccess = await resolveEmployeeCaptureAccess(request, {
-      vendorId,
-      bookingId: bookingId ? String(bookingId) : null,
-    });
+    const tokenAccess = await resolveEmployeeCaptureAccess(request, { vendorId });
     const membership = tokenAccess || (await requireVendorMembership(request, vendorId));
     const userId = membership.userId;
+    const employeeActor = Boolean(tokenAccess) || String((membership as any).role || "").toUpperCase() === "EMPLOYEE";
 
     // Keep booking linkage optional and backward-compatible with UI-local job IDs.
     // If bookingId is provided but not found for this vendor, ignore it instead of failing FK constraints.
@@ -133,6 +134,25 @@ export async function POST(
     const wantsStagedJobVideo =
       normalizedStage != null ||
       resolvedSessionType.toUpperCase() === "JOB_SERVICE_VIDEO";
+    if (
+      employeeActor &&
+      (!bookingId || !normalizedStage || resolvedSessionType.toUpperCase() !== "JOB_SERVICE_VIDEO")
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED",
+          message: "Employee Service Video recording requires the assigned work record and exact stage.",
+        },
+        { status: 409 },
+      );
+    }
+    if (tokenAccess && String(bookingId || "") !== tokenAccess.bookingId) {
+      return NextResponse.json(
+        { success: false, code: "JOB_CAPTURE_TOKEN_FORBIDDEN", message: "This capture link is not authorized for this work record." },
+        { status: 403 },
+      );
+    }
     let stagedPermissionGate: Awaited<ReturnType<typeof loadRecordingPermissionGate>> | null = null;
     let stagedMembershipId: string | null = null;
     let stagedActorKind: string | null = null;
@@ -320,6 +340,11 @@ export async function POST(
     try {
       if (useEvidenceTransaction) {
         session = await prisma.$transaction(async (tx: any) => {
+          await assertServiceVideoStageMutationAllowed(tx, {
+            bookingId: validBookingId!,
+            vendorId,
+            stage: normalizedStage!,
+          });
           const gateEvidence = await persistAllowedRecordingGateDecision({
             bookingId: validBookingId!,
             vendorId,
@@ -332,13 +357,19 @@ export async function POST(
           return tx.mediaSession.create({
             data: { ...createSessionData, recordingGateDecisionId: gateEvidence.id },
           });
-        });
+        }, { isolationLevel: "Serializable" });
       } else {
         session = await (prisma as any).mediaSession.create({
           data: createSessionData,
         });
       }
     } catch (createError: unknown) {
+      if ((createError as any)?.name === "ServiceVideoMutationBlockedError") {
+        return NextResponse.json(
+          { success: false, code: String((createError as any).code || (createError as any).message) },
+          { status: 409 },
+        );
+      }
       const mapped = mapMediaSessionCreateFailure(createError);
       if (process.env.NODE_ENV !== "production") {
         console.error("[media/sessions][POST] trace:create_threw", {

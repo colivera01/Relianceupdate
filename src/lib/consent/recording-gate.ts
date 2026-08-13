@@ -88,6 +88,7 @@ export type RecordingGateSurface =
   | "media_session"
   | "upload_init"
   | "upload_proxy"
+  | "upload_status"
   | "upload_complete"
   | "admin_evidence";
 

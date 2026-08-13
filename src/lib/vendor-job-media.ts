@@ -390,6 +390,8 @@ export async function runVendorJobMediaUpload({
         expectedBytes: file.size,
         fileSize: file.size,
         mimeType: file.type,
+        bookingId: selectedJobBookingId || undefined,
+        mediaSessionId,
       }),
       },
       {
@@ -420,7 +422,28 @@ export async function runVendorJobMediaUpload({
         isRealAzureBlobHost = false;
       }
     }
-    const shouldSkipBlobPut = !uploadUrl || !isRealAzureBlobHost;
+    const useProxyUpload = String(initJson.uploadMode || "").toUpperCase() === "PROXY";
+    const shouldSkipBlobPut = useProxyUpload || !uploadUrl || !isRealAzureBlobHost;
+    if (useProxyUpload) {
+      const proxyRes = await requestWithDiagnostics(
+        'blob_put',
+        String(initJson.proxyUrl || `/api/vendors/${vendorId}/media/upload/proxy`),
+        {
+          method: 'POST',
+          headers: {
+            ...getHeaders(),
+            'Content-Type': file.type,
+            'x-reliance-asset-id': String(initJson.assetId),
+            'x-reliance-blob-key': String(initJson.blobKey),
+            'x-reliance-booking-id': selectedJobBookingId,
+          },
+          body: file,
+        },
+        { mimeType: file.type, bytes: file.size, uploadMode: 'PROXY' },
+      );
+      diagnostics.blobUploadResponse = proxyRes;
+      if (!proxyRes.ok) throw new VendorJobMediaUploadError(responseErrorMessage(proxyRes), diagnostics);
+    }
     if (!shouldSkipBlobPut) {
       if (!sasInfo || !sasInfo.hasSig || !sasInfo.permissions.includes('w') || sasInfo.resource !== 'b') {
         throw new VendorJobMediaUploadError(

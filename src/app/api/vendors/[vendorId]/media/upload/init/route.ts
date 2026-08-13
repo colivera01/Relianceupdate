@@ -33,11 +33,19 @@ export async function POST(
     const { vendorId } = await context.params;
     const body = await request.json();
     const { fileName, expectedBytes, mimeType, deviceId, bookingId, mediaSessionId } = body;
-    const tokenAccess = await resolveEmployeeCaptureAccess(request, {
-      vendorId,
-      bookingId: bookingId ? String(bookingId) : null,
-    });
+    const tokenAccess = await resolveEmployeeCaptureAccess(request, { vendorId });
     const membership = tokenAccess || await requireVendorMembership(request, vendorId);
+    const employeeActor = Boolean(tokenAccess) || String((membership as any).role || "").toUpperCase() === "EMPLOYEE";
+
+    if (employeeActor && (!bookingId || !mediaSessionId)) {
+      return NextResponse.json(
+        { code: "EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED", error: "Employee uploads require the assigned work record and recording session." },
+        { status: 409 },
+      );
+    }
+    if (tokenAccess && String(bookingId || "") !== tokenAccess.bookingId) {
+      return NextResponse.json({ code: "JOB_CAPTURE_TOKEN_FORBIDDEN", error: "This capture link is not authorized for this work record." }, { status: 403 });
+    }
 
     let stagedUpload: {
       bookingId: string;
@@ -161,6 +169,19 @@ export async function POST(
         expectedBytes: BigInt(expectedBytes),
         mimeType,
       });
+
+      return NextResponse.json({
+        assetId,
+        blobKey,
+        uploadMode: "PROXY",
+        proxyUrl: `/api/vendors/${vendorId}/media/upload/proxy`,
+        uploadState: "UPLOADING",
+        storage: {
+          usedBytes: usage.usedBytes.toString(),
+          limitBytes: usage.limitBytes.toString(),
+          percentUsed: usage.percentUsed,
+        },
+      });
     }
 
     // Generate SAS URL for Azure Blob Storage (60 minute expiration)
@@ -209,6 +230,9 @@ export async function POST(
     console.error("[media/upload/init] POST error:", error);
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error?.name === "ServiceVideoMutationBlockedError") {
+      return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
     }
     return NextResponse.json(
       { error: "Failed to initialize upload", details: error.message },

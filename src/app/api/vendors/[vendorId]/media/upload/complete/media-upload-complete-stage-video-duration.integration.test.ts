@@ -288,6 +288,29 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
+  it("rejects a pre-authorized finalization when the durable transaction observes manager review", async () => {
+    vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationSeconds(12));
+    const error = Object.assign(new Error("MANAGER_REVIEW_IN_PROGRESS"), {
+      name: "ServiceVideoMutationBlockedError",
+      code: "MANAGER_REVIEW_IN_PROGRESS",
+    });
+    hoisted.saveVerifiedServiceVideoStage.mockRejectedValue(error);
+
+    const response = await POST(buildRequest(12), {
+      params: Promise.resolve({ vendorId: VENDOR_ID }),
+    });
+    const json = await readJson(response);
+
+    expect(response.status).toBe(409);
+    expect(json).toMatchObject({
+      code: "MANAGER_REVIEW_IN_PROGRESS",
+      responsibleParticipant: "VENDOR_MANAGER",
+      resolution: "Wait for manager review.",
+    });
+    expect(hoisted.mediaAssetCreate).not.toHaveBeenCalled();
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
   it("allows a staged video when the uploaded media probes under the 30-second limit", async () => {
     vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationSeconds(12));
 
@@ -389,17 +412,16 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     });
 
     expect(res.status).toBe(200);
-    expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
-      where: { id: "booking-1" },
-      data: {
-        customerMetadata: JSON.stringify({
+    expect(hoisted.saveVerifiedServiceVideoStage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "booking-1",
+        bookingMetadataAfterSave: JSON.stringify({
           vendor_job_recording_location: "business",
-          reliance_ops: {
-            operational_phase: "IN_PROGRESS",
-          },
+          reliance_ops: { operational_phase: "IN_PROGRESS" },
         }),
-      },
-    });
+      }),
+    );
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
   it("does not complete a staged upload after residence permission is declined", async () => {

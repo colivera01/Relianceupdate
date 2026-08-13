@@ -603,12 +603,13 @@ export default function EmployeeJobsPage() {
     file: File;
     assetId: string;
     blobKey: string;
-    sasUrl: string;
+    sasUrl?: string;
+    uploadMode?: string;
   }) => {
     const contentType = input.file.type || "video/mp4";
     let directUploadError = "";
 
-    try {
+    if (input.uploadMode !== "PROXY" && input.sasUrl) try {
       const putRes = await fetchWithTimeout(
         String(input.sasUrl),
         {
@@ -703,7 +704,7 @@ export default function EmployeeJobsPage() {
         }),
       });
       const initJson = await initRes.json().catch(() => ({}));
-      if (!initRes.ok || !initJson?.sasUrl || !initJson?.assetId || !initJson?.blobKey) {
+      if (!initRes.ok || !initJson?.assetId || !initJson?.blobKey) {
         throw new Error(initJson?.error || "Failed to initialize upload");
       }
       initializedAssetId = String(initJson.assetId);
@@ -714,7 +715,8 @@ export default function EmployeeJobsPage() {
           file,
           assetId: initializedAssetId,
           blobKey: String(initJson.blobKey),
-          sasUrl: String(initJson.sasUrl),
+          sasUrl: initJson.sasUrl ? String(initJson.sasUrl) : undefined,
+          uploadMode: String(initJson.uploadMode || "DIRECT"),
         });
       } catch (uploadError) {
         await fetch(`/api/vendors/${job.vendorId}/media/upload/status`, {

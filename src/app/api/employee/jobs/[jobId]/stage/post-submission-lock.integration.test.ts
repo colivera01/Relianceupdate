@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   resolveEmployeeCaptureAccess: vi.fn(),
   loadRecordingPermissionGate: vi.fn(),
   recordLifecycleAudit: vi.fn(),
+  assertServiceVideoStageMutationAllowed: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -22,6 +24,7 @@ vi.mock("@/server/db", () => ({
       findFirst: mocks.mediaSessionFindFirst,
       findMany: mocks.mediaSessionFindMany,
     },
+    $transaction: mocks.transaction,
   },
 }));
 
@@ -53,6 +56,13 @@ vi.mock("@/lib/consent/recording-gate", () => ({
     blocked: gate.block,
   })),
 }));
+vi.mock("@/lib/service-video-evidence", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/service-video-evidence")>("@/lib/service-video-evidence");
+  return {
+    ...actual,
+    assertServiceVideoStageMutationAllowed: mocks.assertServiceVideoStageMutationAllowed,
+  };
+});
 
 describe("employee stage save after package submission", () => {
   beforeEach(() => {
@@ -79,6 +89,14 @@ describe("employee stage save after package submission", () => {
         resolution: "Wait for manager review.",
       },
     });
+    mocks.transaction.mockImplementation(async (callback: (tx: any) => unknown) => callback({
+      booking: { update: mocks.bookingUpdate },
+      mediaSession: {
+        findFirst: mocks.mediaSessionFindFirst,
+        findMany: mocks.mediaSessionFindMany,
+      },
+    }));
+    mocks.assertServiceVideoStageMutationAllowed.mockResolvedValue(undefined);
   });
 
   it("rejects a direct save without reading media or updating progress", async () => {
@@ -98,6 +116,30 @@ describe("employee stage save after package submission", () => {
     );
     expect(mocks.mediaSessionFindFirst).not.toHaveBeenCalled();
     expect(mocks.mediaSessionFindMany).not.toHaveBeenCalled();
+    expect(mocks.bookingUpdate).not.toHaveBeenCalled();
+    expect(mocks.recordLifecycleAudit).not.toHaveBeenCalled();
+  });
+
+  it("rechecks manager review inside the durable stage-progress transaction", async () => {
+    mocks.loadRecordingPermissionGate.mockResolvedValue({ blockCode: null, recordingUnlocked: true });
+    const blocked = Object.assign(new Error("MANAGER_REVIEW_IN_PROGRESS"), {
+      name: "ServiceVideoMutationBlockedError",
+      code: "MANAGER_REVIEW_IN_PROGRESS",
+    });
+    mocks.assertServiceVideoStageMutationAllowed.mockRejectedValue(blocked);
+
+    const response = await POST(
+      new Request("http://localhost/api/employee/jobs/job-1/stage?ct=signed-token", {
+        method: "POST",
+        body: JSON.stringify({ stage: "INTRO" }),
+      }),
+      { params: Promise.resolve({ jobId: "job-1" }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(json.code).toBe("MANAGER_REVIEW_IN_PROGRESS");
+    expect(mocks.mediaSessionFindFirst).not.toHaveBeenCalled();
     expect(mocks.bookingUpdate).not.toHaveBeenCalled();
     expect(mocks.recordLifecycleAudit).not.toHaveBeenCalled();
   });

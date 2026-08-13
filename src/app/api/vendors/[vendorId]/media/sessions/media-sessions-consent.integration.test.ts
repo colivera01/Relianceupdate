@@ -395,6 +395,21 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect(hoisted.recordingGateDecisionEvidenceCreate).not.toHaveBeenCalled();
   });
 
+  it("does not let an employee omit work-record context to downgrade into a generic media session", async () => {
+    const { req, ctx } = buildPostRequest({
+      bookingId: null,
+      sessionType: "SERVICE_RECORD",
+      vendorJobVideoStage: null,
+    });
+
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED");
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
+  });
+
   it("blocks business location when geolocation proof is missing", async () => {
     mockBookingLocation("business");
     const { req, ctx } = buildPostRequest({

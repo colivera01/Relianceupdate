@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => ({
     privateProofAccessGrant: { findFirst: vi.fn() },
     serviceVideoPackageEvidence: { findFirst: vi.fn() },
     serviceVideoManagerDecisionEvidence: { findFirst: vi.fn() },
+    booking: { findFirst: vi.fn() },
     serviceVideoStageEvidence: { findMany: vi.fn() },
     recordingGateDecisionEvidence: { findFirst: vi.fn() },
     mediaSession: { findFirst: vi.fn() },
@@ -47,6 +48,7 @@ describe("Private Service Video evidence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.prisma.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(hoisted.prisma));
+    hoisted.prisma.booking.findFirst.mockResolvedValue({ id: "booking-1", status: "IN_PROGRESS" });
   });
 
   it("fails closed when a customer access grant does not exist", async () => {
@@ -146,7 +148,82 @@ describe("Private Service Video evidence", () => {
     });
 
     expect(first).toBe(current);
+    expect(hoisted.prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: "Serializable" },
+    );
     expect(tx.serviceVideoPackageEvidence.updateMany).not.toHaveBeenCalled();
     expect(tx.serviceVideoPackageEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks a durable stage mutation after manager review becomes authoritative", async () => {
+    const { assertServiceVideoStageMutationAllowed } = await import("./service-video-evidence");
+    hoisted.prisma.booking.findFirst.mockResolvedValue({ id: "booking-1", status: "AWAITING_REVIEW" });
+    hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue({
+      status: "AWAITING_MANAGER_REVIEW",
+      managerDecisionId: null,
+    });
+
+    await expect(assertServiceVideoStageMutationAllowed(hoisted.prisma, {
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      stage: "INTRO",
+    })).rejects.toMatchObject({ code: "MANAGER_REVIEW_IN_PROGRESS" });
+  });
+
+  it("rejects finalization when upload authority predates manager review", async () => {
+    const { saveVerifiedServiceVideoStage } = await import("./service-video-evidence");
+    const tx: any = {
+      booking: { findFirst: vi.fn().mockResolvedValue({ id: "booking-1", status: "AWAITING_REVIEW" }) },
+      serviceVideoPackageEvidence: {
+        findFirst: vi.fn().mockResolvedValue({ status: "AWAITING_MANAGER_REVIEW", managerDecisionId: null }),
+      },
+      recordingGateDecisionEvidence: { findFirst: vi.fn() },
+      mediaAsset: { create: vi.fn() },
+      serviceVideoStageEvidence: { create: vi.fn() },
+    };
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: (db: unknown) => unknown) => callback(tx));
+
+    await expect(saveVerifiedServiceVideoStage({
+      assetId: "asset-race",
+      vendorId: "vendor-1",
+      bookingId: "booking-1",
+      mediaSessionId: "session-1",
+      membershipId: "employee-membership-1",
+      bytes: BigInt(1024),
+      mimeType: "video/webm",
+      blobKey: "vendor/vendor-1/media/asset-race.webm",
+      stage: "INTRO",
+      captureProvenance: "LIVE_BROWSER_CAPTURE",
+      verifiedDurationSeconds: 5,
+      videoBuffer: Buffer.from("video"),
+      gateDecisionId: "gate-issued-before-submission",
+    })).rejects.toMatchObject({ code: "MANAGER_REVIEW_IN_PROGRESS" });
+
+    expect(tx.recordingGateDecisionEvidence.findFirst).not.toHaveBeenCalled();
+    expect(tx.mediaAsset.create).not.toHaveBeenCalled();
+    expect(tx.serviceVideoStageEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("reopens only the exact stage named by the manager correction", async () => {
+    const { assertServiceVideoStageMutationAllowed } = await import("./service-video-evidence");
+    hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue({
+      status: "CORRECTION_REQUESTED",
+      managerDecisionId: "decision-1",
+    });
+    hoisted.prisma.serviceVideoManagerDecisionEvidence.findFirst.mockResolvedValue({
+      targetedStagesJson: JSON.stringify(["IN_PROGRESS"]),
+    });
+
+    await expect(assertServiceVideoStageMutationAllowed(hoisted.prisma, {
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      stage: "INTRO",
+    })).rejects.toMatchObject({ code: "STAGE_CORRECTION_NOT_REQUESTED" });
+    await expect(assertServiceVideoStageMutationAllowed(hoisted.prisma, {
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      stage: "IN_PROGRESS",
+    })).resolves.toBeUndefined();
   });
 });

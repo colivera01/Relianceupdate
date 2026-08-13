@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
+import {
+  assertServiceVideoStageMutationAllowed,
+  REQUIRED_SERVICE_VIDEO_STAGES,
+  type ServiceVideoStage,
+} from "@/lib/service-video-evidence";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; sessionId: string }>;
@@ -84,11 +90,17 @@ export async function PATCH(
 ): Promise<NextResponse> {
   try {
     const { vendorId, sessionId } = await context.params;
-    await requireVendorMembership(request, vendorId);
+    const membership = await requireVendorMembership(request, vendorId);
 
     const existing = await (prisma as any).mediaSession.findFirst({
       where: { id: sessionId, vendorId },
-      select: { id: true },
+      select: {
+        id: true,
+        bookingId: true,
+        sessionType: true,
+        vendorJobVideoStage: true,
+        capturedByMembershipId: true,
+      },
     });
     if (!existing) {
       return NextResponse.json({ error: "Media session not found" }, { status: 404 });
@@ -108,6 +120,43 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid status" }, { status: 422 });
     }
 
+    const employeeActor = String(membership.role || "").toUpperCase() === "EMPLOYEE";
+    const stage = String(existing.vendorJobVideoStage || "").trim().toUpperCase();
+    const stagedEmployeeSession =
+      employeeActor &&
+      String(existing.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO" &&
+      REQUIRED_SERVICE_VIDEO_STAGES.includes(stage as ServiceVideoStage);
+    if (employeeActor && !stagedEmployeeSession) {
+      return NextResponse.json(
+        { code: "EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED", error: "Employee session updates require an assigned Service Video stage." },
+        { status: 409 },
+      );
+    }
+    if (stagedEmployeeSession) {
+      if (!existing.bookingId || String(existing.capturedByMembershipId || "") !== membership.membershipId) {
+        return NextResponse.json(
+          { code: "EMPLOYEE_SERVICE_VIDEO_CONTEXT_INVALID", error: "This recording session is not assigned to the current employee." },
+          { status: 403 },
+        );
+      }
+      const booking = await prisma.booking.findFirst({
+        where: { id: existing.bookingId, vendorId },
+        select: { id: true, customerMetadata: true },
+      });
+      if (!booking) return NextResponse.json({ error: "Work record not found" }, { status: 404 });
+      const gate = await loadRecordingPermissionGate({
+        bookingId: booking.id,
+        vendorId,
+        customerMetadata: booking.customerMetadata,
+        membershipId: membership.membershipId,
+        surface: "media_session",
+        capability: "record",
+        actorKind: "EMPLOYEE",
+        recordingStage: stage,
+      });
+      if (gate.blockCode) return NextResponse.json(recordingGateErrorBody(gate), { status: 409 });
+    }
+
     const data: any = {};
     if (body.status !== undefined) data.status = body.status;
     if (body.title !== undefined) data.title = body.title || null;
@@ -116,21 +165,30 @@ export async function PATCH(
       data.endedAt = body.endedAt ? new Date(body.endedAt) : null;
     }
 
-    const session = await (prisma as any).mediaSession.update({
+    const updateSession = (db: any) => db.mediaSession.update({
       where: { id: sessionId },
       data,
-      include: {
-        mediaAssets: {
-          orderBy: { createdAt: "desc" },
-        },
-      },
+      include: { mediaAssets: { orderBy: { createdAt: "desc" } } },
     });
+    const session = stagedEmployeeSession
+      ? await prisma.$transaction(async (tx: any) => {
+          await assertServiceVideoStageMutationAllowed(tx, {
+            bookingId: existing.bookingId!,
+            vendorId,
+            stage: stage as ServiceVideoStage,
+          });
+          return updateSession(tx);
+        }, { isolationLevel: "Serializable" })
+      : await updateSession(prisma as any);
 
     return NextResponse.json({ session: serializeSession(session) });
   } catch (error: any) {
     console.error("[media/sessions/:id] PATCH error:", error);
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error?.name === "ServiceVideoMutationBlockedError") {
+      return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
     }
     return NextResponse.json(
       { error: "Failed to update media session", details: error.message },

@@ -65,6 +65,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     const tokenAccess = await resolveEmployeeCaptureAccess(request, { vendorId });
     const membership = tokenAccess || (await requireVendorMembership(request, vendorId));
     const membershipId = membership.membershipId;
+    const employeeActor = Boolean(tokenAccess) || String((membership as any).role || "").toUpperCase() === "EMPLOYEE";
 
     if (!assetId || !blobKey || !bytes || !mimeType) {
       return NextResponse.json(
@@ -90,12 +91,25 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       return NextResponse.json({ error: "Invalid mediaSessionId for this vendor" }, { status: 422 });
     }
 
+    if (employeeActor && !mediaSessionId) {
+      return NextResponse.json(
+        { code: "EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED", error: "Employee uploads require the assigned recording session." },
+        { status: 409 },
+      );
+    }
+
     const stageValue = String(session?.vendorJobVideoStage || "").trim().toUpperCase();
     const isStaged = Boolean(
       session &&
         (REQUIRED_SERVICE_VIDEO_STAGES.includes(stageValue as ServiceVideoStage) ||
           String(session.sessionType || "").trim().toUpperCase() === "JOB_SERVICE_VIDEO")
     );
+    if (employeeActor && !isStaged) {
+      return NextResponse.json(
+        { code: "EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED", error: "Employee uploads require an assigned Service Video stage." },
+        { status: 409 },
+      );
+    }
 
     if (isStaged) {
       if (!session.bookingId || !REQUIRED_SERVICE_VIDEO_STAGES.includes(stageValue as ServiceVideoStage)) {
@@ -185,15 +199,8 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         recordingStage: stageValue,
       });
       if (permissionGate.blockCode) {
-        await setUploadAttemptState({
-          assetId,
-          vendorId,
-          state: "REJECTED",
-          failureCode: permissionGate.blockCode,
-          failureMessage: permissionGate.blockMessage,
-        }).catch(() => undefined);
         return NextResponse.json(
-          { ...recordingGateErrorBody(permissionGate), uploadState: "REJECTED" },
+          { ...recordingGateErrorBody(permissionGate), uploadState: attempt.state },
           { status: 409 }
         );
       }
@@ -305,10 +312,10 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         verifiedDurationSeconds,
         videoBuffer,
         gateDecisionId: String(session.recordingGateDecisionId),
-      });
-      await prisma.booking.update({
-        where: { id: booking.id },
-        data: { customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "IN_PROGRESS") },
+        bookingMetadataAfterSave: setOperationalPhaseOnMetadataJson(
+          booking.customerMetadata,
+          "IN_PROGRESS",
+        ),
       });
       const updatedUsage = await calculateStorageUsage(vendorId);
       await checkAndCreateStorageAlerts(vendorId, updatedUsage);
@@ -382,6 +389,21 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     console.error("[media/upload/complete] POST error:", error);
     if (error?.code === "P2002") {
       return NextResponse.json({ error: "Asset ID already exists" }, { status: 409 });
+    }
+    if (error?.name === "ServiceVideoMutationBlockedError") {
+      return NextResponse.json(
+        {
+          code: error.code,
+          why: error.code === "MANAGER_REVIEW_IN_PROGRESS"
+            ? "The completed Service Videos were submitted for manager review."
+            : "The manager did not request a correction for this Service Video stage.",
+          responsibleParticipant: error.code === "MANAGER_REVIEW_IN_PROGRESS" ? "VENDOR_MANAGER" : "EMPLOYEE",
+          resolution: error.code === "MANAGER_REVIEW_IN_PROGRESS"
+            ? "Wait for manager review."
+            : "Open only the stage identified in the manager's correction request.",
+        },
+        { status: 409 },
+      );
     }
     if (error?.message === "Unauthorized" || String(error?.message || "").includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });

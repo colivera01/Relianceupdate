@@ -8,6 +8,66 @@ export type ServiceVideoStage = (typeof REQUIRED_SERVICE_VIDEO_STAGES)[number];
 export type CaptureProvenance = "LIVE_BROWSER_CAPTURE" | "PRERECORDED_FALLBACK";
 export type TruthfulUploadState = "UPLOADING" | "SAVED" | "RETRY_REQUIRED" | "REJECTED";
 
+export class ServiceVideoMutationBlockedError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+    this.name = "ServiceVideoMutationBlockedError";
+  }
+}
+
+export async function assertServiceVideoStageMutationAllowed(
+  db: any,
+  input: { bookingId: string; vendorId: string; stage: ServiceVideoStage },
+) {
+  const booking = await db.booking.findFirst({
+    where: { id: input.bookingId, vendorId: input.vendorId },
+    select: { id: true, status: true },
+  });
+  if (!booking) throw new ServiceVideoMutationBlockedError("WORK_RECORD_NOT_FOUND");
+
+  const currentPackage = await db.serviceVideoPackageEvidence.findFirst({
+    where: { bookingId: input.bookingId, vendorId: input.vendorId, isCurrent: true },
+    select: { status: true, managerDecisionId: true },
+  });
+  if (
+    String(booking.status || "").toUpperCase() === "AWAITING_REVIEW" ||
+    String(currentPackage?.status || "").toUpperCase() === "AWAITING_MANAGER_REVIEW"
+  ) {
+    throw new ServiceVideoMutationBlockedError("MANAGER_REVIEW_IN_PROGRESS");
+  }
+
+  if (String(currentPackage?.status || "").toUpperCase() === "CORRECTION_REQUESTED") {
+    const decision = currentPackage?.managerDecisionId
+      ? await db.serviceVideoManagerDecisionEvidence.findFirst({
+          where: {
+            id: currentPackage.managerDecisionId,
+            bookingId: input.bookingId,
+            vendorId: input.vendorId,
+            decision: "CORRECTION_REQUESTED",
+          },
+          select: { targetedStagesJson: true },
+        })
+      : null;
+    let targetedStages: string[] = [];
+    try {
+      const parsed = JSON.parse(String(decision?.targetedStagesJson || "[]"));
+      targetedStages = Array.isArray(parsed)
+        ? parsed.map((value) => String(value || "").trim().toUpperCase())
+        : [];
+    } catch {
+      targetedStages = [];
+    }
+    if (!targetedStages.includes(input.stage)) {
+      throw new ServiceVideoMutationBlockedError("STAGE_CORRECTION_NOT_REQUESTED");
+    }
+    return;
+  }
+
+  if (currentPackage) {
+    throw new ServiceVideoMutationBlockedError("SERVICE_VIDEO_PACKAGE_RECORDING_CLOSED");
+  }
+}
+
 function sha256(value: Buffer | string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -108,7 +168,14 @@ export async function createUploadAttempt(input: {
   expectedBytes: bigint;
   mimeType: string;
 }) {
-  return (prisma as any).mediaUploadAttempt.create({ data: { ...input, state: "UPLOADING" } });
+  return prisma.$transaction(async (tx: any) => {
+    await assertServiceVideoStageMutationAllowed(tx, {
+      bookingId: input.bookingId,
+      vendorId: input.vendorId,
+      stage: input.stage,
+    });
+    return tx.mediaUploadAttempt.create({ data: { ...input, state: "UPLOADING" } });
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function setUploadAttemptState(input: {
@@ -121,19 +188,32 @@ export async function setUploadAttemptState(input: {
   durationSeconds?: number | null;
 }) {
   const now = new Date();
-  return (prisma as any).mediaUploadAttempt.updateMany({
-    where: { assetId: input.assetId, vendorId: input.vendorId },
-    data: {
-      state: input.state,
-      failureCode: input.failureCode || null,
-      failureMessage: input.failureMessage || null,
-      actualBytes: input.actualBytes ?? undefined,
-      durationSeconds: input.durationSeconds ?? undefined,
-      savedAt: input.state === "SAVED" ? now : undefined,
-      rejectedAt: input.state === "REJECTED" ? now : undefined,
-      retryRequiredAt: input.state === "RETRY_REQUIRED" ? now : undefined,
-    },
-  });
+  const update = (db: any) => db.mediaUploadAttempt.updateMany({
+      where: { assetId: input.assetId, vendorId: input.vendorId },
+      data: {
+        state: input.state,
+        failureCode: input.failureCode || null,
+        failureMessage: input.failureMessage || null,
+        actualBytes: input.actualBytes ?? undefined,
+        durationSeconds: input.durationSeconds ?? undefined,
+        savedAt: input.state === "SAVED" ? now : undefined,
+        rejectedAt: input.state === "REJECTED" ? now : undefined,
+        retryRequiredAt: input.state === "RETRY_REQUIRED" ? now : undefined,
+      },
+    });
+  return prisma.$transaction(async (tx: any) => {
+    const attempt = await tx.mediaUploadAttempt.findFirst({
+      where: { assetId: input.assetId, vendorId: input.vendorId },
+      select: { bookingId: true, stage: true },
+    });
+    if (!attempt) return { count: 0 };
+    await assertServiceVideoStageMutationAllowed(tx, {
+      bookingId: attempt.bookingId,
+      vendorId: input.vendorId,
+      stage: attempt.stage as ServiceVideoStage,
+    });
+    return update(tx);
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function saveVerifiedServiceVideoStage(input: {
@@ -152,9 +232,15 @@ export async function saveVerifiedServiceVideoStage(input: {
   verifiedDurationSeconds: number;
   videoBuffer: Buffer;
   gateDecisionId: string;
+  bookingMetadataAfterSave?: string;
 }) {
   const contentHash = sha256(input.videoBuffer);
   return prisma.$transaction(async (tx: any) => {
+    await assertServiceVideoStageMutationAllowed(tx, {
+      bookingId: input.bookingId,
+      vendorId: input.vendorId,
+      stage: input.stage,
+    });
     const gateEvidence = await tx.recordingGateDecisionEvidence.findFirst({
       where: {
         id: input.gateDecisionId,
@@ -262,8 +348,14 @@ export async function saveVerifiedServiceVideoStage(input: {
       },
     });
     await tx.mediaSession.update({ where: { id: input.mediaSessionId }, data: { status: "COMPLETED", endedAt: new Date() } });
+    if (input.bookingMetadataAfterSave !== undefined) {
+      await tx.booking.update({
+        where: { id: input.bookingId },
+        data: { customerMetadata: input.bookingMetadataAfterSave },
+      });
+    }
     return { asset, stageEvidence };
-  });
+  }, { isolationLevel: "Serializable" });
 }
 
 async function loadCompleteCurrentStageEvidence(db: any, bookingId: string, vendorId: string) {
@@ -360,7 +452,7 @@ export async function submitServiceVideoPackage(input: {
         submittedByMembershipId: input.submittedByMembershipId,
       },
     });
-  });
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function requestServiceVideoCorrection(input: {

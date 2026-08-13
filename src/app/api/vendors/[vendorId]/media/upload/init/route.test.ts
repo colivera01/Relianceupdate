@@ -113,4 +113,48 @@ describe("media upload initialization recording lock", () => {
     expect(mocks.createUploadAttempt).not.toHaveBeenCalled();
     expect(mocks.generateUploadUrl).not.toHaveBeenCalled();
   });
+
+  it("fails closed when an employee omits booking and session context", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/vendors/vendor-1/media/upload/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: "clip.webm", expectedBytes: 1024, mimeType: "video/webm" }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1" }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(json.code).toBe("EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED");
+    expect(mocks.calculateStorageUsage).not.toHaveBeenCalled();
+    expect(mocks.generateUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it("uses the server proxy and does not issue a signed Blob URL for staged Service Videos", async () => {
+    mocks.loadRecordingPermissionGate.mockResolvedValue({ recordingUnlocked: true, blockCode: null });
+    mocks.calculateStorageUsage.mockResolvedValue({ usedBytes: BigInt(0), limitBytes: BigInt(100000), percentUsed: 0 });
+    mocks.createUploadAttempt.mockResolvedValue({ id: "attempt-1" });
+
+    const response = await POST(
+      new Request("http://localhost/api/vendors/vendor-1/media/upload/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: "clip.webm",
+          expectedBytes: 1024,
+          mimeType: "video/webm",
+          bookingId: "booking-1",
+          mediaSessionId: "session-1",
+        }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1" }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toMatchObject({ uploadMode: "PROXY", uploadState: "UPLOADING" });
+    expect(json.sasUrl).toBeUndefined();
+    expect(mocks.generateUploadUrl).not.toHaveBeenCalled();
+  });
 });

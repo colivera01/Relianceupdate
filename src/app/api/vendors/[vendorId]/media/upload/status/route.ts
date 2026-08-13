@@ -3,6 +3,7 @@ import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
 import { setUploadAttemptState } from "@/lib/service-video-evidence";
+import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -32,11 +33,28 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         membershipId: membership.membershipId,
         state: { in: ["UPLOADING", "RETRY_REQUIRED"] },
       },
-      select: { assetId: true },
+      select: { assetId: true, stage: true },
     });
     if (!attempt) {
       return NextResponse.json({ error: "Upload attempt not found" }, { status: 404 });
     }
+
+    const booking = await prisma.booking.findFirst({
+      where: { id: bookingId, vendorId },
+      select: { id: true, customerMetadata: true },
+    });
+    if (!booking) return NextResponse.json({ error: "Work record not found" }, { status: 404 });
+    const gate = await loadRecordingPermissionGate({
+      bookingId,
+      vendorId,
+      customerMetadata: booking.customerMetadata,
+      membershipId: membership.membershipId,
+      surface: "upload_status",
+      capability: "record",
+      actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
+      recordingStage: String(attempt.stage || "").trim().toUpperCase(),
+    });
+    if (gate.blockCode) return NextResponse.json(recordingGateErrorBody(gate), { status: 409 });
 
     const state = requestedState as "RETRY_REQUIRED" | "REJECTED";
     await setUploadAttemptState({
@@ -53,6 +71,9 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
   } catch (error: any) {
     if (error?.message === "Unauthorized" || String(error?.message || "").includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error?.name === "ServiceVideoMutationBlockedError") {
+      return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
     }
     return NextResponse.json({ error: "Failed to update upload status" }, { status: 500 });
   }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
-import { uploadBlobBuffer } from "@/lib/azure-blob-storage";
+import { deleteBlob, uploadBlobBuffer } from "@/lib/azure-blob-storage";
 
 const hoisted = vi.hoisted(() => ({
   bookingFindFirst: vi.fn(),
@@ -29,6 +29,7 @@ vi.mock("@/lib/employee-capture-token", () => ({
 }));
 
 vi.mock("@/lib/azure-blob-storage", () => ({
+  deleteBlob: vi.fn(),
   uploadBlobBuffer: vi.fn(),
 }));
 
@@ -74,6 +75,8 @@ describe("employee media upload proxy", () => {
     vi.mocked(requireVendorMembership).mockReset();
     vi.mocked(resolveEmployeeCaptureAccess).mockReset();
     vi.mocked(uploadBlobBuffer).mockReset();
+    vi.mocked(deleteBlob).mockReset();
+    vi.mocked(deleteBlob).mockResolvedValue(true);
     hoisted.bookingFindFirst.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
     hoisted.mediaUploadAttemptFindFirst.mockReset();
@@ -120,6 +123,17 @@ describe("employee media upload proxy", () => {
       expect.any(Buffer),
       expect.objectContaining({ contentType: "video/mp4" })
     );
+  });
+
+  it("does not let a capture token omit booking context to use the generic proxy", async () => {
+    const request = buildRequest();
+    request.headers.delete("x-reliance-booking-id");
+    const res = await POST(request, context as any);
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED");
+    expect(uploadBlobBuffer).not.toHaveBeenCalled();
   });
 
   it("blocks blob keys outside the vendor media prefix", async () => {
@@ -202,6 +216,46 @@ describe("employee media upload proxy", () => {
       expect.objectContaining({ recordingStage: "INTRO", capability: "record" }),
     );
     expect(uploadBlobBuffer).not.toHaveBeenCalled();
+    expect(hoisted.setUploadAttemptState).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when submission becomes authoritative while request bytes are being read", async () => {
+    hoisted.loadRecordingPermissionGate
+      .mockResolvedValueOnce({ recordingUnlocked: true, blockCode: null })
+      .mockResolvedValueOnce({
+        recordingUnlocked: false,
+        blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+        blockMessage: "The completed Service Videos were submitted for manager review.",
+        block: { responsibleParticipant: "VENDOR_MANAGER", resolution: "Wait for manager review." },
+      });
+
+    const res = await POST(buildRequest(), context as any);
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("MANAGER_REVIEW_IN_PROGRESS");
+    expect(uploadBlobBuffer).not.toHaveBeenCalled();
+    expect(hoisted.setUploadAttemptState).not.toHaveBeenCalled();
+  });
+
+  it("removes an unaccepted candidate when manager review begins during Blob upload", async () => {
+    hoisted.loadRecordingPermissionGate
+      .mockResolvedValueOnce({ recordingUnlocked: true, blockCode: null })
+      .mockResolvedValueOnce({ recordingUnlocked: true, blockCode: null })
+      .mockResolvedValueOnce({
+        recordingUnlocked: false,
+        blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+        blockMessage: "The completed Service Videos were submitted for manager review.",
+        block: { responsibleParticipant: "VENDOR_MANAGER", resolution: "Wait for manager review." },
+      });
+
+    const res = await POST(buildRequest(), context as any);
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("MANAGER_REVIEW_IN_PROGRESS");
+    expect(uploadBlobBuffer).toHaveBeenCalledTimes(1);
+    expect(deleteBlob).toHaveBeenCalledWith(VALID_BLOB_KEY);
     expect(hoisted.setUploadAttemptState).not.toHaveBeenCalled();
   });
 });

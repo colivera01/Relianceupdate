@@ -12,6 +12,10 @@ import { getEmployeeRuntimeErrorResponse } from "@/lib/employee-runtime-errors";
 import { parseAssignmentMetadata, setStageProgressMetadata } from "@/lib/job-assignment";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
+import {
+  assertServiceVideoStageMutationAllowed,
+  type ServiceVideoStage,
+} from "@/lib/service-video-evidence";
 
 interface RouteParams {
   params: Promise<{ jobId: string }>;
@@ -68,53 +72,55 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
     }
 
-    const matchingSession = await (prisma as any).mediaSession.findFirst({
-      where: {
+    const stageResult = await prisma.$transaction(async (tx: any) => {
+      await assertServiceVideoStageMutationAllowed(tx, {
         bookingId: booking.id,
         vendorId: booking.vendorId,
-        vendorJobVideoStage: stage,
-      },
-      select: {
-        id: true,
-        mediaAssets: { where: { deletedAt: null }, select: { id: true }, take: 1 },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    if (!matchingSession || !Array.isArray(matchingSession.mediaAssets) || matchingSession.mediaAssets.length === 0) {
-      return NextResponse.json(
-        {
-          error: `No uploaded ${stage.replace("_", " ")} video found for this job.`,
-          code: "STAGE_VIDEO_REQUIRED",
+        stage: stage as ServiceVideoStage,
+      });
+      const matchingSession = await tx.mediaSession.findFirst({
+        where: {
+          bookingId: booking.id,
+          vendorId: booking.vendorId,
+          vendorJobVideoStage: stage,
+          sessionType: "JOB_SERVICE_VIDEO",
+          capturedByMembershipId: { in: vendorMembershipIds },
         },
-        { status: 409 }
-      );
-    }
-
-    const sessions = await (prisma as any).mediaSession.findMany({
-      where: { bookingId: booking.id, vendorId: booking.vendorId },
-      select: {
-        vendorJobVideoStage: true,
-        mediaAssets: { where: { deletedAt: null }, select: { id: true }, take: 1 },
-      },
-    });
-    const uploadedStages = new Set<string>();
-    for (const row of sessions) {
-      if (!row.mediaAssets || row.mediaAssets.length === 0) continue;
-      const s = String(row.vendorJobVideoStage || "").trim().toUpperCase();
-      if (s) uploadedStages.add(s);
-    }
-    const hasAllRequiredStages =
-      uploadedStages.has("INTRO") &&
-      uploadedStages.has("IN_PROGRESS") &&
-      uploadedStages.has("COMPLETED");
-
-    const updated = await (prisma as any).booking.update({
-      where: { id: booking.id },
-      data: {
-        customerMetadata: setStageProgressMetadata(booking.customerMetadata, stage as any),
-      },
-      select: { id: true, status: true, customerMetadata: true, updatedAt: true },
-    });
+        select: {
+          id: true,
+          mediaAssets: { where: { deletedAt: null, uploadState: "SAVED" }, select: { id: true }, take: 1 },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!matchingSession || !Array.isArray(matchingSession.mediaAssets) || matchingSession.mediaAssets.length === 0) {
+        throw new Error(`STAGE_VIDEO_REQUIRED:${stage}`);
+      }
+      const sessions = await tx.mediaSession.findMany({
+        where: { bookingId: booking.id, vendorId: booking.vendorId, sessionType: "JOB_SERVICE_VIDEO" },
+        select: {
+          vendorJobVideoStage: true,
+          mediaAssets: { where: { deletedAt: null, uploadState: "SAVED" }, select: { id: true }, take: 1 },
+        },
+      });
+      const uploadedStages = new Set<string>();
+      for (const row of sessions) {
+        if (!row.mediaAssets || row.mediaAssets.length === 0) continue;
+        const savedStage = String(row.vendorJobVideoStage || "").trim().toUpperCase();
+        if (savedStage) uploadedStages.add(savedStage);
+      }
+      const hasAllRequiredStages =
+        uploadedStages.has("INTRO") &&
+        uploadedStages.has("IN_PROGRESS") &&
+        uploadedStages.has("COMPLETED");
+      const updated = await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          customerMetadata: setStageProgressMetadata(booking.customerMetadata, stage as any),
+        },
+        select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+      });
+      return { matchingSession, hasAllRequiredStages, updated };
+    }, { isolationLevel: "Serializable" });
 
     await recordLifecycleAudit({
       actionType: "job_stage_uploaded",
@@ -123,25 +129,35 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       actorUserId: userId || tokenAccess!.userId,
       newValue: {
         stage,
-        readyForManagerReview: hasAllRequiredStages,
+        readyForManagerReview: stageResult.hasAllRequiredStages,
       },
       metadata: {
         vendorId: booking.vendorId,
         membershipIds: vendorMembershipIds,
-        sessionId: matchingSession?.id ? String(matchingSession.id) : null,
+        sessionId: String(stageResult.matchingSession.id),
       },
     });
 
     return NextResponse.json({
       success: true,
       stage,
-      readyForManagerReview: hasAllRequiredStages,
+      readyForManagerReview: stageResult.hasAllRequiredStages,
       awaitingReview: false,
-      job: updated,
+      job: stageResult.updated,
     });
   } catch (error: any) {
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
+    if (error?.name === "ServiceVideoMutationBlockedError") {
+      return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
+    }
+    if (String(error?.message || "").startsWith("STAGE_VIDEO_REQUIRED:")) {
+      const stage = String(error.message).split(":")[1] || "stage";
+      return NextResponse.json(
+        { error: `No uploaded ${stage.replace("_", " ")} video found for this job.`, code: "STAGE_VIDEO_REQUIRED" },
+        { status: 409 },
+      );
     }
     const runtimeError = getEmployeeRuntimeErrorResponse("stage", error);
     return NextResponse.json(runtimeError.body, { status: runtimeError.status });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveEmployeeCaptureAccess } from "@/lib/employee-capture-token";
-import { uploadBlobBuffer } from "@/lib/azure-blob-storage";
+import { deleteBlob, uploadBlobBuffer } from "@/lib/azure-blob-storage";
 import { prisma } from "@/server/db";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 import { setUploadAttemptState } from "@/lib/service-video-evidence";
@@ -38,11 +38,19 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     ).trim();
     const mimeType = request.headers.get("content-type") || "video/mp4";
 
-    const tokenAccess = await resolveEmployeeCaptureAccess(request, {
-      vendorId,
-      bookingId: bookingId || null,
-    });
+    const tokenAccess = await resolveEmployeeCaptureAccess(request, { vendorId });
     const membership = tokenAccess || (await requireVendorMembership(request, vendorId));
+    const employeeActor = Boolean(tokenAccess) || String((membership as any).role || "").toUpperCase() === "EMPLOYEE";
+
+    if (employeeActor && !bookingId) {
+      return NextResponse.json(
+        { code: "EMPLOYEE_SERVICE_VIDEO_CONTEXT_REQUIRED", error: "Employee uploads require the assigned work record." },
+        { status: 409 },
+      );
+    }
+    if (tokenAccess && bookingId !== tokenAccess.bookingId) {
+      return NextResponse.json({ code: "JOB_CAPTURE_TOKEN_FORBIDDEN", error: "This capture link is not authorized for this work record." }, { status: 403 });
+    }
 
     if (!assetId || !blobKey) {
       return NextResponse.json(
@@ -71,19 +79,20 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
           },
         })
       : null;
-    if (bookingId && !uploadAttempt) {
+    if (employeeActor && !uploadAttempt) {
       return NextResponse.json(
         { error: "Upload evidence was not found for this staged recording." },
         { status: 409 }
       );
     }
-    if (bookingId) {
+    const loadCurrentGate = async () => {
+      if (!bookingId) return null;
       const booking = await prisma.booking.findFirst({
         where: { id: bookingId, vendorId },
         select: { id: true, customerMetadata: true },
       });
       if (!booking) {
-        return NextResponse.json({ error: "Invalid bookingId for this vendor" }, { status: 422 });
+        return { errorResponse: NextResponse.json({ error: "Invalid bookingId for this vendor" }, { status: 422 }) };
       }
       const permissionGate = await loadRecordingPermissionGate({
         bookingId: booking.id,
@@ -95,9 +104,13 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
         recordingStage: String(uploadAttempt?.stage || "").trim().toUpperCase(),
       });
-      if (permissionGate.blockCode) {
-        return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
-      }
+      return permissionGate.blockCode
+        ? { errorResponse: NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 }) }
+        : { errorResponse: null };
+    };
+    const initialGate = await loadCurrentGate();
+    if (initialGate?.errorResponse) {
+      return initialGate.errorResponse;
     }
 
     if (!mimeType.toLowerCase().startsWith("video/")) {
@@ -133,6 +146,13 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       );
     }
 
+    // Reading request bytes may take long enough for the package to be submitted.
+    // Re-evaluate current server authority immediately before touching Blob Storage.
+    const preUploadGate = await loadCurrentGate();
+    if (preUploadGate?.errorResponse) {
+      return preUploadGate.errorResponse;
+    }
+
     try {
       await uploadBlobBuffer(blobKey, bytes, {
         contentType: mimeType,
@@ -141,6 +161,14 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
           assetId,
         },
       });
+
+      // A package may enter manager review while Blob Storage is accepting bytes.
+      // Remove the unaccepted candidate if current authority changed during upload.
+      const postUploadGate = await loadCurrentGate();
+      if (postUploadGate?.errorResponse) {
+        await deleteBlob(blobKey).catch(() => false);
+        return postUploadGate.errorResponse;
+      }
     } catch (uploadError: any) {
       await setUploadAttemptState({
         assetId,

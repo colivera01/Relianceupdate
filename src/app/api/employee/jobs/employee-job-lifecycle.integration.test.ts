@@ -9,6 +9,8 @@ const hoisted = vi.hoisted(() => {
   const mediaSessionFindMany = vi.fn();
   const consentRecordFindMany = vi.fn();
   const consentRecordFindFirst = vi.fn();
+  const prismaTransaction = vi.fn();
+  const assertServiceVideoStageMutationAllowed = vi.fn();
   const resolveEmployeeCaptureAccess = vi.fn();
   const sendJobCorrectionReadyNotification = vi.fn();
   const submitServiceVideoPackage = vi.fn();
@@ -21,6 +23,8 @@ const hoisted = vi.hoisted(() => {
     mediaSessionFindMany,
     consentRecordFindMany,
     consentRecordFindFirst,
+    prismaTransaction,
+    assertServiceVideoStageMutationAllowed,
     resolveEmployeeCaptureAccess,
     sendJobCorrectionReadyNotification,
     submitServiceVideoPackage,
@@ -45,6 +49,7 @@ vi.mock("@/server/db", () => ({
       findMany: hoisted.consentRecordFindMany,
       findFirst: hoisted.consentRecordFindFirst,
     },
+    $transaction: hoisted.prismaTransaction,
   },
 }));
 
@@ -89,6 +94,7 @@ vi.mock("@/lib/notifications/send-job-correction-ready", () => ({
 }));
 
 vi.mock("@/lib/service-video-evidence", () => ({
+  assertServiceVideoStageMutationAllowed: hoisted.assertServiceVideoStageMutationAllowed,
   submitServiceVideoPackage: hoisted.submitServiceVideoPackage,
 }));
 
@@ -123,10 +129,24 @@ describe("employee job lifecycle routes", () => {
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.consentRecordFindMany.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
+    hoisted.prismaTransaction.mockReset();
+    hoisted.assertServiceVideoStageMutationAllowed.mockReset();
     hoisted.resolveEmployeeCaptureAccess.mockReset();
     hoisted.sendJobCorrectionReadyNotification.mockReset();
     hoisted.submitServiceVideoPackage.mockReset();
     hoisted.submitServiceVideoPackage.mockResolvedValue({ id: "package-1", version: 1 });
+    hoisted.assertServiceVideoStageMutationAllowed.mockResolvedValue(undefined);
+    hoisted.prismaTransaction.mockImplementation(async (callback: (tx: unknown) => unknown) =>
+      callback({
+        booking: {
+          update: hoisted.bookingUpdate,
+        },
+        mediaSession: {
+          findFirst: hoisted.mediaSessionFindFirst,
+          findMany: hoisted.mediaSessionFindMany,
+        },
+      }),
+    );
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue(null);
     hoisted.consentRecordFindMany.mockResolvedValue([]);
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
