@@ -10,6 +10,7 @@ import {
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
+import { authorizationErrorResponse } from "@/lib/request-actor";
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
@@ -366,7 +367,7 @@ async function getVendorJobPackageState(vendorId: string, bookingId: string) {
 export async function PATCH(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const { vendorId, jobId } = await context.params;
-    const member = await requireVendorMembership(request, vendorId);
+    const member = await requireVendorManager(request, vendorId);
 
     const body = await request.json().catch(() => ({}));
     const action = String(body?.action || "").toUpperCase() as JobAction;
@@ -1327,7 +1328,6 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     }
 
     if (action === "APPROVE_JOB_COMPLETION") {
-      await requireVendorManager(request, vendorId);
       const currentStatus = normalizeBookingStatus(booking.status);
       if (currentStatus !== "AWAITING_REVIEW") {
         return NextResponse.json(
@@ -1411,6 +1411,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     return NextResponse.json({ error: "Unsupported action" }, { status: 422 });
   } catch (error: any) {
     console.error("[vendors/jobs/actions] PATCH error:", error);
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse as NextResponse;
     if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
@@ -1424,7 +1426,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 export async function DELETE(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const { vendorId, jobId } = await context.params;
-    await requireVendorMembership(request, vendorId);
+    await requireVendorManager(request, vendorId);
 
     const booking = await prisma.booking.findFirst({
       where: {
@@ -1539,6 +1541,8 @@ export async function DELETE(request: Request, context: RouteParams): Promise<Ne
     });
   } catch (error: any) {
     console.error("[vendors/jobs/actions] DELETE error:", error);
+    const authorizationResponse = authorizationErrorResponse(error);
+    if (authorizationResponse) return authorizationResponse as NextResponse;
     if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
       return NextResponse.json(
         apiResponse(false, "JOB_DELETE_BLOCKED_FORBIDDEN", String(error.message)),

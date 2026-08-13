@@ -4,6 +4,7 @@ import { requireVendorManager, requireVendorMembership } from "@/lib/membership-
 import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { AuthorizationError } from "@/lib/request-actor";
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
@@ -137,9 +138,17 @@ async function toJson(res: Response) {
 describe("vendor job actions integration", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
-    vi.mocked(requireVendorMembership).mockResolvedValue({ userId: "manager-1" } as any);
+    vi.mocked(requireVendorMembership).mockResolvedValue({
+      userId: "manager-1",
+      membershipId: "manager-membership-1",
+      role: "MANAGER",
+    });
     vi.mocked(requireVendorManager).mockReset();
-    vi.mocked(requireVendorManager).mockResolvedValue({} as any);
+    vi.mocked(requireVendorManager).mockResolvedValue({
+      userId: "manager-1",
+      membershipId: "manager-membership-1",
+      vendorId: "v1",
+    });
     vi.mocked(sendJobAssignmentNotification).mockReset();
     vi.mocked(sendJobAssignmentNotification).mockResolvedValue({
       anySuccess: true,
@@ -175,11 +184,100 @@ describe("vendor job actions integration", () => {
   });
 
   it("PATCH returns 403 when vendor auth is forbidden", async () => {
-    vi.mocked(requireVendorMembership).mockRejectedValue(new Error("Forbidden"));
+    vi.mocked(requireVendorManager).mockRejectedValue(new Error("Forbidden"));
     const { req, ctx } = patchReq("v1", "job1", "ARCHIVE_JOB");
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(403);
     expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "ARCHIVE_JOB",
+    "MOVE_CONTENT_TO_ARCHIVE",
+    "UNARCHIVE_JOB",
+    "UPDATE_JOB",
+    "ASSIGN_JOB",
+    "UPDATE_RECORDING_COMPLIANCE",
+    "RELEASE_EMPLOYEE_SERVICE_ORDER",
+    "RESEND_COMPLETED_WORK_ORDER",
+    "UPDATE_STATUS",
+    "APPROVE_JOB_COMPLETION",
+  ])(
+    "PATCH %s denies an employee before any vendor-management lookup or mutation",
+    async (action) => {
+      vi.mocked(requireVendorMembership).mockResolvedValue({
+        userId: "employee-1",
+        membershipId: "employee-membership-1",
+        role: "EMPLOYEE",
+      });
+      vi.mocked(requireVendorManager).mockRejectedValue(new Error("Forbidden: Manager role required"));
+
+      const { req, ctx } = patchReq("v1", "job1", action);
+      const res = await PATCH(req, ctx as any);
+
+      expect(res.status).toBe(403);
+      expect(requireVendorManager).toHaveBeenCalledTimes(1);
+      expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+      expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+      expect(hoisted.mediaSessionFindMany).not.toHaveBeenCalled();
+      expect(hoisted.mediaSessionUpdateMany).not.toHaveBeenCalled();
+      expect(hoisted.mediaAssetUpdateMany).not.toHaveBeenCalled();
+      expect(hoisted.transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it("PATCH UPDATE_STATUS cannot be used by an employee as an alternate archive path", async () => {
+    vi.mocked(requireVendorMembership).mockResolvedValue({
+      userId: "employee-1",
+      membershipId: "employee-membership-1",
+      role: "EMPLOYEE",
+    });
+    vi.mocked(requireVendorManager).mockRejectedValue(new Error("Forbidden: Manager role required"));
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "UPDATE_STATUS",
+      status: "archived",
+    });
+    const res = await PATCH(req, ctx as any);
+
+    expect(res.status).toBe(403);
+    expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionFindMany).not.toHaveBeenCalled();
+  });
+
+  it("PATCH MOVE_CONTENT_TO_ARCHIVE denies an employee for an awaiting-review work record", async () => {
+    vi.mocked(requireVendorMembership).mockResolvedValue({
+      userId: "employee-1",
+      membershipId: "employee-membership-1",
+      role: "EMPLOYEE",
+    });
+    vi.mocked(requireVendorManager).mockRejectedValue(new Error("Forbidden: Manager role required"));
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", vendorId: "v1", status: "AWAITING_REVIEW" });
+
+    const { req, ctx } = patchReq("v1", "job1", "MOVE_CONTENT_TO_ARCHIVE");
+    const res = await PATCH(req, ctx as any);
+
+    expect(res.status).toBe(403);
+    expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.mediaAssetUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("PATCH destructive actions fail closed for ambiguous manager authority", async () => {
+    vi.mocked(requireVendorManager).mockRejectedValue(
+      new AuthorizationError("FORBIDDEN", "Manager access required.", 403),
+    );
+
+    const { req, ctx } = patchReq("v1", "job1", "MOVE_CONTENT_TO_ARCHIVE");
+    const res = await PATCH(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(403);
+    expect(body.code).toBe("FORBIDDEN");
+    expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.mediaAssetUpdateMany).not.toHaveBeenCalled();
   });
 
   it("PATCH returns 404 when job is missing", async () => {
@@ -247,6 +345,7 @@ describe("vendor job actions integration", () => {
       where: { mediaSessionId: { in: ["s1", "s2"] }, deletedAt: null },
       data: { deletedAt: expect.any(Date) },
     });
+    expect(requireVendorManager).toHaveBeenCalledTimes(1);
   });
 
   it("GET returns delete preview and linked-content summary", async () => {
@@ -280,6 +379,40 @@ describe("vendor job actions integration", () => {
     expect(res.status).toBe(403);
     const j = await toJson(res);
     expect(j.code).toBe("JOB_DELETE_BLOCKED_COMPLETED");
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+  });
+
+  it("DELETE denies an employee awaiting-review access before destructive mutation", async () => {
+    vi.mocked(requireVendorMembership).mockResolvedValue({
+      userId: "employee-1",
+      membershipId: "employee-membership-1",
+      role: "EMPLOYEE",
+    });
+    vi.mocked(requireVendorManager).mockRejectedValue(new Error("Forbidden: Manager role required"));
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "AWAITING_REVIEW" });
+
+    const { req, ctx } = deleteReq("v1", "job1");
+    const res = await DELETE(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(403);
+    expect(body.code).toBe("JOB_DELETE_BLOCKED_FORBIDDEN");
+    expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionFindMany).not.toHaveBeenCalled();
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.txMediaSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.txMediaAssetUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.txBookingDelete).not.toHaveBeenCalled();
+  });
+
+  it("DELETE fails closed when manager authority is missing or ambiguous", async () => {
+    vi.mocked(requireVendorManager).mockRejectedValue(new Error("Unauthorized"));
+
+    const { req, ctx } = deleteReq("v1", "job1");
+    const res = await DELETE(req, ctx as any);
+
+    expect(res.status).toBe(403);
+    expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
     expect(hoisted.transaction).not.toHaveBeenCalled();
   });
 
@@ -969,6 +1102,7 @@ describe("vendor job actions integration", () => {
     expect(res.status).toBe(200);
     expect(hoisted.transaction).toHaveBeenCalledTimes(1);
     expect(hoisted.txBookingDelete).toHaveBeenCalledWith({ where: { id: "job1" } });
+    expect(requireVendorManager).toHaveBeenCalledTimes(1);
   });
 
   it("DELETE archives linked content and hard-deletes pending job", async () => {
@@ -995,6 +1129,21 @@ describe("vendor job actions integration", () => {
       where: { id: { in: ["s1", "s2"] } },
       data: { bookingId: null },
     });
+    expect(hoisted.txBookingDelete).toHaveBeenCalledWith({ where: { id: "job1" } });
+  });
+
+  it("DELETE preserves manager-authorized deletion for awaiting-review jobs", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "AWAITING_REVIEW" });
+    hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }]);
+    hoisted.mediaAssetCount.mockResolvedValue(1);
+
+    const { req, ctx } = deleteReq("v1", "job1");
+    const res = await DELETE(req, ctx as any);
+
+    expect(res.status).toBe(200);
+    expect(requireVendorManager).toHaveBeenCalledTimes(1);
+    expect(hoisted.txMediaSessionUpdateMany).toHaveBeenCalled();
+    expect(hoisted.txMediaAssetUpdateMany).toHaveBeenCalled();
     expect(hoisted.txBookingDelete).toHaveBeenCalledWith({ where: { id: "job1" } });
   });
 });
