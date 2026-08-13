@@ -55,7 +55,15 @@ async function capture(page: Page, folder: "Desktop" | "Mobile", fileName: strin
   });
 }
 
-async function installEmployeeFixture(page: Page, options: { failUpload?: boolean; allSaved?: boolean } = {}) {
+async function installEmployeeFixture(
+  page: Page,
+  options: {
+    failUpload?: boolean;
+    allSaved?: boolean;
+    awaitingReview?: boolean;
+    correctionStage?: "INTRO" | "IN_PROGRESS" | "COMPLETED";
+  } = {},
+) {
   let saved = Boolean(options.allSaved);
 
   await page.addInitScript(() => {
@@ -113,7 +121,106 @@ async function installEmployeeFixture(page: Page, options: { failUpload?: boolea
         body: JSON.stringify({
           success: true,
           pendingServiceOrder: false,
-          jobs: [{ ...unlockedEmployeeJob, stageProgress, canMarkComplete: saved }],
+          jobs: [{
+            ...unlockedEmployeeJob,
+            status: options.awaitingReview
+              ? "AWAITING_REVIEW"
+              : options.correctionStage
+                ? "REJECTED"
+                : unlockedEmployeeJob.status,
+            rejectionReason: options.correctionStage ? "Please replace the Final Result stage." : null,
+            stageProgress,
+            canMarkComplete: options.awaitingReview ? false : saved,
+            recordingCompliance: options.awaitingReview
+              ? {
+                  ...unlockedEmployeeJob.recordingCompliance,
+                  recordingUnlocked: false,
+                  canonicalBlock: {
+                    code: "MANAGER_REVIEW_IN_PROGRESS",
+                    why: "The completed Service Videos were submitted for manager review.",
+                    responsibleParticipant: "VENDOR_MANAGER",
+                    resolution: "Wait for manager review.",
+                    serviceMayContinue: true,
+                  },
+                  stageRecordingAccess: {
+                    INTRO: {
+                      recordingUnlocked: false,
+                      canonicalBlock: {
+                        code: "MANAGER_REVIEW_IN_PROGRESS",
+                        why: "The completed Service Videos were submitted for manager review.",
+                        responsibleParticipant: "VENDOR_MANAGER",
+                        resolution: "Wait for manager review.",
+                        serviceMayContinue: true,
+                      },
+                    },
+                    IN_PROGRESS: {
+                      recordingUnlocked: false,
+                      canonicalBlock: {
+                        code: "MANAGER_REVIEW_IN_PROGRESS",
+                        why: "The completed Service Videos were submitted for manager review.",
+                        responsibleParticipant: "VENDOR_MANAGER",
+                        resolution: "Wait for manager review.",
+                        serviceMayContinue: true,
+                      },
+                    },
+                    COMPLETED: {
+                      recordingUnlocked: false,
+                      canonicalBlock: {
+                        code: "MANAGER_REVIEW_IN_PROGRESS",
+                        why: "The completed Service Videos were submitted for manager review.",
+                        responsibleParticipant: "VENDOR_MANAGER",
+                        resolution: "Wait for manager review.",
+                        serviceMayContinue: true,
+                      },
+                    },
+                  },
+                }
+              : options.correctionStage
+                ? {
+                    ...unlockedEmployeeJob.recordingCompliance,
+                    recordingUnlocked: true,
+                    correctionRequestedStages: [options.correctionStage],
+                    stageRecordingAccess: {
+                      INTRO: {
+                        recordingUnlocked: options.correctionStage === "INTRO",
+                        canonicalBlock: options.correctionStage === "INTRO"
+                          ? null
+                          : {
+                              code: "MANAGER_CORRECTION_STAGE_NOT_REQUESTED",
+                              why: "The manager did not request a correction for this stage.",
+                              responsibleParticipant: "EMPLOYEE",
+                              resolution: "Record only the stage requested by the manager.",
+                              serviceMayContinue: true,
+                            },
+                      },
+                      IN_PROGRESS: {
+                        recordingUnlocked: options.correctionStage === "IN_PROGRESS",
+                        canonicalBlock: options.correctionStage === "IN_PROGRESS"
+                          ? null
+                          : {
+                              code: "MANAGER_CORRECTION_STAGE_NOT_REQUESTED",
+                              why: "The manager did not request a correction for this stage.",
+                              responsibleParticipant: "EMPLOYEE",
+                              resolution: "Record only the stage requested by the manager.",
+                              serviceMayContinue: true,
+                            },
+                      },
+                      COMPLETED: {
+                        recordingUnlocked: options.correctionStage === "COMPLETED",
+                        canonicalBlock: options.correctionStage === "COMPLETED"
+                          ? null
+                          : {
+                              code: "MANAGER_CORRECTION_STAGE_NOT_REQUESTED",
+                              why: "The manager did not request a correction for this stage.",
+                              responsibleParticipant: "EMPLOYEE",
+                              resolution: "Record only the stage requested by the manager.",
+                              serviceMayContinue: true,
+                            },
+                      },
+                    },
+                  }
+              : unlockedEmployeeJob.recordingCompliance,
+          }],
         }),
       });
       return;
@@ -202,6 +309,37 @@ async function selectFallbackVideo(page: Page) {
 }
 
 test.describe("Epic 5 safe Private Service Video UX", () => {
+  test("keeps every submitted stage read-only after refresh and a fresh link open", async ({ page, context }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installEmployeeFixture(page, { allSaved: true, awaitingReview: true });
+    await openEmployeeCapture(page);
+
+    await expect(page.getByText("Service Videos submitted", { exact: true })).toBeVisible();
+    await expect(page.getByText("Manager review is in progress.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Locked for manager review", { exact: true })).toHaveCount(3);
+    await expect(page.getByText("Saved - tap to replace", { exact: true })).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByText("Locked for manager review", { exact: true })).toHaveCount(3);
+
+    const reopenedPage = await context.newPage();
+    await installEmployeeFixture(reopenedPage, { allSaved: true, awaitingReview: true });
+    await openEmployeeCapture(reopenedPage);
+    await expect(reopenedPage.getByText("Locked for manager review", { exact: true })).toHaveCount(3);
+    await expect(reopenedPage.getByText("Saved - tap to replace", { exact: true })).toHaveCount(0);
+  });
+
+  test("reopens only the exact stage requested by the manager", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installEmployeeFixture(page, { allSaved: true, correctionStage: "COMPLETED" });
+    await openEmployeeCapture(page);
+
+    await expect(page.getByText("Manager requested changes", { exact: true })).toBeVisible();
+    await expect(page.getByText("Locked - no correction requested", { exact: true })).toHaveCount(2);
+    await expect(page.getByText("Correction requested - tap to replace", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("Saved - tap to replace", { exact: true })).toHaveCount(0);
+  });
+
   test("shows server-confirmed Saved stages and ready-to-submit progress", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await installEmployeeFixture(page, { allSaved: true });

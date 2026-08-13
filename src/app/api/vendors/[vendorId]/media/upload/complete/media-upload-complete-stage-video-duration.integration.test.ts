@@ -258,6 +258,36 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     });
   });
 
+  it("rejects upload finalization while manager review is pending without saving another candidate", async () => {
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({
+      blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+      blockMessage: "The completed Service Videos were submitted for manager review.",
+      block: {
+        why: "The completed Service Videos were submitted for manager review.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Wait for manager review.",
+      },
+    });
+
+    const response = await POST(buildRequest(12), {
+      params: Promise.resolve({ vendorId: VENDOR_ID }),
+    });
+    const json = await readJson(response);
+
+    expect(response.status).toBe(409);
+    expect(json).toMatchObject({
+      code: "MANAGER_REVIEW_IN_PROGRESS",
+      responsibleParticipant: "VENDOR_MANAGER",
+      resolution: "Wait for manager review.",
+    });
+    expect(hoisted.loadRecordingPermissionGate).toHaveBeenCalledWith(
+      expect.objectContaining({ recordingStage: "INTRO" }),
+    );
+    expect(hoisted.saveVerifiedServiceVideoStage).not.toHaveBeenCalled();
+    expect(hoisted.mediaAssetCreate).not.toHaveBeenCalled();
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
   it("allows a staged video when the uploaded media probes under the 30-second limit", async () => {
     vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationSeconds(12));
 

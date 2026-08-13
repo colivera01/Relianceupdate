@@ -62,6 +62,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       surface: "employee_stage",
       capability: "record",
       actorKind: "EMPLOYEE",
+      recordingStage: stage,
     });
     if (permissionGate.blockCode) {
       return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });

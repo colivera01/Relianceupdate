@@ -70,10 +70,14 @@ export type RecordingPermissionGate = {
   locationAttemptId: string | null;
   locationExceptionStatus: string | null;
   locationExceptionId: string | null;
+  workRecordStatus: string | null;
+  correctionRequestedStages: RecordingStage[];
   blockCode: string | null;
   blockMessage: string | null;
   block: RecordingGateBlock | null;
 };
+
+export type RecordingStage = "INTRO" | "IN_PROGRESS" | "COMPLETED";
 
 export type RecordingGateSurface =
   | "vendor_release"
@@ -207,6 +211,8 @@ export function resolveRecordingPermissionGate(input: {
     locationAttemptId: null,
     locationExceptionStatus: null,
     locationExceptionId: null,
+    workRecordStatus: null,
+    correctionRequestedStages: [],
     blockCode,
     blockMessage: block ? `${block.why} ${block.resolution}` : null,
     block,
@@ -263,6 +269,7 @@ export async function loadCanonicalRecordingGate(input: {
   surface: RecordingGateSurface;
   capability?: "release" | "record" | "observe";
   actorKind?: string | null;
+  recordingStage?: RecordingStage | string | null;
   now?: Date;
 }): Promise<RecordingPermissionGate> {
   const assessmentModel = (prisma as any).recordingScopeAssessment;
@@ -271,7 +278,7 @@ export async function loadCanonicalRecordingGate(input: {
   if (!assessmentModel?.findFirst) {
     return loadLegacyPermissionGate(input);
   }
-  const [assessment, consentRecord, lifecycle] = await Promise.all([
+  const [assessment, consentRecord, lifecycle, booking, currentPackage] = await Promise.all([
     assessmentModel.findFirst({
       where: {
         bookingId: input.bookingId,
@@ -304,7 +311,47 @@ export async function loadCanonicalRecordingGate(input: {
       bookingId: input.bookingId,
       intendedAudience: "PRIVATE",
     }),
+    (prisma as any).booking.findUnique({
+      where: { id: input.bookingId },
+      select: { status: true },
+    }),
+    (prisma as any).serviceVideoPackageEvidence.findFirst({
+      where: {
+        bookingId: input.bookingId,
+        ...(input.vendorId ? { vendorId: input.vendorId } : {}),
+        isCurrent: true,
+      },
+      select: { id: true, status: true, managerDecisionId: true },
+    }),
   ]);
+  const correctionDecision =
+    currentPackage?.status === "CORRECTION_REQUESTED" && currentPackage.managerDecisionId
+      ? await (prisma as any).serviceVideoManagerDecisionEvidence.findFirst({
+          where: {
+            id: currentPackage.managerDecisionId,
+            packageId: currentPackage.id,
+            bookingId: input.bookingId,
+            ...(input.vendorId ? { vendorId: input.vendorId } : {}),
+            decision: "CORRECTION_REQUESTED",
+          },
+          select: { targetedStagesJson: true },
+        })
+      : null;
+  const correctionRequestedStages = (() => {
+    try {
+      const parsed = JSON.parse(String(correctionDecision?.targetedStagesJson || "[]"));
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((stage) => String(stage || "").trim().toUpperCase())
+        .filter((stage): stage is RecordingStage =>
+          ["INTRO", "IN_PROGRESS", "COMPLETED"].includes(stage),
+        );
+    } catch {
+      return [];
+    }
+  })();
+  const workRecordStatus = String(booking?.status || "").trim().toUpperCase() || null;
+  const recordingStage = String(input.recordingStage || "").trim().toUpperCase() as RecordingStage | "";
   const facts = permissionFacts({ ...input, assessment, consentRecord });
   const assessmentLocation = normalizeRecordingLocationChoice(assessment?.locationType);
   const locationSnapshot = validateRecordingLocationSnapshot(
@@ -396,10 +443,44 @@ export async function loadCanonicalRecordingGate(input: {
     locationAttemptId: locationAttempt?.id || null,
     locationExceptionStatus: locationException?.status || null,
     locationExceptionId: locationException?.id || null,
+    workRecordStatus,
+    correctionRequestedStages,
   };
   const capability = input.capability || "record";
   let decision: RecordingPermissionGate;
-  if (!lifecycle.recordingAllowed) {
+  if (workRecordStatus === "AWAITING_REVIEW" || currentPackage?.status === "AWAITING_MANAGER_REVIEW") {
+    decision = blocked(base, {
+      code: "MANAGER_REVIEW_IN_PROGRESS",
+      why: "The completed Service Videos were submitted for manager review.",
+      responsibleParticipant: "VENDOR_MANAGER",
+      resolution: "Wait for manager review.",
+      serviceMayContinue: true,
+    });
+  } else if (currentPackage?.status === "CORRECTION_REQUESTED") {
+    if (!recordingStage || !correctionRequestedStages.includes(recordingStage)) {
+      decision = blocked(base, {
+        code: recordingStage ? "STAGE_CORRECTION_NOT_REQUESTED" : "STAGE_CORRECTION_SELECTION_REQUIRED",
+        why: recordingStage
+          ? "The manager did not request a correction for this Service Video stage."
+          : "The manager requested a correction for specific Service Video stages only.",
+        responsibleParticipant: "EMPLOYEE",
+        resolution: recordingStage
+          ? "Open only the stage identified in the manager's correction request."
+          : "Open the stage identified in the manager's correction request.",
+        serviceMayContinue: true,
+      });
+    } else if (!lifecycle.recordingAllowed) {
+      decision = blocked(base, {
+        code: "RECORDING_WITHDRAWN_OR_RESTRICTED",
+        why: "Recording has been stopped for this work record by an active withdrawal or lifecycle restriction.",
+        responsibleParticipant: (lifecycle.responsibleParticipant || "ADMIN") as RecordingGateParticipant,
+        resolution: lifecycle.nextAction || "Review the lifecycle case before attempting to record again.",
+        serviceMayContinue: assessment?.serviceCanContinueWithoutRecording !== false,
+      });
+    } else {
+      decision = await resolveRemainingCanonicalGate();
+    }
+  } else if (!lifecycle.recordingAllowed) {
     decision = blocked(base, {
       code: "RECORDING_WITHDRAWN_OR_RESTRICTED",
       why: "Recording has been stopped for this work record by an active withdrawal or lifecycle restriction.",
@@ -407,127 +488,134 @@ export async function loadCanonicalRecordingGate(input: {
       resolution: lifecycle.nextAction || "Review the lifecycle case before attempting to record again.",
       serviceMayContinue: assessment?.serviceCanContinueWithoutRecording !== false,
     });
-  } else if (!assessment || assessment.status !== "COMPLETE") {
-    decision = blocked(base, {
-      code: "RECORDING_ASSESSMENT_REQUIRED",
-      why: "The recording subject and scope have not been assessed.",
-      responsibleParticipant: "VENDOR_MANAGER",
-      resolution: "Complete the recording assessment for this work record.",
-      serviceMayContinue: true,
-    });
-  } else if (!locationSnapshot.ok) {
-    const locationLabel =
-      assessmentLocation === "business"
-        ? "vendor business address"
-        : assessmentLocation === "customer-business"
-          ? "customer business address"
-          : assessmentLocation === "residence"
-            ? "customer residence"
-            : "selected service location";
-    decision = blocked(base, {
-      code: "RECORDING_LOCATION_SNAPSHOT_REQUIRED",
-      why: `The ${locationLabel} does not have a matching verified location snapshot saved with this work record.`,
-      responsibleParticipant: "VENDOR_MANAGER",
-      resolution: "Correct the work record with the complete address for the selected location before releasing it for recording.",
-      serviceMayContinue: true,
-    });
-  } else if (assessment.audioRequested || assessment.audioAllowed) {
-    decision = blocked(base, {
-      code: "AUDIO_NOT_SUPPORTED",
-      why: "This work record requests audio, but audio is off for Epic 4.",
-      responsibleParticipant: "VENDOR_MANAGER",
-      resolution: "Update the scope to video without audio.",
-      serviceMayContinue: true,
-    });
-  } else if (
-    assessment.authorities?.some(
-      (item: any) =>
-        item.required &&
-        ["VERIFIED_GUARDIAN", "PROTECTED_NON_PARTICIPANT"].includes(item.authorityType) &&
-        item.status !== "VERIFIED",
-    )
-  ) {
-    decision = blocked(base, {
-      code: "PROTECTED_PARTICIPANT_AUTHORITY_REQUIRED",
-      why: "The approved scope may include a minor or protected non-participant without verified authority.",
-      responsibleParticipant: "VENDOR_MANAGER",
-      resolution: "Remove that person from the recording scope or obtain the required verified authority.",
-      serviceMayContinue: true,
-    });
-  } else if (facts.permissionRequired && !facts.verifiedAllowed) {
-    const wrongRecipient = Boolean(facts.currentRecord?.recipientMismatch);
-    decision = blocked(base, {
-      code: wrongRecipient ? "PERMISSION_RECIPIENT_CORRECTION_REQUIRED" : "VERIFIED_PERMISSION_REQUIRED",
-      why: wrongRecipient
-        ? "The permission request contact details appear to belong to different people."
-        : "Required customer recording permission is not active.",
-      responsibleParticipant: wrongRecipient ? "VENDOR_MANAGER" : "CUSTOMER",
-      resolution: wrongRecipient
-        ? "Correct the customer contact and send a new secure request."
-        : "The customer must use the secure request to allow recording.",
-      serviceMayContinue: assessment.serviceCanContinueWithoutRecording,
-    });
-  } else if (
-    assessment.authorities?.some(
-      (item: any) =>
-        item.required &&
-        item.authorityType !== "EMPLOYEE_LIKENESS" &&
-        item.status !== "VERIFIED",
-    )
-  ) {
-    decision = blocked(base, {
-      code: "ADDITIONAL_PERSON_AUTHORITY_REQUIRED",
-      why: "The current permission does not cover every identifiable person in the approved recording scope.",
-      responsibleParticipant: "CUSTOMER",
-      resolution: "Obtain permission from the identifiable person or update the scope so that person will not appear.",
-      serviceMayContinue: assessment.serviceCanContinueWithoutRecording,
-    });
-  } else if (!assigned) {
-    decision = blocked(base, {
-      code: "EMPLOYEE_ASSIGNMENT_REQUIRED",
-      why: "No active employee is assigned to this work record.",
-      responsibleParticipant: "VENDOR_MANAGER",
-      resolution: "Assign an active employee before releasing the service order.",
-      serviceMayContinue: true,
-    });
-  } else if (capability !== "release" && !released) {
-    decision = blocked(base, {
-      code: "SERVICE_ORDER_RELEASE_REQUIRED",
-      why: "The assigned employee has not received a released service order.",
-      responsibleParticipant: "VENDOR_MANAGER",
-      resolution: "Release the service order to the assigned employee.",
-      serviceMayContinue: true,
-    }, true);
-  } else if (capability === "record" && !certification) {
-    decision = blocked(base, {
-      code: "EMPLOYEE_CERTIFICATION_REQUIRED",
-      why: "The assigned employee has not certified the current recording scope.",
-      responsibleParticipant: "EMPLOYEE",
-      resolution: "Review the approved scope and complete the pre-recording certification.",
-      serviceMayContinue: true,
-    }, true);
-  } else if (capability === "record" && locationAttempt?.status !== "VERIFIED" && locationException?.status !== "APPROVED") {
-    const pendingException = locationException?.status === "PENDING";
-    decision = blocked(base, {
-      code: pendingException ? "LOCATION_EXCEPTION_PENDING" : "LOCATION_VERIFICATION_REQUIRED",
-      why: pendingException
-        ? "A location exception is waiting for an independent admin decision."
-        : "The employee device has not verified the saved service location.",
-      responsibleParticipant: pendingException ? "ADMIN" : "EMPLOYEE",
-      resolution: pendingException
-        ? "An admin must approve or deny the exception; the requesting manager cannot decide it."
-        : "Allow precise location and verify the saved service address.",
-      serviceMayContinue: true,
-    }, true);
   } else {
-    decision = {
-      ...base,
-      recordingUnlocked: capability !== "release",
-      releaseAllowed: true,
-      blockCode: null,
-      blockMessage: null,
-      block: null,
-    };
+    decision = await resolveRemainingCanonicalGate();
+  }
+
+  async function resolveRemainingCanonicalGate(): Promise<RecordingPermissionGate> {
+    if (!assessment || assessment.status !== "COMPLETE") {
+      decision = blocked(base, {
+        code: "RECORDING_ASSESSMENT_REQUIRED",
+        why: "The recording subject and scope have not been assessed.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Complete the recording assessment for this work record.",
+        serviceMayContinue: true,
+      });
+    } else if (!locationSnapshot.ok) {
+      const locationLabel =
+        assessmentLocation === "business"
+          ? "vendor business address"
+          : assessmentLocation === "customer-business"
+            ? "customer business address"
+            : assessmentLocation === "residence"
+              ? "customer residence"
+              : "selected service location";
+      decision = blocked(base, {
+        code: "RECORDING_LOCATION_SNAPSHOT_REQUIRED",
+        why: `The ${locationLabel} does not have a matching verified location snapshot saved with this work record.`,
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Correct the work record with the complete address for the selected location before releasing it for recording.",
+        serviceMayContinue: true,
+      });
+    } else if (assessment.audioRequested || assessment.audioAllowed) {
+      decision = blocked(base, {
+        code: "AUDIO_NOT_SUPPORTED",
+        why: "This work record requests audio, but audio is off for Epic 4.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Update the scope to video without audio.",
+        serviceMayContinue: true,
+      });
+    } else if (
+      assessment.authorities?.some(
+        (item: any) =>
+          item.required &&
+          ["VERIFIED_GUARDIAN", "PROTECTED_NON_PARTICIPANT"].includes(item.authorityType) &&
+          item.status !== "VERIFIED",
+      )
+    ) {
+      decision = blocked(base, {
+        code: "PROTECTED_PARTICIPANT_AUTHORITY_REQUIRED",
+        why: "The approved scope may include a minor or protected non-participant without verified authority.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Remove that person from the recording scope or obtain the required verified authority.",
+        serviceMayContinue: true,
+      });
+    } else if (facts.permissionRequired && !facts.verifiedAllowed) {
+      const wrongRecipient = Boolean(facts.currentRecord?.recipientMismatch);
+      decision = blocked(base, {
+        code: wrongRecipient ? "PERMISSION_RECIPIENT_CORRECTION_REQUIRED" : "VERIFIED_PERMISSION_REQUIRED",
+        why: wrongRecipient
+          ? "The permission request contact details appear to belong to different people."
+          : "Required customer recording permission is not active.",
+        responsibleParticipant: wrongRecipient ? "VENDOR_MANAGER" : "CUSTOMER",
+        resolution: wrongRecipient
+          ? "Correct the customer contact and send a new secure request."
+          : "The customer must use the secure request to allow recording.",
+        serviceMayContinue: assessment.serviceCanContinueWithoutRecording,
+      });
+    } else if (
+      assessment.authorities?.some(
+        (item: any) =>
+          item.required &&
+          item.authorityType !== "EMPLOYEE_LIKENESS" &&
+          item.status !== "VERIFIED",
+      )
+    ) {
+      decision = blocked(base, {
+        code: "ADDITIONAL_PERSON_AUTHORITY_REQUIRED",
+        why: "The current permission does not cover every identifiable person in the approved recording scope.",
+        responsibleParticipant: "CUSTOMER",
+        resolution: "Obtain permission from the identifiable person or update the scope so that person will not appear.",
+        serviceMayContinue: assessment.serviceCanContinueWithoutRecording,
+      });
+    } else if (!assigned) {
+      decision = blocked(base, {
+        code: "EMPLOYEE_ASSIGNMENT_REQUIRED",
+        why: "No active employee is assigned to this work record.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Assign an active employee before releasing the service order.",
+        serviceMayContinue: true,
+      });
+    } else if (capability !== "release" && !released) {
+      decision = blocked(base, {
+        code: "SERVICE_ORDER_RELEASE_REQUIRED",
+        why: "The assigned employee has not received a released service order.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Release the service order to the assigned employee.",
+        serviceMayContinue: true,
+      }, true);
+    } else if (capability === "record" && !certification) {
+      decision = blocked(base, {
+        code: "EMPLOYEE_CERTIFICATION_REQUIRED",
+        why: "The assigned employee has not certified the current recording scope.",
+        responsibleParticipant: "EMPLOYEE",
+        resolution: "Review the approved scope and complete the pre-recording certification.",
+        serviceMayContinue: true,
+      }, true);
+    } else if (capability === "record" && locationAttempt?.status !== "VERIFIED" && locationException?.status !== "APPROVED") {
+      const pendingException = locationException?.status === "PENDING";
+      decision = blocked(base, {
+        code: pendingException ? "LOCATION_EXCEPTION_PENDING" : "LOCATION_VERIFICATION_REQUIRED",
+        why: pendingException
+          ? "A location exception is waiting for an independent admin decision."
+          : "The employee device has not verified the saved service location.",
+        responsibleParticipant: pendingException ? "ADMIN" : "EMPLOYEE",
+        resolution: pendingException
+          ? "An admin must approve or deny the exception; the requesting manager cannot decide it."
+          : "Allow precise location and verify the saved service address.",
+        serviceMayContinue: true,
+      }, true);
+    } else {
+      decision = {
+        ...base,
+        recordingUnlocked: capability !== "release",
+        releaseAllowed: true,
+        blockCode: null,
+        blockMessage: null,
+        block: null,
+      };
+    }
+    return decision;
   }
   await recordBlockMetric({
     bookingId: input.bookingId,
@@ -581,6 +669,7 @@ export async function loadRecordingPermissionGate(input: {
   surface?: RecordingGateSurface;
   capability?: "release" | "record" | "observe";
   actorKind?: string | null;
+  recordingStage?: RecordingStage | string | null;
   now?: Date;
 }): Promise<RecordingPermissionGate> {
   return loadCanonicalRecordingGate({

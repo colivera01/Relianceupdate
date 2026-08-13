@@ -183,6 +183,7 @@ export async function POST(
         surface: "media_session",
         capability: "record",
         actorKind,
+        recordingStage: normalizedStage,
       });
       if (permissionGate.blockCode === "LOCATION_VERIFICATION_REQUIRED") {
         const canonicalLocation = permissionGate.location!;
@@ -228,6 +229,7 @@ export async function POST(
           surface: "media_session",
           capability: "record",
           actorKind,
+          recordingStage: normalizedStage,
         });
       }
       if (permissionGate.blockCode) {

@@ -13,6 +13,8 @@ const db = vi.hoisted(() => ({
   locationAttemptFindFirst: vi.fn(),
   locationExceptionFindFirst: vi.fn(),
   metricCreate: vi.fn(),
+  packageFindFirst: vi.fn(),
+  managerDecisionFindFirst: vi.fn(),
   transaction: vi.fn(),
 }));
 
@@ -33,6 +35,8 @@ vi.mock("@/server/db", () => {
     recordingLocationAttempt: { findFirst: db.locationAttemptFindFirst },
     recordingLocationException: { findFirst: db.locationExceptionFindFirst },
     recordingGateMetric: { create: db.metricCreate },
+    serviceVideoPackageEvidence: { findFirst: db.packageFindFirst },
+    serviceVideoManagerDecisionEvidence: { findFirst: db.managerDecisionFindFirst },
     recordingAuthorityRequirement: { updateMany: db.authorityUpdateMany },
   };
   prisma.$transaction = db.transaction;
@@ -119,6 +123,8 @@ describe("employee recording certification", () => {
     db.locationAttemptFindFirst.mockResolvedValue({ status: "VERIFIED", resultCode: "LOCATION_VERIFIED" });
     db.locationExceptionFindFirst.mockResolvedValue(null);
     db.metricCreate.mockResolvedValue({ id: "metric-1" });
+    db.packageFindFirst.mockResolvedValue(null);
+    db.managerDecisionFindFirst.mockResolvedValue(null);
     db.transaction.mockImplementation(async (callback: (tx: any) => unknown) =>
       callback({
         employeeRecordingCertification: {

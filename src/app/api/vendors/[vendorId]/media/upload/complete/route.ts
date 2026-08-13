@@ -182,6 +182,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         surface: "upload_complete",
         capability: "record",
         actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
+        recordingStage: stageValue,
       });
       if (permissionGate.blockCode) {
         await setUploadAttemptState({

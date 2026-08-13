@@ -4,6 +4,7 @@ import { requireVendorMembership } from "@/lib/membership-auth";
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
+  const bookingFindUnique = vi.fn();
   const vendorUpdate = vi.fn();
   const mediaSessionFindFirst = vi.fn();
   const mediaSessionCreate = vi.fn();
@@ -15,6 +16,8 @@ const hoisted = vi.hoisted(() => {
   const recordingLocationExceptionFindFirst = vi.fn();
   const recordingGateMetricCreate = vi.fn();
   const recordingGateDecisionEvidenceCreate = vi.fn();
+  const serviceVideoPackageEvidenceFindFirst = vi.fn();
+  const serviceVideoManagerDecisionEvidenceFindFirst = vi.fn();
   const transaction = vi.fn();
   const geocodeAddress = vi.fn();
 
@@ -24,6 +27,7 @@ const hoisted = vi.hoisted(() => {
     },
     booking: {
       findFirst: bookingFindFirst,
+      findUnique: bookingFindUnique,
     },
     mediaSession: {
       findFirst: mediaSessionFindFirst,
@@ -41,12 +45,15 @@ const hoisted = vi.hoisted(() => {
     recordingLocationException: { findFirst: recordingLocationExceptionFindFirst },
     recordingGateMetric: { create: recordingGateMetricCreate },
     recordingGateDecisionEvidence: { create: recordingGateDecisionEvidenceCreate },
+    serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
+    serviceVideoManagerDecisionEvidence: { findFirst: serviceVideoManagerDecisionEvidenceFindFirst },
     $transaction: transaction,
   };
 
   return {
     prisma,
     bookingFindFirst,
+    bookingFindUnique,
     vendorUpdate,
     mediaSessionFindFirst,
     mediaSessionCreate,
@@ -58,6 +65,8 @@ const hoisted = vi.hoisted(() => {
     recordingLocationExceptionFindFirst,
     recordingGateMetricCreate,
     recordingGateDecisionEvidenceCreate,
+    serviceVideoPackageEvidenceFindFirst,
+    serviceVideoManagerDecisionEvidenceFindFirst,
     transaction,
     geocodeAddress,
   };
@@ -163,6 +172,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     } as any);
 
     hoisted.bookingFindFirst.mockReset();
+    hoisted.bookingFindUnique.mockReset();
     hoisted.mediaSessionFindFirst.mockReset();
     hoisted.mediaSessionCreate.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
@@ -174,10 +184,15 @@ describe("vendor media sessions consent enforcement integration", () => {
     hoisted.recordingGateMetricCreate.mockReset();
     hoisted.recordingGateDecisionEvidenceCreate.mockReset();
     hoisted.recordingGateDecisionEvidenceCreate.mockResolvedValue({ id: "gate-evidence-1" });
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
+    hoisted.serviceVideoManagerDecisionEvidenceFindFirst.mockReset();
+    hoisted.serviceVideoManagerDecisionEvidenceFindFirst.mockResolvedValue(null);
     hoisted.transaction.mockReset();
     hoisted.transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => callback(hoisted.prisma));
 
     mockBookingLocation("residence");
+    hoisted.bookingFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
     hoisted.vendorUpdate.mockReset();
     hoisted.mediaSessionFindFirst.mockResolvedValue(null);
     hoisted.mediaSessionCreate.mockResolvedValue({
@@ -346,6 +361,38 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect(res.status).toBe(409);
     expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_REQUIRED");
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects direct media-session creation after submission without creating a duplicate", async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({ status: "AWAITING_REVIEW" });
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "permission-1",
+      status: "accepted",
+      lifecycleStatus: "ALLOWED",
+      verifiedDecision: true,
+      isCurrent: true,
+      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      recipientMismatch: false,
+      decisionEvidence: { id: "evidence-1" },
+    });
+
+    const { req, ctx } = buildPostRequest({
+      locationContext: "residence",
+      locationProof: { latitude: 28.53831, longitude: -81.37919, accuracyMeters: 20 },
+    });
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json).toMatchObject({
+      code: "MANAGER_REVIEW_IN_PROGRESS",
+      blocked: {
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Wait for manager review.",
+      },
+    });
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
+    expect(hoisted.recordingGateDecisionEvidenceCreate).not.toHaveBeenCalled();
   });
 
   it("blocks business location when geolocation proof is missing", async () => {

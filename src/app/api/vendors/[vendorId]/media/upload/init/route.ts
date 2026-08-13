@@ -54,19 +54,6 @@ export async function POST(
       if (!booking) {
         return NextResponse.json({ error: "Invalid bookingId for this vendor" }, { status: 422 });
       }
-      const permissionGate = await loadRecordingPermissionGate({
-        bookingId: booking.id,
-        vendorId,
-        customerMetadata: booking.customerMetadata,
-        membershipId: tokenAccess?.membershipId || membership.membershipId,
-        surface: "upload_init",
-        capability: "record",
-        actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
-      });
-      if (permissionGate.blockCode) {
-        return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
-      }
-
       if (!mediaSessionId) {
         return NextResponse.json(
           { error: "mediaSessionId is required for a staged service-video upload" },
@@ -91,6 +78,19 @@ export async function POST(
           { error: "The staged recording session is invalid or is not assigned to this employee." },
           { status: 409 }
         );
+      }
+      const permissionGate = await loadRecordingPermissionGate({
+        bookingId: booking.id,
+        vendorId,
+        customerMetadata: booking.customerMetadata,
+        membershipId,
+        surface: "upload_init",
+        capability: "record",
+        actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
+        recordingStage: stage,
+      });
+      if (permissionGate.blockCode) {
+        return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
       }
       stagedUpload = {
         bookingId: booking.id,

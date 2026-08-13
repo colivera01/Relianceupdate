@@ -85,7 +85,12 @@ describe("employee recording location verification", () => {
     const response = await POST(
       new Request("http://localhost/api/employee/jobs/booking-1/verify-location", {
         method: "POST",
-        body: JSON.stringify({ latitude: 28.7, longitude: -81.3, accuracyMeters: 20 }),
+        body: JSON.stringify({
+          latitude: 28.7,
+          longitude: -81.3,
+          accuracyMeters: 20,
+          recordingStage: "INTRO",
+        }),
       }),
       { params: Promise.resolve({ jobId: "booking-1" }) },
     );
@@ -101,5 +106,42 @@ describe("employee recording location verification", () => {
       }),
     );
     expect(json.recordingGate).toMatchObject({ recordingUnlocked: true, blockCode: null });
+    expect(mocks.loadRecordingPermissionGate).toHaveBeenCalledWith(
+      expect.objectContaining({ recordingStage: "INTRO" }),
+    );
+  });
+
+  it("does not create new location evidence after submission to manager review", async () => {
+    mocks.loadRecordingPermissionGate.mockReset();
+    mocks.loadRecordingPermissionGate.mockResolvedValue({
+      assessmentId: "assessment-1",
+      blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+      blockMessage: "The completed Service Videos were submitted for manager review.",
+      block: {
+        why: "The completed Service Videos were submitted for manager review.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Wait for manager review.",
+      },
+    });
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/employee/jobs/booking-1/verify-location", {
+        method: "POST",
+        body: JSON.stringify({
+          latitude: 28.7,
+          longitude: -81.3,
+          accuracyMeters: 20,
+          recordingStage: "INTRO",
+        }),
+      }),
+      { params: Promise.resolve({ jobId: "booking-1" }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(json.code).toBe("MANAGER_REVIEW_IN_PROGRESS");
+    expect(mocks.verifyJobRecordingLocation).not.toHaveBeenCalled();
+    expect(mocks.recordJobRecordingLocationAttempt).not.toHaveBeenCalled();
   });
 });

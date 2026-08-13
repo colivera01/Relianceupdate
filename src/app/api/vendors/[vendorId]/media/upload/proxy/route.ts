@@ -44,28 +44,6 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     });
     const membership = tokenAccess || (await requireVendorMembership(request, vendorId));
 
-    if (bookingId) {
-      const booking = await prisma.booking.findFirst({
-        where: { id: bookingId, vendorId },
-        select: { id: true, customerMetadata: true },
-      });
-      if (!booking) {
-        return NextResponse.json({ error: "Invalid bookingId for this vendor" }, { status: 422 });
-      }
-      const permissionGate = await loadRecordingPermissionGate({
-        bookingId: booking.id,
-        vendorId,
-        customerMetadata: booking.customerMetadata,
-        membershipId: tokenAccess?.membershipId || membership.membershipId,
-        surface: "upload_proxy",
-        capability: "record",
-        actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
-      });
-      if (permissionGate.blockCode) {
-        return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
-      }
-    }
-
     if (!assetId || !blobKey) {
       return NextResponse.json(
         { error: "assetId and blobKey are required" },
@@ -98,6 +76,28 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         { error: "Upload evidence was not found for this staged recording." },
         { status: 409 }
       );
+    }
+    if (bookingId) {
+      const booking = await prisma.booking.findFirst({
+        where: { id: bookingId, vendorId },
+        select: { id: true, customerMetadata: true },
+      });
+      if (!booking) {
+        return NextResponse.json({ error: "Invalid bookingId for this vendor" }, { status: 422 });
+      }
+      const permissionGate = await loadRecordingPermissionGate({
+        bookingId: booking.id,
+        vendorId,
+        customerMetadata: booking.customerMetadata,
+        membershipId,
+        surface: "upload_proxy",
+        capability: "record",
+        actorKind: tokenAccess ? "EMPLOYEE_LINK" : String((membership as any).role || "VENDOR_MEMBER"),
+        recordingStage: String(uploadAttempt?.stage || "").trim().toUpperCase(),
+      });
+      if (permissionGate.blockCode) {
+        return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
+      }
     }
 
     if (!mimeType.toLowerCase().startsWith("video/")) {

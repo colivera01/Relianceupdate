@@ -6,6 +6,9 @@ const db = vi.hoisted(() => ({
   certificationFindFirst: vi.fn(),
   locationAttemptFindFirst: vi.fn(),
   locationExceptionFindFirst: vi.fn(),
+  bookingFindUnique: vi.fn(),
+  packageFindFirst: vi.fn(),
+  managerDecisionFindFirst: vi.fn(),
   metricCreate: vi.fn(),
 }));
 
@@ -16,6 +19,9 @@ vi.mock("@/server/db", () => ({
     employeeRecordingCertification: { findFirst: db.certificationFindFirst },
     recordingLocationAttempt: { findFirst: db.locationAttemptFindFirst },
     recordingLocationException: { findFirst: db.locationExceptionFindFirst },
+    booking: { findUnique: db.bookingFindUnique },
+    serviceVideoPackageEvidence: { findFirst: db.packageFindFirst },
+    serviceVideoManagerDecisionEvidence: { findFirst: db.managerDecisionFindFirst },
     recordingGateMetric: { create: db.metricCreate },
   },
 }));
@@ -100,6 +106,9 @@ describe("database-backed canonical recording gate", () => {
     db.certificationFindFirst.mockResolvedValue({ id: "cert-1" });
     db.locationAttemptFindFirst.mockResolvedValue({ status: "VERIFIED", resultCode: "WITHIN_RADIUS" });
     db.locationExceptionFindFirst.mockResolvedValue(null);
+    db.bookingFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
+    db.packageFindFirst.mockResolvedValue(null);
+    db.managerDecisionFindFirst.mockResolvedValue(null);
     db.metricCreate.mockResolvedValue({ id: "metric-1" });
   });
 
@@ -219,6 +228,69 @@ describe("database-backed canonical recording gate", () => {
       locationVerified: true,
       locationExceptionStatus: "APPROVED",
       block: null,
+    });
+  });
+
+  it("locks every stage while the completed package awaits manager review", async () => {
+    db.bookingFindUnique.mockResolvedValue({ status: "AWAITING_REVIEW" });
+
+    for (const recordingStage of ["INTRO", "IN_PROGRESS", "COMPLETED"] as const) {
+      const gate = await load({ recordingStage });
+      expect(gate).toMatchObject({
+        recordingUnlocked: false,
+        releaseAllowed: false,
+        workRecordStatus: "AWAITING_REVIEW",
+        blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+        block: {
+          why: "The completed Service Videos were submitted for manager review.",
+          responsibleParticipant: "VENDOR_MANAGER",
+          resolution: "Wait for manager review.",
+        },
+      });
+    }
+  });
+
+  it("locks during the package submission transition even before the booking status update", async () => {
+    db.packageFindFirst.mockResolvedValue({
+      id: "package-1",
+      status: "AWAITING_MANAGER_REVIEW",
+      managerDecisionId: null,
+    });
+
+    const gate = await load({ recordingStage: "INTRO" });
+    expect(gate).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+    });
+  });
+
+  it("reopens only the exact stage named in an active manager correction request", async () => {
+    db.bookingFindUnique.mockResolvedValue({ status: "REJECTED" });
+    db.packageFindFirst.mockResolvedValue({
+      id: "package-1",
+      status: "CORRECTION_REQUESTED",
+      managerDecisionId: "decision-1",
+    });
+    db.managerDecisionFindFirst.mockResolvedValue({
+      targetedStagesJson: JSON.stringify(["COMPLETED"]),
+    });
+
+    const target = await load({ recordingStage: "COMPLETED" });
+    const untouched = await load({ recordingStage: "INTRO" });
+    const unspecified = await load();
+
+    expect(target).toMatchObject({
+      recordingUnlocked: true,
+      correctionRequestedStages: ["COMPLETED"],
+      block: null,
+    });
+    expect(untouched).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "STAGE_CORRECTION_NOT_REQUESTED",
+    });
+    expect(unspecified).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "STAGE_CORRECTION_SELECTION_REQUIRED",
     });
   });
 

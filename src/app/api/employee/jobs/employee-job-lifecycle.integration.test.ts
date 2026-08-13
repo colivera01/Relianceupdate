@@ -357,7 +357,7 @@ describe("employee job lifecycle routes", () => {
     });
   });
 
-  it("keeps rejected correction links submittable even when status is still awaiting review", async () => {
+  it("does not reopen an awaiting-review job from a rejection note alone", async () => {
     const { GET } = await import("./route");
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
       vendorId: "vendor-1",
@@ -409,7 +409,7 @@ describe("employee job lifecycle routes", () => {
       status: "AWAITING_REVIEW",
       rejectionReason: "Redo stage 3",
       stageProgress: { INTRO: true, IN_PROGRESS: true, COMPLETED: true },
-      canMarkComplete: true,
+      canMarkComplete: false,
     });
   });
 

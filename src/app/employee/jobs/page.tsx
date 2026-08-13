@@ -72,6 +72,14 @@ type RecordingComplianceState = {
     resolution: string;
     serviceMayContinue: boolean;
   } | null;
+  correctionRequestedStages?: Array<"INTRO" | "IN_PROGRESS" | "COMPLETED">;
+  stageRecordingAccess?: Record<
+    "INTRO" | "IN_PROGRESS" | "COMPLETED",
+    {
+      recordingUnlocked: boolean;
+      canonicalBlock: RecordingComplianceState["canonicalBlock"];
+    }
+  >;
 };
 
 type StageFeedbackState = {
@@ -237,9 +245,19 @@ function isAwaitingReviewStatus(status: string | null | undefined): boolean {
   return String(status || "").trim().toUpperCase() === "AWAITING_REVIEW";
 }
 
-function isCorrectionRequested(job: Pick<EmployeeJob, "status" | "rejectionReason">): boolean {
+function isCorrectionRequested(job: Pick<EmployeeJob, "status" | "rejectionReason" | "recordingCompliance">): boolean {
   const normalized = String(job.status || "").trim().toUpperCase();
-  return normalized !== "COMPLETED" && Boolean(String(job.rejectionReason || "").trim());
+  return normalized !== "COMPLETED" && Boolean(job.recordingCompliance?.correctionRequestedStages?.length);
+}
+
+function getStageRecordingAccess(
+  job: EmployeeJob,
+  stage: (typeof STAGES)[number]["key"],
+) {
+  return job.recordingCompliance?.stageRecordingAccess?.[stage] || {
+    recordingUnlocked: Boolean(job.recordingCompliance?.recordingUnlocked),
+    canonicalBlock: job.recordingCompliance?.canonicalBlock || null,
+  };
 }
 
 function shouldAllowStageUpload(status: string | null | undefined): boolean {
@@ -1012,7 +1030,7 @@ export default function EmployeeJobsPage() {
     const response = await fetch(`/api/employee/jobs/${encodeURIComponent(job.id)}/verify-location`, {
       method: "POST",
       headers: employeeRequestHeaders(),
-      body: JSON.stringify({ locationProof: proof }),
+      body: JSON.stringify({ locationProof: proof, recordingStage: stage }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result?.verified !== true) {
@@ -1106,6 +1124,22 @@ export default function EmployeeJobsPage() {
     stage: (typeof STAGES)[number]["key"]
   ) => {
     const nextRecordingKey = `${job.id}:${stage}`;
+    const stageAccess = getStageRecordingAccess(job, stage);
+    if (
+      !stageAccess.recordingUnlocked &&
+      stageAccess.canonicalBlock?.code !== "LOCATION_VERIFICATION_REQUIRED"
+    ) {
+      setStageFeedback((prev) => ({
+        ...prev,
+        [nextRecordingKey]: {
+          status: "error",
+          message:
+            stageAccess.canonicalBlock?.resolution ||
+            "Recording is locked for this Service Video stage.",
+        },
+      }));
+      return;
+    }
     setError(null);
     setActionMessage(null);
     setRecordingOpeningKey(nextRecordingKey);
@@ -1305,19 +1339,23 @@ export default function EmployeeJobsPage() {
   const renderJobCard = (job: EmployeeJob, historyMode = false) => {
     const openedFromAssignmentLink = !historyMode && focusedJobId === job.id;
     const normalizedStatus = String(job.status || "").trim().toUpperCase();
+    const awaitingManagerReview = normalizedStatus === "AWAITING_REVIEW";
     const correctionRequested = isCorrectionRequested(job);
     const recordingBlocked = !job.recordingCompliance?.recordingUnlocked;
     const canonicalBlock = job.recordingCompliance?.canonicalBlock || null;
-    const canResolveLocationFromStage = canonicalBlock?.code === "LOCATION_VERIFICATION_REQUIRED";
-    const showUploadControls =
-      !historyMode &&
-      !recordingBlocked &&
-      (shouldAllowStageUpload(normalizedStatus) || correctionRequested);
     const showStartButton = !historyMode && shouldShowEmployeeStartButton(normalizedStatus);
     const helperText = historyMode ? null : submitHelperText(job);
     const selectedStageKey =
       focusedStageByJobId[job.id] || getNextEmployeeCaptureStage(job.stageProgress);
     const selectedStage = STAGES.find((stage) => stage.key === selectedStageKey) || STAGES[0];
+    const selectedStageAccess = getStageRecordingAccess(job, selectedStage.key);
+    const selectedStageBlocked = !selectedStageAccess.recordingUnlocked;
+    const canResolveLocationFromStage =
+      selectedStageAccess.canonicalBlock?.code === "LOCATION_VERIFICATION_REQUIRED";
+    const showUploadControls =
+      !historyMode &&
+      !selectedStageBlocked &&
+      shouldAllowStageUpload(normalizedStatus);
     const selectedStageDone = Boolean(job.stageProgress[selectedStage.key]);
     const selectedStageFeedbackKey = `${job.id}:${selectedStage.key}`;
     const completedStageCount = getCompletedEmployeeCaptureCount(job.stageProgress);
@@ -1338,13 +1376,6 @@ export default function EmployeeJobsPage() {
       !selectedDraft &&
       !isRecordingSelectedStage &&
       ["error", "retry_required", "rejected"].includes(selectedStageFeedback?.status || "");
-    const canStartStageFromCard =
-      hasCaptureToken &&
-      (showUploadControls || canResolveLocationFromStage) &&
-      !selectedDraft &&
-      !recordingKey &&
-      !recordingOpeningKey &&
-      !uploadingKey;
     const countdownIsUrgent = recordingSecondsLeft <= 10;
 
     return (
@@ -1547,7 +1578,18 @@ export default function EmployeeJobsPage() {
           ) : null}
         </div>
 
-        {recordingBlocked && canonicalBlock ? (
+        {awaitingManagerReview ? (
+          <div className="mt-3 rounded-xl border border-emerald-300/35 bg-emerald-950/35 px-4 py-3 text-emerald-50">
+            <p className="text-sm font-bold">Service Videos submitted</p>
+            <p className="mt-1 text-sm leading-5">Manager review is in progress.</p>
+            <p className="mt-1 text-sm leading-5">
+              Recording is locked while your manager reviews this service order.
+            </p>
+            <p className="mt-1 text-xs leading-5 text-emerald-100/80">
+              If a correction is requested, only the requested stage will reopen.
+            </p>
+          </div>
+        ) : recordingBlocked && canonicalBlock && !correctionRequested ? (
           <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950">
             <p className="text-sm font-bold">Recording is locked</p>
             <p className="mt-1 text-sm leading-5"><strong>Why:</strong> {canonicalBlock.why}</p>
@@ -1637,7 +1679,19 @@ export default function EmployeeJobsPage() {
                 const isOpeningThisStage = recordingOpeningKey === stageActionKey;
                 const cardFeedback = stageFeedback[stageActionKey] || null;
                 const isUploadingThisStage = cardFeedback?.status === "uploading";
-                const canStartThisStage = canStartStageFromCard;
+                const stageAccess = getStageRecordingAccess(job, stage.key);
+                const stageBlocked = !stageAccess.recordingUnlocked;
+                const stageCanResolveLocation =
+                  stageAccess.canonicalBlock?.code === "LOCATION_VERIFICATION_REQUIRED";
+                const stageCorrectionRequested =
+                  job.recordingCompliance?.correctionRequestedStages?.includes(stage.key) === true;
+                const canStartThisStage =
+                  hasCaptureToken &&
+                  (!stageBlocked || stageCanResolveLocation) &&
+                  !capturedDraft &&
+                  !recordingKey &&
+                  !recordingOpeningKey &&
+                  !uploadingKey;
                 return (
                   <button
                     key={stage.key}
@@ -1652,7 +1706,7 @@ export default function EmployeeJobsPage() {
                       }
                     }}
                     disabled={
-                      (recordingBlocked && !canResolveLocationFromStage) ||
+                      (stageBlocked && !stageCanResolveLocation) ||
                       Boolean(hasCaptureToken && (isRecordingAnotherStage || recordingOpeningKey || uploadingKey))
                     }
                     className={`min-h-[168px] rounded-2xl border p-4 text-left transition ${
@@ -1693,8 +1747,16 @@ export default function EmployeeJobsPage() {
                                 : "bg-white/10 text-blue-100"
                           }`}
                         >
-                          {recordingBlocked
-                            ? canResolveLocationFromStage
+                          {awaitingManagerReview
+                            ? "Locked for manager review"
+                            : correctionRequested && !stageCorrectionRequested
+                              ? "Locked - no correction requested"
+                              : correctionRequested && stageCorrectionRequested
+                                ? done
+                                  ? "Correction requested - tap to replace"
+                                  : "Correction requested - tap to record"
+                            : stageBlocked
+                            ? stageCanResolveLocation
                               ? "Verify location to record"
                               : "Recording locked"
                             : getStageCardActionLabel({
@@ -1759,8 +1821,8 @@ export default function EmployeeJobsPage() {
                 <p className="font-semibold text-blue-200">{getStageVideoLimitCopy()}</p>
               </div>
               <p className="mt-3 text-base leading-7 text-blue-50/75">
-                {recordingBlocked
-                  ? canonicalBlock?.resolution || "Complete the stated recording requirement before opening the camera."
+                {selectedStageBlocked
+                  ? selectedStageAccess.canonicalBlock?.resolution || "Complete the stated recording requirement before opening the camera."
                   : hasCaptureToken
                     ? "Tap the stage card above to open the camera. If your phone asks for camera or microphone access, choose Allow."
                     : captureSupportCopy}
@@ -1769,10 +1831,22 @@ export default function EmployeeJobsPage() {
               {selectedStageDone ? (
                 <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3">
                   <p className="text-sm font-semibold text-amber-100">
-                    This stage is saved. You can replace it before sending all videos to the manager.
+                    {awaitingManagerReview
+                      ? "This stage is locked while your manager reviews the submitted Service Videos."
+                      : correctionRequested && job.recordingCompliance?.correctionRequestedStages?.includes(selectedStage.key)
+                        ? "Your manager requested a replacement for this stage."
+                        : correctionRequested
+                          ? "This stage remains locked because your manager did not request a change to it."
+                          : "This stage is saved. You can replace it before sending all videos to the manager."}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-amber-100/75">
-                    Retaking this stage replaces the current video for this step after you confirm the new preview.
+                    {awaitingManagerReview
+                      ? "If a correction is requested, only the requested stage will reopen."
+                      : correctionRequested && job.recordingCompliance?.correctionRequestedStages?.includes(selectedStage.key)
+                        ? "The prior version remains in the evidence history after you confirm the replacement."
+                        : correctionRequested
+                          ? "The submitted video remains unchanged."
+                          : "Retaking this stage replaces the current video for this step after you confirm the new preview."}
                   </p>
                 </div>
               ) : null}
@@ -1836,7 +1910,9 @@ export default function EmployeeJobsPage() {
                 </div>
               ) : (
                 <p className="mt-3 text-[11px] text-blue-100/60">
-                  Uploads are locked while manager review is pending.
+                  {correctionRequested
+                    ? "This stage is locked because your manager did not request a correction to it."
+                    : "Uploads are locked while manager review is pending."}
                 </p>
               )}
 

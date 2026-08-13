@@ -57,7 +57,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       where: {
         vendorId: { in: Array.from(byVendor.keys()) },
         ...(tokenAccess ? { id: tokenAccess.bookingId } : {}),
-        status: { in: ["PENDING", "CONFIRMED", "IN_PROGRESS", "AWAITING_REVIEW", "COMPLETED"] },
+        status: { in: ["PENDING", "CONFIRMED", "IN_PROGRESS", "AWAITING_REVIEW", "REJECTED", "COMPLETED"] },
       },
       include: {
         service: { select: { id: true, name: true } },
@@ -123,9 +123,33 @@ export async function GET(request: Request): Promise<NextResponse> {
         capability: "record",
         actorKind: "EMPLOYEE",
       });
+      const stageRecordingAccess = Object.fromEntries(
+        await Promise.all(
+          (["INTRO", "IN_PROGRESS", "COMPLETED"] as StageKey[]).map(async (stage) => {
+            const stageGate = permissionGate.correctionRequestedStages.length
+              ? await loadRecordingPermissionGate({
+                  bookingId: booking.id,
+                  vendorId: booking.vendorId,
+                  customerMetadata: booking.customerMetadata,
+                  membershipId,
+                  surface: "employee_jobs",
+                  capability: "record",
+                  actorKind: "EMPLOYEE",
+                  recordingStage: stage,
+                })
+              : permissionGate;
+            return [
+              stage,
+              {
+                recordingUnlocked: stageGate.recordingUnlocked,
+                canonicalBlock: stageGate.block,
+              },
+            ];
+          }),
+        ),
+      ) as Record<StageKey, { recordingUnlocked: boolean; canonicalBlock: typeof permissionGate.block }>;
       const normalizedStatus = String(booking.status || "").trim().toUpperCase();
-      const correctionRequested =
-        normalizedStatus !== "COMPLETED" && Boolean(String((booking as any).rejectionReason || "").trim());
+      const correctionRequested = permissionGate.correctionRequestedStages.length > 0;
       const canMarkComplete =
         stageProgress.INTRO &&
         stageProgress.IN_PROGRESS &&
@@ -133,7 +157,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         (normalizedStatus === "PENDING" ||
           normalizedStatus === "CONFIRMED" ||
           normalizedStatus === "IN_PROGRESS" ||
-          (normalizedStatus === "AWAITING_REVIEW" && correctionRequested));
+          (normalizedStatus === "REJECTED" && correctionRequested));
       const customer = resolveBookingCustomer(booking);
       return {
         id: booking.id,
@@ -163,6 +187,8 @@ export async function GET(request: Request): Promise<NextResponse> {
           serviceLocation: recordingCompliance.addressSnapshot?.formattedAddress || null,
           serviceLocationType: recordingCompliance.addressSnapshot?.type || permissionGate.location,
           canonicalBlock: permissionGate.block,
+          correctionRequestedStages: permissionGate.correctionRequestedStages,
+          stageRecordingAccess,
         },
         stageProgress,
         canMarkComplete,

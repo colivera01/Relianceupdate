@@ -16,6 +16,7 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const { jobId } = await context.params;
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const recordingStage = String(body.recordingStage || "").trim().toUpperCase();
     const booking = await prisma.booking.findUnique({
       where: { id: jobId },
       select: {
@@ -60,6 +61,7 @@ export async function POST(request: Request, context: RouteContext) {
       surface: "location_verify",
       capability: "record",
       actorKind: "EMPLOYEE",
+      recordingStage,
     });
     if (
       gateBeforeVerification.blockCode &&
@@ -96,6 +98,7 @@ export async function POST(request: Request, context: RouteContext) {
         surface: "location_verify",
         capability: "record",
         actorKind: "EMPLOYEE",
+        recordingStage,
       });
       return NextResponse.json(
         { success: false, ...result, recordingGate: blockedGate, blocked: blockedGate.block },
@@ -110,6 +113,7 @@ export async function POST(request: Request, context: RouteContext) {
       surface: "location_verify",
       capability: "record",
       actorKind: "EMPLOYEE",
+      recordingStage,
     });
     return NextResponse.json({
       success: true,

@@ -9,6 +9,7 @@ const hoisted = vi.hoisted(() => ({
   consentRecordFindFirst: vi.fn(),
   mediaUploadAttemptFindFirst: vi.fn(),
   setUploadAttemptState: vi.fn(),
+  loadRecordingPermissionGate: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -33,6 +34,15 @@ vi.mock("@/lib/azure-blob-storage", () => ({
 
 vi.mock("@/lib/service-video-evidence", () => ({
   setUploadAttemptState: hoisted.setUploadAttemptState,
+}));
+
+vi.mock("@/lib/consent/recording-gate", () => ({
+  loadRecordingPermissionGate: hoisted.loadRecordingPermissionGate,
+  recordingGateErrorBody: (gate: any) => ({
+    error: gate.blockMessage,
+    code: gate.blockCode,
+    blocked: gate.block,
+  }),
 }));
 
 const VENDOR_ID = "vendor-1";
@@ -70,6 +80,13 @@ describe("employee media upload proxy", () => {
     hoisted.mediaUploadAttemptFindFirst.mockResolvedValue({ id: "attempt-1", state: "UPLOADING" });
     hoisted.setUploadAttemptState.mockReset();
     hoisted.setUploadAttemptState.mockResolvedValue({ count: 1 });
+    hoisted.loadRecordingPermissionGate.mockReset();
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({
+      recordingUnlocked: true,
+      blockCode: null,
+      blockMessage: null,
+      block: null,
+    });
 
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "booking-1",
@@ -134,14 +151,15 @@ describe("employee media upload proxy", () => {
       id: "booking-1",
       customerMetadata: JSON.stringify({ vendor_job_recording_location: "business" }),
     });
-    hoisted.consentRecordFindFirst.mockResolvedValue({
-      id: "consent-1",
-      status: "declined",
-      lifecycleStatus: "DECLINED",
-      isCurrent: true,
-      scopeJson: JSON.stringify({ recordingLocation: "residence" }),
-      decisionEvidenceId: "evidence-1",
-      decisionEvidence: { id: "evidence-1", decision: "declined" },
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({
+      recordingUnlocked: false,
+      blockCode: "VERIFIED_PERMISSION_REQUIRED",
+      blockMessage: "Required customer recording permission is not active.",
+      block: {
+        why: "Required customer recording permission is not active.",
+        responsibleParticipant: "CUSTOMER",
+        resolution: "The customer must use the secure request to allow recording.",
+      },
     });
 
     const res = await POST(buildRequest(), context as any);
@@ -150,5 +168,40 @@ describe("employee media upload proxy", () => {
     expect(res.status).toBe(409);
     expect(json).toMatchObject({ code: "VERIFIED_PERMISSION_REQUIRED" });
     expect(uploadBlobBuffer).not.toHaveBeenCalled();
+  });
+
+  it("rejects a retry after submission before any bytes reach Blob Storage", async () => {
+    hoisted.mediaUploadAttemptFindFirst.mockResolvedValue({
+      id: "attempt-1",
+      state: "RETRY_REQUIRED",
+      stage: "INTRO",
+    });
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({
+      recordingUnlocked: false,
+      blockCode: "MANAGER_REVIEW_IN_PROGRESS",
+      blockMessage: "The completed Service Videos were submitted for manager review. Wait for manager review.",
+      block: {
+        why: "The completed Service Videos were submitted for manager review.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Wait for manager review.",
+      },
+    });
+
+    const res = await POST(buildRequest(), context as any);
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json).toMatchObject({
+      code: "MANAGER_REVIEW_IN_PROGRESS",
+      blocked: {
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Wait for manager review.",
+      },
+    });
+    expect(hoisted.loadRecordingPermissionGate).toHaveBeenCalledWith(
+      expect.objectContaining({ recordingStage: "INTRO", capability: "record" }),
+    );
+    expect(uploadBlobBuffer).not.toHaveBeenCalled();
+    expect(hoisted.setUploadAttemptState).not.toHaveBeenCalled();
   });
 });
