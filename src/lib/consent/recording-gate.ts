@@ -449,7 +449,15 @@ export async function loadCanonicalRecordingGate(input: {
   };
   const capability = input.capability || "record";
   let decision: RecordingPermissionGate;
-  if (workRecordStatus === "AWAITING_REVIEW" || currentPackage?.status === "AWAITING_MANAGER_REVIEW") {
+  if (workRecordStatus === "CANCELED" || workRecordStatus === "CANCELLED") {
+    decision = blocked(base, {
+      code: "SERVICE_ORDER_CANCELED",
+      why: "This Service Order was canceled by the vendor manager.",
+      responsibleParticipant: "VENDOR_MANAGER",
+      resolution: "Recording and uploads are permanently closed. Create a new Service Order if work must be rescheduled.",
+      serviceMayContinue: true,
+    });
+  } else if (workRecordStatus === "AWAITING_REVIEW" || currentPackage?.status === "AWAITING_MANAGER_REVIEW") {
     decision = blocked(base, {
       code: "MANAGER_REVIEW_IN_PROGRESS",
       why: "The completed Service Videos were submitted for manager review.",
@@ -512,10 +520,10 @@ export async function loadCanonicalRecordingGate(input: {
               ? "customer residence"
               : "selected service location";
       decision = blocked(base, {
-        code: "RECORDING_LOCATION_SNAPSHOT_REQUIRED",
-        why: `The ${locationLabel} does not have a matching verified location snapshot saved with this work record.`,
+        code: locationSnapshot.code,
+        why: `The ${locationLabel} is missing complete, usable geocoded location evidence on this work record.`,
         responsibleParticipant: "VENDOR_MANAGER",
-        resolution: "Correct the work record with the complete address for the selected location before releasing it for recording.",
+        resolution: "Cancel this incomplete Service Order and create a new one using the correct location type and a complete address that Reliance can resolve.",
         serviceMayContinue: true,
       });
     } else if (assessment.audioRequested || assessment.audioAllowed) {

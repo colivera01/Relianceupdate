@@ -8,6 +8,7 @@ import { sendConsentLinkNotification } from '@/lib/notifications/send-consent-li
 import { createVerifiedPermissionRequest } from '@/lib/consent/request-service';
 import { deliverVerifiedPermissionRequest } from '@/lib/consent/delivery-service';
 import { dispatchQueuedRecordingNotice } from '@/lib/recording/recording-notice';
+import { geocodeAddress } from '@/lib/geocoding';
 
 const hoisted = vi.hoisted(() => {
   const bookingCount = vi.fn();
@@ -135,6 +136,14 @@ vi.mock('@/lib/recording/recording-notice', async (importOriginal) => {
   return {
     ...actual,
     dispatchQueuedRecordingNotice: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/geocoding', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/geocoding')>();
+  return {
+    ...actual,
+    geocodeAddress: vi.fn(),
   };
 });
 
@@ -298,6 +307,14 @@ describe('POST /api/bookings', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     vi.mocked(checkVendorSlotAvailability).mockReset();
     vi.mocked(checkVendorSlotAvailability).mockResolvedValue({ available: true });
+    vi.mocked(geocodeAddress).mockReset();
+    vi.mocked(geocodeAddress).mockResolvedValue({
+      status: 'success',
+      provider: 'census',
+      latitude: 28.698,
+      longitude: -81.305,
+      geocodedAt: new Date('2026-08-13T12:00:00.000Z'),
+    });
     hoisted.vendorFindUnique.mockReset();
     hoisted.serviceFindFirst.mockReset();
     hoisted.serviceFindUnique.mockReset();
@@ -799,7 +816,58 @@ describe('POST /api/bookings', () => {
       zip_code: '32708',
       latitude: 28.698,
       longitude: -81.305,
+      geocoded_at: '2026-08-13T12:00:00.000Z',
     });
+    expect(geocodeAddress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: '407 Boxwood Circle',
+        latitude: 28.698,
+        longitude: -81.305,
+        geocodedAt: null,
+      }),
+    );
+  });
+
+  it('fails closed when customer residence coordinates are 0,0 and server geocoding cannot verify them', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+    hoisted.userFindFirst.mockResolvedValue({ id: 'customer-without-profile-address' });
+    vi.mocked(geocodeAddress).mockResolvedValueOnce({
+      status: 'not_found',
+      provider: 'census',
+      message: 'No verified location found.',
+    });
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          client_name: 'Residence Customer',
+          client_email: 'customer@example.com',
+          custom_fields: {
+            vendor_job_recording_location: 'residence',
+            vendor_job_customer_residence_address: '407 Boxwood Circle',
+            vendor_job_customer_residence_city: 'Winter Springs',
+            vendor_job_customer_residence_state: 'FL',
+            vendor_job_customer_residence_zip_code: '32708',
+            vendor_job_customer_residence_latitude: 0,
+            vendor_job_customer_residence_longitude: 0,
+          },
+        },
+        'POST',
+      ),
+    );
+
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toMatchObject({
+      code: 'CUSTOMER_RESIDENCE_ADDRESS_UNVERIFIED',
+      responsibleParticipant: 'VENDOR_MANAGER',
+    });
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
   });
 
   it('sends notice only and creates no permission request for controlled vendor-owned Level 1 recording', async () => {
@@ -946,6 +1014,13 @@ describe('POST /api/bookings', () => {
     hoisted.bookingFindUnique.mockResolvedValue(
       baseHydratedBooking({ id: 'transaction-book', userId: 'customer-by-email' })
     );
+    vi.mocked(geocodeAddress).mockResolvedValueOnce({
+      status: 'success',
+      provider: 'census',
+      latitude: 28.55,
+      longitude: -81.37,
+      geocodedAt: new Date('2026-08-13T12:05:00.000Z'),
+    });
 
     const res = await bookingsCreatePOST(
       jsonRequest(

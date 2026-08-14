@@ -17,6 +17,7 @@ export type RecordingLocationSnapshot = {
   zipCode: string;
   latitude: number;
   longitude: number;
+  geocodedAt: string;
   capturedAt: string;
   formattedAddress: string;
 };
@@ -134,6 +135,7 @@ export function validateRecordingLocationSnapshot(
   const zipCode = String(snapshot.zip_code || snapshot.zipCode || "").trim();
   const latitude = finiteCoordinate(snapshot.latitude);
   const longitude = finiteCoordinate(snapshot.longitude);
+  const geocodedAt = String(snapshot.geocoded_at || snapshot.geocodedAt || "").trim();
   const capturedAt = String(snapshot.captured_at || "").trim();
   if (!address || !city || !state || !zipCode || !capturedAt) {
     return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_INCOMPLETE" };
@@ -148,6 +150,15 @@ export function validateRecordingLocationSnapshot(
   ) {
     return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_COORDINATES_INVALID" };
   }
+  if (latitude === 0 && longitude === 0) {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_ZERO_COORDINATES" };
+  }
+  if (!geocodedAt || !Number.isFinite(Date.parse(geocodedAt))) {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_GEOCODING_EVIDENCE_MISSING" };
+  }
+  if (!Number.isFinite(Date.parse(capturedAt))) {
+    return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_CAPTURE_EVIDENCE_INVALID" };
+  }
 
   return {
     ok: true,
@@ -161,6 +172,7 @@ export function validateRecordingLocationSnapshot(
       zipCode,
       latitude,
       longitude,
+      geocodedAt,
       capturedAt,
       formattedAddress: [address, city, state, zipCode].join(", "),
     },

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, PATCH } from "./[jobId]/actions/route";
 import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
-import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
+import { releaseEmployeeServiceOrderWhenReady } from "@/lib/employee-service-order-release";
+import { sendServiceOrderCanceledNotifications } from "@/lib/notifications/send-service-order-canceled";
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { AuthorizationError } from "@/lib/request-actor";
@@ -14,9 +15,15 @@ const hoisted = vi.hoisted(() => {
   const vendorMembershipFindMany = vi.fn();
   const mediaSessionFindMany = vi.fn();
   const mediaSessionUpdateMany = vi.fn();
+  const mediaSessionCount = vi.fn();
   const mediaAssetCount = vi.fn();
   const mediaAssetUpdateMany = vi.fn();
   const consentRecordFindFirst = vi.fn();
+  const consentRecordCount = vi.fn();
+  const bookingNotificationCount = vi.fn();
+  const txEmployeeCertificationUpdateMany = vi.fn();
+  const txConsentRequestLinkUpdateMany = vi.fn();
+  const txBookingNotificationUpdateMany = vi.fn();
   const txMediaSessionUpdateMany = vi.fn();
   const txMediaAssetUpdateMany = vi.fn();
   const txBookingDelete = vi.fn();
@@ -24,7 +31,10 @@ const hoisted = vi.hoisted(() => {
     cb({
       mediaSession: { updateMany: txMediaSessionUpdateMany },
       mediaAsset: { updateMany: txMediaAssetUpdateMany },
-      booking: { delete: txBookingDelete, update: bookingUpdate },
+      employeeRecordingCertification: { updateMany: txEmployeeCertificationUpdateMany },
+      consentRequestLink: { updateMany: txConsentRequestLinkUpdateMany },
+      bookingNotification: { updateMany: txBookingNotificationUpdateMany },
+      booking: { findUnique: bookingFindUnique, delete: txBookingDelete, update: bookingUpdate },
     })
   );
 
@@ -41,6 +51,7 @@ const hoisted = vi.hoisted(() => {
     mediaSession: {
       findMany: mediaSessionFindMany,
       updateMany: mediaSessionUpdateMany,
+      count: mediaSessionCount,
     },
     mediaAsset: {
       count: mediaAssetCount,
@@ -48,7 +59,9 @@ const hoisted = vi.hoisted(() => {
     },
     consentRecord: {
       findFirst: consentRecordFindFirst,
+      count: consentRecordCount,
     },
+    bookingNotification: { count: bookingNotificationCount },
     $transaction: transaction,
   };
 
@@ -60,9 +73,15 @@ const hoisted = vi.hoisted(() => {
     vendorMembershipFindMany,
     mediaSessionFindMany,
     mediaSessionUpdateMany,
+    mediaSessionCount,
     mediaAssetCount,
     mediaAssetUpdateMany,
     consentRecordFindFirst,
+    consentRecordCount,
+    bookingNotificationCount,
+    txEmployeeCertificationUpdateMany,
+    txConsentRequestLinkUpdateMany,
+    txBookingNotificationUpdateMany,
     txMediaSessionUpdateMany,
     txMediaAssetUpdateMany,
     txBookingDelete,
@@ -79,8 +98,12 @@ vi.mock("@/lib/membership-auth", () => ({
   requireVendorManager: vi.fn(),
 }));
 
-vi.mock("@/lib/notifications/send-job-assignment", () => ({
-  sendJobAssignmentNotification: vi.fn(),
+vi.mock("@/lib/employee-service-order-release", () => ({
+  releaseEmployeeServiceOrderWhenReady: vi.fn(),
+}));
+
+vi.mock("@/lib/notifications/send-service-order-canceled", () => ({
+  sendServiceOrderCanceledNotifications: vi.fn(),
 }));
 
 vi.mock("@/lib/notifications/send-video-ready", () => ({
@@ -149,17 +172,16 @@ describe("vendor job actions integration", () => {
       membershipId: "manager-membership-1",
       vendorId: "v1",
     });
-    vi.mocked(sendJobAssignmentNotification).mockReset();
-    vi.mocked(sendJobAssignmentNotification).mockResolvedValue({
-      anySuccess: true,
-      smsEnabled: true,
-      emailEnabled: true,
-      phoneNumberUsed: "+14075550123",
-      channels: [
-        { channel: "email", attempted: true, success: true, providerMessageId: "email-1" },
-        { channel: "sms", attempted: true, success: true, providerMessageId: "sms-1" },
-      ],
+    vi.mocked(releaseEmployeeServiceOrderWhenReady).mockReset();
+    vi.mocked(releaseEmployeeServiceOrderWhenReady).mockResolvedValue({
+      ready: false,
+      alreadyReleased: false,
+      sentCount: 0,
+      releasedMembershipIds: [],
+      results: [],
     });
+    vi.mocked(sendServiceOrderCanceledNotifications).mockReset();
+    vi.mocked(sendServiceOrderCanceledNotifications).mockResolvedValue([] as any);
     vi.mocked(sendVideoReadyNotification).mockReset();
     vi.mocked(sendVideoReadyNotification).mockResolvedValue({
       ok: true,
@@ -174,9 +196,18 @@ describe("vendor job actions integration", () => {
     hoisted.vendorMembershipFindMany.mockReset();
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.mediaSessionUpdateMany.mockReset();
+    hoisted.mediaSessionCount.mockReset();
+    hoisted.mediaSessionCount.mockResolvedValue(0);
     hoisted.mediaAssetCount.mockReset();
     hoisted.mediaAssetUpdateMany.mockReset();
     hoisted.consentRecordFindFirst.mockReset();
+    hoisted.consentRecordCount.mockReset();
+    hoisted.consentRecordCount.mockResolvedValue(0);
+    hoisted.bookingNotificationCount.mockReset();
+    hoisted.bookingNotificationCount.mockResolvedValue(0);
+    hoisted.txEmployeeCertificationUpdateMany.mockReset();
+    hoisted.txConsentRequestLinkUpdateMany.mockReset();
+    hoisted.txBookingNotificationUpdateMany.mockReset();
     hoisted.txMediaSessionUpdateMany.mockReset();
     hoisted.txMediaAssetUpdateMany.mockReset();
     hoisted.txBookingDelete.mockReset();
@@ -199,6 +230,7 @@ describe("vendor job actions integration", () => {
     "ASSIGN_JOB",
     "UPDATE_RECORDING_COMPLIANCE",
     "RELEASE_EMPLOYEE_SERVICE_ORDER",
+    "CANCEL_SERVICE_ORDER",
     "RESEND_COMPLETED_WORK_ORDER",
     "UPDATE_STATUS",
     "APPROVE_JOB_COMPLETION",
@@ -244,6 +276,78 @@ describe("vendor job actions integration", () => {
     expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
     expect(hoisted.mediaSessionFindMany).not.toHaveBeenCalled();
+  });
+
+  it("PATCH UPDATE_STATUS cannot bypass the evidence-preserving cancellation action", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "CONFIRMED",
+      customerMetadata: JSON.stringify({}),
+    });
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "UPDATE_STATUS",
+      status: "canceled",
+    });
+    const res = await PATCH(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe("SERVICE_ORDER_CANCELLATION_ACTION_REQUIRED");
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("PATCH CANCEL_SERVICE_ORDER preserves evidence and closes employee access", async () => {
+    const metadata = JSON.stringify({
+      vendor_job_assigned_membership_ids: ["member-1"],
+      vendor_job_service_order_released_membership_ids: ["member-1"],
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "CONFIRMED",
+      customerMetadata: metadata,
+      title: "Wire Stipping",
+      service: { name: "Wire Stipping" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Bart Simpson", email: "bart@example.com", phone: null },
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({ status: "CONFIRMED", customerMetadata: metadata });
+    hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "unused-session", _count: { mediaAssets: 0 } }]);
+    hoisted.vendorMembershipFindMany.mockResolvedValue([
+      { user: { name: "Bradley Coopers", email: "employee@example.com", phone: null } },
+    ]);
+    hoisted.bookingUpdate.mockResolvedValue({
+      id: "job1",
+      status: "CANCELED",
+      customerMetadata: JSON.stringify({ vendor_job_cancellation: { status: "CANCELED" } }),
+      updatedAt: new Date(),
+    });
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "CANCEL_SERVICE_ORDER",
+      reason: "Customer canceled the scheduled service.",
+    });
+    const res = await PATCH(req, ctx as any);
+    const body = await toJson(res);
+
+    expect(res.status).toBe(200);
+    expect((body.job as any).status).toBe("CANCELED");
+    expect(hoisted.txEmployeeCertificationUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "INVALIDATED" }) }),
+    );
+    expect(hoisted.txMediaSessionUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ["unused-session"] } }) }),
+    );
+    expect(hoisted.txConsentRequestLinkUpdateMany).toHaveBeenCalled();
+    expect(hoisted.txBookingNotificationUpdateMany).toHaveBeenCalled();
+    expect(sendServiceOrderCanceledNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: "job1", reason: "Customer canceled the scheduled service." }),
+    );
+    expect(recordLifecycleAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: "service_order_canceled", entityId: "job1" }),
+    );
   });
 
   it("PATCH MOVE_CONTENT_TO_ARCHIVE denies an employee for an awaiting-review work record", async () => {
@@ -361,7 +465,7 @@ describe("vendor job actions integration", () => {
     expect(j.linkedAssetCount).toBe(3);
   });
 
-  it("GET marks CONFIRMED jobs as vendor-deletable", async () => {
+  it("GET requires cancellation instead of deleting an active Service Order", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "CONFIRMED" });
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
     hoisted.mediaAssetCount.mockResolvedValue(0);
@@ -369,7 +473,8 @@ describe("vendor job actions integration", () => {
     const res = await GET(req, ctx as any);
     expect(res.status).toBe(200);
     const j = await toJson(res);
-    expect(j.canVendorDelete).toBe(true);
+    expect(j.canVendorDelete).toBe(false);
+    expect(j.canCancelServiceOrder).toBe(true);
   });
 
   it("DELETE blocks completed jobs for vendors", async () => {
@@ -524,7 +629,7 @@ describe("vendor job actions integration", () => {
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("GET marks awaiting-review jobs as vendor-deletable service orders", async () => {
+  it("GET keeps manager-review Service Orders out of hard-delete and cancellation paths", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "AWAITING_REVIEW" });
     hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }]);
     hoisted.mediaAssetCount.mockResolvedValue(3);
@@ -533,12 +638,13 @@ describe("vendor job actions integration", () => {
     const j = await toJson(res);
 
     expect(res.status).toBe(200);
-    expect(j.canVendorDelete).toBe(true);
+    expect(j.canVendorDelete).toBe(false);
+    expect(j.canCancelServiceOrder).toBe(false);
     expect(j.linkedSessionCount).toBe(1);
     expect(j.linkedAssetCount).toBe(3);
   });
 
-  it("DELETE allows awaiting-review service orders and archives linked media before deleting", async () => {
+  it("DELETE blocks awaiting-review Service Orders without mutating evidence", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "AWAITING_REVIEW" });
     hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }, { id: "s2" }]);
     hoisted.mediaAssetCount.mockResolvedValue(2);
@@ -547,24 +653,9 @@ describe("vendor job actions integration", () => {
     const res = await DELETE(req, ctx as any);
     const j = await toJson(res);
 
-    expect(res.status).toBe(200);
-    expect(hoisted.txMediaSessionUpdateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["s1", "s2"] } },
-      data: { status: "ARCHIVED", endedAt: expect.any(Date) },
-    });
-    expect(hoisted.txMediaAssetUpdateMany).toHaveBeenCalledWith({
-      where: { mediaSessionId: { in: ["s1", "s2"] }, deletedAt: null },
-      data: { deletedAt: expect.any(Date) },
-    });
-    expect(hoisted.txMediaSessionUpdateMany).toHaveBeenCalledWith({
-      where: { id: { in: ["s1", "s2"] } },
-      data: { bookingId: null },
-    });
-    expect(hoisted.txBookingDelete).toHaveBeenCalledWith({
-      where: { id: "job1" },
-    });
-    expect(j.hardDeleted).toBe(true);
-    expect(j.code).toBe("JOB_DELETE_SUCCESS_WITH_LINKED_CONTENT_ARCHIVED");
+    expect(res.status).toBe(409);
+    expect(j.code).toBe("JOB_DELETE_BLOCKED_UNSAFE_DEPENDENCY");
+    expect(hoisted.transaction).not.toHaveBeenCalled();
   });
 
   it("PATCH ASSIGN_JOB saves a customer-location assignment while consent is pending", async () => {
@@ -686,7 +777,9 @@ describe("vendor job actions integration", () => {
         }),
       })
     );
-    expect(sendJobAssignmentNotification).not.toHaveBeenCalled();
+    expect(releaseEmployeeServiceOrderWhenReady).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: "job1", vendorId: "v1", actorUserId: "manager-1" }),
+    );
     expect(json.notifications).toMatchObject({
       newlyAssignedCount: 1,
       sentCount: 0,
@@ -695,6 +788,13 @@ describe("vendor job actions integration", () => {
   });
 
   it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER sends business-address jobs for employee phone location verification", async () => {
+    vi.mocked(releaseEmployeeServiceOrderWhenReady).mockResolvedValue({
+      ready: true,
+      alreadyReleased: false,
+      sentCount: 1,
+      releasedMembershipIds: ["member-1"],
+      results: [{ membershipId: "member-1", anySuccess: true }],
+    });
     const metadata = JSON.stringify({
       vendor_job_assigned_membership_ids: ["member-1"],
       vendor_job_assigned_employees: ["Peter Parker"],
@@ -746,31 +846,62 @@ describe("vendor job actions integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(200);
-    expect(sendJobAssignmentNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingId: "job1",
-        actorUserId: "manager-1",
-        employeeName: "Peter Parker",
-        employeeEmail: "peter@example.com",
-        employeePhone: "4075550123",
-        employeeJobLink: expect.stringMatching(
-          /^http:\/\/localhost\/employee\/jobs\?jobId=job1&ct=.+/
-        ),
-        vendorName: "Electro LLC",
-        jobTitle: "Outlet Installation",
-        customerName: "Carmen Customer",
-      })
+    expect(releaseEmployeeServiceOrderWhenReady).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: "job1", vendorId: "v1", actorUserId: "manager-1" }),
     );
-    const updateArg = hoisted.bookingUpdate.mock.calls[0][0];
-    const savedMetadata = JSON.parse(updateArg.data.customerMetadata);
-    expect(savedMetadata.vendor_job_location_verified).toBe(false);
-    expect(savedMetadata.vendor_job_service_order_released_membership_ids).toEqual(["member-1"]);
     expect(json.notifications).toMatchObject({
       sentCount: 1,
     });
   });
 
+  it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER reports a failed initial delivery truthfully", async () => {
+    vi.mocked(releaseEmployeeServiceOrderWhenReady).mockResolvedValue({
+      ready: true,
+      alreadyReleased: false,
+      sentCount: 0,
+      releasedMembershipIds: [],
+      results: [{ membershipId: "member-1", anySuccess: false }],
+    });
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "PENDING",
+      customerMetadata: JSON.stringify({ vendor_job_assigned_membership_ids: ["member-1"] }),
+      title: "Outlet Installation",
+      clientName: "Carmen Customer",
+      scheduledFor: null,
+      date: null,
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Carmen Customer", email: "carmen@example.com", phone: "4075550100" },
+    });
+
+    const { req, ctx } = patchReqBody("v1", "job1", {
+      action: "RELEASE_EMPLOYEE_SERVICE_ORDER",
+    });
+    const res = await PATCH(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(502);
+    expect(json.code).toBe("SERVICE_ORDER_NOTIFICATION_FAILED");
+    expect(recordLifecycleAudit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ actionType: "employee_service_order_released" }),
+    );
+  });
+
   it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER blocks a declined residence request despite mutable business metadata", async () => {
+    vi.mocked(releaseEmployeeServiceOrderWhenReady).mockResolvedValue({
+      ready: false,
+      alreadyReleased: false,
+      sentCount: 0,
+      releasedMembershipIds: [],
+      results: [],
+      blocked: {
+        code: "VERIFIED_PERMISSION_REQUIRED",
+        why: "The customer declined recording.",
+        resolution: "Continue the service without recording.",
+      },
+    });
     const metadata = JSON.stringify({
       vendor_job_assigned_membership_ids: ["member-1"],
       vendor_job_assigned_employees: ["Peter Parker"],
@@ -813,13 +944,11 @@ describe("vendor job actions integration", () => {
 
     expect(res.status).toBe(409);
     expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
-    expect((json.details as any).recordingCompliance).toMatchObject({
-      location: "residence",
-      permissionRequired: true,
-      permissionStatus: "declined",
-      recordingUnlocked: false,
+    expect((json.details as any).blocked).toMatchObject({
+      code: "VERIFIED_PERMISSION_REQUIRED",
+      resolution: "Continue the service without recording.",
     });
-    expect(sendJobAssignmentNotification).not.toHaveBeenCalled();
+    expect(releaseEmployeeServiceOrderWhenReady).toHaveBeenCalledTimes(1);
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
@@ -866,6 +995,13 @@ describe("vendor job actions integration", () => {
   });
 
   it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER sends the service order after business location verification", async () => {
+    vi.mocked(releaseEmployeeServiceOrderWhenReady).mockResolvedValue({
+      ready: true,
+      alreadyReleased: false,
+      sentCount: 1,
+      releasedMembershipIds: ["member-1"],
+      results: [{ membershipId: "member-1", anySuccess: true }],
+    });
     const metadata = JSON.stringify({
       vendor_job_assigned_membership_ids: ["member-1"],
       vendor_job_assigned_employees: ["Peter Parker"],
@@ -918,31 +1054,22 @@ describe("vendor job actions integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(200);
-    expect(sendJobAssignmentNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingId: "job1",
-        actorUserId: "manager-1",
-        employeeName: "Peter Parker",
-        employeeEmail: "peter@example.com",
-        employeePhone: "4075550123",
-        employeeJobLink: expect.stringMatching(
-          /^http:\/\/localhost\/employee\/jobs\?jobId=job1&ct=.+/
-        ),
-        vendorName: "Electro LLC",
-        jobTitle: "Outlet Installation",
-        customerName: "Carmen Customer",
-      })
+    expect(releaseEmployeeServiceOrderWhenReady).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: "job1", vendorId: "v1", forceResend: false }),
     );
-    const updateArg = hoisted.bookingUpdate.mock.calls[0][0];
-    const savedMetadata = JSON.parse(updateArg.data.customerMetadata);
-    expect(savedMetadata.vendor_job_service_order_released_membership_ids).toEqual(["member-1"]);
-    expect(savedMetadata.vendor_job_service_order_released_at).toEqual(expect.any(String));
     expect(json.notifications).toMatchObject({
       sentCount: 1,
     });
   });
 
   it("PATCH RELEASE_EMPLOYEE_SERVICE_ORDER force resends an already released service order link", async () => {
+    vi.mocked(releaseEmployeeServiceOrderWhenReady).mockResolvedValue({
+      ready: true,
+      alreadyReleased: false,
+      sentCount: 1,
+      releasedMembershipIds: ["member-1"],
+      results: [{ membershipId: "member-1", anySuccess: true }],
+    });
     const metadata = JSON.stringify({
       vendor_job_assigned_membership_ids: ["member-1"],
       vendor_job_assigned_employees: ["Peter Parker"],
@@ -997,26 +1124,14 @@ describe("vendor job actions integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(200);
-    expect(sendJobAssignmentNotification).toHaveBeenCalledTimes(1);
-    expect(sendJobAssignmentNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingId: "job1",
-        employeeName: "Peter Parker",
-        employeeEmail: "peter@example.com",
-        employeePhone: "4075550123",
-        employeeJobLink: expect.stringMatching(
-          /^http:\/\/localhost\/employee\/jobs\?jobId=job1&ct=.+/
-        ),
-      })
+    expect(releaseEmployeeServiceOrderWhenReady).toHaveBeenCalledWith(
+      expect.objectContaining({ bookingId: "job1", vendorId: "v1", forceResend: true }),
     );
-    const updateArg = hoisted.bookingUpdate.mock.calls[0][0];
-    const savedMetadata = JSON.parse(updateArg.data.customerMetadata);
-    expect(savedMetadata.vendor_job_service_order_released_membership_ids).toEqual(["member-1"]);
     expect(json.notifications).toMatchObject({
       sentCount: 1,
       forceResend: true,
     });
-    expect(json.message).toBe("Employee service order link resent.");
+    expect(json.message).toBe("Employee Service Order link resent.");
   });
 
   it("PATCH RESEND_COMPLETED_WORK_ORDER sends an unclaimed customer a fresh secure invitation", async () => {
@@ -1093,57 +1208,45 @@ describe("vendor job actions integration", () => {
     expect(updateInput.data.customerMetadata).not.toContain("claimToken");
   });
 
-  it("DELETE allows CONFIRMED (in-progress) jobs for vendors", async () => {
+  it("DELETE blocks CONFIRMED Service Orders and directs managers to cancellation", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "CONFIRMED" });
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
     hoisted.mediaAssetCount.mockResolvedValue(0);
     const { req, ctx } = deleteReq("v1", "job1");
     const res = await DELETE(req, ctx as any);
-    expect(res.status).toBe(200);
-    expect(hoisted.transaction).toHaveBeenCalledTimes(1);
-    expect(hoisted.txBookingDelete).toHaveBeenCalledWith({ where: { id: "job1" } });
+    expect(res.status).toBe(409);
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.txBookingDelete).not.toHaveBeenCalled();
     expect(requireVendorManager).toHaveBeenCalledTimes(1);
   });
 
-  it("DELETE archives linked content and hard-deletes pending job", async () => {
+  it("DELETE preserves a pending Service Order once linked media evidence exists", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "PENDING" });
     hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }, { id: "s2" }]);
     hoisted.mediaAssetCount.mockResolvedValue(2);
+    hoisted.mediaSessionCount.mockResolvedValue(2);
 
     const { req, ctx } = deleteReq("v1", "job1");
     const res = await DELETE(req, ctx as any);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
     const j = await toJson(res);
-    expect(j.code).toBe("JOB_DELETE_SUCCESS_WITH_LINKED_CONTENT_ARCHIVED");
-    expect(j.hardDeleted).toBe(true);
-    expect(hoisted.transaction).toHaveBeenCalledTimes(1);
-    expect(hoisted.txMediaSessionUpdateMany).toHaveBeenNthCalledWith(1, {
-      where: { id: { in: ["s1", "s2"] } },
-      data: { status: "ARCHIVED", endedAt: expect.any(Date) },
-    });
-    expect(hoisted.txMediaAssetUpdateMany).toHaveBeenCalledWith({
-      where: { mediaSessionId: { in: ["s1", "s2"] }, deletedAt: null },
-      data: { deletedAt: expect.any(Date) },
-    });
-    expect(hoisted.txMediaSessionUpdateMany).toHaveBeenNthCalledWith(2, {
-      where: { id: { in: ["s1", "s2"] } },
-      data: { bookingId: null },
-    });
-    expect(hoisted.txBookingDelete).toHaveBeenCalledWith({ where: { id: "job1" } });
+    expect(j.code).toBe("JOB_DELETE_BLOCKED_DURABLE_EVIDENCE");
+    expect(hoisted.transaction).not.toHaveBeenCalled();
+    expect(hoisted.txBookingDelete).not.toHaveBeenCalled();
   });
 
-  it("DELETE preserves manager-authorized deletion for awaiting-review jobs", async () => {
-    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "AWAITING_REVIEW" });
-    hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "s1" }]);
-    hoisted.mediaAssetCount.mockResolvedValue(1);
+  it("DELETE allows only an empty disposable pending draft", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "PENDING" });
+    hoisted.mediaSessionFindMany.mockResolvedValue([]);
+    hoisted.mediaAssetCount.mockResolvedValue(0);
 
     const { req, ctx } = deleteReq("v1", "job1");
     const res = await DELETE(req, ctx as any);
 
     expect(res.status).toBe(200);
     expect(requireVendorManager).toHaveBeenCalledTimes(1);
-    expect(hoisted.txMediaSessionUpdateMany).toHaveBeenCalled();
-    expect(hoisted.txMediaAssetUpdateMany).toHaveBeenCalled();
+    expect(hoisted.txMediaSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.txMediaAssetUpdateMany).not.toHaveBeenCalled();
     expect(hoisted.txBookingDelete).toHaveBeenCalledWith({ where: { id: "job1" } });
   });
 });

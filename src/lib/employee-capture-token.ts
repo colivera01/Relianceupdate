@@ -140,9 +140,10 @@ export async function resolveEmployeeCaptureAccess(
 
   const booking = await prisma.booking.findFirst({
     where: { id: claims.bookingId, vendorId: claims.vendorId },
-    select: { id: true, customerMetadata: true },
+    select: { id: true, status: true, customerMetadata: true },
   });
   if (!booking) return null;
+  if (["CANCELED", "CANCELLED"].includes(String(booking.status || "").trim().toUpperCase())) return null;
   const assigned = parseAssignmentMetadata(booking.customerMetadata);
   if (!assigned.assignedMembershipIds.includes(claims.membershipId)) return null;
 

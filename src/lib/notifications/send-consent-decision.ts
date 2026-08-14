@@ -3,9 +3,8 @@ import { readNotificationEnv } from "@/lib/env/notification-config";
 import { sendEmail } from "@/lib/email/resend";
 import { sendSms } from "@/lib/sms/twilio";
 import { logNotificationAttempt } from "@/lib/notifications/notification-audit";
-import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
-import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
-import { parseAssignmentMetadata, parseCustomerMetadata } from "@/lib/job-assignment";
+import { releaseEmployeeServiceOrderWhenReady } from "@/lib/employee-service-order-release";
+import { parseAssignmentMetadata } from "@/lib/job-assignment";
 import { resolveBookingCustomer } from "@/lib/booking-customer";
 import {
   buildRelianceEmailHtml,
@@ -150,13 +149,6 @@ export async function sendConsentDecisionNotifications(input: {
   });
   if (!booking) return { releasedMembershipIds: [], notifications: [] };
 
-  const assignment = parseAssignmentMetadata(booking.customerMetadata);
-  const members = assignment.assignedMembershipIds.length
-    ? await prisma.vendorMembership.findMany({
-        where: { id: { in: assignment.assignedMembershipIds }, vendorId: booking.vendorId },
-        select: { id: true, user: { select: { name: true, email: true, phone: true } } },
-      })
-    : [];
   const managers = await prisma.vendorMembership.findMany({
     where: { vendorId: booking.vendorId, role: "MANAGER", status: "ACTIVE" },
     select: { id: true, user: { select: { name: true, email: true, phone: true } } },
@@ -184,28 +176,15 @@ export async function sendConsentDecisionNotifications(input: {
     );
   }
 
-  const releasedMembershipIds: string[] = [];
-  for (const member of members) {
-    if (input.accepted) {
-      const link = appendEmployeeCaptureToken(
-        `${baseUrl(input.request)}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`,
-        createEmployeeCaptureToken({ vendorId: booking.vendorId, bookingId: booking.id, membershipId: member.id })
-      );
-      const delivery = await sendJobAssignmentNotification({
-        bookingId: booking.id,
-        actorUserId: input.actorUserId,
-        employeeName: member.user?.name || null,
-        employeeEmail: member.user?.email || null,
-        employeePhone: member.user?.phone || null,
-        employeeJobLink: link,
-        vendorName,
-        jobTitle,
-        customerName: customer.name,
-        scheduledFor: booking.scheduledFor || booking.date,
-      });
-      notifications.push(delivery.channels);
-      if (delivery.anySuccess) releasedMembershipIds.push(member.id);
-    } else {
+  if (!input.accepted) {
+    const assignment = parseAssignmentMetadata(booking.customerMetadata);
+    const assignedMembers = assignment.assignedMembershipIds.length
+      ? await prisma.vendorMembership.findMany({
+          where: { id: { in: assignment.assignedMembershipIds }, vendorId: booking.vendorId },
+          select: { user: { select: { name: true, email: true, phone: true } } },
+        })
+      : [];
+    for (const assignedMember of assignedMembers) {
       notifications.push(
         await sendDecisionNotice({
           actorUserId: input.actorUserId,
@@ -213,19 +192,25 @@ export async function sendConsentDecisionNotifications(input: {
           accepted: false,
           vendorName,
           jobTitle,
-          recipientName: String(member.user?.name || "Team member"),
-          recipientEmail: member.user?.email || null,
-          recipientPhone: member.user?.phone || null,
-        })
+          recipientName: String(assignedMember.user?.name || "Team member"),
+          recipientEmail: assignedMember.user?.email || null,
+          recipientPhone: assignedMember.user?.phone || null,
+        }),
       );
     }
   }
 
-  if (input.accepted && releasedMembershipIds.length > 0) {
-    const metadata = parseCustomerMetadata(booking.customerMetadata);
-    metadata.vendor_job_service_order_released_membership_ids = Array.from(new Set(releasedMembershipIds));
-    metadata.vendor_job_service_order_released_at = new Date().toISOString();
-    await prisma.booking.update({ where: { id: booking.id }, data: { customerMetadata: JSON.stringify(metadata) } });
-  }
-  return { releasedMembershipIds, notifications };
+  const automaticRelease = input.accepted
+    ? await releaseEmployeeServiceOrderWhenReady({
+        bookingId: booking.id,
+        vendorId: booking.vendorId,
+        actorUserId: input.actorUserId,
+        baseUrl: baseUrl(input.request),
+      })
+    : null;
+  if (automaticRelease) notifications.push(automaticRelease.results);
+  return {
+    releasedMembershipIds: automaticRelease?.releasedMembershipIds || [],
+    notifications,
+  };
 }

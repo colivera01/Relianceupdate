@@ -13,6 +13,7 @@ const customerBusinessMetadata = JSON.stringify({
     zip_code: "32801",
     latitude: 28.5383,
     longitude: -81.3792,
+    geocoded_at: "2026-07-22T11:55:00.000Z",
     captured_at: "2026-07-22T12:00:00.000Z",
   },
 });
@@ -89,6 +90,7 @@ describe("verifyJobRecordingLocation", () => {
         zip_code: "32801",
         latitude: 28.5383,
         longitude: -81.3792,
+        geocoded_at: "2026-07-22T11:55:00.000Z",
         captured_at: "2026-07-22T12:00:00.000Z",
       },
     });
@@ -147,6 +149,7 @@ describe("verifyJobRecordingLocation", () => {
           zip_code: "32708",
           latitude: 28.7,
           longitude: -81.3,
+          geocoded_at: "2026-08-11T11:55:00.000Z",
           captured_at: "2026-08-11T12:00:00.000Z",
         },
       }),
@@ -174,6 +177,7 @@ describe("verifyJobRecordingLocation", () => {
           zip_code: "32801",
           latitude: 28.5383,
           longitude: -81.3792,
+          geocoded_at: "2026-08-11T11:55:00.000Z",
           captured_at: "2026-08-11T12:00:00.000Z",
         },
       }),

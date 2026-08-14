@@ -359,7 +359,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_REQUIRED");
+    expect(json.code).toBe("RECORDING_LOCATION_TYPE_MISMATCH");
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
   });
 
@@ -508,7 +508,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_REQUIRED");
+    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_MISSING");
     expect(hoisted.geocodeAddress).not.toHaveBeenCalled();
     expect(hoisted.vendorUpdate).not.toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
@@ -554,7 +554,7 @@ describe("vendor media sessions consent enforcement integration", () => {
     const json = await toJson(res);
 
     expect(res.status).toBe(409);
-    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_REQUIRED");
+    expect(json.code).toBe("RECORDING_LOCATION_SNAPSHOT_MISSING");
     expect(hoisted.geocodeAddress).not.toHaveBeenCalled();
     expect(hoisted.vendorUpdate).not.toHaveBeenCalled();
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { requireVendorManager, requireVendorMembership } from "@/lib/membership-auth";
+import { requireVendorManager } from "@/lib/membership-auth";
 import {
   getRelianceOps,
   operationalPhaseForBookingStatusUpdate,
@@ -11,9 +11,9 @@ import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { countableMediaAssetWhere } from "@/lib/metrics-exclusion";
 import { authorizationErrorResponse } from "@/lib/request-actor";
-import { sendJobAssignmentNotification } from "@/lib/notifications/send-job-assignment";
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
-import { appendEmployeeCaptureToken, createEmployeeCaptureToken } from "@/lib/employee-capture-token";
+import { releaseEmployeeServiceOrderWhenReady } from "@/lib/employee-service-order-release";
+import { sendServiceOrderCanceledNotifications } from "@/lib/notifications/send-service-order-canceled";
 import {
   isUnclaimedBookingUserEmail,
   issueCustomerBookingClaimToken,
@@ -50,6 +50,7 @@ type JobAction =
   | "ASSIGN_JOB"
   | "UPDATE_RECORDING_COMPLIANCE"
   | "RELEASE_EMPLOYEE_SERVICE_ORDER"
+  | "CANCEL_SERVICE_ORDER"
   | "RESEND_COMPLETED_WORK_ORDER"
   | "UPDATE_STATUS"
   | "APPROVE_JOB_COMPLETION";
@@ -117,32 +118,6 @@ function mergeRecordingComplianceMetadata(
     };
   }
   return metadata;
-}
-
-function releaseFailureForCompliance(
-  value: string | null | undefined,
-  gate: RecordingPermissionGate
-) {
-  if (gate.block) {
-    return {
-      code: gate.block.code,
-      message: `${gate.block.why} ${gate.block.resolution}`,
-      blocked: gate.block,
-    };
-  }
-  if (gate.location === "customer-business") {
-    const metadata = parseCustomerMetadata(value);
-    const latitude = Number(metadata.vendor_job_customer_business_latitude);
-    const longitude = Number(metadata.vendor_job_customer_business_longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      return {
-        code: "CUSTOMER_BUSINESS_ADDRESS_REQUIRED",
-        message: "The customer must provide and verify the business address before the employee service order can be sent.",
-      };
-    }
-  }
-
-  return null;
 }
 
 function toSafeRecordingCompliance(
@@ -341,6 +316,23 @@ async function getLinkedMediaSummary(vendorId: string, bookingId: string) {
     linkedAssetCount,
     linkedSessionIds: sessionIds,
   };
+}
+
+async function getDurableWorkRecordEvidenceCount(bookingId: string): Promise<number> {
+  const models = [
+    (prisma as any).consentRecord,
+    (prisma as any).recordingScopeAssessment,
+    (prisma as any).employeeRecordingCertification,
+    (prisma as any).recordingLocationAttempt,
+    (prisma as any).recordingLocationException,
+    (prisma as any).recordingGateDecisionEvidence,
+    (prisma as any).bookingNotification,
+    (prisma as any).mediaSession,
+  ];
+  const counts = await Promise.all(
+    models.map((model) => (model?.count ? model.count({ where: { bookingId } }) : Promise.resolve(0))),
+  );
+  return counts.reduce((total, count) => total + Number(count || 0), 0);
 }
 
 async function getVendorJobPackageState(vendorId: string, bookingId: string) {
@@ -882,6 +874,15 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         metadata: { vendorId },
       });
 
+      const automaticRelease = membershipIds.length
+        ? await releaseEmployeeServiceOrderWhenReady({
+            bookingId: booking.id,
+            vendorId,
+            actorUserId: member.userId,
+            baseUrl: resolveJobLinkBaseUrl(request),
+          })
+        : null;
+
       const newlyAssignedIds = new Set(
         membershipIds.filter((id) => !previouslyAssignedIds.includes(id))
       );
@@ -900,12 +901,144 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         },
         notifications: {
           newlyAssignedCount: newlyAssignedIds.size,
-          sentCount: 0,
-          deferred: true,
-          results: [],
+          sentCount: automaticRelease?.sentCount || 0,
+          deferred: Boolean(automaticRelease && !automaticRelease.ready),
+          results: automaticRelease?.results || [],
         },
-        message:
-          "Job assignment saved. Complete the required location or customer-consent check to send the employee service order.",
+        message: automaticRelease?.sentCount
+          ? "Job assignment saved and the employee Service Order was sent."
+          : automaticRelease?.alreadyReleased
+            ? "Job assignment saved. The employee Service Order was already sent."
+            : "Job assignment saved. Reliance will send the employee Service Order automatically when the remaining recording requirements are complete.",
+      });
+    }
+
+    if (action === "CANCEL_SERVICE_ORDER") {
+      const reason = String(body?.reason || "").trim();
+      if (reason.length < 5 || reason.length > 500) {
+        return NextResponse.json(
+          apiResponse(false, "CANCELLATION_REASON_REQUIRED", "Enter a brief reason for canceling this Service Order."),
+          { status: 422 },
+        );
+      }
+      const currentStatus = normalizeBookingStatus(booking.status);
+      if (!new Set(["PENDING", "CONFIRMED"]).has(currentStatus)) {
+        return NextResponse.json(
+          apiResponse(false, "SERVICE_ORDER_CANCELLATION_NOT_ALLOWED", "Only an active Service Order that has not entered manager review may be canceled.", {
+            status: currentStatus,
+          }),
+          { status: 409 },
+        );
+      }
+
+      const now = new Date();
+      const assignment = parseCustomerMetadata(booking.customerMetadata);
+      const assignedMembershipIds = Array.isArray(assignment.vendor_job_assigned_membership_ids)
+        ? assignment.vendor_job_assigned_membership_ids.map(String).filter(Boolean)
+        : [];
+      const sessions = await (prisma as any).mediaSession.findMany({
+        where: { bookingId: booking.id, vendorId },
+        select: { id: true, _count: { select: { mediaAssets: true } } },
+      });
+      const unusedSessionIds = sessions
+        .filter((session: any) => Number(session?._count?.mediaAssets || 0) === 0)
+        .map((session: any) => session.id);
+
+      const canceled = await prisma.$transaction(async (tx) => {
+        const current = await tx.booking.findUnique({
+          where: { id: booking.id },
+          select: { status: true, customerMetadata: true },
+        });
+        const transactionStatus = normalizeBookingStatus(current?.status);
+        if (!new Set(["PENDING", "CONFIRMED"]).has(transactionStatus)) {
+          throw new Error("SERVICE_ORDER_STATE_CHANGED");
+        }
+        const metadata = parseCustomerMetadata(current?.customerMetadata);
+        metadata.vendor_job_cancellation = {
+          status: "CANCELED",
+          canceled_at: now.toISOString(),
+          canceled_by_user_id: member.userId,
+          canceled_by_membership_id: member.membershipId,
+          reason,
+        };
+        metadata.vendor_job_employee_access_revoked_at = now.toISOString();
+        metadata.vendor_job_employee_access_revocation_reason = "SERVICE_ORDER_CANCELED";
+        if ((tx as any).employeeRecordingCertification?.updateMany) {
+          await (tx as any).employeeRecordingCertification.updateMany({
+            where: { bookingId: booking.id, status: "ACTIVE", invalidatedAt: null },
+            data: { status: "INVALIDATED", invalidatedAt: now, invalidationReason: "SERVICE_ORDER_CANCELED" },
+          });
+        }
+        if (unusedSessionIds.length && (tx as any).mediaSession?.updateMany) {
+          await (tx as any).mediaSession.updateMany({
+            where: { id: { in: unusedSessionIds }, bookingId: booking.id },
+            data: { status: "ARCHIVED", endedAt: now },
+          });
+        }
+        if ((tx as any).consentRequestLink?.updateMany) {
+          await (tx as any).consentRequestLink.updateMany({
+            where: { consentRecord: { bookingId: booking.id }, revokedAt: null },
+            data: { revokedAt: now, revocationReason: "SERVICE_ORDER_CANCELED" },
+          });
+        }
+        if ((tx as any).bookingNotification?.updateMany) {
+          await (tx as any).bookingNotification.updateMany({
+            where: { bookingId: booking.id, status: { in: ["QUEUED", "SENDING"] } },
+            data: { status: "CANCELED", nextAttemptAt: null, leaseExpiresAt: null, lastError: "Service Order canceled" },
+          });
+        }
+        return tx.booking.update({
+          where: { id: booking.id },
+          data: { status: "CANCELED", customerMetadata: stringifyCustomerMetadata(metadata) },
+          select: { id: true, status: true, customerMetadata: true, updatedAt: true },
+        });
+      });
+
+      await recordLifecycleAudit({
+        actionType: "service_order_canceled",
+        entityType: "booking",
+        entityId: booking.id,
+        actorUserId: member.userId,
+        previousValue: { status: currentStatus },
+        newValue: { status: "CANCELED", reason, canceledAt: now.toISOString() },
+        metadata: { vendorId, preservedEvidence: true, archivedUnusedSessionCount: unusedSessionIds.length },
+      });
+
+      const employeeRecipients = assignedMembershipIds.length
+        ? await prisma.vendorMembership.findMany({
+            where: { id: { in: assignedMembershipIds }, vendorId },
+            select: { user: { select: { name: true, email: true, phone: true } } },
+          })
+        : [];
+      const metadata = parseCustomerMetadata(booking.customerMetadata);
+      const notificationResults = await sendServiceOrderCanceledNotifications({
+        bookingId: booking.id,
+        actorUserId: member.userId,
+        vendorName: String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor"),
+        serviceOrderTitle: String(booking.title || booking.service?.name || "Service Order"),
+        reason,
+        recipients: [
+          {
+            role: "CUSTOMER",
+            name: booking.user?.name || booking.clientName,
+            email: String(metadata.client_email || booking.user?.email || "") || null,
+            phone: String(metadata.client_phone || booking.user?.phone || "") || null,
+          },
+          ...employeeRecipients.map((entry) => ({
+            role: "EMPLOYEE" as const,
+            name: entry.user?.name || null,
+            email: entry.user?.email || null,
+            phone: entry.user?.phone || null,
+          })),
+        ],
+      });
+
+      return NextResponse.json({
+        success: true,
+        action,
+        job: canceled,
+        notificationResults,
+        message: "Service Order canceled. Recording and uploads are permanently closed for this record.",
       });
     }
 
@@ -984,155 +1117,44 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
 
     if (action === "RELEASE_EMPLOYEE_SERVICE_ORDER") {
       const forceResend = Boolean(body?.forceResend);
-      const existing = await prisma.booking.findUnique({
-        where: { id: booking.id },
-        select: { customerMetadata: true, status: true },
-      });
-      const metadata = existing?.customerMetadata || booking.customerMetadata || null;
-
-      const assignmentMetadata = parseCustomerMetadata(metadata);
-      const assignedMembershipIds = Array.isArray(assignmentMetadata.vendor_job_assigned_membership_ids)
-        ? assignmentMetadata.vendor_job_assigned_membership_ids
-            .map((id) => String(id || "").trim())
-            .filter(Boolean)
-        : [];
-      if (assignedMembershipIds.length === 0) {
-        return NextResponse.json(
-          apiResponse(
-            false,
-            "EMPLOYEE_ASSIGNMENT_REQUIRED",
-            "Assign at least one employee before sending a service order."
-          ),
-          { status: 409 }
-        );
-      }
-
-      const permissionGate = await loadRecordingPermissionGate({
+      const release = await releaseEmployeeServiceOrderWhenReady({
         bookingId: booking.id,
         vendorId,
-        customerMetadata: metadata,
-        surface: "vendor_release",
-        capability: "release",
-        actorKind: "VENDOR_MANAGER",
+        actorUserId: member.userId,
+        baseUrl: resolveJobLinkBaseUrl(request),
+        forceResend,
       });
-      const complianceFailure = releaseFailureForCompliance(metadata, permissionGate);
-      if (complianceFailure) {
-        return NextResponse.json(
-          apiResponse(false, complianceFailure.code, complianceFailure.message, {
-            recordingCompliance: toSafeRecordingCompliance(metadata, permissionGate),
-            blocked: complianceFailure.blocked || null,
-          }),
-          { status: 409 }
-        );
-      }
-
-      const resolved = await resolveJobAssignmentForVendor(
-        vendorId,
-        assignedMembershipIds,
-        assignmentMetadata.vendor_job_assigned_employees
-      );
-      if (!resolved.ok) return resolved.response;
-
-      const compliance = parseRecordingComplianceMetadata(metadata);
-      const unreleasedMembers = forceResend
-        ? resolved.members
-        : resolved.members.filter(
-            (assignmentMember) => !compliance.releasedMembershipIds.includes(assignmentMember.id)
-          );
-      if (unreleasedMembers.length === 0) {
-        return NextResponse.json({
-          success: true,
-          action,
-          notifications: { sentCount: 0, alreadyReleased: true, results: [] },
-          recordingCompliance: toSafeRecordingCompliance(metadata, permissionGate),
-          message: "Employee service order was already sent for this assignment.",
-        });
-      }
-
-      const baseUrl = resolveJobLinkBaseUrl(request);
-      const vendorName = String(booking.vendor?.businessName || booking.vendor?.name || "Reliance Vendor");
-      const jobTitle = String(booking.title || booking.service?.name || "Assigned job");
-      const customerName = String(booking.clientName || booking.user?.name || "").trim() || null;
-      const notificationResults = [];
-      const successfulMembershipIds: string[] = [];
-
-      for (const assignmentMember of unreleasedMembers) {
-        try {
-          const employeeJobLink = appendEmployeeCaptureToken(
-            `${baseUrl}/employee/jobs?jobId=${encodeURIComponent(booking.id)}`,
-            createEmployeeCaptureToken({
-              vendorId,
-              bookingId: booking.id,
-              membershipId: assignmentMember.id,
-            })
-          );
-          const notification = await sendJobAssignmentNotification({
-            bookingId: booking.id,
-            actorUserId: member.userId,
-            employeeName: assignmentMember.displayName,
-            employeeEmail: assignmentMember.user?.email || null,
-            employeePhone: assignmentMember.user?.phone || null,
-            employeeJobLink,
-            vendorName,
-            jobTitle,
-            customerName,
-            scheduledFor: booking.scheduledFor || booking.date || null,
-            serviceTimeZone:
-              typeof assignmentMetadata.service_time_zone === "string"
-                ? assignmentMetadata.service_time_zone
-                : null,
-          });
-          if (notification.anySuccess) successfulMembershipIds.push(assignmentMember.id);
-          notificationResults.push({
-            membershipId: assignmentMember.id,
-            employeeName: assignmentMember.displayName,
-            anySuccess: notification.anySuccess,
-            phoneNumberUsed: notification.phoneNumberUsed,
-            channels: notification.channels,
-          });
-        } catch (error) {
-          notificationResults.push({
-            membershipId: assignmentMember.id,
-            employeeName: assignmentMember.displayName,
-            anySuccess: false,
-            errorMessage: error instanceof Error ? error.message : String(error),
-            channels: [],
-          });
-        }
-      }
-
-      if (successfulMembershipIds.length === 0) {
+      if (!release.ready) {
+        const code = release.blocked?.code || "SERVICE_ORDER_RELEASE_REQUIREMENTS_INCOMPLETE";
         return NextResponse.json(
           apiResponse(
             false,
-            "SERVICE_ORDER_NOTIFICATION_FAILED",
-            "The employee service order was ready, but the notification could not be delivered.",
-            { notifications: notificationResults }
+            code,
+            release.blocked
+              ? `${release.blocked.why} ${release.blocked.resolution}`
+              : "Assign an employee and complete the recording requirements before sending the Service Order.",
+            { blocked: release.blocked || null },
           ),
-          { status: 502 }
+          { status: 409 },
+        );
+      }
+      if (release.sentCount === 0 && !release.alreadyReleased) {
+        return NextResponse.json(
+          apiResponse(false, "SERVICE_ORDER_NOTIFICATION_FAILED", "The Service Order link could not be delivered.", {
+            notifications: release.results,
+          }),
+          { status: 502 },
         );
       }
 
-      const updatedMetadata = parseCustomerMetadata(metadata);
-      const releasedIds = Array.from(
-        new Set([...compliance.releasedMembershipIds, ...successfulMembershipIds])
-      );
-      updatedMetadata.vendor_job_service_order_released_membership_ids = releasedIds;
-      updatedMetadata.vendor_job_service_order_released_at = new Date().toISOString();
-      const updated = await prisma.booking.update({
-        where: { id: booking.id },
-        data: { customerMetadata: stringifyCustomerMetadata(updatedMetadata) },
-        select: { id: true, status: true, customerMetadata: true, updatedAt: true },
-      });
-
       await recordLifecycleAudit({
-        actionType: "employee_service_order_released",
+        actionType: forceResend ? "employee_service_order_resent" : "employee_service_order_released",
         entityType: "booking",
         entityId: booking.id,
         actorUserId: member.userId,
         newValue: {
-          releasedMembershipIds: releasedIds,
-          notificationResults,
+          releasedMembershipIds: release.releasedMembershipIds,
+          notificationResults: release.results,
           forceResend,
         },
         metadata: { vendorId },
@@ -1141,18 +1163,17 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       return NextResponse.json({
         success: true,
         action,
-        job: {
-          id: updated.id,
-          status: updated.status,
-          recordingCompliance: toSafeRecordingCompliance(updated.customerMetadata, permissionGate),
-          updatedAt: updated.updatedAt,
-        },
         notifications: {
-          sentCount: successfulMembershipIds.length,
+          sentCount: release.sentCount,
+          alreadyReleased: release.alreadyReleased,
           forceResend,
-          results: notificationResults,
+          results: release.results,
         },
-        message: forceResend ? "Employee service order link resent." : "Employee service order sent.",
+        message: forceResend
+          ? "Employee Service Order link resent."
+          : release.alreadyReleased
+            ? "Employee Service Order was already sent for this assignment."
+            : "Employee Service Order sent.",
       });
     }
 
@@ -1273,6 +1294,16 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         );
       }
       const requestedUpper = normalizeBookingStatus(requestedStatus);
+      if (requestedUpper === "CANCELED") {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "SERVICE_ORDER_CANCELLATION_ACTION_REQUIRED",
+            "Use Cancel Service Order so access is closed and the existing evidence history is preserved.",
+          ),
+          { status: 409 },
+        );
+      }
       const assignedFromMeta = (() => {
         const m = parseCustomerMetadata(booking.customerMetadata || null);
         const raw = m.vendor_job_assigned_employees;
@@ -1456,17 +1487,28 @@ export async function DELETE(request: Request, context: RouteParams): Promise<Ne
       );
     }
 
-    // UI "in progress" maps to Prisma CONFIRMED (legacy check used IN_PROGRESS which never matched).
-    const allowedVendorDeleteStatuses = new Set(["PENDING", "CONFIRMED", "AWAITING_REVIEW"]);
-    if (!allowedVendorDeleteStatuses.has(normalizedStatus)) {
+    if (normalizedStatus !== "PENDING") {
       return NextResponse.json(
         apiResponse(
           false,
           "JOB_DELETE_BLOCKED_UNSAFE_DEPENDENCY",
-          `Job status ${normalizedStatus || "UNKNOWN"} is not eligible for vendor deletion.`,
+          "Only a disposable draft with no durable evidence can be deleted. Cancel an active Service Order instead.",
           { status: normalizedStatus || "UNKNOWN" }
         ),
         { status: 409 }
+      );
+    }
+
+    const durableEvidenceCount = await getDurableWorkRecordEvidenceCount(booking.id);
+    if (durableEvidenceCount > 0) {
+      return NextResponse.json(
+        apiResponse(
+          false,
+          "JOB_DELETE_BLOCKED_DURABLE_EVIDENCE",
+          "This Service Order has durable evidence and cannot be deleted. Use Cancel Service Order to preserve its history.",
+          { durableEvidenceCount },
+        ),
+        { status: 409 },
       );
     }
 
@@ -1564,7 +1606,7 @@ export async function DELETE(request: Request, context: RouteParams): Promise<Ne
 export async function GET(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const { vendorId, jobId } = await context.params;
-    await requireVendorMembership(request, vendorId);
+    await requireVendorManager(request, vendorId);
 
     const booking = await prisma.booking.findFirst({
       where: { id: jobId, vendorId },
@@ -1580,11 +1622,8 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
 
     const normalizedStatus = normalizeBookingStatus(booking.status);
     const { linkedSessionCount, linkedAssetCount } = await getLinkedMediaSummary(vendorId, booking.id);
-
-    const canVendorDelete =
-      normalizedStatus === "PENDING" ||
-      normalizedStatus === "CONFIRMED" ||
-      normalizedStatus === "AWAITING_REVIEW";
+    const durableEvidenceCount = await getDurableWorkRecordEvidenceCount(booking.id);
+    const canVendorDelete = normalizedStatus === "PENDING" && durableEvidenceCount === 0;
 
     return NextResponse.json({
       jobId: booking.id,
@@ -1592,14 +1631,16 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
       canVendorDelete,
       linkedSessionCount,
       linkedAssetCount,
+      durableEvidenceCount,
+      canCancelServiceOrder: ["PENDING", "CONFIRMED"].includes(normalizedStatus),
       message:
         normalizedStatus === "COMPLETED"
           ? "Completed jobs cannot be deleted by vendors. Please contact an admin if further action is needed."
           : canVendorDelete
-          ? linkedSessionCount > 0
-            ? "This job has linked media. Deleting this job will also archive related media/session records so nothing is orphaned."
-            : "This job can be deleted safely. No linked media content found."
-          : `Job status ${normalizedStatus || "UNKNOWN"} is not eligible for vendor deletion.`,
+          ? "This disposable draft has no durable evidence and can be deleted."
+          : durableEvidenceCount > 0
+            ? "This Service Order has durable evidence. Cancel it to preserve the record and close recording access."
+            : `Job status ${normalizedStatus || "UNKNOWN"} is not eligible for hard deletion.`,
       code:
         normalizedStatus === "COMPLETED"
           ? "JOB_DELETE_BLOCKED_COMPLETED"

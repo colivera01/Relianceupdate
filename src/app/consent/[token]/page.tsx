@@ -30,6 +30,9 @@ type Permission = {
     protectedNonParticipantMayAppear: boolean;
     sensitiveInformationMayAppear: boolean;
     identifiersMayAppear: boolean;
+    authorityHolderType: string;
+    serviceCanContinueWithoutRecording: boolean;
+    essentialPrivateRecording: boolean;
     audioEnabled: false;
     initialAudience: "private";
   } | null;
@@ -68,9 +71,12 @@ function scopeLabel(value: string) {
     customer: "The customer may be identifiable",
     employee: "The assigned employee may be identifiable",
     multiple: "More than one person may be identifiable",
-    controlled: "Controlled frame",
-    partial: "Partially controlled frame",
-    uncontrolled: "Uncontrolled frame",
+    controlled: "Only the planned work area",
+    partial: "The work area and some surroundings",
+    uncontrolled: "An area where people may enter unexpectedly",
+    authorized_representative: "Customer's authorized representative",
+    guardian: "Parent or legal guardian",
+    vendor_manager: "Vendor manager",
   };
   return labels[value] || value.replace(/_/g, " ");
 }
@@ -214,9 +220,15 @@ export default function PermissionPage() {
 
         {permission.plannedScope ? (
           <div className={styles.serviceCard} aria-label="Approved recording scope">
-            <div><span>Property or work area</span><strong>{scopeLabel(permission.plannedScope.propertyScope)}</strong></div>
-            <div><span>People in the approved scope</span><strong>{scopeLabel(permission.plannedScope.peopleScope)}</strong></div>
-            <div><span>Camera framing</span><strong>{scopeLabel(permission.plannedScope.frameControl)}</strong></div>
+            <div><span>Whose property may be recorded</span><strong>{scopeLabel(permission.plannedScope.propertyScope)}</strong></div>
+            <div><span>Who may be identifiable</span><strong>{scopeLabel(permission.plannedScope.peopleScope)}</strong></div>
+            <div><span>What the camera will show</span><strong>{scopeLabel(permission.plannedScope.frameControl)}</strong></div>
+            <div><span>Who can approve</span><strong>{scopeLabel(permission.plannedScope.authorityHolderType)}</strong></div>
+            <div><span>Is recording required</span><strong>{permission.plannedScope.serviceCanContinueWithoutRecording ? "No - service may continue without recording" : "Yes - recording is required for this service"}</strong></div>
+            {permission.plannedScope.minorMayAppear ? <div><span>Children under 18</span><strong>May appear</strong></div> : null}
+            {permission.plannedScope.protectedNonParticipantMayAppear ? <div><span>Bystanders or unrelated people</span><strong>May appear</strong></div> : null}
+            {permission.plannedScope.sensitiveInformationMayAppear ? <div><span>Private documents, screens, or records</span><strong>May appear</strong></div> : null}
+            {permission.plannedScope.identifiersMayAppear ? <div><span>Addresses, plates, keys, codes, or security details</span><strong>May appear</strong></div> : null}
             <div><span>Starting audience</span><strong>Private</strong></div>
           </div>
         ) : null}
@@ -242,7 +254,7 @@ export default function PermissionPage() {
             <div className={styles.stepHeading}><span>2</span><div><h2>Confirm your authority</h2><p>Choose the role that accurately describes you. A business representative cannot decide for unrelated people who may appear.</p></div></div>
             <div className={styles.roleGrid}>{ROLE_OPTIONS.map((option) => <label key={option.value} className={role === option.value ? styles.roleSelected : styles.role}><input type="radio" name="authority-role" value={option.value} checked={role === option.value} onChange={() => setRole(option.value)} /><span>{option.label}</span></label>)}</div>
             {permission.recordingLocation === "customer-business" ? <div className={styles.addressGrid}><label>Street address<input value={address.address} onChange={(event) => setAddress({ ...address, address: event.target.value })} /></label><label>City<input value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} /></label><label>State<input value={address.state} onChange={(event) => setAddress({ ...address, state: event.target.value })} /></label><label>ZIP code<input inputMode="numeric" value={address.zipCode} onChange={(event) => setAddress({ ...address, zipCode: event.target.value })} /></label></div> : null}
-            <div className={styles.decisionBox}><h2>Your decision</h2><p><strong>If you choose No:</strong> Reliance recording stays locked. The service may still continue without Reliance recording.</p><div className={styles.actions}><button className={styles.primary} disabled={!role || Boolean(busy)} onClick={() => decide("allow")}>Allow recording</button><button className={styles.danger} disabled={!role || Boolean(busy)} onClick={() => decide("decline")}>Decline recording</button><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button></div></div>
+            <div className={styles.decisionBox}><h2>Your decision</h2><p><strong>If you choose No:</strong> Reliance recording stays locked. {permission.plannedScope?.serviceCanContinueWithoutRecording ? "The service may continue without a Service Video." : "The business has said recording is required to complete this service, so the service will not proceed under this Service Order."}</p><div className={styles.actions}><button className={styles.primary} disabled={!role || Boolean(busy)} onClick={() => decide("allow")}>Allow recording</button><button className={styles.danger} disabled={!role || Boolean(busy)} onClick={() => decide("decline")}>Decline recording</button><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button></div></div>
           </section>
         )}
 

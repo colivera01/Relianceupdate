@@ -44,6 +44,7 @@ const metadata = JSON.stringify({
     zip_code: "32708",
     latitude: 28.698,
     longitude: -81.308,
+    geocoded_at: "2026-08-04T11:55:00.000Z",
     captured_at: "2026-08-04T12:00:00.000Z",
   },
 });
@@ -177,7 +178,7 @@ describe("database-backed canonical recording gate", () => {
       }),
     });
     expect(gate).toMatchObject({
-      blockCode: "RECORDING_LOCATION_SNAPSHOT_REQUIRED",
+      blockCode: "RECORDING_LOCATION_SNAPSHOT_MISSING",
       recordingUnlocked: false,
       releaseAllowed: false,
     });
@@ -191,7 +192,7 @@ describe("database-backed canonical recording gate", () => {
     expect(db.locationAttemptFindFirst).toHaveBeenCalled();
     expect(gate).toMatchObject({
       locationAttemptStatus: "VERIFIED",
-      blockCode: "RECORDING_LOCATION_SNAPSHOT_REQUIRED",
+      blockCode: "RECORDING_LOCATION_SNAPSHOT_SOURCE_MISMATCH",
       recordingUnlocked: false,
     });
   });

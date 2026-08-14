@@ -135,13 +135,20 @@ function buildRecordingLocationSnapshot(
   );
   const latitude = finiteCoordinate(address?.latitude);
   const longitude = finiteCoordinate(address?.longitude);
+  const hasVerifiedCoordinates = Boolean(
+    latitude != null &&
+      longitude != null &&
+      !(latitude === 0 && longitude === 0) &&
+      address?.geocodedAt instanceof Date &&
+      Number.isFinite(address.geocodedAt.getTime())
+  );
   return {
     type: location,
     source,
     status:
       location === 'customer-business' && !hasAddress
         ? 'pending_customer_input'
-        : latitude != null && longitude != null
+        : hasVerifiedCoordinates
           ? 'verified_coordinates'
           : hasAddress
             ? 'address_only'
@@ -205,7 +212,10 @@ function hasValidLocationCoordinates(location: WorkRecordLocationInput): boolean
       latitude >= -90 &&
       latitude <= 90 &&
       longitude >= -180 &&
-      longitude <= 180
+      longitude <= 180 &&
+      !(latitude === 0 && longitude === 0) &&
+      location.geocodedAt instanceof Date &&
+      Number.isFinite(location.geocodedAt.getTime())
   );
 }
 

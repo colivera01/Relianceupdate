@@ -32,6 +32,7 @@ import {
 import { getClientSessionHeaders } from '@/lib/client-session';
 import { useAuth } from '@/contexts/AuthContext';
 import { tutorialGuides } from '@/lib/user-guidance';
+import { recordingRequirementFields, recordingRequirementSelection } from '@/lib/recording-scope-presentation';
 import {
   fetchVendorTeamMembers,
   avatarUrlForName,
@@ -375,11 +376,14 @@ export default function VendorJobs() {
           tone: 'green',
         };
       }
+      const serviceOrderSent = Boolean(snapshot?.serviceOrderReleasedAt);
       return {
-        label: `Consent accepted - start ${stageLabel} video`,
-        detail: `Recording permission is verified for ${formatCustomerConsentRecipient(job)}.`,
-        actionLabel: `Start ${stageLabel}`,
-        tone: 'green',
+        label: serviceOrderSent ? 'Service Order sent' : 'Ready to send Service Order',
+        detail: serviceOrderSent
+          ? 'The assigned employee received the Service Order and will complete the recording stages.'
+          : `Recording permission is verified for ${formatCustomerConsentRecipient(job)}. Send the Service Order to the assigned employee.`,
+        actionLabel: serviceOrderSent ? 'Service Order Sent' : 'Send Service Order',
+        tone: serviceOrderSent ? 'green' : 'blue',
       };
     }
     if (requiresConsent && consentState === CONSENT_STATE.REQUESTED) {
@@ -436,7 +440,7 @@ export default function VendorJobs() {
         ? 'Service order sent - employee verifies location'
         : 'Consent not required - send service order',
       detail: 'The employee phone verifies the business address before the camera opens.',
-      actionLabel: serviceOrderSent ? 'Open Job' : 'Send Service Order',
+      actionLabel: serviceOrderSent ? 'Service Order Sent' : 'Send Service Order',
       tone: serviceOrderSent ? 'green' : 'blue',
     };
   };
@@ -919,6 +923,7 @@ export default function VendorJobs() {
       return 'View Job';
     }
     const label = getVendorWorkflowStateForJob(job).actionLabel;
+    if (label === 'Service Order Sent') return '';
     return label === 'Open Job' ? '' : label;
   };
 
@@ -949,10 +954,13 @@ export default function VendorJobs() {
       workflowAction === 'Check Consent' ||
       workflowAction === 'View Consent Step' ||
       workflowAction === 'Resend Consent' ||
-      workflowAction === 'Send Service Order' ||
-      workflowAction.startsWith('Start ')
+      workflowAction === 'Send Service Order'
     ) {
-      void openComplianceForNextStage(job);
+      if (workflowAction === 'Send Service Order') {
+        void handleResendEmployeeServiceOrder(job, false);
+      } else {
+        void openComplianceForNextStage(job);
+      }
       return;
     }
     const nextStage = getNextMissingVideoStageForJob(job);
@@ -1133,11 +1141,15 @@ export default function VendorJobs() {
   const [activeJobActionMenuId, setActiveJobActionMenuId] = useState<string | null>(null);
   const [showJobActionConfirmModal, setShowJobActionConfirmModal] = useState(false);
   const [pendingJobAction, setPendingJobAction] = useState<
-    "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "DELETE_PERMANENTLY" | null
+    "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "DELETE_PERMANENTLY" | "CANCEL_SERVICE_ORDER" | null
   >(null);
   const [jobActionTarget, setJobActionTarget] = useState<any>(null);
   const [jobActionFeedback, setJobActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [jobActionLoading, setJobActionLoading] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [permissionEvidence, setPermissionEvidence] = useState<any>(null);
+  const [permissionEvidenceLoading, setPermissionEvidenceLoading] = useState(false);
+  const [permissionEvidenceError, setPermissionEvidenceError] = useState('');
   const [showRejectJobModal, setShowRejectJobModal] = useState(false);
   const [rejectJobTarget, setRejectJobTarget] = useState<any>(null);
   const [rejectReasonInput, setRejectReasonInput] = useState('');
@@ -1967,7 +1979,7 @@ export default function VendorJobs() {
     return payload;
   };
 
-  const handleResendEmployeeServiceOrder = async (job: any) => {
+  const handleResendEmployeeServiceOrder = async (job: any, forceResend = true) => {
     if (jobMutationLoadingId) return;
     if (!isJobAssignedForVideoUpload(job)) {
       setJobActionFeedback({ type: 'error', message: videoAssignmentRequiredCopy });
@@ -1989,16 +2001,16 @@ export default function VendorJobs() {
       if (!refreshed) {
         throw new Error('The service order is missing its recording setup. Open Job and complete the service-order step first.');
       }
-      const payload = await releaseEmployeeServiceOrderForJob(job, refreshed, { forceResend: true });
+      const payload = await releaseEmployeeServiceOrderForJob(job, refreshed, { forceResend });
       await reloadJobsFromBackend();
       setJobActionFeedback({
         type: 'success',
-        message: payload?.message || 'Employee service order link resent.',
+        message: payload?.message || (forceResend ? 'Employee Service Order link resent.' : 'Employee Service Order sent.'),
       });
     } catch (error) {
       setJobActionFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Could not resend the employee service order link.',
+        message: error instanceof Error ? error.message : `Could not ${forceResend ? 'resend' : 'send'} the employee Service Order.`,
       });
     } finally {
       setJobMutationLoadingId(null);
@@ -2851,7 +2863,7 @@ export default function VendorJobs() {
         newJob.peopleScope &&
         newJob.frameControl &&
         newJob.authorityHolderType &&
-        (newJob.serviceCanContinueWithoutRecording || newJob.essentialPrivateRecording)
+        recordingRequirementSelection(newJob)
           ? ''
           : 'Complete the recording subject assessment and explain whether Private recording is essential.',
     };
@@ -4603,6 +4615,7 @@ export default function VendorJobs() {
       | "ASSIGN_JOB"
       | "UPDATE_RECORDING_COMPLIANCE"
       | "RELEASE_EMPLOYEE_SERVICE_ORDER"
+      | "CANCEL_SERVICE_ORDER"
       | "UPDATE_STATUS"
       | "APPROVE_JOB_COMPLETION",
     extra: Record<string, unknown> = {}
@@ -4922,11 +4935,12 @@ export default function VendorJobs() {
 
   const openJobActionConfirm = (
     job: any,
-    action: "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "DELETE_PERMANENTLY"
+    action: "ARCHIVE_JOB" | "MOVE_CONTENT_TO_ARCHIVE" | "DELETE_PERMANENTLY" | "CANCEL_SERVICE_ORDER"
   ) => {
     setJobActionTarget(job);
     setPendingJobAction(action);
     setShowJobActionConfirmModal(true);
+    setCancellationReason('');
     setActiveJobActionMenuId(null);
     if (action === "DELETE_PERMANENTLY" && vendorId) {
       setDeleteImpactPreview({
@@ -4970,6 +4984,29 @@ export default function VendorJobs() {
     }
   };
 
+  const openReadOnlyPermissionEvidence = async (job: any) => {
+    if (!vendorId) return;
+    setActiveJobActionMenuId(null);
+    setPermissionEvidence(null);
+    setPermissionEvidenceError('');
+    setPermissionEvidenceLoading(true);
+    try {
+      const response = await fetch(
+        `/api/vendors/${vendorId}/jobs/${encodeURIComponent(String(job.id))}/recording-permission`,
+        { cache: 'no-store', headers: getRequestHeaders() },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.permission) {
+        throw new Error(payload?.error || 'Unable to load recording permission evidence.');
+      }
+      setPermissionEvidence(payload.permission);
+    } catch (error) {
+      setPermissionEvidenceError(error instanceof Error ? error.message : 'Unable to load recording permission evidence.');
+    } finally {
+      setPermissionEvidenceLoading(false);
+    }
+  };
+
   const executeConfirmedJobAction = async () => {
     if (!jobActionTarget || !pendingJobAction || jobActionLoading) return;
     setJobActionLoading(true);
@@ -4987,6 +5024,12 @@ export default function VendorJobs() {
       } else if (pendingJobAction === "DELETE_PERMANENTLY") {
         const payload = await deleteJobPermanently(jobActionTarget);
         setJobActionFeedback({ type: "success", message: payload?.message || "Service order deleted." });
+      } else if (pendingJobAction === "CANCEL_SERVICE_ORDER") {
+        const payload = await runPersistedJobAction(jobActionTarget, "CANCEL_SERVICE_ORDER", {
+          reason: cancellationReason.trim(),
+        });
+        await reloadJobsFromBackend();
+        setJobActionFeedback({ type: "success", message: payload?.message || "Service Order canceled." });
       }
       setShowJobActionConfirmModal(false);
       setPendingJobAction(null);
@@ -5009,6 +5052,8 @@ export default function VendorJobs() {
       ? "Move Content to Archive"
       : pendingJobAction === "DELETE_PERMANENTLY"
       ? "Delete Service Order"
+      : pendingJobAction === "CANCEL_SERVICE_ORDER"
+      ? "Cancel Service Order"
       : "Confirm Action";
 
   const pendingJobActionDescription = (() => {
@@ -5029,6 +5074,9 @@ export default function VendorJobs() {
         return "This service order has linked media. Deleting it will archive related media/session records so nothing is orphaned.";
       }
       return "Permanently delete this service order? Completed service orders must be archived.";
+    }
+    if (pendingJobAction === "CANCEL_SERVICE_ORDER") {
+      return "Cancel this Service Order and permanently close employee recording and upload access. Existing permission, location, assignment, delivery, and audit evidence will remain in read-only history.";
     }
     return "Please confirm this job action.";
   })();
@@ -5238,7 +5286,6 @@ export default function VendorJobs() {
                 <option value="pending">Pending</option>
                 <option value="in-progress">In Progress</option>
                 <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
               </select>
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
@@ -6225,13 +6272,13 @@ export default function VendorJobs() {
                 </div>
               ) : null}
               <div className="mt-5 border-t border-slate-200 pt-4">
-                  <p className="text-sm font-semibold text-slate-900">What may appear in the recording?</p>
+                  <p className="text-sm font-semibold text-slate-900">What may appear in the Service Video?</p>
                   <p className="mt-1 text-xs leading-5 text-slate-600">
                     This keeps the employee inside the approved scope. Audio remains off. Changing this scope replaces prior permission and employee certification.
                   </p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="text-xs font-semibold text-slate-700">
-                      Property in frame
+                      Whose property may appear in the video?
                       <select
                         value={newJob.propertyScope}
                         onChange={(event) => {
@@ -6241,13 +6288,13 @@ export default function VendorJobs() {
                         className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
                       >
                         <option value="">Choose one</option>
-                        <option value="vendor_owned">Only vendor-owned property or work area</option>
-                        <option value="customer_owned">Customer-owned property</option>
+                        <option value="vendor_owned">Only the vendor&apos;s property or work area</option>
+                        <option value="customer_owned">Only the customer&apos;s property</option>
                         <option value="mixed">Both vendor and customer property</option>
                       </select>
                     </label>
                     <label className="text-xs font-semibold text-slate-700">
-                      Identifiable people in frame
+                      Could anyone be identifiable in the video?
                       <select
                         value={newJob.peopleScope}
                         onChange={(event) => {
@@ -6264,7 +6311,7 @@ export default function VendorJobs() {
                       </select>
                     </label>
                     <label className="text-xs font-semibold text-slate-700">
-                      Camera framing
+                      What will the camera primarily show?
                       <select
                         value={newJob.frameControl}
                         onChange={(event) => {
@@ -6274,13 +6321,13 @@ export default function VendorJobs() {
                         className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
                       >
                         <option value="">Choose one</option>
-                        <option value="controlled">Controlled work area</option>
-                        <option value="partial">Some surroundings may appear</option>
-                        <option value="uncontrolled">People may enter unexpectedly</option>
+                        <option value="controlled">Only the planned work area</option>
+                        <option value="partial">The work area and some surroundings</option>
+                        <option value="uncontrolled">An area where people may enter unexpectedly</option>
                       </select>
                     </label>
                     <label className="text-xs font-semibold text-slate-700">
-                      Authority holder
+                      Who can approve recording for this service?
                       <select
                         value={newJob.authorityHolderType}
                         onChange={(event) => {
@@ -6291,18 +6338,21 @@ export default function VendorJobs() {
                       >
                         <option value="">Choose one</option>
                         <option value="customer">Customer</option>
-                        <option value="authorized_representative">Authorized customer representative</option>
-                        <option value="guardian">Guardian</option>
+                        <option value="authorized_representative">Customer's authorized representative</option>
+                        <option value="guardian">Parent or legal guardian</option>
                         <option value="vendor_manager">Vendor manager</option>
                       </select>
+                      <span className="mt-1 block font-normal leading-4 text-slate-500">
+                        Select the person who has authority to approve recording for this service and location.
+                      </span>
                     </label>
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
                     {[
-                      ['minorMayAppear', 'A minor may appear'],
-                      ['protectedNonParticipantMayAppear', 'A bystander or protected non-participant may appear'],
-                      ['sensitiveInformationMayAppear', 'Sensitive documents, screens, or information may appear'],
-                      ['identifiersMayAppear', 'Addresses, plates, codes, keys, or security details may appear'],
+                      ['minorMayAppear', 'A child under 18 may appear in the video'],
+                      ['protectedNonParticipantMayAppear', 'A bystander or another person who is not part of the service may appear'],
+                      ['sensitiveInformationMayAppear', 'Private documents, screens, records, or sensitive information may appear'],
+                      ['identifiersMayAppear', 'An address, license plate, account number, key, access code, or security equipment may appear'],
                     ].map(([field, label]) => (
                       <label key={field} className="flex items-start gap-2">
                         <input
@@ -6317,38 +6367,39 @@ export default function VendorJobs() {
                       </label>
                     ))}
                   </div>
-                  <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm text-slate-700">
-                    <label className="flex items-start gap-2">
+                  <fieldset className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm text-slate-700">
+                    <legend className="mb-2 font-semibold text-slate-900">Is recording required to complete this service?</legend>
+                    <label className="flex items-start gap-2 rounded-md border border-slate-200 p-3">
                       <input
-                        type="checkbox"
-                        checked={newJob.serviceCanContinueWithoutRecording}
-                        onChange={(event) =>
+                        type="radio"
+                        name="recording-required"
+                        checked={recordingRequirementSelection(newJob) === "required"}
+                        onChange={() =>
                           setNewJob({
                             ...newJob,
-                            serviceCanContinueWithoutRecording: event.target.checked,
-                            essentialPrivateRecording: event.target.checked
-                              ? false
-                              : newJob.essentialPrivateRecording,
+                            ...recordingRequirementFields(true),
                           })
                         }
                         className="mt-1"
                       />
-                      <span>The service can continue if recording is declined or blocked.</span>
+                      <span><strong>Yes - Recording is required.</strong><br /><span className="text-xs text-slate-600">The customer will be told that the service cannot proceed if recording permission is declined.</span></span>
                     </label>
-                    {!newJob.serviceCanContinueWithoutRecording ? (
-                      <label className="flex items-start gap-2">
+                    <label className="flex items-start gap-2 rounded-md border border-slate-200 p-3">
                         <input
-                          type="checkbox"
-                          checked={newJob.essentialPrivateRecording}
-                          onChange={(event) =>
-                            setNewJob({ ...newJob, essentialPrivateRecording: event.target.checked })
+                          type="radio"
+                          name="recording-required"
+                          checked={recordingRequirementSelection(newJob) === "optional"}
+                          onChange={() =>
+                            setNewJob({
+                              ...newJob,
+                              ...recordingRequirementFields(false),
+                            })
                           }
                           className="mt-1"
                         />
-                        <span>Private recording is essential to this service. The customer will be told before deciding.</span>
+                        <span><strong>No - The service can continue without recording.</strong><br /><span className="text-xs text-slate-600">If the customer declines, the service may continue without a Service Video.</span></span>
                       </label>
-                    ) : null}
-                  </div>
+                  </fieldset>
                   <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950">
                     Audio is off. Public sharing is never included in this assessment and requires a separate later decision.
                   </div>
@@ -7320,7 +7371,7 @@ export default function VendorJobs() {
               Legal Compliance & Security Verification
             </DialogTitle>
             <DialogDescription>
-              Assign an employee, choose the recording location, send recording permission if required, then start the Starting Condition video.
+              Assign an employee, choose the recording location, and request recording permission when required. Reliance sends the employee Service Order when every release requirement is complete.
             </DialogDescription>
           </DialogHeader>
 
@@ -7744,10 +7795,10 @@ export default function VendorJobs() {
               </div>
             )}
 
-            {/* Step 3: Send employee recording link */}
+            {/* Step 3: Employee Service Order */}
             {location && (
               <div className="border rounded-lg p-4">
-                <h3 className="font-semibold text-lg mb-3">Step 3: Send Employee Recording Link</h3>
+                <h3 className="font-semibold text-lg mb-3">Step 3: Employee Service Order</h3>
                 <div
                   className={`mb-4 rounded-lg p-3 text-sm ${
                     allComplianceChecksPassed
@@ -7765,19 +7816,24 @@ export default function VendorJobs() {
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
                         <div>
-                          <h4 className="font-medium text-green-900">Ready to send to employee</h4>
+                          <h4 className="font-medium text-green-900">Ready for employee Service Order</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            The employee will verify the business address from their phone before recording starts.
+                            Reliance sends the Service Order automatically. The employee will verify the business address from their phone before recording starts.
                           </p>
                         </div>
                       </div>
                     </div>
                     <Button
                       onClick={handleSendEmployeeServiceOrder}
-                      disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
+                      disabled={
+                        !(getCanContinueCompliance() && assignmentSatisfiedForCompliance) ||
+                        Boolean(getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt)
+                      }
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      Send Service Order to Employee
+                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt
+                        ? 'Service Order Sent'
+                        : 'Send Service Order'}
                     </Button>
                   </div>
                 )}
@@ -7791,17 +7847,22 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-green-900">Recording Permission Verified</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Permission is verified. Send the service order so the employee can record within the approved scope.
+                            Permission is verified. Reliance sends the Service Order automatically so the employee can record within the approved scope.
                           </p>
                         </div>
                       </div>
                     </div>
                     <Button
                       onClick={handleSendEmployeeServiceOrder}
-                      disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
+                      disabled={
+                        !(getCanContinueCompliance() && assignmentSatisfiedForCompliance) ||
+                        Boolean(getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt)
+                      }
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      Send Service Order to Employee
+                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt
+                        ? 'Service Order Sent'
+                        : 'Send Service Order'}
                     </Button>
                   </div>
                 )}
@@ -7815,17 +7876,22 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-green-900">Recording Permission Verified</h4>
                           <p className="text-sm text-green-700 mt-1">
-                            Permission is verified. Send the service order so the employee can verify location and record within the approved scope.
+                            Permission is verified. Reliance sends the Service Order automatically so the employee can verify location and record within the approved scope.
                           </p>
                         </div>
                       </div>
                     </div>
                     <Button
                       onClick={handleSendEmployeeServiceOrder}
-                      disabled={!(getCanContinueCompliance() && assignmentSatisfiedForCompliance)}
+                      disabled={
+                        !(getCanContinueCompliance() && assignmentSatisfiedForCompliance) ||
+                        Boolean(getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt)
+                      }
                       className="w-full bg-green-600 hover:bg-green-700"
                     >
-                      Send Service Order to Employee
+                      {getSavedRecordingComplianceForJob(selectedJob)?.serviceOrderReleasedAt
+                        ? 'Service Order Sent'
+                        : 'Send Service Order'}
                     </Button>
                   </div>
                 )}
@@ -8336,102 +8402,43 @@ export default function VendorJobs() {
                   </div>
                 </div>
                 <div
-                  className="flex items-center gap-2 flex-wrap justify-end"
+                  className="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[20rem]"
                   data-no-card-open
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {!isEmployeeView && getPrimaryJobCtaLabel(job) ? (
-                    <Button
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700"
-                      data-no-card-open
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePrimaryJobAction(job);
-                      }}
-                      disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
-                    >
-                      {getPrimaryJobCtaLabel(job)}
-                    </Button>
-                  ) : null}
-                  {isJobPendingEmployeeCorrection(job) ? (
-                    <>
-                      <Badge className="bg-amber-100 text-amber-900">Media: Changes Requested</Badge>
-                      <Badge className="bg-amber-100 text-amber-900">Job: Pending Fix</Badge>
-                    </>
-                  ) : (
-                    <>
-                      {getJobMediaModerationSummary(job) && (
-                        <Badge className={getJobMediaModerationSummary(job)?.className}>
-                          {getJobMediaModerationSummary(job)?.label}
-                        </Badge>
-                      )}
-                      <Badge className={getJobListBadgeColor(job)}>
-                        {formatJobStatusLabel(job.status, job.operationalPhase, job)}
-                      </Badge>
-                    </>
-                  )}
-                  {(() => {
-                    const consentState = String(
-                      consentStatusByBookingId[String(job.bookingId || job.id || '')] || ''
-                    ).toLowerCase();
-                    if (consentState === CONSENT_STATE.ACCEPTED) {
-                      return <Badge className="bg-green-100 text-green-800">Consent approved</Badge>;
-                    }
-                    if (consentState === CONSENT_STATE.REQUESTED) {
-                      return <Badge className="bg-blue-100 text-blue-800">Consent pending</Badge>;
-                    }
-                    if (consentState === CONSENT_STATE.DECLINED) {
-                      return <Badge className="bg-red-100 text-red-800">Consent declined</Badge>;
-                    }
-                    return null;
-                  })()}
-                  {(() => {
-                    const deliveryStatus = String(job?.consentNotification?.status || '').toUpperCase();
-                    if (deliveryStatus === 'FAILED') {
-                      return (
-                        <Badge
-                          className="bg-red-100 text-red-800"
-                          title={String(job?.consentNotification?.lastError || 'Consent delivery failed')}
-                        >
-                          Consent delivery failed
-                        </Badge>
-                      );
-                    }
-                    if (deliveryStatus === 'PARTIAL') {
-                      return (
-                        <Badge
-                          className="bg-amber-100 text-amber-900"
-                          title={String(job?.consentNotification?.lastError || 'One delivery channel failed')}
-                        >
-                          Consent sent with warning
-                        </Badge>
-                      );
-                    }
-                    if (deliveryStatus === 'SENT') {
-                      return <Badge className="bg-emerald-100 text-emerald-800">Consent sent</Badge>;
-                    }
-                    if (deliveryStatus === 'QUEUED' || deliveryStatus === 'SENDING') {
-                      return <Badge className="bg-blue-100 text-blue-800">Consent sending</Badge>;
-                    }
-                    return null;
-                  })()}
-                  {(() => {
-                    const consentState = String(
-                      consentStatusByBookingId[String(job.bookingId || job.id || '')] || ''
-                    ).toLowerCase();
-                    if (consentState !== CONSENT_STATE.ACCEPTED) return null;
-                    if (!isJobAssignedForVideoUpload(job)) return null;
-                    return <Badge className="bg-emerald-100 text-emerald-800">Ready to record</Badge>;
-                  })()}
-                  {(() => {
-                    const phase = String(job.operationalPhase || '').toUpperCase();
-                    return phase === 'AWAITING_ADMIN_REVIEW' || phase === 'AWAITING_VENDOR_REVIEW';
-                  })() ? (
-                    <Badge variant="outline" className={getOperationalPhaseBadgeClass(job.operationalPhase)}>
-                      {formatOperationalPhaseLabel(job.operationalPhase, job)}
+                  <div className="flex flex-wrap items-center gap-2 lg:justify-end" aria-label="Service Order status">
+                    <Badge className={getJobListBadgeColor(job)}>
+                      {formatJobStatusLabel(job.status, job.operationalPhase, job)}
                     </Badge>
-                  ) : null}
+                    {getConsentStatusForJob(job, getSavedRecordingComplianceForJob(job)) === CONSENT_STATE.ACCEPTED ? (
+                      <Badge className="bg-green-100 text-green-800">Permission approved</Badge>
+                    ) : getConsentStatusForJob(job, getSavedRecordingComplianceForJob(job)) === CONSENT_STATE.REQUESTED ? (
+                      <Badge className="bg-blue-100 text-blue-800">Permission pending</Badge>
+                    ) : null}
+                    {isJobAssignedForVideoUpload(job) ? <Badge className="bg-slate-200 text-slate-900">Assigned</Badge> : null}
+                    {getSavedRecordingComplianceForJob(job)?.serviceOrderReleasedAt ? (
+                      <Badge className="bg-emerald-100 text-emerald-800">Service Order sent</Badge>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2 lg:justify-end">
+                    {!isEmployeeView && getPrimaryJobCtaLabel(job) ? (
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 lg:flex-none"
+                        data-no-card-open
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePrimaryJobAction(job);
+                        }}
+                        disabled={jobActionLoading || Boolean(jobMutationLoadingId)}
+                      >
+                        {getPrimaryJobCtaLabel(job)}
+                      </Button>
+                    ) : getSavedRecordingComplianceForJob(job)?.serviceOrderReleasedAt ? (
+                      <span className="flex-1 rounded-md border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-center text-sm font-semibold text-emerald-100 lg:flex-none">
+                        Service Order Sent
+                      </span>
+                    ) : null}
                   <div className="relative" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
@@ -8566,17 +8573,6 @@ export default function VendorJobs() {
                                     </button>
                                   </>
                                 ) : null}
-                                <button
-                                  className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                  onClick={() => {
-                                    setActiveJobActionMenuId(null);
-                                    openJobActionConfirm(job, "DELETE_PERMANENTLY");
-                                  }}
-                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                  title="Delete this service order and archive any linked media safely."
-                                >
-                                  Delete Service Order
-                                </button>
                               </>
                             );
                           }
@@ -8604,35 +8600,38 @@ export default function VendorJobs() {
                                   Edit
                                 </button>
                                 {isConsentBlocked ? (
-                                  <>
-                                    <div className="border-y border-amber-300/15 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
-                                      Recording locked - waiting for verified permission
-                                    </div>
-                                    <button
-                                      className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white"
-                                      onClick={() =>
-                                        canRecoverPermission
+                                  <div className="border-y border-amber-300/15 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
+                                    Recording locked - waiting for verified permission
+                                  </div>
+                                ) : null}
+                                {hasPermissionRequest ? (
+                                  <button
+                                    className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white"
+                                    onClick={() =>
+                                      permissionState === CONSENT_STATE.ACCEPTED
+                                        ? void openReadOnlyPermissionEvidence(job)
+                                        : canRecoverPermission
                                           ? openPermissionRecoveryForJob(job)
                                           : openCustomerConsentForJob(job)
-                                      }
-                                    >
-                                      {canRecoverPermission
+                                    }
+                                  >
+                                    {permissionState === CONSENT_STATE.ACCEPTED
+                                      ? 'View Recording Permission'
+                                      : canRecoverPermission
                                         ? 'Manage Recording Permission'
                                         : 'View Recording Permission'}
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                    onClick={() => {
-                                      setActiveJobActionMenuId(null);
-                                      openAssignmentModal(job);
-                                    }}
-                                    disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                  >
-                                    {isJobAssignedForVideoUpload(job) ? 'Reassign Job' : 'Assign Employee'}
                                   </button>
-                                )}
+                                ) : null}
+                                <button
+                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                  onClick={() => {
+                                    setActiveJobActionMenuId(null);
+                                    openAssignmentModal(job);
+                                  }}
+                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                >
+                                  {isJobAssignedForVideoUpload(job) ? 'Reassign Job' : 'Assign Employee'}
+                                </button>
                                 {isJobAssignedForVideoUpload(job) ? (
                                   <button
                                     className="w-full px-3 py-2.5 text-left text-sm text-sky-100 transition hover:bg-sky-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -8667,12 +8666,12 @@ export default function VendorJobs() {
                                   className="w-full px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40"
                                   onClick={() => {
                                     setActiveJobActionMenuId(null);
-                                    openJobActionConfirm(job, "DELETE_PERMANENTLY");
+                                    openJobActionConfirm(job, "CANCEL_SERVICE_ORDER");
                                   }}
                                   disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                  title="Delete this service order and archive any linked media safely."
+                                  title="Cancel this Service Order while preserving its evidence history."
                                 >
-                                  Delete Service Order
+                                  Cancel Service Order
                                 </button>
                               </>
                             );
@@ -8693,6 +8692,7 @@ export default function VendorJobs() {
                         })()}
                       </div>
                     )}
+                  </div>
                   </div>
                 </div>
               </div>
@@ -8741,6 +8741,20 @@ export default function VendorJobs() {
               )}
             </div>
           )}
+          {pendingJobAction === "CANCEL_SERVICE_ORDER" ? (
+            <label className="space-y-2 text-sm font-medium text-slate-800">
+              Cancellation reason
+              <textarea
+                value={cancellationReason}
+                onChange={(event) => setCancellationReason(event.target.value)}
+                maxLength={500}
+                rows={4}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-normal text-slate-900"
+                placeholder="Explain why this Service Order is being canceled."
+              />
+              <span className="block text-xs font-normal text-slate-500">This reason becomes part of the preserved Service Order history.</span>
+            </label>
+          ) : null}
           <DialogFooter>
             <Button
               variant="outline"
@@ -8758,13 +8772,49 @@ export default function VendorJobs() {
                 jobActionLoading ||
                 Boolean(jobMutationLoadingId) ||
                 (pendingJobAction === "DELETE_PERMANENTLY" &&
-                  (deleteImpactPreview?.loading || deleteImpactPreview?.canVendorDelete === false))
+                  (deleteImpactPreview?.loading || deleteImpactPreview?.canVendorDelete === false)) ||
+                (pendingJobAction === "CANCEL_SERVICE_ORDER" && cancellationReason.trim().length < 5)
               }
-              className={pendingJobAction === "DELETE_PERMANENTLY" ? "bg-red-600 hover:bg-red-700" : ""}
+              className={pendingJobAction === "DELETE_PERMANENTLY" || pendingJobAction === "CANCEL_SERVICE_ORDER" ? "bg-red-600 hover:bg-red-700" : ""}
             >
               {jobActionLoading ? "Processing..." : pendingJobActionTitle}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={permissionEvidenceLoading || Boolean(permissionEvidence) || Boolean(permissionEvidenceError)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPermissionEvidence(null);
+            setPermissionEvidenceError('');
+            setPermissionEvidenceLoading(false);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Recording Permission</DialogTitle>
+            <DialogDescription>This is read-only evidence of the customer decision. Viewing it cannot change or reopen permission.</DialogDescription>
+          </DialogHeader>
+          {permissionEvidenceLoading ? <p className="text-sm text-slate-600">Loading verified permission evidence...</p> : null}
+          {permissionEvidenceError ? <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{permissionEvidenceError}</p> : null}
+          {permissionEvidence ? (
+            <div className="space-y-3 text-sm text-slate-800">
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                <p className="font-semibold text-emerald-900">{permissionEvidence.decisionEvidence?.decision === 'allowed' || permissionEvidence.verifiedDecision ? 'Recording allowed' : String(permissionEvidence.lifecycleStatus || 'Decision recorded')}</p>
+                <p className="mt-1 text-emerald-800">Decided {permissionEvidence.decisionEvidence?.decidedAt ? new Date(permissionEvidence.decisionEvidence.decidedAt).toLocaleString() : 'date unavailable'}</p>
+              </div>
+              <dl className="grid gap-2 sm:grid-cols-2">
+                <div><dt className="text-xs font-semibold uppercase text-slate-500">Verified recipient</dt><dd>{permissionEvidence.recipient?.name || permissionEvidence.recipient?.email || permissionEvidence.recipient?.phone || 'Verified customer'}</dd></div>
+                <div><dt className="text-xs font-semibold uppercase text-slate-500">Authority</dt><dd>{String(permissionEvidence.decisionEvidence?.claimedRole || 'customer').replace(/_/g, ' ')}</dd></div>
+                <div><dt className="text-xs font-semibold uppercase text-slate-500">Verification</dt><dd>{String(permissionEvidence.decisionEvidence?.verificationMethod || 'verified').replace(/_/g, ' ')}</dd></div>
+                <div><dt className="text-xs font-semibold uppercase text-slate-500">Audio</dt><dd>{permissionEvidence.audioEnabled ? 'Included' : 'Off'}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Evidence ID</dt><dd className="break-all font-mono text-xs">{permissionEvidence.decisionEvidence?.id || permissionEvidence.id}</dd></div>
+              </dl>
+            </div>
+          ) : null}
+          <DialogFooter><Button variant="outline" onClick={() => { setPermissionEvidence(null); setPermissionEvidenceError(''); }}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

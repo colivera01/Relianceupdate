@@ -18,6 +18,7 @@ function parseMetadata(value: string | null | undefined): Record<string, unknown
 function exactScopeSummary(assessment: any) {
   if (!assessment) return null;
   const subjects = parseMetadata(assessment.subjectJson);
+  const scope = parseMetadata(assessment.scopeJson);
   return {
     propertyScope: String(assessment.propertyScope || ""),
     peopleScope: String(assessment.peopleScope || ""),
@@ -28,6 +29,13 @@ function exactScopeSummary(assessment: any) {
     protectedNonParticipantMayAppear: Boolean(subjects.protectedNonParticipantMayAppear),
     sensitiveInformationMayAppear: Boolean(subjects.sensitiveInformationMayAppear),
     identifiersMayAppear: Boolean(subjects.identifiersMayAppear),
+    authorityHolderType: String(scope.authorityHolderType || assessment.authorityHolderType || ""),
+    serviceCanContinueWithoutRecording: Boolean(
+      scope.serviceCanContinueWithoutRecording ?? assessment.serviceCanContinueWithoutRecording,
+    ),
+    essentialPrivateRecording: Boolean(
+      scope.essentialPrivateRecording ?? assessment.essentialPrivateRecording,
+    ),
     audioEnabled: false,
     initialAudience: "private" as const,
   };
@@ -66,6 +74,10 @@ export async function GET(_request: Request, context: Context) {
           peopleScope: true,
           frameControl: true,
           subjectJson: true,
+          scopeJson: true,
+          authorityHolderType: true,
+          serviceCanContinueWithoutRecording: true,
+          essentialPrivateRecording: true,
         },
       })
     : null;
