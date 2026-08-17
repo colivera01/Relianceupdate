@@ -300,11 +300,55 @@ async function openEmployeeCapture(page: Page) {
   await expect(page.getByText(unlockedEmployeeJob.title, { exact: true })).toBeVisible();
 }
 
-async function selectFallbackVideo(page: Page) {
+async function createPlayableWebmFixture(page: Page): Promise<Buffer> {
+  const bytes = await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas is unavailable for the preview fixture.");
+
+    const stream = canvas.captureStream(10);
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp8")
+      ? "video/webm;codecs=vp8"
+      : "video/webm";
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks: BlobPart[] = [];
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    });
+    const stopped = new Promise<void>((resolve) => recorder.addEventListener("stop", () => resolve(), { once: true }));
+    let frame = 0;
+    const frameTimer = window.setInterval(() => {
+      context.fillStyle = frame % 2 === 0 ? "#0f172a" : "#172554";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#3b82f6";
+      context.fillRect(8 + (frame % 12), 12, 40, 40);
+      frame += 1;
+    }, 80);
+
+    recorder.start(100);
+    await new Promise((resolve) => window.setTimeout(resolve, 1_200));
+    window.clearInterval(frameTimer);
+    recorder.stop();
+    await stopped;
+    stream.getTracks().forEach((track) => track.stop());
+
+    return Array.from(new Uint8Array(await new Blob(chunks, { type: mimeType }).arrayBuffer()));
+  });
+
+  return Buffer.from(bytes);
+}
+
+async function selectFallbackVideo(page: Page, playableWebm?: Buffer) {
   const chooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: /Starting Condition/ }).click();
   const chooser = await chooserPromise;
-  await chooser.setFiles(path.join(process.cwd(), "public", "homepage", "service-video-stages", "before-service.mp4"));
+  await chooser.setFiles(
+    playableWebm
+      ? { name: "controlled-preview.webm", mimeType: "video/webm", buffer: playableWebm }
+      : path.join(process.cwd(), "public", "homepage", "service-video-stages", "before-service.mp4")
+  );
   await expect(page.getByText("Preview before saving", { exact: true })).toBeVisible();
 }
 
@@ -369,5 +413,22 @@ test.describe("Epic 5 safe Private Service Video UX", () => {
 
     await page.setViewportSize({ width: 1440, height: 1000 });
     await capture(page, "Desktop", "02-employee-retry-required-draft-preserved.png");
+  });
+
+  test("plays the local draft explicitly before Confirm and Save", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const playableWebm = await createPlayableWebmFixture(page);
+    expect(playableWebm.byteLength).toBeGreaterThan(100);
+    await installEmployeeFixture(page);
+    await openEmployeeCapture(page);
+    await selectFallbackVideo(page, playableWebm);
+
+    const preview = page.locator("video").last();
+    await expect(page.getByRole("button", { name: "Play Preview" })).toBeVisible();
+    await page.getByRole("button", { name: "Play Preview" }).click();
+    await expect.poll(() => preview.evaluate((video) => !(video as HTMLVideoElement).paused)).toBe(true);
+    await expect(page.getByRole("button", { name: "Pause Preview" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm and Save" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Retake", exact: true })).toBeEnabled();
   });
 });

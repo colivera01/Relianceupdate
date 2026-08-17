@@ -325,6 +325,18 @@ export default function VendorJobs() {
         tone: 'blue',
       };
     }
+    if (
+      phase === 'AWAITING_VENDOR_REVIEW' ||
+      status === 'awaiting_review' ||
+      status === 'awaiting review'
+    ) {
+      return {
+        label: 'Awaiting Manager Review',
+        detail: 'The completed Service Videos were submitted. Recording remains locked while the vendor manager reviews the package.',
+        actionLabel: 'Review Submitted Videos',
+        tone: 'blue',
+      };
+    }
     if (isJobPendingEmployeeCorrection(job)) {
       return {
         label: 'Pending employee corrections',
@@ -378,7 +390,7 @@ export default function VendorJobs() {
       }
       const serviceOrderSent = Boolean(snapshot?.serviceOrderReleasedAt);
       return {
-        label: serviceOrderSent ? 'Service Order sent' : 'Ready to send Service Order',
+        label: serviceOrderSent ? 'Service Order Sent' : 'Ready to send Service Order',
         detail: serviceOrderSent
           ? 'The assigned employee received the Service Order and will complete the recording stages.'
           : `Recording permission is verified for ${formatCustomerConsentRecipient(job)}. Send the Service Order to the assigned employee.`,
@@ -437,7 +449,7 @@ export default function VendorJobs() {
     const serviceOrderSent = Boolean(snapshot?.serviceOrderReleasedAt);
     return {
       label: serviceOrderSent
-        ? 'Service order sent - employee verifies location'
+        ? 'Service Order Sent'
         : 'Consent not required - send service order',
       detail: 'The employee phone verifies the business address before the camera opens.',
       actionLabel: serviceOrderSent ? 'Service Order Sent' : 'Send Service Order',
@@ -1211,14 +1223,12 @@ export default function VendorJobs() {
   const hasPhoneInput = Boolean(newJob.phone.trim());
   const hasEmailInput = Boolean(trimmedEmail);
   const isCreateJobPhoneValid = !hasPhoneInput || phoneDigits.length === 10;
-  const isCreateJobEmailValid = !hasEmailInput || (trimmedEmail.includes('@') && trimmedEmail.includes('.'));
-  const hasCustomerDeliveryContact =
-    phoneDigits.length === 10 || (trimmedEmail.includes('@') && trimmedEmail.includes('.'));
+  const isCreateJobEmailValid = hasEmailInput && trimmedEmail.includes('@') && trimmedEmail.includes('.');
   const isEditMode = jobModalMode === 'edit';
   const canCreateJob = Boolean(
     trimmedCustomerFirstName &&
     trimmedCustomerLastName &&
-    (isEditMode || (hasCustomerDeliveryContact && isCreateJobPhoneValid && isCreateJobEmailValid)) &&
+    (isEditMode || (isCreateJobPhoneValid && isCreateJobEmailValid)) &&
     selectedServiceId &&
     selectedRecordingLocation &&
     (isAddingServiceFromJob ? newServiceIsValid : Boolean(selectedServiceForWorkRecord)) &&
@@ -2818,17 +2828,18 @@ export default function VendorJobs() {
     const hasPhoneInputForJob = Boolean(newJob.phone.trim());
     const hasEmailInputForJob = Boolean(email);
     const isValidPhone = !hasPhoneInputForJob || normalizedPhoneDigits.length === 10;
-    const isValidEmail = !hasEmailInputForJob || (email.includes('@') && email.includes('.'));
-    const hasDeliveryContact =
-      normalizedPhoneDigits.length === 10 || (email.includes('@') && email.includes('.'));
+    const isValidEmail = hasEmailInputForJob && email.includes('@') && email.includes('.');
     const requiresContactValidation = jobModalMode !== 'edit';
     const nextJobErrors = {
       title: '',
       customerFirstName: customerFirstName ? '' : 'Customer first name is required',
       customerLastName: customerLastName ? '' : 'Customer last name is required',
-      contact: !requiresContactValidation || hasDeliveryContact ? '' : 'Enter a customer phone number or email address.',
+      contact: '',
       phone: !requiresContactValidation || isValidPhone ? '' : 'Enter a valid 10-digit phone number, or leave phone blank.',
-      email: !requiresContactValidation || isValidEmail ? '' : 'Enter a valid email address, or leave email blank.',
+      email:
+        !requiresContactValidation || isValidEmail
+          ? ''
+          : 'Enter the customer email that will receive and claim the completed Private Service Video.',
       serviceId: serviceId
         ? !addingServiceFromJob && !selectedService
           ? 'Choose an approved service. Pending admin approval services cannot create work records.'
@@ -2886,8 +2897,6 @@ export default function VendorJobs() {
         clientNameInputRef.current?.focus();
       } else if (nextJobErrors.customerLastName) {
         clientLastNameInputRef.current?.focus();
-      } else if (nextJobErrors.contact) {
-        phoneInputRef.current?.focus();
       } else if (nextJobErrors.phone) {
         phoneInputRef.current?.focus();
       } else if (nextJobErrors.email) {
@@ -6062,14 +6071,14 @@ export default function VendorJobs() {
                 }}
                 inputMode="numeric"
               />
-              <p className="mt-1 text-xs text-gray-500">Enter phone or email. Both are not required.</p>
+              <p className="mt-1 text-xs text-gray-500">Optional. Add a mobile number for SMS updates when available.</p>
               {jobFieldErrors.phone && (
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.phone}</p>
               )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email
+                Email <span aria-hidden="true">*</span>
               </label>
               <Input
                 ref={emailInputRef}
@@ -6080,15 +6089,18 @@ export default function VendorJobs() {
                   const value = e.target.value;
                   setNewJob({ ...newJob, email: value });
                   const trimmed = value.trim();
-                  if (!trimmed || (trimmed.includes('@') && trimmed.includes('.'))) {
+                  if (trimmed.includes('@') && trimmed.includes('.')) {
                     setJobFieldErrors((prev) => ({
                       ...prev,
                       email: '',
-                      contact: trimmed || getPhoneDigits(newJob.phone).length === 10 ? '' : prev.contact,
+                      contact: '',
                     }));
                   }
                 }}
               />
+              <p className="mt-1 text-xs text-gray-500">
+                Required so the customer can securely claim and watch the completed Private Service Video.
+              </p>
               {jobFieldErrors.email && (
                 <p className="mt-1 text-sm text-red-600">{jobFieldErrors.email}</p>
               )}
@@ -8115,14 +8127,7 @@ export default function VendorJobs() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div>
-                     <div className="flex flex-wrap items-center gap-2">
-                       <CardTitle className="text-xl">{job.title}</CardTitle>
-                       {!isEmployeeView && workflowFilter === 'all' ? (
-                         <Badge variant="outline" className={getWorkflowTabBadgeClassForJob(job)}>
-                           Currently in: {getWorkflowTabLabelForJob(job)}
-                         </Badge>
-                       ) : null}
-                     </div>
+                     <CardTitle className="text-xl">{job.title}</CardTitle>
                      <p className="text-gray-600">Client: {job.client}</p>
                      <p className="text-xs text-gray-500">Reference: {String(job.id || '').trim() || 'Unavailable'}</p>
                      <p className="text-xs text-gray-500">
@@ -8143,25 +8148,6 @@ export default function VendorJobs() {
                         {job.recordingCompliance.addressSnapshot.formattedAddress}
                       </p>
                     ) : null}
-                    {(() => {
-                      const workflow = getVendorWorkflowStateForJob(job);
-                      const toneClasses: Record<string, string> = {
-                        green: 'border-green-200 bg-green-50 text-green-800',
-                        blue: 'border-blue-200 bg-blue-50 text-blue-800',
-                        red: 'border-red-200 bg-red-50 text-red-700',
-                        amber: 'border-amber-200 bg-amber-50 text-amber-800',
-                      };
-                      return (
-                        <div
-                          className={`mt-3 rounded-md border px-3 py-2 text-sm ${
-                            toneClasses[workflow.tone] || toneClasses.amber
-                          }`}
-                        >
-                          <div className="font-semibold">Next step: {workflow.label}</div>
-                          <div className="mt-1 text-xs">{workflow.detail}</div>
-                        </div>
-                      );
-                    })()}
                     {job?.recordingCompliance?.canonicalBlock ? (
                       <div className="mt-3 border border-amber-300/35 bg-amber-50 p-3 text-sm text-amber-950">
                         <div className="font-semibold">Recording is locked</div>
@@ -8406,20 +8392,24 @@ export default function VendorJobs() {
                   data-no-card-open
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex flex-wrap items-center gap-2 lg:justify-end" aria-label="Service Order status">
-                    <Badge className={getJobListBadgeColor(job)}>
-                      {formatJobStatusLabel(job.status, job.operationalPhase, job)}
-                    </Badge>
-                    {getConsentStatusForJob(job, getSavedRecordingComplianceForJob(job)) === CONSENT_STATE.ACCEPTED ? (
-                      <Badge className="bg-green-100 text-green-800">Permission approved</Badge>
-                    ) : getConsentStatusForJob(job, getSavedRecordingComplianceForJob(job)) === CONSENT_STATE.REQUESTED ? (
-                      <Badge className="bg-blue-100 text-blue-800">Permission pending</Badge>
-                    ) : null}
-                    {isJobAssignedForVideoUpload(job) ? <Badge className="bg-slate-200 text-slate-900">Assigned</Badge> : null}
-                    {getSavedRecordingComplianceForJob(job)?.serviceOrderReleasedAt ? (
-                      <Badge className="bg-emerald-100 text-emerald-800">Service Order sent</Badge>
-                    ) : null}
-                  </div>
+                  {(() => {
+                    const workflow = getVendorWorkflowStateForJob(job);
+                    const toneClasses: Record<string, string> = {
+                      green: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-50',
+                      blue: 'border-blue-400/30 bg-blue-500/10 text-blue-50',
+                      red: 'border-rose-400/30 bg-rose-500/10 text-rose-50',
+                      amber: 'border-amber-400/30 bg-amber-500/10 text-amber-50',
+                    };
+                    return (
+                      <div
+                        className={`rounded-md border px-4 py-3 ${toneClasses[workflow.tone] || toneClasses.amber}`}
+                        aria-label="Work record progress"
+                      >
+                        <p className="text-sm font-semibold">{workflow.label}</p>
+                        <p className="mt-1 text-xs leading-5 opacity-80">{workflow.detail}</p>
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center gap-2 lg:justify-end">
                     {!isEmployeeView && getPrimaryJobCtaLabel(job) ? (
                       <Button
@@ -8434,12 +8424,8 @@ export default function VendorJobs() {
                       >
                         {getPrimaryJobCtaLabel(job)}
                       </Button>
-                    ) : getSavedRecordingComplianceForJob(job)?.serviceOrderReleasedAt ? (
-                      <span className="flex-1 rounded-md border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-center text-sm font-semibold text-emerald-100 lg:flex-none">
-                        Service Order Sent
-                      </span>
                     ) : null}
-                  <div className="relative" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative ml-auto border-l border-white/10 pl-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
                       variant="outline"
@@ -8530,50 +8516,15 @@ export default function VendorJobs() {
 
                           if (isAwaitingReview) {
                             return (
-                              <>
-                                <button
-                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
-                                  onClick={() => {
-                                    openJobDetails(job);
-                                    setActiveJobActionMenuId(null);
-                                  }}
-                                >
-                                  View Review Package
-                                </button>
-                                {!isEmployeeView ? (
-                                  <>
-                                    <button
-                                      className="w-full px-3 py-2.5 text-left text-sm text-emerald-100 transition hover:bg-emerald-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                      onClick={() => {
-                                        setActiveJobActionMenuId(null);
-                                        openApproveConfirmModal(job);
-                                      }}
-                                      disabled={
-                                        !(
-                                          jobHasVideoForStage(job, 'INTRO') &&
-                                          jobHasVideoForStage(job, 'IN_PROGRESS') &&
-                                          jobHasVideoForStage(job, 'COMPLETED')
-                                        ) ||
-                                        Boolean(jobMutationLoadingId) ||
-                                        jobActionLoading ||
-                                        approveJobSubmitting
-                                      }
-                                    >
-                                      Approve Private Proof
-                                    </button>
-                                    <button
-                                      className="w-full px-3 py-2.5 text-left text-sm text-amber-100 transition hover:bg-amber-500/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                      onClick={() => {
-                                        setActiveJobActionMenuId(null);
-                                        openRejectJobModal(job);
-                                      }}
-                                      disabled={Boolean(jobMutationLoadingId) || jobActionLoading || rejectJobSubmitting}
-                                    >
-                                      Request Changes
-                                    </button>
-                                  </>
-                                ) : null}
-                              </>
+                              <button
+                                className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
+                                onClick={() => {
+                                  openJobDetails(job);
+                                  setActiveJobActionMenuId(null);
+                                }}
+                              >
+                                View Details
+                              </button>
                             );
                           }
 

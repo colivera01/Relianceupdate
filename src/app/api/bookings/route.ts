@@ -109,6 +109,11 @@ function normalizeCreationRequestKey(value: unknown): string | null {
   return normalized.slice(0, 255);
 }
 
+function normalizeServiceVideoCustomerEmail(value: unknown): string | null {
+  const email = String(value || "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
 function finiteCoordinate(value: unknown): number | null {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -767,6 +772,22 @@ export async function POST(request: NextRequest) {
     const recordingAssessment = assessmentInput
       ? deriveRecordingScopeAssessment(assessmentInput)
       : null;
+    if (
+      isVendorStaffForThisVendor &&
+      recordingAssessment &&
+      !normalizeServiceVideoCustomerEmail(clientEmailCombined)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Customer email is required for a Service Video work record so the customer can securely claim and view Private proof.',
+          code: 'CUSTOMER_EMAIL_REQUIRED_FOR_SERVICE_VIDEO',
+          responsibleParticipant: 'VENDOR_MANAGER',
+          resolution: 'Enter the customer email that should receive and claim the completed Private Service Video.',
+        },
+        { status: 400 }
+      );
+    }
     if (
       isVendorStaffForThisVendor &&
       recordingAssessment &&

@@ -1,6 +1,5 @@
 import path from "node:path";
 import { config as loadEnv } from "dotenv";
-import { PrismaClient } from "@prisma/client";
 import { expect, test, type Page } from "@playwright/test";
 import { createAuthSessionCookie } from "../src/lib/auth-session";
 
@@ -11,7 +10,6 @@ const VENDOR_ID = "rv8-replay-vendor";
 const JOB_ID = "rv8-replay-job";
 const MANAGER_ID = "rv8-replay-manager";
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
-const prisma = new PrismaClient();
 
 const releasedJob = {
   id: JOB_ID,
@@ -44,6 +42,24 @@ const releasedJob = {
   },
   createdAt: "2026-08-13T14:00:00.000Z",
   updatedAt: "2026-08-13T15:00:00.000Z",
+};
+
+const managerReviewJob = {
+  ...releasedJob,
+  id: "rv8-manager-review-job",
+  title: "Controlled manager review",
+  status: "AWAITING_REVIEW",
+  uploadedVideoStages: ["INTRO", "IN_PROGRESS", "COMPLETED"],
+  recordingCompliance: {
+    ...releasedJob.recordingCompliance,
+    canonicalBlock: {
+      code: "MANAGER_REVIEW_IN_PROGRESS",
+      why: "The completed Service Videos were submitted for manager review.",
+      responsibleParticipant: "VENDOR_MANAGER",
+      resolution: "Wait for manager review.",
+      serviceMayContinue: true,
+    },
+  },
 };
 
 async function installVendorFixture(page: Page, jobs: unknown[]) {
@@ -161,6 +177,14 @@ async function installVendorFixture(page: Page, jobs: unknown[]) {
       });
       return;
     }
+    if (pathname === "/api/consent/status") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, status: "accepted" }),
+      });
+      return;
+    }
     if (pathname === `/api/vendors/${VENDOR_ID}/jobs/${JOB_ID}/recording-permission`) {
       await route.fulfill({
         status: 200,
@@ -192,60 +216,19 @@ async function installVendorFixture(page: Page, jobs: unknown[]) {
 }
 
 async function openVendorJobs(page: Page) {
-  await page.goto("/vendor/jobs");
+  await page.goto("/test-fixtures/rv8-vendor-jobs");
   const workflowGuide = page.getByRole("dialog", { name: "How a work record becomes customer-visible proof" });
-  if (await workflowGuide.isVisible().catch(() => false)) {
+  const guideOpened = await workflowGuide
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (guideOpened) {
     await workflowGuide.getByRole("button", { name: "Got it" }).click();
   }
 }
 
 test.describe("RV-8 Product Owner replay corrections", () => {
   test.describe.configure({ mode: "serial" });
-
-  test.beforeAll(async () => {
-    await prisma.user.upsert({
-      where: { id: MANAGER_ID },
-      create: {
-        id: MANAGER_ID,
-        name: "Controlled Manager",
-        email: "manager@reliance.test",
-        accountStatus: "active",
-        demo: true,
-      },
-      update: { name: "Controlled Manager", accountStatus: "active" },
-    });
-    await prisma.vendor.upsert({
-      where: { id: VENDOR_ID },
-      create: {
-        id: VENDOR_ID,
-        name: "Controlled Services",
-        businessName: "Controlled Services",
-        email: "rv8-replay-vendor@reliance.test",
-        accountStatus: "active",
-        demo: true,
-      },
-      update: { accountStatus: "active" },
-    });
-    await prisma.vendorMembership.upsert({
-      where: { vendorId_userId: { vendorId: VENDOR_ID, userId: MANAGER_ID } },
-      create: {
-        id: "rv8-replay-manager-membership",
-        vendorId: VENDOR_ID,
-        userId: MANAGER_ID,
-        role: "MANAGER",
-        status: "ACTIVE",
-        approvedAt: new Date(),
-      },
-      update: { role: "MANAGER", status: "ACTIVE", revokedAt: null },
-    });
-  });
-
-  test.afterAll(async () => {
-    await prisma.vendorMembership.deleteMany({ where: { vendorId: VENDOR_ID } });
-    await prisma.vendor.deleteMany({ where: { id: VENDOR_ID } });
-    await prisma.user.deleteMany({ where: { id: MANAGER_ID } });
-    await prisma.$disconnect();
-  });
 
   test("uses plain-language mutually exclusive recording-scope questions", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -255,10 +238,10 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.getByRole("button", { name: "Add Work Record" }).click();
     const dialog = page.getByRole("dialog", { name: "Add Work Record" });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText("Whose property may appear in the video?", { exact: true })).toBeVisible();
-    await expect(dialog.getByText("Could anyone be identifiable in the video?", { exact: true })).toBeVisible();
-    await expect(dialog.getByText("What will the camera primarily show?", { exact: true })).toBeVisible();
-    await expect(dialog.getByText("Who can approve recording for this service?", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "Whose property may appear in the video?" })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "What will the camera primarily show?" })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: /Who can approve recording for this service\?/ })).toBeVisible();
 
     const required = dialog.getByRole("radio", { name: /Yes - Recording is required/ });
     const optional = dialog.getByRole("radio", { name: /No - The service can continue without recording/ });
@@ -269,7 +252,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(required).toBeChecked();
     await expect(optional).not.toBeChecked();
 
-    const authority = dialog.getByText("Who can approve recording for this service?", { exact: true }).locator("select");
+    const authority = dialog.getByRole("combobox", { name: /Who can approve recording for this service\?/ });
     await expect(authority.locator("option")).toHaveText([
       "Choose one",
       "Customer",
@@ -285,7 +268,11 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await openVendorJobs(page);
 
     await expect(page.getByText(releasedJob.title, { exact: true })).toBeVisible();
-    await expect(page.getByText("Service Order Sent", { exact: true })).toBeVisible();
+    const progress = page.getByLabel("Work record progress");
+    await expect(progress).toHaveCount(1);
+    await expect(progress).toContainText("Service Order Sent");
+    await expect(page.getByText("Service Order Sent", { exact: true })).toHaveCount(1);
+    await expect(page.getByLabel("Service Order status")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Start Starting Condition" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Actions" }).click();
@@ -298,12 +285,29 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(evidenceDialog).toContainText("read-only evidence");
     await expect(evidenceDialog).toContainText("Recording allowed");
     await expect(evidenceDialog).toContainText("rv8-decision-evidence-1");
-    await evidenceDialog.getByRole("button", { name: "Close" }).click();
+    await evidenceDialog.getByRole("button", { name: "Close" }).first().click();
 
     await page.getByRole("button", { name: "Actions" }).click();
     await page.getByRole("button", { name: "Cancel Service Order" }).click();
     const cancelDialog = page.getByRole("dialog", { name: "Cancel Service Order" });
     await expect(cancelDialog).toContainText("Existing permission, location, assignment, delivery, and audit evidence will remain");
     await expect(cancelDialog.getByLabel("Cancellation reason")).toBeVisible();
+  });
+
+  test("keeps Manager Review controls in one place and Actions separate", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installVendorFixture(page, [managerReviewJob]);
+    await openVendorJobs(page);
+
+    const progress = page.getByLabel("Work record progress");
+    await expect(progress).toContainText("Awaiting Manager Review");
+    await expect(page.getByRole("button", { name: "Approve Private Proof" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Request Changes" })).toHaveCount(1);
+
+    await page.getByRole("button", { name: "Actions" }).click();
+    const actionsMenu = page.getByRole("menu");
+    await expect(actionsMenu.getByRole("button", { name: "View Details" })).toBeVisible();
+    await expect(actionsMenu.getByRole("button", { name: "Approve Private Proof" })).toHaveCount(0);
+    await expect(actionsMenu.getByRole("button", { name: "Request Changes" })).toHaveCount(0);
   });
 });

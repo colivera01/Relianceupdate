@@ -1098,7 +1098,7 @@ describe('POST /api/bookings', () => {
     });
   });
 
-  it('creates an unclaimed booking placeholder when vendor staff provides only client_phone', async () => {
+  it('requires customer email when vendor staff creates an account-linked Service Video work record', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
     hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
     hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
@@ -1132,14 +1132,41 @@ describe('POST /api/bookings', () => {
         'POST'
       )
     );
-    expect(res.status).toBe(200);
-    expect(hoisted.userCreate).toHaveBeenCalled();
-    expect(hoisted.bookingCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId: 'placeholder-customer-phone',
-        customerMetadata: expect.stringContaining('"client_phone":"4079148888"'),
-      }),
-    });
+    expect(res.status).toBe(400);
+    const json = await readJson(res);
+    expect(json.code).toBe('CUSTOMER_EMAIL_REQUIRED_FOR_SERVICE_VIDEO');
+    expect(json.error).toContain('securely claim and view Private proof');
+    expect(hoisted.userCreate).not.toHaveBeenCalled();
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid customer email even when a Service Video phone number is present', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+    hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+    hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
+    hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+
+    const res = await bookingsCreatePOST(
+      jsonRequest(
+        'http://localhost/api/bookings',
+        {
+          vendor_id: 'ven-1',
+          service_id: 'svc-1',
+          booking_date: '2024-09-02',
+          booking_time: '10:00:00',
+          title: 'Walk-in',
+          client_name: 'Alex Rivera',
+          client_email: 'not-an-email',
+          client_phone: '4079148888',
+        },
+        'POST'
+      )
+    );
+
+    expect(res.status).toBe(400);
+    const json = await readJson(res);
+    expect(json.code).toBe('CUSTOMER_EMAIL_REQUIRED_FOR_SERVICE_VIDEO');
+    expect(hoisted.bookingCreate).not.toHaveBeenCalled();
   });
 
   it('returns 400 CLIENT_CONTACT_REQUIRED when vendor staff omits client_email and client_phone', async () => {

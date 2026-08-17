@@ -338,7 +338,9 @@ export default function EmployeeJobsPage() {
   const [torchOn, setTorchOn] = useState(false);
   const [torchError, setTorchError] = useState<string | null>(null);
   const [capturedDraft, setCapturedDraft] = useState<CapturedVideoDraft | null>(null);
+  const [previewPlaybackState, setPreviewPlaybackState] = useState<"ready" | "playing" | "paused" | "ended" | "error">("ready");
   const liveVideoRef = useRef<HTMLVideoElement | null>(null);
+  const draftVideoRef = useRef<HTMLVideoElement | null>(null);
   const fallbackCaptureInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
@@ -805,6 +807,7 @@ export default function EmployeeJobsPage() {
   };
 
   const clearCapturedDraft = () => {
+    setPreviewPlaybackState("ready");
     setCapturedDraft((current) => {
       if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl);
       if (capturedDraftUrlRef.current === current?.previewUrl) {
@@ -812,6 +815,23 @@ export default function EmployeeJobsPage() {
       }
       return null;
     });
+  };
+
+  const toggleCapturedDraftPreview = async () => {
+    const video = draftVideoRef.current;
+    if (!video) return;
+    if (!video.paused && !video.ended) {
+      video.pause();
+      setPreviewPlaybackState("paused");
+      return;
+    }
+    if (video.ended) video.currentTime = 0;
+    try {
+      await video.play();
+      setPreviewPlaybackState("playing");
+    } catch {
+      setPreviewPlaybackState("error");
+    }
   };
 
   const stopActiveCameraStream = (stream: MediaStream | null = activeCameraStream) => {
@@ -1499,9 +1519,15 @@ export default function EmployeeJobsPage() {
             </p>
           </div>
           <video
+            ref={draftVideoRef}
             src={selectedDraft.previewUrl}
             controls
             playsInline
+            preload="metadata"
+            onPlay={() => setPreviewPlaybackState("playing")}
+            onPause={() => setPreviewPlaybackState((current) => current === "ended" ? current : "paused")}
+            onEnded={() => setPreviewPlaybackState("ended")}
+            onError={() => setPreviewPlaybackState("error")}
             className="h-full w-full flex-1 bg-black object-contain"
           />
           <div
@@ -1514,6 +1540,23 @@ export default function EmployeeJobsPage() {
                 className="rounded-lg border border-rose-300/40 bg-rose-950/80 px-4 py-3 text-sm font-semibold text-rose-100"
               >
                 {selectedStageFeedback?.message || "Retry Required: The upload did not finish."}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void toggleCapturedDraftPreview()}
+              disabled={Boolean(uploadingKey)}
+              className="w-full rounded-2xl border border-blue-200 bg-blue-600 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-blue-950/40 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {previewPlaybackState === "playing"
+                ? "Pause Preview"
+                : previewPlaybackState === "ended"
+                  ? "Replay Preview"
+                  : "Play Preview"}
+            </button>
+            {previewPlaybackState === "error" ? (
+              <p role="alert" className="rounded-lg border border-amber-300/40 bg-amber-950/80 px-4 py-3 text-sm font-semibold text-amber-100">
+                Preview could not play on this device. Retake the clip before saving.
               </p>
             ) : null}
             <button
