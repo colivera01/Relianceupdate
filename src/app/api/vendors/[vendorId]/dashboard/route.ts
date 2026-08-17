@@ -105,6 +105,19 @@ function extractUploadedVideoStagesFromMetadata(value: string | null | undefined
     .filter((stageKey) => ["INTRO", "IN_PROGRESS", "COMPLETED"].includes(stageKey));
 }
 
+function extractCancellationFromMetadata(value: string | null | undefined) {
+  const metadata = parseCustomerMetadata(value);
+  const raw = metadata.vendor_job_cancellation;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const cancellation = raw as Record<string, unknown>;
+  return {
+    status: String(cancellation.status || "CANCELED"),
+    reason: String(cancellation.reason || "").trim(),
+    canceledAt: String(cancellation.canceled_at || "").trim() || null,
+    canceledByUserId: String(cancellation.canceled_by_user_id || "").trim() || null,
+  };
+}
+
 function resolveJobSourceFromMetadata(value: string | null | undefined): "customer_booking" | "vendor_created_job" {
   const metadata = parseCustomerMetadata(value);
   const claimStatus = String(metadata.claim_status || "").trim().toUpperCase();
@@ -749,6 +762,7 @@ export async function GET(
         consentAcceptedAt: latestConsentRecord?.acceptedAt?.toISOString?.() || null,
         consentDeclinedAt: latestConsentRecord?.declinedAt?.toISOString?.() || null,
         consentNotification: toBookingNotificationState(consentNotification),
+        cancellation: extractCancellationFromMetadata(booking.customerMetadata),
         source: resolveJobSourceFromMetadata(booking.customerMetadata),
         createdAt: booking.createdAt?.toISOString() || null,
         updatedAt: booking.updatedAt?.toISOString() || booking.createdAt?.toISOString() || null,

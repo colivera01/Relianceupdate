@@ -481,6 +481,30 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     }
 
     if (action === "UPDATE_JOB") {
+      const editableStatus = normalizeBookingStatus(booking.status);
+      if (!new Set(["PENDING", "CONFIRMED"]).has(editableStatus)) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "WORK_RECORD_EDIT_LOCKED",
+            "This work record can no longer be edited because it has entered review or a closed lifecycle state.",
+            { status: editableStatus },
+          ),
+          { status: 409 },
+        );
+      }
+      const linkedMedia = await getLinkedMediaSummary(vendorId, booking.id);
+      if (linkedMedia.linkedAssetCount > 0) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "WORK_RECORD_EDIT_LOCKED_AFTER_CAPTURE",
+            "Captured Service Video evidence cannot be changed through Edit Work Record. Use the manager correction workflow or create a corrected work record.",
+            { linkedAssetCount: linkedMedia.linkedAssetCount },
+          ),
+          { status: 409 },
+        );
+      }
       const title = body?.title !== undefined ? String(body.title || "").trim() : undefined;
       const clientName =
         body?.clientName !== undefined ? String(body.clientName || "").trim() : undefined;
@@ -529,6 +553,56 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         ? deriveRecordingScopeAssessment(parsedAssessment)
         : null;
       const currentCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
+      const serviceChanged =
+        serviceId !== undefined && String(serviceId || "") !== String(booking.service?.id || "");
+      const titleChanged =
+        title !== undefined && String(title || "") !== String(booking.title || "");
+      const customerIdentityChanged =
+        clientName !== undefined && String(clientName || "") !== String(booking.clientName || "");
+      const evidenceBearingDescriptorChanged =
+        serviceChanged || titleChanged || customerIdentityChanged;
+      const currentPermission =
+        evidenceBearingDescriptorChanged && (prisma as any).consentRecord?.findFirst
+          ? await (prisma as any).consentRecord.findFirst({
+              where: { bookingId: booking.id, isCurrent: true },
+              select: { id: true, lifecycleStatus: true, status: true },
+            })
+          : null;
+      const currentCertification =
+        evidenceBearingDescriptorChanged && (prisma as any).employeeRecordingCertification?.findFirst
+          ? await (prisma as any).employeeRecordingCertification.findFirst({
+              where: { bookingId: booking.id, status: "ACTIVE", invalidatedAt: null },
+              select: { id: true },
+            })
+          : null;
+      const evidenceProcessStarted = Boolean(
+          currentPermission ||
+          currentCertification ||
+          currentCompliance.serviceOrderReleasedAt ||
+          (Array.isArray(currentCompliance.releasedMembershipIds) &&
+            currentCompliance.releasedMembershipIds.length > 0),
+      );
+      if (customerIdentityChanged && currentPermission) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "CUSTOMER_RECIPIENT_CORRECTION_REQUIRED",
+            "Customer identity or contact must be corrected through Manage Recording Permission so the prior request remains preserved and revoked.",
+            { responsibleParticipant: "VENDOR_MANAGER" },
+          ),
+          { status: 409 },
+        );
+      }
+      if (evidenceBearingDescriptorChanged && evidenceProcessStarted && !nextAssessment) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "RECORDING_ASSESSMENT_REQUIRED_FOR_MATERIAL_CHANGE",
+            "Complete the current recording assessment before changing evidence-bearing work details.",
+          ),
+          { status: 422 },
+        );
+      }
       if (
         nextAssessment &&
         currentCompliance.location &&
@@ -555,8 +629,16 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           })
         : null;
       const materialScopeChange = Boolean(
-        nextAssessment && currentAssessment?.scopeHash !== nextAssessment.scopeHash,
+        nextAssessment &&
+          (currentAssessment?.scopeHash !== nextAssessment.scopeHash ||
+            (evidenceBearingDescriptorChanged && evidenceProcessStarted)),
       );
+      const materialChangeReasons = [
+        currentAssessment?.scopeHash !== nextAssessment?.scopeHash ? "recording_scope" : "",
+        serviceChanged ? "service_work_type" : "",
+        titleChanged ? "work_title" : "",
+        customerIdentityChanged ? "customer_identity" : "",
+      ].filter(Boolean);
 
       if (nextAssessment && materialScopeChange) {
         const now = new Date();
@@ -639,6 +721,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
                       previousAssessmentId: currentAssessment?.id || null,
                       previousScopeHash: currentAssessment?.scopeHash || null,
                       nextScopeHash: nextAssessment.scopeHash,
+                      materialChangeReasons,
                     }),
                   },
                 }),
@@ -760,6 +843,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             vendorId,
             previousAssessmentId: currentAssessment?.id || null,
             previousScopeHash: currentAssessment?.scopeHash || null,
+            materialChangeReasons,
           },
         });
         return NextResponse.json({
@@ -776,6 +860,23 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         where: { id: booking.id },
         data,
         select: { id: true, status: true, title: true, clientName: true, serviceId: true, updatedAt: true },
+      });
+      await recordLifecycleAudit({
+        actionType: "work_record_details_updated",
+        entityType: "booking",
+        entityId: booking.id,
+        actorUserId: member.userId,
+        previousValue: {
+          title: booking.title,
+          clientName: booking.clientName,
+          serviceId: booking.service?.id || null,
+        },
+        newValue: {
+          title: updated.title,
+          clientName: updated.clientName,
+          serviceId: updated.serviceId,
+        },
+        metadata: { vendorId, evidenceSuperseded: false },
       });
       return NextResponse.json({
         success: true,

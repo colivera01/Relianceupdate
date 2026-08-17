@@ -266,6 +266,12 @@ export async function rotateVerifiedPermissionLink(input: {
     },
   });
   if (!record) throw new Error("Permission request not found");
+  if (
+    String(record.lifecycleStatus || "").toUpperCase() === "WRONG_RECIPIENT" ||
+    String(record.status || "").toLowerCase() === "wrong_recipient"
+  ) {
+    throw new Error("Correct the customer recipient before sending another permission request");
+  }
   if (record.decisionEvidence || ["ACCEPTED", "DECLINED"].includes(String(record.status || "").toUpperCase())) {
     throw new Error("A final permission decision cannot be resent");
   }

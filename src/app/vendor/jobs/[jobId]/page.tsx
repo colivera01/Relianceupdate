@@ -37,6 +37,12 @@ type JobLike = {
   notes?: Array<{ text?: string }>;
   rejectionReason?: string | null;
   rejectedAt?: string | null;
+  cancellation?: {
+    reason?: string | null;
+    canceledAt?: string | null;
+    canceledBy?: string | null;
+    canceledByUserId?: string | null;
+  } | null;
 };
 
 type SessionDetails = {
@@ -473,6 +479,12 @@ export default function VendorJobDetailPage() {
     }
     if (normalizedStatus === "AWAITING_REVIEW") events.push("Submitted for manager review");
     if (job?.rejectionReason) events.push("Rejected by manager");
+    if (normalizedStatus === "CANCELED") {
+      const actor = String(job?.cancellation?.canceledBy || "Vendor manager").trim();
+      const reason = String(job?.cancellation?.reason || "No reason recorded").trim();
+      const when = formatDateTimeUtc(job?.cancellation?.canceledAt || job?.updatedAt);
+      events.push(`Canceled by ${actor}: ${reason} (${when})`);
+    }
     if (normalizedStatus === "COMPLETED") events.push("Completed");
     return events;
   }, [job, stageMap, normalizedStatus]);
@@ -563,6 +575,18 @@ export default function VendorJobDetailPage() {
                   <p className="text-sm font-semibold text-amber-900">Rejected by manager</p>
                   <p className="mt-1 text-sm text-amber-800">{job.rejectionReason}</p>
                   <p className="mt-2 text-xs text-amber-700">This completed work order is closed as rejected and will not move to public moderation.</p>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {normalizedStatus === "CANCELED" ? (
+              <Card>
+                <CardContent className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+                  <p className="text-sm font-semibold text-rose-900">Service Order canceled</p>
+                  <p className="mt-1 text-sm text-rose-800">No further service work or recording is required.</p>
+                  <p className="mt-2 text-xs text-rose-700">
+                    {job.cancellation?.reason ? `Reason: ${job.cancellation.reason}` : 'No cancellation reason was recorded.'}
+                  </p>
                 </CardContent>
               </Card>
             ) : null}

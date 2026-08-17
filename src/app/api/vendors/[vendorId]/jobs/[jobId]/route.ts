@@ -90,6 +90,20 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
     }
 
     const metadata = parseCustomerMetadata(booking.customerMetadata || null);
+    const rawCancellation =
+      metadata.vendor_job_cancellation &&
+      typeof metadata.vendor_job_cancellation === "object" &&
+      !Array.isArray(metadata.vendor_job_cancellation)
+        ? (metadata.vendor_job_cancellation as Record<string, unknown>)
+        : null;
+    const canceledByUserId = String(rawCancellation?.canceled_by_user_id || "").trim();
+    const cancellationActor =
+      canceledByUserId && (prisma as any).user?.findUnique
+        ? await (prisma as any).user.findUnique({
+            where: { id: canceledByUserId },
+            select: { name: true, email: true },
+          })
+        : null;
     const notes = String(metadata.user_notes || "").trim();
     const customerEmail =
       String(metadata.client_email || metadata.claim_contact_email || "").trim() ||
@@ -121,6 +135,16 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         rejectionReason: booking.rejectionReason || null,
         rejectedAt: booking.rejectedAt?.toISOString?.() || null,
         notes: notes ? [{ text: notes }] : [],
+        cancellation: rawCancellation
+          ? {
+              reason: String(rawCancellation.reason || "").trim(),
+              canceledAt: String(rawCancellation.canceled_at || "").trim() || null,
+              canceledByUserId: canceledByUserId || null,
+              canceledBy:
+                String(cancellationActor?.name || cancellationActor?.email || "").trim() ||
+                "Vendor manager",
+            }
+          : null,
       },
     });
   } catch (error: any) {

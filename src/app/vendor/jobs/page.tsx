@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
+import { mergeAuthoritativeVendorJobState } from '@/lib/vendor-job-client-state';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive, Sparkles } from 'lucide-react';
@@ -307,6 +308,14 @@ export default function VendorJobs() {
   const getVendorWorkflowStateForJob = (job: any) => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
     const status = String(job?.status || '').trim().toLowerCase();
+    if (status === 'canceled' || status === 'cancelled') {
+      return {
+        label: 'Canceled',
+        detail: 'This Service Order was canceled. No further service work or recording is required.',
+        actionLabel: 'View Job',
+        tone: 'red',
+      };
+    }
     if (phase === 'REJECTED' || status === 'rejected' || jobHasRejectedMedia(job)) {
       return {
         label: 'Rejected / closed',
@@ -406,6 +415,14 @@ export default function VendorJobs() {
         tone: 'blue',
       };
     }
+    if (requiresConsent && consentState === CONSENT_STATE.WRONG_RECIPIENT) {
+      return {
+        label: 'Recording request reported as wrong recipient',
+        detail: 'Recording remains locked. Correct the customer contact before sending a new request.',
+        actionLabel: 'Correct Customer Contact',
+        tone: 'red',
+      };
+    }
     if (requiresConsent && consentState === CONSENT_STATE.DECLINED) {
       return {
         label: 'Consent declined',
@@ -425,7 +442,7 @@ export default function VendorJobs() {
     if (requiresConsent) {
       return {
         label: 'Verified recording permission required',
-        detail: `Consent will be sent to ${formatCustomerConsentRecipient(job)}. Assignment remains locked until the customer accepts.`,
+        detail: `You may assign an employee for scheduling. Service Order release and recording remain locked until ${formatCustomerConsentRecipient(job)} accepts and all recording gates pass.`,
         actionLabel: 'Send Consent',
         tone: 'amber',
       };
@@ -846,8 +863,8 @@ export default function VendorJobs() {
     return { status: CONSENT_STATE.NOT_REQUESTED };
   };
 
-  const refreshConsentStatusForSelectedJob = async () => {
-    const bookingId = String(selectedJob?.bookingId || selectedJob?.id || '').trim();
+  const fetchConsentStatusForJob = async (job: any, options?: { updateComplianceDialog?: boolean }) => {
+    const bookingId = String(job?.bookingId || job?.id || '').trim();
     if (!bookingId) return;
     setConsentRefreshLoading(true);
     setConsentRefreshError('');
@@ -864,29 +881,50 @@ export default function VendorJobs() {
         );
       }
       const mapped = mapConsentStatusPayloadToUiState(payload);
-      applyConsentStatusFromBackend(mapped.status, {
-        requestId: String(payload?.permission?.id || payload?.latestConsentId || '').trim(),
-      });
-      if (selectedJob && mapped.status === CONSENT_STATE.ACCEPTED) {
+      const requestId = String(payload?.permission?.id || payload?.latestConsentId || '').trim();
+      setConsentStatusByBookingId((current) => ({ ...current, [bookingId]: mapped.status }));
+      if (options?.updateComplianceDialog) {
+        applyConsentStatusFromBackend(mapped.status, { requestId });
+      }
+      if (options?.updateComplianceDialog && job && mapped.status === CONSENT_STATE.ACCEPTED) {
         const selectedLocation = String(location || '').trim().toLowerCase();
         if (selectedLocation === 'residence' || selectedLocation === 'customer-business') {
-          const snapshot = buildRecordingComplianceSnapshot(selectedJob, {
+          const snapshot = buildRecordingComplianceSnapshot(job, {
             location: selectedLocation as 'residence' | 'customer-business',
             consentAccepted: true,
-            consentRequestId: String(payload?.permission?.id || payload?.latestConsentId || '').trim(),
+            consentRequestId: requestId,
             locationVerified:
               selectedLocation === 'customer-business'
-                ? Boolean(locationVerified || getSavedRecordingComplianceForJob(selectedJob)?.locationVerified)
+                ? Boolean(locationVerified || getSavedRecordingComplianceForJob(job)?.locationVerified)
                 : Boolean(locationVerified),
           });
-          await persistRecordingComplianceToBackend(selectedJob, snapshot);
-          await releaseEmployeeServiceOrderWhenReady(selectedJob, snapshot);
+          await persistRecordingComplianceToBackend(job, snapshot);
+          await releaseEmployeeServiceOrderWhenReady(job, snapshot);
         }
       }
+      await reloadJobsFromBackend({ silent: true });
+      return mapped.status;
     } catch (error) {
       setConsentRefreshError(error instanceof Error ? error.message : 'Failed to refresh consent status');
     } finally {
       setConsentRefreshLoading(false);
+    }
+  };
+
+  const refreshConsentStatusForSelectedJob = async () =>
+    fetchConsentStatusForJob(selectedJob, { updateComplianceDialog: true });
+
+  const checkConsentStatusOnly = async (job: any) => {
+    try {
+      const status = await fetchConsentStatusForJob(job);
+      if (status) {
+        setJobActionFeedback({
+          type: 'success',
+          message: `Recording-permission status refreshed: ${String(status).replace(/_/g, ' ')}.`,
+        });
+      }
+    } catch {
+      // fetchConsentStatusForJob already presents the canonical failure.
     }
   };
 
@@ -963,7 +1001,6 @@ export default function VendorJobs() {
       workflowAction === 'Choose Location' ||
       workflowAction === 'Open Consent Step' ||
       workflowAction === 'Send Consent' ||
-      workflowAction === 'Check Consent' ||
       workflowAction === 'View Consent Step' ||
       workflowAction === 'Resend Consent' ||
       workflowAction === 'Send Service Order'
@@ -973,6 +1010,14 @@ export default function VendorJobs() {
       } else {
         void openComplianceForNextStage(job);
       }
+      return;
+    }
+    if (workflowAction === 'Check Consent') {
+      void checkConsentStatusOnly(job);
+      return;
+    }
+    if (workflowAction === 'Correct Customer Contact') {
+      openPermissionRecoveryForJob(job);
       return;
     }
     const nextStage = getNextMissingVideoStageForJob(job);
@@ -2157,6 +2202,16 @@ export default function VendorJobs() {
       );
       return;
     }
+    if (
+      mode === 'resend' &&
+      getConsentStatusForJob(job, getSavedRecordingComplianceForJob(job)) ===
+        CONSENT_STATE.WRONG_RECIPIENT
+    ) {
+      setPermissionRecoveryError(
+        'This request was reported as sent to the wrong person. Correct the customer contact before sending a new request.'
+      );
+      return;
+    }
     const email = getUsableCustomerEmail(permissionRecoveryForm.email);
     const phone = String(permissionRecoveryForm.phone || '').trim();
     if (mode === 'correct' && !email && !phone) {
@@ -2311,6 +2366,7 @@ export default function VendorJobs() {
       consentDeclinedAt: job?.consentDeclinedAt || null,
       recordingCompliance: job?.recordingCompliance || null,
       consentNotification: job?.consentNotification || null,
+      cancellation: job?.cancellation || null,
       archivedAt: status === 'archived' ? (job?.date || new Date().toISOString()) : null,
       archiveReason: status === 'archived' ? 'Archived job' : '',
     };
@@ -2319,7 +2375,8 @@ export default function VendorJobs() {
   const mergeJobsForReload = (
     backendJobs: any[],
     preservedJobs: any[] = [],
-    removedJobIds: Set<string> = new Set()
+    removedJobIds: Set<string> = new Set(),
+    backendAuthoritative = true
   ) => {
     const suppressedJobIds = new Set([...Array.from(locallyDeletedJobIdsRef.current), ...Array.from(removedJobIds)]);
     const normalizedBackendJobs = backendJobs.filter(
@@ -2333,7 +2390,10 @@ export default function VendorJobs() {
     );
     const mergedBackendJobs = normalizedBackendJobs.map((job) => {
       const preserved = preservedById.get(String(job.id));
-      return preserved ? { ...job, ...preserved } : job;
+      if (!preserved) return job;
+      return backendAuthoritative
+        ? mergeAuthoritativeVendorJobState(preserved, job)
+        : { ...job, ...preserved };
     });
     const optimisticJobs = preservedJobs.filter((job) => {
       const id = String(job?.id || '');
@@ -2346,7 +2406,7 @@ export default function VendorJobs() {
   const upsertJobLocally = (job: any) => {
     const id = String(job?.id || '');
     if (!id) return;
-    setJobs((current) => mergeJobsForReload(current, [job]));
+    setJobs((current) => mergeJobsForReload(current, [job], new Set(), false));
     setArchivedJobs((current) => current.filter((existing: any) => String(existing?.id || '') !== id));
   };
 
@@ -2620,7 +2680,7 @@ export default function VendorJobs() {
             ? error.message
             : 'Failed to load jobs';
       if (preservedJobs.length > 0 || removedJobIds.size > 0) {
-        setJobs((current) => mergeJobsForReload(current, preservedJobs, removedJobIds));
+        setJobs((current) => mergeJobsForReload(current, preservedJobs, removedJobIds, false));
         setArchivedJobs((current) =>
           current.filter((job: any) => !removedJobIds.has(String(job?.id || '')))
         );
@@ -2697,6 +2757,7 @@ export default function VendorJobs() {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
     const status = String(job?.status || '').trim().toLowerCase();
     if (phase === 'REJECTED' || status === 'rejected' || jobHasRejectedMedia(job)) return 'rejected';
+    if (status === 'canceled' || status === 'cancelled') return 'canceled';
     if (phase === 'AWAITING_ADMIN_REVIEW') return 'moderator_review';
     if (phase === 'COMPLETED' || status === 'completed') {
       const hasPublicMedia = getJobVideos(job).some(
@@ -2721,6 +2782,7 @@ export default function VendorJobs() {
 
   const getWorkflowTabLabelForJob = (job: any) => {
     const bucket = getJobWorkflowBucket(job);
+    if (bucket === 'canceled') return 'Canceled';
     return workflowTabs.find((tab) => tab.value === bucket)?.label || 'Active Work';
   };
 
@@ -2736,6 +2798,9 @@ export default function VendorJobs() {
       return '!border-emerald-300/45 !bg-emerald-500/20 !text-emerald-50';
     }
     if (bucket === 'rejected') {
+      return '!border-rose-300/45 !bg-rose-500/20 !text-rose-50';
+    }
+    if (bucket === 'canceled') {
       return '!border-rose-300/45 !bg-rose-500/20 !text-rose-50';
     }
     return '!border-sky-300/45 !bg-sky-500/20 !text-sky-50';
@@ -3146,7 +3211,7 @@ export default function VendorJobs() {
         email,
       });
       const automaticConsent = parsed?.automaticConsent;
-      if (automaticConsent?.status === 'requested') {
+      if (['requested', 'delivered', 'sending'].includes(String(automaticConsent?.status || '').toLowerCase())) {
         setConsentStatusByBookingId((prev) => ({
           ...prev,
           [persistedId]: CONSENT_STATE.REQUESTED,
@@ -3437,6 +3502,18 @@ export default function VendorJobs() {
       email: String(job?.email || ''),
       serviceId: String(job?.serviceId || ''),
       recordingLocation: String(job?.recordingCompliance?.location || 'business'),
+      customerResidenceAddress: '',
+      customerResidenceCity: '',
+      customerResidenceState: '',
+      customerResidenceZipCode: '',
+      customerResidenceLatitude: null,
+      customerResidenceLongitude: null,
+      customerBusinessAddress: '',
+      customerBusinessCity: '',
+      customerBusinessState: '',
+      customerBusinessZipCode: '',
+      customerBusinessLatitude: null,
+      customerBusinessLongitude: null,
       propertyScope: String(scope.propertyScope || 'customer_owned'),
       peopleScope: String(scope.peopleScope || 'none'),
       frameControl: String(scope.frameControl || 'controlled'),
@@ -5923,8 +6000,6 @@ export default function VendorJobs() {
         onOpenChange={(open) => {
           setShowCreateJob(open);
           if (!open) {
-            setJobModalMode('create');
-            setJobFormTargetId(null);
             setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
           }
         }}
@@ -5943,6 +6018,11 @@ export default function VendorJobs() {
               <span className="font-semibold text-slate-950">What happens after saving:</span>{' '}
               Reliance creates the work record, returns you to Manage Jobs, and the selected service becomes
               available for assignment, consent, employee recording, manager review, and admin approval.
+            </div>
+          ) : null}
+          {jobModalMode === 'edit' ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+              Customer contact corrections use <strong>Manage Recording Permission</strong>. The saved service location is immutable. Changing the service or recording scope replaces stale permission and employee certification evidence.
             </div>
           ) : null}
           <div className="space-y-4">
@@ -6009,6 +6089,7 @@ export default function VendorJobs() {
                   value={newJob.customerFirstName}
                   required
                   aria-invalid={Boolean(jobFieldErrors.customerFirstName)}
+                  disabled={jobModalMode === 'edit'}
                   onChange={(e) => {
                     const value = e.target.value;
                     const nextFirstName = value;
@@ -6033,6 +6114,7 @@ export default function VendorJobs() {
                   value={newJob.customerLastName}
                   required
                   aria-invalid={Boolean(jobFieldErrors.customerLastName)}
+                  disabled={jobModalMode === 'edit'}
                   onChange={(e) => {
                     const value = e.target.value;
                     const nextLastName = value;
@@ -6057,6 +6139,7 @@ export default function VendorJobs() {
                 placeholder="Enter phone number"
                 value={newJob.phone}
                 aria-invalid={Boolean(jobFieldErrors.phone)}
+                disabled={jobModalMode === 'edit'}
                 onChange={(e) => {
                   const formattedPhone = formatPhoneNumber(e.target.value);
                   const digits = getPhoneDigits(formattedPhone);
@@ -6085,6 +6168,7 @@ export default function VendorJobs() {
                 placeholder="Enter email address"
                 value={newJob.email}
                 aria-invalid={Boolean(jobFieldErrors.email)}
+                disabled={jobModalMode === 'edit'}
                 onChange={(e) => {
                   const value = e.target.value;
                   setNewJob({ ...newJob, email: value });
@@ -6148,6 +6232,7 @@ export default function VendorJobs() {
                         name="recordingLocation"
                         value={option.value}
                         checked={checked}
+                        disabled={jobModalMode === 'edit'}
                         onChange={() => {
                           setNewJob({ ...newJob, recordingLocation: option.value });
                           setJobFieldErrors((prev) => ({ ...prev, recordingLocation: '' }));
@@ -7227,7 +7312,12 @@ export default function VendorJobs() {
               Manage Recording Permission
             </DialogTitle>
             <DialogDescription>
-              Recording remains locked while you resend the current request or correct who should receive it.
+              {getConsentStatusForJob(
+                permissionRecoveryJob,
+                getSavedRecordingComplianceForJob(permissionRecoveryJob)
+              ) === CONSENT_STATE.WRONG_RECIPIENT
+                ? 'The recipient reported this request as misdirected. Recording remains locked until you correct the customer contact and the new recipient allows recording.'
+                : 'Recording remains locked while you resend the current request or correct who should receive it.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -7255,6 +7345,10 @@ export default function VendorJobs() {
               </div>
             ) : null}
 
+            {getConsentStatusForJob(
+              permissionRecoveryJob,
+              getSavedRecordingComplianceForJob(permissionRecoveryJob)
+            ) !== CONSENT_STATE.WRONG_RECIPIENT ? (
             <section className="space-y-3 border-b border-slate-200 pb-5">
               <div>
                 <h3 className="font-semibold text-slate-950">Resend to the current recipient</h3>
@@ -7277,6 +7371,11 @@ export default function VendorJobs() {
                 {permissionRecoveryLoading === 'resend' ? 'Resending...' : 'Resend Permission Request'}
               </Button>
             </section>
+            ) : (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Resending to the current recipient is disabled. Correct the recipient below; the prior request remains in the audit history and its links stay revoked.
+              </div>
+            )}
 
             <section className="space-y-4">
               <div>

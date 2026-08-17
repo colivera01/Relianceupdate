@@ -122,4 +122,45 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       assignedEmployees: ["Lena Harbor"],
     });
   });
+
+  it("returns preserved cancellation reason, actor fallback, and timestamp for the activity timeline", async () => {
+    vi.mocked(prisma.booking.findFirst).mockResolvedValue({
+      id: "job-canceled",
+      title: "Canceled service",
+      clientName: "Jordan Rivera",
+      status: "CANCELED",
+      date: new Date("2026-08-15T15:00:00.000Z"),
+      createdAt: new Date("2026-08-15T14:00:00.000Z"),
+      updatedAt: new Date("2026-08-15T15:30:00.000Z"),
+      customerMetadata: JSON.stringify({
+        vendor_job_cancellation: {
+          status: "CANCELED",
+          canceled_at: "2026-08-15T15:30:00.000Z",
+          canceled_by_user_id: "manager-1",
+          reason: "Customer no longer needs the service",
+        },
+      }),
+      rejectionReason: null,
+      rejectedAt: null,
+      service: { name: "Canceled service" },
+      user: { name: "Jordan Rivera", email: null, phone: null },
+    } as any);
+
+    const response = await GET(new Request("http://localhost/api/vendors/vendor-1/jobs/job-canceled"), {
+      params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-canceled" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      job: {
+        status: "CANCELED",
+        cancellation: {
+          reason: "Customer no longer needs the service",
+          canceledAt: "2026-08-15T15:30:00.000Z",
+          canceledByUserId: "manager-1",
+          canceledBy: "Vendor manager",
+        },
+      },
+    });
+  });
 });

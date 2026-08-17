@@ -57,7 +57,10 @@ function stateMessage(state: string) {
       title: "This permission request was replaced",
       detail: "A newer request was sent. Please use the newest link or contact the business if you need another one.",
     },
-    wrong_recipient: { title: "This request was reported as misdirected", detail: "The service provider must correct the recipient before sending another request." },
+    wrong_recipient: {
+      title: "This request was reported as misdirected",
+      detail: "The service provider must correct the recipient before sending another request. No further action is required from you. You may close this page.",
+    },
   };
   return messages[state] || { title: "This request is not available", detail: "Ask the service provider to review the permission status." };
 }

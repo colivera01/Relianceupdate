@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PATCH } from "./[jobId]/actions/route";
-import { requireVendorMembership } from "@/lib/membership-auth";
+import { requireVendorManager } from "@/lib/membership-auth";
 import { createVerifiedPermissionRequest } from "@/lib/consent/request-service";
 import { deliverVerifiedPermissionRequest } from "@/lib/consent/delivery-service";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
+import { deriveRecordingScopeAssessment } from "@/lib/recording/scope-assessment";
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
@@ -21,6 +22,11 @@ const hoisted = vi.hoisted(() => {
   const notificationCreate = vi.fn();
   const consentEventCreate = vi.fn();
   const mediaSessionCreate = vi.fn();
+  const mediaSessionFindMany = vi.fn();
+  const mediaAssetCount = vi.fn();
+  const consentFindFirst = vi.fn();
+  const certificationFindFirst = vi.fn();
+  const serviceFindFirst = vi.fn();
   const tx = {
     booking: { update: bookingUpdate },
     recordingScopeAssessment: { update: assessmentUpdate, create: assessmentCreate },
@@ -33,8 +39,12 @@ const hoisted = vi.hoisted(() => {
   };
   const prisma = {
     booking: { findFirst: bookingFindFirst, update: bookingUpdate },
+    service: { findFirst: serviceFindFirst },
+    consentRecord: { findFirst: consentFindFirst },
+    employeeRecordingCertification: { findFirst: certificationFindFirst },
     recordingScopeAssessment: { findFirst: assessmentFindFirst },
-    mediaSession: { create: mediaSessionCreate },
+    mediaSession: { create: mediaSessionCreate, findMany: mediaSessionFindMany },
+    mediaAsset: { count: mediaAssetCount },
     $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
   };
   return {
@@ -52,6 +62,11 @@ const hoisted = vi.hoisted(() => {
     notificationUpdateMany,
     consentEventCreate,
     mediaSessionCreate,
+    mediaSessionFindMany,
+    mediaAssetCount,
+    consentFindFirst,
+    certificationFindFirst,
+    serviceFindFirst,
   };
 });
 
@@ -81,8 +96,13 @@ vi.mock("@/lib/notifications/send-video-ready", () => ({
 describe("material recording scope change", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireVendorMembership).mockResolvedValue({ userId: "manager-1" } as any);
+    vi.mocked(requireVendorManager).mockResolvedValue({ userId: "manager-1" } as any);
     vi.mocked(recordLifecycleAudit).mockResolvedValue(undefined);
+    hoisted.mediaSessionFindMany.mockResolvedValue([]);
+    hoisted.mediaAssetCount.mockResolvedValue(0);
+    hoisted.consentFindFirst.mockResolvedValue({ id: "permission-1", lifecycleStatus: "ACCEPTED", status: "accepted" });
+    hoisted.certificationFindFirst.mockResolvedValue({ id: "certification-1" });
+    hoisted.serviceFindFirst.mockResolvedValue({ id: "service-2" });
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job-1",
       vendorId: "vendor-1",
@@ -158,7 +178,7 @@ describe("material recording scope change", () => {
         body: JSON.stringify({
           action: "UPDATE_JOB",
           recordingAssessment: {
-            recordingLocation: "residence",
+            recordingLocation: "business",
             propertyScope: "customer_owned",
             peopleScope: "customer",
             frameControl: "controlled",
@@ -167,7 +187,7 @@ describe("material recording scope change", () => {
             protectedNonParticipantMayAppear: false,
             sensitiveInformationMayAppear: false,
             identifiersMayAppear: false,
-            residenceInterior: true,
+            residenceInterior: false,
             businessInterior: false,
             serviceCanContinueWithoutRecording: true,
             essentialPrivateRecording: false,
@@ -204,7 +224,7 @@ describe("material recording scope change", () => {
       data: expect.objectContaining({ isCurrent: false, lifecycleStatus: "SUPERSEDED" }),
     });
     expect(hoisted.assessmentCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ generation: 2, isCurrent: true, locationType: "residence" }),
+      data: expect.objectContaining({ generation: 2, isCurrent: true, locationType: "business" }),
     });
     const savedMetadata = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
     expect(savedMetadata.vendor_job_service_order_released_at).toBeUndefined();
@@ -216,5 +236,144 @@ describe("material recording scope change", () => {
     expect(recordLifecycleAudit).toHaveBeenCalledWith(
       expect.objectContaining({ actionType: "recording_scope_changed", entityId: "job-1" }),
     );
+  });
+
+  it("rejects attempts to rewrite the immutable saved location snapshot", async () => {
+    const response = await PATCH(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-1/actions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "UPDATE_JOB",
+          recordingAssessment: {
+            recordingLocation: "residence",
+            propertyScope: "customer_owned",
+            peopleScope: "none",
+            frameControl: "controlled",
+            authorityHolderType: "customer",
+            minorMayAppear: false,
+            protectedNonParticipantMayAppear: false,
+            sensitiveInformationMayAppear: false,
+            identifiersMayAppear: false,
+            residenceInterior: true,
+            businessInterior: false,
+            serviceCanContinueWithoutRecording: true,
+            essentialPrivateRecording: false,
+          },
+        }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "RECORDING_LOCATION_SNAPSHOT_IMMUTABLE",
+    });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("supersedes permission when the service changes even if the scope hash is unchanged", async () => {
+    const assessmentInput = {
+      recordingLocation: "business" as const,
+      propertyScope: "customer_owned" as const,
+      peopleScope: "customer" as const,
+      frameControl: "controlled" as const,
+      authorityHolderType: "customer" as const,
+      minorMayAppear: false,
+      protectedNonParticipantMayAppear: false,
+      sensitiveInformationMayAppear: false,
+      identifiersMayAppear: false,
+      residenceInterior: false,
+      businessInterior: false,
+      serviceCanContinueWithoutRecording: true,
+      essentialPrivateRecording: false,
+      audioRequested: false,
+    };
+    const unchangedScope = deriveRecordingScopeAssessment(assessmentInput);
+    hoisted.assessmentFindFirst.mockResolvedValue({
+      id: "assessment-1",
+      generation: 1,
+      scopeHash: unchangedScope.scopeHash,
+    });
+
+    const response = await PATCH(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-1/actions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "UPDATE_JOB",
+          serviceId: "service-2",
+          title: "Panel replacement",
+          recordingAssessment: assessmentInput,
+        }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(hoisted.consentUpdateMany).toHaveBeenCalled();
+    expect(hoisted.certificationUpdateMany).toHaveBeenCalled();
+    expect(recordLifecycleAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          materialChangeReasons: expect.arrayContaining(["service_work_type"]),
+        }),
+      }),
+    );
+  });
+
+  it("requires the audited recipient-correction workflow after permission begins", async () => {
+    const response = await PATCH(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-1/actions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "UPDATE_JOB",
+          clientName: "Different Customer",
+          recordingAssessment: {
+            recordingLocation: "business",
+            propertyScope: "customer_owned",
+            peopleScope: "customer",
+            frameControl: "controlled",
+            authorityHolderType: "customer",
+            minorMayAppear: false,
+            protectedNonParticipantMayAppear: false,
+            sensitiveInformationMayAppear: false,
+            identifiersMayAppear: false,
+            residenceInterior: false,
+            businessInterior: false,
+            serviceCanContinueWithoutRecording: true,
+            essentialPrivateRecording: false,
+          },
+        }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "CUSTOMER_RECIPIENT_CORRECTION_REQUIRED",
+    });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("does not edit work-record evidence after capture begins", async () => {
+    hoisted.mediaSessionFindMany.mockResolvedValue([{ id: "session-1" }]);
+    hoisted.mediaAssetCount.mockResolvedValue(1);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-1/actions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "UPDATE_JOB", title: "Changed after capture" }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "WORK_RECORD_EDIT_LOCKED_AFTER_CAPTURE",
+    });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 });

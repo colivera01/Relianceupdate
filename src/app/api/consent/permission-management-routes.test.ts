@@ -14,13 +14,14 @@ const hoisted = vi.hoisted(() => {
   const create = vi.fn();
   const deliver = vi.fn();
   const lookup = vi.fn();
+  const notifyWrongRecipient = vi.fn();
   const prisma: any = {
     consentRecord: { findUnique: recordFindUnique, update: recordUpdate },
     consentRequestLink: { updateMany: linkUpdateMany },
     consentEvent: { create: eventCreate },
   };
   prisma.$transaction = vi.fn(async (operations: unknown[]) => Promise.all(operations));
-  return { prisma, recordFindUnique, linkUpdateMany, recordUpdate, eventCreate, authorize, rotate, create, deliver, lookup };
+  return { prisma, recordFindUnique, linkUpdateMany, recordUpdate, eventCreate, authorize, rotate, create, deliver, lookup, notifyWrongRecipient };
 });
 
 vi.mock("@/server/db", () => ({ prisma: hoisted.prisma }));
@@ -36,6 +37,9 @@ vi.mock("@/lib/consent/delivery-service", () => ({ deliverVerifiedPermissionRequ
 vi.mock("@/lib/consent/lookup", () => ({
   findPermissionByActionSecret: hoisted.lookup,
   actionLinkAvailability: (link: any) => ({ active: Boolean(link), reason: link ? null : "not_found" }),
+}));
+vi.mock("@/lib/notifications/send-permission-wrong-recipient", () => ({
+  sendPermissionWrongRecipientNotification: hoisted.notifyWrongRecipient,
 }));
 
 function request(method = "POST", body?: Record<string, unknown>) {
@@ -68,10 +72,22 @@ describe("permission request management", () => {
       booking: { id: "booking-1" },
     });
     hoisted.deliver.mockResolvedValue({ status: "SENT", attemptCount: 1, channels: [], lastError: null });
-    hoisted.lookup.mockResolvedValue({ id: "link-1", consentRecordId: "permission-1", generation: 1 });
+    hoisted.lookup.mockResolvedValue({
+      id: "link-1",
+      consentRecordId: "permission-1",
+      generation: 1,
+      consentRecord: {
+        id: "permission-1",
+        bookingId: "booking-1",
+        vendorId: "vendor-1",
+        booking: { title: "Outlet installation", service: { name: "Electrical service" } },
+        vendor: { name: "Electro", businessName: "Electro LLC" },
+      },
+    });
     hoisted.linkUpdateMany.mockResolvedValue({ count: 1 });
     hoisted.recordUpdate.mockResolvedValue({ id: "permission-1" });
     hoisted.eventCreate.mockResolvedValue({ id: "event-1" });
+    hoisted.notifyWrongRecipient.mockResolvedValue([{ channel: "email", success: true }]);
   });
 
   it("rotates and delivers a new link without returning the secret", async () => {
@@ -125,5 +141,12 @@ describe("permission request management", () => {
       data: expect.objectContaining({ eventType: "wrong_recipient" }),
     });
     expect(hoisted.eventCreate).not.toHaveBeenCalledWith({ data: expect.objectContaining({ eventType: "declined" }) });
+    expect(hoisted.notifyWrongRecipient).toHaveBeenCalledWith({
+      bookingId: "booking-1",
+      consentRecordId: "permission-1",
+      vendorId: "vendor-1",
+      vendorName: "Electro LLC",
+      serviceOrderTitle: "Outlet installation",
+    });
   });
 });

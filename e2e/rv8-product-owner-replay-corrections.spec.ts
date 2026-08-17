@@ -62,7 +62,67 @@ const managerReviewJob = {
   },
 };
 
-async function installVendorFixture(page: Page, jobs: unknown[]) {
+const wrongRecipientJob = {
+  ...releasedJob,
+  id: "rv8-wrong-recipient-job",
+  title: "Wrong-recipient correction",
+  consentStatus: "wrong_recipient",
+  recordingCompliance: {
+    ...releasedJob.recordingCompliance,
+    permissionStatus: "wrong_recipient",
+    consentAccepted: false,
+    serviceOrderReleasedAt: null,
+    releasedMembershipIds: [],
+  },
+};
+
+const pendingConsentJob = {
+  ...releasedJob,
+  id: "rv8-pending-consent-job",
+  title: "Permission status check",
+  consentStatus: "pending",
+  assignedEmployees: [],
+  assignedMembershipIds: [],
+  recordingCompliance: {
+    ...releasedJob.recordingCompliance,
+    permissionStatus: "pending",
+    consentAccepted: false,
+    serviceOrderReleasedAt: null,
+    releasedMembershipIds: [],
+  },
+};
+
+const permissionNotRequestedJob = {
+  ...pendingConsentJob,
+  id: "rv8-permission-not-requested-job",
+  title: "Assignment before permission",
+  latestConsentId: "",
+  consentStatus: "not_requested",
+  recordingCompliance: {
+    ...pendingConsentJob.recordingCompliance,
+    permissionStatus: "not_requested",
+  },
+};
+
+const canceledJob = {
+  ...releasedJob,
+  id: "rv8-canceled-job",
+  title: "Canceled controlled service",
+  status: "CANCELED",
+  cancellation: {
+    status: "CANCELED",
+    reason: "Customer no longer needs the service",
+    canceledAt: "2026-08-15T15:30:00.000Z",
+    canceledByUserId: MANAGER_ID,
+  },
+};
+
+async function installVendorFixture(
+  page: Page,
+  jobs: any[],
+  consentStatusResponse?: string | string[],
+) {
+  let consentStatusRequestCount = 0;
   const session = createAuthSessionCookie({
     userId: MANAGER_ID,
     email: "manager@reliance.test",
@@ -178,10 +238,17 @@ async function installVendorFixture(page: Page, jobs: unknown[]) {
       return;
     }
     if (pathname === "/api/consent/status") {
+      const configuredStatus = Array.isArray(consentStatusResponse)
+        ? consentStatusResponse[
+            Math.min(consentStatusRequestCount, consentStatusResponse.length - 1)
+          ]
+        : consentStatusResponse;
+      consentStatusRequestCount += 1;
+      const authoritativeConsentStatus = String(configuredStatus || jobs[0]?.consentStatus || "accepted");
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ success: true, status: "accepted" }),
+        body: JSON.stringify({ success: true, status: authoritativeConsentStatus }),
       });
       return;
     }
@@ -309,5 +376,72 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(actionsMenu.getByRole("button", { name: "View Details" })).toBeVisible();
     await expect(actionsMenu.getByRole("button", { name: "Approve Private Proof" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Request Changes" })).toHaveCount(0);
+  });
+
+  test("requires recipient correction and does not offer ordinary resend after a wrong-recipient report", async ({ page }) => {
+    await installVendorFixture(page, [wrongRecipientJob]);
+    await openVendorJobs(page);
+
+    await expect(page.getByText("Recording request reported as wrong recipient", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Correct Customer Contact" }).click();
+    const dialog = page.getByRole("dialog", { name: "Manage Recording Permission" });
+    await expect(dialog).toContainText("reported this request as misdirected");
+    await expect(dialog.getByRole("button", { name: "Resend Permission Request" })).toHaveCount(0);
+    await expect(dialog).toContainText("Resending to the current recipient is disabled");
+    await expect(dialog.getByRole("button", { name: "Correct Recipient and Send New Request" })).toBeVisible();
+  });
+
+  test("Check Consent refreshes permission only and does not invoke employee release", async ({ page }) => {
+    const actionRequests: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.includes("/actions")) actionRequests.push(request.url());
+    });
+    await installVendorFixture(page, [pendingConsentJob], ["pending", "accepted"]);
+    await openVendorJobs(page);
+
+    await page.getByRole("button", { name: "Check Consent" }).click();
+    await expect(page.getByText(/Recording-permission status refreshed: accepted/i)).toBeVisible();
+    expect(actionRequests).toEqual([]);
+    await expect(page.getByText(/Assign this job before sending/i)).toHaveCount(0);
+  });
+
+  test("allows scheduling assignment while explaining that release and recording remain gated", async ({ page }) => {
+    await installVendorFixture(page, [permissionNotRequestedJob]);
+    await openVendorJobs(page);
+
+    const progress = page.getByLabel("Work record progress");
+    await expect(progress).toContainText("You may assign an employee for scheduling");
+    await expect(progress).toContainText("Service Order release and recording remain locked");
+    await page.getByRole("button", { name: "Actions" }).click();
+    await expect(page.getByRole("button", { name: "Assign Employee" })).toBeVisible();
+  });
+
+  test("keeps canceled records in All but excludes them from Active Work", async ({ page }) => {
+    await installVendorFixture(page, [canceledJob]);
+    await openVendorJobs(page);
+
+    await expect(page.getByText(canceledJob.title, { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Work record progress")).toContainText("Canceled");
+    await expect(page.getByLabel("Work record progress")).toContainText("No further service work or recording is required");
+    await page.getByRole("button", { name: /Active Work/ }).click();
+    await expect(page.getByText(canceledJob.title, { exact: true })).toHaveCount(0);
+  });
+
+  test("closes the edit modal without rendering undefined create-only address values", async ({ page }) => {
+    await installVendorFixture(page, [pendingConsentJob]);
+    await openVendorJobs(page);
+
+    await page.getByRole("button", { name: "Actions" }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit Work Record" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByPlaceholder("First name")).toBeDisabled();
+    await expect(dialog.getByPlaceholder("Enter email address")).toBeDisabled();
+    await expect(dialog.getByRole("radio", { name: /Customer residence/ })).toBeDisabled();
+    await expect(dialog).toContainText("Manage Recording Permission");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(page.getByText(pendingConsentJob.title, { exact: true })).toBeVisible();
+    await expect(page.getByText(/Cannot read properties of undefined/i)).toHaveCount(0);
   });
 });

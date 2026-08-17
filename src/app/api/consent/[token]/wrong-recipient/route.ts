@@ -5,6 +5,7 @@ import {
   actionLinkAvailability,
   findPermissionByActionSecret,
 } from "@/lib/consent/lookup";
+import { sendPermissionWrongRecipientNotification } from "@/lib/notifications/send-permission-wrong-recipient";
 
 type Context = { params: Promise<{ token: string }> };
 
@@ -36,5 +37,22 @@ export async function POST(_request: Request, context: Context) {
       },
     }),
   ]);
-  return NextResponse.json({ success: true, state: "wrong_recipient" });
+  const record = link.consentRecord;
+  let notificationResults: Array<{ channel: "email" | "sms"; success: boolean }> = [];
+  try {
+    notificationResults = await sendPermissionWrongRecipientNotification({
+      bookingId: record.bookingId,
+      consentRecordId: record.id,
+      vendorId: record.vendorId,
+      vendorName: String(record.vendor?.businessName || record.vendor?.name || "Reliance provider"),
+      serviceOrderTitle: String(record.booking?.title || record.booking?.service?.name || "Service Order"),
+    });
+  } catch (error) {
+    console.error("[permission/wrong-recipient] manager notification failed", error);
+  }
+  return NextResponse.json({
+    success: true,
+    state: "wrong_recipient",
+    providerNotificationAttempted: notificationResults.length > 0,
+  });
 }

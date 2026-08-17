@@ -28,7 +28,8 @@ export function AddressAutocompleteInput({
   const [loading, setLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const query = useMemo(() => value.trim(), [value]);
+  const safeValue = String(value || "");
+  const query = useMemo(() => safeValue.trim(), [safeValue]);
 
   useEffect(() => {
     if (disabled || query.length < 3) {
@@ -108,7 +109,7 @@ export function AddressAutocompleteInput({
     <div ref={wrapperRef} className="relative">
       <Input
         {...props}
-        value={value}
+        value={safeValue}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
         onFocus={() => {
