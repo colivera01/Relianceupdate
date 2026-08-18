@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAuthBearerToken, createAuthSessionCookie } from "./auth-session";
 
 const prismaMocks = vi.hoisted(() => ({
   user: { findUnique: vi.fn() },
   platformRoleGrant: { findMany: vi.fn() },
+  vendorMembership: { findMany: vi.fn() },
 }));
 
 vi.mock("@/server/db", () => ({ prisma: prismaMocks }));
@@ -23,6 +24,7 @@ function signedRequest(userId: string, path = "/api/customer/profile") {
 
 describe("canonical request actor", () => {
   beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.useRealTimers());
 
   it("rebuilds roles and memberships from current database state", async () => {
     prismaMocks.user.findUnique.mockResolvedValue({
@@ -165,5 +167,46 @@ describe("canonical request actor", () => {
     expect(() => requireActorVendorManager(actor, "vendor-a")).toThrowError(
       expect.objectContaining({ code: "FORBIDDEN", statusCode: 403 })
     );
+  });
+
+  it("rejects an idle-expired vendor session after rebuilding database authority", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T12:00:00.000Z"));
+    const token = createAuthSessionCookie({
+      userId: "user-9",
+      email: "user-9@example.test",
+      userType: "vendor",
+      availableProfiles: ["vendor"],
+    });
+    prismaMocks.user.findUnique.mockResolvedValue({
+      id: "user-9",
+      email: "user-9@example.test",
+      accountStatus: "active",
+      platformRoleGrants: [],
+      memberships: [{ id: "m-9", vendorId: "vendor-a", role: "MANAGER" }],
+    });
+    prismaMocks.vendorMembership.findMany.mockResolvedValue([
+      {
+        vendorId: "vendor-a",
+        vendor: {
+          id: "vendor-a",
+          businessName: "Vendor A",
+          name: "Vendor A",
+          loginNotifications: true,
+          sessionTimeout: 30,
+        },
+      },
+    ]);
+    vi.setSystemTime(new Date("2026-08-17T12:31:00.000Z"));
+    const request = new Request("http://localhost/api/vendors/vendor-a/jobs", {
+      headers: { cookie: `reliance_session=${token}` },
+    });
+
+    const { resolveRequestActor } = await import("./request-actor");
+    await expect(resolveRequestActor(request)).rejects.toMatchObject({
+      code: "VENDOR_SESSION_TIMEOUT",
+      statusCode: 401,
+    });
+    expect(prismaMocks.user.findUnique).toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import {
   type AuthSessionClaims,
 } from "@/lib/auth-session";
 import { normalizeAccountStatus } from "@/lib/account-status-shared";
+import { getVendorSessionTimeoutStatus } from "@/lib/vendor-security";
 
 export type PlatformRole = "ADMIN";
 export type VendorActorMembership = {
@@ -24,7 +25,7 @@ export type RequestActor = {
 
 export class AuthorizationError extends Error {
   constructor(
-    public readonly code: "UNAUTHENTICATED" | "ACCOUNT_RESTRICTED" | "FORBIDDEN",
+    public readonly code: "UNAUTHENTICATED" | "ACCOUNT_RESTRICTED" | "FORBIDDEN" | "VENDOR_SESSION_TIMEOUT",
     message: string,
     public readonly statusCode: 401 | 403
   ) {
@@ -65,7 +66,7 @@ function candidateClaims(request: Request, adminScope: boolean): AuthSessionClai
 
 export async function resolveRequestActor(
   request: Request,
-  options: { adminScope?: boolean } = {}
+  options: { adminScope?: boolean; allowExpiredVendorSession?: boolean } = {}
 ): Promise<RequestActor | null> {
   const claims = candidateClaims(request, Boolean(options.adminScope));
   const userId = String(claims?.userId || "").trim();
@@ -121,6 +122,23 @@ export async function resolveRequestActor(
         (membership.role === "MANAGER" || membership.role === "EMPLOYEE")
     );
 
+  const pathname = new URL(request.url).pathname;
+  const isVendorApi = pathname.startsWith("/api/vendor/") || pathname.startsWith("/api/vendors/");
+  if (
+    isVendorApi &&
+    !options.allowExpiredVendorSession &&
+    vendorMemberships.length > 0
+  ) {
+    const timeout = await getVendorSessionTimeoutStatus(claims);
+    if (timeout.expired) {
+      throw new AuthorizationError(
+        "VENDOR_SESSION_TIMEOUT",
+        "Your vendor session timed out due to inactivity. Sign in again to continue.",
+        401
+      );
+    }
+  }
+
   return {
     userId: String(user.id),
     email: user.email ? String(user.email) : null,
@@ -132,7 +150,7 @@ export async function resolveRequestActor(
 
 export async function requireRequestActor(
   request: Request,
-  options: { adminScope?: boolean } = {}
+  options: { adminScope?: boolean; allowExpiredVendorSession?: boolean } = {}
 ): Promise<RequestActor> {
   const actor = await resolveRequestActor(request, options);
   if (!actor) {

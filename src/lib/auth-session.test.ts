@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createAuthBearerToken,
   createAuthSessionCookie,
@@ -6,6 +6,7 @@ import {
   getAdminAuthSessionClaimsFromRequest,
   getAdminUiSessionCookieName,
   getAuthSessionClaimsFromRequest,
+  refreshAuthSessionCookie,
   verifyAuthBearerToken,
   verifyAuthSessionCookie,
 } from "./auth-session";
@@ -25,8 +26,9 @@ describe("auth-session", () => {
       email: "user@example.com",
       userType: "vendor",
       availableProfiles: ["vendor"],
-      version: 1,
+      version: 2,
     });
+    expect(claims?.lastActivityAt).toBe(claims?.issuedAt);
   });
 
   it("rejects tampered session cookies", () => {
@@ -39,6 +41,43 @@ describe("auth-session", () => {
 
     const tampered = `${token.slice(0, -1)}x`;
     expect(verifyAuthSessionCookie(tampered)).toBeNull();
+  });
+
+  it("refreshes activity without extending the absolute session lifetime", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T12:00:00.000Z"));
+    const original = createAuthSessionCookie({
+      userId: "vendor-1",
+      email: "vendor@example.com",
+      userType: "vendor",
+      availableProfiles: ["vendor"],
+    });
+    const before = verifyAuthSessionCookie(original)!;
+
+    vi.setSystemTime(new Date("2026-08-17T12:10:00.000Z"));
+    const refreshed = refreshAuthSessionCookie(original);
+    const after = verifyAuthSessionCookie(refreshed)!;
+
+    expect(after.issuedAt).toBe(before.issuedAt);
+    expect(after.expiresAt).toBe(before.expiresAt);
+    expect(after.lastActivityAt).toBe(Math.floor(Date.now() / 1000));
+    expect(after.version).toBe(2);
+    vi.useRealTimers();
+  });
+
+  it("cannot refresh a session after its absolute lifetime expires", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T12:00:00.000Z"));
+    const token = createAuthSessionCookie({
+      userId: "vendor-absolute",
+      email: "vendor@example.com",
+      userType: "vendor",
+      availableProfiles: ["vendor"],
+    });
+    vi.setSystemTime(new Date("2026-08-24T12:00:01.000Z"));
+    expect(verifyAuthSessionCookie(token)).toBeNull();
+    expect(refreshAuthSessionCookie(token)).toBeNull();
+    vi.useRealTimers();
   });
 
   it("creates and verifies a signed bearer token", () => {

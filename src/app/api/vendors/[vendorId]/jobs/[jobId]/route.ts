@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { resolveOperationalClientLabel } from "@/lib/operational-client";
+import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
+import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -52,7 +55,7 @@ function normalizeVendorJobStatus(status: string | null | undefined): string {
 export async function GET(request: Request, context: RouteParams): Promise<NextResponse> {
   try {
     const { vendorId, jobId } = await context.params;
-    await requireVendorMembership(request, vendorId);
+    const membership = await requireVendorMembership(request, vendorId);
 
     const booking = await prisma.booking.findFirst({
       where: { id: jobId, vendorId },
@@ -116,6 +119,23 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
       clientName: booking.clientName,
       userName: booking.user?.name,
     });
+    const assignedEmployees = extractAssignedEmployeesFromMetadata(booking.customerMetadata);
+    const recordingCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
+    const permissionGate = await loadRecordingPermissionGate({
+      bookingId: booking.id,
+      vendorId,
+      customerMetadata: booking.customerMetadata,
+      membershipId: membership.membershipId,
+      surface: "admin_evidence",
+      capability: "observe",
+      actorKind: membership.role === "MANAGER" ? "VENDOR_MANAGER" : "EMPLOYEE",
+    });
+    const operationalPhase = resolveOperationalPhase({
+      bookingStatus: booking.status,
+      customerMetadata: booking.customerMetadata,
+      linkedMediaCount: 0,
+      assignedEmployees,
+    });
 
     return NextResponse.json({
       job: {
@@ -129,7 +149,14 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         date: booking.date?.toISOString() || booking.createdAt.toISOString(),
         createdAt: booking.createdAt.toISOString(),
         updatedAt: booking.updatedAt?.toISOString() || booking.createdAt.toISOString(),
-        assignedEmployees: extractAssignedEmployeesFromMetadata(booking.customerMetadata),
+        assignedEmployees,
+        operationalPhase,
+        recordingCompliance: {
+          location: permissionGate.location,
+          permissionRequired: permissionGate.permissionRequired,
+          permissionStatus: permissionGate.permissionState,
+          serviceOrderReleasedAt: recordingCompliance.serviceOrderReleasedAt,
+        },
         serviceName: booking.service?.name || "",
         serviceType: booking.service?.name || "",
         rejectionReason: booking.rejectionReason || null,

@@ -14,6 +14,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
 const releasedJob = {
   id: JOB_ID,
   title: "Controlled residence service",
+  serviceId: "rv8-service",
   client: "Controlled Customer",
   clientName: "Controlled Customer",
   customerEmail: "c***@example.test",
@@ -121,6 +122,7 @@ async function installVendorFixture(
   page: Page,
   jobs: any[],
   consentStatusResponse?: string | string[],
+  sessionGuardResponse?: Record<string, unknown>,
 ) {
   let consentStatusRequestCount = 0;
   const session = createAuthSessionCookie({
@@ -201,6 +203,14 @@ async function installVendorFixture(
       });
       return;
     }
+    if (pathname === "/api/vendor/session-guard") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(sessionGuardResponse || { ok: true, applies: true, nextCheckInMs: 60_000 }),
+      });
+      return;
+    }
     if (pathname === `/api/vendors/${VENDOR_ID}/dashboard`) {
       await route.fulfill({
         status: 200,
@@ -232,7 +242,7 @@ async function installVendorFixture(
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          services: [{ id: "rv8-service", name: "Controlled service", status: "APPROVED" }],
+          services: [{ id: "rv8-service", name: "Controlled service", vendorId: VENDOR_ID, isPublished: true }],
         }),
       });
       return;
@@ -391,7 +401,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(dialog.getByRole("button", { name: "Correct Recipient and Send New Request" })).toBeVisible();
   });
 
-  test("Check Consent refreshes permission only and does not invoke employee release", async ({ page }) => {
+  test("Refresh Permission Status updates only the affected card and does not invoke employee release", async ({ page }) => {
     const actionRequests: string[] = [];
     page.on("request", (request) => {
       if (new URL(request.url()).pathname.includes("/actions")) actionRequests.push(request.url());
@@ -399,8 +409,8 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await installVendorFixture(page, [pendingConsentJob], ["pending", "accepted"]);
     await openVendorJobs(page);
 
-    await page.getByRole("button", { name: "Check Consent" }).click();
-    await expect(page.getByText(/Recording-permission status refreshed: accepted/i)).toBeVisible();
+    await page.getByRole("button", { name: "Refresh Permission Status" }).click();
+    await expect(page.getByRole("status")).toHaveText("Customer permission approved.");
     expect(actionRequests).toEqual([]);
     await expect(page.getByText(/Assign this job before sending/i)).toHaveCount(0);
   });
@@ -421,10 +431,55 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await openVendorJobs(page);
 
     await expect(page.getByText(canceledJob.title, { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Work record progress")).toContainText("Canceled");
-    await expect(page.getByLabel("Work record progress")).toContainText("No further service work or recording is required");
+    await expect(page.getByLabel("Work record progress")).toContainText("Service Order canceled");
+    await expect(page.getByLabel("Work record progress")).toContainText("permanently closed");
     await page.getByRole("button", { name: /Active Work/ }).click();
     await expect(page.getByText(canceledJob.title, { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: /Canceled/ }).click();
+    await expect(page.getByText(canceledJob.title, { exact: true })).toBeVisible();
+  });
+
+  test("warns before a material edit and canceling the warning performs no mutation", async ({ page }) => {
+    const mutationRequests: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PATCH" && new URL(request.url()).pathname.endsWith("/actions")) {
+        mutationRequests.push(request.url());
+      }
+    });
+    await installVendorFixture(page, [pendingConsentJob]);
+    await openVendorJobs(page);
+
+    await page.getByRole("button", { name: "Actions" }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
+    const editDialog = page.getByRole("dialog", { name: "Edit Work Record" });
+    await editDialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" }).selectOption("customer");
+    await editDialog.getByRole("button", { name: "Save Work" }).click();
+
+    const warning = page.getByRole("dialog", { name: "Request new recording permission?" });
+    await expect(warning).toContainText("Prior permission and certification evidence will remain preserved");
+    await warning.getByRole("button", { name: "Go Back" }).click();
+    expect(mutationRequests).toEqual([]);
+    await expect(editDialog).toBeVisible();
+  });
+
+  test("warns before vendor inactivity expiry and offers secure renewal", async ({ page }) => {
+    const now = Date.now();
+    await installVendorFixture(page, [], undefined, {
+      ok: true,
+      applies: true,
+      timeoutMinutes: 30,
+      idleExpiresAt: new Date(now + 90_000).toISOString(),
+      absoluteExpiresAt: new Date(now + 24 * 60 * 60_000).toISOString(),
+      warningAt: new Date(now - 1_000).toISOString(),
+      nextCheckInMs: 15_000,
+    });
+    await openVendorJobs(page);
+
+    const warning = page.getByRole("alertdialog", { name: "You will be signed out due to inactivity" });
+    await expect(warning).toBeVisible();
+    await expect(warning).toContainText("Stay signed in to continue working");
+    await warning.getByRole("button", { name: "Stay signed in" }).click();
+    await expect(warning).toBeHidden();
   });
 
   test("closes the edit modal without rendering undefined create-only address values", async ({ page }) => {

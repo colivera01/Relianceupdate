@@ -22,7 +22,7 @@ describe("vendor-security", () => {
     expect(normalizeVendorSessionTimeoutMinutes("not-a-number")).toBe(30);
   });
 
-  it("calculates expiry from the signed session issued-at time", () => {
+  it("calculates an idle deadline from the supplied activity time", () => {
     expect(calculateVendorSessionExpiryMs(1000, 30)).toBe(1000 * 1000 + 30 * 60 * 1000);
     expect(calculateVendorSessionExpiryMs(null, 30)).toBeNull();
   });
@@ -31,5 +31,11 @@ describe("vendor-security", () => {
     const claims = { issuedAt: 1000 };
     expect(isVendorSessionExpired(claims, 30, 1000 * 1000 + 29 * 60 * 1000)).toBe(false);
     expect(isVendorSessionExpired(claims, 30, 1000 * 1000 + 30 * 60 * 1000)).toBe(true);
+  });
+
+  it("uses last authenticated activity instead of original sign-in for idle expiry", () => {
+    const claims = { issuedAt: 1000, lastActivityAt: 1600 };
+    expect(isVendorSessionExpired(claims, 30, 1600 * 1000 + 29 * 60 * 1000)).toBe(false);
+    expect(isVendorSessionExpired(claims, 30, 1600 * 1000 + 30 * 60 * 1000)).toBe(true);
   });
 });

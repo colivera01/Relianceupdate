@@ -12,6 +12,7 @@ import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
 import { PublicationWorkflowCard } from "@/components/service-video/PublicationWorkflowCard";
 import { MediaLifecycleCard } from "@/components/service-video/MediaLifecycleCard";
+import { resolveVendorJobLifecyclePresentation } from "@/lib/vendor-job-lifecycle-presentation";
 import {
   STAGE_VIDEO_MAX_DURATION_SECONDS,
   formatStageVideoDuration,
@@ -27,6 +28,7 @@ type JobLike = {
   customerEmail?: string | null;
   customerPhone?: string | null;
   status?: string;
+  operationalPhase?: string;
   source?: string;
   date?: string | null;
   createdAt?: string | null;
@@ -42,6 +44,12 @@ type JobLike = {
     canceledAt?: string | null;
     canceledBy?: string | null;
     canceledByUserId?: string | null;
+  } | null;
+  recordingCompliance?: {
+    location?: string | null;
+    permissionRequired?: boolean;
+    permissionStatus?: string | null;
+    serviceOrderReleasedAt?: string | null;
   } | null;
 };
 
@@ -172,6 +180,23 @@ export default function VendorJobDetailPage() {
     (isEmployee || isManager) &&
     ["PENDING", "IN_PROGRESS"].includes(normalizedStatus);
   const canManagerReview = isManager && normalizedStatus === "AWAITING_REVIEW";
+  const lifecycle = useMemo(() => {
+    const nextStage = STAGE_ORDER.find((stage) => stage.key === nextMissingStage)?.label || "next stage";
+    return resolveVendorJobLifecyclePresentation({
+      status: normalizedStatus,
+      operationalPhase: job?.operationalPhase,
+      rejectionReason: job?.rejectionReason,
+      locationSelected: Boolean(job?.recordingCompliance?.location),
+      permissionRequired: job?.recordingCompliance?.permissionRequired === true,
+      permissionState: job?.recordingCompliance?.permissionStatus,
+      hasCustomerContact: Boolean(job?.customerEmail || job?.customerPhone),
+      assigned: Boolean(job?.assignedEmployees?.length),
+      allVideosPresent: allStagesExist,
+      nextStageLabel: nextStage,
+      serviceOrderSent: Boolean(job?.recordingCompliance?.serviceOrderReleasedAt),
+      consentRecipientLabel: job?.customerEmail || job?.customerPhone || "the customer",
+    });
+  }, [allStagesExist, job, nextMissingStage, normalizedStatus]);
 
   const load = async () => {
     if (!jobId) {
@@ -566,6 +591,19 @@ export default function VendorJobDetailPage() {
                     </div>
                   ) : null}
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs font-semibold uppercase text-blue-700">Current Service Order status</p>
+                <h2 className="mt-1 text-xl font-semibold text-gray-950">{lifecycle.label}</h2>
+                <p className="mt-2 text-sm text-gray-700">{lifecycle.detail}</p>
+                <dl className="mt-4 grid gap-3 border-t border-gray-200 pt-4 text-sm sm:grid-cols-3">
+                  <div><dt className="font-semibold text-gray-900">Why</dt><dd className="mt-1 text-gray-600">{lifecycle.why}</dd></div>
+                  <div><dt className="font-semibold text-gray-900">Who acts next</dt><dd className="mt-1 text-gray-600">{lifecycle.responsibleParticipant}</dd></div>
+                  <div><dt className="font-semibold text-gray-900">What resolves it</dt><dd className="mt-1 text-gray-600">{lifecycle.resolution}</dd></div>
+                </dl>
               </CardContent>
             </Card>
 

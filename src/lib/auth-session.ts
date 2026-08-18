@@ -14,7 +14,8 @@ export interface AuthSessionClaims {
   availableProfiles: string[];
   issuedAt: number;
   expiresAt: number;
-  version: 1;
+  lastActivityAt?: number;
+  version: 1 | 2;
 }
 
 function resolveSessionSecret(): string {
@@ -73,7 +74,8 @@ export function createAuthSessionCookie(
     availableProfiles: Array.from(new Set(claimsInput.availableProfiles.filter(Boolean))),
     issuedAt: now,
     expiresAt: now + SESSION_TTL_SECONDS,
-    version: 1,
+    lastActivityAt: now,
+    version: 2,
   };
 
   const payload = toBase64Url(JSON.stringify(claims));
@@ -97,7 +99,7 @@ export function verifyAuthSessionCookie(token: string | null | undefined): AuthS
 
   try {
     const claims = JSON.parse(fromBase64Url(payload).toString("utf8")) as AuthSessionClaims;
-    if (!claims?.userId || !claims?.expiresAt || claims.version !== 1) return null;
+    if (!claims?.userId || !claims?.expiresAt || ![1, 2].includes(claims.version)) return null;
     if (claims.expiresAt <= Math.floor(Date.now() / 1000)) return null;
     return claims;
   } catch {
@@ -112,6 +114,26 @@ export function verifyAuthBearerToken(token: string | null | undefined): AuthSes
 export function getAuthSessionClaimsFromRequest(request: Request): AuthSessionClaims | null {
   const cookieMap = parseCookieHeader(request.headers.get("cookie"));
   return verifyAuthSessionCookie(cookieMap[SESSION_COOKIE_NAME]);
+}
+
+export function getAuthSessionTokenFromRequest(request: Request): string | null {
+  const cookieMap = parseCookieHeader(request.headers.get("cookie"));
+  return String(cookieMap[SESSION_COOKIE_NAME] || "").trim() || null;
+}
+
+export function refreshAuthSessionCookie(
+  token: string | null | undefined,
+  nowSeconds = Math.floor(Date.now() / 1000)
+): string | null {
+  const claims = verifyAuthSessionCookie(token);
+  if (!claims || claims.expiresAt <= nowSeconds) return null;
+  const refreshed: AuthSessionClaims = {
+    ...claims,
+    lastActivityAt: nowSeconds,
+    version: 2,
+  };
+  const payload = toBase64Url(JSON.stringify(refreshed));
+  return `${payload}.${sign(payload)}`;
 }
 
 export function getAdminAuthSessionClaimsFromRequest(request: Request): AuthSessionClaims | null {

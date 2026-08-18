@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
+import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 
 vi.mock("@/server/db", () => ({
   prisma: {
@@ -15,6 +16,10 @@ vi.mock("@/lib/membership-auth", () => ({
   requireVendorMembership: vi.fn(),
 }));
 
+vi.mock("@/lib/consent/recording-gate", () => ({
+  loadRecordingPermissionGate: vi.fn(),
+}));
+
 async function readJson(response: Response) {
   return response.json() as Promise<Record<string, unknown>>;
 }
@@ -23,11 +28,17 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
     vi.mocked(prisma.booking.findFirst).mockReset();
+    vi.mocked(loadRecordingPermissionGate).mockReset();
     vi.mocked(requireVendorMembership).mockResolvedValue({
       userId: "manager-1",
       vendorId: "vendor-1",
       role: "MANAGER",
       membershipId: "membership-1",
+    } as any);
+    vi.mocked(loadRecordingPermissionGate).mockResolvedValue({
+      location: "business",
+      permissionRequired: false,
+      permissionState: "not_required",
     } as any);
   });
 
@@ -71,7 +82,7 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-1" }),
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
     const json = await readJson(response);
     expect(json.job).toMatchObject({
       id: "job-1",
@@ -113,7 +124,7 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-legacy-customer" }),
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(200);
     const json = await readJson(response);
     expect(json.job).toMatchObject({
       id: "job-legacy-customer",
@@ -145,7 +156,6 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       service: { name: "Canceled service" },
       user: { name: "Jordan Rivera", email: null, phone: null },
     } as any);
-
     const response = await GET(new Request("http://localhost/api/vendors/vendor-1/jobs/job-canceled"), {
       params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-canceled" }),
     });

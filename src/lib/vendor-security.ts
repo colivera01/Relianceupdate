@@ -22,6 +22,10 @@ export type VendorSessionTimeoutStatus = {
   timeoutMinutes: number;
   issuedAtMs: number | null;
   expiresAtMs: number | null;
+  idleExpiresAtMs: number | null;
+  absoluteExpiresAtMs: number | null;
+  warningAtMs: number | null;
+  requiresSessionRefresh: boolean;
   vendorIds: string[];
 };
 
@@ -53,11 +57,11 @@ export function calculateVendorSessionExpiryMs(
 }
 
 export function isVendorSessionExpired(
-  claims: Pick<AuthSessionClaims, "issuedAt">,
+  claims: Pick<AuthSessionClaims, "issuedAt" | "lastActivityAt">,
   timeoutMinutes: unknown,
   nowMs = Date.now()
 ): boolean {
-  const expiresAtMs = calculateVendorSessionExpiryMs(claims.issuedAt, timeoutMinutes);
+  const expiresAtMs = calculateVendorSessionExpiryMs(claims.lastActivityAt || claims.issuedAt, timeoutMinutes);
   return expiresAtMs != null && expiresAtMs <= nowMs;
 }
 
@@ -103,13 +107,17 @@ export async function getVendorSessionTimeoutStatus(
   claims: AuthSessionClaims | null | undefined,
   nowMs = Date.now()
 ): Promise<VendorSessionTimeoutStatus> {
-  if (!claims?.userId || !hasVendorAccessInSession(claims)) {
+  if (!claims?.userId) {
     return {
       applies: false,
       expired: false,
       timeoutMinutes: DEFAULT_VENDOR_TIMEOUT_MINUTES,
       issuedAtMs: null,
       expiresAtMs: null,
+      idleExpiresAtMs: null,
+      absoluteExpiresAtMs: null,
+      warningAtMs: null,
+      requiresSessionRefresh: false,
       vendorIds: [],
     };
   }
@@ -122,19 +130,36 @@ export async function getVendorSessionTimeoutStatus(
       timeoutMinutes: DEFAULT_VENDOR_TIMEOUT_MINUTES,
       issuedAtMs: claims.issuedAt ? claims.issuedAt * 1000 : null,
       expiresAtMs: null,
+      idleExpiresAtMs: null,
+      absoluteExpiresAtMs: claims.expiresAt ? claims.expiresAt * 1000 : null,
+      warningAtMs: null,
+      requiresSessionRefresh: claims.version === 1 || !claims.lastActivityAt,
       vendorIds: [],
     };
   }
 
   // If one sign-in controls multiple vendor views, apply the strictest timeout.
   const timeoutMinutes = Math.min(...rows.map((row) => row.sessionTimeout));
-  const expiresAtMs = calculateVendorSessionExpiryMs(claims.issuedAt, timeoutMinutes);
+  const idleExpiresAtMs = calculateVendorSessionExpiryMs(
+    claims.lastActivityAt || claims.issuedAt,
+    timeoutMinutes
+  );
+  const absoluteExpiresAtMs = claims.expiresAt ? claims.expiresAt * 1000 : null;
+  const expiresAtMs =
+    idleExpiresAtMs && absoluteExpiresAtMs
+      ? Math.min(idleExpiresAtMs, absoluteExpiresAtMs)
+      : idleExpiresAtMs || absoluteExpiresAtMs;
+  const warningWindowMs = Math.min(5 * 60_000, Math.max(60_000, timeoutMinutes * 60_000 * 0.2));
   return {
     applies: true,
     expired: expiresAtMs != null && expiresAtMs <= nowMs,
     timeoutMinutes,
     issuedAtMs: claims.issuedAt ? claims.issuedAt * 1000 : null,
     expiresAtMs,
+    idleExpiresAtMs,
+    absoluteExpiresAtMs,
+    warningAtMs: expiresAtMs ? expiresAtMs - warningWindowMs : null,
+    requiresSessionRefresh: claims.version === 1 || !claims.lastActivityAt,
     vendorIds: rows.map((row) => row.vendorId),
   };
 }

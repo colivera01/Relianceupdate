@@ -39,6 +39,8 @@ import {
   avatarUrlForName,
   type VendorTeamMember,
 } from '@/lib/vendor-team-members';
+import { getPermissionRefreshFeedback, resolveVendorJobLifecyclePresentation } from '@/lib/vendor-job-lifecycle-presentation';
+import { getMaterialWorkRecordEditFields } from '@/lib/vendor-job-material-edit';
 
 function parseDate(value: string | number | Date | null | undefined): Date | null {
   if (value === null || value === undefined || value === '') return null;
@@ -308,54 +310,6 @@ export default function VendorJobs() {
   const getVendorWorkflowStateForJob = (job: any) => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
     const status = String(job?.status || '').trim().toLowerCase();
-    if (status === 'canceled' || status === 'cancelled') {
-      return {
-        label: 'Canceled',
-        detail: 'This Service Order was canceled. No further service work or recording is required.',
-        actionLabel: 'View Job',
-        tone: 'red',
-      };
-    }
-    if (phase === 'REJECTED' || status === 'rejected' || jobHasRejectedMedia(job)) {
-      return {
-        label: 'Rejected / closed',
-        detail: job?.rejectionReason
-          ? `Reason: ${String(job.rejectionReason).trim()}`
-          : 'One or more service video stages were rejected. This work order is closed unless you create a new service order.',
-        actionLabel: 'View Job',
-        tone: 'red',
-      };
-    }
-    if (phase === 'AWAITING_ADMIN_REVIEW') {
-      return {
-        label: 'Pending moderator approval',
-        detail: 'Manager approved this video package. Reliance moderation must approve it before it becomes public.',
-        actionLabel: 'View Job',
-        tone: 'blue',
-      };
-    }
-    if (
-      phase === 'AWAITING_VENDOR_REVIEW' ||
-      status === 'awaiting_review' ||
-      status === 'awaiting review'
-    ) {
-      return {
-        label: 'Awaiting Manager Review',
-        detail: 'The completed Service Videos were submitted. Recording remains locked while the vendor manager reviews the package.',
-        actionLabel: 'Review Submitted Videos',
-        tone: 'blue',
-      };
-    }
-    if (isJobPendingEmployeeCorrection(job)) {
-      return {
-        label: 'Pending employee corrections',
-        detail: job?.rejectionReason
-          ? `Changes requested: ${String(job.rejectionReason).trim()}`
-          : 'Changes were requested. The assigned employee needs to replace the requested stage and send the videos back to manager review.',
-        actionLabel: 'View Job',
-        tone: 'amber',
-      };
-    }
     const snapshot = getSavedRecordingComplianceForJob(job);
     const consentState = getConsentStatusForJob(job, snapshot);
     const nextStage = getNextMissingVideoStageForJob(job);
@@ -363,115 +317,22 @@ export default function VendorJobs() {
     const isAssigned = isJobAssignedForVideoUpload(job);
     const requiresConsent = snapshot?.permissionRequired === true;
     const locationChoice = String(snapshot?.location || '').trim().toLowerCase();
-
-    if (!locationChoice) {
-      return {
-        label: 'Choose recording location',
-        detail: `Select the recording location first. Customer residence/business requires consent before ${stageLabel}.`,
-        actionLabel: 'Choose Location',
-        tone: 'amber',
-      };
-    }
-    if (requiresConsent && !hasCustomerContactForJob(job)) {
-      return {
-        label: 'Missing customer contact',
-        detail: 'Add a customer email or phone before sending consent. Employee contact is not used.',
-        actionLabel: 'Open Consent Step',
-        tone: 'red',
-      };
-    }
-    if (requiresConsent && consentState === CONSENT_STATE.ACCEPTED) {
-      if (!isAssigned) {
-        return {
-          label: 'Recording permission verified - assign employee',
-          detail: `Recording permission is verified for ${formatCustomerConsentRecipient(job)}. The work order is now ready for assignment.`,
-          actionLabel: 'Assign Employee',
-          tone: 'green',
-        };
-      }
-      if (!nextStage) {
-        return {
-          label: 'All videos uploaded',
-          detail: 'Starting Condition, Work in Progress, and Final Result videos are present.',
-          actionLabel: 'View Job',
-          tone: 'green',
-        };
-      }
-      const serviceOrderSent = Boolean(snapshot?.serviceOrderReleasedAt);
-      return {
-        label: serviceOrderSent ? 'Service Order Sent' : 'Ready to send Service Order',
-        detail: serviceOrderSent
-          ? 'The assigned employee received the Service Order and will complete the recording stages.'
-          : `Recording permission is verified for ${formatCustomerConsentRecipient(job)}. Send the Service Order to the assigned employee.`,
-        actionLabel: serviceOrderSent ? 'Service Order Sent' : 'Send Service Order',
-        tone: serviceOrderSent ? 'green' : 'blue',
-      };
-    }
-    if (requiresConsent && consentState === CONSENT_STATE.REQUESTED) {
-      return {
-        label: 'Consent sent - waiting for customer',
-        detail: `Sent to ${formatCustomerConsentRecipient(job)}. Refresh status before uploading ${stageLabel}.`,
-        actionLabel: 'Check Consent',
-        tone: 'blue',
-      };
-    }
-    if (requiresConsent && consentState === CONSENT_STATE.WRONG_RECIPIENT) {
-      return {
-        label: 'Recording request reported as wrong recipient',
-        detail: 'Recording remains locked. Correct the customer contact before sending a new request.',
-        actionLabel: 'Correct Customer Contact',
-        tone: 'red',
-      };
-    }
-    if (requiresConsent && consentState === CONSENT_STATE.DECLINED) {
-      return {
-        label: 'Consent declined',
-        detail: 'The customer declined consent. Recording remains blocked.',
-        actionLabel: 'View Consent Step',
-        tone: 'red',
-      };
-    }
-    if (requiresConsent && consentState === CONSENT_STATE.EXPIRED_OR_UNAVAILABLE) {
-      return {
-        label: 'Consent expired - resend request',
-        detail: `Resend consent to ${formatCustomerConsentRecipient(job)} before uploading ${stageLabel}.`,
-        actionLabel: 'Resend Consent',
-        tone: 'amber',
-      };
-    }
-    if (requiresConsent) {
-      return {
-        label: 'Verified recording permission required',
-        detail: `You may assign an employee for scheduling. Service Order release and recording remain locked until ${formatCustomerConsentRecipient(job)} accepts and all recording gates pass.`,
-        actionLabel: 'Send Consent',
-        tone: 'amber',
-      };
-    }
-    if (!isAssigned) {
-      return {
-        label: 'Assign employee',
-        detail: 'This business-address work order is ready for assignment.',
-        actionLabel: 'Assign Employee',
-        tone: 'amber',
-      };
-    }
-    if (!nextStage) {
-      return {
-        label: 'All videos uploaded',
-        detail: 'Starting Condition, Work in Progress, and Final Result videos are present.',
-        actionLabel: 'View Job',
-        tone: 'green',
-      };
-    }
-    const serviceOrderSent = Boolean(snapshot?.serviceOrderReleasedAt);
-    return {
-      label: serviceOrderSent
-        ? 'Service Order Sent'
-        : 'Consent not required - send service order',
-      detail: 'The employee phone verifies the business address before the camera opens.',
-      actionLabel: serviceOrderSent ? 'Service Order Sent' : 'Send Service Order',
-      tone: serviceOrderSent ? 'green' : 'blue',
-    };
+    return resolveVendorJobLifecyclePresentation({
+      status,
+      operationalPhase: phase,
+      rejectedMedia: jobHasRejectedMedia(job),
+      rejectionReason: job?.rejectionReason,
+      correctionPending: isJobPendingEmployeeCorrection(job),
+      locationSelected: Boolean(locationChoice),
+      permissionRequired: requiresConsent,
+      permissionState: consentState,
+      hasCustomerContact: hasCustomerContactForJob(job),
+      assigned: isAssigned,
+      allVideosPresent: !nextStage,
+      nextStageLabel: stageLabel,
+      serviceOrderSent: Boolean(snapshot?.serviceOrderReleasedAt),
+      consentRecipientLabel: formatCustomerConsentRecipient(job),
+    });
   };
 
   const isJobBlockedByCustomerConsent = (job: any): boolean => {
@@ -496,6 +357,10 @@ export default function VendorJobs() {
   const [showCreateJob, setShowCreateJob] = useState(false);
   const [jobModalMode, setJobModalMode] = useState<'create' | 'edit'>('create');
   const [jobFormTargetId, setJobFormTargetId] = useState<string | null>(null);
+  const [editJobBaseline, setEditJobBaseline] = useState<any>(null);
+  const [showMaterialEditConfirm, setShowMaterialEditConfirm] = useState(false);
+  const [materialEditFields, setMaterialEditFields] = useState<string[]>([]);
+  const materialEditConfirmedRef = useRef(false);
   const [showSelectJobModal, setShowSelectJobModal] = useState(false);
   const [selectedJobForVideoId, setSelectedJobForVideoId] = useState<string>('');
   const [selectedJob, setSelectedJob] = useState(null);
@@ -915,17 +780,15 @@ export default function VendorJobs() {
     fetchConsentStatusForJob(selectedJob, { updateComplianceDialog: true });
 
   const checkConsentStatusOnly = async (job: any) => {
-    try {
-      const status = await fetchConsentStatusForJob(job);
-      if (status) {
-        setJobActionFeedback({
-          type: 'success',
-          message: `Recording-permission status refreshed: ${String(status).replace(/_/g, ' ')}.`,
-        });
-      }
-    } catch {
-      // fetchConsentStatusForJob already presents the canonical failure.
-    }
+    const bookingId = String(job?.bookingId || job?.id || '').trim();
+    if (!bookingId) return;
+    setPermissionRefreshByJobId((current) => ({
+      ...current,
+      [bookingId]: { tone: 'info', message: 'Refreshing customer permission status...' },
+    }));
+    const status = await fetchConsentStatusForJob(job);
+    const result = getPermissionRefreshFeedback(status);
+    setPermissionRefreshByJobId((current) => ({ ...current, [bookingId]: result }));
   };
 
   const getCanContinueCompliance = () => {
@@ -1012,7 +875,7 @@ export default function VendorJobs() {
       }
       return;
     }
-    if (workflowAction === 'Check Consent') {
+    if (workflowAction === 'Refresh Permission Status') {
       void checkConsentStatusOnly(job);
       return;
     }
@@ -1202,6 +1065,9 @@ export default function VendorJobs() {
   >(null);
   const [jobActionTarget, setJobActionTarget] = useState<any>(null);
   const [jobActionFeedback, setJobActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [permissionRefreshByJobId, setPermissionRefreshByJobId] = useState<
+    Record<string, { tone: 'info' | 'success' | 'warning' | 'error'; message: string }>
+  >({});
   const [jobActionLoading, setJobActionLoading] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
   const [permissionEvidence, setPermissionEvidence] = useState<any>(null);
@@ -2774,6 +2640,7 @@ export default function VendorJobs() {
     { value: 'active', label: 'Active Work' },
     { value: 'manager_review', label: 'Manager Review' },
     { value: 'moderator_review', label: 'Moderator Review' },
+    { value: 'canceled', label: 'Canceled' },
     { value: 'private_complete', label: 'Private Proof' },
     { value: 'public_approved', label: 'Public / Approved' },
     { value: 'rejected', label: 'Rejected' },
@@ -3006,6 +2873,13 @@ export default function VendorJobs() {
         setCreateJobError('No job selected for editing.');
         return;
       }
+      const changedMaterialFields = getMaterialWorkRecordEditFields(editJobBaseline, newJob);
+      if (changedMaterialFields.length > 0 && !materialEditConfirmedRef.current) {
+        setMaterialEditFields(changedMaterialFields);
+        setShowMaterialEditConfirm(true);
+        return;
+      }
+      materialEditConfirmedRef.current = false;
       setCreateJobError('');
       setIsCreatingJob(true);
       try {
@@ -3493,7 +3367,7 @@ export default function VendorJobs() {
     setJobFormTargetId(String(job?.id || ''));
     const splitName = splitCustomerName(job?.client || job?.clientName || '');
     const scope = job?.recordingCompliance?.scopeSummary || {};
-    setNewJob({
+    const editForm = {
       title: String(job?.title || ''),
       client: String(job?.client || job?.clientName || ''),
       customerFirstName: splitName.customerFirstName,
@@ -3525,7 +3399,10 @@ export default function VendorJobs() {
       serviceCanContinueWithoutRecording:
         scope.serviceCanContinueWithoutRecording !== false,
       essentialPrivateRecording: Boolean(scope.essentialPrivateRecording),
-    });
+    };
+    setNewJob(editForm);
+    setEditJobBaseline(editForm);
+    materialEditConfirmedRef.current = false;
     setCreateJobError('');
     setJobFieldErrors(getEmptyJobFieldErrors());
     setShowCreateJob(true);
@@ -6001,6 +5878,8 @@ export default function VendorJobs() {
           setShowCreateJob(open);
           if (!open) {
             setNewServiceForJob({ name: '', description: '', price: '', estimatedDuration: '' });
+            setEditJobBaseline(null);
+            materialEditConfirmedRef.current = false;
           }
         }}
       >
@@ -6607,6 +6486,51 @@ export default function VendorJobs() {
                   : isAddingServiceFromJob
                     ? 'Create Service and Work Record'
                     : 'Add Work Record'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showMaterialEditConfirm} onOpenChange={setShowMaterialEditConfirm}>
+        <DialogContent className="w-[calc(100vw-1rem)] sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Request new recording permission?</DialogTitle>
+            <DialogDescription>
+              This edit changes information that the customer and employee relied on when recording was authorized.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-slate-700">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
+              <p className="font-semibold">Continuing will replace the current authorization for this Service Order.</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>Any existing customer recording permission will no longer authorize the changed Service Order.</li>
+                <li>Prior permission and certification evidence will remain preserved in history.</li>
+                <li>A new recording-permission request will be required or sent when the updated scope requires it.</li>
+                <li>Employee recording may remain locked until the new requirements are complete.</li>
+              </ul>
+            </div>
+            <p className="text-xs text-slate-500">
+              Material fields changed: {materialEditFields.map((field) => field.replace(/([A-Z])/g, ' $1').toLowerCase()).join(', ')}.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowMaterialEditConfirm(false);
+                materialEditConfirmedRef.current = false;
+              }}
+            >
+              Go Back
+            </Button>
+            <Button
+              onClick={() => {
+                setShowMaterialEditConfirm(false);
+                materialEditConfirmedRef.current = true;
+                void handleCreateJob();
+              }}
+            >
+              Continue and Request New Permission
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -8247,16 +8171,6 @@ export default function VendorJobs() {
                         {job.recordingCompliance.addressSnapshot.formattedAddress}
                       </p>
                     ) : null}
-                    {job?.recordingCompliance?.canonicalBlock ? (
-                      <div className="mt-3 border border-amber-300/35 bg-amber-50 p-3 text-sm text-amber-950">
-                        <div className="font-semibold">Recording is locked</div>
-                        <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
-                          <div><dt className="font-semibold">Why</dt><dd>{job.recordingCompliance.canonicalBlock.why}</dd></div>
-                          <div><dt className="font-semibold">Who acts next</dt><dd>{String(job.recordingCompliance.canonicalBlock.responsibleParticipant || '').replaceAll('_', ' ')}</dd></div>
-                          <div><dt className="font-semibold">What resolves it</dt><dd>{job.recordingCompliance.canonicalBlock.resolution}</dd></div>
-                        </dl>
-                      </div>
-                    ) : null}
                     {(() => {
                       const jobRecoverySuggestion = jobRecoveryByJobId[String(job.id)] || null;
                       const jobRecoveryError = jobRecoveryErrorByJobId[String(job.id)] || '';
@@ -8500,13 +8414,33 @@ export default function VendorJobs() {
                       amber: 'border-amber-400/30 bg-amber-500/10 text-amber-50',
                     };
                     return (
-                      <div
-                        className={`rounded-md border px-4 py-3 ${toneClasses[workflow.tone] || toneClasses.amber}`}
-                        aria-label="Work record progress"
-                      >
-                        <p className="text-sm font-semibold">{workflow.label}</p>
-                        <p className="mt-1 text-xs leading-5 opacity-80">{workflow.detail}</p>
-                      </div>
+                      <>
+                        <div
+                          className={`rounded-md border px-4 py-3 ${toneClasses[workflow.tone] || toneClasses.amber}`}
+                          aria-label="Work record progress"
+                        >
+                          <p className="text-sm font-semibold">{workflow.label}</p>
+                          <p className="mt-1 text-xs leading-5 opacity-80">{workflow.detail}</p>
+                          <dl className="mt-3 grid gap-2 border-t border-current/15 pt-3 text-xs sm:grid-cols-3 lg:grid-cols-1">
+                            <div><dt className="font-semibold">Who acts next</dt><dd className="mt-0.5 opacity-80">{workflow.responsibleParticipant}</dd></div>
+                            <div className="sm:col-span-2 lg:col-span-1"><dt className="font-semibold">What resolves it</dt><dd className="mt-0.5 opacity-80">{workflow.resolution}</dd></div>
+                          </dl>
+                        </div>
+                        {permissionRefreshByJobId[String(job?.bookingId || job?.id || '').trim()] ? (() => {
+                          const feedback = permissionRefreshByJobId[String(job?.bookingId || job?.id || '').trim()];
+                          const feedbackClasses = {
+                            info: 'border-blue-300/35 bg-blue-500/10 text-blue-50',
+                            success: 'border-emerald-300/35 bg-emerald-500/10 text-emerald-50',
+                            warning: 'border-amber-300/35 bg-amber-500/10 text-amber-50',
+                            error: 'border-rose-300/35 bg-rose-500/10 text-rose-50',
+                          };
+                          return (
+                            <div className={`rounded-md border px-3 py-2 text-sm ${feedbackClasses[feedback.tone]}`} role="status">
+                              {feedback.message}
+                            </div>
+                          );
+                        })() : null}
+                      </>
                     );
                   })()}
                   <div className="flex items-center gap-2 lg:justify-end">
