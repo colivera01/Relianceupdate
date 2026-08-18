@@ -9,6 +9,10 @@ import {
 } from "@/lib/job-assignment";
 import { derivePermissionState, type PermissionState } from "./state-machine";
 import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
+import {
+  storedAuthorityEvidenceIsCurrent,
+  type AuthorityValidationResult,
+} from "./authority-validation";
 
 export type RecordingPermissionRecord = {
   id?: string | null;
@@ -17,8 +21,17 @@ export type RecordingPermissionRecord = {
   verifiedDecision?: boolean | null;
   isCurrent?: boolean | null;
   scopeJson?: string | null;
+  scopeHash?: string | null;
   expiresAt?: Date | string | null;
-  decisionEvidence?: { id?: string | null } | null;
+  decisionEvidence?: {
+    id?: string | null;
+    claimedRole?: string | null;
+    authorityScope?: string | null;
+    verificationMethod?: string | null;
+    verifiedContactHash?: string | null;
+    scopeHash?: string | null;
+    metadata?: string | null;
+  } | null;
   recipientMismatch?: boolean | null;
 };
 
@@ -134,19 +147,38 @@ function permissionFacts(input: {
   const permissionRequired = input.assessment
     ? Boolean(input.assessment.permissionRequired)
     : Boolean(currentRecord) || location === "residence" || location === "customer-business";
-  const verifiedAllowed = Boolean(
+  const authorityValidation: AuthorityValidationResult | null =
+    input.assessment && currentRecord?.decisionEvidence
+      ? storedAuthorityEvidenceIsCurrent({
+          assessment: input.assessment,
+          decisionEvidence: currentRecord.decisionEvidence,
+        })
+      : null;
+  const authorityEvidenceValid = authorityValidation?.ok === true;
+  const recordClaimsAllowed = Boolean(
     currentRecord &&
       currentRecord.verifiedDecision === true &&
       String(currentRecord.lifecycleStatus || "").trim().toUpperCase() === "ALLOWED" &&
       String(currentRecord.status || "").trim().toLowerCase() === "accepted" &&
       currentRecord.decisionEvidence?.id,
   );
+  const verifiedAllowed = recordClaimsAllowed && authorityEvidenceValid;
+  const permissionAuthorityInvalid = Boolean(recordClaimsAllowed && !authorityEvidenceValid);
   const permissionState: PermissionState | "not_required" = permissionRequired
     ? currentRecord
       ? stateFromRecord(currentRecord, verifiedAllowed, input.now ?? new Date())
       : "not_sent"
     : "not_required";
-  return { compliance, currentRecord, location, permissionRequired, verifiedAllowed, permissionState };
+  return {
+    compliance,
+    currentRecord,
+    location,
+    permissionRequired,
+    verifiedAllowed,
+    permissionState,
+    authorityValidation,
+    permissionAuthorityInvalid,
+  };
 }
 
 function legacyBlock(code: string): RecordingGateBlock {
@@ -156,6 +188,15 @@ function legacyBlock(code: string): RecordingGateBlock {
       why: "The work record does not identify where recording will happen.",
       responsibleParticipant: "VENDOR_MANAGER",
       resolution: "Choose the service location and complete the recording assessment.",
+      serviceMayContinue: true,
+    };
+  }
+  if (code === "PERMISSION_AUTHORITY_INVALID") {
+    return {
+      code,
+      why: "The saved permission does not contain current evidence for the authority required by this work record.",
+      responsibleParticipant: "VENDOR_MANAGER",
+      resolution: "Correct the required decision-maker and send a new secure permission request.",
       serviceMayContinue: true,
     };
   }
@@ -176,12 +217,15 @@ function legacyBlock(code: string): RecordingGateBlock {
 export function resolveRecordingPermissionGate(input: {
   customerMetadata: string | null | undefined;
   consentRecord?: RecordingPermissionRecord | null;
+  assessment?: any | null;
   now?: Date;
 }): RecordingPermissionGate {
   const facts = permissionFacts(input);
   const recordingUnlocked = facts.permissionRequired ? facts.verifiedAllowed : Boolean(facts.location);
   const blockCode = !facts.location
     ? "RECORDING_LOCATION_REQUIRED"
+    : facts.permissionRequired && facts.permissionAuthorityInvalid
+      ? "PERMISSION_AUTHORITY_INVALID"
     : facts.permissionRequired && !recordingUnlocked
       ? "VERIFIED_PERMISSION_REQUIRED"
       : null;
@@ -289,7 +333,7 @@ export async function loadCanonicalRecordingGate(input: {
       orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
       include: { authorities: true },
     }),
-    input.consentRecord !== undefined ? Promise.resolve(input.consentRecord) : (prisma as any).consentRecord.findFirst({
+    (prisma as any).consentRecord.findFirst({
       where: {
         bookingId: input.bookingId,
         ...(input.vendorId ? { vendorId: input.vendorId } : {}),
@@ -303,9 +347,20 @@ export async function loadCanonicalRecordingGate(input: {
         verifiedDecision: true,
         isCurrent: true,
         scopeJson: true,
+        scopeHash: true,
         expiresAt: true,
         recipientMismatch: true,
-        decisionEvidence: { select: { id: true } },
+        decisionEvidence: {
+          select: {
+            id: true,
+            claimedRole: true,
+            authorityScope: true,
+            verificationMethod: true,
+            verifiedContactHash: true,
+            scopeHash: true,
+            metadata: true,
+          },
+        },
       },
     }),
     resolveCanonicalMediaLifecycle({
@@ -534,6 +589,14 @@ export async function loadCanonicalRecordingGate(input: {
         resolution: "Update the scope to video without audio.",
         serviceMayContinue: true,
       });
+    } else if (facts.permissionRequired && facts.permissionAuthorityInvalid) {
+      decision = blocked(base, {
+        code: "PERMISSION_AUTHORITY_INVALID",
+        why: "The saved permission does not contain current evidence for the authority required by this work record.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Correct the required decision-maker and send a new secure permission request.",
+        serviceMayContinue: assessment.serviceCanContinueWithoutRecording,
+      });
     } else if (
       assessment.authorities?.some(
         (item: any) =>
@@ -657,9 +720,20 @@ async function loadLegacyPermissionGate(input: {
       verifiedDecision: true,
       isCurrent: true,
       scopeJson: true,
+      scopeHash: true,
       expiresAt: true,
       recipientMismatch: true,
-      decisionEvidence: { select: { id: true } },
+      decisionEvidence: {
+        select: {
+          id: true,
+          claimedRole: true,
+          authorityScope: true,
+          verificationMethod: true,
+          verifiedContactHash: true,
+          scopeHash: true,
+          metadata: true,
+        },
+      },
     },
   });
   return resolveRecordingPermissionGate({

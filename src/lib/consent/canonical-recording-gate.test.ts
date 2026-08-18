@@ -27,6 +27,7 @@ vi.mock("@/server/db", () => ({
 }));
 
 import { loadCanonicalRecordingGate } from "./recording-gate";
+import { buildStoredAuthorityEvidence, evaluatePermissionAuthority } from "./authority-validation";
 
 const metadata = JSON.stringify({
   vendor_job_assigned_membership_ids: ["member-1"],
@@ -51,9 +52,11 @@ const metadata = JSON.stringify({
 
 const assessment = {
   id: "assessment-1",
+  generation: 1,
   vendorId: "vendor-1",
   status: "COMPLETE",
   locationType: "residence",
+  authorityHolderType: "customer",
   riskLevel: "LEVEL_2",
   propertyScope: "customer_owned",
   peopleScope: "none",
@@ -64,6 +67,7 @@ const assessment = {
     protectedNonParticipantMayAppear: false,
   }),
   scopeHash: "scope-hash-1",
+  scopeJson: JSON.stringify({ authorityHolderType: "customer" }),
   permissionRequired: true,
   serviceCanContinueWithoutRecording: true,
   audioRequested: false,
@@ -74,6 +78,15 @@ const assessment = {
   ],
 };
 
+const authorityValidation = evaluatePermissionAuthority({
+  assessment,
+  claimedRole: "customer",
+  authorityScope: "self_and_property",
+  verificationMethod: "email_otp",
+  verifiedContactHash: "verified-contact-hash",
+});
+const authorityEvidence = buildStoredAuthorityEvidence({ assessment, validation: authorityValidation });
+
 const allowed = {
   id: "permission-1",
   status: "accepted",
@@ -81,9 +94,18 @@ const allowed = {
   verifiedDecision: true,
   isCurrent: true,
   scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+  scopeHash: "scope-hash-1",
   expiresAt: null,
   recipientMismatch: false,
-  decisionEvidence: { id: "evidence-1" },
+  decisionEvidence: {
+    id: "evidence-1",
+    claimedRole: "customer",
+    authorityScope: "self_and_property",
+    verificationMethod: "email_otp",
+    verifiedContactHash: "verified-contact-hash",
+    scopeHash: "scope-hash-1",
+    metadata: JSON.stringify({ authority: authorityEvidence }),
+  },
 };
 
 function load(overrides: Record<string, unknown> = {}) {
@@ -143,6 +165,36 @@ describe("database-backed canonical recording gate", () => {
       responsibleParticipant: "CUSTOMER",
     });
     expect(gate.recordingUnlocked).toBe(false);
+  });
+
+  it("fails closed when an allowed decision lacks current authority evidence", async () => {
+    db.consentFindFirst.mockResolvedValue({
+      ...allowed,
+      decisionEvidence: { ...allowed.decisionEvidence, metadata: "{}" },
+    });
+    const gate = await load();
+    expect(gate).toMatchObject({
+      blockCode: "PERMISSION_AUTHORITY_INVALID",
+      recordingUnlocked: false,
+      verifiedAllowed: false,
+    });
+  });
+
+  it("fails closed when authority evidence belongs to a stale assessment generation", async () => {
+    db.consentFindFirst.mockResolvedValue({
+      ...allowed,
+      decisionEvidence: {
+        ...allowed.decisionEvidence,
+        metadata: JSON.stringify({
+          authority: { ...authorityEvidence, assessmentGeneration: 0 },
+        }),
+      },
+    });
+    const gate = await load();
+    expect(gate).toMatchObject({
+      blockCode: "PERMISSION_AUTHORITY_INVALID",
+      recordingUnlocked: false,
+    });
   });
 
   it("keeps recording locked when the approved scope requests or allows audio", async () => {

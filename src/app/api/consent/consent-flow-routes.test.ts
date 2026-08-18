@@ -9,12 +9,15 @@ const hoisted = vi.hoisted(() => {
   const consentRequestLinkFindUnique = vi.fn();
   const consentRequestLinkUpdate = vi.fn();
   const consentRequestLinkUpdateMany = vi.fn();
+  const consentRecordFindFirst = vi.fn();
   const consentRecordUpdate = vi.fn();
   const consentEventCreate = vi.fn();
   const consentDecisionSessionFindUnique = vi.fn();
   const consentDecisionSessionUpdateMany = vi.fn();
   const consentDecisionEvidenceCreate = vi.fn();
   const bookingUpdate = vi.fn();
+  const recordingScopeAssessmentFindFirst = vi.fn();
+  const recordingAuthorityRequirementUpdateMany = vi.fn();
   const sendDecision = vi.fn();
   const getUserId = vi.fn();
   const prisma: any = {
@@ -23,7 +26,7 @@ const hoisted = vi.hoisted(() => {
       update: consentRequestLinkUpdate,
       updateMany: consentRequestLinkUpdateMany,
     },
-    consentRecord: { update: consentRecordUpdate },
+    consentRecord: { findFirst: consentRecordFindFirst, update: consentRecordUpdate },
     consentEvent: { create: consentEventCreate },
     consentDecisionSession: {
       findUnique: consentDecisionSessionFindUnique,
@@ -31,6 +34,8 @@ const hoisted = vi.hoisted(() => {
     },
     consentDecisionEvidence: { create: consentDecisionEvidenceCreate },
     booking: { update: bookingUpdate },
+    recordingScopeAssessment: { findFirst: recordingScopeAssessmentFindFirst },
+    recordingAuthorityRequirement: { updateMany: recordingAuthorityRequirementUpdateMany },
   };
   prisma.$transaction = vi.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
   return {
@@ -38,12 +43,15 @@ const hoisted = vi.hoisted(() => {
     consentRequestLinkFindUnique,
     consentRequestLinkUpdate,
     consentRequestLinkUpdateMany,
+    consentRecordFindFirst,
     consentRecordUpdate,
     consentEventCreate,
     consentDecisionSessionFindUnique,
     consentDecisionSessionUpdateMany,
     consentDecisionEvidenceCreate,
     bookingUpdate,
+    recordingScopeAssessmentFindFirst,
+    recordingAuthorityRequirementUpdateMany,
     sendDecision,
     getUserId,
   };
@@ -69,6 +77,7 @@ function buildLink(overrides: Record<string, unknown> = {}) {
     consentRecord: {
       id: "permission-1",
       bookingId: "booking-1",
+      vendorId: "vendor-1",
       generation: 1,
       status: "requested",
       lifecycleStatus: "DELIVERED",
@@ -128,6 +137,26 @@ describe("verified recording permission routes", () => {
       expiresAt: new Date(Date.now() + 20 * 60 * 1000),
     });
     hoisted.consentDecisionSessionUpdateMany.mockResolvedValue({ count: 1 });
+    hoisted.consentRecordFindFirst.mockResolvedValue({
+      id: "permission-1",
+      scopeHash: "scope-hash",
+      decisionEvidence: null,
+    });
+    hoisted.recordingScopeAssessmentFindFirst.mockResolvedValue({
+      id: "assessment-1",
+      generation: 1,
+      authorityHolderType: "customer",
+      locationType: "residence",
+      scopeHash: "scope-hash",
+      propertyScope: "customer_owned",
+      peopleScope: "none",
+      frameControl: "controlled",
+      subjectJson: "{}",
+      scopeJson: JSON.stringify({ authorityHolderType: "customer" }),
+      serviceCanContinueWithoutRecording: true,
+      essentialPrivateRecording: false,
+    });
+    hoisted.recordingAuthorityRequirementUpdateMany.mockResolvedValue({ count: 1 });
     hoisted.consentDecisionEvidenceCreate.mockResolvedValue({ id: "evidence-1", actorUserId: null });
     hoisted.consentRecordUpdate.mockResolvedValue({ id: "permission-1", lifecycleStatus: "ALLOWED" });
     hoisted.consentRequestLinkUpdateMany.mockResolvedValue({ count: 1 });
@@ -151,6 +180,11 @@ describe("verified recording permission routes", () => {
       initialAudience: "private",
       audioEnabled: false,
       canDecide: true,
+      authorityRequirement: {
+        expectedAuthority: "customer",
+        permittedClaimedRoles: ["customer"],
+        canAuthorizeInCurrentFlow: true,
+      },
     });
     expect(JSON.stringify(json)).not.toContain(ACTION_SECRET);
     expect(JSON.stringify(json)).not.toContain("customer@example.com");
@@ -206,6 +240,19 @@ describe("verified recording permission routes", () => {
         scopeHash: "scope-hash",
       }),
     });
+    const evidenceMetadata = JSON.parse(
+      hoisted.consentDecisionEvidenceCreate.mock.calls[0][0].data.metadata,
+    );
+    expect(evidenceMetadata.authority).toMatchObject({
+      schemaVersion: "recording-authority-evidence-v1",
+      assessmentId: "assessment-1",
+      assessmentGeneration: 1,
+      expectedAuthority: "customer",
+      claimedAuthority: "customer",
+      expectedAndClaimedMatch: true,
+      authorityVerified: true,
+      substitutionRule: null,
+    });
     expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
       where: { id: "booking-1" },
       data: {
@@ -218,8 +265,8 @@ describe("verified recording permission routes", () => {
     const response = await declinePermission(
       decisionRequest("/api/consent/decline", {
         token: ACTION_SECRET,
-        claimedRole: "authorized_representative",
-        authorityScope: "authorized_location_and_property",
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
       }) as any
     );
 
@@ -231,6 +278,87 @@ describe("verified recording permission routes", () => {
     expect(persisted).toContain('"vendor_job_consent_accepted":false');
     expect(persisted).not.toContain("review");
     expect(persisted).not.toContain("public");
+  });
+
+  it.each([
+    ["authorized_representative", "authorized_location_and_property"],
+    ["guardian", "guardian_for_minor"],
+    ["customer_business_representative", "business_location_and_property"],
+  ])("rejects mismatched self-asserted %s authority before consuming verification", async (claimedRole, authorityScope) => {
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", { token: ACTION_SECRET, claimedRole, authorityScope }) as any,
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({ code: "AUTHORITY_MISMATCH" });
+    expect(hoisted.consentDecisionSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the current assessment is missing or ambiguous", async () => {
+    hoisted.recordingScopeAssessmentFindFirst.mockResolvedValue(null);
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+      }) as any,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "AUTHORITY_VERIFICATION_REQUIRED" });
+    expect(hoisted.consentDecisionSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["authorized_representative", "residence", "authorized_representative", "authorized_location_and_property"],
+    ["authorized_representative", "customer-business", "customer_business_representative", "business_location_and_property"],
+    ["guardian", "residence", "guardian", "guardian_for_minor"],
+  ])("requires independent evidence for expected %s authority", async (authorityHolderType, locationType, claimedRole, authorityScope) => {
+    hoisted.recordingScopeAssessmentFindFirst.mockResolvedValue({
+      id: "assessment-1",
+      generation: 1,
+      authorityHolderType,
+      locationType,
+      scopeHash: "scope-hash",
+    });
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", { token: ACTION_SECRET, claimedRole, authorityScope }) as any,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "AUTHORITY_VERIFICATION_REQUIRED" });
+    expect(hoisted.consentDecisionSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
+  });
+
+  it("describes unsupported expected authority without presenting it as approvable", async () => {
+    hoisted.recordingScopeAssessmentFindFirst.mockResolvedValue({
+      id: "assessment-guardian",
+      generation: 1,
+      authorityHolderType: "guardian",
+      locationType: "residence",
+      scopeHash: "scope-hash",
+      propertyScope: "customer_owned",
+      peopleScope: "customer",
+      frameControl: "controlled",
+      subjectJson: "{}",
+      scopeJson: JSON.stringify({ authorityHolderType: "guardian" }),
+      serviceCanContinueWithoutRecording: true,
+      essentialPrivateRecording: false,
+    });
+    const response = await getPermission(new Request(`http://localhost/api/consent/${ACTION_SECRET}`), {
+      params: Promise.resolve({ token: ACTION_SECRET }),
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.permission.authorityRequirement).toMatchObject({
+      expectedAuthority: "guardian",
+      permittedClaimedRoles: [],
+      canAuthorizeInCurrentFlow: false,
+    });
   });
 
   it("keeps expired action links locked", async () => {

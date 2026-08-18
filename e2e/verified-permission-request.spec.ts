@@ -11,6 +11,13 @@ type FixtureOptions = {
   initialDelayMs?: number;
   failVerification?: boolean;
   failInitialLoad?: boolean;
+  authorityRequirement?: {
+    expectedAuthority: string | null;
+    expectedClaimedRole: string | null;
+    permittedClaimedRoles: string[];
+    canAuthorizeInCurrentFlow: boolean;
+    explanation: string;
+  };
 };
 
 function permissionFixture(options: FixtureOptions = {}) {
@@ -28,6 +35,29 @@ function permissionFixture(options: FixtureOptions = {}) {
     customerName: "Controlled Test Customer",
     actionExpiresAt: "2026-08-02T14:00:00.000Z",
     verificationOptions: { account: true, email: true, sms: true },
+    plannedScope: {
+      propertyScope: "customer_owned",
+      peopleScope: "none",
+      frameControl: "controlled",
+      residenceInterior: true,
+      businessInterior: false,
+      minorMayAppear: false,
+      protectedNonParticipantMayAppear: false,
+      sensitiveInformationMayAppear: false,
+      identifiersMayAppear: false,
+      authorityHolderType: options.authorityRequirement?.expectedAuthority ?? "customer",
+      serviceCanContinueWithoutRecording: true,
+      essentialPrivateRecording: false,
+      audioEnabled: false,
+      initialAudience: "private",
+    },
+    authorityRequirement: options.authorityRequirement ?? {
+      expectedAuthority: "customer",
+      expectedClaimedRole: "customer",
+      permittedClaimedRoles: ["customer"],
+      canAuthorizeInCurrentFlow: true,
+      explanation: "The intended customer must verify the request and confirm customer authority.",
+    },
     canDecide: options.canDecide ?? true,
   };
 }
@@ -132,7 +162,30 @@ test.describe("verified permission request UX", () => {
     await page.getByLabel("6-digit code").fill("123456");
     await page.getByRole("button", { name: "Verify code" }).click();
     await expect(page.getByRole("heading", { name: "Confirm your authority" })).toBeVisible();
+    await expect(page.getByLabel("I am the customer")).toBeVisible();
+    await expect(page.getByLabel("I am authorized for this customer and location")).toHaveCount(0);
+    await expect(page.getByLabel("I represent this business location")).toHaveCount(0);
+    await expect(page.getByLabel("I am the legal guardian of a minor")).toHaveCount(0);
     await capture(page, path.join("Desktop", "04-authority-confirmation.png"));
+  });
+
+  test("blocks an authority type the current beta cannot independently verify", async ({ page }) => {
+    await installControlledPermissionApi(page, {
+      authorityRequirement: {
+        expectedAuthority: "guardian",
+        expectedClaimedRole: "guardian",
+        permittedClaimedRoles: [],
+        canAuthorizeInCurrentFlow: false,
+        explanation: "Reliance cannot verify guardian authority through the current beta request.",
+      },
+    });
+    await page.goto(`/consent/${TOKEN}`);
+
+    await expect(page.getByRole("heading", { name: "This request needs additional authority verification" })).toBeVisible();
+    await expect(page.getByText(/Recording stays locked/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Allow recording" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Decide later" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "This request is not for me" })).toBeVisible();
   });
 
   test("captures desktop success and blocked states", async ({ page }) => {

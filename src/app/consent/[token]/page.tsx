@@ -36,6 +36,13 @@ type Permission = {
     audioEnabled: false;
     initialAudience: "private";
   } | null;
+  authorityRequirement: {
+    expectedAuthority: string | null;
+    expectedClaimedRole: string | null;
+    permittedClaimedRoles: string[];
+    canAuthorizeInCurrentFlow: boolean;
+    explanation: string;
+  };
   canDecide: boolean;
 };
 
@@ -98,6 +105,10 @@ export default function PermissionPage() {
   const [address, setAddress] = useState({ address: "", city: "", state: "", zipCode: "" });
 
   const selectedRole = useMemo(() => ROLE_OPTIONS.find((option) => option.value === role), [role]);
+  const availableRoleOptions = useMemo(
+    () => ROLE_OPTIONS.filter((option) => permission?.authorityRequirement.permittedClaimedRoles.includes(option.value)),
+    [permission],
+  );
 
   useEffect(() => {
     let active = true;
@@ -242,7 +253,23 @@ export default function PermissionPage() {
           <article><LockKeyhole /><div><strong>Private is the starting point</strong><p>Allowing recording does not make anything public. Public sharing would be a separate later decision.</p></div></article>
         </div>
 
-        {!verified ? (
+        {!permission.authorityRequirement.canAuthorizeInCurrentFlow ? (
+          <section className={styles.step}>
+            <div className={styles.stepHeading}>
+              <span><LockKeyhole /></span>
+              <div>
+                <h2>This request needs additional authority verification</h2>
+                <p>{permission.authorityRequirement.explanation}</p>
+              </div>
+            </div>
+            <div className={styles.decisionBox}>
+              <p><strong>What happens now:</strong> Recording stays locked. Contact {permission.vendorName} to correct the required decision-maker or request a supported authority-verification path.</p>
+              <div className={styles.actions}>
+                <button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button>
+              </div>
+            </div>
+          </section>
+        ) : !verified ? (
           <section className={styles.step}>
             <div className={styles.stepHeading}><span>1</span><div><h2>Verify you received the request</h2><p>This prevents someone else from deciding with your link.</p></div></div>
             <div className={styles.actions}>
@@ -255,7 +282,7 @@ export default function PermissionPage() {
         ) : (
           <section className={styles.step}>
             <div className={styles.stepHeading}><span>2</span><div><h2>Confirm your authority</h2><p>Choose the role that accurately describes you. A business representative cannot decide for unrelated people who may appear.</p></div></div>
-            <div className={styles.roleGrid}>{ROLE_OPTIONS.map((option) => <label key={option.value} className={role === option.value ? styles.roleSelected : styles.role}><input type="radio" name="authority-role" value={option.value} checked={role === option.value} onChange={() => setRole(option.value)} /><span>{option.label}</span></label>)}</div>
+            <div className={styles.roleGrid}>{availableRoleOptions.map((option) => <label key={option.value} className={role === option.value ? styles.roleSelected : styles.role}><input type="radio" name="authority-role" value={option.value} checked={role === option.value} onChange={() => setRole(option.value)} /><span>{option.label}</span></label>)}</div>
             {permission.recordingLocation === "customer-business" ? <div className={styles.addressGrid}><label>Street address<input value={address.address} onChange={(event) => setAddress({ ...address, address: event.target.value })} /></label><label>City<input value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} /></label><label>State<input value={address.state} onChange={(event) => setAddress({ ...address, state: event.target.value })} /></label><label>ZIP code<input inputMode="numeric" value={address.zipCode} onChange={(event) => setAddress({ ...address, zipCode: event.target.value })} /></label></div> : null}
             <div className={styles.decisionBox}><h2>Your decision</h2><p><strong>If you choose No:</strong> Reliance recording stays locked. {permission.plannedScope?.serviceCanContinueWithoutRecording ? "The service may continue without a Service Video." : "The business has said recording is required to complete this service, so the service will not proceed under this Service Order."}</p><div className={styles.actions}><button className={styles.primary} disabled={!role || Boolean(busy)} onClick={() => decide("allow")}>Allow recording</button><button className={styles.danger} disabled={!role || Boolean(busy)} onClick={() => decide("decline")}>Decline recording</button><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button></div></div>
           </section>

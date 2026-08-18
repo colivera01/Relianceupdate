@@ -211,6 +211,7 @@ describe("vendor media sessions consent enforcement integration", () => {
       status: "COMPLETE",
       generation: 1,
       locationType: assessmentLocation,
+      authorityHolderType: assessmentLocation === "business" ? "vendor_manager" : "customer",
       riskLevel: assessmentLocation === "business" ? "LEVEL_1" : "LEVEL_2",
       permissionRequired: assessmentLocation !== "business",
       propertyScope: assessmentLocation === "business" ? "vendor_owned" : "customer_owned",
@@ -220,6 +221,9 @@ describe("vendor media sessions consent enforcement integration", () => {
       audioAllowed: false,
       serviceCanContinueWithoutRecording: true,
       scopeHash: `scope-${assessmentLocation}`,
+      scopeJson: JSON.stringify({
+        authorityHolderType: assessmentLocation === "business" ? "vendor_manager" : "customer",
+      }),
       subjectJson: "{}",
       completedAt: new Date("2026-08-01T11:00:00.000Z"),
       authorities: [],
@@ -246,7 +250,6 @@ describe("vendor media sessions consent enforcement integration", () => {
 
     const res = await POST(req, ctx as any);
     const json = await toJson(res);
-
     expect(res.status).toBe(409);
     expect(json.code).toBe("VERIFIED_PERMISSION_REQUIRED");
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
@@ -306,8 +309,33 @@ describe("vendor media sessions consent enforcement integration", () => {
       verifiedDecision: true,
       isCurrent: true,
       scopeJson: JSON.stringify({ recordingLocation: "residence" }),
+      scopeHash: "scope-residence",
       recipientMismatch: false,
-      decisionEvidence: { id: "evidence-1" },
+      decisionEvidence: {
+        id: "evidence-1",
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+        verificationMethod: "email_otp",
+        verifiedContactHash: "verified-contact-hash",
+        scopeHash: "scope-residence",
+        metadata: JSON.stringify({
+          authority: {
+            schemaVersion: "recording-authority-evidence-v1",
+            assessmentId: "assessment-1",
+            assessmentGeneration: 1,
+            scopeHash: "scope-residence",
+            expectedAuthority: "customer",
+            expectedClaimedRole: "customer",
+            claimedAuthority: "customer",
+            authorityScope: "self_and_property",
+            expectedAndClaimedMatch: true,
+            identityVerificationBasis: "email_otp",
+            authorityVerificationBasis: "assessment_expected_customer_and_verified_intended_contact_declaration",
+            authorityVerified: true,
+            substitutionRule: null,
+          },
+        }),
+      },
     });
     const { req, ctx } = buildPostRequest({
       locationContext: "residence",
@@ -332,7 +360,9 @@ describe("vendor media sessions consent enforcement integration", () => {
       select: expect.objectContaining({
         id: true,
         scopeJson: true,
-        decisionEvidence: { select: { id: true } },
+        decisionEvidence: {
+          select: expect.objectContaining({ id: true, metadata: true }),
+        },
       }),
     });
   });

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { actionLinkAvailability, findPermissionByActionSecret } from "@/lib/consent/lookup";
 import { buildIdentitySafePermissionSummary } from "@/lib/consent/public-summary";
+import { permissionAuthorityPresentation } from "@/lib/consent/authority-validation";
 
 type Context = { params: Promise<{ token: string }> };
 
@@ -66,10 +67,15 @@ export async function GET(_request: Request, context: Context) {
           bookingId: record.bookingId,
           vendorId: record.vendorId,
           isCurrent: true,
+          status: "COMPLETE",
           scopeHash: record.scopeHash || undefined,
         },
         orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
         select: {
+          id: true,
+          generation: true,
+          locationType: true,
+          scopeHash: true,
           propertyScope: true,
           peopleScope: true,
           frameControl: true,
@@ -110,6 +116,7 @@ export async function GET(_request: Request, context: Context) {
       contentVersion: record.contentVersion?.version || null,
       content: record.contentVersion ? JSON.parse(record.contentVersion.contentJson) : null,
       plannedScope: exactScopeSummary(assessment),
+      authorityRequirement: permissionAuthorityPresentation(assessment),
       canDecide: availability.active,
     },
   });

@@ -3,13 +3,12 @@ import { getUserIdFromRequest } from "@/lib/auth";
 import { readPermissionDecisionCookie } from "./decision-session";
 import { actionLinkAvailability, findPermissionByActionSecret } from "./lookup";
 import { hashOpaqueSecret } from "./token";
-
-const AUTHORITY_ROLE_SCOPES = new Map([
-  ["customer", "self_and_property"],
-  ["authorized_representative", "authorized_location_and_property"],
-  ["customer_business_representative", "business_location_and_property"],
-  ["guardian", "guardian_for_minor"],
-]);
+import {
+  AUTHORITY_ROLE_SCOPES,
+  buildStoredAuthorityEvidence,
+  evaluatePermissionAuthority,
+  type AuthorityValidationResult,
+} from "./authority-validation";
 
 function parseMetadata(value: string | null | undefined): Record<string, unknown> {
   try {
@@ -24,6 +23,31 @@ export class PermissionDecisionError extends Error {
   constructor(public code: string, public status: number, message: string) {
     super(message);
   }
+}
+
+function authorityDecisionError(validation: AuthorityValidationResult) {
+  if (validation.code === "AUTHORITY_MISMATCH") {
+    return new PermissionDecisionError(
+      "AUTHORITY_MISMATCH",
+      422,
+      "This role does not match the decision-maker required for this recording request.",
+    );
+  }
+  if (
+    validation.code === "CLAIMED_AUTHORITY_UNSUPPORTED" ||
+    validation.code === "AUTHORITY_SCOPE_INVALID"
+  ) {
+    return new PermissionDecisionError(
+      "AUTHORITY_REQUIRED",
+      422,
+      "Confirm the required role and authority before deciding.",
+    );
+  }
+  return new PermissionDecisionError(
+    "AUTHORITY_VERIFICATION_REQUIRED",
+    409,
+    "Reliance cannot verify the authority required for this request. Recording remains locked; contact the service provider.",
+  );
 }
 
 export async function completePermissionDecision(input: {
@@ -41,7 +65,10 @@ export async function completePermissionDecision(input: {
   }
   const claimedRole = String(input.claimedRole || "").trim().toLowerCase();
   const authorityScope = String(input.authorityScope || "").trim().toLowerCase();
-  if (AUTHORITY_ROLE_SCOPES.get(claimedRole) !== authorityScope) {
+  if (
+    !Object.prototype.hasOwnProperty.call(AUTHORITY_ROLE_SCOPES, claimedRole) ||
+    AUTHORITY_ROLE_SCOPES[claimedRole as keyof typeof AUTHORITY_ROLE_SCOPES] !== authorityScope
+  ) {
     throw new PermissionDecisionError("AUTHORITY_REQUIRED", 422, "Confirm your role and authority before deciding.");
   }
   const decisionSecret = readPermissionDecisionCookie(input.request);
@@ -78,6 +105,63 @@ export async function completePermissionDecision(input: {
   let result;
   try {
     result = await prisma.$transaction(async (tx) => {
+    const currentRecord = await (tx as any).consentRecord.findFirst({
+      where: {
+        id: record.id,
+        bookingId: record.bookingId,
+        vendorId: record.vendorId,
+        generation: record.generation,
+        isCurrent: true,
+        verifiedDecision: false,
+      },
+      select: {
+        id: true,
+        scopeHash: true,
+        decisionEvidence: { select: { id: true } },
+      },
+    });
+    if (
+      !currentRecord ||
+      currentRecord.decisionEvidence ||
+      String(currentRecord.scopeHash || "") !== String(record.scopeHash || "")
+    ) {
+      throw new PermissionDecisionError(
+        "PERMISSION_NOT_AVAILABLE",
+        409,
+        "This recording request is no longer current.",
+      );
+    }
+    const assessment = await (tx as any).recordingScopeAssessment.findFirst({
+      where: {
+        bookingId: record.bookingId,
+        vendorId: record.vendorId,
+        isCurrent: true,
+        status: "COMPLETE",
+        scopeHash: record.scopeHash,
+      },
+      orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
+      select: {
+        id: true,
+        generation: true,
+        authorityHolderType: true,
+        locationType: true,
+        scopeHash: true,
+      },
+    });
+    const authorityValidation = evaluatePermissionAuthority({
+      assessment,
+      claimedRole,
+      authorityScope,
+      verificationMethod: session.verificationMethod,
+      verifiedContactHash: session.verifiedContactHash,
+    });
+    if (!authorityValidation.ok || !assessment) {
+      throw authorityDecisionError(authorityValidation);
+    }
+    const authorityEvidence = buildStoredAuthorityEvidence({
+      assessment,
+      validation: authorityValidation,
+    });
     const consumed = await (tx as any).consentDecisionSession.updateMany({
       where: { id: session.id, consumedAt: null, expiresAt: { gt: decidedAt } },
       data: { consumedAt: decidedAt },
@@ -100,7 +184,11 @@ export async function completePermissionDecision(input: {
         contentVersion,
         ipAddress,
         userAgent,
-        metadata: JSON.stringify({ audioEnabled: false, initialAudience: "private" }),
+        metadata: JSON.stringify({
+          audioEnabled: false,
+          initialAudience: "private",
+          authority: authorityEvidence,
+        }),
         decidedAt,
       },
     });
@@ -118,18 +206,10 @@ export async function completePermissionDecision(input: {
         documentHash: contentHash,
       },
     });
-    const assessmentModel = (tx as any).recordingScopeAssessment;
     const authorityModel = (tx as any).recordingAuthorityRequirement;
-    const assessment = assessmentModel?.findFirst
-      ? await assessmentModel.findFirst({
-          where: { bookingId: record.bookingId, isCurrent: true },
-          select: { id: true },
-        })
-      : null;
     if (assessment && authorityModel?.updateMany) {
       const authorityTypes = ["CUSTOMER_OR_REPRESENTATIVE"];
       if (claimedRole === "customer") authorityTypes.push("CUSTOMER_LIKENESS");
-      if (claimedRole === "guardian") authorityTypes.push("VERIFIED_GUARDIAN");
       await authorityModel.updateMany({
         where: {
           assessmentId: assessment.id,
@@ -179,12 +259,17 @@ export async function completePermissionDecision(input: {
           authorityScope,
           contentVersion,
           scopeHash: record.scopeHash,
+          expectedAuthority: authorityEvidence.expectedAuthority,
+          claimedAuthority: authorityEvidence.claimedAuthority,
+          authorityMatched: authorityEvidence.expectedAndClaimedMatch,
+          authorityVerificationBasis: authorityEvidence.authorityVerificationBasis,
+          authorityEvidenceSchemaVersion: authorityEvidence.schemaVersion,
           initialAudience: "private",
         }),
       },
     });
     return { record: updatedRecord, evidence };
-    });
+    }, { isolationLevel: "Serializable" as any });
   } catch (error: any) {
     if (String(error?.code || "") === "P2002") {
       throw new PermissionDecisionError(

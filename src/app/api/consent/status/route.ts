@@ -36,30 +36,61 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const latest = await (prisma as any).consentRecord.findFirst({
-      where: { bookingId, isCurrent: true },
-      orderBy: [{ generation: "desc" }, { requestedAt: "desc" }],
-      select: {
-        id: true,
-        status: true,
-        lifecycleStatus: true,
-        verifiedDecision: true,
-        isCurrent: true,
-        scopeJson: true,
-        recipientMismatch: true,
-        recipientEmailMasked: true,
-        recipientPhoneMasked: true,
-        acceptedAt: true,
-        declinedAt: true,
-        requestedAt: true,
-        expiresAt: true,
-        decisionEvidence: { select: { id: true } },
-      },
-    });
+    const [latest, assessment] = await Promise.all([
+      (prisma as any).consentRecord.findFirst({
+        where: { bookingId, isCurrent: true },
+        orderBy: [{ generation: "desc" }, { requestedAt: "desc" }],
+        select: {
+          id: true,
+          status: true,
+          lifecycleStatus: true,
+          verifiedDecision: true,
+          isCurrent: true,
+          scopeJson: true,
+          scopeHash: true,
+          recipientMismatch: true,
+          recipientEmailMasked: true,
+          recipientPhoneMasked: true,
+          acceptedAt: true,
+          declinedAt: true,
+          requestedAt: true,
+          expiresAt: true,
+          decisionEvidence: {
+            select: {
+              id: true,
+              claimedRole: true,
+              authorityScope: true,
+              verificationMethod: true,
+              verifiedContactHash: true,
+              scopeHash: true,
+              metadata: true,
+            },
+          },
+        },
+      }),
+      (prisma as any).recordingScopeAssessment.findFirst({
+        where: {
+          bookingId,
+          vendorId: booking.vendorId,
+          isCurrent: true,
+          status: "COMPLETE",
+        },
+        orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
+        select: {
+          id: true,
+          generation: true,
+          authorityHolderType: true,
+          locationType: true,
+          permissionRequired: true,
+          scopeHash: true,
+        },
+      }),
+    ]);
 
     const permissionGate = resolveRecordingPermissionGate({
       customerMetadata: booking.customerMetadata,
       consentRecord: latest,
+      assessment,
     });
     return NextResponse.json({
       success: true,
