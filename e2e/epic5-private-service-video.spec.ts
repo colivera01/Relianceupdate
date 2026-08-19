@@ -415,6 +415,23 @@ test.describe("Epic 5 safe Private Service Video UX", () => {
     await capture(page, "Desktop", "02-employee-retry-required-draft-preserved.png");
   });
 
+  test("shows truthful wait feedback until the video is securely saved", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installEmployeeFixture(page);
+    await openEmployeeCapture(page);
+    await selectFallbackVideo(page);
+
+    await page.getByRole("button", { name: "Confirm and Save" }).click();
+    const uploadingButton = page.getByRole("button", {
+      name: "Uploading video - please wait",
+      exact: true,
+    });
+    await expect(uploadingButton).toBeDisabled();
+    await expect(page.getByRole("status").filter({ hasText: "Keep this page open while your video is securely saved." })).toBeVisible();
+    await expect(page.getByText(/\b\d+%\b/)).toHaveCount(0);
+    await expect(page.getByText("Video saved", { exact: true })).toBeVisible();
+  });
+
   test("plays the local draft explicitly before Confirm and Save", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     const playableWebm = await createPlayableWebmFixture(page);

@@ -6,7 +6,6 @@ export type MaterialWorkRecordEdit = {
   propertyScope?: unknown;
   peopleScope?: unknown;
   frameControl?: unknown;
-  authorityHolderType?: unknown;
   minorMayAppear?: unknown;
   protectedNonParticipantMayAppear?: unknown;
   sensitiveInformationMayAppear?: unknown;
@@ -23,7 +22,6 @@ const MATERIAL_FIELDS: Array<keyof MaterialWorkRecordEdit> = [
   "propertyScope",
   "peopleScope",
   "frameControl",
-  "authorityHolderType",
   "minorMayAppear",
   "protectedNonParticipantMayAppear",
   "sensitiveInformationMayAppear",

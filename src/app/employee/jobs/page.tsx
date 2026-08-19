@@ -306,7 +306,7 @@ function getStageCardActionLabel(input: {
   hasCaptureToken: boolean;
   stage: (typeof STAGES)[number]["key"];
 }): string {
-  if (input.isUploading) return "Uploading and saving...";
+  if (input.isUploading) return "Uploading video - please wait";
   if (input.isOpening) return "Opening camera...";
   if (input.hasDraft) return "Preview open - finish or retake";
   if (input.isSaved) return "Saved - tap to replace";
@@ -665,7 +665,7 @@ export default function EmployeeJobsPage() {
     setActionMessage(null);
     setStageFeedback((prev) => ({
       ...prev,
-      [uploadKey]: { status: "uploading", message: "Uploading" },
+      [uploadKey]: { status: "uploading", message: "Uploading video - please wait" },
     }));
     let initializedAssetId = "";
     try {
@@ -775,7 +775,7 @@ export default function EmployeeJobsPage() {
         ...prev,
         [uploadKey]: {
           status: "saved",
-          message: hadExistingStageVideo ? "Saved. This stage replaced the prior version." : "Saved",
+          message: hadExistingStageVideo ? "Video saved. This stage replaced the prior version." : "Video saved",
         },
       }));
       setFocusedStageByJobId((current) => ({
@@ -1566,11 +1566,16 @@ export default function EmployeeJobsPage() {
               className="w-full rounded-2xl border border-emerald-200 bg-emerald-600 px-5 py-4 text-lg font-bold text-white shadow-lg shadow-emerald-950/40 transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {uploadingKey === selectedStageFeedbackKey
-                ? "Uploading..."
+                ? <span className="inline-flex items-center justify-center gap-2"><LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />Uploading video - please wait</span>
                 : selectedDraftNeedsRetry
                   ? "Retry Save"
                   : "Confirm and Save"}
             </button>
+            {uploadingKey === selectedStageFeedbackKey ? (
+              <p role="status" className="text-center text-sm font-semibold text-blue-100">
+                Keep this page open while your video is securely saved.
+              </p>
+            ) : null}
             <button
               type="button"
               onClick={() => {

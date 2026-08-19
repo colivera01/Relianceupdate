@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { CheckCircle2, Clock3, LockKeyhole, ShieldCheck, UserCheck, VolumeX } from "lucide-react";
 
@@ -46,12 +46,10 @@ type Permission = {
   canDecide: boolean;
 };
 
-const ROLE_OPTIONS = [
-  { value: "customer", label: "I am the customer", scope: "self_and_property" },
-  { value: "authorized_representative", label: "I am authorized for this customer and location", scope: "authorized_location_and_property" },
-  { value: "customer_business_representative", label: "I represent this business location", scope: "business_location_and_property" },
-  { value: "guardian", label: "I am the legal guardian of a minor", scope: "guardian_for_minor" },
-] as const;
+const SUPPORTED_CUSTOMER_AUTHORITY = {
+  value: "customer",
+  scope: "self_and_property",
+} as const;
 
 function stateMessage(state: string) {
   const messages: Record<string, { title: string; detail: string }> = {
@@ -99,16 +97,9 @@ export default function PermissionPage() {
   const [channel, setChannel] = useState<"email" | "sms" | null>(null);
   const [code, setCode] = useState("");
   const [verified, setVerified] = useState(false);
-  const [role, setRole] = useState("");
   const [busy, setBusy] = useState("");
   const [finished, setFinished] = useState<"allowed" | "declined" | "later" | "wrong_recipient" | null>(null);
   const [address, setAddress] = useState({ address: "", city: "", state: "", zipCode: "" });
-
-  const selectedRole = useMemo(() => ROLE_OPTIONS.find((option) => option.value === role), [role]);
-  const availableRoleOptions = useMemo(
-    () => ROLE_OPTIONS.filter((option) => permission?.authorityRequirement.permittedClaimedRoles.includes(option.value)),
-    [permission],
-  );
 
   useEffect(() => {
     let active = true;
@@ -171,8 +162,8 @@ export default function PermissionPage() {
   }
 
   async function decide(decision: "allow" | "decline") {
-    if (!selectedRole) {
-      setError("Choose the role that describes your authority for this service.");
+    if (!permission?.authorityRequirement.permittedClaimedRoles.includes("customer")) {
+      setError("This request cannot use the supported customer decision path.");
       return;
     }
     setBusy(decision);
@@ -182,8 +173,8 @@ export default function PermissionPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         token,
-        claimedRole: selectedRole.value,
-        authorityScope: selectedRole.scope,
+        claimedRole: SUPPORTED_CUSTOMER_AUTHORITY.value,
+        authorityScope: SUPPORTED_CUSTOMER_AUTHORITY.scope,
         customerBusinessAddress: permission?.recordingLocation === "customer-business" ? address : undefined,
       }),
     });
@@ -223,13 +214,13 @@ export default function PermissionPage() {
         <header className={styles.header}>
           <span className={styles.eyebrow}>Recording permission</span>
           <h1>Choose whether this service may be recorded</h1>
-          <p>{permission.vendorName} uses Reliance to create proof of the work. You are in control of this decision.</p>
+          <p>This request was sent to you as the customer contact for this Service Order. You control whether Reliance may record the service.</p>
         </header>
 
         <div className={styles.serviceCard}>
           <div><span>Service provider</span><strong>{permission.vendorName}</strong></div>
           <div><span>Service</span><strong>{permission.serviceName}</strong></div>
-          <div><span>Location type</span><strong>{permission.recordingLocation === "customer-business" ? "Customer business" : "Customer residence"}</strong></div>
+          <div><span>Location type</span><strong>{permission.recordingLocation === "customer-business" ? "Customer business" : permission.recordingLocation === "business" ? "Vendor business" : "Customer residence"}</strong></div>
         </div>
 
         {permission.plannedScope ? (
@@ -237,7 +228,7 @@ export default function PermissionPage() {
             <div><span>Whose property may be recorded</span><strong>{scopeLabel(permission.plannedScope.propertyScope)}</strong></div>
             <div><span>Who may be identifiable</span><strong>{scopeLabel(permission.plannedScope.peopleScope)}</strong></div>
             <div><span>What the camera will show</span><strong>{scopeLabel(permission.plannedScope.frameControl)}</strong></div>
-            <div><span>Who can approve</span><strong>{scopeLabel(permission.plannedScope.authorityHolderType)}</strong></div>
+            <div><span>Recording decision</span><strong>{permission.plannedScope.authorityHolderType === "customer" ? "Verified customer contact" : scopeLabel(permission.plannedScope.authorityHolderType)}</strong></div>
             <div><span>Is recording required</span><strong>{permission.plannedScope.serviceCanContinueWithoutRecording ? "No - service may continue without recording" : "Yes - recording is required for this service"}</strong></div>
             {permission.plannedScope.minorMayAppear ? <div><span>Children under 18</span><strong>May appear</strong></div> : null}
             {permission.plannedScope.protectedNonParticipantMayAppear ? <div><span>Bystanders or unrelated people</span><strong>May appear</strong></div> : null}
@@ -281,10 +272,9 @@ export default function PermissionPage() {
           </section>
         ) : (
           <section className={styles.step}>
-            <div className={styles.stepHeading}><span>2</span><div><h2>Confirm your authority</h2><p>Choose the role that accurately describes you. A business representative cannot decide for unrelated people who may appear.</p></div></div>
-            <div className={styles.roleGrid}>{availableRoleOptions.map((option) => <label key={option.value} className={role === option.value ? styles.roleSelected : styles.role}><input type="radio" name="authority-role" value={option.value} checked={role === option.value} onChange={() => setRole(option.value)} /><span>{option.label}</span></label>)}</div>
+            <div className={styles.stepHeading}><span>2</span><div><h2>Make your recording decision</h2><p>You verified the customer contact Reliance intended for this Service Order. If this request is not for you, report it below instead of making a decision.</p></div></div>
             {permission.recordingLocation === "customer-business" ? <div className={styles.addressGrid}><label>Street address<input value={address.address} onChange={(event) => setAddress({ ...address, address: event.target.value })} /></label><label>City<input value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} /></label><label>State<input value={address.state} onChange={(event) => setAddress({ ...address, state: event.target.value })} /></label><label>ZIP code<input inputMode="numeric" value={address.zipCode} onChange={(event) => setAddress({ ...address, zipCode: event.target.value })} /></label></div> : null}
-            <div className={styles.decisionBox}><h2>Your decision</h2><p><strong>If you choose No:</strong> Reliance recording stays locked. {permission.plannedScope?.serviceCanContinueWithoutRecording ? "The service may continue without a Service Video." : "The business has said recording is required to complete this service, so the service will not proceed under this Service Order."}</p><p><strong>If you decide later:</strong> No decision is saved. Recording stays locked, you may return before this link expires, and the provider is not told that you approved or declined.</p><div className={styles.actions}><button className={styles.primary} disabled={!role || Boolean(busy)} onClick={() => decide("allow")}>Allow recording</button><button className={styles.danger} disabled={!role || Boolean(busy)} onClick={() => decide("decline")}>Decline recording</button><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button></div></div>
+            <div className={styles.decisionBox}><h2>Your decision</h2><p><strong>If you choose No:</strong> Reliance recording stays locked. {permission.plannedScope?.serviceCanContinueWithoutRecording ? "The service may continue without a Service Video." : "The business has said recording is required to complete this service, so the service will not proceed under this Service Order."}</p><p><strong>If you decide later:</strong> No decision is saved. Recording stays locked, you may return before this link expires, and the provider is not told that you approved or declined.</p><div className={styles.actions}><button className={styles.primary} disabled={Boolean(busy)} onClick={() => decide("allow")}>Allow recording</button><button className={styles.danger} disabled={Boolean(busy)} onClick={() => decide("decline")}>Decline recording</button><button className={styles.secondary} disabled={Boolean(busy)} onClick={() => setFinished("later")}>Decide later</button></div></div>
           </section>
         )}
 

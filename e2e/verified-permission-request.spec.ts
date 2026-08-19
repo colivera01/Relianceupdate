@@ -161,11 +161,13 @@ test.describe("verified permission request UX", () => {
     await page.getByRole("button", { name: /Email code to/ }).click();
     await page.getByLabel("6-digit code").fill("123456");
     await page.getByRole("button", { name: "Verify code" }).click();
-    await expect(page.getByRole("heading", { name: "Confirm your authority" })).toBeVisible();
-    await expect(page.getByLabel("I am the customer")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Make your recording decision" })).toBeVisible();
+    await expect(page.getByText(/verified the customer contact Reliance intended/)).toBeVisible();
+    await expect(page.getByLabel("I am the customer")).toHaveCount(0);
     await expect(page.getByLabel("I am authorized for this customer and location")).toHaveCount(0);
     await expect(page.getByLabel("I represent this business location")).toHaveCount(0);
     await expect(page.getByLabel("I am the legal guardian of a minor")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "This request is not for me" })).toBeVisible();
     await capture(page, path.join("Desktop", "04-authority-confirmation.png"));
   });
 
@@ -195,7 +197,6 @@ test.describe("verified permission request UX", () => {
     await page.getByRole("button", { name: /Email code to/ }).click();
     await page.getByLabel("6-digit code").fill("123456");
     await page.getByRole("button", { name: "Verify code" }).click();
-    await page.getByLabel("I am the customer").check();
     await page.getByRole("button", { name: "Allow recording" }).click();
     await expect(page.getByRole("heading", { name: "Recording is allowed" })).toBeVisible();
     await capture(page, path.join("Desktop", "05-recording-allowed.png"));
@@ -238,7 +239,6 @@ test.describe("verified permission request UX", () => {
     await reopened.getByRole("button", { name: /Email code to/ }).click();
     await reopened.getByLabel("6-digit code").fill("123456");
     await reopened.getByRole("button", { name: "Verify code" }).click();
-    await reopened.getByLabel("I am the customer").check();
     await reopened.getByRole("button", { name: "Allow recording" }).click();
     await expect(reopened.getByRole("heading", { name: "Recording is allowed" })).toBeVisible();
   });

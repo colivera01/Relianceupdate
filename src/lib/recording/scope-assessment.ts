@@ -26,12 +26,16 @@ export type RecordingScopeAssessmentInput = {
   residenceInterior: boolean;
   businessInterior: boolean;
   audioRequested: boolean;
-  authorityHolderType: RecordingAuthorityHolder;
+  authorityHolderType?: RecordingAuthorityHolder;
   serviceCanContinueWithoutRecording: boolean;
   essentialPrivateRecording: boolean;
 };
 
-export type DerivedRecordingScopeAssessment = RecordingScopeAssessmentInput & {
+export type DerivedRecordingScopeAssessment = Omit<
+  RecordingScopeAssessmentInput,
+  "authorityHolderType"
+> & {
+  authorityHolderType: RecordingAuthorityHolder;
   riskLevel: "LEVEL_1" | "LEVEL_2" | "LEVEL_3" | "LEVEL_4";
   permissionRequired: boolean;
   noticeRequired: true;
@@ -53,6 +57,37 @@ function bool(value: unknown): boolean {
 function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | null {
   const normalized = String(value || "").trim().toLowerCase() as T;
   return allowed.includes(normalized) ? normalized : null;
+}
+
+export function recordingPermissionRequired(
+  input: Pick<
+    RecordingScopeAssessmentInput,
+    | "recordingLocation"
+    | "propertyScope"
+    | "peopleScope"
+    | "minorMayAppear"
+    | "protectedNonParticipantMayAppear"
+    | "sensitiveInformationMayAppear"
+    | "identifiersMayAppear"
+  >,
+): boolean {
+  return (
+    input.recordingLocation === "residence" ||
+    input.recordingLocation === "customer-business" ||
+    input.propertyScope !== "vendor_owned" ||
+    input.peopleScope === "customer" ||
+    input.peopleScope === "multiple" ||
+    input.minorMayAppear ||
+    input.protectedNonParticipantMayAppear ||
+    input.sensitiveInformationMayAppear ||
+    input.identifiersMayAppear
+  );
+}
+
+export function deriveV1RecordingAuthority(
+  input: Parameters<typeof recordingPermissionRequired>[0],
+): RecordingAuthorityHolder {
+  return recordingPermissionRequired(input) ? "customer" : "vendor_manager";
 }
 
 export function parseRecordingScopeAssessmentInput(
@@ -77,14 +112,10 @@ export function parseRecordingScopeAssessmentInput(
     "partial",
     "uncontrolled",
   ] as const);
-  const authorityHolderType = oneOf(
-    source.authorityHolderType ?? source.recording_authority_holder_type,
-    ["customer", "authorized_representative", "guardian", "vendor_manager"] as const,
-  );
-  if (!location || !propertyScope || !peopleScope || !frameControl || !authorityHolderType) {
+  if (!location || !propertyScope || !peopleScope || !frameControl) {
     return null;
   }
-  return {
+  const parsed = {
     recordingLocation: location,
     propertyScope,
     peopleScope,
@@ -104,7 +135,6 @@ export function parseRecordingScopeAssessmentInput(
     businessInterior: bool(source.businessInterior ?? source.recording_business_interior),
     // Epic 4 keeps audio disabled even if a future client sends a true value.
     audioRequested: false,
-    authorityHolderType,
     serviceCanContinueWithoutRecording: bool(
       source.serviceCanContinueWithoutRecording ??
         source.service_can_continue_without_recording,
@@ -113,6 +143,32 @@ export function parseRecordingScopeAssessmentInput(
       source.essentialPrivateRecording ?? source.essential_private_recording,
     ),
   };
+  const authorityValue =
+    source.authorityHolderType ?? source.recording_authority_holder_type;
+  const requestedAuthorityText = String(authorityValue || "").trim().toLowerCase();
+  const requestedAuthority = requestedAuthorityText
+    ? oneOf(requestedAuthorityText, [
+        "customer",
+        "authorized_representative",
+        "guardian",
+        "vendor_manager",
+      ] as const)
+    : null;
+  const authorityHolderType = deriveV1RecordingAuthority(parsed);
+
+  // Ordinary V1 creation derives authority from location and scope. Explicit
+  // unsupported or contradictory authority claims fail closed at the API edge.
+  if (
+    requestedAuthorityText &&
+    (!requestedAuthority ||
+      requestedAuthority === "authorized_representative" ||
+      requestedAuthority === "guardian" ||
+      requestedAuthority !== authorityHolderType)
+  ) {
+    return null;
+  }
+
+  return { ...parsed, authorityHolderType };
 }
 
 export function deriveRecordingScopeAssessment(
@@ -138,16 +194,8 @@ export function deriveRecordingScopeAssessment(
       : level2
         ? "LEVEL_2"
         : "LEVEL_1";
-  const permissionRequired =
-    input.recordingLocation === "residence" ||
-    input.recordingLocation === "customer-business" ||
-    input.propertyScope !== "vendor_owned" ||
-    input.peopleScope === "customer" ||
-    input.peopleScope === "multiple" ||
-    input.minorMayAppear ||
-    input.protectedNonParticipantMayAppear ||
-    input.sensitiveInformationMayAppear ||
-    input.identifiersMayAppear;
+  const permissionRequired = recordingPermissionRequired(input);
+  const authorityHolderType = deriveV1RecordingAuthority(input);
   const subject = {
     propertyScope: input.propertyScope,
     peopleScope: input.peopleScope,
@@ -168,7 +216,7 @@ export function deriveRecordingScopeAssessment(
     publicSharingIncluded: false,
     serviceCanContinueWithoutRecording: input.serviceCanContinueWithoutRecording,
     essentialPrivateRecording: input.essentialPrivateRecording,
-    authorityHolderType: input.authorityHolderType,
+    authorityHolderType,
   };
   const subjectJson = stableJson(subject);
   const scopeJson = stableJson(scope);
@@ -189,6 +237,7 @@ export function deriveRecordingScopeAssessment(
   }
   return {
     ...input,
+    authorityHolderType,
     riskLevel,
     permissionRequired,
     noticeRequired: true,

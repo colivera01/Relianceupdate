@@ -544,7 +544,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           apiResponse(
             false,
             "RECORDING_ASSESSMENT_INCOMPLETE",
-            "Complete the location, subject, framing, and authority fields before saving the recording scope.",
+            "Complete the location, subject, framing, and recording requirement before saving the recording scope.",
           ),
           { status: 422 },
         );

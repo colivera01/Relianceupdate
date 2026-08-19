@@ -254,7 +254,6 @@ export default function VendorJobs() {
     propertyScope: '',
     peopleScope: '',
     frameControl: '',
-    authorityHolderType: '',
     minorMayAppear: false,
     protectedNonParticipantMayAppear: false,
     sensitiveInformationMayAppear: false,
@@ -392,7 +391,6 @@ export default function VendorJobs() {
     propertyScope: '',
     peopleScope: '',
     frameControl: '',
-    authorityHolderType: '',
     minorMayAppear: false,
     protectedNonParticipantMayAppear: false,
     sensitiveInformationMayAppear: false,
@@ -2805,7 +2803,6 @@ export default function VendorJobs() {
         newJob.propertyScope &&
         newJob.peopleScope &&
         newJob.frameControl &&
-        newJob.authorityHolderType &&
         recordingRequirementSelection(newJob)
           ? ''
           : 'Complete the recording subject assessment and explain whether Private recording is essential.',
@@ -2890,12 +2887,11 @@ export default function VendorJobs() {
             title: selectedService?.name || newJob.title.trim() || 'Work record',
             clientName: client,
             serviceId: serviceId || undefined,
-            recordingAssessment: {
+            recordingAssessment: changedMaterialFields.length > 0 ? {
               recordingLocation,
               propertyScope: newJob.propertyScope,
               peopleScope: newJob.peopleScope,
               frameControl: newJob.frameControl,
-              authorityHolderType: newJob.authorityHolderType,
               minorMayAppear: newJob.minorMayAppear,
               protectedNonParticipantMayAppear: newJob.protectedNonParticipantMayAppear,
               sensitiveInformationMayAppear: newJob.sensitiveInformationMayAppear,
@@ -2904,7 +2900,7 @@ export default function VendorJobs() {
               businessInterior: recordingLocation === 'customer-business',
               serviceCanContinueWithoutRecording: newJob.serviceCanContinueWithoutRecording,
               essentialPrivateRecording: newJob.essentialPrivateRecording,
-            },
+            } : undefined,
           }
         );
         await reloadJobsFromBackend();
@@ -3023,7 +3019,6 @@ export default function VendorJobs() {
         recording_property_scope: newJob.propertyScope,
         recording_people_scope: newJob.peopleScope,
         recording_frame_control: newJob.frameControl,
-        recording_authority_holder_type: newJob.authorityHolderType,
         recording_minor_may_appear: newJob.minorMayAppear,
         recording_protected_non_participant_may_appear:
           newJob.protectedNonParticipantMayAppear,
@@ -3391,7 +3386,6 @@ export default function VendorJobs() {
       propertyScope: String(scope.propertyScope || 'customer_owned'),
       peopleScope: String(scope.peopleScope || 'none'),
       frameControl: String(scope.frameControl || 'controlled'),
-      authorityHolderType: String(scope.authorityHolderType || 'customer'),
       minorMayAppear: Boolean(scope.minorPresent),
       protectedNonParticipantMayAppear: Boolean(scope.protectedParticipantPresent),
       sensitiveInformationMayAppear: Boolean(scope.sensitiveCapture),
@@ -6301,26 +6295,6 @@ export default function VendorJobs() {
                         <option value="partial">The work area and some surroundings</option>
                         <option value="uncontrolled">An area where people may enter unexpectedly</option>
                       </select>
-                    </label>
-                    <label className="text-xs font-semibold text-slate-700">
-                      Who can approve recording for this service?
-                      <select
-                        value={newJob.authorityHolderType}
-                        onChange={(event) => {
-                          setNewJob({ ...newJob, authorityHolderType: event.target.value });
-                          setJobFieldErrors((current) => ({ ...current, recordingAssessment: '' }));
-                        }}
-                        className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
-                      >
-                        <option value="">Choose one</option>
-                        <option value="customer">Customer</option>
-                        <option value="authorized_representative">Customer's authorized representative</option>
-                        <option value="guardian">Parent or legal guardian</option>
-                        <option value="vendor_manager">Vendor manager</option>
-                      </select>
-                      <span className="mt-1 block font-normal leading-4 text-slate-500">
-                        Select the person who has authority to approve recording for this service and location.
-                      </span>
                     </label>
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">

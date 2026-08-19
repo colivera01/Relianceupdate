@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveRecordingScopeAssessment, parseRecordingScopeAssessmentInput } from "./scope-assessment";
+import {
+  deriveRecordingScopeAssessment,
+  parseRecordingScopeAssessmentInput,
+} from "./scope-assessment";
 
 describe("recording subject assessment", () => {
   it("allows vendor authorization only for controlled vendor-owned property with no people or sensitive capture", () => {
@@ -9,7 +12,6 @@ describe("recording subject assessment", () => {
       propertyScope: "vendor_owned",
       peopleScope: "none",
       frameControl: "controlled",
-      authorityHolderType: "vendor_manager",
       serviceCanContinueWithoutRecording: true,
     });
     expect(parsed).not.toBeNull();
@@ -19,6 +21,7 @@ describe("recording subject assessment", () => {
       permissionRequired: false,
       noticeRequired: true,
       audioAllowed: false,
+      authorityHolderType: "vendor_manager",
     });
     expect(result.authorityRequirements).toEqual([
       { authorityType: "VENDOR_MANAGER", status: "VERIFIED", required: true },
@@ -40,11 +43,11 @@ describe("recording subject assessment", () => {
         residenceInterior: recordingLocation === "residence",
         businessInterior: recordingLocation === "customer-business",
         audioRequested: false,
-        authorityHolderType: "authorized_representative",
         serviceCanContinueWithoutRecording: true,
         essentialPrivateRecording: false,
       });
       expect(result.permissionRequired).toBe(true);
+      expect(result.authorityHolderType).toBe("customer");
       expect(result.authorityRequirements).toContainEqual({
         authorityType: "CUSTOMER_OR_REPRESENTATIVE",
         status: "PENDING",
@@ -53,7 +56,7 @@ describe("recording subject assessment", () => {
     },
   );
 
-  it("raises uncontrolled minor capture to Level 4 and requires guardian authority", () => {
+  it("raises uncontrolled minor capture to Level 4 without pretending V1 verified guardian authority", () => {
     const result = deriveRecordingScopeAssessment({
       recordingLocation: "business",
       propertyScope: "vendor_owned",
@@ -66,12 +69,12 @@ describe("recording subject assessment", () => {
       residenceInterior: false,
       businessInterior: true,
       audioRequested: false,
-      authorityHolderType: "guardian",
       serviceCanContinueWithoutRecording: true,
       essentialPrivateRecording: false,
     });
     expect(result.riskLevel).toBe("LEVEL_4");
     expect(result.permissionRequired).toBe(true);
+    expect(result.authorityHolderType).toBe("customer");
     expect(result.authorityRequirements).toEqual(expect.arrayContaining([
       expect.objectContaining({ authorityType: "VERIFIED_GUARDIAN", status: "PENDING" }),
       expect.objectContaining({ authorityType: "PROTECTED_NON_PARTICIPANT", status: "PENDING" }),
@@ -84,7 +87,6 @@ describe("recording subject assessment", () => {
       propertyScope: "vendor_owned",
       peopleScope: "employee",
       frameControl: "controlled",
-      authorityHolderType: "vendor_manager",
       audioRequested: true,
       serviceCanContinueWithoutRecording: true,
     });
@@ -94,5 +96,46 @@ describe("recording subject assessment", () => {
     expect(second.scopeHash).toBe(first.scopeHash);
     expect(first.audioRequested).toBe(false);
     expect(first.audioAllowed).toBe(false);
+  });
+
+  it("derives customer authority when vendor-business scope requires customer permission", () => {
+    const parsed = parseRecordingScopeAssessmentInput({
+      recordingLocation: "business",
+      propertyScope: "customer_owned",
+      peopleScope: "customer",
+      frameControl: "controlled",
+      serviceCanContinueWithoutRecording: true,
+    });
+
+    expect(parsed).not.toBeNull();
+    expect(deriveRecordingScopeAssessment(parsed!)).toMatchObject({
+      permissionRequired: true,
+      authorityHolderType: "customer",
+    });
+  });
+
+  it.each(["authorized_representative", "guardian"] as const)(
+    "fails closed when a new V1 request explicitly claims unsupported %s authority",
+    (authorityHolderType) => {
+      expect(parseRecordingScopeAssessmentInput({
+        recordingLocation: "residence",
+        propertyScope: "customer_owned",
+        peopleScope: "none",
+        frameControl: "controlled",
+        authorityHolderType,
+        serviceCanContinueWithoutRecording: true,
+      })).toBeNull();
+    },
+  );
+
+  it("fails closed when an explicit authority contradicts the derived V1 scope", () => {
+    expect(parseRecordingScopeAssessmentInput({
+      recordingLocation: "business",
+      propertyScope: "customer_owned",
+      peopleScope: "customer",
+      frameControl: "controlled",
+      authorityHolderType: "vendor_manager",
+      serviceCanContinueWithoutRecording: true,
+    })).toBeNull();
   });
 });

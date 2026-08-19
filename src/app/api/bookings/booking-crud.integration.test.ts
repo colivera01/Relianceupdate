@@ -169,7 +169,6 @@ function jsonRequest(url: string, body?: unknown, method: 'GET' | 'POST' | 'PUT'
             propertyScope: 'vendor_owned',
             peopleScope: 'none',
             frameControl: 'controlled',
-            authorityHolderType: 'vendor_manager',
             serviceCanContinueWithoutRecording: true,
             ...suppliedFields,
           },
@@ -932,7 +931,6 @@ describe('POST /api/bookings', () => {
             recording_property_scope: 'vendor_owned',
             recording_people_scope: 'none',
             recording_frame_control: 'controlled',
-            recording_authority_holder_type: 'vendor_manager',
             service_can_continue_without_recording: true,
           },
         },
@@ -956,6 +954,12 @@ describe('POST /api/bookings', () => {
       }),
     );
     expect(createVerifiedPermissionRequest).not.toHaveBeenCalled();
+    expect(hoisted.recordingScopeAssessmentCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        authorityHolderType: 'vendor_manager',
+        permissionRequired: false,
+      }),
+    });
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
     expect(json).toMatchObject({
       success: true,
@@ -967,6 +971,44 @@ describe('POST /api/bookings', () => {
       },
     });
   });
+
+  it.each(['authorized_representative', 'guardian'])(
+    'rejects an unsupported explicit %s authority claim on the booking API',
+    async (authorityHolderType) => {
+      vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');
+      hoisted.vendorMembershipFindFirst.mockResolvedValue({ id: 'mem-1' });
+      hoisted.vendorFindUnique.mockResolvedValue(vendorWithVerifiedBusinessLocation);
+      hoisted.serviceFindFirst.mockResolvedValueOnce({ id: 'svc-1' });
+
+      const res = await bookingsCreatePOST(
+        jsonRequest(
+          'http://localhost/api/bookings',
+          {
+            vendor_id: 'ven-1',
+            service_id: 'svc-1',
+            client_name: 'Unsupported Authority',
+            client_email: 'customer@example.com',
+            custom_fields: {
+              vendor_job_recording_location: 'residence',
+              recording_property_scope: 'customer_owned',
+              recording_people_scope: 'none',
+              recording_frame_control: 'controlled',
+              recording_authority_holder_type: authorityHolderType,
+              service_can_continue_without_recording: true,
+            },
+          },
+          'POST',
+        ),
+      );
+
+      expect(res.status).toBe(422);
+      await expect(res.json()).resolves.toMatchObject({
+        code: 'RECORDING_ASSESSMENT_REQUIRED',
+      });
+      expect(hoisted.bookingCreate).not.toHaveBeenCalled();
+      expect(createVerifiedPermissionRequest).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns the existing work record when the same creation key is retried', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('vendor-user-1');

@@ -318,7 +318,9 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(dialog.getByRole("combobox", { name: "Whose property may appear in the video?" })).toBeVisible();
     await expect(dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" })).toBeVisible();
     await expect(dialog.getByRole("combobox", { name: "What will the camera primarily show?" })).toBeVisible();
-    await expect(dialog.getByRole("combobox", { name: /Who can approve recording for this service\?/ })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: /Who can approve recording for this service\?/ })).toHaveCount(0);
+    await expect(dialog.getByText("Customer's authorized representative", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText("Parent or legal guardian", { exact: true })).toHaveCount(0);
 
     const required = dialog.getByRole("radio", { name: /Yes - Recording is required/ });
     const optional = dialog.getByRole("radio", { name: /No - The service can continue without recording/ });
@@ -329,14 +331,6 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(required).toBeChecked();
     await expect(optional).not.toBeChecked();
 
-    const authority = dialog.getByRole("combobox", { name: /Who can approve recording for this service\?/ });
-    await expect(authority.locator("option")).toHaveText([
-      "Choose one",
-      "Customer",
-      "Customer's authorized representative",
-      "Parent or legal guardian",
-      "Vendor manager",
-    ]);
   });
 
   test("shows the authoritative no-match outcome beside manual address creation", async ({ page }) => {
@@ -369,7 +363,6 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await dialog.getByRole("combobox", { name: "Whose property may appear in the video?" }).selectOption("customer_owned");
     await dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" }).selectOption("none");
     await dialog.getByRole("combobox", { name: "What will the camera primarily show?" }).selectOption("controlled");
-    await dialog.getByRole("combobox", { name: /Who can approve recording/ }).selectOption("customer");
     await dialog.getByRole("radio", { name: /No - The service can continue without recording/ }).check();
     await dialog.getByRole("button", { name: "Add Work Record" }).click();
 

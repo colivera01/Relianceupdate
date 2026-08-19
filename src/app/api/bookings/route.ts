@@ -729,7 +729,7 @@ export async function POST(request: NextRequest) {
             'Complete the recording subject assessment before creating this work record.',
           code: 'RECORDING_ASSESSMENT_REQUIRED',
           responsibleParticipant: 'VENDOR_MANAGER',
-          resolution: 'Describe the planned property, people, frame control, and authority holder.',
+          resolution: 'Describe the planned property, people, frame control, and recording requirement.',
         },
         { status: 422 }
       );
