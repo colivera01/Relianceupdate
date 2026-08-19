@@ -65,6 +65,7 @@ const metadata = JSON.stringify({
     zip_code: "32801",
     latitude: 28.5383,
     longitude: -81.3792,
+    geocoded_at: "2026-08-04T10:59:00.000Z",
     captured_at: "2026-08-04T11:00:00.000Z",
   },
 });

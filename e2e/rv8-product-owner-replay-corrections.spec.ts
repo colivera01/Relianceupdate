@@ -339,6 +339,43 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     ]);
   });
 
+  test("shows the authoritative no-match outcome beside manual address creation", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installVendorFixture(page, []);
+    await page.route("**/api/bookings", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      await route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: "CUSTOMER_RESIDENCE_ADDRESS_UNVERIFIED",
+          error: "We could not verify this address. Check the address or choose the correct suggested location.",
+        }),
+      });
+    });
+    await openVendorJobs(page);
+
+    await page.getByRole("button", { name: "Add Work Record" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add Work Record" });
+    await dialog.locator("select").first().selectOption("rv8-service");
+    await dialog.getByPlaceholder("First name").fill("Reliance");
+    await dialog.getByPlaceholder("Last name").fill("Customer");
+    await dialog.getByPlaceholder("Enter email address").fill("customer@example.test");
+    await dialog.getByRole("radio", { name: /Customer residence/ }).check();
+    await dialog.getByPlaceholder("Start typing the service street address").fill("888 City Walk Ln");
+    await dialog.getByPlaceholder("City").fill("Oviedo");
+    await dialog.getByPlaceholder("State").fill("FL");
+    await dialog.getByPlaceholder("ZIP code").fill("32765");
+    await dialog.getByRole("combobox", { name: "Whose property may appear in the video?" }).selectOption("customer_owned");
+    await dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" }).selectOption("none");
+    await dialog.getByRole("combobox", { name: "What will the camera primarily show?" }).selectOption("controlled");
+    await dialog.getByRole("combobox", { name: /Who can approve recording/ }).selectOption("customer");
+    await dialog.getByRole("radio", { name: /No - The service can continue without recording/ }).check();
+    await dialog.getByRole("button", { name: "Add Work Record" }).click();
+
+    await expect(dialog.getByText("We could not verify this address. Check the address or choose the correct suggested location.")).toBeVisible();
+  });
+
   test("shows released work as read-only and keeps evidence and cancellation in Actions", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await installVendorFixture(page, [releasedJob]);

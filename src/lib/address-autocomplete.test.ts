@@ -1,11 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   suggestionsFromCensus,
-  suggestionsFromMapbox,
   getAddressAutocompleteSuggestions,
 } from "./address-autocomplete";
 
 describe("address autocomplete", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
   it("normalizes Census address matches into form fields", () => {
     const suggestions = suggestionsFromCensus({
       result: {
@@ -37,31 +41,54 @@ describe("address autocomplete", () => {
     });
   });
 
-  it("normalizes Mapbox address features into form fields", () => {
-    const suggestions = suggestionsFromMapbox({
-      features: [
-        {
-          id: "address.1",
-          place_name: "407 Boxwood Cir, Winter Springs, Florida 32708, United States",
-          text: "Boxwood Cir",
-          address: "407",
-          center: [-81.305084, 28.69057],
-          context: [
-            { id: "place.1", text: "Winter Springs" },
-            { id: "region.1", text: "Florida", short_code: "US-FL" },
-            { id: "postcode.1", text: "32708" },
-          ],
-        },
-      ],
-    });
+  it("uses Azure Maps suggestions under the same primary-provider configuration", async () => {
+    vi.stubEnv("GEOCODING_PROVIDER", "azure_maps");
+    vi.stubEnv("AZURE_MAPS_SUBSCRIPTION_KEY", "test-key");
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        features: [
+          {
+            id: "azure-address-1",
+            geometry: { coordinates: [-81.305084, 28.69057] },
+            properties: {
+              type: "Address",
+              confidence: "High",
+              matchCodes: ["Good"],
+              address: {
+                addressLine: "407 Boxwood Cir",
+                locality: "Winter Springs",
+                postalCode: "32708",
+                formattedAddress: "407 Boxwood Cir, Winter Springs, FL 32708",
+                adminDistricts: [{ shortName: "FL" }],
+              },
+              geocodePoints: [
+                {
+                  geometry: { coordinates: [-81.305084, 28.69057] },
+                  calculationMethod: "Rooftop",
+                  usageTypes: ["Display"],
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const suggestions = await getAddressAutocompleteSuggestions("407 Boxwood");
 
     expect(suggestions[0]).toMatchObject({
-      id: "address.1",
+      id: "azure-address-1",
       address: "407 Boxwood Cir",
       city: "Winter Springs",
       state: "FL",
       zipCode: "32708",
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("atlas.microsoft.com/geocode"),
+      expect.objectContaining({ headers: expect.objectContaining({ "subscription-key": "test-key" }) }),
+    );
   });
 
   it("does not call the provider for very short queries", async () => {

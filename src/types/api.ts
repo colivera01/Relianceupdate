@@ -239,7 +239,7 @@ export interface DiscoverServicesResponse {
   location?: {
     inputAccepted: boolean;
     inputSource: 'none' | 'coordinates' | 'address';
-    geocodingProvider?: 'disabled' | 'mapbox';
+    geocodingProvider?: 'disabled' | 'azure_maps' | 'census';
     geocodedVendorCount?: number;
     distanceResultCount?: number;
     distanceFilteringApplied: boolean;

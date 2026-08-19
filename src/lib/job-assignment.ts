@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type AssignmentMetadata = {
   assignedMembershipIds: string[];
   assignedEmployees: string[];
@@ -20,6 +22,18 @@ export type RecordingLocationSnapshot = {
   geocodedAt: string;
   capturedAt: string;
   formattedAddress: string;
+  evidenceVersion: 1 | 2;
+  snapshotEvidenceHash: string | null;
+  geocodingEvidence: {
+    provider: "azure_maps" | "census";
+    providerApiVersion: string;
+    normalizedAddress: string;
+    precision: string;
+    confidence: string;
+    matchCodes: string[];
+    fallbackUsed: boolean;
+    evidenceHash: string;
+  } | null;
 };
 
 export type RecordingLocationSnapshotValidation =
@@ -137,6 +151,7 @@ export function validateRecordingLocationSnapshot(
   const longitude = finiteCoordinate(snapshot.longitude);
   const geocodedAt = String(snapshot.geocoded_at || snapshot.geocodedAt || "").trim();
   const capturedAt = String(snapshot.captured_at || "").trim();
+  const evidenceVersion = Number(snapshot.evidence_version || 1) === 2 ? 2 : 1;
   if (!address || !city || !state || !zipCode || !capturedAt) {
     return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_INCOMPLETE" };
   }
@@ -160,6 +175,100 @@ export function validateRecordingLocationSnapshot(
     return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_CAPTURE_EVIDENCE_INVALID" };
   }
 
+  let geocodingEvidence: RecordingLocationSnapshot["geocodingEvidence"] = null;
+  let snapshotEvidenceHash: string | null = null;
+  if (evidenceVersion === 2) {
+    const rawEvidence = snapshot.geocoding_evidence;
+    if (!rawEvidence || typeof rawEvidence !== "object" || Array.isArray(rawEvidence)) {
+      return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_PROVIDER_EVIDENCE_MISSING" };
+    }
+    const evidence = rawEvidence as Record<string, unknown>;
+    const provider = String(evidence.provider || "").trim();
+    const evidenceRecordVersion = Number(evidence.version);
+    const providerApiVersion = String(evidence.providerApiVersion || "").trim();
+    const providerResultId = evidence.providerResultId == null ? null : String(evidence.providerResultId).trim();
+    const inputAddress = String(evidence.inputAddress || "").trim();
+    const normalizedAddress = String(evidence.normalizedAddress || "").trim();
+    const resultType = String(evidence.resultType || "").trim();
+    const precision = String(evidence.precision || "").trim();
+    const confidence = String(evidence.confidence || "").trim();
+    const evidenceHash = String(evidence.evidenceHash || "").trim();
+    snapshotEvidenceHash = String(snapshot.snapshot_evidence_hash || "").trim() || null;
+    const sourceLocationType = normalizeRecordingLocationChoice(evidence.sourceLocationType);
+    const verifiedAt = String(evidence.verifiedAt || "").trim();
+    const matchCodes = Array.isArray(evidence.matchCodes)
+      ? evidence.matchCodes.map((code) => String(code || "").trim()).filter(Boolean)
+      : [];
+    if (
+      !["azure_maps", "census"].includes(provider) ||
+      evidenceRecordVersion !== 2 ||
+      !providerApiVersion ||
+      !inputAddress ||
+      !normalizedAddress ||
+      resultType !== "Address" ||
+      !precision ||
+      !confidence ||
+      matchCodes.length === 0 ||
+      sourceLocationType !== expected ||
+      verifiedAt !== geocodedAt ||
+      !/^[a-f0-9]{64}$/i.test(evidenceHash) ||
+      !snapshotEvidenceHash ||
+      !/^[a-f0-9]{64}$/i.test(snapshotEvidenceHash) ||
+      typeof evidence.fallbackUsed !== "boolean"
+    ) {
+      return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_PROVIDER_EVIDENCE_INVALID" };
+    }
+    const expectedEvidenceHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          version: 2,
+          provider,
+          providerApiVersion,
+          providerResultId,
+          inputAddress,
+          normalizedAddress,
+          resultType: "Address",
+          precision,
+          confidence,
+          matchCodes,
+          fallbackUsed: evidence.fallbackUsed,
+          verifiedAt,
+        }),
+      )
+      .digest("hex");
+    if (expectedEvidenceHash !== evidenceHash) {
+      return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_PROVIDER_EVIDENCE_INVALID" };
+    }
+    const expectedSnapshotHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          type: expected,
+          source,
+          address,
+          city,
+          state,
+          zipCode,
+          latitude,
+          longitude,
+          providerEvidence: evidence,
+        }),
+      )
+      .digest("hex");
+    if (expectedSnapshotHash !== snapshotEvidenceHash) {
+      return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_PROVIDER_EVIDENCE_INVALID" };
+    }
+    geocodingEvidence = {
+      provider: provider as "azure_maps" | "census",
+      providerApiVersion,
+      normalizedAddress,
+      precision,
+      confidence,
+      matchCodes,
+      fallbackUsed: evidence.fallbackUsed,
+      evidenceHash,
+    };
+  }
+
   return {
     ok: true,
     snapshot: {
@@ -175,6 +284,9 @@ export function validateRecordingLocationSnapshot(
       geocodedAt,
       capturedAt,
       formattedAddress: [address, city, state, zipCode].join(", "),
+      evidenceVersion,
+      snapshotEvidenceHash,
+      geocodingEvidence,
     },
   };
 }

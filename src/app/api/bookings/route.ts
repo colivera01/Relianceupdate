@@ -25,7 +25,10 @@ import {
   CUSTOMER_RECORDING_NOTICE_KIND,
   dispatchQueuedRecordingNotice,
 } from '@/lib/recording/recording-notice';
-import { geocodeAddress, hasCompleteAddress } from '@/lib/geocoding';
+import { geocodeAddress, geocodeFailureMessage, hasCompleteAddress } from '@/lib/geocoding';
+import type { GeocodeEvidence, GeocodeFailureStatus } from '@/lib/geocoding';
+import { buildRecordingLocationSnapshot } from '@/lib/recording-location-snapshot';
+import type { RecordingLocationType } from '@/lib/recording-location-snapshot';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -119,56 +122,6 @@ function finiteCoordinate(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function buildRecordingLocationSnapshot(
-  location: string,
-  source: 'customer_profile' | 'customer_supplied' | 'vendor_profile',
-  address: {
-    address?: string | null;
-    city?: string | null;
-    state?: string | null;
-    zipCode?: string | null;
-    latitude?: number | null;
-    longitude?: number | null;
-    geocodedAt?: Date | null;
-  } | null
-) {
-  const hasAddress = Boolean(
-    String(address?.address || '').trim() &&
-      String(address?.city || '').trim() &&
-      String(address?.state || '').trim() &&
-      String(address?.zipCode || '').trim()
-  );
-  const latitude = finiteCoordinate(address?.latitude);
-  const longitude = finiteCoordinate(address?.longitude);
-  const hasVerifiedCoordinates = Boolean(
-    latitude != null &&
-      longitude != null &&
-      !(latitude === 0 && longitude === 0) &&
-      address?.geocodedAt instanceof Date &&
-      Number.isFinite(address.geocodedAt.getTime())
-  );
-  return {
-    type: location,
-    source,
-    status:
-      location === 'customer-business' && !hasAddress
-        ? 'pending_customer_input'
-        : hasVerifiedCoordinates
-          ? 'verified_coordinates'
-          : hasAddress
-            ? 'address_only'
-            : 'not_available',
-    address: String(address?.address || '').trim() || null,
-    city: String(address?.city || '').trim() || null,
-    state: String(address?.state || '').trim() || null,
-    zip_code: String(address?.zipCode || '').trim() || null,
-    latitude,
-    longitude,
-    geocoded_at: address?.geocodedAt?.toISOString?.() || null,
-    captured_at: new Date().toISOString(),
-  };
-}
-
 function customerResidenceFromCustomFields(customFields: Record<string, unknown>) {
   return {
     address: String(customFields.vendor_job_customer_residence_address || '').trim() || null,
@@ -178,6 +131,7 @@ function customerResidenceFromCustomFields(customFields: Record<string, unknown>
     latitude: finiteCoordinate(customFields.vendor_job_customer_residence_latitude),
     longitude: finiteCoordinate(customFields.vendor_job_customer_residence_longitude),
     geocodedAt: null as Date | null,
+    geocodingEvidence: null as GeocodeEvidence | null,
   };
 }
 
@@ -194,6 +148,7 @@ function customerBusinessFromCustomFields(
     latitude: finiteCoordinate(customFields.vendor_job_customer_business_latitude),
     longitude: finiteCoordinate(customFields.vendor_job_customer_business_longitude),
     geocodedAt: null as Date | null,
+    geocodingEvidence: null as GeocodeEvidence | null,
   };
 }
 
@@ -224,18 +179,28 @@ function hasValidLocationCoordinates(location: WorkRecordLocationInput): boolean
   );
 }
 
+type WorkRecordLocationVerification =
+  | { ok: true; location: WorkRecordLocationInput }
+  | { ok: false; reason: GeocodeFailureStatus };
+
 async function verifyWorkRecordLocation(
   location: WorkRecordLocationInput
-): Promise<WorkRecordLocationInput | null> {
-  if (!hasCompleteAddress(location)) return null;
-  if (hasValidLocationCoordinates(location)) return location;
+): Promise<WorkRecordLocationVerification> {
+  if (!hasCompleteAddress(location)) return { ok: false, reason: 'incomplete_address' };
+  if (hasValidLocationCoordinates(location) && location.geocodingEvidence) {
+    return { ok: true, location };
+  }
   const result = await geocodeAddress(location);
-  if (result.status !== 'success') return null;
+  if (result.status !== 'success') return { ok: false, reason: result.status };
   return {
-    ...location,
-    latitude: result.latitude,
-    longitude: result.longitude,
-    geocodedAt: result.geocodedAt,
+    ok: true,
+    location: {
+      ...location,
+      latitude: result.latitude,
+      longitude: result.longitude,
+      geocodedAt: result.geocodedAt,
+      geocodingEvidence: result.evidence || null,
+    },
   };
 }
 
@@ -831,12 +796,16 @@ export async function POST(request: NextRequest) {
       | null = null;
 
     if (recordingLocation === 'business') {
-      resolvedRecordingLocation = await verifyWorkRecordLocation(vendor);
+      const verification = await verifyWorkRecordLocation({
+        ...vendor,
+        geocodingEvidence: null,
+      });
+      resolvedRecordingLocation = verification.ok ? verification.location : null;
       resolvedRecordingLocationSource = 'vendor_profile';
       if (!resolvedRecordingLocation) {
         return NextResponse.json(
           {
-            error: 'The vendor business address is missing, incomplete, or could not be verified.',
+            error: geocodeFailureMessage(verification.ok ? 'error' : verification.reason),
             code: 'VENDOR_BUSINESS_ADDRESS_REQUIRED',
             responsibleParticipant: 'VENDOR_MANAGER',
             resolution: 'Complete and verify the vendor business address before creating this work record.',
@@ -848,18 +817,20 @@ export async function POST(request: NextRequest) {
       const hasSuppliedResidence = hasAnyLocationInput(suppliedResidence);
       const residenceSource = hasSuppliedResidence
         ? suppliedResidence
-        : (customerProfileLocation as WorkRecordLocationInput | null);
-      resolvedRecordingLocation = residenceSource
+        : customerProfileLocation
+          ? ({ ...customerProfileLocation, geocodingEvidence: null } as WorkRecordLocationInput)
+          : null;
+      const verification = residenceSource
         ? await verifyWorkRecordLocation(residenceSource)
-        : null;
+        : ({ ok: false, reason: 'incomplete_address' } as const);
+      resolvedRecordingLocation = verification.ok ? verification.location : null;
       resolvedRecordingLocationSource = hasSuppliedResidence
         ? 'customer_supplied'
         : 'customer_profile';
       if (!resolvedRecordingLocation) {
         return NextResponse.json(
           {
-            error:
-              'The customer residence is missing, incomplete, or could not be verified. A vendor address cannot be used instead.',
+            error: geocodeFailureMessage(verification.ok ? 'error' : verification.reason),
             code: hasSuppliedResidence
               ? 'CUSTOMER_RESIDENCE_ADDRESS_UNVERIFIED'
               : 'CUSTOMER_RESIDENCE_ADDRESS_REQUIRED',
@@ -870,13 +841,13 @@ export async function POST(request: NextRequest) {
         );
       }
     } else if (recordingLocation === 'customer-business') {
-      resolvedRecordingLocation = await verifyWorkRecordLocation(suppliedCustomerBusiness);
+      const verification = await verifyWorkRecordLocation(suppliedCustomerBusiness);
+      resolvedRecordingLocation = verification.ok ? verification.location : null;
       resolvedRecordingLocationSource = 'customer_supplied';
       if (!resolvedRecordingLocation) {
         return NextResponse.json(
           {
-            error:
-              'The customer business address is missing, incomplete, or could not be verified. A residence or vendor address cannot be used instead.',
+            error: geocodeFailureMessage(verification.ok ? 'error' : verification.reason),
             code: hasAnyLocationInput(suppliedCustomerBusiness)
               ? 'CUSTOMER_BUSINESS_ADDRESS_UNVERIFIED'
               : 'CUSTOMER_BUSINESS_ADDRESS_REQUIRED',
@@ -890,7 +861,7 @@ export async function POST(request: NextRequest) {
     if (recordingLocation) {
       const nextMeta = customerMetadataPayload || {};
       nextMeta.vendor_job_recording_location_snapshot = buildRecordingLocationSnapshot(
-        recordingLocation,
+        recordingLocation as RecordingLocationType,
         resolvedRecordingLocationSource!,
         resolvedRecordingLocation
       );

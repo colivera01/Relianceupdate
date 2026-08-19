@@ -779,6 +779,29 @@ describe('POST /api/bookings', () => {
     hoisted.mediaSessionCreate.mockResolvedValue({ id: 'consent-session-1' });
     hoisted.bookingUpdate.mockResolvedValue({ id: 'residence-book' });
     hoisted.bookingFindUnique.mockResolvedValue(baseHydratedBooking({ id: 'residence-book' }));
+    vi.mocked(geocodeAddress).mockResolvedValueOnce({
+      status: 'success',
+      provider: 'azure_maps',
+      latitude: 28.698,
+      longitude: -81.305,
+      geocodedAt: new Date('2026-08-13T12:00:00.000Z'),
+      formattedAddress: '407 Boxwood Cir, Winter Springs, FL 32708',
+      evidence: {
+        version: 2,
+        provider: 'azure_maps',
+        providerApiVersion: '2025-01-01',
+        providerResultId: 'azure-address-boxwood',
+        inputAddress: '407 Boxwood Circle, Winter Springs, FL, 32708',
+        normalizedAddress: '407 Boxwood Cir, Winter Springs, FL 32708',
+        resultType: 'Address',
+        precision: 'Rooftop',
+        confidence: 'High',
+        matchCodes: ['Good'],
+        fallbackUsed: false,
+        verifiedAt: '2026-08-13T12:00:00.000Z',
+        evidenceHash: 'a'.repeat(64),
+      },
+    });
 
     const res = await bookingsCreatePOST(
       jsonRequest(
@@ -817,7 +840,16 @@ describe('POST /api/bookings', () => {
       latitude: 28.698,
       longitude: -81.305,
       geocoded_at: '2026-08-13T12:00:00.000Z',
+      evidence_version: 2,
+      geocoding_evidence: {
+        provider: 'azure_maps',
+        normalizedAddress: '407 Boxwood Cir, Winter Springs, FL 32708',
+        precision: 'Rooftop',
+        sourceLocationType: 'residence',
+        evidenceHash: 'a'.repeat(64),
+      },
     });
+    expect(metadata.vendor_job_recording_location_snapshot.snapshot_evidence_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(geocodeAddress).toHaveBeenCalledWith(
       expect.objectContaining({
         address: '407 Boxwood Circle',
@@ -865,6 +897,7 @@ describe('POST /api/bookings', () => {
     expect(res.status).toBe(422);
     await expect(res.json()).resolves.toMatchObject({
       code: 'CUSTOMER_RESIDENCE_ADDRESS_UNVERIFIED',
+      error: 'We could not verify this address. Check the address or choose the correct suggested location.',
       responsibleParticipant: 'VENDOR_MANAGER',
     });
     expect(hoisted.bookingCreate).not.toHaveBeenCalled();

@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { completePermissionDecision, PermissionDecisionError } from "@/lib/consent/decision-service";
 import { PERMISSION_DECISION_COOKIE, permissionDecisionCookieOptions } from "@/lib/consent/decision-session";
 import { findPermissionByActionSecret } from "@/lib/consent/lookup";
-import { formatAddress, geocodeAddress, hasCompleteAddress } from "@/lib/geocoding";
+import { formatAddress, geocodeAddress, geocodeFailureMessage, hasCompleteAddress } from "@/lib/geocoding";
+import { buildRecordingLocationSnapshot } from "@/lib/recording-location-snapshot";
 import { sendConsentDecisionNotifications } from "@/lib/notifications/send-consent-decision";
 
 function parseMetadata(value: string | null | undefined): Record<string, unknown> {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
       const geocode = await geocodeAddress(address);
       if (geocode.status !== "success") {
         return NextResponse.json(
-          { success: false, code: "CUSTOMER_BUSINESS_ADDRESS_NOT_VERIFIED", error: "We could not verify that business address. Check it and try again." },
+          { success: false, code: "CUSTOMER_BUSINESS_ADDRESS_NOT_VERIFIED", error: geocodeFailureMessage(geocode.status) },
           { status: 422 }
         );
       }
@@ -53,19 +54,17 @@ export async function POST(request: NextRequest) {
         vendor_job_customer_business_longitude: geocode.longitude,
         vendor_job_customer_business_geocoded_at: geocode.geocodedAt.toISOString(),
         vendor_job_customer_business_formatted_address: geocode.formattedAddress || formatAddress(address),
-        vendor_job_recording_location_snapshot: {
-          type: "customer-business",
-          source: "customer_supplied",
-          status: "verified_coordinates",
-          address: address.address,
-          city: address.city,
-          state: address.state,
-          zip_code: address.zipCode,
-          latitude: geocode.latitude,
-          longitude: geocode.longitude,
-          geocoded_at: geocode.geocodedAt.toISOString(),
-          captured_at: new Date().toISOString(),
-        },
+        vendor_job_recording_location_snapshot: buildRecordingLocationSnapshot(
+          "customer-business",
+          "customer_supplied",
+          {
+            ...address,
+            latitude: geocode.latitude,
+            longitude: geocode.longitude,
+            geocodedAt: geocode.geocodedAt,
+            geocodingEvidence: geocode.evidence || null,
+          },
+        ),
       });
     }
 

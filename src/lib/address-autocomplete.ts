@@ -1,3 +1,5 @@
+import { getAzureMapsAddressCandidates, getGeocodingProvider } from "./geocoding";
+
 export type AddressAutocompleteSuggestion = {
   id: string;
   label: string;
@@ -35,25 +37,6 @@ type CensusAutocompleteResponse = {
   result?: {
     addressMatches?: CensusAddressMatch[];
   };
-};
-
-type MapboxContextItem = {
-  id?: string;
-  text?: string;
-  short_code?: string;
-};
-
-type MapboxFeature = {
-  id?: string;
-  place_name?: string;
-  text?: string;
-  address?: string;
-  center?: [number, number];
-  context?: MapboxContextItem[];
-};
-
-type MapboxAutocompleteResponse = {
-  features?: MapboxFeature[];
 };
 
 function clean(value: unknown): string {
@@ -121,59 +104,22 @@ export function suggestionsFromCensus(payload: CensusAutocompleteResponse): Addr
     .filter((suggestion): suggestion is AddressAutocompleteSuggestion => Boolean(suggestion));
 }
 
-function getMapboxContext(feature: MapboxFeature, type: string): MapboxContextItem | undefined {
-  return feature.context?.find((item) => item.id?.startsWith(`${type}.`));
-}
-
-export function suggestionsFromMapbox(payload: MapboxAutocompleteResponse): AddressAutocompleteSuggestion[] {
-  const features = payload.features || [];
-  return features
-    .map((feature, index) => {
-      const label = clean(feature.place_name);
-      const address = compact([feature.address, feature.text]);
-      const city = clean(getMapboxContext(feature, "place")?.text || getMapboxContext(feature, "locality")?.text);
-      const region = getMapboxContext(feature, "region");
-      const state = normalizeState(clean(region?.short_code?.split("-").pop() || region?.text));
-      const zipCode = clean(getMapboxContext(feature, "postcode")?.text);
-      const longitude = feature.center?.[0];
-      const latitude = feature.center?.[1];
-
-      if (!address || !city || !state || !zipCode) return null;
-      return {
-        id: clean(feature.id) || suggestionId("mapbox", index, label),
-        label: label || `${address}, ${city}, ${state} ${zipCode}`,
-        address,
-        city,
-        state,
-        zipCode,
-        ...(typeof latitude === "number" ? { latitude } : {}),
-        ...(typeof longitude === "number" ? { longitude } : {}),
-      };
-    })
-    .filter((suggestion): suggestion is AddressAutocompleteSuggestion => Boolean(suggestion));
-}
-
 export async function getAddressAutocompleteSuggestions(query: string): Promise<AddressAutocompleteSuggestion[]> {
   const q = clean(query);
   if (q.length < 3) return [];
 
-  const mapboxKey = clean(process.env.GEOCODING_API_KEY || process.env.MAPBOX_GEOCODING_API_KEY);
-  if (mapboxKey) {
-    const baseUrl =
-      clean(process.env.MAPBOX_GEOCODING_ENDPOINT) ||
-      "https://api.mapbox.com/geocoding/v5/mapbox.places";
-    const params = new URLSearchParams({
-      access_token: mapboxKey,
-      autocomplete: "true",
-      country: "us",
-      limit: "5",
-      types: "address",
-    });
-    const response = await fetch(`${baseUrl}/${encodeURIComponent(q)}.json?${params.toString()}`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) return [];
-    return suggestionsFromMapbox((await response.json()) as MapboxAutocompleteResponse);
+  if (getGeocodingProvider() === "azure_maps") {
+    const candidates = await getAzureMapsAddressCandidates(q);
+    return candidates.map((candidate, index) => ({
+      id: candidate.id || suggestionId("azure-maps", index, candidate.formattedAddress),
+      label: candidate.formattedAddress,
+      address: candidate.address,
+      city: candidate.city,
+      state: normalizeState(candidate.state),
+      zipCode: candidate.zipCode,
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
+    }));
   }
 
   const baseUrl =
