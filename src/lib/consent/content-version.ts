@@ -1,7 +1,11 @@
 import { hashOpaqueSecret } from "./token";
 
-export const PERMISSION_CONTENT_VERSION = "recording-permission-v1";
-export const PERMISSION_SCOPE_SCHEMA_VERSION = "recording-scope-v1";
+export const PERMISSION_CONTENT_VERSION = "recording-permission-v2-simplified-v1";
+export const PERMISSION_SCOPE_SCHEMA_VERSION = "recording-scope-v2-simplified-v1";
+
+export function isSimplifiedV1PermissionVersion(value: unknown): boolean {
+  return String(value || "").trim() === PERMISSION_CONTENT_VERSION;
+}
 
 export const PERMISSION_CONTENT = {
   purpose:
@@ -13,7 +17,7 @@ export const PERMISSION_CONTENT = {
   publication:
     "Public sharing is a separate decision after the recordings exist.",
   decline:
-    "You may decline or decide later. The service may continue without Reliance recording.",
+    "You may allow recording, decline recording, or report that this request was sent to the wrong person. If you take no action, recording remains blocked.",
 } as const;
 
 export function stableJson(value: unknown): string {

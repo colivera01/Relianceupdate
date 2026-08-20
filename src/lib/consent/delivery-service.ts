@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db";
 import { dispatchQueuedConsentNotification } from "@/lib/booking-notification-delivery";
+import { PERMISSION_CONTENT_VERSION } from "@/lib/consent/content-version";
 
 export async function deliverVerifiedPermissionRequest(input: {
   request: Request;
@@ -19,6 +20,13 @@ export async function deliverVerifiedPermissionRequest(input: {
     .replace(/\/+$/, "");
   const baseUrl =
     configured || new URL(input.request.url).origin.replace(/\/+$/, "");
+  const consentModel = (prisma as any).consentRecord;
+  const current = consentModel?.findUnique
+    ? await consentModel.findUnique({
+        where: { id: input.consentRecordId },
+        select: { contentVersion: { select: { version: true } } },
+      })
+    : null;
   const dispatched = await dispatchQueuedConsentNotification({
     notificationId: input.notificationId,
     consentRecordId: input.consentRecordId,
@@ -34,6 +42,7 @@ export async function deliverVerifiedPermissionRequest(input: {
     bookingTitle: input.booking.title || null,
     serviceDate: input.booking.scheduledFor || input.booking.date || null,
     consentTypeLabel: "recording permission",
+    contentVersion: current?.contentVersion?.version || PERMISSION_CONTENT_VERSION,
   });
   const delivery = dispatched.delivery;
   const delivered =

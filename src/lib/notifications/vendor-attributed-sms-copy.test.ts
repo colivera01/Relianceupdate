@@ -62,6 +62,60 @@ describe("vendor-attributed SMS copy", () => {
     );
   });
 
+  it("uses the simplified V1 customer actions in current permission email", async () => {
+    hoisted.readNotificationEnv.mockReturnValue({
+      emailEnabled: true,
+      smsEnabled: false,
+      appBaseUrl: "https://relianceonline.org",
+    });
+    hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "email-1" });
+    const { sendConsentLinkNotification } = await import("./send-consent-link");
+
+    await sendConsentLinkNotification({
+      consentRecordId: "consent-1",
+      actorUserId: "vendor-user-1",
+      consentPath: "/consent/token-1",
+      customerEmail: "customer@example.com",
+      vendorName: "Electro LLC",
+      serviceName: "Outlet Installation",
+      contentVersion: "recording-permission-v2-simplified-v1",
+    });
+
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    expect(email.text).toContain("allow recording, decline recording, or report");
+    expect(`${email.text}\n${email.html}`).not.toContain("decide later");
+    expect(`${email.text}\n${email.html}`).not.toContain("service may continue without Reliance recording");
+  });
+
+  it("keeps SMS action copy bound to the permission content version", async () => {
+    const { sendConsentLinkNotification } = await import("./send-consent-link");
+
+    await sendConsentLinkNotification({
+      consentRecordId: "consent-current",
+      actorUserId: "vendor-user-1",
+      consentPath: "/consent/token-current",
+      customerPhone: "4075550199",
+      vendorName: "Electro LLC",
+      serviceName: "Outlet Installation",
+      contentVersion: "recording-permission-v2-simplified-v1",
+    });
+    await sendConsentLinkNotification({
+      consentRecordId: "consent-historical",
+      actorUserId: "vendor-user-1",
+      consentPath: "/consent/token-historical",
+      customerPhone: "4075550199",
+      vendorName: "Electro LLC",
+      serviceName: "Outlet Installation",
+      contentVersion: "recording-permission-v1",
+    });
+
+    expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
+      "Allow recording, decline recording, or report wrong recipient",
+    );
+    expect(hoisted.sendSms.mock.calls[0][0].body).not.toContain("decide later");
+    expect(hoisted.sendSms.mock.calls[1][0].body).toContain("Allow, decline, or decide later");
+  });
+
   it("identifies the vendor in the optional customer review invitation SMS", async () => {
     const { sendReviewInvitationNotification } = await import("./send-review-invitation");
 

@@ -20,9 +20,16 @@ export async function POST(request: NextRequest) {
       request,
       bookingId: result.bookingId,
       accepted: false,
+      declineCanceled: result.workRecordCanceled,
       actorUserId: result.evidence.actorUserId || "verified-permission-recipient",
     }).catch((error) => console.error("[permission/decline] decision notification failed", error));
-    const response = NextResponse.json({ success: true, permission: { state: "declined" } });
+    const response = NextResponse.json({
+      success: true,
+      permission: {
+        state: result.workRecordCanceled ? "canceled" : "declined",
+        workRecordCanceled: result.workRecordCanceled,
+      },
+    });
     response.cookies.set(PERMISSION_DECISION_COOKIE, "", { ...permissionDecisionCookieOptions(), maxAge: 0 });
     return response;
   } catch (error) {

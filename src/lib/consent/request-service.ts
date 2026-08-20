@@ -120,7 +120,7 @@ export async function createVerifiedPermissionRequest(input: {
         contentJson: PERMISSION_CONTENT_JSON,
         contentHash: PERMISSION_CONTENT_HASH,
         scopeSchemaVersion: PERMISSION_SCOPE_SCHEMA_VERSION,
-        effectiveAt: new Date("2026-07-31T00:00:00.000Z"),
+        effectiveAt: new Date("2026-08-20T00:00:00.000Z"),
       },
       update: {},
     });

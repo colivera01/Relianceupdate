@@ -322,14 +322,9 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(dialog.getByText("Customer's authorized representative", { exact: true })).toHaveCount(0);
     await expect(dialog.getByText("Parent or legal guardian", { exact: true })).toHaveCount(0);
 
-    const required = dialog.getByRole("radio", { name: /Yes - Recording is required/ });
-    const optional = dialog.getByRole("radio", { name: /No - The service can continue without recording/ });
-    await optional.check();
-    await expect(optional).toBeChecked();
-    await expect(required).not.toBeChecked();
-    await required.check();
-    await expect(required).toBeChecked();
-    await expect(optional).not.toBeChecked();
+    await expect(dialog.getByText("Is recording required to complete this service?")).toHaveCount(0);
+    await expect(dialog.getByRole("radio", { name: /Recording is required/ })).toHaveCount(0);
+    await expect(dialog.getByRole("radio", { name: /service can continue without recording/ })).toHaveCount(0);
 
   });
 
@@ -363,7 +358,6 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await dialog.getByRole("combobox", { name: "Whose property may appear in the video?" }).selectOption("customer_owned");
     await dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" }).selectOption("none");
     await dialog.getByRole("combobox", { name: "What will the camera primarily show?" }).selectOption("controlled");
-    await dialog.getByRole("radio", { name: /No - The service can continue without recording/ }).check();
     await dialog.getByRole("button", { name: "Add Work Record" }).click();
 
     await expect(dialog.getByText("We could not verify this address. Check the address or choose the correct suggested location.")).toBeVisible();

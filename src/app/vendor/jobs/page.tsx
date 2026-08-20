@@ -33,7 +33,6 @@ import {
 import { getClientSessionHeaders } from '@/lib/client-session';
 import { useAuth } from '@/contexts/AuthContext';
 import { tutorialGuides } from '@/lib/user-guidance';
-import { recordingRequirementFields, recordingRequirementSelection } from '@/lib/recording-scope-presentation';
 import {
   fetchVendorTeamMembers,
   avatarUrlForName,
@@ -258,8 +257,6 @@ export default function VendorJobs() {
     protectedNonParticipantMayAppear: false,
     sensitiveInformationMayAppear: false,
     identifiersMayAppear: false,
-    serviceCanContinueWithoutRecording: true,
-    essentialPrivateRecording: false,
   });
 
   const getEmptyJobFieldErrors = () => ({
@@ -395,8 +392,6 @@ export default function VendorJobs() {
     protectedNonParticipantMayAppear: false,
     sensitiveInformationMayAppear: false,
     identifiersMayAppear: false,
-    serviceCanContinueWithoutRecording: true,
-    essentialPrivateRecording: false,
   });
   const [newServiceForJob, setNewServiceForJob] = useState({
     name: '',
@@ -2802,10 +2797,9 @@ export default function VendorJobs() {
       recordingAssessment:
         newJob.propertyScope &&
         newJob.peopleScope &&
-        newJob.frameControl &&
-        recordingRequirementSelection(newJob)
+        newJob.frameControl
           ? ''
-          : 'Complete the recording subject assessment and explain whether Private recording is essential.',
+          : 'Complete the recording subject assessment.',
     };
     setJobFieldErrors(nextJobErrors);
 
@@ -2898,8 +2892,6 @@ export default function VendorJobs() {
               identifiersMayAppear: newJob.identifiersMayAppear,
               residenceInterior: recordingLocation === 'residence',
               businessInterior: recordingLocation === 'customer-business',
-              serviceCanContinueWithoutRecording: newJob.serviceCanContinueWithoutRecording,
-              essentialPrivateRecording: newJob.essentialPrivateRecording,
             } : undefined,
           }
         );
@@ -3027,9 +3019,6 @@ export default function VendorJobs() {
         recording_identifiers_may_appear: newJob.identifiersMayAppear,
         recording_residence_interior: recordingLocation === 'residence',
         recording_business_interior: recordingLocation === 'customer-business',
-        service_can_continue_without_recording:
-          newJob.serviceCanContinueWithoutRecording,
-        essential_private_recording: newJob.essentialPrivateRecording,
       },
     };
     const creationFingerprint = JSON.stringify(payload);
@@ -3106,7 +3095,7 @@ export default function VendorJobs() {
             : 'success',
         message:
           automaticConsent?.status === 'delivered'
-            ? `Added the work record for ${client}. The recording-permission request was delivered; recording stays locked until the customer or authorized representative allows it.`
+            ? `Added the work record for ${client}. The recording-permission request was delivered; recording stays locked until the verified customer contact allows it.`
             : automaticConsent?.status === 'delivery_failed'
               ? `Added the work record for ${client}, but delivery was not confirmed. Recording stays locked. Open the recording-permission step to resend it.`
               : automaticConsent?.status === 'no_digital_channel'
@@ -3390,9 +3379,6 @@ export default function VendorJobs() {
       protectedNonParticipantMayAppear: Boolean(scope.protectedParticipantPresent),
       sensitiveInformationMayAppear: Boolean(scope.sensitiveCapture),
       identifiersMayAppear: Boolean(scope.identifiersMayAppear),
-      serviceCanContinueWithoutRecording:
-        scope.serviceCanContinueWithoutRecording !== false,
-      essentialPrivateRecording: Boolean(scope.essentialPrivateRecording),
     };
     setNewJob(editForm);
     setEditJobBaseline(editForm);
@@ -4027,8 +4013,8 @@ export default function VendorJobs() {
           : '';
         setGeoInfo(
           sentChannels
-            ? `Recording permission request sent by ${sentChannels}. Waiting for the customer or representative.`
-            : 'Recording permission request sent. Waiting for the customer or representative.'
+            ? `Recording permission request sent by ${sentChannels}. Waiting for the verified customer contact.`
+            : 'Recording permission request sent. Waiting for the verified customer contact.'
         );
       } else {
         const deliveryReason =
@@ -6317,39 +6303,6 @@ export default function VendorJobs() {
                       </label>
                     ))}
                   </div>
-                  <fieldset className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-sm text-slate-700">
-                    <legend className="mb-2 font-semibold text-slate-900">Is recording required to complete this service?</legend>
-                    <label className="flex items-start gap-2 rounded-md border border-slate-200 p-3">
-                      <input
-                        type="radio"
-                        name="recording-required"
-                        checked={recordingRequirementSelection(newJob) === "required"}
-                        onChange={() =>
-                          setNewJob({
-                            ...newJob,
-                            ...recordingRequirementFields(true),
-                          })
-                        }
-                        className="mt-1"
-                      />
-                      <span><strong>Yes - Recording is required.</strong><br /><span className="text-xs text-slate-600">The customer will be told that the service cannot proceed if recording permission is declined.</span></span>
-                    </label>
-                    <label className="flex items-start gap-2 rounded-md border border-slate-200 p-3">
-                        <input
-                          type="radio"
-                          name="recording-required"
-                          checked={recordingRequirementSelection(newJob) === "optional"}
-                          onChange={() =>
-                            setNewJob({
-                              ...newJob,
-                              ...recordingRequirementFields(false),
-                            })
-                          }
-                          className="mt-1"
-                        />
-                        <span><strong>No - The service can continue without recording.</strong><br /><span className="text-xs text-slate-600">If the customer declines, the service may continue without a Service Video.</span></span>
-                      </label>
-                  </fieldset>
                   <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950">
                     Audio is off. Public sharing is never included in this assessment and requires a separate later decision.
                   </div>
@@ -7286,7 +7239,7 @@ export default function VendorJobs() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label htmlFor="permission-recipient-name" className="mb-1 block text-sm font-medium text-slate-800">
-                    Customer or authorized representative
+                    Verified customer contact
                   </label>
                   <Input
                     id="permission-recipient-name"
@@ -7561,7 +7514,7 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-blue-900">Verified Recording Permission Required</h4>
                           <p className="text-sm text-blue-700 mt-1">
-                            The customer or an authorized representative receives a secure request explaining what will be recorded. Recording stays locked until identity, authority, delivery, and permission are verified.
+                            The intended customer contact receives a secure request explaining what will be recorded. Recording stays locked until identity, delivery, and customer authority are verified.
                           </p>
                         </div>
                       </div>
@@ -7617,7 +7570,7 @@ export default function VendorJobs() {
                     
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
-                        <div>Recording-permission request sent. Waiting for the customer or authorized representative.</div>
+                        <div>Recording-permission request sent. Waiting for the verified customer contact.</div>
                         <Button
                           size="sm"
                           variant="outline"
@@ -7681,7 +7634,7 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-blue-900">Recording Permission & Location Verification</h4>
                           <p className="text-sm text-blue-700 mt-1">
-                            An authorized business representative must allow the approved recording scope. After permission is verified, the employee also verifies the business location before the camera opens.
+                            The verified customer contact must allow the approved recording scope. After permission is verified, the employee also verifies the business location before the camera opens.
                           </p>
                         </div>
                       </div>
@@ -7693,7 +7646,7 @@ export default function VendorJobs() {
                         <div>
                           <h4 className="font-medium text-yellow-900">Recording Safeguard</h4>
                           <p className="text-sm text-yellow-700 mt-1">
-                            A business representative cannot authorize recording every employee, visitor, or customer. The employee must avoid people and confidential material outside the approved scope. Audio remains off.
+                            Customer permission does not authorize recording every employee, visitor, or customer. The employee must avoid people and confidential material outside the approved scope. Audio remains off.
                           </p>
                         </div>
                       </div>
@@ -7737,7 +7690,7 @@ export default function VendorJobs() {
 
                     {customerConsentStatus === CONSENT_STATE.REQUESTED && (
                       <div className="mt-2 text-sm text-blue-600 space-y-2">
-                        <div>Recording-permission request sent. Waiting for the customer or authorized representative.</div>
+                        <div>Recording-permission request sent. Waiting for the verified customer contact.</div>
                         <Button
                           size="sm"
                           variant="outline"
@@ -7913,7 +7866,7 @@ export default function VendorJobs() {
                       <div>
                         <h4 className="font-medium text-yellow-900">Waiting for Recording Permission</h4>
                         <p className="text-sm text-yellow-700 mt-1">
-                          Recording stays locked until the customer or authorized representative responds.
+                          Recording stays locked until the verified customer contact responds.
                         </p>
                       </div>
                     </div>

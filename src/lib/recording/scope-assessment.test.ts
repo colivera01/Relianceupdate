@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveRecordingScopeAssessment,
   parseRecordingScopeAssessmentInput,
+  SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
 } from "./scope-assessment";
 
 describe("recording subject assessment", () => {
@@ -22,6 +23,13 @@ describe("recording subject assessment", () => {
       noticeRequired: true,
       audioAllowed: false,
       authorityHolderType: "vendor_manager",
+      serviceCanContinueWithoutRecording: false,
+      essentialPrivateRecording: true,
+    });
+    expect(JSON.parse(result.scopeJson)).toMatchObject({
+      schemaVersion: SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
+      serviceCanContinueWithoutRecording: false,
+      essentialPrivateRecording: true,
     });
     expect(result.authorityRequirements).toEqual([
       { authorityType: "VENDOR_MANAGER", status: "VERIFIED", required: true },
@@ -49,7 +57,7 @@ describe("recording subject assessment", () => {
       expect(result.permissionRequired).toBe(true);
       expect(result.authorityHolderType).toBe("customer");
       expect(result.authorityRequirements).toContainEqual({
-        authorityType: "CUSTOMER_OR_REPRESENTATIVE",
+        authorityType: "CUSTOMER",
         status: "PENDING",
         required: true,
       });

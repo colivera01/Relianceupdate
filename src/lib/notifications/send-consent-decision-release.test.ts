@@ -22,7 +22,10 @@ vi.mock("@/lib/email/resend", () => ({ sendEmail: vi.fn() }));
 vi.mock("@/lib/sms/twilio", () => ({ sendSms: vi.fn() }));
 vi.mock("@/lib/notifications/notification-audit", () => ({ logNotificationAttempt: vi.fn() }));
 
-import { sendConsentDecisionNotifications } from "./send-consent-decision";
+import {
+  buildConsentDecisionEmailContent,
+  sendConsentDecisionNotifications,
+} from "./send-consent-decision";
 
 describe("accepted permission Service Order release", () => {
   beforeEach(() => {
@@ -77,5 +80,20 @@ describe("accepted permission Service Order release", () => {
 
     expect(h.release).not.toHaveBeenCalled();
     expect(result.releasedMembershipIds).toEqual([]);
+  });
+
+  it("distinguishes Reliance work-record cancellation from the underlying service", () => {
+    const content = buildConsentDecisionEmailContent({
+      accepted: false,
+      declineCanceled: true,
+      vendorName: "Electro LLC",
+      jobTitle: "Outlet Installation",
+      recipientName: "Vendor manager",
+    });
+
+    expect(content.subject).toContain("Reliance work record canceled");
+    expect(content.message).toContain("underlying service arrangement was not canceled");
+    expect(content.nextStep).toContain("vendor may decide independently");
+    expect(content.text).not.toContain("Customer canceled service");
   });
 });

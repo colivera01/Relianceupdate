@@ -28,19 +28,26 @@ function baseUrl(request: Request): string {
 
 export function buildConsentDecisionEmailContent(input: {
   accepted: boolean;
+  declineCanceled?: boolean;
   vendorName: string;
   jobTitle: string;
   recipientName: string;
 }) {
   const decision = input.accepted ? "approved" : "declined";
-  const subject = `Customer ${decision} service video access: ${input.jobTitle}`;
+  const subject = input.declineCanceled
+    ? `Reliance work record canceled after recording decline: ${input.jobTitle}`
+    : `Customer ${decision} service video access: ${input.jobTitle}`;
   const message = input.accepted
     ? `The verified recipient allowed Reliance recording for ${input.jobTitle}. Recordings start Private. The assigned employee can now open the secure service order when all other recording checks pass.`
-    : `The verified recipient declined Reliance recording for ${input.jobTitle}. Recording stays locked. The service may continue without Reliance recording.`;
+    : input.declineCanceled
+      ? `The verified customer declined Reliance recording permission for ${input.jobTitle}. This Reliance work record has been canceled. The underlying service arrangement was not canceled by Reliance.`
+      : `The verified recipient declined Reliance recording for ${input.jobTitle}. Recording stays locked. The service may continue without Reliance recording.`;
   const resultLabel = input.accepted ? "Recording allowed" : "Recording declined";
   const nextStep = input.accepted
     ? "The assigned employee may open the secure service order after the remaining recording checks pass."
-    : "Do not record this service in Reliance. The service may continue without recording.";
+    : input.declineCanceled
+      ? "No Reliance recording or work-record action remains. The vendor may decide independently whether the underlying service continues outside Reliance."
+      : "Do not record this service in Reliance. The service may continue without recording.";
   const greeting = `Hi ${input.recipientName || "there"},`;
   const text = [
     greeting,
@@ -79,6 +86,7 @@ async function sendDecisionNotice(input: {
   actorUserId: string;
   bookingId: string;
   accepted: boolean;
+  declineCanceled?: boolean;
   vendorName: string;
   jobTitle: string;
   recipientName: string;
@@ -129,6 +137,7 @@ export async function sendConsentDecisionNotifications(input: {
   request: Request;
   bookingId: string;
   accepted: boolean;
+  declineCanceled?: boolean;
   actorUserId: string;
 }) {
   const booking = await prisma.booking.findUnique({
@@ -167,6 +176,7 @@ export async function sendConsentDecisionNotifications(input: {
         actorUserId: input.actorUserId,
         bookingId: booking.id,
         accepted: input.accepted,
+        declineCanceled: input.declineCanceled,
         vendorName,
         jobTitle,
         recipientName: String(recipient?.name || vendorName),
@@ -190,6 +200,7 @@ export async function sendConsentDecisionNotifications(input: {
           actorUserId: input.actorUserId,
           bookingId: booking.id,
           accepted: false,
+          declineCanceled: input.declineCanceled,
           vendorName,
           jobTitle,
           recipientName: String(assignedMember.user?.name || "Team member"),

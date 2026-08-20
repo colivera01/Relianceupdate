@@ -5,6 +5,7 @@ import { logNotificationAttempt } from '@/lib/notifications/notification-audit';
 import { formatCustomerFacingServiceDate } from '@/lib/notifications/customer-facing-date';
 import { resolveCustomerFacingServiceLabel } from '@/lib/notifications/customer-facing-service-label';
 import { buildRelianceEmailHtml, escapeRelianceEmailHtml } from '@/lib/email/reliance-template';
+import { isSimplifiedV1PermissionVersion } from '@/lib/consent/content-version';
 
 export type ConsentLinkDeliveryInput = {
   consentRecordId: string;
@@ -21,6 +22,7 @@ export type ConsentLinkDeliveryInput = {
   serviceTimeZone?: string | null;
   consentTypeLabel?: string;
   absoluteBaseUrl?: string | null;
+  contentVersion?: string | null;
 };
 
 export type ChannelDelivery = {
@@ -80,6 +82,10 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
   });
   const subject = `Recording permission request from ${vendorName}`;
   const label = formatConsentRequestLabel(input.consentTypeLabel || 'recording permission');
+  const simplifiedV1 = isSimplifiedV1PermissionVersion(input.contentVersion);
+  const decisionCopy = simplifiedV1
+    ? 'You may allow recording, decline recording, or report that this request was sent to the wrong person. If you take no action, recording remains blocked.'
+    : 'You may allow, decline, or decide later. The service may continue without Reliance recording.';
   const html = buildRelianceEmailHtml({
     eyebrow: 'Recording permission request',
     headline: 'Choose whether Reliance may record this service',
@@ -87,7 +93,7 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
     bodyHtml: `
       <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> is asking for permission to record three short proof-of-service videos in Reliance.</p>
       <p style="margin:0 0 14px;">Audio is off. Recordings start Private and public sharing would be a separate decision after the recordings exist.</p>
-      <p style="margin:0;">You may allow, decline, or decide later. The service may continue without Reliance recording.</p>
+      <p style="margin:0;">${escapeRelianceEmailHtml(decisionCopy)}</p>
     `,
     details: [
       { label: 'Service', value: serviceName },
@@ -105,7 +111,7 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
     `Service: ${serviceName}`,
     ...(serviceDate ? [`Service date: ${serviceDate}`] : []),
     'Audio is off. Recordings start Private. Public sharing is a separate later decision.',
-    'You may allow, decline, or decide later. The service may continue without Reliance recording.',
+    decisionCopy,
     `Request type: ${label}.`,
     '',
     `Review recording request: ${absoluteFallbackLink}`,
@@ -158,7 +164,10 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
 
   const phone = normalizeE164ish(input.customerPhone);
   if (env.smsEnabled && phone) {
-    const body = `Reliance: ${vendorName} requests permission to record ${serviceName}. Audio is off; videos start Private. Allow, decline, or report wrong recipient: ${absoluteFallbackLink} Reply STOP to opt out.`;
+    const smsActions = simplifiedV1
+      ? "Allow recording, decline recording, or report wrong recipient"
+      : "Allow, decline, or decide later";
+    const body = `Reliance: ${vendorName} requests permission to record ${serviceName}. Audio is off; videos start Private. ${smsActions}: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

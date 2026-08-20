@@ -729,7 +729,7 @@ export async function POST(request: NextRequest) {
             'Complete the recording subject assessment before creating this work record.',
           code: 'RECORDING_ASSESSMENT_REQUIRED',
           responsibleParticipant: 'VENDOR_MANAGER',
-          resolution: 'Describe the planned property, people, frame control, and recording requirement.',
+          resolution: 'Describe the planned property, people, frame control, and recording risks.',
         },
         { status: 422 }
       );
@@ -865,6 +865,7 @@ export async function POST(request: NextRequest) {
         resolvedRecordingLocationSource!,
         resolvedRecordingLocation
       );
+      nextMeta.vendor_job_permission_workflow_version = 'SIMPLIFIED_V1';
       if (requiresCustomerConsent) {
         nextMeta.vendor_job_consent_accepted = false;
         nextMeta.vendor_job_consent_status = 'not_sent';

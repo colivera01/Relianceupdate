@@ -9,6 +9,8 @@ import {
   evaluatePermissionAuthority,
   type AuthorityValidationResult,
 } from "./authority-validation";
+import { isSimplifiedV1PermissionVersion } from "./content-version";
+import { cancelSimplifiedV1WorkRecordAfterDecline } from "./decline-cancellation";
 
 function parseMetadata(value: string | null | undefined): Record<string, unknown> {
   try {
@@ -98,6 +100,7 @@ export async function completePermissionDecision(input: {
   const requestHash = hashOpaqueSecret(`${record.id}:${record.generation}:${link.secretHash}`);
   const contentHash = String(record.contentVersion?.contentHash || "");
   const contentVersion = String(record.contentVersion?.version || "");
+  const simplifiedV1 = isSimplifiedV1PermissionVersion(contentVersion);
   if (!record.scopeHash || !contentHash || !contentVersion) {
     throw new PermissionDecisionError("PERMISSION_EVIDENCE_INCOMPLETE", 409, "This request must be reissued before recording can be allowed.");
   }
@@ -208,7 +211,9 @@ export async function completePermissionDecision(input: {
     });
     const authorityModel = (tx as any).recordingAuthorityRequirement;
     if (assessment && authorityModel?.updateMany) {
-      const authorityTypes = ["CUSTOMER_OR_REPRESENTATIVE"];
+      // New simplified-V1 assessments use CUSTOMER. Retain the historical
+      // identifier so older requests can still record their original evidence.
+      const authorityTypes = ["CUSTOMER", "CUSTOMER_OR_REPRESENTATIVE"];
       if (claimedRole === "customer") authorityTypes.push("CUSTOMER_LIKENESS");
       await authorityModel.updateMany({
         where: {
@@ -232,22 +237,50 @@ export async function completePermissionDecision(input: {
     }
     await (tx as any).consentRequestLink.updateMany({
       where: { consentRecordId: record.id, revokedAt: null },
-      data: { revokedAt: decidedAt, revocationReason: "decision_recorded" },
+      data: {
+        revokedAt: decidedAt,
+        revocationReason:
+          !accepted && simplifiedV1
+            ? "CUSTOMER_RECORDING_PERMISSION_DECLINED"
+            : "decision_recorded",
+      },
     });
-    const currentMetadata = parseMetadata(record.booking.customerMetadata);
-    delete currentMetadata.vendor_job_consent_token;
-    currentMetadata.vendor_job_consent_record_id = record.id;
-    currentMetadata.vendor_job_consent_accepted = accepted;
-    currentMetadata.vendor_job_consent_status = accepted ? "accepted" : "declined";
-    currentMetadata.vendor_job_consent_verified = true;
-    currentMetadata.vendor_job_consent_decided_at = decidedAt.toISOString();
-    currentMetadata.vendor_job_customer_visibility_choice = "private";
-    Object.assign(currentMetadata, input.bookingMetadataPatch || {});
-    if (!accepted) {
-      delete currentMetadata.vendor_job_service_order_released_membership_ids;
-      delete currentMetadata.vendor_job_service_order_released_at;
+    const permissionMetadata: Record<string, unknown> = {
+      vendor_job_consent_record_id: record.id,
+      vendor_job_consent_accepted: accepted,
+      vendor_job_consent_status: accepted ? "accepted" : "declined",
+      vendor_job_consent_verified: true,
+      vendor_job_consent_decided_at: decidedAt.toISOString(),
+      vendor_job_customer_visibility_choice: "private",
+      ...(input.bookingMetadataPatch || {}),
+    };
+    let cancellation = null;
+    if (!accepted && simplifiedV1) {
+      cancellation = await cancelSimplifiedV1WorkRecordAfterDecline({
+        tx,
+        bookingId: record.bookingId,
+        vendorId: record.vendorId,
+        consentRecordId: record.id,
+        actorUserId: actorUserId || null,
+        evidenceId: evidence.id,
+        decidedAt,
+        permissionMetadata,
+      });
+    } else {
+      const currentMetadata = {
+        ...parseMetadata(record.booking.customerMetadata),
+        ...permissionMetadata,
+      };
+      delete currentMetadata.vendor_job_consent_token;
+      if (!accepted) {
+        delete currentMetadata.vendor_job_service_order_released_membership_ids;
+        delete currentMetadata.vendor_job_service_order_released_at;
+      }
+      await tx.booking.update({
+        where: { id: record.bookingId },
+        data: { customerMetadata: JSON.stringify(currentMetadata) },
+      });
     }
-    await tx.booking.update({ where: { id: record.bookingId }, data: { customerMetadata: JSON.stringify(currentMetadata) } });
     await (tx as any).consentEvent.create({
       data: {
         consentRecordId: record.id,
@@ -265,10 +298,12 @@ export async function completePermissionDecision(input: {
           authorityVerificationBasis: authorityEvidence.authorityVerificationBasis,
           authorityEvidenceSchemaVersion: authorityEvidence.schemaVersion,
           initialAudience: "private",
+          simplifiedV1,
+          workRecordCanceled: Boolean(cancellation),
         }),
       },
     });
-    return { record: updatedRecord, evidence };
+    return { record: updatedRecord, evidence, cancellation };
     }, { isolationLevel: "Serializable" as any });
   } catch (error: any) {
     if (String(error?.code || "") === "P2002") {
@@ -278,7 +313,20 @@ export async function completePermissionDecision(input: {
         "A final recording permission decision has already been recorded."
       );
     }
+    if (String(error?.message || "") === "DECLINE_CANCELLATION_STATE_CHANGED") {
+      throw new PermissionDecisionError(
+        "PERMISSION_NOT_AVAILABLE",
+        409,
+        "This recording request is no longer available because the Reliance work record changed."
+      );
+    }
     throw error;
   }
-  return { ...result, bookingId: record.bookingId, accepted: input.decision === "allow" };
+  return {
+    ...result,
+    bookingId: record.bookingId,
+    accepted: input.decision === "allow",
+    simplifiedV1,
+    workRecordCanceled: Boolean(result.cancellation),
+  };
 }

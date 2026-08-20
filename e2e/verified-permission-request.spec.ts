@@ -11,6 +11,7 @@ type FixtureOptions = {
   initialDelayMs?: number;
   failVerification?: boolean;
   failInitialLoad?: boolean;
+  contentVersion?: string;
   authorityRequirement?: {
     expectedAuthority: string | null;
     expectedClaimedRole: string | null;
@@ -59,6 +60,7 @@ function permissionFixture(options: FixtureOptions = {}) {
       explanation: "The intended customer must verify the request and confirm customer authority.",
     },
     canDecide: options.canDecide ?? true,
+    contentVersion: options.contentVersion ?? "recording-permission-v2-simplified-v1",
   };
 }
 
@@ -167,12 +169,17 @@ test.describe("verified permission request UX", () => {
     await expect(page.getByLabel("I am authorized for this customer and location")).toHaveCount(0);
     await expect(page.getByLabel("I represent this business location")).toHaveCount(0);
     await expect(page.getByLabel("I am the legal guardian of a minor")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "This request is not for me" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "This Request Is Not for Me" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Allow Recording" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Decline Recording" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Decide later" })).toHaveCount(0);
+    await expect(page.getByText("Is recording required")).toHaveCount(0);
     await capture(page, path.join("Desktop", "04-authority-confirmation.png"));
   });
 
   test("blocks an authority type the current beta cannot independently verify", async ({ page }) => {
     await installControlledPermissionApi(page, {
+      contentVersion: "recording-permission-v1",
       authorityRequirement: {
         expectedAuthority: "guardian",
         expectedClaimedRole: "guardian",
@@ -187,7 +194,7 @@ test.describe("verified permission request UX", () => {
     await expect(page.getByText(/Recording stays locked/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Allow recording" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Decide later" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "This request is not for me" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "This Request Is Not for Me" })).toBeVisible();
   });
 
   test("captures desktop success and blocked states", async ({ page }) => {
@@ -197,7 +204,7 @@ test.describe("verified permission request UX", () => {
     await page.getByRole("button", { name: /Email code to/ }).click();
     await page.getByLabel("6-digit code").fill("123456");
     await page.getByRole("button", { name: "Verify code" }).click();
-    await page.getByRole("button", { name: "Allow recording" }).click();
+    await page.getByRole("button", { name: "Allow Recording" }).click();
     await expect(page.getByRole("heading", { name: "Recording is allowed" })).toBeVisible();
     await capture(page, path.join("Desktop", "05-recording-allowed.png"));
 
@@ -206,6 +213,24 @@ test.describe("verified permission request UX", () => {
     await page.goto(`/consent/${TOKEN}`);
     await expect(page.getByRole("heading", { name: "This secure link expired" })).toBeVisible();
     await capture(page, path.join("Desktop", "06-expired-blocked.png"));
+  });
+
+  test("presents the simplified V1 decision model and closes the Reliance work record after decline", async ({ page }) => {
+    await installControlledPermissionApi(page);
+    await page.goto(`/consent/${TOKEN}`);
+    await page.getByRole("button", { name: /Email code to/ }).click();
+    await page.getByLabel("6-digit code").fill("123456");
+    await page.getByRole("button", { name: "Verify code" }).click();
+
+    await expect(page.getByRole("button", { name: "Allow Recording" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Decline Recording" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "This Request Is Not for Me" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Decide later" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Decline Recording" }).click();
+    await expect(page.getByRole("heading", { name: "Recording declined" })).toBeVisible();
+    await expect(page.getByText(/Reliance work record is closed/)).toBeVisible();
+    await expect(page.getByText(/underlying vendor service/i)).toHaveCount(0);
   });
 
   test("captures desktop empty/error state", async ({ page }) => {
@@ -239,7 +264,7 @@ test.describe("verified permission request UX", () => {
     await reopened.getByRole("button", { name: /Email code to/ }).click();
     await reopened.getByLabel("6-digit code").fill("123456");
     await reopened.getByRole("button", { name: "Verify code" }).click();
-    await reopened.getByRole("button", { name: "Allow recording" }).click();
+    await reopened.getByRole("button", { name: "Allow Recording" }).click();
     await expect(reopened.getByRole("heading", { name: "Recording is allowed" })).toBeVisible();
   });
 
@@ -249,7 +274,7 @@ test.describe("verified permission request UX", () => {
     await page.goto(`/consent/${TOKEN}`);
     await expect(page.getByRole("heading", { name: "Choose whether this service may be recorded" })).toBeVisible();
     await capture(page, path.join("Mobile", "01-permission-education.png"));
-    await page.getByRole("button", { name: "This request is not for me" }).click();
+    await page.getByRole("button", { name: "This Request Is Not for Me" }).click();
     await expect(page.getByRole("heading", { name: "This request was reported as misdirected" })).toBeVisible();
     await capture(page, path.join("Mobile", "02-wrong-recipient-success.png"));
   });

@@ -36,6 +36,13 @@ export async function findPermissionByActionSecret(secret: string) {
 
 export function actionLinkAvailability(link: any, now = new Date()) {
   if (!link) return { active: false, reason: "not_found" as const };
+  if (
+    ["CANCELED", "CANCELLED"].includes(
+      String(link.consentRecord?.booking?.status || "").trim().toUpperCase(),
+    )
+  ) {
+    return { active: false, reason: "canceled" as const };
+  }
   if (link.revokedAt) return { active: false, reason: "superseded" as const };
   if (new Date(link.expiresAt).getTime() <= now.getTime()) {
     return { active: false, reason: "expired" as const };

@@ -13,6 +13,18 @@ describe("vendor job lifecycle presentation", () => {
     expect(state.detail).toContain("permanently closed");
   });
 
+  it("identifies a decline-canceled Reliance work record without canceling the underlying service", () => {
+    const state = resolveVendorJobLifecyclePresentation({
+      status: "CANCELED",
+      permissionRequired: true,
+      permissionState: "DECLINED",
+    });
+
+    expect(state.label).toBe("Recording Declined - Reliance Work Record Canceled");
+    expect(state.detail).toContain("underlying service arrangement is separate");
+    expect(state.responsibleParticipant).toBe("No participant needs to act in Reliance");
+  });
+
   it("uses one truthful waiting state and a plain-language refresh action", () => {
     const state = resolveVendorJobLifecyclePresentation({
       status: "PENDING",

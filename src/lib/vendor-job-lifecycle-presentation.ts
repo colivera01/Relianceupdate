@@ -68,6 +68,16 @@ export function resolveVendorJobLifecyclePresentation(
   const recipient = String(input.consentRecipientLabel || "the customer").trim() || "the customer";
 
   if (status === "CANCELED" || status === "CANCELLED") {
+    if (permissionState === "DECLINED") {
+      return result(
+        "Recording Declined - Reliance Work Record Canceled",
+        "The customer declined Reliance recording permission. This Reliance work record is permanently closed; the underlying service arrangement is separate.",
+        "View Job",
+        "red",
+        "No participant needs to act in Reliance",
+        "Keep this read-only record and its permission evidence as history.",
+      );
+    }
     return result(
       "Service Order canceled",
       "Recording and further work are permanently closed for this Service Order.",
@@ -168,12 +178,12 @@ export function resolveVendorJobLifecyclePresentation(
       `The recording request was sent to ${recipient}. No decision has been recorded yet.`,
       "Refresh Permission Status",
       "blue",
-      "Customer or authorized recipient",
+      "Verified customer contact",
       "Wait for a verified decision. The Service Order remains locked for recording.",
     );
   }
   if (input.permissionRequired && ["WRONG_RECIPIENT", "RECIPIENT_MISMATCH"].includes(permissionState)) {
-    return result("Recording request reported as wrong recipient", "Recording remains locked because the request reached the wrong person.", "Correct Customer Contact", "red", "Vendor manager", "Correct the customer contact and send a new permission request.");
+    return result("Recording request reported as wrong recipient", "Recording remains locked because the request reached the wrong person or contact.", "Correct Customer Contact", "red", "Vendor manager", "Correct the customer contact and send a new permission request.");
   }
   if (input.permissionRequired && permissionState === "DECLINED") {
     return result("Customer declined recording", "The customer declined recording. The service may continue only according to the saved service terms.", "View Consent Step", "red", "Vendor manager", "Proceed without recording or create a new Service Order only when legitimately required.");
@@ -182,7 +192,7 @@ export function resolveVendorJobLifecyclePresentation(
     return result("Permission needs attention", `A current verified decision is not available for ${recipient}.`, "Resend Consent", "amber", "Vendor manager", "Correct delivery details if needed and send a current permission request.");
   }
   if (input.permissionRequired) {
-    return result("Verified recording permission required", "You may assign an employee for scheduling. Service Order release and recording remain locked until the intended recipient makes a verified decision.", "Send Consent", "amber", "Vendor manager", "Send the secure recording-permission request.");
+    return result("Verified customer recording permission required", "You may assign an employee for scheduling. Service Order release and recording remain locked until the intended customer makes a verified decision.", "Send Consent", "amber", "Vendor manager", "Send the secure recording-permission request.");
   }
   if (!input.assigned) {
     return result("Assign employee", "This Service Order is ready for assignment.", "Assign Employee", "amber", "Vendor manager", "Assign the employee who will perform the work.");

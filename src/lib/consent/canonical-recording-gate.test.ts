@@ -167,6 +167,30 @@ describe("database-backed canonical recording gate", () => {
     expect(gate.recordingUnlocked).toBe(false);
   });
 
+  it("treats a permission-decline cancellation as terminal with no participant action", async () => {
+    db.bookingFindUnique.mockResolvedValue({ status: "CANCELED" });
+    db.consentFindFirst.mockResolvedValue({
+      ...allowed,
+      status: "declined",
+      lifecycleStatus: "DECLINED",
+      verifiedDecision: true,
+      decisionEvidence: { ...allowed.decisionEvidence, decision: "DECLINED" },
+    });
+
+    const gate = await load();
+
+    expect(gate).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "SERVICE_ORDER_CANCELED",
+      block: {
+        responsibleParticipant: "NO_PARTICIPANT",
+        serviceMayContinue: false,
+      },
+    });
+    expect(gate.block?.why).toContain("declined Reliance recording permission");
+    expect(gate.block?.resolution).toContain("permanently closed");
+  });
+
   it("fails closed when an allowed decision lacks current authority evidence", async () => {
     db.consentFindFirst.mockResolvedValue({
       ...allowed,

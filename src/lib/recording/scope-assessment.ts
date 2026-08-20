@@ -50,6 +50,9 @@ export type DerivedRecordingScopeAssessment = Omit<
   }>;
 };
 
+export const SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION =
+  "recording-assessment-v2-simplified-v1";
+
 function bool(value: unknown): boolean {
   return value === true || String(value || "").trim().toLowerCase() === "true";
 }
@@ -135,13 +138,10 @@ export function parseRecordingScopeAssessmentInput(
     businessInterior: bool(source.businessInterior ?? source.recording_business_interior),
     // Epic 4 keeps audio disabled even if a future client sends a true value.
     audioRequested: false,
-    serviceCanContinueWithoutRecording: bool(
-      source.serviceCanContinueWithoutRecording ??
-        source.service_can_continue_without_recording,
-    ),
-    essentialPrivateRecording: bool(
-      source.essentialPrivateRecording ?? source.essential_private_recording,
-    ),
+    // These columns remain for historical compatibility. New simplified-V1
+    // records have one lifecycle: Decline cancels the Reliance work record.
+    serviceCanContinueWithoutRecording: false,
+    essentialPrivateRecording: true,
   };
   const authorityValue =
     source.authorityHolderType ?? source.recording_authority_holder_type;
@@ -208,14 +208,14 @@ export function deriveRecordingScopeAssessment(
     businessInterior: input.businessInterior,
   };
   const scope = {
-    schemaVersion: "recording-assessment-v1",
+    schemaVersion: SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
     recordingLocation: input.recordingLocation,
     subject,
     audioEnabled: false,
     initialAudience: "private",
     publicSharingIncluded: false,
-    serviceCanContinueWithoutRecording: input.serviceCanContinueWithoutRecording,
-    essentialPrivateRecording: input.essentialPrivateRecording,
+    serviceCanContinueWithoutRecording: false,
+    essentialPrivateRecording: true,
     authorityHolderType,
   };
   const subjectJson = stableJson(subject);
@@ -224,7 +224,7 @@ export function deriveRecordingScopeAssessment(
   const authorities = new Map<string, "VERIFIED" | "PENDING">([
     ["VENDOR_MANAGER", "VERIFIED"],
   ]);
-  if (permissionRequired) authorities.set("CUSTOMER_OR_REPRESENTATIVE", "PENDING");
+  if (permissionRequired) authorities.set("CUSTOMER", "PENDING");
   if (input.peopleScope === "customer" || input.peopleScope === "multiple") {
     authorities.set("CUSTOMER_LIKENESS", "PENDING");
   }
@@ -237,6 +237,8 @@ export function deriveRecordingScopeAssessment(
   }
   return {
     ...input,
+    serviceCanContinueWithoutRecording: false,
+    essentialPrivateRecording: true,
     authorityHolderType,
     riskLevel,
     permissionRequired,

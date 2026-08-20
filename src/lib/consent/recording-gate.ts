@@ -35,7 +35,12 @@ export type RecordingPermissionRecord = {
   recipientMismatch?: boolean | null;
 };
 
-export type RecordingGateParticipant = "VENDOR_MANAGER" | "CUSTOMER" | "EMPLOYEE" | "ADMIN";
+export type RecordingGateParticipant =
+  | "VENDOR_MANAGER"
+  | "CUSTOMER"
+  | "EMPLOYEE"
+  | "ADMIN"
+  | "NO_PARTICIPANT";
 export type RecordingGateBlock = {
   code: string;
   why: string;
@@ -505,12 +510,17 @@ export async function loadCanonicalRecordingGate(input: {
   const capability = input.capability || "record";
   let decision: RecordingPermissionGate;
   if (workRecordStatus === "CANCELED" || workRecordStatus === "CANCELLED") {
+    const canceledAfterDecline = String(facts.permissionState || "").toUpperCase() === "DECLINED";
     decision = blocked(base, {
       code: "SERVICE_ORDER_CANCELED",
-      why: "This Service Order was canceled by the vendor manager.",
-      responsibleParticipant: "VENDOR_MANAGER",
-      resolution: "Recording and uploads are permanently closed. Create a new Service Order if work must be rescheduled.",
-      serviceMayContinue: true,
+      why: canceledAfterDecline
+        ? "The customer declined Reliance recording permission, so this Reliance work record was canceled."
+        : "This Service Order was canceled by the vendor manager.",
+      responsibleParticipant: canceledAfterDecline ? "NO_PARTICIPANT" : "VENDOR_MANAGER",
+      resolution: canceledAfterDecline
+        ? "Recording, uploads, and further Reliance work-record actions are permanently closed."
+        : "Recording and uploads are permanently closed. Create a new Service Order if work must be rescheduled.",
+      serviceMayContinue: false,
     });
   } else if (workRecordStatus === "AWAITING_REVIEW" || currentPackage?.status === "AWAITING_MANAGER_REVIEW") {
     decision = blocked(base, {

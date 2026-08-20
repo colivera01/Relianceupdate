@@ -621,7 +621,7 @@ export default function VendorJobDetailPage() {
               <Card>
                 <CardContent className="rounded-lg border border-rose-200 bg-rose-50 p-4">
                   <p className="text-sm font-semibold text-rose-900">Service Order canceled</p>
-                  <p className="mt-1 text-sm text-rose-800">No further service work or recording is required.</p>
+                  <p className="mt-1 text-sm text-rose-800">No further Reliance work-record or recording action is available.</p>
                   <p className="mt-2 text-xs text-rose-700">
                     {job.cancellation?.reason ? `Reason: ${job.cancellation.reason}` : 'No cancellation reason was recorded.'}
                   </p>

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashOpaqueSecret } from "@/lib/consent/token";
+import { PERMISSION_CONTENT_VERSION } from "@/lib/consent/content-version";
 import { GET as getPermission } from "./[token]/route";
 import { POST as allowPermission } from "./accept/route";
 import { POST as declinePermission } from "./decline/route";
@@ -16,6 +17,11 @@ const hoisted = vi.hoisted(() => {
   const consentDecisionSessionUpdateMany = vi.fn();
   const consentDecisionEvidenceCreate = vi.fn();
   const bookingUpdate = vi.fn();
+  const bookingFindUnique = vi.fn();
+  const mediaSessionFindMany = vi.fn();
+  const mediaSessionUpdateMany = vi.fn();
+  const certificationUpdateMany = vi.fn();
+  const bookingNotificationUpdateMany = vi.fn();
   const recordingScopeAssessmentFindFirst = vi.fn();
   const recordingAuthorityRequirementUpdateMany = vi.fn();
   const sendDecision = vi.fn();
@@ -33,7 +39,10 @@ const hoisted = vi.hoisted(() => {
       updateMany: consentDecisionSessionUpdateMany,
     },
     consentDecisionEvidence: { create: consentDecisionEvidenceCreate },
-    booking: { update: bookingUpdate },
+    booking: { findUnique: bookingFindUnique, update: bookingUpdate },
+    mediaSession: { findMany: mediaSessionFindMany, updateMany: mediaSessionUpdateMany },
+    employeeRecordingCertification: { updateMany: certificationUpdateMany },
+    bookingNotification: { updateMany: bookingNotificationUpdateMany },
     recordingScopeAssessment: { findFirst: recordingScopeAssessmentFindFirst },
     recordingAuthorityRequirement: { updateMany: recordingAuthorityRequirementUpdateMany },
   };
@@ -50,6 +59,11 @@ const hoisted = vi.hoisted(() => {
     consentDecisionSessionUpdateMany,
     consentDecisionEvidenceCreate,
     bookingUpdate,
+    bookingFindUnique,
+    mediaSessionFindMany,
+    mediaSessionUpdateMany,
+    certificationUpdateMany,
+    bookingNotificationUpdateMany,
     recordingScopeAssessmentFindFirst,
     recordingAuthorityRequirementUpdateMany,
     sendDecision,
@@ -97,6 +111,7 @@ function buildLink(overrides: Record<string, unknown> = {}) {
       vendor: { id: "vendor-1", name: "Vendor", businessName: "Vendor Co" },
       booking: {
         id: "booking-1",
+        status: "PENDING",
         title: "Outlet Installation",
         scheduledFor: new Date("2026-07-31T14:00:00.000Z"),
         date: null,
@@ -161,6 +176,22 @@ describe("verified recording permission routes", () => {
     hoisted.consentRecordUpdate.mockResolvedValue({ id: "permission-1", lifecycleStatus: "ALLOWED" });
     hoisted.consentRequestLinkUpdateMany.mockResolvedValue({ count: 1 });
     hoisted.bookingUpdate.mockResolvedValue({ id: "booking-1" });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "booking-1",
+      vendorId: "vendor-1",
+      status: "PENDING",
+      customerMetadata: JSON.stringify({
+        vendor_job_assigned_membership_ids: ["employee-1"],
+        vendor_job_service_order_released_at: "2026-08-20T12:00:00.000Z",
+      }),
+    });
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      { id: "unused-session", _count: { mediaAssets: 0 } },
+      { id: "evidence-session", _count: { mediaAssets: 1 } },
+    ]);
+    hoisted.mediaSessionUpdateMany.mockResolvedValue({ count: 1 });
+    hoisted.certificationUpdateMany.mockResolvedValue({ count: 1 });
+    hoisted.bookingNotificationUpdateMany.mockResolvedValue({ count: 1 });
     hoisted.consentEventCreate.mockResolvedValue({ id: "event-1" });
     hoisted.sendDecision.mockResolvedValue({ notifications: [] });
     hoisted.getUserId.mockResolvedValue(null);
@@ -259,6 +290,13 @@ describe("verified recording permission routes", () => {
         customerMetadata: expect.stringContaining('"vendor_job_customer_visibility_choice":"private"'),
       },
     });
+    expect(hoisted.recordingAuthorityRequirementUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          authorityType: { in: ["CUSTOMER", "CUSTOMER_OR_REPRESENTATIVE", "CUSTOMER_LIKENESS"] },
+        }),
+      }),
+    );
   });
 
   it("records a verified decline without creating a public or review outcome", async () => {
@@ -278,6 +316,77 @@ describe("verified recording permission routes", () => {
     expect(persisted).toContain('"vendor_job_consent_accepted":false');
     expect(persisted).not.toContain("review");
     expect(persisted).not.toContain("public");
+  });
+
+  it("atomically cancels a new simplified-V1 work record when recording is declined", async () => {
+    const link = buildLink() as any;
+    link.consentRecord.contentVersion.version = PERMISSION_CONTENT_VERSION;
+    hoisted.consentRequestLinkFindUnique.mockResolvedValue(link);
+    hoisted.bookingUpdate.mockResolvedValue({ id: "booking-1", status: "CANCELED" });
+
+    const response = await declinePermission(
+      decisionRequest("/api/consent/decline", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+      }) as any,
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.permission).toEqual({ state: "canceled", workRecordCanceled: true });
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "booking-1" },
+        data: expect.objectContaining({ status: "CANCELED" }),
+      }),
+    );
+    const metadata = JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata);
+    expect(metadata.vendor_job_cancellation).toMatchObject({
+      reason: "Customer declined Reliance recording permission",
+      source: "CUSTOMER_RECORDING_PERMISSION_DECLINE",
+      underlying_service_canceled: false,
+    });
+    expect(metadata.vendor_job_service_order_released_at).toBeUndefined();
+    expect(hoisted.certificationUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "INVALIDATED" }) }),
+    );
+    expect(hoisted.mediaSessionUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ["unused-session"] } }) }),
+    );
+    expect(hoisted.bookingNotificationUpdateMany).toHaveBeenCalled();
+    expect(hoisted.consentRequestLinkUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ revocationReason: "CUSTOMER_RECORDING_PERMISSION_DECLINED" }),
+      }),
+    );
+    expect(hoisted.sendDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ accepted: false, declineCanceled: true }),
+    );
+    expect(hoisted.consentEventCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ eventType: "work_record_canceled_after_decline" }),
+    });
+  });
+
+  it("rejects a stale action link after the Reliance work record is canceled", async () => {
+    const link = buildLink() as any;
+    link.consentRecord.contentVersion.version = PERMISSION_CONTENT_VERSION;
+    link.consentRecord.booking.status = "CANCELED";
+    hoisted.consentRequestLinkFindUnique.mockResolvedValue(link);
+
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+      }) as any,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "PERMISSION_NOT_AVAILABLE" });
+    expect(hoisted.consentDecisionSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.consentDecisionEvidenceCreate).not.toHaveBeenCalled();
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
   it.each([
