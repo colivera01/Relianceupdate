@@ -51,7 +51,7 @@ describe("GET /api/admin/stats", () => {
     expect(hoisted.mediaAssetFindMany).not.toHaveBeenCalled();
   });
 
-  it("returns dashboard stats with combined pending moderation breakdown", async () => {
+  it("excludes media packages that are not actionable in Reliance Audit", async () => {
     hoisted.userCount.mockResolvedValue(12);
     hoisted.vendorCount.mockResolvedValue(3);
     hoisted.reviewCount
@@ -134,10 +134,10 @@ describe("GET /api/admin/stats", () => {
       totalUsers: 12,
       totalVendors: 3,
       totalReviews: 7,
-      pendingModeration: 2,
+      pendingModeration: 1,
       pendingModerationBreakdown: {
         reviews: 1,
-        mediaPackages: 1,
+        mediaPackages: 0,
       },
     });
     expect(hoisted.userCount).toHaveBeenCalledWith({
@@ -157,7 +157,17 @@ describe("GET /api/admin/stats", () => {
     });
     expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ deletedAt: null, archiveStatus: "active" }),
+        where: expect.objectContaining({
+          deletedAt: null,
+          mediaSession: expect.objectContaining({
+            is: expect.objectContaining({
+              bookingId: { not: null },
+              vendorJobVideoStage: {
+                in: ["INTRO", "IN_PROGRESS", "COMPLETED"],
+              },
+            }),
+          }),
+        }),
       })
     );
   });

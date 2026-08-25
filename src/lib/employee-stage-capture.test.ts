@@ -71,12 +71,12 @@ describe("employee-stage-capture", () => {
       getEmployeeCaptureDeviceLabel({
         deviceType: "PHONE",
       })
-    ).toBe("Paired phone");
+    ).toBe("This phone");
     expect(
       getEmployeeCaptureDeviceLabel({
         deviceType: "HEADSET",
       })
-    ).toBe("Paired headset");
+    ).toBe("Headset capture");
     expect(
       getEmployeeCaptureSupportCopy({
         deviceType: "HEADSET",

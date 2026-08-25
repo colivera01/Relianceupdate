@@ -41,6 +41,10 @@ vi.mock("@/lib/admin-audit", () => ({
   createAdminAuditLog: vi.fn(),
 }));
 
+vi.mock("@/lib/ai/promotion-readiness-review-store", () => ({
+  getLatestPromotionReadinessAiStoredResults: vi.fn().mockResolvedValue({}),
+}));
+
 async function readJson(res: Response) {
   return res.json() as Promise<Record<string, any>>;
 }
@@ -200,6 +204,8 @@ describe("admin promoted listings route", () => {
   });
 
   it("GET keeps category-targeted browse campaigns honest when full browse is suppressed", async () => {
+    const campaignStartAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const campaignEndAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     hoisted.promotionPackageFindMany.mockResolvedValue([
       {
         packageKey: "browse-local-7-day",
@@ -232,8 +238,8 @@ describe("admin promoted listings route", () => {
           placementType: "BROWSE_FEATURED",
           status: "active",
           paymentStatus: "paid",
-          startAt: new Date("2026-06-01T00:00:00.000Z"),
-          endAt: new Date("2026-06-30T00:00:00.000Z"),
+          startAt: campaignStartAt,
+          endAt: campaignEndAt,
           targetCategory: "Cleaning",
           targetCity: null,
           targetState: null,

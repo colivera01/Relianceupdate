@@ -112,7 +112,7 @@ Work record `cmt39opn40001o3fibt4bn3eq` was not read through a mutating workflow
 - Prisma validate: **passed** using a non-secret schema-only SQL Server URL; no database connection or mutation was performed.
 - Prisma generate: **passed**.
 - Production build with the established heap setting: **passed**. Expected isolated-worktree warnings reported missing runtime database/Azure Storage configuration, but compilation, type checking, static generation, and build tracing completed with exit code 0.
-- Full repository Vitest run: **1055/1061 passed**. The six failures are pre-existing/unrelated assertions in email dev-account enforcement, employee capture wording, employee runtime-error wording, promoted-listing mocks, Admin stats moderation-count fixture expectations, and review moderation-queue AI mocks. All correction-focused and affected regression suites passed.
+- Full repository Vitest run after the scoped provenance test correction: **1061/1061 passed** across **212/212 files**. The base/current A/B comparison and test-only corrections are documented in `RV8_CORE_ADMIN_AUDIT_VALIDATION_PROVENANCE_REPORT.md`.
 - `git diff --check`: required before commit and recorded in the final Git result.
 
 ## Regression Impact

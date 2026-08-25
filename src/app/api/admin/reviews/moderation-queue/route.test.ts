@@ -16,6 +16,10 @@ vi.mock("@/server/db", () => ({
   },
 }));
 
+vi.mock("@/lib/ai/review-moderation-review-store", () => ({
+  getLatestReviewModerationAiStoredResults: vi.fn().mockResolvedValue({}),
+}));
+
 async function readJson(response: Response) {
   return response.json() as Promise<Record<string, unknown>>;
 }

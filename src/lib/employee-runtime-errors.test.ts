@@ -31,7 +31,7 @@ describe("employee runtime errors", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(response.body.error).toBe("Failed to pair employee device");
+    expect(response.body.error).toBe("Failed to prepare employee phone");
     expect(response.body.details).toBe("Unexpected null membership");
   });
 });

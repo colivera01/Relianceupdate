@@ -80,12 +80,12 @@ describe("requireVerifiedEmailForAction", () => {
     });
   });
 
-  it("allows dev audit accounts in development", async () => {
+  it("allows internal demo accounts in development", async () => {
     hoisted.findUnique.mockResolvedValue({
       id: "user-3",
       email: "e2e-smoke-customer@reliance.test",
       phone: null,
-      demo: false,
+      demo: true,
     });
     hoisted.findDbCredentialByUserId.mockResolvedValue(null);
 
