@@ -24,7 +24,7 @@ async function installSession(page: Page) {
   });
 }
 
-function visibility(state: string) {
+function visibility(state: string, audioIncluded = false) {
   return {
     success: true,
     role: "CUSTOMER",
@@ -33,7 +33,7 @@ function visibility(state: string) {
       state,
       auditPassed: true,
       privateProofReleased: true,
-      package: { id: "package-1", version: 3, packageHash: "package-hash" },
+      package: { id: "package-1", version: 3, packageHash: "package-hash", audioIncluded },
       visibilityDecision: null,
       proposal: null,
       legacyProposal: null,
@@ -95,4 +95,32 @@ test("vendor visibility is read-only and audit pending does not imply completed 
   await expect(card).toContainText("until Reliance Audit passes");
   await expect(card.getByRole("button", { name: "Keep Private" })).toHaveCount(0);
   await expect(card.getByRole("button", { name: "Share Publicly" })).toHaveCount(0);
+});
+
+test("customer must explicitly confirm that an audio-containing complete package may enter Public review", async ({ page }) => {
+  await installSession(page);
+  let current = visibility("PRIVATE_DEFAULT", true);
+  const requests: Array<Record<string, unknown>> = [];
+  await page.route(new RegExp(`/api/bookings/${bookingId}/visibility$`), async (route) => {
+    if (route.request().method() === "POST") {
+      requests.push(route.request().postDataJSON());
+      current = visibility("PUBLIC_REVIEW_PENDING", true);
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(current) });
+  });
+
+  await page.goto("/test-fixtures/rv8-package-visibility?role=customer");
+  await page.getByRole("button", { name: "Share Publicly" }).click();
+  const confirmation = page.getByTestId("package-public-confirmation");
+  await expect(confirmation).toContainText("This Service Video contains audio");
+  await expect(confirmation).toContainText("audio may become publicly viewable");
+  expect(requests).toEqual([]);
+
+  await confirmation.getByRole("button", { name: "Authorize Public Review" }).click();
+  expect(requests).toEqual([expect.objectContaining({
+    decision: "SHARE_PUBLICLY",
+    audioConfirmation: true,
+  })]);
 });

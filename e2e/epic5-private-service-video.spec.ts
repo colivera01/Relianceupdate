@@ -62,11 +62,13 @@ async function installEmployeeFixture(
     allSaved?: boolean;
     awaitingReview?: boolean;
     correctionStage?: "INTRO" | "IN_PROGRESS" | "COMPLETED";
+    audioAllowed?: boolean;
+    denyMicrophone?: boolean;
   } = {},
 ) {
   let saved = Boolean(options.allSaved);
 
-  await page.addInitScript(() => {
+  await page.addInitScript(({ denyMicrophone }) => {
     Object.defineProperty(window.navigator, "geolocation", {
       configurable: true,
       value: {
@@ -89,13 +91,20 @@ async function installEmployeeFixture(
     });
     Object.defineProperty(window.navigator, "mediaDevices", {
       configurable: true,
-      value: undefined,
+      value: denyMicrophone
+        ? {
+            getUserMedia: async () => {
+              throw new DOMException("Microphone permission denied", "NotAllowedError");
+            },
+            enumerateDevices: async () => [],
+          }
+        : undefined,
     });
     Object.defineProperty(window, "MediaRecorder", {
       configurable: true,
-      value: undefined,
+      value: denyMicrophone ? window.MediaRecorder : undefined,
     });
-  });
+  }, { denyMicrophone: Boolean(options.denyMicrophone) });
 
   await page.route("https://uploads.reliance.test/**", async (route) => {
     if (options.failUpload) {
@@ -131,7 +140,8 @@ async function installEmployeeFixture(
             rejectionReason: options.correctionStage ? "Please replace the Final Result stage." : null,
             stageProgress,
             canMarkComplete: options.awaitingReview ? false : saved,
-            recordingCompliance: options.awaitingReview
+            recordingCompliance: {
+              ...(options.awaitingReview
               ? {
                   ...unlockedEmployeeJob.recordingCompliance,
                   recordingUnlocked: false,
@@ -219,7 +229,9 @@ async function installEmployeeFixture(
                       },
                     },
                   }
-              : unlockedEmployeeJob.recordingCompliance,
+              : unlockedEmployeeJob.recordingCompliance),
+              audioAllowed: Boolean(options.audioAllowed),
+            },
           }],
         }),
       });
@@ -353,6 +365,28 @@ async function selectFallbackVideo(page: Page, playableWebm?: Buffer) {
 }
 
 test.describe("Epic 5 safe Private Service Video UX", () => {
+  test("shows the canonical package-wide Audio Off and Audio On states", async ({ page }) => {
+    await installEmployeeFixture(page);
+    await openEmployeeCapture(page);
+    await expect(page.getByText(/Audio: Off/)).toBeVisible();
+
+    await page.unrouteAll({ behavior: "wait" });
+    await installEmployeeFixture(page, { audioAllowed: true });
+    await page.reload();
+    await expect(page.getByText(/Audio: On - Approved for this Service Video/)).toBeVisible();
+  });
+
+  test("fails closed when microphone access is denied for an audio-required package", async ({ page }) => {
+    await installEmployeeFixture(page, { audioAllowed: true, denyMicrophone: true });
+    await openEmployeeCapture(page);
+    await page.getByRole("button", { name: /Starting Condition/ }).click();
+
+    await expect(page.getByRole("paragraph").filter({
+      hasText: "Camera and microphone access are required because this Service Video was approved to include audio.",
+    })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm and Save" })).toHaveCount(0);
+  });
+
   test("keeps every submitted stage read-only after refresh and a fresh link open", async ({ page, context }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installEmployeeFixture(page, { allSaved: true, awaitingReview: true });

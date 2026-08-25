@@ -51,6 +51,11 @@ type QueueVideo = {
   createdAt: string | Date | null;
   mimeType: string;
   bytes: string;
+  audioExpected?: boolean;
+  audioPresence?: string;
+  audioTrackCount?: number | null;
+  audioCodec?: string | null;
+  audioEvidenceVersion?: number;
   previewRef: string | null;
   downloadRef: string | null;
   adminDownloadRef: string | null;
@@ -75,6 +80,11 @@ type QueuePackage = {
   managerSubmittedAt: string | Date | null;
   managerAttestationHash: string;
   videosByStage: Record<StageKey, QueueVideo | null>;
+  audioAudit?: {
+    expected: boolean;
+    conformance: string;
+    stages: Array<{ stage: string; expected: boolean; presence: string; evidenceVersion: number }>;
+  };
 };
 
 type AiModerationSuggestion = {
@@ -1194,6 +1204,10 @@ export default function AdminMediaModerationClient({
                     </div>
                     <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 text-sm">
                       <div className="font-medium text-white">Package Status</div>
+                      <p className="mt-2 text-slate-300">
+                        Audio scope: {pack.audioAudit?.expected ? 'Video and audio' : 'Video only'}
+                        {' · '}Evidence: {pack.audioAudit?.conformance === 'CONFORMING' ? 'Conforming' : 'Mismatch'}
+                      </p>
                       <div className="mt-2 space-y-1 text-sm">
                         {packageStageSummary.map((row) => (
                           <div key={`${pack.packageId}:${row.stage}`} className="flex items-center justify-between gap-3">
@@ -1218,6 +1232,11 @@ export default function AdminMediaModerationClient({
                             <p className="mt-1 text-xs text-slate-400">
                               {stageVideo ? `Uploaded ${formatModerationTimestamp(stageVideo.createdAt)}` : 'Missing from package'}
                             </p>
+                            {stageVideo ? (
+                              <p className="mt-1 text-xs text-slate-300">
+                                Audio: {stageVideo.audioPresence === 'PRESENT' ? 'Present' : stageVideo.audioPresence === 'ABSENT' ? 'Not present' : 'Legacy / unverified'}
+                              </p>
+                            ) : null}
                             {stageVideo ? (
                               <Button
                                 size="sm"

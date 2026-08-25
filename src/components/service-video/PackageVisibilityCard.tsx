@@ -27,6 +27,7 @@ type VisibilityResponse = {
     visibilityDecision?: { decision?: string; decidedAt?: string } | null;
     proposal?: { status?: string } | null;
     legacyProposal?: { id?: string; status?: string } | null;
+    package?: { id: string; version: number; packageHash: string; audioIncluded: boolean } | null;
   } | null;
 };
 
@@ -101,7 +102,10 @@ export function PackageVisibilityCard({
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({
+          decision,
+          audioConfirmation: decision === "SHARE_PUBLICLY" && data?.visibility?.package?.audioIncluded === true,
+        }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.success === false) throw new Error(body?.error || "The visibility decision could not be saved");
@@ -169,6 +173,11 @@ export function PackageVisibilityCard({
           <div className="rounded-md border border-blue-400/30 bg-blue-950/30 p-4" data-testid="package-public-confirmation">
             <p className="flex items-center gap-2 font-semibold text-blue-100"><ShieldCheck className="h-4 w-4" /> Authorize the complete package?</p>
             <p className="mt-2 text-sm text-blue-100/80">This sends all three exact Admin-approved stages to Reliance Public review. Nothing becomes Public unless that separate review passes.</p>
+            {data?.visibility?.package?.audioIncluded ? (
+              <p className="mt-2 rounded-md border border-amber-300/30 bg-amber-950/30 p-3 text-sm font-semibold text-amber-100">
+                This Service Video contains audio. If you continue, the approved video and its audio may become publicly viewable if the package passes Reliance Public review.
+              </p>
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
               <Button disabled={working} className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void decide("SHARE_PUBLICLY")}>
                 {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe2 className="mr-2 h-4 w-4" />}

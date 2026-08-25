@@ -37,7 +37,7 @@ function exactScopeSummary(assessment: any) {
     essentialPrivateRecording: Boolean(
       scope.essentialPrivateRecording ?? assessment.essentialPrivateRecording,
     ),
-    audioEnabled: false,
+    audioEnabled: Boolean(assessment.audioAllowed),
     initialAudience: "private" as const,
   };
 }
@@ -84,6 +84,7 @@ export async function GET(_request: Request, context: Context) {
           authorityHolderType: true,
           serviceCanContinueWithoutRecording: true,
           essentialPrivateRecording: true,
+          audioAllowed: true,
         },
       })
     : null;
@@ -97,7 +98,7 @@ export async function GET(_request: Request, context: Context) {
     serviceName: record.booking.service?.name || record.booking.title || "Service",
     scheduledFor: record.booking.scheduledFor || record.booking.date,
     recordingLocation: String(metadata.vendor_job_recording_location || "") || null,
-    audioEnabled: false,
+    audioEnabled: Boolean(assessment?.audioAllowed),
     recipientEmailMasked: record.recipientEmailMasked,
     recipientPhoneMasked: record.recipientPhoneMasked,
   });

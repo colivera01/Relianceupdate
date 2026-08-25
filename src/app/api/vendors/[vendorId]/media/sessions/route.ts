@@ -312,6 +312,8 @@ export async function POST(
       description: description || null,
       startedAt: startedAt ? new Date(startedAt) : undefined,
       capturedByMembershipId: stagedMembershipId,
+      audioExpected: Boolean(stagedPermissionGate?.audioAllowed),
+      audioContractVersion: stagedPermissionGate ? 2 : 1,
     };
 
     const useEvidenceTransaction =

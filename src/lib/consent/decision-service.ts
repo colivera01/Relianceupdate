@@ -149,6 +149,7 @@ export async function completePermissionDecision(input: {
         authorityHolderType: true,
         locationType: true,
         scopeHash: true,
+        audioAllowed: true,
       },
     });
     const authorityValidation = evaluatePermissionAuthority({
@@ -188,7 +189,7 @@ export async function completePermissionDecision(input: {
         ipAddress,
         userAgent,
         metadata: JSON.stringify({
-          audioEnabled: false,
+          audioEnabled: Boolean(assessment.audioAllowed),
           initialAudience: "private",
           authority: authorityEvidence,
         }),
@@ -298,6 +299,7 @@ export async function completePermissionDecision(input: {
           authorityVerificationBasis: authorityEvidence.authorityVerificationBasis,
           authorityEvidenceSchemaVersion: authorityEvidence.schemaVersion,
           initialAudience: "private",
+          audioEnabled: Boolean(assessment.audioAllowed),
           simplifiedV1,
           workRecordCanceled: Boolean(cancellation),
         }),
@@ -328,5 +330,6 @@ export async function completePermissionDecision(input: {
     accepted: input.decision === "allow",
     simplifiedV1,
     workRecordCanceled: Boolean(result.cancellation),
+    audioEnabled: Boolean(record.audioEnabled),
   };
 }

@@ -262,6 +262,33 @@ describe("core Service Video Admin Audit evidence", () => {
     expect(tx.bookingNotification.create).not.toHaveBeenCalled();
   });
 
+  it("prevents manager submission when the captured package violates its audio scope", async () => {
+    const tx = managerSubmissionTx();
+    tx.serviceVideoStageEvidence.findMany.mockResolvedValue(stageEvidenceRows().map((row) => ({
+      ...row,
+      audioExpected: false,
+      audioPresence: "PRESENT",
+      audioEvidenceVersion: 2,
+    })));
+    tx.mediaAsset.findMany.mockResolvedValue(mediaRows().map((row) => ({
+      ...row,
+      audioExpected: false,
+      audioPresence: "PRESENT",
+      audioEvidenceVersion: 2,
+    })));
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: any) => callback(tx));
+    const { submitPackageForCoreAdminAudit } = await import("./service-video-admin-audit");
+
+    await expect(submitPackageForCoreAdminAudit({
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      managerUserId: "manager-1",
+      managerMembershipId: "membership-1",
+    })).rejects.toMatchObject({ code: "SERVICE_VIDEO_UNAUTHORIZED_AUDIO" });
+    expect(tx.serviceVideoPackageEvidence.updateMany).not.toHaveBeenCalled();
+    expect(tx.serviceVideoManagerDecisionEvidence.create).not.toHaveBeenCalled();
+  });
+
   it("atomically releases exact customer-only proof only after Admin PASS", async () => {
     const { tx } = adminDecisionTx("PASS");
     hoisted.prisma.$transaction.mockImplementationOnce(async (callback: any) => callback(tx));
@@ -295,6 +322,93 @@ describe("core Service Video Admin Audit evidence", () => {
     expect(tx.bookingNotification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: "VENDOR_CORE_AUDIT_PASSED_V1" }),
     });
+  });
+
+  it("shows an audio-scope mismatch to Admin but prevents PASS", async () => {
+    const { tx } = adminDecisionTx("PASS");
+    tx.serviceVideoStageEvidence.findMany.mockResolvedValue(stageEvidenceRows().map((row) => ({
+      ...row,
+      audioExpected: false,
+      audioPresence: "PRESENT",
+      audioEvidenceVersion: 2,
+    })));
+    tx.mediaAsset.findMany.mockResolvedValue(mediaRows().map((row) => ({
+      ...row,
+      audioExpected: false,
+      audioPresence: "PRESENT",
+      audioEvidenceVersion: 2,
+    })));
+    const { loadCoreAdminAuditCandidate, decideCoreServiceVideoAdminAudit } = await import("./service-video-admin-audit");
+
+    await expect(loadCoreAdminAuditCandidate(tx, "booking-1")).resolves.toMatchObject({
+      audioAudit: {
+        expected: false,
+        conformance: "MISMATCH",
+        errors: expect.arrayContaining(["SERVICE_VIDEO_UNAUTHORIZED_AUDIO"]),
+      },
+    });
+
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: any) => callback(tx));
+    await expect(decideCoreServiceVideoAdminAudit({
+      bookingId: "booking-1",
+      adminUserId: "admin-1",
+      adminRole: "ADMIN",
+      decision: "PASS",
+    })).rejects.toMatchObject({ code: "ADMIN_AUDIT_AUDIO_SCOPE_MISMATCH" });
+    expect(tx.serviceVideoPackageEvidence.updateMany).not.toHaveBeenCalled();
+    expect(tx.privateProofAccessGrant.create).not.toHaveBeenCalled();
+  });
+
+  it("allows Admin PASS for an exact authorized Video and Audio package", async () => {
+    const { tx } = adminDecisionTx("PASS");
+    tx.serviceVideoStageEvidence.findMany.mockResolvedValue(stageEvidenceRows().map((row) => ({
+      ...row,
+      audioExpected: true,
+      audioPresence: "PRESENT",
+      audioEvidenceVersion: 2,
+    })));
+    tx.mediaAsset.findMany.mockResolvedValue(mediaRows().map((row) => ({
+      ...row,
+      audioExpected: true,
+      audioPresence: "PRESENT",
+      audioEvidenceVersion: 2,
+    })));
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: any) => callback(tx));
+    const { decideCoreServiceVideoAdminAudit } = await import("./service-video-admin-audit");
+
+    await expect(decideCoreServiceVideoAdminAudit({
+      bookingId: "booking-1",
+      adminUserId: "admin-1",
+      adminRole: "ADMIN",
+      decision: "PASS",
+    })).resolves.toMatchObject({ alreadyDecided: false });
+    expect(tx.privateProofAccessGrant.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("prevents Admin PASS when an audio-required package has no audio track", async () => {
+    const { tx } = adminDecisionTx("PASS");
+    tx.serviceVideoStageEvidence.findMany.mockResolvedValue(stageEvidenceRows().map((row) => ({
+      ...row,
+      audioExpected: true,
+      audioPresence: "ABSENT",
+      audioEvidenceVersion: 2,
+    })));
+    tx.mediaAsset.findMany.mockResolvedValue(mediaRows().map((row) => ({
+      ...row,
+      audioExpected: true,
+      audioPresence: "ABSENT",
+      audioEvidenceVersion: 2,
+    })));
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: any) => callback(tx));
+    const { decideCoreServiceVideoAdminAudit } = await import("./service-video-admin-audit");
+
+    await expect(decideCoreServiceVideoAdminAudit({
+      bookingId: "booking-1",
+      adminUserId: "admin-1",
+      adminRole: "ADMIN",
+      decision: "PASS",
+    })).rejects.toMatchObject({ code: "ADMIN_AUDIT_AUDIO_SCOPE_MISMATCH" });
+    expect(tx.privateProofAccessGrant.create).not.toHaveBeenCalled();
   });
 
   it("records terminal Admin REJECT without a customer grant or rejected-media release", async () => {

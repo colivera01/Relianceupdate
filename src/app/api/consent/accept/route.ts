@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     });
     const response = NextResponse.json({
       success: true,
-      permission: { state: "allowed", initialAudience: "private", audioEnabled: false },
+      permission: { state: "allowed", initialAudience: "private", audioEnabled: Boolean(result.audioEnabled) },
       notifications,
     });
     response.cookies.set(PERMISSION_DECISION_COOKIE, "", { ...permissionDecisionCookieOptions(), maxAge: 0 });

@@ -299,6 +299,45 @@ describe("verified recording permission routes", () => {
     );
   });
 
+  it("binds an Allow decision to the exact Video-and-audio assessment", async () => {
+    const link = buildLink() as any;
+    link.consentRecord.audioEnabled = true;
+    link.consentRecord.contentVersion.version = "recording-permission-v3-video-audio";
+    hoisted.consentRequestLinkFindUnique.mockResolvedValue(link);
+    hoisted.recordingScopeAssessmentFindFirst.mockResolvedValue({
+      id: "assessment-1",
+      generation: 1,
+      authorityHolderType: "customer",
+      locationType: "residence",
+      scopeHash: "scope-hash",
+      audioAllowed: true,
+    });
+
+    const response = await allowPermission(
+      decisionRequest("/api/consent/accept", {
+        token: ACTION_SECRET,
+        claimedRole: "customer",
+        authorityScope: "self_and_property",
+      }) as any,
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.permission).toMatchObject({
+      state: "allowed",
+      initialAudience: "private",
+      audioEnabled: true,
+    });
+    const metadata = JSON.parse(hoisted.consentDecisionEvidenceCreate.mock.calls[0][0].data.metadata);
+    expect(metadata.audioEnabled).toBe(true);
+    expect(hoisted.consentEventCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventType: "allowed",
+        metadata: expect.stringContaining('"audioEnabled":true'),
+      }),
+    });
+  });
+
   it("records a verified decline without creating a public or review outcome", async () => {
     const response = await declinePermission(
       decisionRequest("/api/consent/decline", {

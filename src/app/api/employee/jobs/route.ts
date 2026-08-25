@@ -179,6 +179,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           permissionRequired: permissionGate.permissionRequired,
           permissionStatus: permissionGate.permissionState,
           recordingUnlocked: permissionGate.recordingUnlocked,
+          audioAllowed: permissionGate.audioAllowed,
           recipientNeedsCorrection: permissionGate.recipientNeedsCorrection,
           assessmentId: permissionGate.assessmentId,
           riskLevel: permissionGate.riskLevel,

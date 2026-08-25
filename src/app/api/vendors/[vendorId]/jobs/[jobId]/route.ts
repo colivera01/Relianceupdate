@@ -95,7 +95,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
 
     const currentServiceVideoPackage = await (prisma as any).serviceVideoPackageEvidence.findFirst({
       where: { bookingId: booking.id, vendorId, isCurrent: true },
-      select: { id: true, version: true, status: true, adminAuditDecisionId: true },
+      select: { id: true, version: true, status: true, adminAuditDecisionId: true, audioExpected: true, audioConformance: true, audioEvidenceVersion: true },
     });
     const currentRecordingAssessment = await (prisma as any).recordingScopeAssessment.findFirst({
       where: { bookingId: booking.id, vendorId, isCurrent: true },
@@ -109,6 +109,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         frameControl: true,
         permissionRequired: true,
         scopeHash: true,
+        audioAllowed: true,
       },
     });
     const adminAuditDecision = currentServiceVideoPackage?.adminAuditDecisionId
@@ -194,6 +195,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
           permissionRequired: permissionGate.permissionRequired,
           permissionStatus: permissionGate.permissionState,
           serviceOrderReleasedAt: recordingCompliance.serviceOrderReleasedAt,
+          audioAllowed: permissionGate.audioAllowed,
         },
         recordingAssessment: currentRecordingAssessment,
         serviceName: booking.service?.name || "",
@@ -204,6 +206,9 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
               id: currentServiceVideoPackage.id,
               version: currentServiceVideoPackage.version,
               status: currentServiceVideoPackage.status,
+              audioExpected: currentServiceVideoPackage.audioExpected,
+              audioConformance: currentServiceVideoPackage.audioConformance,
+              audioEvidenceVersion: currentServiceVideoPackage.audioEvidenceVersion,
             }
           : null,
         adminAuditDecision: adminAuditDecision

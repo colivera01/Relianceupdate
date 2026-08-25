@@ -3,6 +3,7 @@ import { GET } from "./route";
 import { prisma } from "@/server/db";
 import { requireVendorMembership } from "@/lib/membership-auth";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import { loadPackageVisibilityView } from "@/lib/service-video-publication";
 
 vi.mock("@/server/db", () => ({
   prisma: {
@@ -13,6 +14,9 @@ vi.mock("@/server/db", () => ({
       findFirst: vi.fn(),
     },
     serviceVideoAdminAuditDecisionEvidence: {
+      findFirst: vi.fn(),
+    },
+    recordingScopeAssessment: {
       findFirst: vi.fn(),
     },
   },
@@ -26,6 +30,10 @@ vi.mock("@/lib/consent/recording-gate", () => ({
   loadRecordingPermissionGate: vi.fn(),
 }));
 
+vi.mock("@/lib/service-video-publication", () => ({
+  loadPackageVisibilityView: vi.fn(),
+}));
+
 async function readJson(response: Response) {
   return response.json() as Promise<Record<string, unknown>>;
 }
@@ -36,7 +44,9 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
     vi.mocked(prisma.booking.findFirst).mockReset();
     vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockReset();
     vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockReset();
+    vi.mocked((prisma as any).recordingScopeAssessment.findFirst).mockReset();
     vi.mocked(loadRecordingPermissionGate).mockReset();
+    vi.mocked(loadPackageVisibilityView).mockReset();
     vi.mocked(requireVendorMembership).mockResolvedValue({
       userId: "manager-1",
       vendorId: "vendor-1",
@@ -50,6 +60,8 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
     } as any);
     vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue(null);
     vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockResolvedValue(null);
+    vi.mocked((prisma as any).recordingScopeAssessment.findFirst).mockResolvedValue(null);
+    vi.mocked(loadPackageVisibilityView).mockResolvedValue(null);
   });
 
   it("returns 404 when the booking is not found for the vendor", async () => {

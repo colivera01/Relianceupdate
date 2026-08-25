@@ -658,6 +658,27 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
           })
         : null;
+      const audioScopeChanged = Boolean(
+        nextAssessment &&
+          currentAssessment &&
+          Boolean(currentAssessment.audioAllowed) !== Boolean(nextAssessment.audioAllowed),
+      );
+      if (audioScopeChanged) {
+        const savedStageCount = await (prisma as any).serviceVideoStageEvidence.count({
+          where: { bookingId: booking.id, vendorId, uploadState: "SAVED" },
+        });
+        if (savedStageCount > 0) {
+          return NextResponse.json(
+            apiResponse(
+              false,
+              "AUDIO_SCOPE_LOCKED_AFTER_RECORDING",
+              "Audio cannot be changed after a Service Video stage has been saved. Cancel this Service Order and create a new one if the recording contract must change.",
+              { responsibleParticipant: "VENDOR_MANAGER" },
+            ),
+            { status: 409 },
+          );
+        }
+      }
       const materialScopeChange = Boolean(
         nextAssessment &&
           (currentAssessment?.scopeHash !== nextAssessment.scopeHash ||
@@ -686,6 +707,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         metadata.recording_identifiers_may_appear = nextAssessment.identifiersMayAppear;
         metadata.recording_residence_interior = nextAssessment.residenceInterior;
         metadata.recording_business_interior = nextAssessment.businessInterior;
+        metadata.recording_audio_requested = nextAssessment.audioAllowed;
         metadata.service_can_continue_without_recording =
           nextAssessment.serviceCanContinueWithoutRecording;
         metadata.essential_private_recording = nextAssessment.essentialPrivateRecording;

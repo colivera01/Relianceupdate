@@ -24,6 +24,7 @@ const hoisted = vi.hoisted(() => {
   const mediaSessionCreate = vi.fn();
   const mediaSessionFindMany = vi.fn();
   const mediaAssetCount = vi.fn();
+  const serviceVideoStageEvidenceCount = vi.fn();
   const consentFindFirst = vi.fn();
   const certificationFindFirst = vi.fn();
   const serviceFindFirst = vi.fn();
@@ -46,6 +47,7 @@ const hoisted = vi.hoisted(() => {
     recordingScopeAssessment: { findFirst: assessmentFindFirst },
     mediaSession: { create: mediaSessionCreate, findMany: mediaSessionFindMany },
     mediaAsset: { count: mediaAssetCount },
+    serviceVideoStageEvidence: { count: serviceVideoStageEvidenceCount },
     serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
     $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
   };
@@ -66,6 +68,7 @@ const hoisted = vi.hoisted(() => {
     mediaSessionCreate,
     mediaSessionFindMany,
     mediaAssetCount,
+    serviceVideoStageEvidenceCount,
     consentFindFirst,
     certificationFindFirst,
     serviceFindFirst,
@@ -103,6 +106,7 @@ describe("material recording scope change", () => {
     vi.mocked(recordLifecycleAudit).mockResolvedValue(undefined);
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
     hoisted.mediaAssetCount.mockResolvedValue(0);
+    hoisted.serviceVideoStageEvidenceCount.mockResolvedValue(0);
     hoisted.consentFindFirst.mockResolvedValue({ id: "permission-1", lifecycleStatus: "ACCEPTED", status: "accepted" });
     hoisted.certificationFindFirst.mockResolvedValue({ id: "certification-1" });
     hoisted.serviceFindFirst.mockResolvedValue({ id: "service-2" });
@@ -135,6 +139,7 @@ describe("material recording scope change", () => {
       id: "assessment-1",
       generation: 1,
       scopeHash: "old-scope-hash",
+      audioAllowed: false,
     });
     hoisted.consentFindMany.mockResolvedValue([{ id: "permission-1" }]);
     hoisted.assessmentCreate.mockResolvedValue({
@@ -379,5 +384,43 @@ describe("material recording scope change", () => {
       code: "WORK_RECORD_EDIT_LOCKED_AFTER_CAPTURE",
     });
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an audio-scope change after any stage has been durably saved", async () => {
+    hoisted.serviceVideoStageEvidenceCount.mockResolvedValue(1);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-1/actions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "UPDATE_JOB",
+          recordingAssessment: {
+            recordingLocation: "business",
+            propertyScope: "customer_owned",
+            peopleScope: "customer",
+            frameControl: "controlled",
+            authorityHolderType: "customer",
+            minorMayAppear: false,
+            protectedNonParticipantMayAppear: false,
+            sensitiveInformationMayAppear: false,
+            identifiersMayAppear: false,
+            residenceInterior: false,
+            businessInterior: false,
+            serviceCanContinueWithoutRecording: true,
+            essentialPrivateRecording: false,
+            audioRequested: true,
+          },
+        }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "AUDIO_SCOPE_LOCKED_AFTER_RECORDING",
+    });
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(hoisted.assessmentCreate).not.toHaveBeenCalled();
   });
 });

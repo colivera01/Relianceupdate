@@ -7,6 +7,12 @@ import { downloadBlobToBuffer, getBlobProperties } from "@/lib/azure-blob-storag
 import { setOperationalPhaseOnMetadataJson } from "@/lib/vendor-job-operational-phase";
 import { STAGE_VIDEO_MAX_DURATION_SECONDS } from "@/lib/stage-video-guidance";
 import { probeVideoDurationSecondsFromBuffer } from "@/lib/server-video-duration";
+import {
+  assertAudioConformsToScope,
+  probeVideoAudioFromBuffer,
+  SERVICE_VIDEO_AUDIO_EVIDENCE_VERSION,
+  ServiceVideoAudioConformanceError,
+} from "@/lib/server-video-audio";
 import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/consent/recording-gate";
 import {
   REQUIRED_SERVICE_VIDEO_STAGES,
@@ -84,6 +90,8 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
             sessionType: true,
             recordingGateDecisionId: true,
             capturedByMembershipId: true,
+            audioExpected: true,
+            audioContractVersion: true,
           },
         })
       : null;
@@ -204,6 +212,16 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
           { status: 409 }
         );
       }
+      if (Boolean(session.audioExpected) !== Boolean(permissionGate.audioAllowed)) {
+        return failStagedUpload({
+          assetId,
+          vendorId,
+          state: "REJECTED",
+          code: "AUDIO_SCOPE_SESSION_MISMATCH",
+          message: "This recording session no longer matches the approved audio scope.",
+          status: 409,
+        });
+      }
 
       let blobProps: Awaited<ReturnType<typeof getBlobProperties>>;
       try {
@@ -296,6 +314,26 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         });
       }
 
+      const audioProbe = probeVideoAudioFromBuffer(videoBuffer, String(mimeType));
+      try {
+        assertAudioConformsToScope({
+          audioExpected: Boolean(permissionGate.audioAllowed),
+          result: audioProbe,
+        });
+      } catch (error) {
+        if (error instanceof ServiceVideoAudioConformanceError) {
+          return failStagedUpload({
+            assetId,
+            vendorId,
+            state: "REJECTED",
+            code: error.code,
+            message: error.message,
+            status: 422,
+          });
+        }
+        throw error;
+      }
+
       const saved = await saveVerifiedServiceVideoStage({
         assetId: String(assetId),
         vendorId,
@@ -312,6 +350,12 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
         verifiedDurationSeconds,
         videoBuffer,
         gateDecisionId: String(session.recordingGateDecisionId),
+        audioExpected: Boolean(permissionGate.audioAllowed),
+        audioPresence: audioProbe.presence as "PRESENT" | "ABSENT",
+        audioTrackCount: audioProbe.trackCount,
+        audioCodec: audioProbe.codec,
+        audioDetectionMethod: audioProbe.detectionMethod,
+        audioEvidenceVersion: SERVICE_VIDEO_AUDIO_EVIDENCE_VERSION,
         bookingMetadataAfterSave: setOperationalPhaseOnMetadataJson(
           booking.customerMetadata,
           "IN_PROGRESS",

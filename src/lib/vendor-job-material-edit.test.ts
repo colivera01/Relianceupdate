@@ -19,4 +19,13 @@ describe("material work-record edit detection", () => {
       ),
     ).toEqual([]);
   });
+
+  it("treats package audio scope as material", () => {
+    expect(
+      getMaterialWorkRecordEditFields(
+        { title: "Outlet repair", audioRequested: false },
+        { title: "Outlet repair", audioRequested: true },
+      ),
+    ).toEqual(["audioRequested"]);
+  });
 });

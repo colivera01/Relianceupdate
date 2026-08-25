@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
 import { prisma } from "@/server/db";
 import type { RecordingPermissionGate, RecordingGateSurface } from "@/lib/consent/recording-gate";
+import { SERVICE_VIDEO_AUDIO_CONTRACT_VERSION } from "@/lib/recording/scope-assessment";
 
 export const REQUIRED_SERVICE_VIDEO_STAGES = ["INTRO", "IN_PROGRESS", "COMPLETED"] as const;
 export type ServiceVideoStage = (typeof REQUIRED_SERVICE_VIDEO_STAGES)[number];
@@ -13,6 +14,25 @@ export class ServiceVideoMutationBlockedError extends Error {
     super(code);
     this.name = "ServiceVideoMutationBlockedError";
   }
+}
+
+export function assertServiceVideoAudioEvidenceConforms(row: {
+  audioExpected?: boolean | null;
+  audioPresence?: string | null;
+  audioEvidenceVersion?: number | null;
+}): void {
+  const expected = Boolean(row.audioExpected);
+  const presence = String(row.audioPresence || "LEGACY_UNKNOWN").toUpperCase();
+  const version = Number(row.audioEvidenceVersion || 1);
+  if (version < SERVICE_VIDEO_AUDIO_CONTRACT_VERSION) {
+    if (expected || presence === "PRESENT") throw new Error("SERVICE_VIDEO_AUDIO_EVIDENCE_INVALID");
+    return;
+  }
+  if (presence === "UNVERIFIABLE" || presence === "LEGACY_UNKNOWN") {
+    throw new Error("SERVICE_VIDEO_AUDIO_UNVERIFIABLE");
+  }
+  if (!expected && presence === "PRESENT") throw new Error("SERVICE_VIDEO_UNAUTHORIZED_AUDIO");
+  if (expected && presence !== "PRESENT") throw new Error("SERVICE_VIDEO_REQUIRED_AUDIO_MISSING");
 }
 
 export async function assertServiceVideoStageMutationAllowed(
@@ -135,7 +155,8 @@ export async function persistAllowedRecordingGateDecision(input: {
     surface: input.surface,
     actorKind: input.actorKind,
     decision: "ALLOWED",
-    audioAllowed: false,
+    audioAllowed: gate.audioAllowed,
+    audioContractVersion: SERVICE_VIDEO_AUDIO_CONTRACT_VERSION,
   };
   const snapshotJson = stableJson(snapshot);
   const db = input.tx || (prisma as any);
@@ -157,6 +178,8 @@ export async function persistAllowedRecordingGateDecision(input: {
       surface: input.surface,
       actorKind: input.actorKind,
       decision: "ALLOWED",
+      audioExpected: gate.audioAllowed,
+      audioContractVersion: SERVICE_VIDEO_AUDIO_CONTRACT_VERSION,
       evidenceHash: sha256(snapshotJson),
       snapshotJson,
     },
@@ -174,6 +197,7 @@ export async function createUploadAttempt(input: {
   blobKey: string;
   expectedBytes: bigint;
   mimeType: string;
+  audioExpected: boolean;
 }) {
   return prisma.$transaction(async (tx: any) => {
     await assertServiceVideoStageMutationAllowed(tx, {
@@ -181,7 +205,14 @@ export async function createUploadAttempt(input: {
       vendorId: input.vendorId,
       stage: input.stage,
     });
-    return tx.mediaUploadAttempt.create({ data: { ...input, state: "UPLOADING" } });
+    return tx.mediaUploadAttempt.create({
+      data: {
+        ...input,
+        state: "UPLOADING",
+        audioPresence: "UNVERIFIABLE",
+        audioEvidenceVersion: SERVICE_VIDEO_AUDIO_CONTRACT_VERSION,
+      },
+    });
   }, { isolationLevel: "Serializable" });
 }
 
@@ -239,6 +270,12 @@ export async function saveVerifiedServiceVideoStage(input: {
   verifiedDurationSeconds: number;
   videoBuffer: Buffer;
   gateDecisionId: string;
+  audioExpected?: boolean;
+  audioPresence?: "PRESENT" | "ABSENT";
+  audioTrackCount?: number | null;
+  audioCodec?: string | null;
+  audioDetectionMethod?: string;
+  audioEvidenceVersion?: number;
   bookingMetadataAfterSave?: string;
 }) {
   const contentHash = sha256(input.videoBuffer);
@@ -258,6 +295,12 @@ export async function saveVerifiedServiceVideoStage(input: {
       },
     });
     if (!gateEvidence) throw new Error("RECORDING_GATE_EVIDENCE_NOT_FOUND");
+    const audioExpected = input.audioExpected ?? Boolean(gateEvidence.audioExpected);
+    const audioPresence = input.audioPresence || "LEGACY_UNKNOWN";
+    const audioEvidenceVersion = input.audioEvidenceVersion || 1;
+    if (Boolean(gateEvidence.audioExpected) !== audioExpected && audioEvidenceVersion >= SERVICE_VIDEO_AUDIO_CONTRACT_VERSION) {
+      throw new Error("AUDIO_SCOPE_GATE_EVIDENCE_MISMATCH");
+    }
     const attempt = await tx.mediaUploadAttempt.findFirst({
       where: {
         assetId: input.assetId,
@@ -301,6 +344,13 @@ export async function saveVerifiedServiceVideoStage(input: {
         hashAlgorithm: "SHA-256",
         captureProvenance: input.captureProvenance,
         stageVersion,
+        audioExpected,
+        audioPresence,
+        audioTrackCount: input.audioTrackCount,
+        audioCodec: input.audioCodec,
+        audioDetectionMethod: input.audioDetectionMethod || null,
+        audioEvidenceVersion,
+        audioDetectedAt: audioEvidenceVersion >= SERVICE_VIDEO_AUDIO_CONTRACT_VERSION ? new Date() : null,
         replacesMediaAssetId: previous?.mediaAssetId || null,
         publicEligible: input.captureProvenance === "LIVE_BROWSER_CAPTURE",
         deletedAt: null,
@@ -338,6 +388,9 @@ export async function saveVerifiedServiceVideoStage(input: {
         contentHash,
         hashAlgorithm: "SHA-256",
         verifiedDurationSeconds: input.verifiedDurationSeconds,
+        audioExpected,
+        audioPresence,
+        audioEvidenceVersion,
         uploadState: "SAVED",
         replacesStageEvidenceId: previous?.id || null,
         publicEligible: input.captureProvenance === "LIVE_BROWSER_CAPTURE",
@@ -349,6 +402,9 @@ export async function saveVerifiedServiceVideoStage(input: {
         state: "SAVED",
         actualBytes: input.bytes,
         durationSeconds: input.verifiedDurationSeconds,
+        audioExpected,
+        audioPresence,
+        audioEvidenceVersion,
         savedAt: new Date(),
         failureCode: null,
         failureMessage: null,
@@ -410,10 +466,16 @@ async function loadCompleteCurrentStageEvidence(db: any, bookingId: string, vend
       },
     });
     if (!gate || !asset || !session) throw new Error("SERVICE_VIDEO_EVIDENCE_CHAIN_INCOMPLETE");
+    assertServiceVideoAudioEvidenceConforms(row);
+    assertServiceVideoAudioEvidenceConforms(asset);
     if (
       String(asset.captureProvenance) !== String(row.captureProvenance) ||
       Number(asset.stageVersion) !== Number(row.stageVersion) ||
       Boolean(asset.publicEligible) !== Boolean(row.publicEligible)
+      || Boolean(asset.audioExpected) !== Boolean(row.audioExpected)
+      || String(asset.audioPresence || "") !== String(row.audioPresence || "")
+      || Boolean(session.audioExpected) !== Boolean(row.audioExpected)
+      || Boolean(gate.audioExpected) !== Boolean(row.audioExpected)
     ) {
       throw new Error("SERVICE_VIDEO_EVIDENCE_CHAIN_INCOMPLETE");
     }
@@ -431,7 +493,16 @@ export async function submitServiceVideoPackage(input: {
     const stages = await loadCompleteCurrentStageEvidence(tx, input.bookingId, input.vendorId);
     const stageEvidence = REQUIRED_SERVICE_VIDEO_STAGES.map((stage) => {
       const row = stages.find((candidate: any) => candidate.stage === stage)!;
-      return { stage, stageEvidenceId: row.id, stageVersion: row.stageVersion, mediaAssetId: row.mediaAssetId, contentHash: row.contentHash };
+      return {
+        stage,
+        stageEvidenceId: row.id,
+        stageVersion: row.stageVersion,
+        mediaAssetId: row.mediaAssetId,
+        contentHash: row.contentHash,
+        audioExpected: Boolean(row.audioExpected),
+        audioPresence: String(row.audioPresence || "LEGACY_UNKNOWN"),
+        audioEvidenceVersion: Number(row.audioEvidenceVersion || 1),
+      };
     });
     const stageEvidenceJson = stableJson(stageEvidence);
     const packageHash = sha256(stageEvidenceJson);
@@ -486,6 +557,9 @@ export async function submitServiceVideoPackage(input: {
         status: "AWAITING_MANAGER_REVIEW",
         stageEvidenceJson,
         packageHash,
+        audioExpected: stages.some((row: any) => Boolean(row.audioExpected)),
+        audioConformance: "CONFORMING",
+        audioEvidenceVersion: Math.max(...stages.map((row: any) => Number(row.audioEvidenceVersion || 1))),
         submittedByUserId: input.submittedByUserId || null,
         submittedByMembershipId: input.submittedByMembershipId,
       },

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { CheckCircle2, Clock3, LockKeyhole, ShieldCheck, UserCheck, VolumeX } from "lucide-react";
+import { CheckCircle2, Clock3, LockKeyhole, ShieldCheck, UserCheck, Volume2, VolumeX } from "lucide-react";
 
 import styles from "./permission.module.css";
 
@@ -33,7 +33,7 @@ type Permission = {
     authorityHolderType: string;
     serviceCanContinueWithoutRecording: boolean;
     essentialPrivateRecording: boolean;
-    audioEnabled: false;
+    audioEnabled: boolean;
     initialAudience: "private";
   } | null;
   authorityRequirement: {
@@ -112,7 +112,7 @@ export default function PermissionPage() {
   const [busy, setBusy] = useState("");
   const [finished, setFinished] = useState<"allowed" | "declined" | "later" | "wrong_recipient" | null>(null);
   const [address, setAddress] = useState({ address: "", city: "", state: "", zipCode: "" });
-  const simplifiedV1 = permission?.contentVersion === SIMPLIFIED_V1_CONTENT_VERSION;
+  const simplifiedV1 = String(permission?.contentVersion || "").startsWith("recording-permission-v");
 
   useEffect(() => {
     let active = true;
@@ -253,7 +253,11 @@ export default function PermissionPage() {
 
         <div className={styles.education}>
           <article><ShieldCheck /><div><strong>Why you are being asked</strong><p>Reliance records Starting Condition, Work in Progress, and Final Result clips as proof of service.</p></div></article>
-          <article><VolumeX /><div><strong>Audio is off</strong><p>This request does not authorize conversation or audio recording.</p></div></article>
+          {permission.audioEnabled ? (
+            <article><Volume2 /><div><strong>Video and audio</strong><p>This Service Video will include sound because audio is part of documenting the service. Conversations and unrelated private information should not be intentionally recorded.</p></div></article>
+          ) : (
+            <article><VolumeX /><div><strong>Video only</strong><p>Audio will not be recorded.</p></div></article>
+          )}
           <article><LockKeyhole /><div><strong>Private is the starting point</strong><p>Allowing recording does not make anything public. Public sharing would be a separate later decision.</p></div></article>
         </div>
 

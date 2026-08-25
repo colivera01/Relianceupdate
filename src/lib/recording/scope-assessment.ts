@@ -39,7 +39,7 @@ export type DerivedRecordingScopeAssessment = Omit<
   riskLevel: "LEVEL_1" | "LEVEL_2" | "LEVEL_3" | "LEVEL_4";
   permissionRequired: boolean;
   noticeRequired: true;
-  audioAllowed: false;
+  audioAllowed: boolean;
   scopeHash: string;
   subjectJson: string;
   scopeJson: string;
@@ -51,7 +51,9 @@ export type DerivedRecordingScopeAssessment = Omit<
 };
 
 export const SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION =
-  "recording-assessment-v2-simplified-v1";
+  "recording-assessment-v3-package-audio-v1";
+
+export const SERVICE_VIDEO_AUDIO_CONTRACT_VERSION = 2;
 
 function bool(value: unknown): boolean {
   return value === true || String(value || "").trim().toLowerCase() === "true";
@@ -136,8 +138,7 @@ export function parseRecordingScopeAssessmentInput(
     ),
     residenceInterior: bool(source.residenceInterior ?? source.recording_residence_interior),
     businessInterior: bool(source.businessInterior ?? source.recording_business_interior),
-    // Epic 4 keeps audio disabled even if a future client sends a true value.
-    audioRequested: false,
+    audioRequested: bool(source.audioRequested ?? source.recording_audio_requested),
     // These columns remain for historical compatibility. New simplified-V1
     // records have one lifecycle: Decline cancels the Reliance work record.
     serviceCanContinueWithoutRecording: false,
@@ -211,7 +212,8 @@ export function deriveRecordingScopeAssessment(
     schemaVersion: SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
     recordingLocation: input.recordingLocation,
     subject,
-    audioEnabled: false,
+    audioEnabled: input.audioRequested,
+    audioContractVersion: SERVICE_VIDEO_AUDIO_CONTRACT_VERSION,
     initialAudience: "private",
     publicSharingIncluded: false,
     serviceCanContinueWithoutRecording: false,
@@ -243,7 +245,7 @@ export function deriveRecordingScopeAssessment(
     riskLevel,
     permissionRequired,
     noticeRequired: true,
-    audioAllowed: false,
+    audioAllowed: input.audioRequested,
     scopeHash,
     subjectJson,
     scopeJson,
@@ -279,8 +281,8 @@ export async function createRecordingScopeAssessment(input: {
       subjectJson: input.assessment.subjectJson,
       scopeJson: input.assessment.scopeJson,
       scopeHash: input.assessment.scopeHash,
-      audioRequested: false,
-      audioAllowed: false,
+      audioRequested: input.assessment.audioRequested,
+      audioAllowed: input.assessment.audioAllowed,
       permissionRequired: input.assessment.permissionRequired,
       noticeRequired: true,
       serviceCanContinueWithoutRecording:

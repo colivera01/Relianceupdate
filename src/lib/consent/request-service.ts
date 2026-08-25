@@ -2,10 +2,7 @@ import { prisma } from "@/server/db";
 import { resolveBookingCustomer } from "@/lib/booking-customer";
 import { createAdminAuditLog } from "@/lib/admin-audit";
 import {
-  PERMISSION_CONTENT_HASH,
-  PERMISSION_CONTENT_JSON,
-  PERMISSION_CONTENT_VERSION,
-  PERMISSION_SCOPE_SCHEMA_VERSION,
+  permissionContentForAudio,
   stableJson,
 } from "./content-version";
 import { buildPermissionRecipient } from "./recipient";
@@ -92,6 +89,7 @@ export async function createVerifiedPermissionRequest(input: {
     recordingAssessmentId: assessment.id,
   });
   const scopeHash = String(assessment.scopeHash);
+  const permissionContent = permissionContentForAudio(Boolean(assessment.audioAllowed));
   const now = new Date();
   const expiresAt = new Date(now.getTime() + PERMISSION_LINK_TTL_HOURS * 60 * 60 * 1000);
   const actionSecret = hasChannel && !recipientMismatch ? createOpaqueSecret() : null;
@@ -114,13 +112,13 @@ export async function createVerifiedPermissionRequest(input: {
 
   const result = await prisma.$transaction(async (tx) => {
     const contentVersion = await (tx as any).consentContentVersion.upsert({
-      where: { version: PERMISSION_CONTENT_VERSION },
+      where: { version: permissionContent.version },
       create: {
-        version: PERMISSION_CONTENT_VERSION,
-        contentJson: PERMISSION_CONTENT_JSON,
-        contentHash: PERMISSION_CONTENT_HASH,
-        scopeSchemaVersion: PERMISSION_SCOPE_SCHEMA_VERSION,
-        effectiveAt: new Date("2026-08-20T00:00:00.000Z"),
+        version: permissionContent.version,
+        contentJson: permissionContent.contentJson,
+        contentHash: permissionContent.contentHash,
+        scopeSchemaVersion: permissionContent.scopeSchemaVersion,
+        effectiveAt: new Date("2026-08-25T00:00:00.000Z"),
       },
       update: {},
     });
@@ -164,7 +162,7 @@ export async function createVerifiedPermissionRequest(input: {
         recipientMismatch,
         scopeJson,
         scopeHash,
-        audioEnabled: false,
+        audioEnabled: Boolean(assessment.audioAllowed),
         contentVersionId: contentVersion.id,
         requestedAt: now,
         expiresAt,
@@ -201,7 +199,8 @@ export async function createVerifiedPermissionRequest(input: {
           recipientEmailMasked: recipient.emailMasked,
           recipientPhoneMasked: recipient.phoneMasked,
           scopeHash,
-          contentVersion: PERMISSION_CONTENT_VERSION,
+          contentVersion: permissionContent.version,
+          audioEnabled: Boolean(assessment.audioAllowed),
         }),
       },
     });

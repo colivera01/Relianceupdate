@@ -83,6 +83,11 @@ export async function getAdminMediaModerationQueue(
       createdAt: true,
       mimeType: true,
       bytes: true,
+      audioExpected: true,
+      audioPresence: true,
+      audioTrackCount: true,
+      audioCodec: true,
+      audioEvidenceVersion: true,
       blobUrl: true,
       vendor: {
         select: {
@@ -165,6 +170,11 @@ export async function getAdminMediaModerationQueue(
       createdAt: asset.createdAt,
       mimeType: asset.mimeType,
       bytes: typeof asset.bytes === "bigint" ? asset.bytes.toString() : String(asset.bytes || "0"),
+      audioExpected: Boolean(asset.audioExpected),
+      audioPresence: String(asset.audioPresence || "LEGACY_UNKNOWN"),
+      audioTrackCount: asset.audioTrackCount == null ? null : Number(asset.audioTrackCount),
+      audioCodec: asset.audioCodec || null,
+      audioEvidenceVersion: Number(asset.audioEvidenceVersion || 1),
       previewRef: asset.blobUrl || null,
       downloadRef: `/api/vendors/${asset.vendorId}/media/${asset.id}/download`,
       adminDownloadRef: `/api/admin/media/${asset.id}/download`,
@@ -223,6 +233,7 @@ export async function getAdminMediaModerationQueue(
             managerSubmittedAt: candidate.managerDecision.decidedAt,
             managerAttestationHash: candidate.managerDecision.attestationHash,
             adminAuditEvidenceVersion: candidate.package.auditEvidenceVersion,
+            audioAudit: candidate.audioAudit,
           };
         } catch {
           return null;

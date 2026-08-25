@@ -89,7 +89,7 @@ describe("recording subject assessment", () => {
     ]));
   });
 
-  it("produces a stable scope hash and never enables audio", () => {
+  it("produces a stable scope hash and binds explicit package audio", () => {
     const input = parseRecordingScopeAssessmentInput({
       recordingLocation: "business",
       propertyScope: "vendor_owned",
@@ -102,8 +102,15 @@ describe("recording subject assessment", () => {
     const second = deriveRecordingScopeAssessment(input!);
     expect(first.scopeHash).toMatch(/^[a-f0-9]{64}$/);
     expect(second.scopeHash).toBe(first.scopeHash);
-    expect(first.audioRequested).toBe(false);
-    expect(first.audioAllowed).toBe(false);
+    expect(first.audioRequested).toBe(true);
+    expect(first.audioAllowed).toBe(true);
+    expect(JSON.parse(first.scopeJson)).toMatchObject({
+      audioEnabled: true,
+      audioContractVersion: 2,
+    });
+    const videoOnly = deriveRecordingScopeAssessment({ ...input!, audioRequested: false });
+    expect(videoOnly.scopeHash).not.toBe(first.scopeHash);
+    expect(videoOnly.permissionRequired).toBe(first.permissionRequired);
   });
 
   it("derives customer authority when vendor-business scope requires customer permission", () => {

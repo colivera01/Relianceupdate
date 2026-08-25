@@ -12,6 +12,7 @@ type FixtureOptions = {
   failVerification?: boolean;
   failInitialLoad?: boolean;
   contentVersion?: string;
+  audioEnabled?: boolean;
   authorityRequirement?: {
     expectedAuthority: string | null;
     expectedClaimedRole: string | null;
@@ -29,7 +30,7 @@ function permissionFixture(options: FixtureOptions = {}) {
     serviceName: "Electrical safety inspection",
     scheduledFor: "2026-08-01T14:00:00.000Z",
     recordingLocation: "residence",
-    audioEnabled: false,
+    audioEnabled: options.audioEnabled === true,
     initialAudience: "private",
     recipientEmailMasked: "c***@example.test",
     recipientPhoneMasked: "(***) ***-0199",
@@ -49,7 +50,7 @@ function permissionFixture(options: FixtureOptions = {}) {
       authorityHolderType: options.authorityRequirement?.expectedAuthority ?? "customer",
       serviceCanContinueWithoutRecording: true,
       essentialPrivateRecording: false,
-      audioEnabled: false,
+      audioEnabled: options.audioEnabled === true,
       initialAudience: "private",
     },
     authorityRequirement: options.authorityRequirement ?? {
@@ -135,6 +136,24 @@ async function capture(page: Page, relativePath: string) {
 }
 
 test.describe("verified permission request UX", () => {
+  test("discloses the exact Video-only or Video-and-audio scope before Allow", async ({ page }) => {
+    await installControlledPermissionApi(page, {
+      contentVersion: "recording-permission-v3-video-only",
+      audioEnabled: false,
+    });
+    await page.goto(`/consent/${TOKEN}`);
+    await expect(page.getByText("Audio will not be recorded.", { exact: true })).toBeVisible();
+
+    await page.unrouteAll({ behavior: "wait" });
+    await installControlledPermissionApi(page, {
+      contentVersion: "recording-permission-v3-video-audio",
+      audioEnabled: true,
+    });
+    await page.reload();
+    await expect(page.getByText(/This Service Video will include sound because audio is part of documenting the service/)).toBeVisible();
+    await expect(page.getByText(/Conversations and unrelated private information should not be intentionally recorded/)).toBeVisible();
+  });
+
   test("captures desktop loading and education states", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await installControlledPermissionApi(page, { initialDelayMs: 900 });
@@ -193,7 +212,7 @@ test.describe("verified permission request UX", () => {
     await expect(page.getByRole("heading", { name: "This request needs additional authority verification" })).toBeVisible();
     await expect(page.getByText(/Recording stays locked/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Allow recording" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Decide later" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Decide later" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "This Request Is Not for Me" })).toBeVisible();
   });
 

@@ -158,6 +158,37 @@ describe("package-level customer Service Video visibility", () => {
     expect(result.proposal).toEqual(expect.objectContaining({ status: "AWAITING_ADMIN_REVIEW" }));
   });
 
+  it("requires an explicit audio warning confirmation before the complete package enters Public review", async () => {
+    const { decidePackageVisibility } = await import("./service-video-publication");
+    hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue({
+      id: "package-1",
+      version: 3,
+      vendorId: "vendor-1",
+      managerDecisionId: "manager-1",
+      adminAuditDecisionId: "admin-audit-1",
+      auditEvidenceVersion: 2,
+      customerAccessGrantId: "grant-1",
+      packageHash: "package-hash",
+      stageEvidenceJson: JSON.stringify(packageStages),
+      audioExpected: true,
+    });
+
+    await expect(decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+    })).rejects.toThrow("PACKAGE_VISIBILITY_AUDIO_CONFIRMATION_REQUIRED");
+
+    await expect(decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+      audioConfirmation: true,
+    })).resolves.toMatchObject({ proposal: { status: "AWAITING_ADMIN_REVIEW" } });
+  });
+
   it("fails closed before Core Reliance Admin PASS and Private Proof release", async () => {
     const { decidePackageVisibility } = await import("./service-video-publication");
     installFoundation({ passed: false });

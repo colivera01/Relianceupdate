@@ -43,6 +43,9 @@ const packageRows = stages.map((row) => ({
   stageVersion: row.stageVersion,
   mediaAssetId: row.mediaAssetId,
   contentHash: row.contentHash,
+  audioExpected: false,
+  audioPresence: "LEGACY_UNKNOWN",
+  audioEvidenceVersion: 1,
 }));
 
 describe("Private Service Video evidence", () => {
@@ -50,6 +53,21 @@ describe("Private Service Video evidence", () => {
     vi.clearAllMocks();
     hoisted.prisma.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => callback(hoisted.prisma));
     hoisted.prisma.booking.findFirst.mockResolvedValue({ id: "booking-1", status: "IN_PROGRESS" });
+  });
+
+  it("keeps historical version-1 Video-only evidence valid without reinterpretation", async () => {
+    const { assertServiceVideoAudioEvidenceConforms } = await import("./service-video-evidence");
+
+    expect(() => assertServiceVideoAudioEvidenceConforms({
+      audioExpected: false,
+      audioPresence: "LEGACY_UNKNOWN",
+      audioEvidenceVersion: 1,
+    })).not.toThrow();
+    expect(() => assertServiceVideoAudioEvidenceConforms({
+      audioExpected: true,
+      audioPresence: "LEGACY_UNKNOWN",
+      audioEvidenceVersion: 1,
+    })).toThrow("SERVICE_VIDEO_AUDIO_EVIDENCE_INVALID");
   });
 
   it("fails closed when a customer access grant does not exist", async () => {

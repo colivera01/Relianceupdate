@@ -48,6 +48,7 @@ describe("package visibility route authority", () => {
       customerUserId: "customer-1",
       decision: "SHARE_PUBLICLY",
       verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+      audioConfirmation: false,
     });
   });
 

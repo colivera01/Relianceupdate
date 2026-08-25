@@ -10,6 +10,7 @@ export type MaterialWorkRecordEdit = {
   protectedNonParticipantMayAppear?: unknown;
   sensitiveInformationMayAppear?: unknown;
   identifiersMayAppear?: unknown;
+  audioRequested?: unknown;
   serviceCanContinueWithoutRecording?: unknown;
   essentialPrivateRecording?: unknown;
 };
@@ -26,6 +27,7 @@ const MATERIAL_FIELDS: Array<keyof MaterialWorkRecordEdit> = [
   "protectedNonParticipantMayAppear",
   "sensitiveInformationMayAppear",
   "identifiersMayAppear",
+  "audioRequested",
   "serviceCanContinueWithoutRecording",
   "essentialPrivateRecording",
 ];

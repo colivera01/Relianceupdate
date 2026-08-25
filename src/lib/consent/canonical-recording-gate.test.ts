@@ -251,7 +251,7 @@ describe("database-backed canonical recording gate", () => {
     });
   });
 
-  it("keeps recording locked when the approved scope requests or allows audio", async () => {
+  it("carries an authorized package-wide audio scope through the canonical gate", async () => {
     db.assessmentFindFirst.mockResolvedValue({
       ...assessment,
       audioRequested: true,
@@ -259,9 +259,9 @@ describe("database-backed canonical recording gate", () => {
     });
     const gate = await load();
     expect(gate).toMatchObject({
-      blockCode: "AUDIO_NOT_SUPPORTED",
-      recordingUnlocked: false,
-      audioAllowed: false,
+      blockCode: null,
+      recordingUnlocked: true,
+      audioAllowed: true,
     });
   });
 

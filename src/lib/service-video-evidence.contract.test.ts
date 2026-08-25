@@ -12,7 +12,7 @@ const supportedEvidenceFields = new Set(
 );
 
 describe("RecordingGateDecisionEvidence persistence contract", () => {
-  it("writes only generated-model fields while preserving audio-off evidence in the immutable snapshot", async () => {
+  it("writes only generated-model fields while preserving audio scope evidence", async () => {
     expect(supportedEvidenceFields.size).toBeGreaterThan(0);
 
     const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -58,6 +58,8 @@ describe("RecordingGateDecisionEvidence persistence contract", () => {
       assessmentId: "assessment-1",
       permissionEvidenceId: "permission-evidence-1",
       decision: "ALLOWED",
+      audioExpected: false,
+      audioContractVersion: 2,
     }));
 
     const snapshot = JSON.parse(String(data.snapshotJson));

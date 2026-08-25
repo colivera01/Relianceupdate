@@ -123,6 +123,18 @@ function mp4WithDurationSeconds(durationSeconds: number): Buffer {
   return Buffer.concat([ftyp, box("moov", box("mvhd", mvhdBody))]);
 }
 
+function mp4WithDurationAndAudio(durationSeconds: number): Buffer {
+  const ftyp = box("ftyp", Buffer.from("isom\x00\x00\x02\x00isomiso2mp41", "binary"));
+  const mvhdBody = Buffer.alloc(20);
+  mvhdBody.writeUInt8(0, 0);
+  mvhdBody.writeUInt32BE(1_000, 12);
+  mvhdBody.writeUInt32BE(durationSeconds * 1_000, 16);
+  const handlerBody = Buffer.alloc(12);
+  handlerBody.write("soun", 8, 4, "ascii");
+  const audioTrack = box("trak", box("mdia", box("hdlr", handlerBody)));
+  return Buffer.concat([ftyp, box("moov", Buffer.concat([box("mvhd", mvhdBody), audioTrack]))]);
+}
+
 function box(type: string, body: Buffer): Buffer {
   const header = Buffer.alloc(8);
   header.writeUInt32BE(body.length + 8, 0);
@@ -207,6 +219,8 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
       bookingId: "booking-1",
       recordingGateDecisionId: "gate-1",
       capturedByMembershipId: "membership-1",
+      audioExpected: false,
+      audioContractVersion: 2,
     });
     hoisted.mediaSessionFindMany.mockReset();
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
@@ -242,7 +256,7 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     hoisted.setUploadAttemptState.mockReset();
     hoisted.setUploadAttemptState.mockResolvedValue({ count: 1 });
     hoisted.loadRecordingPermissionGate.mockReset();
-    hoisted.loadRecordingPermissionGate.mockResolvedValue({ blockCode: null, recordingUnlocked: true });
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({ blockCode: null, recordingUnlocked: true, audioAllowed: false });
     hoisted.saveVerifiedServiceVideoStage.mockReset();
     hoisted.saveVerifiedServiceVideoStage.mockResolvedValue({
       asset: {
@@ -324,6 +338,125 @@ describe("POST /api/vendors/[vendorId]/media/upload/complete stage video duratio
     expect(downloadBlobToBuffer).toHaveBeenCalledWith("vendor/vendor-1/media/asset-1.mp4");
     expect(hoisted.saveVerifiedServiceVideoStage).toHaveBeenCalledTimes(1);
     expect(json.uploadState).toBe("SAVED");
+    expect(hoisted.saveVerifiedServiceVideoStage).toHaveBeenCalledWith(expect.objectContaining({
+      audioExpected: false,
+      audioPresence: "ABSENT",
+      audioTrackCount: 0,
+      audioEvidenceVersion: 2,
+    }));
+  });
+
+  it("rejects unauthorized audio in a Video-only package before durable stage save", async () => {
+    vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationAndAudio(12));
+
+    const response = await POST(buildRequest(12), {
+      params: Promise.resolve({ vendorId: VENDOR_ID }),
+    });
+    const json = await readJson(response);
+
+    expect(response.status).toBe(422);
+    expect(json).toMatchObject({
+      error: "SERVICE_VIDEO_UNAUTHORIZED_AUDIO",
+      uploadState: "REJECTED",
+    });
+    expect(hoisted.setUploadAttemptState).toHaveBeenCalledWith(expect.objectContaining({
+      state: "REJECTED",
+      failureCode: "SERVICE_VIDEO_UNAUTHORIZED_AUDIO",
+    }));
+    expect(hoisted.saveVerifiedServiceVideoStage).not.toHaveBeenCalled();
+  });
+
+  it("accepts authorized audio and binds actual audio presence into stage evidence", async () => {
+    hoisted.mediaSessionFindFirst.mockResolvedValue({
+      id: "session-1",
+      vendorJobVideoStage: "INTRO",
+      sessionType: "JOB_SERVICE_VIDEO",
+      bookingId: "booking-1",
+      recordingGateDecisionId: "gate-1",
+      capturedByMembershipId: "membership-1",
+      audioExpected: true,
+      audioContractVersion: 2,
+    });
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({
+      blockCode: null,
+      recordingUnlocked: true,
+      audioAllowed: true,
+    });
+    vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationAndAudio(12));
+
+    const response = await POST(buildRequest(12), {
+      params: Promise.resolve({ vendorId: VENDOR_ID }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(hoisted.saveVerifiedServiceVideoStage).toHaveBeenCalledWith(expect.objectContaining({
+      audioExpected: true,
+      audioPresence: "PRESENT",
+      audioTrackCount: 1,
+      audioEvidenceVersion: 2,
+    }));
+  });
+
+  it("rejects missing audio when the complete package scope requires it", async () => {
+    hoisted.mediaSessionFindFirst.mockResolvedValue({
+      id: "session-1",
+      vendorJobVideoStage: "INTRO",
+      sessionType: "JOB_SERVICE_VIDEO",
+      bookingId: "booking-1",
+      recordingGateDecisionId: "gate-1",
+      capturedByMembershipId: "membership-1",
+      audioExpected: true,
+      audioContractVersion: 2,
+    });
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({
+      blockCode: null,
+      recordingUnlocked: true,
+      audioAllowed: true,
+    });
+    vi.mocked(downloadBlobToBuffer).mockResolvedValue(mp4WithDurationSeconds(12));
+
+    const response = await POST(buildRequest(12), {
+      params: Promise.resolve({ vendorId: VENDOR_ID }),
+    });
+    const json = await readJson(response);
+
+    expect(response.status).toBe(422);
+    expect(json).toMatchObject({
+      error: "SERVICE_VIDEO_REQUIRED_AUDIO_MISSING",
+      uploadState: "REJECTED",
+    });
+    expect(hoisted.saveVerifiedServiceVideoStage).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale media session whose package audio scope changed", async () => {
+    hoisted.mediaSessionFindFirst.mockResolvedValue({
+      id: "session-1",
+      vendorJobVideoStage: "INTRO",
+      sessionType: "JOB_SERVICE_VIDEO",
+      bookingId: "booking-1",
+      recordingGateDecisionId: "gate-1",
+      capturedByMembershipId: "membership-1",
+      audioExpected: false,
+      audioContractVersion: 2,
+    });
+    hoisted.loadRecordingPermissionGate.mockResolvedValue({
+      blockCode: null,
+      recordingUnlocked: true,
+      audioAllowed: true,
+    });
+
+    const response = await POST(buildRequest(12), {
+      params: Promise.resolve({ vendorId: VENDOR_ID }),
+    });
+    const json = await readJson(response);
+
+    expect(response.status).toBe(409);
+    expect(json).toMatchObject({
+      error: "AUDIO_SCOPE_SESSION_MISMATCH",
+      uploadState: "REJECTED",
+    });
+    expect(downloadBlobToBuffer).not.toHaveBeenCalled();
+    expect(hoisted.saveVerifiedServiceVideoStage).not.toHaveBeenCalled();
   });
 
   it("allows a Chrome MediaRecorder WebM without Info.Duration", async () => {

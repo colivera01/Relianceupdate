@@ -257,6 +257,7 @@ export default function VendorJobs() {
     protectedNonParticipantMayAppear: false,
     sensitiveInformationMayAppear: false,
     identifiersMayAppear: false,
+    audioRequested: false,
   });
 
   const getEmptyJobFieldErrors = () => ({
@@ -411,6 +412,7 @@ export default function VendorJobs() {
     protectedNonParticipantMayAppear: false,
     sensitiveInformationMayAppear: false,
     identifiersMayAppear: false,
+    audioRequested: false,
   });
   const [newServiceForJob, setNewServiceForJob] = useState({
     name: '',
@@ -2909,6 +2911,7 @@ export default function VendorJobs() {
               protectedNonParticipantMayAppear: newJob.protectedNonParticipantMayAppear,
               sensitiveInformationMayAppear: newJob.sensitiveInformationMayAppear,
               identifiersMayAppear: newJob.identifiersMayAppear,
+              audioRequested: newJob.audioRequested,
               residenceInterior: recordingLocation === 'residence',
               businessInterior: recordingLocation === 'customer-business',
             } : undefined,
@@ -3036,6 +3039,7 @@ export default function VendorJobs() {
         recording_sensitive_information_may_appear:
           newJob.sensitiveInformationMayAppear,
         recording_identifiers_may_appear: newJob.identifiersMayAppear,
+        recording_audio_requested: newJob.audioRequested,
         recording_residence_interior: recordingLocation === 'residence',
         recording_business_interior: recordingLocation === 'customer-business',
       },
@@ -3398,6 +3402,7 @@ export default function VendorJobs() {
       protectedNonParticipantMayAppear: Boolean(scope.protectedParticipantPresent),
       sensitiveInformationMayAppear: Boolean(scope.sensitiveCapture),
       identifiersMayAppear: Boolean(scope.identifiersMayAppear),
+      audioRequested: Boolean(scope.audioAllowed),
     };
     setNewJob(editForm);
     setEditJobBaseline(editForm);
@@ -6257,7 +6262,7 @@ export default function VendorJobs() {
               <div className="mt-5 border-t border-slate-200 pt-4">
                   <p className="text-sm font-semibold text-slate-900">What may appear in the Service Video?</p>
                   <p className="mt-1 text-xs leading-5 text-slate-600">
-                    This keeps the employee inside the approved scope. Audio remains off. Changing this scope replaces prior permission and employee certification.
+                    This keeps the employee inside the approved scope. Changing this scope replaces prior permission and employee certification.
                   </p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="text-xs font-semibold text-slate-700">
@@ -6310,6 +6315,30 @@ export default function VendorJobs() {
                       </select>
                     </label>
                   </div>
+                  <fieldset className="mt-3">
+                    <legend className="text-xs font-semibold text-slate-700">Does this Service Video need audio?</legend>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <label className={`flex cursor-pointer gap-3 rounded-md border p-3 ${!newJob.audioRequested ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+                        <input
+                          type="radio"
+                          name="recordingAudioScope"
+                          checked={!newJob.audioRequested}
+                          onChange={() => setNewJob({ ...newJob, audioRequested: false })}
+                        />
+                        <span><strong className="block text-sm">No - Video only</strong><span className="text-xs text-slate-600">Sound will not be recorded.</span></span>
+                      </label>
+                      <label className={`flex cursor-pointer gap-3 rounded-md border p-3 ${newJob.audioRequested ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+                        <input
+                          type="radio"
+                          name="recordingAudioScope"
+                          checked={newJob.audioRequested}
+                          onChange={() => setNewJob({ ...newJob, audioRequested: true })}
+                        />
+                        <span><strong className="block text-sm">Yes - Video and audio</strong><span className="text-xs text-slate-600">Record sound only when it helps document the service.</span></span>
+                      </label>
+                    </div>
+                    {newJob.audioRequested ? <p className="mt-2 text-xs leading-5 text-amber-800">Conversations and unrelated private information must not be intentionally recorded.</p> : null}
+                  </fieldset>
                   <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
                     {[
                       ['minorMayAppear', 'A child under 18 may appear in the video'],
@@ -6331,7 +6360,7 @@ export default function VendorJobs() {
                     ))}
                   </div>
                   <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950">
-                    Audio is off. Public sharing is never included in this assessment and requires a separate later decision.
+                    {newJob.audioRequested ? 'Audio is included for the complete three-stage package.' : 'Audio is off for the complete three-stage package.'} Public sharing is never included in this assessment and requires a separate later customer decision.
                   </div>
                   {jobFieldErrors.recordingAssessment ? (
                     <p className="mt-2 text-sm text-red-600">{jobFieldErrors.recordingAssessment}</p>

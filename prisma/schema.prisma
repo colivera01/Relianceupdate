@@ -675,6 +675,8 @@ model RecordingGateDecisionEvidence {
   surface              String
   actorKind            String?
   decision             String   @default("ALLOWED")
+  audioExpected        Boolean  @default(false)
+  audioContractVersion Int      @default(1)
   evidenceHash         String
   snapshotJson         String   @db.NVarChar(Max)
   createdAt            DateTime @default(now())
@@ -687,28 +689,31 @@ model RecordingGateDecisionEvidence {
 }
 
 model MediaUploadAttempt {
-  id                String    @id @default(cuid())
-  assetId           String    @unique
-  vendorId          String
-  bookingId         String
-  mediaSessionId    String
-  membershipId      String
-  stage             String
-  captureProvenance String
-  state             String    @default("UPLOADING")
-  blobKey           String
-  expectedBytes     BigInt
-  actualBytes       BigInt?
-  mimeType          String
-  durationSeconds   Float?
-  failureCode       String?
-  failureMessage    String?
-  attemptCount      Int       @default(1)
-  savedAt           DateTime?
-  rejectedAt        DateTime?
-  retryRequiredAt   DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                   String    @id @default(cuid())
+  assetId              String    @unique
+  vendorId             String
+  bookingId            String
+  mediaSessionId       String
+  membershipId         String
+  stage                String
+  captureProvenance    String
+  state                String    @default("UPLOADING")
+  blobKey              String
+  expectedBytes        BigInt
+  actualBytes          BigInt?
+  mimeType             String
+  durationSeconds      Float?
+  audioExpected        Boolean   @default(false)
+  audioPresence        String    @default("LEGACY_UNKNOWN")
+  audioEvidenceVersion Int       @default(1)
+  failureCode          String?
+  failureMessage       String?
+  attemptCount         Int       @default(1)
+  savedAt              DateTime?
+  rejectedAt           DateTime?
+  retryRequiredAt      DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([bookingId, stage, createdAt])
   @@index([mediaSessionId, state])
@@ -735,6 +740,9 @@ model ServiceVideoStageEvidence {
   contentHash             String
   hashAlgorithm           String   @default("SHA-256")
   verifiedDurationSeconds Float
+  audioExpected           Boolean  @default(false)
+  audioPresence           String   @default("LEGACY_UNKNOWN")
+  audioEvidenceVersion    Int      @default(1)
   uploadState             String   @default("SAVED")
   replacesStageEvidenceId String?
   publicEligible          Boolean  @default(false)
@@ -757,6 +765,9 @@ model ServiceVideoPackageEvidence {
   status                  String   @default("AWAITING_MANAGER_REVIEW")
   stageEvidenceJson       String   @db.NVarChar(Max)
   packageHash             String
+  audioExpected           Boolean  @default(false)
+  audioConformance        String   @default("LEGACY_VIDEO_ONLY")
+  audioEvidenceVersion    Int      @default(1)
   submittedByUserId       String?
   submittedByMembershipId String
   submittedAt             DateTime @default(now())
@@ -853,26 +864,26 @@ model PrivateProofAccessGrant {
 // Immutable proposal for making exact, already-approved Private proof Public.
 // A new proposal version is required whenever media or presentation changes.
 model ServiceVideoPublicationProposal {
-  id                     String    @id @default(cuid())
-  bookingId              String
-  vendorId               String
-  packageId              String
-  packageVersion         Int
-  packageHash            String
-  version                Int
-  isCurrent              Boolean   @default(true)
-  status                 String    @default("AWAITING_CUSTOMER_DECISION")
-  audience               String    @default("PUBLIC")
-  proposalHash           String
-  contractVersion        Int       @default(1)
-  authorizationModel     String    @default("LEGACY_STAGE_SELECTION")
+  id                          String    @id @default(cuid())
+  bookingId                   String
+  vendorId                    String
+  packageId                   String
+  packageVersion              Int
+  packageHash                 String
+  version                     Int
+  isCurrent                   Boolean   @default(true)
+  status                      String    @default("AWAITING_CUSTOMER_DECISION")
+  audience                    String    @default("PUBLIC")
+  proposalHash                String
+  contractVersion             Int       @default(1)
+  authorizationModel          String    @default("LEGACY_STAGE_SELECTION")
   packageVisibilityDecisionId String?
-  proposedByUserId       String
-  proposedByMembershipId String?
-  submittedAt            DateTime  @default(now())
-  supersededAt           DateTime?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  proposedByUserId            String
+  proposedByMembershipId      String?
+  submittedAt                 DateTime  @default(now())
+  supersededAt                DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   @@unique([bookingId, version])
   @@index([bookingId, isCurrent])
@@ -1024,30 +1035,30 @@ model ServiceVideoPublicationAdminDecision {
 }
 
 model PublicServiceVideoEligibility {
-  id                         String    @id @default(cuid())
-  proposalId                 String
-  stageId                    String    @unique
-  bookingId                  String
-  vendorId                   String
-  mediaAssetId               String
-  packageId                  String
-  packageHash                String
-  proposalHash               String
-  presentationHash           String
-  contentHash                String
-  eligibilityHash            String
-  audience                   String    @default("PUBLIC")
-  status                     String    @default("ACTIVE")
-  adminDecisionId            String
-  customerDecisionId         String
-  vendorDecisionId           String?
+  id                          String    @id @default(cuid())
+  proposalId                  String
+  stageId                     String    @unique
+  bookingId                   String
+  vendorId                    String
+  mediaAssetId                String
+  packageId                   String
+  packageHash                 String
+  proposalHash                String
+  presentationHash            String
+  contentHash                 String
+  eligibilityHash             String
+  audience                    String    @default("PUBLIC")
+  status                      String    @default("ACTIVE")
+  adminDecisionId             String
+  customerDecisionId          String
+  vendorDecisionId            String?
   packageVisibilityDecisionId String?
-  participantDecisionIdsJson String    @db.NVarChar(Max)
-  eligibleAt                 DateTime  @default(now())
-  invalidatedAt              DateTime?
-  invalidationReason         String?   @db.NVarChar(Max)
-  createdAt                  DateTime  @default(now())
-  updatedAt                  DateTime  @updatedAt
+  participantDecisionIdsJson  String    @db.NVarChar(Max)
+  eligibleAt                  DateTime  @default(now())
+  invalidatedAt               DateTime?
+  invalidationReason          String?   @db.NVarChar(Max)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
 
   @@index([vendorId, status, eligibleAt])
   @@index([bookingId, status])
@@ -1609,6 +1620,13 @@ model MediaAsset {
   hashAlgorithm          String?   @default("SHA-256")
   captureProvenance      String    @default("LEGACY_UNKNOWN")
   stageVersion           Int?
+  audioExpected          Boolean   @default(false)
+  audioPresence          String    @default("LEGACY_UNKNOWN")
+  audioTrackCount        Int?
+  audioCodec             String?
+  audioDetectionMethod   String?
+  audioEvidenceVersion   Int       @default(1)
+  audioDetectedAt        DateTime?
   replacesMediaAssetId   String?
   publicEligible         Boolean?
   moderationReason       String?
@@ -1648,6 +1666,8 @@ model MediaSession {
   title                   String?
   description             String?
   recordingGateDecisionId String?
+  audioExpected           Boolean   @default(false)
+  audioContractVersion    Int       @default(1)
   capturedByMembershipId  String?
   startedAt               DateTime  @default(now())
   endedAt                 DateTime?

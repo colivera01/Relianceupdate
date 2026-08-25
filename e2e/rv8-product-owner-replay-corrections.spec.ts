@@ -355,6 +355,9 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(dialog.getByRole("combobox", { name: "Whose property may appear in the video?" })).toBeVisible();
     await expect(dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" })).toBeVisible();
     await expect(dialog.getByRole("combobox", { name: "What will the camera primarily show?" })).toBeVisible();
+    await expect(dialog.getByText("Does this Service Video need audio?", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("radio", { name: /No - Video only/ })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: /Yes - Video and audio/ })).not.toBeChecked();
     await expect(dialog.getByRole("combobox", { name: /Who can approve recording for this service\?/ })).toHaveCount(0);
     await expect(dialog.getByText("Customer's authorized representative", { exact: true })).toHaveCount(0);
     await expect(dialog.getByText("Parent or legal guardian", { exact: true })).toHaveCount(0);

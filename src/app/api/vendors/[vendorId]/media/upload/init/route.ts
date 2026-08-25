@@ -53,6 +53,7 @@ export async function POST(
       membershipId: string;
       stage: ServiceVideoStage;
       captureProvenance: ReturnType<typeof normalizeCaptureProvenance>;
+      audioExpected: boolean;
     } | null = null;
     if (bookingId) {
       const booking = await prisma.booking.findFirst({
@@ -78,7 +79,7 @@ export async function POST(
           capturedByMembershipId: membershipId,
           recordingGateDecisionId: { not: null },
         },
-        select: { id: true, vendorJobVideoStage: true },
+        select: { id: true, vendorJobVideoStage: true, audioExpected: true, audioContractVersion: true },
       });
       const stage = String(mediaSession?.vendorJobVideoStage || "").trim().toUpperCase();
       if (!mediaSession || !REQUIRED_SERVICE_VIDEO_STAGES.includes(stage as ServiceVideoStage)) {
@@ -100,12 +101,19 @@ export async function POST(
       if (permissionGate.blockCode) {
         return NextResponse.json(recordingGateErrorBody(permissionGate), { status: 409 });
       }
+      if (Boolean(mediaSession.audioExpected) !== Boolean(permissionGate.audioAllowed)) {
+        return NextResponse.json(
+          { code: "AUDIO_SCOPE_SESSION_MISMATCH", error: "The recording session no longer matches the approved audio scope." },
+          { status: 409 },
+        );
+      }
       stagedUpload = {
         bookingId: booking.id,
         mediaSessionId: mediaSession.id,
         membershipId,
         stage: stage as ServiceVideoStage,
         captureProvenance: normalizeCaptureProvenance(body.captureProvenance),
+        audioExpected: Boolean(permissionGate.audioAllowed),
       };
     }
 
@@ -168,6 +176,7 @@ export async function POST(
         blobKey,
         expectedBytes: BigInt(expectedBytes),
         mimeType,
+        audioExpected: stagedUpload.audioExpected,
       });
 
       return NextResponse.json({

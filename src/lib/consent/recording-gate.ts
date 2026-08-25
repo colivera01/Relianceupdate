@@ -78,7 +78,7 @@ export type RecordingPermissionGate = {
     serviceCanContinueWithoutRecording: boolean;
     essentialPrivateRecording: boolean;
   } | null;
-  audioAllowed: false;
+  audioAllowed: boolean;
   certificationActive: boolean;
   certificationId: string | null;
   assignmentGeneration: number | null;
@@ -494,7 +494,7 @@ export async function loadCanonicalRecordingGate(input: {
           ),
         }
       : null,
-    audioAllowed: false as const,
+    audioAllowed: Boolean(assessment?.audioAllowed),
     certificationActive: Boolean(certification),
     certificationId: certification?.id || null,
     assignmentGeneration,
@@ -605,14 +605,6 @@ export async function loadCanonicalRecordingGate(input: {
         why: `The ${locationLabel} is missing complete, usable geocoded location evidence on this work record.`,
         responsibleParticipant: "VENDOR_MANAGER",
         resolution: "Cancel this incomplete Service Order and create a new one using the correct location type and a complete address that Reliance can resolve.",
-        serviceMayContinue: true,
-      });
-    } else if (assessment.audioRequested || assessment.audioAllowed) {
-      decision = blocked(base, {
-        code: "AUDIO_NOT_SUPPORTED",
-        why: "This work record requests audio, but audio is off for Epic 4.",
-        responsibleParticipant: "VENDOR_MANAGER",
-        resolution: "Update the scope to video without audio.",
         serviceMayContinue: true,
       });
     } else if (facts.permissionRequired && facts.permissionAuthorityInvalid) {

@@ -23,6 +23,11 @@ import {
   getVideoFileDurationSeconds,
   isOverStageVideoLimit,
 } from "@/lib/stage-video-guidance";
+import {
+  serviceVideoAudioConstraint,
+  serviceVideoAudioLabel,
+  serviceVideoDevicePermissionMessage,
+} from "@/lib/service-video-audio-capture";
 import { tutorialGuides } from "@/lib/user-guidance";
 
 type EmployeeJob = {
@@ -51,6 +56,7 @@ type RecordingComplianceState = {
   permissionRequired: boolean;
   permissionStatus: string;
   recordingUnlocked: boolean;
+  audioAllowed: boolean;
   recipientNeedsCorrection: boolean;
   assessmentId?: string | null;
   riskLevel?: string | null;
@@ -869,7 +875,7 @@ export default function EmployeeJobsPage() {
     stream?.getTracks().forEach((track) => track.stop());
   };
 
-  const requestRearCameraStream = async () => {
+  const requestRearCameraStream = async (audioExpected: boolean) => {
     const baseVideoConstraints = {
       width: { ideal: 1920 },
       height: { ideal: 1080 },
@@ -880,16 +886,16 @@ export default function EmployeeJobsPage() {
           ...baseVideoConstraints,
           facingMode: { exact: "environment" },
         },
-        audio: false,
+        audio: serviceVideoAudioConstraint(audioExpected),
       },
       {
         video: {
           ...baseVideoConstraints,
           facingMode: { ideal: "environment" },
         },
-        audio: false,
+        audio: serviceVideoAudioConstraint(audioExpected),
       },
-      { video: true, audio: false },
+      { video: true, audio: serviceVideoAudioConstraint(audioExpected) },
     ];
 
     let lastError: unknown = null;
@@ -929,7 +935,7 @@ export default function EmployeeJobsPage() {
               ...baseVideoConstraints,
               deviceId: { exact: device.deviceId },
             },
-            audio: false,
+            audio: serviceVideoAudioConstraint(audioExpected),
           });
           if (mediaStreamSupportsTorch(stream)) {
             stopMediaStream(fallbackStream);
@@ -1213,7 +1219,8 @@ export default function EmployeeJobsPage() {
     }
 
     try {
-      const stream = await requestRearCameraStream();
+      const audioExpected = Boolean(job.recordingCompliance?.audioAllowed);
+      const stream = await requestRearCameraStream(audioExpected);
       activeCameraContextRef.current = { job, stage, locationProof };
       activeCameraStreamRef.current = stream;
       mediaRecorderRef.current = null;
@@ -1242,7 +1249,7 @@ export default function EmployeeJobsPage() {
           ...prev,
           [nextRecordingKey]: {
             status: "error",
-            message: "Camera access was blocked. Allow camera access in the browser and tap the stage again.",
+            message: serviceVideoDevicePermissionMessage(Boolean(job.recordingCompliance?.audioAllowed)),
           },
         }));
       } else {
@@ -1415,6 +1422,12 @@ export default function EmployeeJobsPage() {
             </p>
             <h2 className="mt-1 text-2xl font-bold leading-tight">{selectedStage.label}</h2>
             <p className="mt-1 text-sm leading-5 text-blue-50/85">{selectedStage.cue}</p>
+            <p className="mt-1 text-sm font-semibold text-emerald-200">
+              {serviceVideoAudioLabel(
+                Boolean(job.recordingCompliance?.audioAllowed),
+                Boolean(job.recordingCompliance?.permissionRequired),
+              )}
+            </p>
           </div>
           <video
             ref={liveVideoRef}
@@ -1679,7 +1692,10 @@ export default function EmployeeJobsPage() {
             <p className="mt-1 text-sm leading-5">
               Record {job.recordingCompliance.scopeSummary.propertyScope.replaceAll("_", " ").toLowerCase()}.
               {" "}People: {job.recordingCompliance.scopeSummary.peopleScope.replaceAll("_", " ").toLowerCase()}.
-              {" "}Keep audio off.
+              {" "}{serviceVideoAudioLabel(
+                Boolean(job.recordingCompliance.audioAllowed),
+                Boolean(job.recordingCompliance.permissionRequired),
+              )}.
             </p>
             <p className="mt-1 text-xs leading-5 text-blue-100/80">
               Avoid unrelated people, minors, documents, screens, private areas, identifiers, and anything outside this scope. Stop if conditions change.

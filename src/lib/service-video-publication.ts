@@ -296,6 +296,7 @@ export async function decidePackageVisibility(input: {
   customerUserId: string;
   decision: "KEEP_PRIVATE" | "SHARE_PUBLICLY";
   verificationMethod: string;
+  audioConfirmation?: boolean;
 }) {
   return prisma.$transaction(async (tx: any) => {
     const decision = String(input.decision || "").trim().toUpperCase();
@@ -310,6 +311,14 @@ export async function decidePackageVisibility(input: {
     }
     if (foundation.booking.userId !== input.customerUserId) {
       throw new Error("PACKAGE_VISIBILITY_CUSTOMER_FORBIDDEN");
+    }
+    const packageIncludesAudio = Boolean(foundation.package.audioExpected);
+    if (
+      decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY &&
+      packageIncludesAudio &&
+      input.audioConfirmation !== true
+    ) {
+      throw new Error("PACKAGE_VISIBILITY_AUDIO_CONFIRMATION_REQUIRED");
     }
     const stageSetHash = exactPackageStageSetHash(foundation.packageStages);
     const existing = await tx.serviceVideoPackageVisibilityDecision.findFirst({
@@ -347,6 +356,8 @@ export async function decidePackageVisibility(input: {
       decision,
       version,
       verificationMethod: input.verificationMethod,
+      audioIncluded: packageIncludesAudio,
+      audioConfirmation: packageIncludesAudio && decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY,
     };
     const decisionHash = sha256(stableJson(evidenceDocument));
     const visibilityDecision = await tx.serviceVideoPackageVisibilityDecision.create({
@@ -386,7 +397,7 @@ export async function decidePackageVisibility(input: {
     const peopleScope = String(assessment?.peopleScope || "none").toLowerCase();
     const containsCustomerLikeness = ["customer", "multiple"].includes(peopleScope);
     const containsEmployeeLikeness = ["employee", "multiple"].includes(peopleScope);
-    const includesAudio = assessment?.audioAllowed === true;
+    const includesAudio = packageIncludesAudio;
 
     const exactStages = [] as Array<{
       packaged: ExactPackageStage;
@@ -561,7 +572,7 @@ export async function loadPackageVisibilityView(input: { bookingId: string }) {
     state,
     auditPassed,
     privateProofReleased: auditPassed,
-    package: pkg ? { id: pkg.id, version: pkg.version, packageHash: pkg.packageHash } : null,
+    package: pkg ? { id: pkg.id, version: pkg.version, packageHash: pkg.packageHash, audioIncluded: Boolean(pkg.audioExpected) } : null,
     visibilityDecision,
     proposal,
     legacyProposal,

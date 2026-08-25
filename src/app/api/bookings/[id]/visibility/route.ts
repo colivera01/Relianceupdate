@@ -76,6 +76,7 @@ export async function POST(request: Request, context: Context) {
       customerUserId: access.actor.userId,
       decision: String(body?.decision || "").trim().toUpperCase() as "KEEP_PRIVATE" | "SHARE_PUBLICLY",
       verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+      audioConfirmation: body?.audioConfirmation === true,
     });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

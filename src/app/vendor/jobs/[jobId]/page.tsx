@@ -62,6 +62,7 @@ type JobLike = {
     permissionRequired?: boolean;
     permissionStatus?: string | null;
     serviceOrderReleasedAt?: string | null;
+    audioAllowed?: boolean;
   } | null;
   packageVisibility?: {
     state: string;
@@ -79,6 +80,7 @@ type JobLike = {
     frameControl: string;
     permissionRequired: boolean;
     scopeHash: string;
+    audioAllowed: boolean;
   } | null;
 };
 
@@ -92,6 +94,9 @@ type SessionDetails = {
     blobUrl?: string | null;
     moderationStatus?: string | null;
     title?: string | null;
+    audioExpected?: boolean;
+    audioPresence?: string | null;
+    audioEvidenceVersion?: number;
   }>;
 };
 
@@ -671,6 +676,7 @@ export default function VendorJobDetailPage() {
                   <p className="mt-1 text-sm text-gray-800">Property: {readableEvidenceValue(job.recordingAssessment?.propertyScope)}</p>
                   <p className="mt-1 text-sm text-gray-800">People: {readableEvidenceValue(job.recordingAssessment?.peopleScope)}</p>
                   <p className="mt-1 text-sm text-gray-800">Camera: {readableEvidenceValue(job.recordingAssessment?.frameControl)}</p>
+                  <p className="mt-1 text-sm text-gray-800">Recording: {job.recordingAssessment?.audioAllowed ? 'Video + audio' : 'Video only'}</p>
                 </CardContent>
               </Card>
             </div>
@@ -779,6 +785,14 @@ export default function VendorJobDetailPage() {
                               {latestAsset?.createdAt || stageSession?.createdAt
                                 ? formatDateTimeUtc(String(latestAsset?.createdAt || stageSession?.createdAt))
                                 : "Unknown"}
+                            </p>
+                            <p className="text-xs font-medium text-blue-100">
+                              Audio: {latestAsset?.audioPresence === "PRESENT"
+                                ? "Present"
+                                : latestAsset?.audioPresence === "ABSENT"
+                                  ? "Not present"
+                                  : "Historical / not independently detected"}
+                              {latestAsset?.audioExpected ? " (approved)" : ""}
                             </p>
                             <Button
                               size="sm"
