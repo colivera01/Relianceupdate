@@ -10,6 +10,7 @@ import {
   REQUIRED_SERVICE_VIDEO_STAGES,
   type ServiceVideoStage,
 } from "@/lib/service-video-evidence";
+import { isCoreAdminAuditRejectionCategory } from "@/lib/core-admin-audit-categories";
 
 export const CORE_ADMIN_AUDIT_EVIDENCE_VERSION = 1;
 export const MANAGER_ADMIN_AUDIT_SUBMISSION = "SUBMITTED_FOR_ADMIN_AUDIT";
@@ -18,6 +19,8 @@ export const PACKAGE_ADMIN_AUDIT_REJECTED = "ADMIN_REJECTED";
 export const CORE_ADMIN_AUDIT_READY_NOTIFICATION_KIND = "SERVICE_VIDEO_ADMIN_AUDIT_READY_V1";
 export const CORE_PRIVATE_PROOF_READY_NOTIFICATION_KIND = "PRIVATE_PROOF_READY_ADMIN_AUDIT_V1";
 export const CORE_PRIVATE_PROOF_REJECTED_NOTIFICATION_KIND = "PRIVATE_PROOF_AUDIT_REJECTED_V1";
+export const CORE_VENDOR_AUDIT_PASSED_NOTIFICATION_KIND = "VENDOR_CORE_AUDIT_PASSED_V1";
+export const CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND = "VENDOR_CORE_AUDIT_REJECTED_V1";
 
 export type CoreAdminAuditDecision = "PASS" | "REJECT";
 
@@ -463,7 +466,10 @@ export async function decideCoreServiceVideoAdminAudit(input: {
   if (!(["PASS", "REJECT"] as string[]).includes(decision)) {
     throw new CoreAdminAuditError("ADMIN_AUDIT_DECISION_INVALID");
   }
-  if (decision === "REJECT" && (!rejectionCategory || !reason)) {
+  if (decision === "REJECT" && !isCoreAdminAuditRejectionCategory(rejectionCategory)) {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_REJECTION_CATEGORY_INVALID");
+  }
+  if (decision === "REJECT" && !reason) {
     throw new CoreAdminAuditError("ADMIN_AUDIT_REJECTION_REASON_REQUIRED");
   }
 
@@ -484,6 +490,7 @@ export async function decideCoreServiceVideoAdminAudit(input: {
         package: currentPackage,
         booking: await tx.booking.findUnique({ where: { id: input.bookingId } }),
         customerNotificationId: priorDecision.customerNotificationId,
+        vendorNotificationId: `vendor-core-audit-${decision.toLowerCase()}-${currentPackage.id}`,
         alreadyDecided: true,
       };
     }
@@ -542,6 +549,7 @@ export async function decideCoreServiceVideoAdminAudit(input: {
 
     let grant: any = null;
     let customerNotification: any = null;
+    let vendorNotification: any = null;
     if (decision === "PASS") {
       grant = await tx.privateProofAccessGrant.create({
         data: {
@@ -574,6 +582,15 @@ export async function decideCoreServiceVideoAdminAudit(input: {
           kind: CORE_PRIVATE_PROOF_READY_NOTIFICATION_KIND,
           status: "QUEUED",
           idempotencyKey: `private-proof-ready:${candidate.package.id}`,
+        },
+      });
+      vendorNotification = await tx.bookingNotification.create({
+        data: {
+          id: `vendor-core-audit-pass-${candidate.package.id}`,
+          bookingId: input.bookingId,
+          kind: CORE_VENDOR_AUDIT_PASSED_NOTIFICATION_KIND,
+          status: "QUEUED",
+          idempotencyKey: `vendor-core-audit-passed:${candidate.package.id}`,
         },
       });
       await tx.serviceVideoAdminAuditDecisionEvidence.update({
@@ -630,6 +647,15 @@ export async function decideCoreServiceVideoAdminAudit(input: {
           idempotencyKey: `private-proof-audit-rejected:${candidate.package.id}`,
         },
       });
+      vendorNotification = await tx.bookingNotification.create({
+        data: {
+          id: `vendor-core-audit-reject-${candidate.package.id}`,
+          bookingId: input.bookingId,
+          kind: CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND,
+          status: "QUEUED",
+          idempotencyKey: `vendor-core-audit-rejected:${candidate.package.id}`,
+        },
+      });
       await tx.serviceVideoAdminAuditDecisionEvidence.update({
         where: { id: auditDecision.id },
         data: { customerNotificationId: customerNotification.id },
@@ -678,6 +704,7 @@ export async function decideCoreServiceVideoAdminAudit(input: {
       booking: await tx.booking.findUnique({ where: { id: input.bookingId } }),
       grant,
       customerNotificationId: customerNotification?.id || null,
+      vendorNotificationId: vendorNotification?.id || null,
       alreadyDecided: false,
     };
   }, { isolationLevel: "Serializable" });
@@ -726,11 +753,19 @@ export async function assertCoreAdminAuditMutationAllowed(db: any, input: {
   if (status === PACKAGE_ADMIN_AUDIT_REJECTED) {
     throw new CoreAdminAuditError("ADMIN_AUDIT_REJECTED_TERMINAL");
   }
+  if (status === "PRIVATE_APPROVED") {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_PASSED_TERMINAL");
+  }
   if (pkg?.adminAuditDecisionId) {
     const decision = await db.serviceVideoAdminAuditDecisionEvidence.findFirst({
-      where: { id: pkg.adminAuditDecisionId, packageId: pkg.id, decision: "REJECT" },
-      select: { id: true },
+      where: { id: pkg.adminAuditDecisionId, packageId: pkg.id },
+      select: { id: true, decision: true },
     });
-    if (decision) throw new CoreAdminAuditError("ADMIN_AUDIT_REJECTED_TERMINAL");
+    if (String(decision?.decision || "").toUpperCase() === "REJECT") {
+      throw new CoreAdminAuditError("ADMIN_AUDIT_REJECTED_TERMINAL");
+    }
+    if (String(decision?.decision || "").toUpperCase() === "PASS") {
+      throw new CoreAdminAuditError("ADMIN_AUDIT_PASSED_TERMINAL");
+    }
   }
 }

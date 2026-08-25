@@ -27,6 +27,8 @@ const hoisted = vi.hoisted(() => {
   const mediaAssetFindMany = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
   const vendorMembershipFindMany = vi.fn();
+  const serviceVideoPackageEvidenceFindMany = vi.fn();
+  const serviceVideoAdminAuditDecisionEvidenceFindMany = vi.fn();
 
   const prisma = {
     vendor: {
@@ -60,6 +62,12 @@ const hoisted = vi.hoisted(() => {
       findFirst: vendorMembershipFindFirst,
       findMany: vendorMembershipFindMany,
     },
+    serviceVideoPackageEvidence: {
+      findMany: serviceVideoPackageEvidenceFindMany,
+    },
+    serviceVideoAdminAuditDecisionEvidence: {
+      findMany: serviceVideoAdminAuditDecisionEvidenceFindMany,
+    },
   };
 
   return {
@@ -79,6 +87,8 @@ const hoisted = vi.hoisted(() => {
     mediaAssetFindMany,
     vendorMembershipFindFirst,
     vendorMembershipFindMany,
+    serviceVideoPackageEvidenceFindMany,
+    serviceVideoAdminAuditDecisionEvidenceFindMany,
   };
 });
 
@@ -199,6 +209,10 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     hoisted.consentRecordFindMany.mockReset();
     hoisted.bookingNotificationFindMany.mockReset();
     hoisted.bookingNotificationFindMany.mockResolvedValue([]);
+    hoisted.serviceVideoPackageEvidenceFindMany.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindMany.mockResolvedValue([]);
+    hoisted.serviceVideoAdminAuditDecisionEvidenceFindMany.mockReset();
+    hoisted.serviceVideoAdminAuditDecisionEvidenceFindMany.mockResolvedValue([]);
     hoisted.mediaAssetGroupBy.mockReset();
     hoisted.mediaAssetCount.mockReset();
     hoisted.mediaAssetFindMany.mockReset();

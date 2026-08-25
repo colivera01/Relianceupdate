@@ -18,6 +18,7 @@ export type VendorJobLifecycleInput = {
   adminAuditDecision?: string | null;
   adminAuditRejectionCategory?: string | null;
   adminAuditRejectionReason?: string | null;
+  adminAuditDecidedAt?: string | Date | null;
   correctionPending?: boolean;
   locationSelected?: boolean;
   permissionRequired?: boolean;
@@ -69,6 +70,10 @@ export function resolveVendorJobLifecyclePresentation(
   const permissionState = normalized(input.permissionState);
   const nextStage = String(input.nextStageLabel || "next stage").trim() || "next stage";
   const recipient = String(input.consentRecipientLabel || "the customer").trim() || "the customer";
+  const auditDecision = normalized(input.adminAuditDecision);
+  const auditDate = input.adminAuditDecidedAt
+    ? new Date(input.adminAuditDecidedAt).toLocaleString()
+    : "";
 
   if (status === "CANCELED" || status === "CANCELLED") {
     if (permissionState === "DECLINED") {
@@ -90,7 +95,17 @@ export function resolveVendorJobLifecyclePresentation(
       "Keep this read-only record as historical evidence.",
     );
   }
-  if (normalized(input.adminAuditDecision) === "REJECT") {
+  if (auditDecision === "PASS") {
+    return result(
+      "Reliance Audit Passed",
+      `Reliance approved the exact submitted Service Video package and released the Private Proof to the customer.${auditDate ? ` Audit completed ${auditDate}.` : ""} This does not make any video Public.`,
+      "View Job",
+      "green",
+      "No participant needs to act",
+      "Keep the approved package and audit decision as read-only evidence. Public Proof remains a separate workflow.",
+    );
+  }
+  if (auditDecision === "REJECT") {
     const category = String(input.adminAuditRejectionCategory || "").trim();
     const reason = String(input.adminAuditRejectionReason || input.rejectionReason || "").trim();
     const evidenceDetail = [category ? `Category: ${category}.` : "", reason ? `Reason: ${reason}` : ""]
@@ -98,7 +113,7 @@ export function resolveVendorJobLifecyclePresentation(
       .join(" ");
     return result(
       "Reliance Audit Failed",
-      `Reliance reviewed this Service Video package and it did not meet the required audit standards. This Reliance work record is closed and cannot be rerecorded because the service has already occurred.${evidenceDetail ? ` ${evidenceDetail}` : ""}`,
+      `Reliance reviewed this Service Video package and it did not meet the required audit standards. This Reliance work record is permanently closed and cannot be rerecorded; correction, retry, and resubmission are not available. This does not mean the underlying real-world service failed.${evidenceDetail ? ` ${evidenceDetail}` : ""}${auditDate ? ` Audit completed ${auditDate}.` : ""}`,
       "View Job",
       "red",
       "No participant needs to act",

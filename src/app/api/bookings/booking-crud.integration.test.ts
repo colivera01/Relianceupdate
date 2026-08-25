@@ -38,6 +38,7 @@ const hoisted = vi.hoisted(() => {
   const recordingScopeAssessmentCreate = vi.fn();
   const recordingAuthorityRequirementCreateMany = vi.fn();
   const queryRaw = vi.fn();
+  const serviceVideoPackageEvidenceFindFirst = vi.fn();
 
   const prisma: any = {
     booking: {
@@ -65,6 +66,7 @@ const hoisted = vi.hoisted(() => {
     },
     recordingScopeAssessment: { create: recordingScopeAssessmentCreate },
     recordingAuthorityRequirement: { createMany: recordingAuthorityRequirementCreateMany },
+    serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
     $queryRaw: queryRaw,
   };
   const transaction = vi.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
@@ -100,6 +102,7 @@ const hoisted = vi.hoisted(() => {
     recordingAuthorityRequirementCreateMany,
     transaction,
     queryRaw,
+    serviceVideoPackageEvidenceFindFirst,
   };
 });
 
@@ -1325,6 +1328,8 @@ describe('PUT /api/bookings/[id]', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -1376,6 +1381,24 @@ describe('PUT /api/bookings/[id]', () => {
     const j = await readJson(res);
     expect((j.booking as { status: string }).status).toBe('confirmed');
   });
+
+  it('rejects customer updates after a terminal Admin PASS before mutation', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'book-1', userId: 'customer-1' });
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue({
+      id: 'package-1',
+      status: 'PRIVATE_APPROVED',
+      adminAuditDecisionId: 'audit-1',
+    });
+
+    const res = await bookingPutPUT(
+      jsonRequest('http://localhost/api/bookings/book-1', { title: 'Changed after audit' }, 'PUT'),
+      { params: Promise.resolve({ id: 'book-1' }) }
+    );
+
+    expect(res.status).toBe(409);
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/bookings/[id]', () => {
@@ -1383,6 +1406,8 @@ describe('DELETE /api/bookings/[id]', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -1427,5 +1452,23 @@ describe('DELETE /api/bookings/[id]', () => {
     });
     const j = await readJson(res);
     expect(j.success).toBe(true);
+  });
+
+  it('rejects customer deletion after terminal Admin REJECT before mutation', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'book-1', userId: 'customer-1' });
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue({
+      id: 'package-1',
+      status: 'ADMIN_REJECTED',
+      adminAuditDecisionId: 'audit-2',
+    });
+
+    const res = await bookingDeleteDELETE(
+      jsonRequest('http://localhost/api/bookings/book-1', undefined, 'DELETE'),
+      { params: Promise.resolve({ id: 'book-1' }) }
+    );
+
+    expect(res.status).toBe(409);
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 });

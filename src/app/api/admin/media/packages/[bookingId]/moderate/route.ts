@@ -9,9 +9,11 @@ import {
 import { readNotificationEnv } from "@/lib/env/notification-config";
 import { ensureRetentionSchedulesForBooking } from "@/lib/media-lifecycle";
 import {
+  sendCoreAdminAuditVendorResultNotification,
   sendCorePrivateProofReadyNotification,
   sendCorePrivateProofRejectedNotification,
 } from "@/lib/service-video-admin-audit-notifications";
+import { isCoreAdminAuditRejectionCategory } from "@/lib/core-admin-audit-categories";
 import {
   CoreAdminAuditError,
   decideCoreServiceVideoAdminAudit,
@@ -54,9 +56,15 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         { status: 422 },
       );
     }
-    if (decision === "REJECT" && (!rejectionCategory || !reason)) {
+    if (decision === "REJECT" && !isCoreAdminAuditRejectionCategory(rejectionCategory)) {
       return NextResponse.json(
-        { success: false, error: "A rejection category and reason are required." },
+        { success: false, error: "Select a supported Reliance Audit rejection category." },
+        { status: 422 },
+      );
+    }
+    if (decision === "REJECT" && !reason) {
+      return NextResponse.json(
+        { success: false, error: "A clear rejection reason is required." },
         { status: 422 },
       );
     }
@@ -130,6 +138,19 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           });
     }
     if (decision === "PASS") await ensureRetentionSchedulesForBooking(bookingId);
+    const vendorNotification = result.vendorNotificationId
+      ? await sendCoreAdminAuditVendorResultNotification({
+          notificationId: result.vendorNotificationId,
+          actorUserId: admin.userId,
+          bookingId,
+          vendorId: booking.vendorId,
+          decision,
+          serviceName: booking.service?.name || booking.title,
+          rejectionCategory,
+          reason,
+          decidedAt: result.decision.decidedAt,
+        })
+      : null;
 
     return NextResponse.json({
       success: true,
@@ -139,6 +160,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       packageVersion: result.package.version,
       customerProofReleased: decision === "PASS",
       notification,
+      vendorNotification,
       message: decision === "PASS"
         ? "Admin PASS recorded. The Private Service Video was released to the customer."
         : "Admin REJECT recorded. The Service Video package is terminal and was not released.",

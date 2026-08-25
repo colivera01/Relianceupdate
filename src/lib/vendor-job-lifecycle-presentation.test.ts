@@ -64,6 +64,21 @@ describe("vendor job lifecycle presentation", () => {
     expect(state.responsibleParticipant).toBe("No participant needs to act");
   });
 
+  it("presents Admin PASS as final Private Proof release without implying Public approval", () => {
+    const state = resolveVendorJobLifecyclePresentation({
+      status: "COMPLETED",
+      operationalPhase: "COMPLETED",
+      adminAuditDecision: "PASS",
+      adminAuditDecidedAt: "2026-08-24T22:00:00.000Z",
+      allVideosPresent: true,
+    });
+
+    expect(state.label).toBe("Reliance Audit Passed");
+    expect(state.detail).toContain("Private Proof");
+    expect(state.detail).toContain("does not make any video Public");
+    expect(state.label).not.toBe("All videos uploaded");
+  });
+
   it("shows service-order sent only as a read-only state", () => {
     const state = resolveVendorJobLifecyclePresentation({
       status: "CONFIRMED",

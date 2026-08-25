@@ -305,6 +305,8 @@ export default function VendorJobs() {
 
   const isAdminAuditRejected = (job: any) =>
     String(job?.adminAuditDecision?.decision || '').trim().toUpperCase() === 'REJECT';
+  const isAdminAuditPassed = (job: any) =>
+    String(job?.adminAuditDecision?.decision || '').trim().toUpperCase() === 'PASS';
 
   const getVendorWorkflowStateForJob = (job: any) => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
@@ -324,6 +326,7 @@ export default function VendorJobs() {
       adminAuditDecision: job?.adminAuditDecision?.decision,
       adminAuditRejectionCategory: job?.adminAuditDecision?.rejectionCategory,
       adminAuditRejectionReason: job?.adminAuditDecision?.reason,
+      adminAuditDecidedAt: job?.adminAuditDecision?.decidedAt,
       correctionPending: isJobPendingEmployeeCorrection(job),
       locationSelected: Boolean(locationChoice),
       permissionRequired: requiresConsent,
@@ -4274,6 +4277,9 @@ export default function VendorJobs() {
     if (job && isAdminAuditRejected(job)) {
       return 'Job: Reliance Audit Failed';
     }
+    if (job && isAdminAuditPassed(job)) {
+      return 'Job: Reliance Audit Passed';
+    }
     if (phase === 'REJECTED' || (job && jobHasRejectedMedia(job))) {
       return 'Job: Rejected';
     }
@@ -4303,6 +4309,7 @@ export default function VendorJobs() {
   const formatOperationalPhaseLabel = (operationalPhase: string | null | undefined, job?: any) => {
     const phase = String(operationalPhase || '').trim().toUpperCase();
     if (job && isAdminAuditRejected(job)) return 'Reliance Audit Failed';
+    if (job && isAdminAuditPassed(job)) return 'Reliance Audit Passed';
     if (phase === 'REJECTED' || (job && jobHasRejectedMedia(job))) return 'Rejected / closed';
     if (phase === 'AWAITING_ADMIN_REVIEW') return 'Reliance Audit Pending';
     if (phase === 'AWAITING_VENDOR_REVIEW') return 'Awaiting Manager Review';
@@ -8455,17 +8462,19 @@ export default function VendorJobs() {
                                 >
                                   View Details
                                 </button>
-                                <button
-                                  className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
-                                  onClick={() => {
-                                    setActiveJobActionMenuId(null);
-                                    openJobActionConfirm(job, "ARCHIVE_JOB");
-                                  }}
-                                  disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
-                                  title="Hide job in Archived; keeps history and media."
-                                >
-                                  Archive Job
-                                </button>
+                                {!job.adminAuditDecision ? (
+                                  <button
+                                    className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
+                                    onClick={() => {
+                                      setActiveJobActionMenuId(null);
+                                      openJobActionConfirm(job, "ARCHIVE_JOB");
+                                    }}
+                                    disabled={Boolean(jobMutationLoadingId) || jobActionLoading}
+                                    title="Hide job in Archived; keeps history and media."
+                                  >
+                                    Archive Job
+                                  </button>
+                                ) : null}
                               </>
                             );
                           }

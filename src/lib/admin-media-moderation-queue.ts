@@ -208,12 +208,20 @@ export async function getAdminMediaModerationQueue(
           ) {
             return null;
           }
+          const managerSubmitter = await (prisma as any).user.findUnique({
+            where: { id: candidate.managerDecision.managerUserId },
+            select: { name: true, email: true },
+          });
           return {
             ...pack,
             packageId: candidate.package.id,
             packageVersion: candidate.package.version,
             packageHash: candidate.package.packageHash,
             managerDecisionId: candidate.managerDecision.id,
+            managerSubmitterName:
+              managerSubmitter?.name || managerSubmitter?.email || "Vendor manager",
+            managerSubmittedAt: candidate.managerDecision.decidedAt,
+            managerAttestationHash: candidate.managerDecision.attestationHash,
             adminAuditEvidenceVersion: candidate.package.auditEvidenceVersion,
           };
         } catch {

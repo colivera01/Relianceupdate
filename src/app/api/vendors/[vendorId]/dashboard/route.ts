@@ -25,6 +25,11 @@ import {
 import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
+import {
+  CORE_VENDOR_AUDIT_PASSED_NOTIFICATION_KIND,
+  CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND,
+} from "@/lib/service-video-admin-audit";
+import { coreAdminAuditRejectionCategoryLabel } from "@/lib/core-admin-audit-categories";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -1167,6 +1172,44 @@ export async function GET(
       }
     }
 
+    const auditNotificationRows = await (prisma as any).bookingNotification.findMany({
+      where: {
+        kind: { in: [CORE_VENDOR_AUDIT_PASSED_NOTIFICATION_KIND, CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND] },
+        booking: { vendorId },
+      },
+      include: { booking: { select: { id: true, title: true, service: { select: { name: true } } } } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+    const auditBookingIds = auditNotificationRows.map((row: any) => row.bookingId);
+    const auditDecisions = auditBookingIds.length
+      ? await (prisma as any).serviceVideoAdminAuditDecisionEvidence.findMany({
+          where: { bookingId: { in: auditBookingIds } },
+          orderBy: { decidedAt: "desc" },
+        })
+      : [];
+    const auditDecisionByBookingId = new Map(
+      auditDecisions.map((decision: any) => [String(decision.bookingId), decision]),
+    );
+    const auditNotifications = auditNotificationRows.flatMap((row: any) => {
+      const decision: any = auditDecisionByBookingId.get(String(row.bookingId));
+      if (!decision) return [];
+      const passed = String(decision.decision || "").toUpperCase() === "PASS";
+      const serviceName = row.booking?.service?.name || row.booking?.title || "Service Order";
+      return [{
+        id: row.id,
+        type: "audit",
+        title: passed ? "Reliance Audit Passed" : "Reliance Audit Failed",
+        message: passed
+          ? `${serviceName}: Private Proof was released to the customer. No video was made Public.`
+          : `${serviceName}: ${coreAdminAuditRejectionCategoryLabel(decision.rejectionCategory)}. ${decision.reason || "The Reliance work record is permanently closed."}`,
+        time: (decision.decidedAt || row.createdAt).toISOString(),
+        read: false,
+        priority: passed ? "medium" : "high",
+        href: `/vendor/jobs/${encodeURIComponent(row.bookingId)}`,
+      }];
+    });
+
     // Build response
     const response = {
       profile: {
@@ -1200,7 +1243,7 @@ export async function GET(
       recentReviews: recentReviewsMapped,
       employeePerformance,
       insights: [],
-      notifications: [],
+      notifications: auditNotifications,
       pendingModerationProofs,
       approvedProofs: approvedServiceOrders,
       pendingModerationServiceOrderCount: pendingModerationServiceOrders,

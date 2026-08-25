@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, ShieldCheck } from 'lucide-react';
+import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, ShieldCheck, Bell } from 'lucide-react';
 import { useVendorDashboard } from '@/hooks/useVendorDashboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
@@ -561,6 +561,33 @@ export default function VendorDashboard() {
             </div>
           </div>
         </section>
+
+        {data.notifications?.length ? (
+          <section aria-labelledby="reliance-audit-updates" className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-blue-700" />
+              <h2 id="reliance-audit-updates" className="text-lg font-semibold text-gray-950">Reliance Audit updates</h2>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {data.notifications.filter((notification) => notification.type === 'audit').map((notification) => (
+                <Card key={notification.id} className={notification.priority === 'high' ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50'}>
+                  <CardContent className="flex items-start justify-between gap-4 p-4">
+                    <div>
+                      <p className="font-semibold text-gray-950">{notification.title}</p>
+                      <p className="mt-1 text-sm text-gray-700">{notification.message}</p>
+                      <p className="mt-2 text-xs text-gray-500">{new Date(notification.time).toLocaleString()}</p>
+                    </div>
+                    {notification.href ? (
+                      <Button size="sm" variant="outline" onClick={() => router.push(notification.href!)}>
+                        View details
+                      </Button>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <VendorBusinessVisibilitySection summary={growthSummary} />
 

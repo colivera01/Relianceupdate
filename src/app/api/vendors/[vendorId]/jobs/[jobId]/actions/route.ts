@@ -434,7 +434,9 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             error.code,
             error.code === "ADMIN_AUDIT_IN_PROGRESS"
               ? "This Service Video package is read-only while Reliance Audit is in progress."
-              : "Reliance Audit rejected this Service Video package. The evidence is terminal and read-only.",
+              : error.code === "ADMIN_AUDIT_PASSED_TERMINAL"
+                ? "Reliance Audit passed and released this exact Private Proof package. The evidence is terminal and read-only."
+                : "Reliance Audit rejected this Service Video package. The evidence is terminal and read-only.",
           ),
           { status: 409 },
         );
@@ -1613,7 +1615,9 @@ export async function DELETE(request: Request, context: RouteParams): Promise<Ne
             error.code,
             error.code === "ADMIN_AUDIT_IN_PROGRESS"
               ? "This Service Video package is read-only while Reliance Audit is in progress."
-              : "Reliance Audit rejected this Service Video package. The evidence is terminal and cannot be deleted.",
+              : error.code === "ADMIN_AUDIT_PASSED_TERMINAL"
+                ? "Reliance Audit passed and released this exact Private Proof package. The evidence is terminal and cannot be deleted."
+                : "Reliance Audit rejected this Service Video package. The evidence is terminal and cannot be deleted.",
           ),
           { status: 409 },
         );

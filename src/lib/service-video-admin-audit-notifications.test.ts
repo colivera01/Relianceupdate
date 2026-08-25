@@ -8,6 +8,7 @@ const hoisted = vi.hoisted(() => ({
   sendSms: vi.fn(),
   sendReady: vi.fn(),
   audit: vi.fn(),
+  managers: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -16,6 +17,7 @@ vi.mock("@/server/db", () => ({
       updateMany: hoisted.updateMany,
       update: hoisted.update,
     },
+    vendorMembership: { findMany: hoisted.managers },
   },
 }));
 vi.mock("@/lib/admin-notifications", () => ({
@@ -41,6 +43,9 @@ describe("core Admin Audit notifications", () => {
     hoisted.emailAdmin.mockResolvedValue({ emailSent: true });
     hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "email-1" });
     hoisted.sendSms.mockResolvedValue({ ok: true, providerMessageId: "sms-1" });
+    hoisted.managers.mockResolvedValue([
+      { user: { name: "Electro Manager", email: "manager@example.test" } },
+    ]);
   });
 
   it("claims and sends the first actionable Admin Audit notice once", async () => {
@@ -143,5 +148,51 @@ describe("core Admin Audit notifications", () => {
     expect(message.text).toContain("does not change the underlying service");
     expect(message.text).not.toContain("UNVERIFIABLE");
     expect(message.text).not.toContain("http");
+  });
+
+  it("sends an idempotent vendor PASS result with a read-only link and no Public implication", async () => {
+    const { sendCoreAdminAuditVendorResultNotification } = await import(
+      "./service-video-admin-audit-notifications"
+    );
+    const result = await sendCoreAdminAuditVendorResultNotification({
+      notificationId: "vendor-pass-1",
+      actorUserId: "admin-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      decision: "PASS",
+      serviceName: "Outlet Installation",
+      decidedAt: "2026-08-24T22:00:00.000Z",
+      baseUrl: "https://beta.example.test",
+    });
+
+    expect(result).toMatchObject({ claimed: true, status: "SENT", recipientCount: 1 });
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    expect(email.text).toContain("Private Proof");
+    expect(email.text).toContain("does not make any video Public");
+    expect(email.text).toContain("/vendor/jobs/booking-1");
+  });
+
+  it("sends the controlled category and terminal language to the vendor on REJECT", async () => {
+    const { sendCoreAdminAuditVendorResultNotification } = await import(
+      "./service-video-admin-audit-notifications"
+    );
+    await sendCoreAdminAuditVendorResultNotification({
+      notificationId: "vendor-reject-1",
+      actorUserId: "admin-1",
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      decision: "REJECT",
+      serviceName: "Outlet Installation",
+      rejectionCategory: "PRIVACY_OR_SCOPE",
+      reason: "The recording exceeded the approved scope.",
+      decidedAt: "2026-08-24T22:00:00.000Z",
+      baseUrl: "https://beta.example.test",
+    });
+
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    expect(email.text).toContain("Privacy or recording scope");
+    expect(email.text).toContain("permanently closed");
+    expect(email.text).toContain("does not mean the underlying real-world service failed");
+    expect(email.text).toContain("rerecording, correction, retry, or resubmission is not available");
   });
 });

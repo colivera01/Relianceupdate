@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   loadRecordingPermissionGate: vi.fn(),
   assertServiceVideoStageMutationAllowed: vi.fn(),
   transaction: vi.fn(),
+  corePackageFindFirst: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -17,6 +18,7 @@ vi.mock("@/server/db", () => ({
     mediaAsset: { findUnique: mocks.mediaAssetFindUnique, update: mocks.mediaAssetUpdate },
     mediaDeletionRequest: { findFirst: mocks.mediaDeletionRequestFindFirst },
     booking: { findFirst: mocks.bookingFindFirst },
+    serviceVideoPackageEvidence: { findFirst: mocks.corePackageFindFirst },
     $transaction: mocks.transaction,
   },
 }));
@@ -59,8 +61,10 @@ describe("employee Service Video restore recording lock", () => {
     mocks.mediaDeletionRequestFindFirst.mockResolvedValue(null);
     mocks.transaction.mockImplementation(async (callback: (tx: any) => unknown) => callback({
       mediaAsset: { update: mocks.mediaAssetUpdate },
+      serviceVideoPackageEvidence: { findFirst: mocks.corePackageFindFirst },
     }));
     mocks.assertServiceVideoStageMutationAllowed.mockResolvedValue(undefined);
+    mocks.corePackageFindFirst.mockResolvedValue(null);
     mocks.mediaAssetUpdate.mockResolvedValue({ id: "asset-1", deletedAt: null });
   });
 
@@ -82,6 +86,21 @@ describe("employee Service Video restore recording lock", () => {
 
     expect(response.status).toBe(409);
     expect(json.code).toBe("MANAGER_REVIEW_IN_PROGRESS");
+    expect(mocks.mediaAssetUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects restore after Admin REJECT before changing the archived asset", async () => {
+    mocks.loadRecordingPermissionGate.mockResolvedValue({ blockCode: null, recordingUnlocked: true });
+    mocks.corePackageFindFirst.mockResolvedValue({ id: "package-1", status: "ADMIN_REJECTED", adminAuditDecisionId: "audit-1" });
+    const response = await PATCH(
+      new Request("http://localhost/api/vendors/vendor-1/media/asset-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RESTORE" }),
+      }),
+      { params: Promise.resolve({ vendorId: "vendor-1", assetId: "asset-1" }) },
+    );
+    expect(response.status).toBe(409);
     expect(mocks.mediaAssetUpdate).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,10 @@ const hoisted = vi.hoisted(() => {
   const mediaAssetFindMany = vi.fn();
   const loadAuthorizedPrivateProof = vi.fn();
   const recordPrivateProofAccess = vi.fn();
+  const serviceVideoPackageEvidenceFindFirst = vi.fn();
+  const tryRecordFinalizedOperationalOutcome = vi.fn();
+  const tryRecordBookingServiceIssue = vi.fn();
+  const tryRecalculateVendorTrustScore = vi.fn();
   const prisma = {
     booking: {
       findUnique: bookingFindUnique,
@@ -24,6 +28,7 @@ const hoisted = vi.hoisted(() => {
     mediaAsset: {
       findMany: mediaAssetFindMany,
     },
+    serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
   };
   return {
     prisma,
@@ -32,6 +37,10 @@ const hoisted = vi.hoisted(() => {
     mediaAssetFindMany,
     loadAuthorizedPrivateProof,
     recordPrivateProofAccess,
+    serviceVideoPackageEvidenceFindFirst,
+    tryRecordFinalizedOperationalOutcome,
+    tryRecordBookingServiceIssue,
+    tryRecalculateVendorTrustScore,
   };
 });
 
@@ -46,6 +55,17 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/service-video-evidence', () => ({
   loadAuthorizedPrivateProof: hoisted.loadAuthorizedPrivateProof,
   recordPrivateProofAccess: hoisted.recordPrivateProofAccess,
+}));
+
+vi.mock('@/lib/trust-score-outcome-foundation', () => ({
+  BOOKING_SERVICE_ISSUE_TYPES: { REFUND_REQUEST: 'REFUND_REQUEST' },
+  TRUST_OUTCOME_TYPES: { BOOKING_CANCELED: 'BOOKING_CANCELED' },
+  tryRecordFinalizedOperationalOutcome: hoisted.tryRecordFinalizedOperationalOutcome,
+  tryRecordBookingServiceIssue: hoisted.tryRecordBookingServiceIssue,
+}));
+
+vi.mock('@/lib/trust-score-calculator', () => ({
+  tryRecalculateVendorTrustScore: hoisted.tryRecalculateVendorTrustScore,
 }));
 
 function mediaGetRequest(bookingId: string) {
@@ -225,6 +245,11 @@ describe('POST /api/bookings/[id]/cancel', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
+    hoisted.tryRecordFinalizedOperationalOutcome.mockReset();
+    hoisted.tryRecordBookingServiceIssue.mockReset();
+    hoisted.tryRecalculateVendorTrustScore.mockReset();
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -353,5 +378,30 @@ describe('POST /api/bookings/[id]/cancel', () => {
     const j = await readJson(res);
     expect(j.cancellation_reason).toBeUndefined();
     expect(j.refund_requested).toBeUndefined();
+  });
+
+  it('rejects cancellation after terminal Admin PASS before booking or Trust Score mutation', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
+    hoisted.bookingFindUnique.mockResolvedValueOnce({
+      id: 'book-1',
+      userId: 'u1',
+      vendorId: 'v1',
+      status: 'COMPLETED',
+    });
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue({
+      id: 'package-1',
+      status: 'PRIVATE_APPROVED',
+      adminAuditDecisionId: 'audit-1',
+    });
+
+    const res = await bookingCancelPOST(cancelPostRequest('book-1', { reason: 'Late cancellation' }), {
+      params: Promise.resolve({ id: 'book-1' }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+    expect(hoisted.tryRecordFinalizedOperationalOutcome).not.toHaveBeenCalled();
+    expect(hoisted.tryRecordBookingServiceIssue).not.toHaveBeenCalled();
+    expect(hoisted.tryRecalculateVendorTrustScore).not.toHaveBeenCalled();
   });
 });

@@ -59,12 +59,13 @@ export interface VendorInsight {
 
 export interface VendorNotification {
   id: string;
-  type: 'job' | 'review' | 'payment' | 'reminder';
+  type: 'job' | 'review' | 'payment' | 'reminder' | 'audit';
   title: string;
   message: string;
   time: string;
   read: boolean;
   priority: 'high' | 'medium' | 'low';
+  href?: string;
 }
 
 export interface VendorDashboardResponse {

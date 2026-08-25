@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   findMany: vi.fn(),
+  userFindUnique: vi.fn(),
   buildPackages: vi.fn(),
   loadCandidate: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
-  prisma: { mediaAsset: { findMany: hoisted.findMany } },
+  prisma: {
+    mediaAsset: { findMany: hoisted.findMany },
+    user: { findUnique: hoisted.userFindUnique },
+  },
 }));
 vi.mock("@/lib/admin-media-moderation-packages", () => ({
   REQUIRED_MEDIA_MODERATION_STAGE_KEYS: ["INTRO", "IN_PROGRESS", "COMPLETED"],
@@ -34,6 +38,7 @@ describe("core Admin Audit queue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.findMany.mockResolvedValue([]);
+    hoisted.userFindUnique.mockResolvedValue({ name: "Morgan Manager", email: "manager@example.com" });
     hoisted.buildPackages.mockReturnValue([queuePackage]);
   });
 
@@ -45,7 +50,12 @@ describe("core Admin Audit queue", () => {
         packageHash: "package-hash",
         auditEvidenceVersion: 1,
       },
-      managerDecision: { id: "manager-decision-1" },
+      managerDecision: {
+        id: "manager-decision-1",
+        managerUserId: "manager-1",
+        decidedAt: new Date("2026-08-24T12:00:00.000Z"),
+        attestationHash: "attestation-hash",
+      },
       packageStages: [
         { mediaAssetId: "asset-1" },
         { mediaAssetId: "asset-2" },
@@ -63,6 +73,8 @@ describe("core Admin Audit queue", () => {
       packageVersion: 2,
       packageHash: "package-hash",
       managerDecisionId: "manager-decision-1",
+      managerSubmitterName: "Morgan Manager",
+      managerAttestationHash: "attestation-hash",
       adminAuditEvidenceVersion: 1,
     });
     expect(hoisted.loadCandidate).toHaveBeenCalledWith(expect.anything(), "booking-1");

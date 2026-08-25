@@ -7,7 +7,9 @@ import { readNotificationEnv } from "@/lib/env/notification-config";
 import {
   buildRelianceEmailHtml,
   escapeRelianceEmailHtml,
+  getPublicEmailBaseUrl,
 } from "@/lib/email/reliance-template";
+import { coreAdminAuditRejectionCategoryLabel } from "@/lib/core-admin-audit-categories";
 import { logNotificationAttempt } from "@/lib/notifications/notification-audit";
 
 type DeliveryChannel = {
@@ -211,4 +213,110 @@ export async function sendCorePrivateProofRejectedNotification(input: {
 
   const record = await finishNotification(input.notificationId, channels);
   return { claimed: true, status: record.status, channels };
+}
+
+export async function sendCoreAdminAuditVendorResultNotification(input: {
+  notificationId: string;
+  actorUserId: string;
+  bookingId: string;
+  vendorId: string;
+  decision: "PASS" | "REJECT";
+  serviceName?: string | null;
+  rejectionCategory?: string | null;
+  reason?: string | null;
+  decidedAt: Date | string;
+  baseUrl?: string | null;
+}) {
+  if (!(await claimNotification(input.notificationId))) {
+    return { claimed: false, status: "already_processed" };
+  }
+
+  const managers = await (prisma as any).vendorMembership.findMany({
+    where: {
+      vendorId: input.vendorId,
+      status: "ACTIVE",
+      role: "MANAGER",
+    },
+    select: {
+      user: { select: { name: true, email: true } },
+    },
+  });
+  const recipients = Array.from(
+    new Map(
+      managers
+        .map((membership: any) => ({
+          name: String(membership?.user?.name || "Vendor Manager").trim(),
+          email: String(membership?.user?.email || "").trim().toLowerCase(),
+        }))
+        .filter((manager: { email: string }) => manager.email)
+        .map((manager: { name: string; email: string }) => [manager.email, manager]),
+    ).values(),
+  ) as Array<{ name: string; email: string }>;
+  const serviceName = String(input.serviceName || "Service Order").trim();
+  const decisionTime = new Date(input.decidedAt).toLocaleString();
+  const jobUrl = `${getPublicEmailBaseUrl(input.baseUrl)}/vendor/jobs/${encodeURIComponent(input.bookingId)}`;
+  const passed = input.decision === "PASS";
+  const category = passed ? "" : coreAdminAuditRejectionCategoryLabel(input.rejectionCategory);
+  const reason = String(input.reason || "").trim();
+  const subject = passed
+    ? `Reliance Audit passed: ${serviceName}`
+    : `Reliance Audit failed: ${serviceName}`;
+  const headline = passed ? "Reliance Audit passed" : "Reliance Audit failed";
+  const body = passed
+    ? "Reliance approved the submitted Service Videos and released the Private Proof to the customer. This does not make any video Public."
+    : "Reliance did not approve the submitted Service Videos. The Reliance work record is permanently closed, and rerecording, correction, retry, or resubmission is not available. This audit outcome does not mean the underlying real-world service failed.";
+  const env = readNotificationEnv();
+  const channels: DeliveryChannel[] = [];
+
+  for (const manager of recipients) {
+    if (!env.emailEnabled) {
+      channels.push({ channel: "email", attempted: false, success: false, errorMessage: "email_disabled" });
+      continue;
+    }
+    const result = await sendEmail({
+      to: manager.email,
+      subject,
+      html: buildRelianceEmailHtml({
+        eyebrow: "Reliance Audit",
+        headline,
+        greeting: `Hello ${manager.name},`,
+        bodyHtml: `<p style="margin:0;">${escapeRelianceEmailHtml(body)}</p>`,
+        details: [
+          { label: "Service", value: serviceName },
+          { label: "Audit result", value: passed ? "Passed" : "Failed" },
+          ...(!passed ? [
+            { label: "Category", value: category },
+            { label: "Reason", value: reason },
+          ] : []),
+          { label: "Decision time", value: decisionTime },
+        ],
+        cta: { label: "View read-only audit details", href: jobUrl },
+        fallbackHref: jobUrl,
+        footerNote: "This link opens the preserved Reliance work record. It does not reopen recording or change the audit decision.",
+      }),
+      text: `${headline}\n\n${body}\n\nService: ${serviceName}\n${passed ? "" : `Category: ${category}\nReason: ${reason}\n`}Decision time: ${decisionTime}\n\nView read-only audit details: ${jobUrl}`,
+    });
+    channels.push({
+      channel: "email",
+      attempted: true,
+      success: result.ok,
+      providerMessageId: result.providerMessageId,
+      errorMessage: result.errorMessage,
+    });
+    await logNotificationAttempt(input.actorUserId, input.bookingId, {
+      kind: passed ? "vendor_core_audit_passed" : "vendor_core_audit_rejected",
+      channel: "email",
+      recipient: manager.email,
+      success: result.ok,
+      providerMessageId: result.providerMessageId,
+      fallbackLink: jobUrl,
+      errorMessage: result.errorMessage,
+    });
+  }
+
+  if (!channels.length) {
+    channels.push({ channel: "email", attempted: false, success: false, errorMessage: "no_active_vendor_manager_email" });
+  }
+  const record = await finishNotification(input.notificationId, channels);
+  return { claimed: true, status: record.status, recipientCount: recipients.length };
 }

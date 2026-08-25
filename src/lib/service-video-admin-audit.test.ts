@@ -292,6 +292,9 @@ describe("core Service Video Admin Audit evidence", () => {
     expect(tx.bookingNotification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: "PRIVATE_PROOF_READY_ADMIN_AUDIT_V1" }),
     });
+    expect(tx.bookingNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "VENDOR_CORE_AUDIT_PASSED_V1" }),
+    });
   });
 
   it("records terminal Admin REJECT without a customer grant or rejected-media release", async () => {
@@ -327,6 +330,22 @@ describe("core Service Video Admin Audit evidence", () => {
     expect(tx.bookingNotification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: "PRIVATE_PROOF_AUDIT_REJECTED_V1" }),
     });
+    expect(tx.bookingNotification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "VENDOR_CORE_AUDIT_REJECTED_V1" }),
+    });
+  });
+
+  it("rejects arbitrary or unsupported terminal rejection categories before mutation", async () => {
+    const { decideCoreServiceVideoAdminAudit } = await import("./service-video-admin-audit");
+    await expect(decideCoreServiceVideoAdminAudit({
+      bookingId: "booking-1",
+      adminUserId: "admin-1",
+      adminRole: "ADMIN",
+      decision: "REJECT",
+      rejectionCategory: "OTHER_FREE_TEXT",
+      reason: "Arbitrary category must not be accepted.",
+    })).rejects.toMatchObject({ code: "ADMIN_AUDIT_REJECTION_CATEGORY_INVALID" });
+    expect(hoisted.prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("returns the same terminal decision idempotently without another durable mutation", async () => {
@@ -382,6 +401,7 @@ describe("core Service Video Admin Audit evidence", () => {
   it.each([
     ["AWAITING_ADMIN_REVIEW", "ADMIN_AUDIT_IN_PROGRESS"],
     ["ADMIN_REJECTED", "ADMIN_AUDIT_REJECTED_TERMINAL"],
+    ["PRIVATE_APPROVED", "ADMIN_AUDIT_PASSED_TERMINAL"],
   ])("makes vendor mutations read-only for %s", async (status, code) => {
     const db: any = {
       serviceVideoPackageEvidence: {

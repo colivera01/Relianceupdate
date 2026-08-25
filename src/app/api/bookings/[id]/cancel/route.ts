@@ -10,6 +10,7 @@ import {
   tryRecordFinalizedOperationalOutcome,
 } from '@/lib/trust-score-outcome-foundation';
 import { tryRecalculateVendorTrustScore } from '@/lib/trust-score-calculator';
+import { assertCoreAdminAuditMutationAllowed, CoreAdminAuditError } from '@/lib/service-video-admin-audit';
 
 export async function POST(
   request: NextRequest,
@@ -51,6 +52,10 @@ export async function POST(
         { status: 403 }
       );
     }
+    await assertCoreAdminAuditMutationAllowed(prisma as any, {
+      bookingId,
+      vendorId: existing.vendorId || undefined,
+    });
 
     await prisma.booking.update({
       where: { id: bookingId },
@@ -130,9 +135,12 @@ export async function POST(
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }
+    if (error instanceof CoreAdminAuditError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
     return NextResponse.json(
       { error: 'Failed to cancel booking' },
       { status: 500 }
     );
   }
-} 
+}

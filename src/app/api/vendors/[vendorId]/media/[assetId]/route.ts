@@ -16,6 +16,10 @@ import {
   requireActorVendorManager,
   requireRequestActor,
 } from "@/lib/request-actor";
+import {
+  assertCoreAdminAuditMutationAllowed,
+  CoreAdminAuditError,
+} from "@/lib/service-video-admin-audit";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; assetId: string }>;
@@ -63,6 +67,11 @@ export async function DELETE(
       );
     }
 
+    await assertCoreAdminAuditMutationAllowed(prisma as any, {
+      bookingId: asset.mediaSession.bookingId,
+      vendorId,
+    });
+
     const deletion = await requestMediaDeletion({
       bookingId: asset.mediaSession.bookingId,
       vendorId,
@@ -80,6 +89,9 @@ export async function DELETE(
     });
   } catch (error: any) {
     console.error("[media] DELETE error:", error);
+    if (error instanceof CoreAdminAuditError) {
+      return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
+    }
     const authorizationResponse = authorizationErrorResponse(error);
     if (authorizationResponse) return authorizationResponse as NextResponse;
     if (error.message === "Unauthorized" || error.message.includes("Forbidden")) {
@@ -194,13 +206,20 @@ export async function PATCH(
         where: { id: assetId },
         data: { deletedAt: null, archiveStatus: ARCHIVE_ACTIVE },
       });
-    const updatedAsset = employeeServiceVideoRestore
+    const protectedWorkRecordRestore = Boolean(asset.mediaSession?.bookingId);
+    const updatedAsset = protectedWorkRecordRestore
       ? await prisma.$transaction(async (tx: any) => {
+          await assertCoreAdminAuditMutationAllowed(tx, {
+            bookingId: asset.mediaSession!.bookingId!,
+            vendorId,
+          });
+          if (employeeServiceVideoRestore) {
           await assertServiceVideoStageMutationAllowed(tx, {
             bookingId: asset.mediaSession!.bookingId!,
             vendorId,
             stage: stage as ServiceVideoStage,
           });
+          }
           return restoreAsset(tx);
         }, { isolationLevel: "Serializable" })
       : await restoreAsset(prisma as any);
@@ -219,6 +238,9 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
     if (error?.name === "ServiceVideoMutationBlockedError") {
+      return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
+    }
+    if (error instanceof CoreAdminAuditError) {
       return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
     }
     return NextResponse.json(

@@ -307,6 +307,43 @@ async function openVendorJobs(page: Page) {
 test.describe("RV-8 Product Owner replay corrections", () => {
   test.describe.configure({ mode: "serial" });
 
+  test("uses Reliance Audit terminology and requires explicit PASS and terminal REJECT confirmation", async ({ page }) => {
+    let decisionRequests = 0;
+    await page.route("**/api/admin/media/packages/audit-booking-1/moderate", async (route) => {
+      decisionRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, message: "Audit decision recorded" }),
+      });
+    });
+
+    await page.goto("/test-fixtures/rv8-admin-audit");
+    await expect(page.getByRole("heading", { name: "Reliance Audit", exact: true })).toBeVisible();
+    await expect(page.getByText("Submitted by: Electro LLC Manager")).toBeVisible();
+    await expect(page.getByText("Exact package version: 3")).toBeVisible();
+    await expect(page.getByText("Advanced stage controls")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "PASS Audit" }).click();
+    await expect(page.getByRole("dialog", { name: "Confirm Reliance Audit PASS" })).toBeVisible();
+    expect(decisionRequests).toBe(0);
+    await page.getByRole("button", { name: "Confirm PASS and Release Private Proof" }).click();
+    expect(decisionRequests).toBe(1);
+
+    await page.reload();
+    await page.getByRole("button", { name: "REJECT Audit" }).click();
+    const reasonDialog = page.getByRole("dialog", { name: "Reject Package" });
+    await reasonDialog.getByLabel("Rejection category").selectOption("PRIVACY_OR_SCOPE");
+    await reasonDialog.getByPlaceholder("Enter package rejection reason...").fill("Recording exceeded the approved scope.");
+    await reasonDialog.getByRole("button", { name: "Continue to terminal confirmation" }).click();
+    expect(decisionRequests).toBe(1);
+    const terminalDialog = page.getByRole("dialog", { name: "Confirm terminal Reliance Audit REJECT" });
+    await expect(terminalDialog.getByText("permanently closes the Reliance work record")).toBeVisible();
+    await expect(terminalDialog.getByText("Privacy or recording scope", { exact: false })).toBeVisible();
+    await terminalDialog.getByRole("button", { name: "Confirm Terminal REJECT" }).click();
+    expect(decisionRequests).toBe(2);
+  });
+
   test("uses plain-language mutually exclusive recording-scope questions", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installVendorFixture(page, []);

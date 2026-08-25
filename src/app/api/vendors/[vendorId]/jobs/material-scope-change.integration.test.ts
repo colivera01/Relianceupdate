@@ -27,6 +27,7 @@ const hoisted = vi.hoisted(() => {
   const consentFindFirst = vi.fn();
   const certificationFindFirst = vi.fn();
   const serviceFindFirst = vi.fn();
+  const serviceVideoPackageEvidenceFindFirst = vi.fn();
   const tx = {
     booking: { update: bookingUpdate },
     recordingScopeAssessment: { update: assessmentUpdate, create: assessmentCreate },
@@ -45,6 +46,7 @@ const hoisted = vi.hoisted(() => {
     recordingScopeAssessment: { findFirst: assessmentFindFirst },
     mediaSession: { create: mediaSessionCreate, findMany: mediaSessionFindMany },
     mediaAsset: { count: mediaAssetCount },
+    serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
     $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
   };
   return {
@@ -67,6 +69,7 @@ const hoisted = vi.hoisted(() => {
     consentFindFirst,
     certificationFindFirst,
     serviceFindFirst,
+    serviceVideoPackageEvidenceFindFirst,
   };
 });
 
@@ -103,6 +106,7 @@ describe("material recording scope change", () => {
     hoisted.consentFindFirst.mockResolvedValue({ id: "permission-1", lifecycleStatus: "ACCEPTED", status: "accepted" });
     hoisted.certificationFindFirst.mockResolvedValue({ id: "certification-1" });
     hoisted.serviceFindFirst.mockResolvedValue({ id: "service-2" });
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job-1",
       vendorId: "vendor-1",

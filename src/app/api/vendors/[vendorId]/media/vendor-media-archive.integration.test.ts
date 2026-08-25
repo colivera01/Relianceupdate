@@ -12,6 +12,7 @@ const hoisted = vi.hoisted(() => {
   const mediaAssetAggregate = vi.fn();
   const mediaAssetFindUnique = vi.fn();
   const mediaAssetUpdate = vi.fn();
+  const serviceVideoPackageEvidenceFindFirst = vi.fn();
   const prisma = {
     mediaAsset: {
       findMany: mediaAssetFindMany,
@@ -19,6 +20,7 @@ const hoisted = vi.hoisted(() => {
       findUnique: mediaAssetFindUnique,
       update: mediaAssetUpdate,
     },
+    serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
   };
   return {
     prisma,
@@ -26,6 +28,7 @@ const hoisted = vi.hoisted(() => {
     mediaAssetAggregate,
     mediaAssetFindUnique,
     mediaAssetUpdate,
+    serviceVideoPackageEvidenceFindFirst,
   };
 });
 
@@ -75,6 +78,8 @@ describe("GET /api/vendors/[vendorId]/media", () => {
     } as any);
     hoisted.mediaAssetFindMany.mockReset();
     hoisted.mediaAssetAggregate.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
   });
 
   it("returns 403 when vendor auth fails", async () => {
@@ -183,6 +188,8 @@ describe("DELETE/PATCH /api/vendors/[vendorId]/media/[assetId]", () => {
     } as any);
     hoisted.mediaAssetFindUnique.mockReset();
     hoisted.mediaAssetUpdate.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
+    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
   });
 
   it("DELETE rejects asset owned by a different vendor", async () => {

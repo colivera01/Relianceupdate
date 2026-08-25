@@ -7,6 +7,10 @@ import {
   REQUIRED_SERVICE_VIDEO_STAGES,
   type ServiceVideoStage,
 } from "@/lib/service-video-evidence";
+import {
+  assertCoreAdminAuditMutationAllowed,
+  CoreAdminAuditError,
+} from "@/lib/service-video-admin-audit";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; sessionId: string }>;
@@ -170,13 +174,20 @@ export async function PATCH(
       data,
       include: { mediaAssets: { orderBy: { createdAt: "desc" } } },
     });
-    const session = stagedEmployeeSession
+    const protectedWorkRecordSession = Boolean(existing.bookingId);
+    const session = protectedWorkRecordSession
       ? await prisma.$transaction(async (tx: any) => {
+          await assertCoreAdminAuditMutationAllowed(tx, {
+            bookingId: existing.bookingId!,
+            vendorId,
+          });
+          if (stagedEmployeeSession) {
           await assertServiceVideoStageMutationAllowed(tx, {
             bookingId: existing.bookingId!,
             vendorId,
             stage: stage as ServiceVideoStage,
           });
+          }
           return updateSession(tx);
         }, { isolationLevel: "Serializable" })
       : await updateSession(prisma as any);
@@ -188,6 +199,9 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
     if (error?.name === "ServiceVideoMutationBlockedError") {
+      return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
+    }
+    if (error instanceof CoreAdminAuditError) {
       return NextResponse.json({ code: error.code, error: error.message }, { status: 409 });
     }
     return NextResponse.json(

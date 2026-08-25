@@ -16,6 +16,7 @@ const hoisted = vi.hoisted(() => {
   const mediaAssetFindMany = vi.fn();
   const bookingFindUnique = vi.fn();
   const bookingUpdate = vi.fn();
+  const userFindUnique = vi.fn();
   const loadCoreAdminAuditCandidate = vi.fn();
   const decideCoreServiceVideoAdminAudit = vi.fn();
   const sendCorePrivateProofReadyNotification = vi.fn();
@@ -30,6 +31,7 @@ const hoisted = vi.hoisted(() => {
       findUnique: bookingFindUnique,
       update: bookingUpdate,
     },
+    user: { findUnique: userFindUnique },
   };
   return {
     prisma,
@@ -38,6 +40,7 @@ const hoisted = vi.hoisted(() => {
     mediaAssetFindMany,
     bookingFindUnique,
     bookingUpdate,
+    userFindUnique,
     loadCoreAdminAuditCandidate,
     decideCoreServiceVideoAdminAudit,
     sendCorePrivateProofReadyNotification,
@@ -225,6 +228,8 @@ describe("GET /api/admin/media/moderation-queue", () => {
     vi.mocked(requireAdmin).mockResolvedValue({ userId: "admin-1" } as any);
     hoisted.mediaAssetFindMany.mockReset();
     hoisted.loadCoreAdminAuditCandidate.mockReset();
+    hoisted.userFindUnique.mockReset();
+    hoisted.userFindUnique.mockResolvedValue({ name: "Morgan Manager", email: "manager@example.com" });
   });
 
   it("returns 403 when admin auth fails", async () => {

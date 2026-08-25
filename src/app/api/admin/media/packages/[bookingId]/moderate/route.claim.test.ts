@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => ({
   decide: vi.fn(),
   sendReady: vi.fn(),
   sendRejected: vi.fn(),
+  sendVendor: vi.fn(),
 }));
 
 vi.mock("@/server/db", () => ({
@@ -20,6 +21,7 @@ vi.mock("@/lib/service-video-admin-audit", async () => {
 vi.mock("@/lib/service-video-admin-audit-notifications", () => ({
   sendCorePrivateProofReadyNotification: hoisted.sendReady,
   sendCorePrivateProofRejectedNotification: hoisted.sendRejected,
+  sendCoreAdminAuditVendorResultNotification: hoisted.sendVendor,
 }));
 vi.mock("@/lib/media-lifecycle", () => ({ ensureRetentionSchedulesForBooking: vi.fn() }));
 vi.mock("@/lib/trust-score-outcome-foundation", () => ({
@@ -50,6 +52,7 @@ describe("core Admin Service Video audit route", () => {
     hoisted.bookingFindUnique.mockResolvedValue(booking());
     hoisted.sendReady.mockResolvedValue({ status: "SENT" });
     hoisted.sendRejected.mockResolvedValue({ status: "SENT" });
+    hoisted.sendVendor.mockResolvedValue({ status: "SENT" });
   });
 
   it("records PASS and sends the customer notice only after durable proof release", async () => {
@@ -57,6 +60,7 @@ describe("core Admin Service Video audit route", () => {
       decision: { id: "audit-1", decidedAt: new Date() },
       package: { id: "package-1", version: 1 },
       customerNotificationId: "notification-1",
+      vendorNotificationId: "vendor-notification-1",
       alreadyDecided: false,
     });
     const { PATCH } = await import("./route");
@@ -69,6 +73,11 @@ describe("core Admin Service Video audit route", () => {
     expect(await response.json()).toMatchObject({ decision: "PASS", customerProofReleased: true });
     expect(hoisted.decide).toHaveBeenCalledWith(expect.objectContaining({ decision: "PASS" }));
     expect(hoisted.sendReady).toHaveBeenCalledOnce();
+    expect(hoisted.sendVendor).toHaveBeenCalledWith(expect.objectContaining({
+      decision: "PASS",
+      vendorId: "v1",
+      notificationId: "vendor-notification-1",
+    }));
     expect(hoisted.sendRejected).not.toHaveBeenCalled();
   });
 
@@ -83,11 +92,23 @@ describe("core Admin Service Video audit route", () => {
     expect(hoisted.decide).not.toHaveBeenCalled();
   });
 
+  it("rejects a free-text or unknown category at the API boundary", async () => {
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "REJECT", rejectionCategory: "OTHER", reason: "Not accepted" }),
+    }), { params: Promise.resolve({ bookingId: "b1" }) });
+    expect(response.status).toBe(422);
+    expect(hoisted.decide).not.toHaveBeenCalled();
+  });
+
   it("records terminal REJECT without creating customer proof", async () => {
     hoisted.decide.mockResolvedValue({
       decision: { id: "audit-2", decidedAt: new Date() },
       package: { id: "package-1", version: 1 },
       customerNotificationId: "notification-2",
+      vendorNotificationId: "vendor-notification-2",
       alreadyDecided: false,
     });
     const { PATCH } = await import("./route");
@@ -99,6 +120,11 @@ describe("core Admin Service Video audit route", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ decision: "REJECT", customerProofReleased: false });
     expect(hoisted.sendRejected).toHaveBeenCalledOnce();
+    expect(hoisted.sendVendor).toHaveBeenCalledWith(expect.objectContaining({
+      decision: "REJECT",
+      rejectionCategory: "UNVERIFIABLE",
+      reason: "Video cannot be verified",
+    }));
     expect(hoisted.sendReady).not.toHaveBeenCalled();
   });
 

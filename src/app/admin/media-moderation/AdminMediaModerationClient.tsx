@@ -14,6 +14,7 @@ import { getAdminRequestHeaders } from '@/lib/admin-client';
 import { RefreshCw, Video, ShieldAlert, Sparkles } from 'lucide-react';
 import { tutorialGuides } from '@/lib/user-guidance';
 import { VENDOR_JOB_VIDEO_STAGE_LABELS } from '@/lib/vendor-job-video-stages';
+import { CORE_ADMIN_AUDIT_REJECTION_CATEGORIES } from '@/lib/core-admin-audit-categories';
 
 type StageKey = 'INTRO' | 'IN_PROGRESS' | 'COMPLETED';
 
@@ -69,6 +70,10 @@ type QueuePackage = {
   moderationStatuses: string[];
   visibilityStatuses: string[];
   packageReadiness: string;
+  packageVersion: number;
+  managerSubmitterName: string;
+  managerSubmittedAt: string | Date | null;
+  managerAttestationHash: string;
   videosByStage: Record<StageKey, QueueVideo | null>;
 };
 
@@ -274,6 +279,10 @@ function normalizeQueuePackage(row: Record<string, unknown>): QueuePackage {
       ? row.visibilityStatuses.map((status) => String(status)).filter(Boolean)
       : [],
     packageReadiness: String(row.packageReadiness ?? ''),
+    packageVersion: Number(row.packageVersion ?? 0),
+    managerSubmitterName: String(row.managerSubmitterName ?? 'Vendor manager'),
+    managerSubmittedAt: row.managerSubmittedAt != null ? String(row.managerSubmittedAt) : null,
+    managerAttestationHash: String(row.managerAttestationHash ?? ''),
     videosByStage: {
       INTRO: toStageVideo('INTRO'),
       IN_PROGRESS: toStageVideo('IN_PROGRESS'),
@@ -443,13 +452,16 @@ export default function AdminMediaModerationClient({
   const [packageVisibilityById, setPackageVisibilityById] = useState<Record<string, VisibilityLevel>>(
     buildInitialPackageVisibilityById(initialPackages ?? [])
   );
-  const [advancedOpenById, setAdvancedOpenById] = useState<Record<string, boolean>>({});
   const [moderationReasonModalOpen, setModerationReasonModalOpen] = useState(false);
   const [moderationReason, setModerationReason] = useState('');
   const [rejectionCategory, setRejectionCategory] = useState('CONTENT_QUALITY');
   const [moderationTargetAction, setModerationTargetAction] = useState<'reject' | 'flag' | null>(null);
   const [moderationTarget, setModerationTarget] = useState<QueueVideo | null>(null);
   const [moderationPackageTarget, setModerationPackageTarget] = useState<QueuePackage | null>(null);
+  const [auditConfirmationTarget, setAuditConfirmationTarget] = useState<QueuePackage | null>(null);
+  const [auditConfirmationAction, setAuditConfirmationAction] = useState<PackageModerationAction | null>(null);
+  const [auditConfirmationReason, setAuditConfirmationReason] = useState('');
+  const [auditConfirmationCategory, setAuditConfirmationCategory] = useState('CONTENT_QUALITY');
   const [assetPlaybackUrl, setAssetPlaybackUrl] = useState('');
   const [assetPlaybackLoading, setAssetPlaybackLoading] = useState(false);
   const [assetPlaybackError, setAssetPlaybackError] = useState('');
@@ -582,7 +594,8 @@ export default function AdminMediaModerationClient({
   const applyPackageAction = async (
     pack: QueuePackage,
     action: PackageModerationAction,
-    moderationReason?: string
+    moderationReason?: string,
+    moderationRejectionCategory?: string,
   ) => {
     setPackageActionLoadingId(`${pack.packageId}:${action}`);
     setFeedback(null);
@@ -592,7 +605,7 @@ export default function AdminMediaModerationClient({
         headers: getAdminRequestHeaders(),
         body: JSON.stringify({
           action,
-          rejectionCategory: action === 'reject' ? rejectionCategory : undefined,
+          rejectionCategory: action === 'reject' ? moderationRejectionCategory : undefined,
           reason: moderationReason || undefined,
         }),
       });
@@ -850,12 +863,32 @@ export default function AdminMediaModerationClient({
     if (!moderationReason.trim() || !moderationTargetAction) return;
     if (moderationPackageTarget) {
       if (moderationTargetAction !== 'reject') return;
-      await applyPackageAction(moderationPackageTarget, 'reject', moderationReason.trim());
+      setAuditConfirmationTarget(moderationPackageTarget);
+      setAuditConfirmationAction('reject');
+      setAuditConfirmationReason(moderationReason.trim());
+      setAuditConfirmationCategory(rejectionCategory);
+      setModerationReasonModalOpen(false);
+      return;
     } else if (moderationTarget) {
       await applyModerationAction(moderationTarget, moderationTargetAction, moderationReason.trim());
     } else {
       return;
     }
+    resetModerationReasonModal();
+  };
+
+  const confirmAuditDecision = async () => {
+    if (!auditConfirmationTarget || !auditConfirmationAction) return;
+    await applyPackageAction(
+      auditConfirmationTarget,
+      auditConfirmationAction,
+      auditConfirmationAction === 'reject' ? auditConfirmationReason : undefined,
+      auditConfirmationAction === 'reject' ? auditConfirmationCategory : undefined,
+    );
+    setAuditConfirmationTarget(null);
+    setAuditConfirmationAction(null);
+    setAuditConfirmationReason('');
+    setAuditConfirmationCategory('CONTENT_QUALITY');
     resetModerationReasonModal();
   };
 
@@ -927,9 +960,9 @@ export default function AdminMediaModerationClient({
     <div className="w-full max-w-7xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Media Moderation</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Reliance Audit</h1>
           <p className="text-gray-600 mt-1">
-            Only complete 3-stage job packages appear here. Review Starting Condition, Work in Progress, and Final Result videos together.
+            Review the exact manager-attested Starting Condition, Work in Progress, and Final Result package before releasing customer Private Proof.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -942,12 +975,12 @@ export default function AdminMediaModerationClient({
       </div>
 
       <GuidanceCallout
-        title="What an approval changes"
-        description="Approving a package confirms the moderation decision and the visibility tier you chose. It does not mean every approved package becomes public."
+        title="What a Reliance Audit decision changes"
+        description="PASS releases this exact package as customer Private Proof. REJECT permanently closes this Reliance work record without judging the underlying real-world service."
         bullets={[
-          'Use customer-only when the service video should stay off public discovery but remain available to the booking customer.',
-          'Use private or vendor archive states when the package should not be customer-visible.',
-          'AI Review Assist is metadata-only in this version and should support, not replace, the admin decision.',
+          'Confirm all three submitted stages and the manager attestation before deciding.',
+          'REJECT requires a controlled category, a clear reason, and a final terminal-action confirmation.',
+          'Public Proof remains a separate exact-media review and is never created by this audit.',
         ]}
         tone="blue"
       />
@@ -990,8 +1023,8 @@ export default function AdminMediaModerationClient({
             <div className="text-sm font-semibold text-slate-900">Operator flow</div>
             <div className="mt-2 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
               <p>1. Confirm the Starting Condition, Work in Progress, and Final Result videos belong to the same finished job.</p>
-              <p>2. Choose the package visibility before approving the full package.</p>
-              <p>3. Use advanced stage controls only when a single stage needs different handling.</p>
+              <p>2. Verify the vendor, service, manager attestation, and exact submitted package version.</p>
+              <p>3. PASS releases customer Private Proof. REJECT permanently closes this Reliance work record.</p>
             </div>
           </div>
         </CardContent>
@@ -1151,6 +1184,15 @@ export default function AdminMediaModerationClient({
                       </div>
                     ) : null}
                     <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 text-sm">
+                      <div className="font-medium text-white">Manager attestation</div>
+                      <div className="mt-2 grid gap-1 text-slate-300 sm:grid-cols-2">
+                        <span>Submitted by: {pack.managerSubmitterName}</span>
+                        <span>Submitted: {formatModerationTimestamp(pack.managerSubmittedAt)}</span>
+                        <span>Exact package version: {pack.packageVersion}</span>
+                        <span>Attestation: {pack.managerAttestationHash ? 'Verified' : 'Missing'}</span>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 text-sm">
                       <div className="font-medium text-white">Package Status</div>
                       <div className="mt-2 space-y-1 text-sm">
                         {packageStageSummary.map((row) => (
@@ -1167,13 +1209,43 @@ export default function AdminMediaModerationClient({
                         </span>
                       </div>
                     </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {STAGE_ORDER.map((stage) => {
+                        const stageVideo = pack.videosByStage[stage];
+                        return (
+                          <div key={`${pack.packageId}:audit:${stage}`} className="rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+                            <p className="font-medium text-white">{STAGE_LABELS[stage]}</p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              {stageVideo ? `Uploaded ${formatModerationTimestamp(stageVideo.createdAt)}` : 'Missing from package'}
+                            </p>
+                            {stageVideo ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="mt-3 border-slate-600 bg-slate-900 text-white hover:bg-slate-800 hover:text-white"
+                                onClick={() => setSelectedAsset({ stage, video: stageVideo, pack })}
+                              >
+                                Watch submitted stage
+                              </Button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
                     <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 space-y-3">
                       <div className="text-sm font-medium text-white">Reliance Audit decision</div>
                       <p className="text-xs text-slate-300">
                         Review the exact manager-submitted Starting Condition, Work in Progress, and Final Result package. PASS releases Private Proof to the customer. REJECT is terminal for this Service Order.
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" disabled={packageActionBusy} onClick={() => applyPackageAction(pack, 'pass')}>
+                        <Button
+                          size="sm"
+                          disabled={packageActionBusy}
+                          onClick={() => {
+                            setAuditConfirmationTarget(pack);
+                            setAuditConfirmationAction('pass');
+                          }}
+                        >
                           PASS Audit
                         </Button>
                         <Button
@@ -1343,95 +1415,6 @@ export default function AdminMediaModerationClient({
                         ) : null}
                       </div>
                     ) : null}
-                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-medium text-white">Advanced stage controls</div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
-                          onClick={() =>
-                            setAdvancedOpenById((prev) => ({
-                              ...prev,
-                              [pack.packageId]: !prev[pack.packageId],
-                            }))
-                          }
-                        >
-                          {advancedOpenById[pack.packageId] ? 'Hide' : 'Show'}
-                        </Button>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-300">
-                        Use only when you need stage-specific overrides after a package-level decision.
-                      </p>
-                    </div>
-                    {advancedOpenById[pack.packageId] ? (
-                      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-                      {STAGE_ORDER.map((stage) => {
-                        const stageVideo = pack.videosByStage[stage];
-                        if (!stageVideo) {
-                          return (
-                            <div key={`${pack.packageId}:${stage}`} className="rounded-lg border border-dashed border-slate-600 bg-slate-950/60 p-3 text-sm text-slate-400">
-                              {STAGE_LABELS[stage]} video missing.
-                            </div>
-                          );
-                        }
-                        const actionBusy = Boolean(assetActionLoadingId?.startsWith(`${stageVideo.assetId}:`));
-                        return (
-                          <div
-                            key={stageVideo.assetId}
-                            className={`rounded-lg border bg-slate-950/70 p-3 space-y-2 ${
-                              stage === 'COMPLETED' ? 'border-emerald-400/70 ring-1 ring-emerald-400/20' : 'border-slate-700'
-                            }`}
-                          >
-                            <div className="h-24 rounded border border-slate-700 bg-slate-900 flex items-center justify-center overflow-hidden">
-                              {stageVideo.previewRef && stageVideo.mimeType.startsWith('image/') ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={stageVideo.previewRef} alt={stageVideo.title} className="h-full w-full object-cover" />
-                              ) : (
-                                <Video className="w-6 h-6 text-slate-400" />
-                              )}
-                            </div>
-                            <div className="font-medium text-sm text-white flex flex-wrap items-center gap-2">
-                              {STAGE_LABELS[stage]}
-                              {stage === 'COMPLETED' ? (
-                                <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Primary video</Badge>
-                              ) : null}
-                            </div>
-                            <div className="text-sm text-slate-100">{stageVideo.title}</div>
-                            <div className="text-xs text-slate-400">
-                              Uploaded: {formatModerationTimestamp(stageVideo.createdAt)}
-                            </div>
-                            <div className="text-xs text-slate-400">
-                              Uploader: {stageVideo.employeeName || stageVideo.uploadedByMembershipId || '-'}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Badge variant="outline" className="border-slate-600 bg-slate-900 text-slate-100">
-                                Moderation: {prettyStatus(stageVideo.moderationStatus)}
-                              </Badge>
-                              <Badge variant="outline" className="border-slate-600 bg-slate-900 text-slate-100">
-                                Visibility:{' '}
-                                {VISIBILITY_OPTIONS.find((o) => o.value === visibilityLevelFromAsset(stageVideo.visibilityStatus))
-                                  ?.label || stageVideo.visibilityStatus}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-col gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
-                                onClick={() => setSelectedAsset({ stage, video: stageVideo, pack })}
-                              >
-                                Details
-                              </Button>
-                              <div className="text-xs text-slate-400">
-                                Read-only stage evidence. Decide the exact package with PASS or REJECT.
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      </div>
-                    ) : null}
                     <div className="text-xs text-slate-400">
                       Package updated: {formatModerationTimestamp(pack.createdAt)}
                       {pack.serviceName ? ` • Service: ${pack.serviceName}` : ''}
@@ -1554,10 +1537,9 @@ export default function AdminMediaModerationClient({
                 onChange={(event) => setRejectionCategory(event.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
-                <option value="CONTENT_QUALITY">Content quality</option>
-                <option value="EVIDENCE_MISMATCH">Evidence mismatch</option>
-                <option value="PRIVACY_OR_SCOPE">Privacy or approved-scope concern</option>
-                <option value="UNVERIFIABLE">Unable to verify</option>
+                {CORE_ADMIN_AUDIT_REJECTION_CATEGORIES.map((category) => (
+                  <option key={category.value} value={category.value}>{category.label}</option>
+                ))}
               </select>
             </div>
           ) : null}
@@ -1569,7 +1551,55 @@ export default function AdminMediaModerationClient({
               onClick={submitModerationReason}
               disabled={!moderationReason.trim() || Boolean(assetActionLoadingId) || Boolean(packageActionLoadingId)}
             >
-              {moderationSubmitLabel}
+              {moderationPackageTarget ? 'Continue to terminal confirmation' : moderationSubmitLabel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(auditConfirmationTarget && auditConfirmationAction)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAuditConfirmationTarget(null);
+            setAuditConfirmationAction(null);
+            setAuditConfirmationReason('');
+            setAuditConfirmationCategory('CONTENT_QUALITY');
+            if (!moderationReasonModalOpen) resetModerationReasonModal();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {auditConfirmationAction === 'pass' ? 'Confirm Reliance Audit PASS' : 'Confirm terminal Reliance Audit REJECT'}
+            </DialogTitle>
+            <DialogDescription>
+              {auditConfirmationAction === 'pass'
+                ? 'This releases the exact manager-attested package as customer Private Proof. It does not make any video Public.'
+                : 'This permanently closes the Reliance work record. Rerecording, correction, retry, and resubmission will not be available. This does not mean the underlying real-world service failed.'}
+            </DialogDescription>
+          </DialogHeader>
+          {auditConfirmationAction === 'reject' ? (
+            <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-950">
+              <div><strong>Category:</strong> {CORE_ADMIN_AUDIT_REJECTION_CATEGORIES.find((item) => item.value === auditConfirmationCategory)?.label}</div>
+              <div className="mt-1"><strong>Reason:</strong> {auditConfirmationReason}</div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setAuditConfirmationTarget(null);
+              setAuditConfirmationAction(null);
+              setAuditConfirmationReason('');
+              setAuditConfirmationCategory('CONTENT_QUALITY');
+            }}>
+              Go Back
+            </Button>
+            <Button
+              className={auditConfirmationAction === 'reject' ? 'bg-red-700 text-white hover:bg-red-800' : undefined}
+              disabled={Boolean(packageActionLoadingId)}
+              onClick={confirmAuditDecision}
+            >
+              {auditConfirmationAction === 'pass' ? 'Confirm PASS and Release Private Proof' : 'Confirm Terminal REJECT'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -9,6 +9,7 @@ import {
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
   isTransientDbConnectivityError,
 } from '@/lib/transient-db-errors';
+import { assertCoreAdminAuditMutationAllowed, CoreAdminAuditError } from '@/lib/service-video-admin-audit';
 
 // TODO: Import your database models
 // import { BookingModel } from '@/lib/models/Booking';
@@ -201,6 +202,7 @@ export async function PUT(
         { status: 403 }
       );
     }
+    await assertCoreAdminAuditMutationAllowed(prisma as any, { bookingId });
 
     let scheduledForUpdate: Date | undefined;
     if (booking_date || booking_time) {
@@ -253,6 +255,9 @@ export async function PUT(
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }
+    if (error instanceof CoreAdminAuditError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
     return NextResponse.json(
       { error: 'Failed to update booking' },
       { status: 500 }
@@ -296,6 +301,7 @@ export async function DELETE(
         { status: 403 }
       );
     }
+    await assertCoreAdminAuditMutationAllowed(prisma as any, { bookingId });
 
     await prisma.booking.update({
       where: { id: bookingId },
@@ -310,6 +316,9 @@ export async function DELETE(
     console.error('Error cancelling booking:', error);
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
+    }
+    if (error instanceof CoreAdminAuditError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
     }
     return NextResponse.json(
       { error: 'Failed to cancel booking' },

@@ -13,6 +13,7 @@ import { getClientSessionHeaders } from "@/lib/client-session";
 import { PublicationWorkflowCard } from "@/components/service-video/PublicationWorkflowCard";
 import { MediaLifecycleCard } from "@/components/service-video/MediaLifecycleCard";
 import { resolveVendorJobLifecyclePresentation } from "@/lib/vendor-job-lifecycle-presentation";
+import { coreAdminAuditRejectionCategoryLabel } from "@/lib/core-admin-audit-categories";
 import {
   STAGE_VIDEO_MAX_DURATION_SECONDS,
   formatStageVideoDuration,
@@ -201,6 +202,7 @@ export default function VendorJobDetailPage() {
       adminAuditDecision: job?.adminAuditDecision?.decision,
       adminAuditRejectionCategory: job?.adminAuditDecision?.rejectionCategory,
       adminAuditRejectionReason: job?.adminAuditDecision?.reason,
+      adminAuditDecidedAt: job?.adminAuditDecision?.decidedAt,
       locationSelected: Boolean(job?.recordingCompliance?.location),
       permissionRequired: job?.recordingCompliance?.permissionRequired === true,
       permissionState: job?.recordingCompliance?.permissionStatus,
@@ -518,7 +520,9 @@ export default function VendorJobDetailPage() {
       if (ts) events.push(`${stage.label} uploaded: ${formatDateTimeUtc(ts)}`);
     }
     if (normalizedStatus === "AWAITING_REVIEW") events.push("Submitted for manager review");
-    if (job?.adminAuditDecision?.decision === "REJECT") {
+    if (job?.adminAuditDecision?.decision === "PASS") {
+      events.push(`Reliance Audit passed: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
+    } else if (job?.adminAuditDecision?.decision === "REJECT") {
       events.push(`Reliance Audit failed: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
     } else if (job?.rejectionReason) {
       events.push("Rejected by manager");
@@ -590,7 +594,7 @@ export default function VendorJobDetailPage() {
                       {submitting ? "Submitting..." : "Submit for Manager Review"}
                     </Button>
                   ) : null}
-                  {normalizedStatus === "COMPLETED" ? (
+                  {normalizedStatus === "COMPLETED" && !job.adminAuditDecision ? (
                     <Button
                       variant="outline"
                       onClick={resendCompletedWorkOrder}
@@ -626,16 +630,29 @@ export default function VendorJobDetailPage() {
               </CardContent>
             </Card>
 
-            {job.adminAuditDecision?.decision === "REJECT" ? (
+            {job.adminAuditDecision?.decision === "PASS" ? (
+              <Card>
+                <CardContent className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-semibold text-emerald-950">Reliance Audit Passed</p>
+                  <p className="mt-1 text-sm text-emerald-900">
+                    Reliance approved the exact submitted Service Video package and released the Private Proof to the customer. No video was made Public.
+                  </p>
+                  <p className="mt-2 text-xs text-emerald-800">
+                    Audit completed: {formatDateTimeUtc(job.adminAuditDecision.decidedAt)}. This record is read-only.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : job.adminAuditDecision?.decision === "REJECT" ? (
               <Card>
                 <CardContent className="rounded-lg border border-rose-200 bg-rose-50 p-4">
                   <p className="text-sm font-semibold text-rose-900">Reliance Audit Failed</p>
                   <p className="mt-1 text-sm text-rose-800">
-                    This Service Video package did not meet the required audit standards. The Reliance work record is terminal and read-only.
+                    This Service Video package did not meet the required audit standards. The Reliance work record is permanently closed and read-only. This does not mean the underlying real-world service failed.
                   </p>
                   {job.adminAuditDecision.rejectionCategory ? (
-                    <p className="mt-2 text-xs text-rose-800">Category: {job.adminAuditDecision.rejectionCategory}</p>
+                    <p className="mt-2 text-xs text-rose-800">Category: {coreAdminAuditRejectionCategoryLabel(job.adminAuditDecision.rejectionCategory)}</p>
                   ) : null}
+                  <p className="mt-1 text-xs text-rose-800">Audit completed: {formatDateTimeUtc(job.adminAuditDecision.decidedAt)}</p>
                   {job.adminAuditDecision.reason ? (
                     <p className="mt-1 text-xs text-rose-800">Reason: {job.adminAuditDecision.reason}</p>
                   ) : null}
