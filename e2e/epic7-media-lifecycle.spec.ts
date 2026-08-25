@@ -55,6 +55,7 @@ interface LifecycleFixtureResponse {
   holds: Array<Record<string, unknown>>;
   appeals: Array<Record<string, unknown>>;
   auditEvents: Array<Record<string, unknown>>;
+  publicState: "PRIVATE" | "PUBLIC_REVIEW_PENDING" | "PUBLIC";
   allowedActions: {
     withdrawRecording: boolean;
     withdrawPublication: boolean;
@@ -85,6 +86,7 @@ function lifecycleResponse(
     holds: [],
     appeals: [],
     auditEvents: [],
+    publicState: "PRIVATE",
     allowedActions: {
       withdrawRecording: role !== "EMPLOYEE",
       withdrawPublication: true,
@@ -196,7 +198,7 @@ test("customer sees a complete Private outcome and truthful withdrawal/deletion 
     path: path.join(screenshotRoot, "Desktop", "01-customer-private-empty.png"),
   });
 
-  await card.getByRole("button", { name: "Remove from Public view" }).click();
+  await card.getByRole("button", { name: "Prevent Public sharing" }).click();
   await expect(
     card.getByText("PUBLICATION withdrawal is applied."),
   ).toBeVisible();
@@ -209,7 +211,7 @@ test("customer sees a complete Private outcome and truthful withdrawal/deletion 
   });
 
   await card
-    .getByRole("button", { name: "Request deletion of first stage" })
+    .getByRole("button", { name: "Request deletion: media 1" })
     .click();
   await expect(
     card.getByText("Deletion requested, not yet deleted"),
@@ -242,11 +244,24 @@ test("employee sees likeness-only withdrawal", async ({ page }) => {
     card.getByRole("button", { name: "Remove my likeness from Public use" }),
   ).toBeVisible();
   await expect(
-    card.getByRole("button", { name: "Request deletion of first stage" }),
+    card.getByRole("button", { name: "Request deletion: media 1" }),
   ).toHaveCount(0);
   await card.screenshot({
     path: path.join(screenshotRoot, "Mobile", "02-employee-likeness-only.png"),
   });
+});
+
+test("vendor manager governance surface keeps the four governed actions separate", async ({ page }) => {
+  await installGeneralSession(page, "vendor");
+  await installLifecycleFixture(page, "VENDOR_MANAGER");
+  await page.setViewportSize({ width: 1100, height: 1000 });
+  await page.goto("/test-fixtures/epic7-lifecycle?role=vendor");
+  const card = page.getByTestId("media-lifecycle-vendor");
+  await expect(card.getByRole("button", { name: "Prevent future Public sharing" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Stop future recording" })).toBeVisible();
+  await expect(card.getByText("Report a concern", { exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Request deletion: media 1" })).toBeVisible();
+  await expect(card).toContainText("retention and legal-hold rules");
 });
 
 test("lifecycle loading and failure states explain what happened", async ({

@@ -10,8 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useAuth } from "@/contexts/AuthContext";
 import { useVendorProfile } from "@/hooks/useVendorProfile";
 import { getClientSessionHeaders } from "@/lib/client-session";
-import { PublicationWorkflowCard } from "@/components/service-video/PublicationWorkflowCard";
-import { MediaLifecycleCard } from "@/components/service-video/MediaLifecycleCard";
+import { PackageVisibilityCard } from "@/components/service-video/PackageVisibilityCard";
 import { resolveVendorJobLifecyclePresentation } from "@/lib/vendor-job-lifecycle-presentation";
 import { coreAdminAuditRejectionCategoryLabel } from "@/lib/core-admin-audit-categories";
 import {
@@ -64,6 +63,23 @@ type JobLike = {
     permissionStatus?: string | null;
     serviceOrderReleasedAt?: string | null;
   } | null;
+  packageVisibility?: {
+    state: string;
+    decision?: string | null;
+    decidedAt?: string | null;
+    publicReviewStatus?: string | null;
+    privateProofReleased?: boolean;
+  } | null;
+  recordingAssessment?: {
+    id: string;
+    generation: number;
+    locationType: string;
+    propertyScope: string;
+    peopleScope: string;
+    frameControl: string;
+    permissionRequired: boolean;
+    scopeHash: string;
+  } | null;
 };
 
 type SessionDetails = {
@@ -98,12 +114,16 @@ function formatDateTimeUtc(value: string | null | undefined) {
   return parsed.toLocaleString("en-US");
 }
 
-function statusBadgeClass(status: string) {
-  if (status === "COMPLETED") return "bg-green-100 text-green-800";
-  if (status === "IN_PROGRESS") return "bg-blue-100 text-blue-800";
-  if (status === "AWAITING_REVIEW" || status === "PENDING") return "bg-yellow-100 text-yellow-800";
-  if (status === "REJECTED" || status === "CANCELED") return "bg-red-100 text-red-800";
-  return "bg-gray-100 text-gray-700";
+function lifecycleBadgeClass(tone: string) {
+  if (tone === "green") return "bg-emerald-100 text-emerald-800";
+  if (tone === "blue") return "bg-blue-100 text-blue-800";
+  if (tone === "red") return "bg-rose-100 text-rose-800";
+  return "bg-amber-100 text-amber-800";
+}
+
+function readableEvidenceValue(value: string | null | undefined) {
+  const normalized = String(value || "").trim().replaceAll("_", " ").toLowerCase();
+  return normalized ? normalized.replace(/^\w/, (letter) => letter.toUpperCase()) : "Not recorded";
 }
 
 function isRealAzureBlobHostUrl(value: string) {
@@ -500,11 +520,11 @@ export default function VendorJobDetailPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.success) {
-        throw new Error(String(json?.message || json?.error || "Failed to resend completed work order"));
+        throw new Error(String(json?.message || json?.error || "Failed to resend Private Proof access"));
       }
-      setActionMessage(json?.message || "Completed work order resent to the customer.");
+      setActionMessage(json?.message || "Private Proof access resent to the customer.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to resend completed work order");
+      setError(e instanceof Error ? e.message : "Failed to resend Private Proof access");
     } finally {
       setResendingCompletedOrder(false);
     }
@@ -520,12 +540,28 @@ export default function VendorJobDetailPage() {
       if (ts) events.push(`${stage.label} uploaded: ${formatDateTimeUtc(ts)}`);
     }
     if (normalizedStatus === "AWAITING_REVIEW") events.push("Submitted for manager review");
+    if (allStagesExist && ["AWAITING_REVIEW", "COMPLETED"].includes(normalizedStatus)) {
+      events.push("Employee recording completed");
+    }
+    if (String(job?.operationalPhase || "").toUpperCase() === "AWAITING_ADMIN_REVIEW") {
+      events.push("Submitted to Reliance Audit");
+    }
     if (job?.adminAuditDecision?.decision === "PASS") {
       events.push(`Reliance Audit passed: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
+      if (job.packageVisibility?.privateProofReleased) {
+        events.push(`Customer Private Proof released: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
+      }
     } else if (job?.adminAuditDecision?.decision === "REJECT") {
       events.push(`Reliance Audit failed: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
     } else if (job?.rejectionReason) {
       events.push("Rejected by manager");
+    }
+    if (job?.packageVisibility?.decision === "KEEP_PRIVATE") {
+      events.push(`Customer kept Private: ${formatDateTimeUtc(job.packageVisibility.decidedAt)}`);
+    } else if (job?.packageVisibility?.decision === "SHARE_PUBLICLY") {
+      events.push(`Customer authorized Public sharing: ${formatDateTimeUtc(job.packageVisibility.decidedAt)}`);
+      if (job.packageVisibility.state === "PUBLIC_REVIEW_PENDING") events.push("Public review pending");
+      if (job.packageVisibility.state === "PUBLIC") events.push("Public approved");
     }
     if (normalizedStatus === "CANCELED") {
       const actor = String(job?.cancellation?.canceledBy || "Vendor manager").trim();
@@ -533,9 +569,8 @@ export default function VendorJobDetailPage() {
       const when = formatDateTimeUtc(job?.cancellation?.canceledAt || job?.updatedAt);
       events.push(`Canceled by ${actor}: ${reason} (${when})`);
     }
-    if (normalizedStatus === "COMPLETED") events.push("Completed");
     return events;
-  }, [job, stageMap, normalizedStatus]);
+  }, [allStagesExist, job, stageMap, normalizedStatus]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -588,19 +623,22 @@ export default function VendorJobDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-start gap-2 lg:items-end">
-                  <Badge className={statusBadgeClass(normalizedStatus || "UNKNOWN")}>{normalizedStatus || "UNKNOWN"}</Badge>
+                  <Badge className={lifecycleBadgeClass(lifecycle.tone)}>{lifecycle.label}</Badge>
+                  {normalizedStatus === "COMPLETED" && !job.adminAuditDecision ? (
+                    <Badge variant="outline">Employee recording completed</Badge>
+                  ) : null}
                   {canSubmitForManagerReview ? (
                     <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={submitForManagerReview} disabled={submitting}>
                       {submitting ? "Submitting..." : "Submit for Manager Review"}
                     </Button>
                   ) : null}
-                  {normalizedStatus === "COMPLETED" && !job.adminAuditDecision ? (
+                  {job.adminAuditDecision?.decision === "PASS" ? (
                     <Button
                       variant="outline"
                       onClick={resendCompletedWorkOrder}
                       disabled={resendingCompletedOrder}
                     >
-                      {resendingCompletedOrder ? "Resending..." : "Resend Completed Work Order"}
+                      {resendingCompletedOrder ? "Resending..." : "Resend Private Proof Access"}
                     </Button>
                   ) : null}
                   {canManagerReview ? (
@@ -616,6 +654,26 @@ export default function VendorJobDetailPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-xs font-semibold uppercase text-gray-500">Completed prerequisite</p>
+                  <p className="mt-1 font-semibold text-gray-950">Customer recording permission</p>
+                  <p className="mt-1 text-sm text-gray-700">{readableEvidenceValue(job.recordingCompliance?.permissionStatus)}</p>
+                  <p className="mt-2 text-xs text-gray-500">This evidence authorized recording only. It does not determine Private or Public visibility.</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-xs font-semibold uppercase text-gray-500">Approved recording scope</p>
+                  <p className="mt-1 text-sm text-gray-800">Location: {readableEvidenceValue(job.recordingAssessment?.locationType || job.recordingCompliance?.location)}</p>
+                  <p className="mt-1 text-sm text-gray-800">Property: {readableEvidenceValue(job.recordingAssessment?.propertyScope)}</p>
+                  <p className="mt-1 text-sm text-gray-800">People: {readableEvidenceValue(job.recordingAssessment?.peopleScope)}</p>
+                  <p className="mt-1 text-sm text-gray-800">Camera: {readableEvidenceValue(job.recordingAssessment?.frameControl)}</p>
+                </CardContent>
+              </Card>
+            </div>
 
             <Card>
               <CardContent className="p-5">
@@ -680,11 +738,8 @@ export default function VendorJobDetailPage() {
               </Card>
             ) : null}
 
-            {normalizedStatus === "COMPLETED" && effectiveVendorId ? (
-              <>
-                <PublicationWorkflowCard role="vendor" bookingId={jobId} vendorId={effectiveVendorId} />
-                <MediaLifecycleCard role="vendor" bookingId={jobId} />
-              </>
+            {normalizedStatus === "COMPLETED" ? (
+              <PackageVisibilityCard role="vendor" bookingId={jobId} />
             ) : null}
 
             <Card>

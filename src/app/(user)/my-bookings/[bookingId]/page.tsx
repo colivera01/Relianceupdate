@@ -25,7 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { getClientSessionHeaders } from '@/lib/client-session';
 import { appendAuthNext } from '@/lib/auth-next';
-import { PublicationWorkflowCard } from '@/components/service-video/PublicationWorkflowCard';
+import { PackageVisibilityCard } from '@/components/service-video/PackageVisibilityCard';
 import { MediaLifecycleCard } from '@/components/service-video/MediaLifecycleCard';
 
 type BookingDetail = {
@@ -1359,7 +1359,7 @@ function BookingMediaDetailPageContent() {
           </div>
         ) : null}
 
-        <PublicationWorkflowCard role="customer" bookingId={bookingId} />
+        <PackageVisibilityCard role="customer" bookingId={bookingId} />
         <MediaLifecycleCard role="customer" bookingId={bookingId} />
 
         {hasExistingCustomerReview ? (

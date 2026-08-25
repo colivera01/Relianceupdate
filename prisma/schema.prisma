@@ -864,8 +864,11 @@ model ServiceVideoPublicationProposal {
   status                 String    @default("AWAITING_CUSTOMER_DECISION")
   audience               String    @default("PUBLIC")
   proposalHash           String
+  contractVersion        Int       @default(1)
+  authorizationModel     String    @default("LEGACY_STAGE_SELECTION")
+  packageVisibilityDecisionId String?
   proposedByUserId       String
-  proposedByMembershipId String
+  proposedByMembershipId String?
   submittedAt            DateTime  @default(now())
   supersededAt           DateTime?
   createdAt              DateTime  @default(now())
@@ -876,7 +879,43 @@ model ServiceVideoPublicationProposal {
   @@index([vendorId, status, updatedAt])
   @@index([packageId, packageHash])
   @@index([proposalHash])
+  @@index([packageVisibilityDecisionId])
   @@map("service_video_publication_proposals")
+}
+
+// Immutable customer decision for the complete Admin-approved Service Video
+// package. Contract version 2 replaces vendor-selected stage proposals.
+model ServiceVideoPackageVisibilityDecision {
+  id                    String    @id @default(cuid())
+  bookingId             String
+  vendorId              String
+  customerUserId        String
+  packageId             String
+  packageVersion        Int
+  packageHash           String
+  stageEvidenceJson     String    @db.NVarChar(Max)
+  stageSetHash          String
+  decision              String
+  version               Int
+  isCurrent             Boolean   @default(true)
+  evidenceVersion       Int       @default(2)
+  decisionHash          String
+  verificationMethod    String
+  publicationProposalId String?
+  decidedAt             DateTime  @default(now())
+  supersededAt          DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([bookingId, version])
+  @@index([bookingId, isCurrent])
+  @@index([vendorId, decision, decidedAt])
+  @@index([customerUserId, decision, decidedAt])
+  @@index([packageId, packageHash])
+  @@index([stageSetHash])
+  @@index([decisionHash])
+  @@index([publicationProposalId])
+  @@map("service_video_package_visibility_decisions")
 }
 
 model ServiceVideoPublicationStage {
@@ -1001,7 +1040,8 @@ model PublicServiceVideoEligibility {
   status                     String    @default("ACTIVE")
   adminDecisionId            String
   customerDecisionId         String
-  vendorDecisionId           String
+  vendorDecisionId           String?
+  packageVisibilityDecisionId String?
   participantDecisionIdsJson String    @db.NVarChar(Max)
   eligibleAt                 DateTime  @default(now())
   invalidatedAt              DateTime?
@@ -1013,6 +1053,7 @@ model PublicServiceVideoEligibility {
   @@index([bookingId, status])
   @@index([mediaAssetId, contentHash])
   @@index([eligibilityHash])
+  @@index([packageVisibilityDecisionId])
   @@map("public_service_video_eligibility")
 }
 

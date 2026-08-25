@@ -40,6 +40,16 @@ export async function PATCH(request: Request, context: Context) {
     const body = await request.json().catch(() => ({}));
     const publication = await loadPublicationView({ bookingId: id });
     if (!publication?.proposal?.id) throw new Error("PUBLICATION_PROPOSAL_NOT_FOUND");
+    if (Number(publication.proposal.contractVersion || 1) !== 1) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "PUBLICATION_CUSTOMER_STAGE_DECISION_RETIRED",
+          message: "Use the complete-package Private or Public-sharing decision for this Service Video.",
+        },
+        { status: 409 },
+      );
+    }
     const result = await decidePublicationAsCustomer({
       proposalId: publication.proposal.id,
       customerUserId: userId,

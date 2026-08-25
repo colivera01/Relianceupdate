@@ -31,6 +31,17 @@ export async function POST(request: Request, context: Context) {
   try {
     const { vendorId, jobId } = await context.params;
     const actor = await requireVendorManager(request, vendorId);
+    const current = await loadPublicationView({ bookingId: jobId });
+    if (!current?.proposal || Number(current.proposal.contractVersion || 1) !== 1) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "PUBLICATION_VENDOR_STAGE_SELECTION_RETIRED",
+          message: "The customer controls visibility for the complete Admin-approved Service Video package.",
+        },
+        { status: 409 },
+      );
+    }
     const body = await request.json().catch(() => ({}));
     const proposal = await createPublicationProposal({
       bookingId: jobId,
@@ -54,6 +65,16 @@ export async function PATCH(request: Request, context: Context) {
     const current = await loadPublicationView({ bookingId: jobId });
     if (!current?.proposal?.id) {
       return NextResponse.json({ success: false, error: "PUBLICATION_PROPOSAL_NOT_FOUND" }, { status: 404 });
+    }
+    if (Number(current.proposal.contractVersion || 1) !== 1) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "PUBLICATION_VENDOR_DECISION_RETIRED",
+          message: "Vendor approval cannot alter the customer's complete-package visibility decision.",
+        },
+        { status: 409 },
+      );
     }
     const decision = await approveVendorPublicationRepresentation({
       proposalId: current.proposal.id,

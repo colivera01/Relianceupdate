@@ -41,6 +41,7 @@ import {
   CoreAdminAuditError,
   assertCoreAdminAuditMutationAllowed,
 } from "@/lib/service-video-admin-audit";
+import { loadPackageVisibilityView } from "@/lib/service-video-publication";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -422,10 +423,12 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     }
 
     try {
-      await assertCoreAdminAuditMutationAllowed(prisma as any, {
-        bookingId: booking.id,
-        vendorId,
-      });
+      if (action !== "RESEND_COMPLETED_WORK_ORDER") {
+        await assertCoreAdminAuditMutationAllowed(prisma as any, {
+          bookingId: booking.id,
+          vendorId,
+        });
+      }
     } catch (error) {
       if (error instanceof CoreAdminAuditError) {
         return NextResponse.json(
@@ -1320,12 +1323,13 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       }
 
       const packageState = await getVendorJobPackageState(vendorId, booking.id);
-      if (!packageState.hasAllRequiredStagesApproved) {
+      const visibility = await loadPackageVisibilityView({ bookingId: booking.id });
+      if (!packageState.hasAllRequiredStagesApproved || !visibility?.privateProofReleased) {
         return NextResponse.json(
           apiResponse(
             false,
             "CUSTOMER_VISIBLE_PACKAGE_NOT_READY",
-            "The completed work order cannot be resent until Reliance approves the three-stage video package.",
+            "Private Proof access cannot be resent until Reliance Audit passes and releases the exact three-stage package.",
             {
               hasAllRequiredStages: packageState.hasAllRequiredStages,
               hasAllRequiredStagesApproved: packageState.hasAllRequiredStagesApproved,
@@ -1391,7 +1395,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       });
 
       await recordLifecycleAudit({
-        actionType: "completed_work_order_resent",
+        actionType: "private_proof_access_resent",
         entityType: "booking",
         entityId: booking.id,
         actorUserId: member.userId,
@@ -1408,8 +1412,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         action,
         notifications: result,
         message: result.ok
-          ? "Completed work order resent to the customer."
-          : result.errorMessage || "Reliance could not resend the completed work order.",
+          ? "Private Proof access resent to the customer."
+          : result.errorMessage || "Reliance could not resend Private Proof access.",
       }, { status: result.ok ? 200 : 502 });
     }
 

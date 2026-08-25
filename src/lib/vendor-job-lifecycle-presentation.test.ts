@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPermissionRefreshFeedback, resolveVendorJobLifecyclePresentation } from "./vendor-job-lifecycle-presentation";
+import { getPermissionRefreshFeedback, resolveVendorJobLifecyclePresentation, shouldShowPermissionRefreshFeedback } from "./vendor-job-lifecycle-presentation";
 
 describe("vendor job lifecycle presentation", () => {
   it("prioritizes canceled lifecycle over recording blocks", () => {
@@ -99,5 +99,19 @@ describe("vendor job lifecycle presentation", () => {
     ["wrong_recipient", "warning", "Recording request reported as wrong recipient."],
   ])("maps %s permission refresh feedback truthfully", (state, tone, message) => {
     expect(getPermissionRefreshFeedback(state)).toEqual({ tone, message });
+  });
+
+  it("suppresses transient permission feedback after the evidence lifecycle advances", () => {
+    expect(shouldShowPermissionRefreshFeedback({
+      status: "COMPLETED",
+      operationalPhase: "AWAITING_ADMIN_REVIEW",
+      permissionRequired: true,
+      permissionState: "ALLOWED",
+    })).toBe(false);
+    expect(shouldShowPermissionRefreshFeedback({
+      status: "PENDING",
+      permissionRequired: true,
+      permissionState: "PENDING",
+    })).toBe(true);
   });
 });

@@ -51,7 +51,7 @@ describe("customer exact-media publication route", () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue("customer-1");
     hoisted.bookingFindUnique.mockResolvedValue({ userId: "customer-1" });
     vi.mocked(loadPublicationView).mockResolvedValue({
-      proposal: { id: "proposal-1" },
+      proposal: { id: "proposal-1", contractVersion: 1 },
     } as any);
     vi.mocked(decidePublicationAsCustomer).mockResolvedValue({
       status: "AWAITING_VENDOR_APPROVAL",
@@ -69,5 +69,25 @@ describe("customer exact-media publication route", () => {
       customerUserId: "customer-1",
       verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
     }));
+  });
+
+  it("rejects legacy per-stage customer decisions for a complete-package proposal", async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue("customer-1");
+    hoisted.bookingFindUnique.mockResolvedValue({ userId: "customer-1" });
+    vi.mocked(loadPublicationView).mockResolvedValue({
+      proposal: { id: "proposal-v2", contractVersion: 2 },
+    } as any);
+
+    const response = await PATCH(new Request("http://localhost/api/bookings/booking-1/publication", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stageDecisions: { "stage-1": "APPROVED" } }),
+    }), { params: Promise.resolve({ id: "booking-1" }) });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      error: "PUBLICATION_CUSTOMER_STAGE_DECISION_RETIRED",
+    }));
+    expect(decidePublicationAsCustomer).not.toHaveBeenCalled();
   });
 });

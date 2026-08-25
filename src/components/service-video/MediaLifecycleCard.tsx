@@ -8,6 +8,10 @@ import { getClientSessionHeaders } from "@/lib/client-session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  vendorPublicationWithdrawalCopy,
+  type ServiceVideoPublicState,
+} from "@/lib/service-video-visibility-presentation";
 
 type Role = "customer" | "vendor" | "employee";
 type LifecycleResponse = {
@@ -19,6 +23,7 @@ type LifecycleResponse = {
   holds: Array<{ id: string; status: string; reviewDueAt: string }>;
   appeals: Array<{ id: string; caseId: string; status: string; decision?: string | null }>;
   allowedActions: Record<string, boolean>;
+  publicState: ServiceVideoPublicState;
 };
 
 const DISPUTE_OPTIONS = [
@@ -91,6 +96,7 @@ export function MediaLifecycleCard({ role, bookingId }: { role: Role; bookingId:
   }
 
   const restricted = data?.lifecycle?.some((item) => ["RESTRICTED", "HELD", "DELETED"].includes(item.outcome));
+  const publicationWithdrawal = vendorPublicationWithdrawalCopy(data?.publicState || "PRIVATE");
   return (
     <Card className="border-slate-700 bg-slate-950 text-white shadow-sm" data-testid={`media-lifecycle-${role}`}>
       <CardHeader className="space-y-2">
@@ -98,7 +104,7 @@ export function MediaLifecycleCard({ role, bookingId }: { role: Role; bookingId:
           <CardTitle className="flex items-center gap-2 text-lg text-white"><ShieldCheck className="h-5 w-5 text-emerald-300" /> Privacy, concerns, and retention</CardTitle>
           <Badge className={restricted ? "bg-amber-500/20 text-amber-100" : "bg-emerald-600/20 text-emerald-100"}>{restricted ? "Access narrowed" : "No active restriction"}</Badge>
         </div>
-        <p className="text-sm text-slate-300">Public removal, future recording, and physical deletion are separate actions. Private proof remains a complete outcome.</p>
+        <p className="text-sm text-slate-300">Future recording, Public-sharing restrictions, concerns, and stored-media deletion requests are separate governed actions. Existing evidence remains preserved according to retention and legal-hold rules.</p>
       </CardHeader>
       <CardContent className="space-y-4">
         {loading ? <div className="flex min-h-20 items-center gap-2 text-sm text-slate-300" role="status"><Loader2 className="h-4 w-4 animate-spin" /> Loading lifecycle status...</div> : null}
@@ -117,7 +123,7 @@ export function MediaLifecycleCard({ role, bookingId }: { role: Role; bookingId:
             ) : <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-slate-300">No withdrawal, dispute, hold, or deletion request is active.</div>}
 
             <div className="grid gap-3 md:grid-cols-2">
-              {data.allowedActions?.withdrawPublication ? <Button disabled={working} variant="outline" className="border-amber-400/40 bg-transparent text-amber-100" onClick={() => void act(role === "employee" ? "WITHDRAW_LIKENESS" : "WITHDRAW_PUBLICATION", { reason: "Participant withdrew future Public use." })}><StopCircle className="mr-2 h-4 w-4" /> {role === "employee" ? "Remove my likeness from Public use" : "Remove from Public view"}</Button> : null}
+              {data.allowedActions?.withdrawPublication ? <Button disabled={working} variant="outline" className="border-amber-400/40 bg-transparent text-amber-100" title={role === "vendor" ? publicationWithdrawal.detail : undefined} onClick={() => void act(role === "employee" ? "WITHDRAW_LIKENESS" : "WITHDRAW_PUBLICATION", { reason: role === "vendor" ? publicationWithdrawal.detail : "Participant withdrew future Public use." })}><StopCircle className="mr-2 h-4 w-4" /> {role === "employee" ? "Remove my likeness from Public use" : role === "vendor" ? publicationWithdrawal.label : "Prevent Public sharing"}</Button> : null}
               {data.allowedActions?.withdrawRecording ? <Button disabled={working} variant="outline" className="border-amber-400/40 bg-transparent text-amber-100" onClick={() => void act("WITHDRAW_RECORDING", { reason: "Participant stopped future recording." })}><StopCircle className="mr-2 h-4 w-4" /> Stop future recording</Button> : null}
             </div>
 
@@ -135,7 +141,11 @@ export function MediaLifecycleCard({ role, bookingId }: { role: Role; bookingId:
               <div className="rounded-lg border border-violet-400/25 bg-violet-950/20 p-3">
                 <p className="font-semibold text-violet-100">Request stored-media deletion</p>
                 <p className="mt-1 text-sm text-violet-100/75">A request restricts access first. It is not deleted until retention and holds are reviewed and storage absence is verified.</p>
-                <Button disabled={working} variant="outline" className="mt-3 border-violet-300/40 bg-transparent text-violet-100" onClick={() => void act("REQUEST_DELETION", { mediaAssetId: data.lifecycle[0].mediaAssetId, reason: "Participant requested deletion of this saved media." })}><Archive className="mr-2 h-4 w-4" /> Request deletion of first stage</Button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {data.lifecycle.map((item, index) => (
+                    <Button key={item.mediaAssetId} disabled={working} variant="outline" className="border-violet-300/40 bg-transparent text-violet-100" onClick={() => void act("REQUEST_DELETION", { mediaAssetId: item.mediaAssetId, reason: "Participant requested deletion of this saved media." })}><Archive className="mr-2 h-4 w-4" /> Request deletion: media {index + 1}</Button>
+                  ))}
+                </div>
               </div>
             ) : null}
           </>

@@ -51,6 +51,19 @@ export function getPermissionRefreshFeedback(value: unknown): PermissionRefreshF
   return { tone: "error", message: "Permission status could not be refreshed. Try again." };
 }
 
+export function shouldShowPermissionRefreshFeedback(input: VendorJobLifecycleInput): boolean {
+  const status = normalized(input.status);
+  const phase = normalized(input.operationalPhase);
+  if (normalized(input.adminAuditDecision)) return false;
+  if (["AWAITING_REVIEW", "AWAITING_MANAGER_REVIEW", "COMPLETED", "CANCELED", "CANCELLED", "REJECTED"].includes(status)) {
+    return false;
+  }
+  if (["AWAITING_VENDOR_REVIEW", "AWAITING_ADMIN_REVIEW", "REJECTED", "COMPLETED"].includes(phase)) {
+    return false;
+  }
+  return input.permissionRequired === true;
+}
+
 function result(
   label: string,
   detail: string,

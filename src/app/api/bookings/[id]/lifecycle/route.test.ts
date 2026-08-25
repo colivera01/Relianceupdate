@@ -70,6 +70,7 @@ describe("work-record media lifecycle route", () => {
       id: "withdrawal-1",
       status: "APPLIED",
     });
+    hoisted.requestMediaDeletion.mockResolvedValue({ id: "deletion-1", status: "ACCESS_RESTRICTED" });
   });
 
   it("blocks an actor who does not own or participate in the work record", async () => {
@@ -128,6 +129,57 @@ describe("work-record media lifecycle route", () => {
     );
     expect(response.status).toBe(403);
     expect(hoisted.applyMediaWithdrawal).not.toHaveBeenCalled();
+  });
+
+  it("preserves manager-authorized publication restriction and deletion requests", async () => {
+    hoisted.actor.mockResolvedValue(
+      actor("manager-1", [
+        { id: "membership-manager", vendorId: "vendor-1", role: "MANAGER" },
+      ]),
+    );
+    const withdrawal = await POST(
+      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "WITHDRAW_PUBLICATION", mediaAssetId: "asset-1" }),
+      }),
+      { params: Promise.resolve({ id: "booking-1" }) },
+    );
+    const deletion = await POST(
+      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "REQUEST_DELETION", mediaAssetId: "asset-1" }),
+      }),
+      { params: Promise.resolve({ id: "booking-1" }) },
+    );
+
+    expect(withdrawal.status).toBe(200);
+    expect(deletion.status).toBe(201);
+    expect(hoisted.requestMediaDeletion).toHaveBeenCalledWith(expect.objectContaining({
+      bookingId: "booking-1",
+      actorRole: "VENDOR_MANAGER",
+      mediaAssetId: "asset-1",
+    }));
+  });
+
+  it("denies employee stored-media deletion even with active assignment membership", async () => {
+    hoisted.actor.mockResolvedValue(
+      actor("employee-1", [
+        { id: "membership-employee", vendorId: "vendor-1", role: "EMPLOYEE" },
+      ]),
+    );
+    const response = await POST(
+      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "REQUEST_DELETION", mediaAssetId: "asset-1" }),
+      }),
+      { params: Promise.resolve({ id: "booking-1" }) },
+    );
+
+    expect(response.status).toBe(403);
+    expect(hoisted.requestMediaDeletion).not.toHaveBeenCalled();
   });
 
   it("rejects a deletion request for media outside the work record", async () => {

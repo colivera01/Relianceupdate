@@ -5,6 +5,7 @@ import { resolveOperationalClientLabel } from "@/lib/operational-client";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
+import { loadPackageVisibilityView } from "@/lib/service-video-publication";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -96,6 +97,20 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
       where: { bookingId: booking.id, vendorId, isCurrent: true },
       select: { id: true, version: true, status: true, adminAuditDecisionId: true },
     });
+    const currentRecordingAssessment = await (prisma as any).recordingScopeAssessment.findFirst({
+      where: { bookingId: booking.id, vendorId, isCurrent: true },
+      orderBy: { generation: "desc" },
+      select: {
+        id: true,
+        generation: true,
+        locationType: true,
+        propertyScope: true,
+        peopleScope: true,
+        frameControl: true,
+        permissionRequired: true,
+        scopeHash: true,
+      },
+    });
     const adminAuditDecision = currentServiceVideoPackage?.adminAuditDecisionId
       ? await (prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst({
           where: {
@@ -113,6 +128,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
           },
         })
       : null;
+    const packageVisibility = await loadPackageVisibilityView({ bookingId: booking.id });
 
     const metadata = parseCustomerMetadata(booking.customerMetadata || null);
     const rawCancellation =
@@ -179,6 +195,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
           permissionStatus: permissionGate.permissionState,
           serviceOrderReleasedAt: recordingCompliance.serviceOrderReleasedAt,
         },
+        recordingAssessment: currentRecordingAssessment,
         serviceName: booking.service?.name || "",
         serviceType: booking.service?.name || "",
         rejectionReason: booking.rejectionReason || null,
@@ -196,6 +213,15 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
               reason: adminAuditDecision.reason,
               decidedAt: adminAuditDecision.decidedAt?.toISOString?.() || null,
               packageVersion: adminAuditDecision.packageVersion,
+            }
+          : null,
+        packageVisibility: packageVisibility
+          ? {
+              state: packageVisibility.state,
+              decision: packageVisibility.visibilityDecision?.decision || null,
+              decidedAt: packageVisibility.visibilityDecision?.decidedAt?.toISOString?.() || null,
+              publicReviewStatus: packageVisibility.proposal?.status || null,
+              privateProofReleased: packageVisibility.privateProofReleased,
             }
           : null,
         rejectedAt: booking.rejectedAt?.toISOString?.() || null,

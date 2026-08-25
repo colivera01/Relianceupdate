@@ -15,6 +15,7 @@ import {
   AuthorizationError,
   requireRequestActor,
 } from "@/lib/request-actor";
+import { resolveServiceVideoPublicState } from "@/lib/service-video-visibility-presentation";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -130,6 +131,23 @@ export async function GET(request: Request, context: Context) {
         })),
       })),
     );
+    const [publicationProposal, activePublicEligibilityCount] = await Promise.all([
+      (prisma as any).serviceVideoPublicationProposal.findFirst({
+        where: { bookingId: id, isCurrent: true },
+        orderBy: { version: "desc" },
+        select: { status: true },
+      }),
+      (prisma as any).publicServiceVideoEligibility.count({
+        where: { bookingId: id, status: "ACTIVE", audience: "PUBLIC", invalidatedAt: null },
+      }),
+    ]);
+    const publicState = resolveServiceVideoPublicState({
+      proposalStatus: publicationProposal?.status,
+      activePublicEligibilityCount,
+      publicationWithdrawn: withdrawals.some(
+        (item: any) => String(item.scope || "").toUpperCase() === "PUBLICATION" && String(item.status || "").toUpperCase() === "APPLIED",
+      ),
+    });
     return NextResponse.json({
       success: true,
       role: access.role,
@@ -140,6 +158,7 @@ export async function GET(request: Request, context: Context) {
       holds,
       appeals,
       auditEvents,
+      publicState,
       allowedActions: {
         withdrawRecording: access.customer || access.manager,
         withdrawPublication:
@@ -247,7 +266,7 @@ export async function POST(request: Request, context: Context) {
       return NextResponse.json({
         success: true,
         message:
-          "This version is no longer available publicly on Reliance. Existing outside copies cannot be recalled by Reliance.",
+          "The Public-sharing restriction was recorded. Reliance will prevent future Public access and remove current Public access where applicable; existing outside copies cannot be recalled.",
         withdrawal,
       });
     }

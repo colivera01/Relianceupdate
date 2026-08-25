@@ -38,7 +38,7 @@ import {
   avatarUrlForName,
   type VendorTeamMember,
 } from '@/lib/vendor-team-members';
-import { getPermissionRefreshFeedback, resolveVendorJobLifecyclePresentation } from '@/lib/vendor-job-lifecycle-presentation';
+import { getPermissionRefreshFeedback, resolveVendorJobLifecyclePresentation, shouldShowPermissionRefreshFeedback } from '@/lib/vendor-job-lifecycle-presentation';
 import { getMaterialWorkRecordEditFields } from '@/lib/vendor-job-material-edit';
 
 function parseDate(value: string | number | Date | null | undefined): Date | null {
@@ -337,6 +337,16 @@ export default function VendorJobs() {
       nextStageLabel: stageLabel,
       serviceOrderSent: Boolean(snapshot?.serviceOrderReleasedAt),
       consentRecipientLabel: formatCustomerConsentRecipient(job),
+    });
+  };
+
+  const permissionFeedbackIsCurrentForJob = (job: any) => {
+    const snapshot = getSavedRecordingComplianceForJob(job);
+    return shouldShowPermissionRefreshFeedback({
+      status: job?.status,
+      operationalPhase: job?.operationalPhase,
+      adminAuditDecision: job?.adminAuditDecision?.decision,
+      permissionRequired: snapshot?.permissionRequired === true,
     });
   };
 
@@ -8370,7 +8380,7 @@ export default function VendorJobs() {
                             <div className="sm:col-span-2 lg:col-span-1"><dt className="font-semibold">What resolves it</dt><dd className="mt-0.5 opacity-80">{workflow.resolution}</dd></div>
                           </dl>
                         </div>
-                        {permissionRefreshByJobId[String(job?.bookingId || job?.id || '').trim()] ? (() => {
+                        {permissionFeedbackIsCurrentForJob(job) && permissionRefreshByJobId[String(job?.bookingId || job?.id || '').trim()] ? (() => {
                           const feedback = permissionRefreshByJobId[String(job?.bookingId || job?.id || '').trim()];
                           const feedbackClasses = {
                             info: 'border-blue-300/35 bg-blue-500/10 text-blue-50',
@@ -8421,6 +8431,17 @@ export default function VendorJobs() {
                         onClick={(e) => e.stopPropagation()}
                         role="menu"
                       >
+                        {!isEmployeeView ? (
+                          <button
+                            className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
+                            onClick={() => {
+                              setActiveJobActionMenuId(null);
+                              router.push(`/vendor/jobs/${encodeURIComponent(String(job?.bookingId || job?.id || '').trim())}/privacy-governance`);
+                            }}
+                          >
+                            Privacy &amp; Governance
+                          </button>
+                        ) : null}
                         {(() => {
                           const status = String(job?.status || '').trim().toLowerCase();
                           const isPendingOrInProgress =

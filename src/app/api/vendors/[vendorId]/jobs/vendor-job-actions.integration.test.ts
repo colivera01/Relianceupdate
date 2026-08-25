@@ -6,6 +6,7 @@ import { sendServiceOrderCanceledNotifications } from "@/lib/notifications/send-
 import { sendVideoReadyNotification } from "@/lib/notifications/send-video-ready";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
 import { AuthorizationError } from "@/lib/request-actor";
+import { loadPackageVisibilityView } from "@/lib/service-video-publication";
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
@@ -120,6 +121,10 @@ vi.mock("@/lib/lifecycle-audit", () => ({
   recordLifecycleAudit: vi.fn(),
 }));
 
+vi.mock("@/lib/service-video-publication", () => ({
+  loadPackageVisibilityView: vi.fn(),
+}));
+
 function patchReq(vendorId: string, jobId: string, action: string) {
   return {
     req: new Request(`http://localhost/api/vendors/${vendorId}/jobs/${jobId}/actions`, {
@@ -196,6 +201,8 @@ describe("vendor job actions integration", () => {
     } as any);
     vi.mocked(recordLifecycleAudit).mockReset();
     vi.mocked(recordLifecycleAudit).mockResolvedValue(undefined);
+    vi.mocked(loadPackageVisibilityView).mockReset();
+    vi.mocked(loadPackageVisibilityView).mockResolvedValue({ privateProofReleased: true } as any);
     hoisted.bookingFindFirst.mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
@@ -1248,6 +1255,36 @@ describe("vendor job actions integration", () => {
       /^[a-f0-9]{64}$/
     );
     expect(updateInput.data.customerMetadata).not.toContain("claimToken");
+    expect(recordLifecycleAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actionType: "private_proof_access_resent",
+      entityId: "job1",
+    }));
+  });
+
+  it("PATCH RESEND_COMPLETED_WORK_ORDER remains blocked until Admin PASS releases Private Proof", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({
+      id: "job1",
+      vendorId: "v1",
+      status: "COMPLETED",
+      customerMetadata: JSON.stringify({ claim_contact_email: "customer@example.com" }),
+      title: "Outlet Installation",
+      clientName: "Customer",
+      service: { name: "Electrical Service" },
+      vendor: { businessName: "Electro LLC", name: "Electro" },
+      user: { name: "Customer", email: "customer@example.com", phone: null },
+    });
+    hoisted.mediaSessionFindMany.mockResolvedValue([
+      { id: "intro-session", sessionType: "JOB_SERVICE_VIDEO", vendorJobVideoStage: "INTRO", mediaAssets: [{ id: "intro", moderationStatus: "approved" }] },
+      { id: "progress-session", sessionType: "JOB_SERVICE_VIDEO", vendorJobVideoStage: "IN_PROGRESS", mediaAssets: [{ id: "progress", moderationStatus: "approved" }] },
+      { id: "complete-session", sessionType: "JOB_SERVICE_VIDEO", vendorJobVideoStage: "COMPLETED", mediaAssets: [{ id: "complete", moderationStatus: "approved" }] },
+    ]);
+    vi.mocked(loadPackageVisibilityView).mockResolvedValue({ privateProofReleased: false } as any);
+
+    const { req, ctx } = patchReq("v1", "job1", "RESEND_COMPLETED_WORK_ORDER");
+    const response = await PATCH(req, ctx as any);
+
+    expect(response.status).toBe(409);
+    expect(sendVideoReadyNotification).not.toHaveBeenCalled();
   });
 
   it("DELETE blocks CONFIRMED Service Orders and directs managers to cancellation", async () => {
