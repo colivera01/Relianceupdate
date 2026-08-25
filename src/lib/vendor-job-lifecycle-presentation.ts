@@ -15,6 +15,9 @@ export type VendorJobLifecycleInput = {
   operationalPhase?: string | null;
   rejectedMedia?: boolean;
   rejectionReason?: string | null;
+  adminAuditDecision?: string | null;
+  adminAuditRejectionCategory?: string | null;
+  adminAuditRejectionReason?: string | null;
   correctionPending?: boolean;
   locationSelected?: boolean;
   permissionRequired?: boolean;
@@ -87,6 +90,21 @@ export function resolveVendorJobLifecyclePresentation(
       "Keep this read-only record as historical evidence.",
     );
   }
+  if (normalized(input.adminAuditDecision) === "REJECT") {
+    const category = String(input.adminAuditRejectionCategory || "").trim();
+    const reason = String(input.adminAuditRejectionReason || input.rejectionReason || "").trim();
+    const evidenceDetail = [category ? `Category: ${category}.` : "", reason ? `Reason: ${reason}` : ""]
+      .filter(Boolean)
+      .join(" ");
+    return result(
+      "Reliance Audit Failed",
+      `Reliance reviewed this Service Video package and it did not meet the required audit standards. This Reliance work record is closed and cannot be rerecorded because the service has already occurred.${evidenceDetail ? ` ${evidenceDetail}` : ""}`,
+      "View Job",
+      "red",
+      "No participant needs to act",
+      "Keep the package, stage versions, and audit decision as read-only historical evidence.",
+    );
+  }
   if (phase === "REJECTED" || status === "REJECTED" || input.rejectedMedia) {
     const detail = input.rejectionReason
       ? `Reason: ${String(input.rejectionReason).trim()}`
@@ -95,12 +113,12 @@ export function resolveVendorJobLifecyclePresentation(
   }
   if (phase === "AWAITING_ADMIN_REVIEW") {
     return result(
-      "Pending moderator approval",
-      "The manager approved this package. Reliance moderation must decide whether it is eligible for Public proof.",
+      "Reliance Audit pending",
+      "The vendor manager submitted the exact Service Video package for final Reliance Admin Audit. Customer Private Proof remains locked until PASS.",
       "View Job",
       "blue",
-      "Reliance moderator",
-      "Wait for moderation. Private proof remains separate from Public eligibility.",
+      "Reliance admin",
+      "Wait for Admin PASS or terminal Admin REJECT. Public eligibility remains a separate later decision.",
     );
   }
   if (phase === "AWAITING_VENDOR_REVIEW" || status === "AWAITING_REVIEW" || status === "AWAITING_MANAGER_REVIEW") {

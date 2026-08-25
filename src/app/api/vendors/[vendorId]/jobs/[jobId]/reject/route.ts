@@ -77,7 +77,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
       );
     }
 
-    const rejectedAt = new Date();
+    const requestedAt = new Date();
     await requestServiceVideoCorrection({
       bookingId: booking.id,
       vendorId,
@@ -89,21 +89,21 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
     await prisma.booking.update({
       where: { id: booking.id },
       data: {
-        status: "REJECTED",
-        customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "REJECTED"),
+        status: "IN_PROGRESS",
+        customerMetadata: setOperationalPhaseOnMetadataJson(booking.customerMetadata, "IN_PROGRESS"),
         rejectionReason,
-        rejectedAt,
+        rejectedAt: null,
         rejectedBy: manager.userId,
       },
     });
 
     await recordLifecycleAudit({
-      actionType: "job_rejected",
+      actionType: "service_video_correction_requested",
       entityType: "booking",
       entityId: booking.id,
       actorUserId: manager.userId,
       previousValue: { status: currentStatus },
-      newValue: { status: "REJECTED", rejectedAt: rejectedAt.toISOString() },
+      newValue: { status: "IN_PROGRESS", correctionRequestedAt: requestedAt.toISOString() },
       metadata: {
         vendorId,
         rejectionReason,

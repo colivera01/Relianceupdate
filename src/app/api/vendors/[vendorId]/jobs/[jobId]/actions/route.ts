@@ -37,6 +37,10 @@ import {
   CUSTOMER_RECORDING_NOTICE_KIND,
   dispatchQueuedRecordingNotice,
 } from "@/lib/recording/recording-notice";
+import {
+  CoreAdminAuditError,
+  assertCoreAdminAuditMutationAllowed,
+} from "@/lib/service-video-admin-audit";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -415,6 +419,27 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         apiResponse(false, "JOB_NOT_FOUND", "Job not found for this vendor."),
         { status: 404 }
       );
+    }
+
+    try {
+      await assertCoreAdminAuditMutationAllowed(prisma as any, {
+        bookingId: booking.id,
+        vendorId,
+      });
+    } catch (error) {
+      if (error instanceof CoreAdminAuditError) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            error.code,
+            error.code === "ADMIN_AUDIT_IN_PROGRESS"
+              ? "This Service Video package is read-only while Reliance Audit is in progress."
+              : "Reliance Audit rejected this Service Video package. The evidence is terminal and read-only.",
+          ),
+          { status: 409 },
+        );
+      }
+      throw error;
     }
 
     if (action === "ARCHIVE_JOB") {
@@ -1573,6 +1598,27 @@ export async function DELETE(request: Request, context: RouteParams): Promise<Ne
         apiResponse(false, "JOB_NOT_FOUND", "Job not found for this vendor."),
         { status: 404 }
       );
+    }
+
+    try {
+      await assertCoreAdminAuditMutationAllowed(prisma as any, {
+        bookingId: booking.id,
+        vendorId,
+      });
+    } catch (error) {
+      if (error instanceof CoreAdminAuditError) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            error.code,
+            error.code === "ADMIN_AUDIT_IN_PROGRESS"
+              ? "This Service Video package is read-only while Reliance Audit is in progress."
+              : "Reliance Audit rejected this Service Video package. The evidence is terminal and cannot be deleted.",
+          ),
+          { status: 409 },
+        );
+      }
+      throw error;
     }
 
     const normalizedStatus = normalizeBookingStatus(booking.status);

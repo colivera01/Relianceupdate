@@ -191,6 +191,36 @@ describe("database-backed canonical recording gate", () => {
     expect(gate.block?.resolution).toContain("permanently closed");
   });
 
+  it("locks every recording stage while the exact package awaits Admin Audit", async () => {
+    db.bookingFindUnique.mockResolvedValue({ status: "COMPLETED" });
+    db.packageFindFirst.mockResolvedValue({
+      id: "package-1",
+      status: "AWAITING_ADMIN_REVIEW",
+      managerDecisionId: "manager-decision-1",
+    });
+    const gate = await load({ recordingStage: "INTRO" });
+    expect(gate).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "ADMIN_AUDIT_IN_PROGRESS",
+      block: { responsibleParticipant: "ADMIN" },
+    });
+  });
+
+  it("keeps Admin-rejected Service Video evidence terminal", async () => {
+    db.bookingFindUnique.mockResolvedValue({ status: "REJECTED" });
+    db.packageFindFirst.mockResolvedValue({
+      id: "package-1",
+      status: "ADMIN_REJECTED",
+      adminAuditDecisionId: "admin-audit-1",
+    });
+    const gate = await load({ recordingStage: "COMPLETED" });
+    expect(gate).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "ADMIN_AUDIT_REJECTED_TERMINAL",
+      block: { responsibleParticipant: "NO_PARTICIPANT", serviceMayContinue: false },
+    });
+  });
+
   it("fails closed when an allowed decision lacks current authority evidence", async () => {
     db.consentFindFirst.mockResolvedValue({
       ...allowed,

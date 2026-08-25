@@ -9,6 +9,12 @@ vi.mock("@/server/db", () => ({
     booking: {
       findFirst: vi.fn(),
     },
+    serviceVideoPackageEvidence: {
+      findFirst: vi.fn(),
+    },
+    serviceVideoAdminAuditDecisionEvidence: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -28,6 +34,8 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
   beforeEach(() => {
     vi.mocked(requireVendorMembership).mockReset();
     vi.mocked(prisma.booking.findFirst).mockReset();
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockReset();
+    vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockReset();
     vi.mocked(loadRecordingPermissionGate).mockReset();
     vi.mocked(requireVendorMembership).mockResolvedValue({
       userId: "manager-1",
@@ -40,6 +48,8 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       permissionRequired: false,
       permissionState: "not_required",
     } as any);
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue(null);
+    vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockResolvedValue(null);
   });
 
   it("returns 404 when the booking is not found for the vendor", async () => {
@@ -169,6 +179,53 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
           canceledAt: "2026-08-15T15:30:00.000Z",
           canceledByUserId: "manager-1",
           canceledBy: "Vendor manager",
+        },
+      },
+    });
+  });
+
+  it("returns terminal Admin audit evidence for read-only vendor presentation", async () => {
+    vi.mocked(prisma.booking.findFirst).mockResolvedValue({
+      id: "job-admin-rejected",
+      title: "Outlet Installation",
+      clientName: "Reliance Demo Customer",
+      status: "REJECTED",
+      date: new Date("2026-08-24T15:00:00.000Z"),
+      createdAt: new Date("2026-08-24T14:00:00.000Z"),
+      updatedAt: new Date("2026-08-24T16:00:00.000Z"),
+      customerMetadata: "{}",
+      rejectionReason: "UNVERIFIABLE: Evidence could not be verified.",
+      rejectedAt: new Date("2026-08-24T16:00:00.000Z"),
+      service: { name: "Outlet Installation" },
+      user: { name: "Reliance Demo Customer", email: "customer@example.com", phone: null },
+    } as any);
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue({
+      id: "package-1",
+      version: 2,
+      status: "ADMIN_REJECTED",
+      adminAuditDecisionId: "decision-1",
+    });
+    vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockResolvedValue({
+      decision: "REJECT",
+      rejectionCategory: "UNVERIFIABLE",
+      reason: "Evidence could not be verified.",
+      decidedAt: new Date("2026-08-24T16:00:00.000Z"),
+      packageVersion: 2,
+    });
+
+    const response = await GET(new Request("http://localhost/api/vendors/vendor-1/jobs/job-admin-rejected"), {
+      params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-admin-rejected" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      job: {
+        serviceVideoPackage: { id: "package-1", version: 2, status: "ADMIN_REJECTED" },
+        adminAuditDecision: {
+          decision: "REJECT",
+          rejectionCategory: "UNVERIFIABLE",
+          reason: "Evidence could not be verified.",
+          packageVersion: 2,
         },
       },
     });

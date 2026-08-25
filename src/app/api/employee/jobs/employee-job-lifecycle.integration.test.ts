@@ -608,7 +608,7 @@ describe("employee job lifecycle routes", () => {
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("allows corrected rejected jobs to be resent for manager review", async () => {
+  it("allows a manager-requested corrected job to be resent for manager review", async () => {
     const { POST } = await import("./[jobId]/complete/route");
     hoisted.resolveEmployeeCaptureAccess.mockResolvedValue({
       vendorId: "vendor-1",
@@ -635,7 +635,7 @@ describe("employee job lifecycle routes", () => {
     hoisted.bookingFindUnique.mockResolvedValue({
       id: "job-1",
       vendorId: "vendor-1",
-      status: "REJECTED",
+      status: "IN_PROGRESS",
       title: "Outlet Installation",
       customerMetadata: "{}",
       rejectionReason: "Redo stage 3",

@@ -132,7 +132,7 @@ type ModerationAction =
   | 'reject'
   | 'flag';
 
-type PackageModerationAction = 'approve' | 'reject' | 'flag';
+type PackageModerationAction = 'pass' | 'reject';
 
 /** Visibility tier when approving or updating an already-approved asset (maps to API enums). */
 type VisibilityLevel = 'customer_only' | 'vendor_archive_only' | 'private';
@@ -446,6 +446,7 @@ export default function AdminMediaModerationClient({
   const [advancedOpenById, setAdvancedOpenById] = useState<Record<string, boolean>>({});
   const [moderationReasonModalOpen, setModerationReasonModalOpen] = useState(false);
   const [moderationReason, setModerationReason] = useState('');
+  const [rejectionCategory, setRejectionCategory] = useState('CONTENT_QUALITY');
   const [moderationTargetAction, setModerationTargetAction] = useState<'reject' | 'flag' | null>(null);
   const [moderationTarget, setModerationTarget] = useState<QueueVideo | null>(null);
   const [moderationPackageTarget, setModerationPackageTarget] = useState<QueuePackage | null>(null);
@@ -591,8 +592,8 @@ export default function AdminMediaModerationClient({
         headers: getAdminRequestHeaders(),
         body: JSON.stringify({
           action,
-          visibility: packageVisibilityById[pack.packageId],
-          moderationReason: moderationReason || undefined,
+          rejectionCategory: action === 'reject' ? rejectionCategory : undefined,
+          reason: moderationReason || undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -604,8 +605,8 @@ export default function AdminMediaModerationClient({
           `Package action failed (HTTP ${res.status})`;
         throw new Error(msg);
       }
-      const selectedVisibility = packageVisibilityById[pack.packageId] || 'private';
-      if (action === 'approve') {
+      const selectedVisibility = 'customer_only';
+      if (action === 'pass') {
         setPackages((prev) =>
           prev.map((candidate) => {
             if (candidate.packageId !== pack.packageId) return candidate;
@@ -641,8 +642,8 @@ export default function AdminMediaModerationClient({
       setFeedback({
         type: 'success',
         message: `${
-          action === 'approve'
-            ? `Package approved. All stages are now ${visibilityLabel(selectedVisibility)}.`
+          action === 'pass'
+            ? 'Admin PASS recorded. The Private Service Video was released to the customer.'
             : json?.message || 'Package action applied successfully'
         }${
           feedbackResult === 'recorded'
@@ -826,6 +827,7 @@ export default function AdminMediaModerationClient({
     setModerationTarget(null);
     setModerationPackageTarget(null);
     setModerationReason('');
+    setRejectionCategory('CONTENT_QUALITY');
   };
 
   const openModerationReasonModal = (asset: QueueVideo, action: 'reject' | 'flag') => {
@@ -836,7 +838,7 @@ export default function AdminMediaModerationClient({
     setModerationReasonModalOpen(true);
   };
 
-  const openPackageModerationReasonModal = (pack: QueuePackage, action: 'reject' | 'flag') => {
+  const openPackageModerationReasonModal = (pack: QueuePackage, action: 'reject') => {
     setModerationPackageTarget(pack);
     setModerationTarget(null);
     setModerationTargetAction(action);
@@ -847,7 +849,8 @@ export default function AdminMediaModerationClient({
   const submitModerationReason = async () => {
     if (!moderationReason.trim() || !moderationTargetAction) return;
     if (moderationPackageTarget) {
-      await applyPackageAction(moderationPackageTarget, moderationTargetAction, moderationReason.trim());
+      if (moderationTargetAction !== 'reject') return;
+      await applyPackageAction(moderationPackageTarget, 'reject', moderationReason.trim());
     } else if (moderationTarget) {
       await applyModerationAction(moderationTarget, moderationTargetAction, moderationReason.trim());
     } else {
@@ -1165,20 +1168,14 @@ export default function AdminMediaModerationClient({
                       </div>
                     </div>
                     <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 space-y-3">
-                      <div className="text-sm font-medium text-white">Package review actions</div>
+                      <div className="text-sm font-medium text-white">Reliance Audit decision</div>
                       <p className="text-xs text-slate-300">
-                        Normal workflow: approve, reject, or flag the full Before + During + Completed service package.
-                        Visibility follows the customer/vendor consent path already saved on the work order.
+                        Review the exact manager-submitted Starting Condition, Work in Progress, and Final Result package. PASS releases Private Proof to the customer. REJECT is terminal for this Service Order.
                       </p>
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-center">
-                        <div className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300">
-                          Saved visibility: {VISIBILITY_OPTIONS.find((opt) => opt.value === selectedPackageVisibility)?.label || selectedPackageVisibility}
-                        </div>
-                        <Button size="sm" disabled={packageActionBusy} onClick={() => applyPackageAction(pack, 'approve')}>
-                          Approve Package
-                        </Button>
-                      </div>
                       <div className="flex flex-wrap gap-2">
+                        <Button size="sm" disabled={packageActionBusy} onClick={() => applyPackageAction(pack, 'pass')}>
+                          PASS Audit
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -1186,17 +1183,7 @@ export default function AdminMediaModerationClient({
                           disabled={packageActionBusy}
                           onClick={() => openPackageModerationReasonModal(pack, 'reject')}
                         >
-                          Reject Package
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-800 hover:text-white"
-                          disabled={packageActionBusy}
-                          onClick={() => openPackageModerationReasonModal(pack, 'flag')}
-                        >
-                          <ShieldAlert className="w-4 h-4 mr-1" />
-                          Flag Package
+                          REJECT Audit
                         </Button>
                       </div>
                     </div>
@@ -1436,14 +1423,9 @@ export default function AdminMediaModerationClient({
                               >
                                 Details
                               </Button>
-                              <AssetModerationControls
-                                asset={stageVideo}
-                                actionBusy={actionBusy}
-                                applyModerationAction={(asset, action, moderationReason) =>
-                                  applyModerationAction(asset, action, moderationReason, pack)
-                                }
-                                openModerationReasonModal={openModerationReasonModal}
-                              />
+                              <div className="text-xs text-slate-400">
+                                Read-only stage evidence. Decide the exact package with PASS or REJECT.
+                              </div>
                             </div>
                           </div>
                         );
@@ -1527,19 +1509,8 @@ export default function AdminMediaModerationClient({
                 <div>Archive: {prettyStatus(selectedAsset.video.archiveStatus)}</div>
                 <div>Size: {bytesToReadable(selectedAsset.video.bytes)}</div>
               </div>
-              <div className="rounded border p-3 space-y-2">
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">Approve / visibility / reject / flag</div>
-                <p className="text-[11px] text-gray-500">
-                  Moderation stays per stage, but this stage is reviewed within the single grouped job package card.
-                </p>
-                <AssetModerationControls
-                  asset={selectedAsset.video}
-                  actionBusy={Boolean(assetActionLoadingId?.startsWith(`${selectedAsset.video.assetId}:`))}
-                  applyModerationAction={(asset, action, moderationReason) =>
-                    applyModerationAction(asset, action, moderationReason, selectedAsset.pack)
-                  }
-                  openModerationReasonModal={openModerationReasonModal}
-                />
+              <div className="rounded border p-3 text-xs text-gray-600">
+                This stage is read-only evidence. Close this view and use PASS Audit or REJECT Audit on the exact package.
               </div>
               {selectedAsset.video.moderationReason && (
                 <div className="p-2 rounded bg-amber-50 border border-amber-200">
@@ -1574,6 +1545,22 @@ export default function AdminMediaModerationClient({
             placeholder={moderationDialogPlaceholder}
             className="w-full min-h-[120px] rounded border border-input px-3 py-2 text-sm"
           />
+          {moderationPackageTarget && moderationTargetAction === 'reject' ? (
+            <div className="space-y-2">
+              <Label htmlFor="core-audit-rejection-category">Rejection category</Label>
+              <select
+                id="core-audit-rejection-category"
+                value={rejectionCategory}
+                onChange={(event) => setRejectionCategory(event.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="CONTENT_QUALITY">Content quality</option>
+                <option value="EVIDENCE_MISMATCH">Evidence mismatch</option>
+                <option value="PRIVACY_OR_SCOPE">Privacy or approved-scope concern</option>
+                <option value="UNVERIFIABLE">Unable to verify</option>
+              </select>
+            </div>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={resetModerationReasonModal}>
               Cancel

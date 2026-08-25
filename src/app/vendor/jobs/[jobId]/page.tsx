@@ -38,6 +38,18 @@ type JobLike = {
   serviceType?: string;
   notes?: Array<{ text?: string }>;
   rejectionReason?: string | null;
+  serviceVideoPackage?: {
+    id: string;
+    version: number;
+    status: string;
+  } | null;
+  adminAuditDecision?: {
+    decision: string;
+    rejectionCategory?: string | null;
+    reason?: string | null;
+    decidedAt?: string | null;
+    packageVersion?: number | null;
+  } | null;
   rejectedAt?: string | null;
   cancellation?: {
     reason?: string | null;
@@ -186,6 +198,9 @@ export default function VendorJobDetailPage() {
       status: normalizedStatus,
       operationalPhase: job?.operationalPhase,
       rejectionReason: job?.rejectionReason,
+      adminAuditDecision: job?.adminAuditDecision?.decision,
+      adminAuditRejectionCategory: job?.adminAuditDecision?.rejectionCategory,
+      adminAuditRejectionReason: job?.adminAuditDecision?.reason,
       locationSelected: Boolean(job?.recordingCompliance?.location),
       permissionRequired: job?.recordingCompliance?.permissionRequired === true,
       permissionState: job?.recordingCompliance?.permissionStatus,
@@ -503,7 +518,11 @@ export default function VendorJobDetailPage() {
       if (ts) events.push(`${stage.label} uploaded: ${formatDateTimeUtc(ts)}`);
     }
     if (normalizedStatus === "AWAITING_REVIEW") events.push("Submitted for manager review");
-    if (job?.rejectionReason) events.push("Rejected by manager");
+    if (job?.adminAuditDecision?.decision === "REJECT") {
+      events.push(`Reliance Audit failed: ${formatDateTimeUtc(job.adminAuditDecision.decidedAt)}`);
+    } else if (job?.rejectionReason) {
+      events.push("Rejected by manager");
+    }
     if (normalizedStatus === "CANCELED") {
       const actor = String(job?.cancellation?.canceledBy || "Vendor manager").trim();
       const reason = String(job?.cancellation?.reason || "No reason recorded").trim();
@@ -583,10 +602,10 @@ export default function VendorJobDetailPage() {
                   {canManagerReview ? (
                     <div className="flex flex-wrap gap-2">
                       <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={approveCompletion} disabled={submitting}>
-                        Approve Completion
+                        Submit to Reliance Audit
                       </Button>
                       <Button variant="outline" className="border-amber-300 text-amber-900" onClick={() => setRejectOpen(true)} disabled={submitting}>
-                        Reject Work Order
+                        Request Stage Correction
                       </Button>
                     </div>
                   ) : null}
@@ -607,7 +626,22 @@ export default function VendorJobDetailPage() {
               </CardContent>
             </Card>
 
-            {job.rejectionReason ? (
+            {job.adminAuditDecision?.decision === "REJECT" ? (
+              <Card>
+                <CardContent className="rounded-lg border border-rose-200 bg-rose-50 p-4">
+                  <p className="text-sm font-semibold text-rose-900">Reliance Audit Failed</p>
+                  <p className="mt-1 text-sm text-rose-800">
+                    This Service Video package did not meet the required audit standards. The Reliance work record is terminal and read-only.
+                  </p>
+                  {job.adminAuditDecision.rejectionCategory ? (
+                    <p className="mt-2 text-xs text-rose-800">Category: {job.adminAuditDecision.rejectionCategory}</p>
+                  ) : null}
+                  {job.adminAuditDecision.reason ? (
+                    <p className="mt-1 text-xs text-rose-800">Reason: {job.adminAuditDecision.reason}</p>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : job.rejectionReason ? (
               <Card>
                 <CardContent className="p-4 rounded-lg border border-amber-200 bg-amber-50">
                   <p className="text-sm font-semibold text-amber-900">Rejected by manager</p>

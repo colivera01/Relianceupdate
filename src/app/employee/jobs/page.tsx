@@ -1646,7 +1646,11 @@ export default function EmployeeJobsPage() {
           </div>
         ) : recordingBlocked && canonicalBlock && !correctionRequested ? (
           <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950">
-            <p className="text-sm font-bold">{canonicalBlock.code === "SERVICE_ORDER_CANCELED" ? "Reliance work record is closed" : "Recording is locked"}</p>
+            <p className="text-sm font-bold">
+              {canonicalBlock.code === "SERVICE_ORDER_CANCELED" || canonicalBlock.code === "ADMIN_AUDIT_REJECTED_TERMINAL"
+                ? "Reliance work record is closed"
+                : "Recording is locked"}
+            </p>
             <p className="mt-1 text-sm leading-5"><strong>Why:</strong> {canonicalBlock.why}</p>
             <p className="mt-1 text-sm leading-5">
               <strong>Who acts next:</strong> {canonicalBlock.responsibleParticipant.replaceAll("_", " ").toLowerCase()}

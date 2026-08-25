@@ -1,152 +1,118 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PATCH } from "./route";
 
-const hoisted = vi.hoisted(() => {
-  const bookingFindUnique = vi.fn();
-  const bookingUpdate = vi.fn();
-  const mediaAssetFindMany = vi.fn();
-  const mediaAssetUpdate = vi.fn();
-  const sendVideoReadyNotification = vi.fn();
-  const sendVideoPackageApprovedNotification = vi.fn();
+const hoisted = vi.hoisted(() => ({
+  bookingFindUnique: vi.fn(),
+  bookingUpdate: vi.fn(),
+  requireAdmin: vi.fn(),
+  decide: vi.fn(),
+  sendReady: vi.fn(),
+  sendRejected: vi.fn(),
+}));
 
-  return {
-    bookingFindUnique,
-    bookingUpdate,
-    mediaAssetFindMany,
-    mediaAssetUpdate,
-    sendVideoReadyNotification,
-    sendVideoPackageApprovedNotification,
-    prisma: {
-      booking: {
-        findUnique: bookingFindUnique,
-        update: bookingUpdate,
-      },
-      mediaAsset: {
-        findMany: mediaAssetFindMany,
-        update: mediaAssetUpdate,
-      },
-    },
-  };
+vi.mock("@/server/db", () => ({
+  prisma: { booking: { findUnique: hoisted.bookingFindUnique, update: hoisted.bookingUpdate } },
+}));
+vi.mock("@/lib/admin-auth", () => ({ requireAdmin: hoisted.requireAdmin }));
+vi.mock("@/lib/service-video-admin-audit", async () => {
+  const actual = await vi.importActual<any>("@/lib/service-video-admin-audit");
+  return { ...actual, decideCoreServiceVideoAdminAudit: hoisted.decide };
 });
-
-vi.mock("@/server/db", () => ({ prisma: hoisted.prisma }));
-vi.mock("@/lib/admin-auth", () => ({
-  requireAdmin: vi.fn(async () => ({ userId: "admin-1" })),
+vi.mock("@/lib/service-video-admin-audit-notifications", () => ({
+  sendCorePrivateProofReadyNotification: hoisted.sendReady,
+  sendCorePrivateProofRejectedNotification: hoisted.sendRejected,
 }));
-vi.mock("@/lib/notifications/send-video-ready", () => ({
-  sendVideoReadyNotification: hoisted.sendVideoReadyNotification,
-}));
-vi.mock("@/lib/notifications/send-video-package-approved", () => ({
-  sendVideoPackageApprovedNotification:
-    hoisted.sendVideoPackageApprovedNotification,
-}));
+vi.mock("@/lib/media-lifecycle", () => ({ ensureRetentionSchedulesForBooking: vi.fn() }));
 vi.mock("@/lib/trust-score-outcome-foundation", () => ({
-  TRUST_OUTCOME_TYPES: { MEDIA_PACKAGE_APPROVED: "MEDIA_PACKAGE_APPROVED" },
-  tryRecordFinalizedOperationalOutcome: vi.fn(async () => undefined),
+  TRUST_OUTCOME_TYPES: { VIDEO_PACKAGE_APPROVED: "approved", VIDEO_PACKAGE_REJECTED: "rejected" },
+  tryRecordFinalizedOperationalOutcome: vi.fn(),
 }));
-vi.mock("@/lib/trust-score-calculator", () => ({
-  tryRecalculateVendorTrustScore: vi.fn(async () => undefined),
-}));
+vi.mock("@/lib/trust-score-calculator", () => ({ tryRecalculateVendorTrustScore: vi.fn() }));
 
-describe("completed work-order customer invitation", () => {
+function booking() {
+  return {
+    id: "b1",
+    vendorId: "v1",
+    userId: "customer-1",
+    title: "Outlet Installation",
+    clientName: "Alex",
+    date: new Date("2026-08-24T12:00:00Z"),
+    customerMetadata: JSON.stringify({ claim_contact_email: "alex@example.com" }),
+    user: { email: "alex@example.com", name: "Alex", phone: null },
+    vendor: { businessName: "A Heating", name: "Vendor A" },
+    service: { name: "Outlet Installation" },
+  };
+}
+
+describe("core Admin Service Video audit route", () => {
   beforeEach(() => {
-    hoisted.bookingFindUnique.mockReset();
-    hoisted.bookingUpdate.mockReset();
-    hoisted.mediaAssetFindMany.mockReset();
-    hoisted.mediaAssetUpdate.mockReset();
-    hoisted.sendVideoReadyNotification.mockReset();
-    hoisted.sendVideoPackageApprovedNotification.mockReset();
-    hoisted.sendVideoReadyNotification.mockResolvedValue({ ok: true });
-    hoisted.sendVideoPackageApprovedNotification.mockResolvedValue({
-      anySuccess: true,
-    });
+    vi.clearAllMocks();
+    hoisted.requireAdmin.mockResolvedValue({ userId: "admin-1" });
+    hoisted.bookingFindUnique.mockResolvedValue(booking());
+    hoisted.sendReady.mockResolvedValue({ status: "SENT" });
+    hoisted.sendRejected.mockResolvedValue({ status: "SENT" });
   });
 
-  it("emails an unclaimed customer a secure claim link without storing the raw token", async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({
-      id: "b1",
-      vendorId: "v1",
-      title: "HVAC tune-up",
-      clientName: "Alex",
-      userId: "placeholder-1",
-      customerMetadata: JSON.stringify({
-        claim_status: "UNCLAIMED",
-        claim_contact_email: "alex@example.com",
-      }),
-      user: {
-        email: "unclaimed+b1@reliance.local",
-        name: "Alex",
-        phone: null,
-      },
-      vendor: {
-        businessName: "A Heating",
-        name: "Vendor A",
-        email: "manager@example.com",
-        phone: null,
-        memberships: [],
-      },
-      service: { name: "HVAC" },
+  it("records PASS and sends the customer notice only after durable proof release", async () => {
+    hoisted.decide.mockResolvedValue({
+      decision: { id: "audit-1", decidedAt: new Date() },
+      package: { id: "package-1", version: 1 },
+      customerNotificationId: "notification-1",
+      alreadyDecided: false,
     });
-    hoisted.mediaAssetFindMany.mockResolvedValue([
-      {
-        id: "a-intro",
-        moderationStatus: "pending_review",
-        mediaSession: { vendorJobVideoStage: "INTRO" },
-      },
-      {
-        id: "a-progress",
-        moderationStatus: "pending_review",
-        mediaSession: { vendorJobVideoStage: "IN_PROGRESS" },
-      },
-      {
-        id: "a-completed",
-        moderationStatus: "pending_review",
-        mediaSession: { vendorJobVideoStage: "COMPLETED" },
-      },
-    ]);
-    hoisted.mediaAssetUpdate.mockResolvedValue({
-      id: "asset",
-      moderationStatus: "approved",
-      visibilityStatus: "customer_only",
-      moderationReason: null,
-      moderatedAt: new Date("2026-04-15T10:00:00.000Z"),
-      moderatedByUserId: "admin-1",
-    });
-    hoisted.bookingUpdate.mockResolvedValue({ id: "b1" });
-
-    const response = await PATCH(
-      new Request(
-        "https://beta.relianceonline.org/api/admin/media/packages/b1/moderate",
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "approve",
-            visibility: "customer_only",
-          }),
-        }
-      ),
-      { params: Promise.resolve({ bookingId: "b1" }) }
-    );
-
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "PASS" }),
+    }), { params: Promise.resolve({ bookingId: "b1" }) });
     expect(response.status).toBe(200);
-    const notificationInput =
-      hoisted.sendVideoReadyNotification.mock.calls[0][0];
-    expect(notificationInput.videoUrl).toMatch(
-      /\/my-bookings\/b1\?videoReady=1&claimToken=/
-    );
-    const rawToken = new URL(
-      notificationInput.videoUrl,
-      "https://beta.relianceonline.org"
-    ).searchParams.get("claimToken");
-    expect(rawToken).toBeTruthy();
+    expect(await response.json()).toMatchObject({ decision: "PASS", customerProofReleased: true });
+    expect(hoisted.decide).toHaveBeenCalledWith(expect.objectContaining({ decision: "PASS" }));
+    expect(hoisted.sendReady).toHaveBeenCalledOnce();
+    expect(hoisted.sendRejected).not.toHaveBeenCalled();
+  });
 
-    const updateInput = hoisted.bookingUpdate.mock.calls[0][0];
-    const metadata = JSON.parse(updateInput.data.customerMetadata);
-    expect(metadata.customer_booking_claim_token_hash).toMatch(
-      /^[a-f0-9]{64}$/
-    );
-    expect(metadata.customer_booking_claim_token_hash).not.toBe(rawToken);
-    expect(metadata.proof_ready_notification_url).not.toContain("claimToken");
+  it("requires a category and reason for terminal REJECT", async () => {
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "REJECT", reason: "Not verifiable" }),
+    }), { params: Promise.resolve({ bookingId: "b1" }) });
+    expect(response.status).toBe(422);
+    expect(hoisted.decide).not.toHaveBeenCalled();
+  });
+
+  it("records terminal REJECT without creating customer proof", async () => {
+    hoisted.decide.mockResolvedValue({
+      decision: { id: "audit-2", decidedAt: new Date() },
+      package: { id: "package-1", version: 1 },
+      customerNotificationId: "notification-2",
+      alreadyDecided: false,
+    });
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "REJECT", rejectionCategory: "UNVERIFIABLE", reason: "Video cannot be verified" }),
+    }), { params: Promise.resolve({ bookingId: "b1" }) });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ decision: "REJECT", customerProofReleased: false });
+    expect(hoisted.sendRejected).toHaveBeenCalledOnce();
+    expect(hoisted.sendReady).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before a non-Admin actor can decide a package", async () => {
+    hoisted.requireAdmin.mockRejectedValue(new Error("Forbidden: Admin access required"));
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "PASS" }),
+    }), { params: Promise.resolve({ bookingId: "b1" }) });
+
+    expect(response.status).toBe(403);
+    expect(hoisted.decide).not.toHaveBeenCalled();
+    expect(hoisted.bookingFindUnique).not.toHaveBeenCalled();
   });
 });

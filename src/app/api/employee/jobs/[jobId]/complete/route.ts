@@ -77,7 +77,7 @@ export async function POST(request: Request, context: RouteParams): Promise<Next
 
     const normalizedStatus = String(booking.status || "").trim().toUpperCase();
     if (
-      !["PENDING", "CONFIRMED", "IN_PROGRESS", "REJECTED"].includes(normalizedStatus)
+      !["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(normalizedStatus)
     ) {
       return NextResponse.json(
         {

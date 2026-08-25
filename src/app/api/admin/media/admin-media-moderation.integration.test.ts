@@ -16,6 +16,10 @@ const hoisted = vi.hoisted(() => {
   const mediaAssetFindMany = vi.fn();
   const bookingFindUnique = vi.fn();
   const bookingUpdate = vi.fn();
+  const loadCoreAdminAuditCandidate = vi.fn();
+  const decideCoreServiceVideoAdminAudit = vi.fn();
+  const sendCorePrivateProofReadyNotification = vi.fn();
+  const sendCorePrivateProofRejectedNotification = vi.fn();
   const prisma = {
     mediaAsset: {
       findUnique: mediaAssetFindUnique,
@@ -27,7 +31,18 @@ const hoisted = vi.hoisted(() => {
       update: bookingUpdate,
     },
   };
-  return { prisma, mediaAssetFindUnique, mediaAssetUpdate, mediaAssetFindMany, bookingFindUnique, bookingUpdate };
+  return {
+    prisma,
+    mediaAssetFindUnique,
+    mediaAssetUpdate,
+    mediaAssetFindMany,
+    bookingFindUnique,
+    bookingUpdate,
+    loadCoreAdminAuditCandidate,
+    decideCoreServiceVideoAdminAudit,
+    sendCorePrivateProofReadyNotification,
+    sendCorePrivateProofRejectedNotification,
+  };
 });
 
 vi.mock("@/server/db", () => ({
@@ -37,6 +52,25 @@ vi.mock("@/server/db", () => ({
 vi.mock("@/lib/admin-auth", () => ({
   requireAdmin: vi.fn(),
 }));
+
+vi.mock("@/lib/service-video-admin-audit", () => {
+  class CoreAdminAuditError extends Error {
+    constructor(public readonly code: string) {
+      super(code);
+    }
+  }
+  return {
+    CoreAdminAuditError,
+    loadCoreAdminAuditCandidate: hoisted.loadCoreAdminAuditCandidate,
+    decideCoreServiceVideoAdminAudit: hoisted.decideCoreServiceVideoAdminAudit,
+  };
+});
+
+vi.mock("@/lib/service-video-admin-audit-notifications", () => ({
+  sendCorePrivateProofReadyNotification: hoisted.sendCorePrivateProofReadyNotification,
+  sendCorePrivateProofRejectedNotification: hoisted.sendCorePrivateProofRejectedNotification,
+}));
+vi.mock("@/lib/media-lifecycle", () => ({ ensureRetentionSchedulesForBooking: vi.fn() }));
 
 async function readJson(res: Response) {
   return res.json() as Promise<Record<string, unknown>>;
@@ -190,6 +224,7 @@ describe("GET /api/admin/media/moderation-queue", () => {
     vi.mocked(requireAdmin).mockReset();
     vi.mocked(requireAdmin).mockResolvedValue({ userId: "admin-1" } as any);
     hoisted.mediaAssetFindMany.mockReset();
+    hoisted.loadCoreAdminAuditCandidate.mockReset();
   });
 
   it("returns 403 when admin auth fails", async () => {
@@ -309,6 +344,15 @@ describe("GET /api/admin/media/moderation-queue", () => {
         },
       },
     ]);
+    hoisted.loadCoreAdminAuditCandidate.mockResolvedValue({
+      package: { id: "package-b1", version: 1, packageHash: "hash-b1", auditEvidenceVersion: 1 },
+      managerDecision: { id: "manager-b1" },
+      packageStages: [
+        { mediaAssetId: "a-intro" },
+        { mediaAssetId: "a-progress" },
+        { mediaAssetId: "a-complete" },
+      ],
+    });
     const req = new Request("http://localhost/api/admin/media/moderation-queue?search=alex", { method: "GET" });
     const res = await moderationQueueGET(req);
     expect(res.status).toBe(200);
@@ -471,6 +515,15 @@ describe("GET /api/admin/media/moderation-queue", () => {
         },
       },
     ]);
+    hoisted.loadCoreAdminAuditCandidate.mockImplementation(async (_db: unknown, bookingId: string) => ({
+      package: { id: `package-${bookingId}`, version: 1, packageHash: `hash-${bookingId}`, auditEvidenceVersion: 1 },
+      managerDecision: { id: `manager-${bookingId}` },
+      packageStages: [
+        { mediaAssetId: `${bookingId}-intro` },
+        { mediaAssetId: `${bookingId}-progress` },
+        { mediaAssetId: `${bookingId}-complete` },
+      ],
+    }));
 
     const req = new Request("http://localhost/api/admin/media/moderation-queue?limit=1", {
       method: "GET",
@@ -563,6 +616,15 @@ describe("GET /api/admin/media/moderation-queue", () => {
         },
       },
     ]);
+    hoisted.loadCoreAdminAuditCandidate.mockResolvedValue({
+      package: { id: "package-b1", version: 1, packageHash: "hash-b1", auditEvidenceVersion: 1 },
+      managerDecision: { id: "manager-b1" },
+      packageStages: [
+        { mediaAssetId: "a-intro" },
+        { mediaAssetId: "a-progress" },
+        { mediaAssetId: "a-proof" },
+      ],
+    });
     const req = new Request("http://localhost/api/admin/media/moderation-queue?moderationStatus=approved", { method: "GET" });
     const res = await moderationQueueGET(req);
     expect(res.status).toBe(200);
@@ -665,6 +727,11 @@ describe("PATCH /api/admin/media/packages/[bookingId]/moderate", () => {
     hoisted.mediaAssetUpdate.mockReset();
     hoisted.bookingFindUnique.mockReset();
     hoisted.bookingUpdate.mockReset();
+    hoisted.decideCoreServiceVideoAdminAudit.mockReset();
+    hoisted.sendCorePrivateProofReadyNotification.mockReset();
+    hoisted.sendCorePrivateProofRejectedNotification.mockReset();
+    hoisted.sendCorePrivateProofReadyNotification.mockResolvedValue({ status: "SENT" });
+    hoisted.sendCorePrivateProofRejectedNotification.mockResolvedValue({ status: "SENT" });
   });
 
   it("requires moderationReason for package rejection", async () => {
@@ -677,18 +744,39 @@ describe("PATCH /api/admin/media/packages/[bookingId]/moderate", () => {
     expect(res.status).toBe(422);
   });
 
-  it("rejects package-level Public approval without an exact-media evidence chain", async () => {
+  it("treats the legacy approve alias as core PASS without granting Public visibility", async () => {
+    hoisted.decideCoreServiceVideoAdminAudit.mockResolvedValue({
+      decision: { id: "audit-1", decidedAt: new Date() },
+      package: { id: "package-1", version: 1 },
+      customerNotificationId: null,
+      alreadyDecided: false,
+    });
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "b1",
+      vendorId: "v1",
+      userId: "u1",
+      title: "HVAC tune-up",
+      clientName: "Alex",
+      customerMetadata: "{}",
+      user: { email: "alex@example.com", name: "Alex", phone: null },
+      vendor: { businessName: "A Heating", name: "Vendor A" },
+      service: { name: "HVAC" },
+    });
     const req = new Request("http://localhost/api/admin/media/packages/b1/moderate", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "approve", visibility: "public" }),
     });
     const res = await packageModeratePATCH(req, { params: Promise.resolve({ bookingId: "b1" }) });
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
+    expect(hoisted.decideCoreServiceVideoAdminAudit).toHaveBeenCalledWith(expect.objectContaining({
+      bookingId: "b1",
+      decision: "PASS",
+    }));
     expect(hoisted.mediaAssetUpdate).not.toHaveBeenCalled();
   });
 
-  it("approves package by applying action to INTRO/IN_PROGRESS/COMPLETED", async () => {
+  it("approves the exact package through one core Admin PASS transaction", async () => {
     hoisted.bookingFindUnique.mockResolvedValue({
       id: "b1",
       vendorId: "v1",
@@ -699,18 +787,11 @@ describe("PATCH /api/admin/media/packages/[bookingId]/moderate", () => {
       user: { email: null, name: "Alex" },
       service: { name: "HVAC" },
     });
-    hoisted.mediaAssetFindMany.mockResolvedValue([
-      { id: "a-intro", moderationStatus: "pending_review", mediaSession: { vendorJobVideoStage: "INTRO" } },
-      { id: "a-progress", moderationStatus: "pending_review", mediaSession: { vendorJobVideoStage: "IN_PROGRESS" } },
-      { id: "a-completed", moderationStatus: "pending_review", mediaSession: { vendorJobVideoStage: "COMPLETED" } },
-    ]);
-    hoisted.mediaAssetUpdate.mockResolvedValue({
-      id: "asset",
-      moderationStatus: "approved",
-      visibilityStatus: "customer_only",
-      moderationReason: null,
-      moderatedAt: new Date("2026-04-15T10:00:00.000Z"),
-      moderatedByUserId: "admin-1",
+    hoisted.decideCoreServiceVideoAdminAudit.mockResolvedValue({
+      decision: { id: "audit-1", decidedAt: new Date() },
+      package: { id: "package-1", version: 1 },
+      customerNotificationId: "notification-1",
+      alreadyDecided: false,
     });
     const req = new Request("http://localhost/api/admin/media/packages/b1/moderate", {
       method: "PATCH",
@@ -719,9 +800,8 @@ describe("PATCH /api/admin/media/packages/[bookingId]/moderate", () => {
     });
     const res = await packageModeratePATCH(req, { params: Promise.resolve({ bookingId: "b1" }) });
     expect(res.status).toBe(200);
-    expect(hoisted.mediaAssetUpdate).toHaveBeenCalledTimes(3);
-    const firstCall = hoisted.mediaAssetUpdate.mock.calls[0][0] as { data: Record<string, unknown> };
-    expect(firstCall.data.moderationStatus).toBe(MODERATION_APPROVED);
-    expect(firstCall.data.visibilityStatus).toBe("customer_only");
+    expect(hoisted.decideCoreServiceVideoAdminAudit).toHaveBeenCalledOnce();
+    expect(hoisted.sendCorePrivateProofReadyNotification).toHaveBeenCalledOnce();
+    expect(hoisted.mediaAssetUpdate).not.toHaveBeenCalled();
   });
 });

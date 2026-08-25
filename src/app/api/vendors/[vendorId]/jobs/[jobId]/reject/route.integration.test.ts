@@ -109,7 +109,7 @@ describe("vendor job reject integration", () => {
     expect(json.code).toBe("INVALID_REJECTION_STATUS");
   });
 
-  it("records a correction request with explicit rejected state", async () => {
+  it("records a non-terminal manager correction request in active work", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",
       status: "AWAITING_REVIEW",
@@ -128,12 +128,15 @@ describe("vendor job reject integration", () => {
     expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
       where: { id: "job1" },
       data: {
-        status: "REJECTED",
+        status: "IN_PROGRESS",
         customerMetadata: expect.any(String),
         rejectionReason: "Missing clear completed walkthrough.",
-        rejectedAt: expect.any(Date),
+        rejectedAt: null,
         rejectedBy: "manager-1",
       },
+    });
+    expect(JSON.parse(hoisted.bookingUpdate.mock.calls[0][0].data.customerMetadata)).toMatchObject({
+      reliance_ops: { operational_phase: "IN_PROGRESS" },
     });
     const json = await toJson(res);
     expect(json.code).toBe("SERVICE_VIDEO_CORRECTION_REQUESTED");

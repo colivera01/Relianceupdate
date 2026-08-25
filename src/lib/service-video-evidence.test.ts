@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => ({
     privateProofAccessGrant: { findFirst: vi.fn() },
     serviceVideoPackageEvidence: { findFirst: vi.fn() },
     serviceVideoManagerDecisionEvidence: { findFirst: vi.fn() },
+    serviceVideoAdminAuditDecisionEvidence: { findFirst: vi.fn() },
     booking: { findFirst: vi.fn() },
     serviceVideoStageEvidence: { findMany: vi.fn() },
     recordingGateDecisionEvidence: { findFirst: vi.fn() },
@@ -114,6 +115,37 @@ describe("Private Service Video evidence", () => {
     expect(hoisted.prisma.mediaAsset.findFirst).toHaveBeenCalledTimes(3);
   });
 
+  it("requires durable Admin PASS evidence for a new-path customer proof grant", async () => {
+    const { loadAuthorizedPrivateProof } = await import("./service-video-evidence");
+    hoisted.prisma.privateProofAccessGrant.findFirst.mockResolvedValue({
+      id: "grant-1",
+      packageId: "package-1",
+      managerDecisionId: "manager-decision-1",
+      adminAuditDecisionId: "admin-audit-1",
+    });
+    hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue({
+      id: "package-1",
+      vendorId: "vendor-1",
+      packageHash: "package-hash",
+      managerDecisionId: "manager-decision-1",
+      adminAuditDecisionId: "admin-audit-1",
+      auditEvidenceVersion: 1,
+      stageEvidenceJson: JSON.stringify(packageRows),
+    });
+    hoisted.prisma.serviceVideoManagerDecisionEvidence.findFirst.mockResolvedValue({ id: "manager-decision-1" });
+    hoisted.prisma.serviceVideoAdminAuditDecisionEvidence.findFirst.mockResolvedValue(null);
+
+    await expect(loadAuthorizedPrivateProof({ bookingId: "booking-1", customerUserId: "customer-1" })).resolves.toBeNull();
+    expect(hoisted.prisma.serviceVideoAdminAuditDecisionEvidence.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: "admin-audit-1",
+        decision: "PASS",
+        customerProofReleased: true,
+        customerAccessGrantId: "grant-1",
+      }),
+    });
+  });
+
   it("does not create another package version when the same package is resubmitted", async () => {
     const { submitServiceVideoPackage } = await import("./service-video-evidence");
     const packageHash = createHash("sha256").update(JSON.stringify(packageRows)).digest("hex");
@@ -169,6 +201,22 @@ describe("Private Service Video evidence", () => {
       vendorId: "vendor-1",
       stage: "INTRO",
     })).rejects.toMatchObject({ code: "MANAGER_REVIEW_IN_PROGRESS" });
+  });
+
+  it("treats Admin REJECT as terminal for every later employee mutation", async () => {
+    const { assertServiceVideoStageMutationAllowed } = await import("./service-video-evidence");
+    hoisted.prisma.booking.findFirst.mockResolvedValue({ id: "booking-1", status: "REJECTED" });
+    hoisted.prisma.serviceVideoPackageEvidence.findFirst.mockResolvedValue({
+      status: "ADMIN_REJECTED",
+      managerDecisionId: "manager-decision-1",
+      adminAuditDecisionId: "admin-audit-1",
+    });
+
+    await expect(assertServiceVideoStageMutationAllowed(hoisted.prisma, {
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      stage: "INTRO",
+    })).rejects.toMatchObject({ code: "ADMIN_AUDIT_REJECTED_TERMINAL" });
   });
 
   it("rejects finalization when upload authority predates manager review", async () => {

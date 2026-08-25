@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/server/db";
+import { getAdminMediaModerationQueue } from "@/lib/admin-media-moderation-queue";
 import {
-  buildCompleteMediaModerationPackages,
-  countPendingMediaModerationPackages,
-} from "@/lib/admin-media-moderation-packages";
-import { resolveVendorJobVideoStageFromSession } from "@/lib/vendor-job-video-stages";
-import {
-  countableMediaAssetWhere,
   countableReviewWhere,
   countableUserWhere,
   countableVendorWhere,
@@ -27,7 +22,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       totalVendors,
       totalReviews,
       pendingReviewModeration,
-      mediaAssets,
+      adminAuditQueue,
     ] = await Promise.all([
         prisma.user.count({ where: countableUserWhere() }),
         prisma.vendor.count({ where: countableVendorWhere() }),
@@ -37,73 +32,9 @@ export async function GET(request: Request): Promise<NextResponse> {
             moderationStatus: "pending_review",
           }),
         }),
-        (prisma as any).mediaAsset.findMany({
-          where: countableMediaAssetWhere(),
-          orderBy: { createdAt: "desc" },
-          select: {
-            id: true,
-            vendorId: true,
-            moderationStatus: true,
-            visibilityStatus: true,
-            createdAt: true,
-            uploadedByMembershipId: true,
-            vendor: {
-              select: {
-                name: true,
-                businessName: true,
-              },
-            },
-            mediaSession: {
-              select: {
-                title: true,
-                vendorJobVideoStage: true,
-                sessionType: true,
-                booking: {
-                  select: {
-                    id: true,
-                    title: true,
-                    clientName: true,
-                    status: true,
-                  },
-                },
-                service: {
-                  select: {
-                    name: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
+        getAdminMediaModerationQueue({ limit: 200 }),
       ]);
-
-    const mediaModerationItems = mediaAssets.map((asset: any) => {
-      const session = asset.mediaSession;
-      const stageKey = resolveVendorJobVideoStageFromSession({
-        vendorJobVideoStage: session?.vendorJobVideoStage,
-        sessionType: session?.sessionType,
-      });
-
-      return {
-        title: session?.title || session?.booking?.title || "Untitled Media",
-        vendorId: asset.vendorId,
-        vendorName: asset.vendor?.businessName || asset.vendor?.name || null,
-        bookingId: session?.booking?.id || null,
-        jobTitle: session?.booking?.title || null,
-        bookingStatus: session?.booking?.status || null,
-        clientName: session?.booking?.clientName || null,
-        serviceName: session?.service?.name || null,
-        uploadedByMembershipId: asset.uploadedByMembershipId || null,
-        vendorJobVideoStageKey: stageKey,
-        moderationStatus: asset.moderationStatus,
-        visibilityStatus: asset.visibilityStatus,
-        createdAt: asset.createdAt,
-      };
-    });
-
-    const pendingMediaPackageModeration = countPendingMediaModerationPackages(
-      buildCompleteMediaModerationPackages(mediaModerationItems)
-    );
+    const pendingMediaPackageModeration = adminAuditQueue.length;
     const pendingModeration =
       pendingReviewModeration + pendingMediaPackageModeration;
 
@@ -121,12 +52,12 @@ export async function GET(request: Request): Promise<NextResponse> {
       },
       definitions: {
         pendingModeration:
-          "Reviews with moderationStatus=pending_review plus complete service video packages whose latest required-stage videos include moderationStatus=pending_review.",
+          "Reviews awaiting moderation plus exact Service Video packages eligible for core Reliance Admin Audit.",
         pendingModerationBreakdown: {
           reviews:
             "Review rows with moderationStatus=pending_review awaiting admin review.",
           mediaPackages:
-            "Complete INTRO/IN_PROGRESS/COMPLETED service video packages with at least one latest stage video still pending_review.",
+            "Exact manager-attested Service Video package versions whose current evidence chain is eligible for Reliance Admin Audit.",
         },
       },
     });

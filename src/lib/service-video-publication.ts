@@ -108,13 +108,14 @@ async function loadPrivateFoundation(db: any, bookingId: string, vendorId?: stri
     orderBy: { version: "desc" },
   });
   if (!pkg) throw new Error("PUBLICATION_PRIVATE_PACKAGE_NOT_AVAILABLE");
+  const isCoreAdminPackage = Boolean(pkg.adminAuditDecisionId || pkg.auditEvidenceVersion);
   const managerDecision = await db.serviceVideoManagerDecisionEvidence.findFirst({
     where: {
       id: pkg.managerDecisionId,
       packageId: pkg.id,
       bookingId,
       vendorId: booking.vendorId,
-      decision: "PRIVATE_APPROVED",
+      decision: isCoreAdminPackage ? "SUBMITTED_FOR_ADMIN_AUDIT" : "PRIVATE_APPROVED",
       packageHash: pkg.packageHash,
     },
   });
@@ -126,11 +127,29 @@ async function loadPrivateFoundation(db: any, bookingId: string, vendorId?: stri
       vendorId: booking.vendorId,
       customerUserId: booking.userId,
       managerDecisionId: managerDecision?.id || "",
+      ...(isCoreAdminPackage ? { adminAuditDecisionId: pkg.adminAuditDecisionId || "" } : {}),
       status: "ACTIVE",
       revokedAt: null,
     },
   });
-  if (!managerDecision || !grant) throw new Error("PUBLICATION_PRIVATE_EVIDENCE_INCOMPLETE");
+  const adminAuditDecision = isCoreAdminPackage
+    ? await db.serviceVideoAdminAuditDecisionEvidence.findFirst({
+        where: {
+          id: pkg.adminAuditDecisionId,
+          packageId: pkg.id,
+          bookingId,
+          vendorId: booking.vendorId,
+          managerDecisionId: managerDecision?.id || "",
+          packageHash: pkg.packageHash,
+          decision: "PASS",
+          customerProofReleased: true,
+          customerAccessGrantId: grant?.id || "",
+        },
+      })
+    : null;
+  if (!managerDecision || !grant || (isCoreAdminPackage && !adminAuditDecision)) {
+    throw new Error("PUBLICATION_PRIVATE_EVIDENCE_INCOMPLETE");
+  }
   const packageStages = parseJson<ExactPackageStage[]>(pkg.stageEvidenceJson, []);
   if (
     packageStages.length !== REQUIRED_SERVICE_VIDEO_STAGES.length ||
@@ -138,7 +157,7 @@ async function loadPrivateFoundation(db: any, bookingId: string, vendorId?: stri
   ) {
     throw new Error("PUBLICATION_PACKAGE_STAGE_SET_INVALID");
   }
-  return { booking, package: pkg, managerDecision, grant, packageStages };
+  return { booking, package: pkg, managerDecision, adminAuditDecision, grant, packageStages };
 }
 
 async function loadExactStage(db: any, foundation: Awaited<ReturnType<typeof loadPrivateFoundation>>, packaged: ExactPackageStage) {

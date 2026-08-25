@@ -303,6 +303,9 @@ export default function VendorJobs() {
       (video: any) => normalizeModerationStatus(video?.moderationStatus || video?.status) === MODERATION_REJECTED
     );
 
+  const isAdminAuditRejected = (job: any) =>
+    String(job?.adminAuditDecision?.decision || '').trim().toUpperCase() === 'REJECT';
+
   const getVendorWorkflowStateForJob = (job: any) => {
     const phase = String(job?.operationalPhase || '').trim().toUpperCase();
     const status = String(job?.status || '').trim().toLowerCase();
@@ -318,6 +321,9 @@ export default function VendorJobs() {
       operationalPhase: phase,
       rejectedMedia: jobHasRejectedMedia(job),
       rejectionReason: job?.rejectionReason,
+      adminAuditDecision: job?.adminAuditDecision?.decision,
+      adminAuditRejectionCategory: job?.adminAuditDecision?.rejectionCategory,
+      adminAuditRejectionReason: job?.adminAuditDecision?.reason,
       correctionPending: isJobPendingEmployeeCorrection(job),
       locationSelected: Boolean(locationChoice),
       permissionRequired: requiresConsent,
@@ -2632,7 +2638,7 @@ export default function VendorJobs() {
     { value: 'all', label: 'All' },
     { value: 'active', label: 'Active Work' },
     { value: 'manager_review', label: 'Manager Review' },
-    { value: 'moderator_review', label: 'Moderator Review' },
+    { value: 'moderator_review', label: 'Reliance Audit' },
     { value: 'canceled', label: 'Canceled' },
     { value: 'private_complete', label: 'Private Proof' },
     { value: 'public_approved', label: 'Public / Approved' },
@@ -4265,11 +4271,14 @@ export default function VendorJobs() {
 
   const formatJobStatusLabel = (status: string | null | undefined, operationalPhase?: string | null, job?: any) => {
     const phase = String(operationalPhase || '').trim().toUpperCase();
+    if (job && isAdminAuditRejected(job)) {
+      return 'Job: Reliance Audit Failed';
+    }
     if (phase === 'REJECTED' || (job && jobHasRejectedMedia(job))) {
       return 'Job: Rejected';
     }
     if (phase === 'AWAITING_ADMIN_REVIEW') {
-      return 'Job: Pending Moderator Approval';
+      return 'Job: Reliance Audit Pending';
     }
     if (phase === 'AWAITING_VENDOR_REVIEW') {
       return 'Job: Awaiting Manager Review';
@@ -4293,8 +4302,9 @@ export default function VendorJobs() {
 
   const formatOperationalPhaseLabel = (operationalPhase: string | null | undefined, job?: any) => {
     const phase = String(operationalPhase || '').trim().toUpperCase();
+    if (job && isAdminAuditRejected(job)) return 'Reliance Audit Failed';
     if (phase === 'REJECTED' || (job && jobHasRejectedMedia(job))) return 'Rejected / closed';
-    if (phase === 'AWAITING_ADMIN_REVIEW') return 'Awaiting Moderator Review';
+    if (phase === 'AWAITING_ADMIN_REVIEW') return 'Reliance Audit Pending';
     if (phase === 'AWAITING_VENDOR_REVIEW') return 'Awaiting Manager Review';
     if (phase === 'ASSIGNED') return 'Assigned';
     if (phase === 'IN_PROGRESS') return 'In progress';
@@ -7085,9 +7095,9 @@ export default function VendorJobs() {
       >
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Approve Private Service Video?</DialogTitle>
+            <DialogTitle>Submit Service Videos for Reliance Audit?</DialogTitle>
             <DialogDescription>
-              This marks the work record complete and gives the customer access to all three saved stages. It does not make any video public.
+              This attests to the exact three-stage package and sends it to Reliance Admin Audit. The customer receives no Private Proof unless Admin records PASS. Admin REJECT is terminal for this Service Order.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm text-gray-700">
@@ -7137,7 +7147,7 @@ export default function VendorJobs() {
                 !jobHasVideoForStage(approveJobTarget, 'COMPLETED')
               }
             >
-              {approveJobSubmitting ? "Submitting..." : "Approve and Send to Moderation"}
+              {approveJobSubmitting ? "Submitting..." : "Submit to Reliance Audit"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -8296,7 +8306,7 @@ export default function VendorJobs() {
                                       }}
                                       disabled={!hasAllReviewStages || Boolean(jobMutationLoadingId) || jobActionLoading || approveJobSubmitting}
                                     >
-                                      Approve Private Proof
+                                      Submit to Reliance Audit
                                     </Button>
                                     {!hasAllReviewStages ? (
                                       <p className="text-xs text-amber-900">

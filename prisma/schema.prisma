@@ -761,7 +761,9 @@ model ServiceVideoPackageEvidence {
   submittedByMembershipId String
   submittedAt             DateTime @default(now())
   managerDecisionId       String?
+  adminAuditDecisionId    String?
   customerAccessGrantId   String?
+  auditEvidenceVersion    Int?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -769,6 +771,7 @@ model ServiceVideoPackageEvidence {
   @@index([bookingId, isCurrent])
   @@index([vendorId, status, updatedAt])
   @@index([packageHash])
+  @@index([adminAuditDecisionId])
   @@map("service_video_package_evidence")
 }
 
@@ -783,30 +786,67 @@ model ServiceVideoManagerDecisionEvidence {
   managerUserId       String
   managerMembershipId String
   packageHash         String
+  packageVersion      Int?
+  attestationJson     String?  @db.NVarChar(Max)
+  attestationHash     String?
+  evidenceVersion     Int      @default(1)
   decidedAt           DateTime @default(now())
   createdAt           DateTime @default(now())
 
   @@index([packageId, decidedAt])
   @@index([bookingId, decidedAt])
+  @@index([attestationHash])
   @@map("service_video_manager_decision_evidence")
 }
 
+model ServiceVideoAdminAuditDecisionEvidence {
+  id                     String   @id @default(cuid())
+  bookingId              String
+  vendorId               String
+  packageId              String   @unique
+  packageVersion         Int
+  packageHash            String
+  stageEvidenceJson      String   @db.NVarChar(Max)
+  managerDecisionId      String
+  adminUserId            String
+  adminRole              String   @default("ADMIN")
+  decision               String
+  rejectionCategory      String?
+  reason                 String?  @db.NVarChar(Max)
+  decisionHash           String
+  evidenceVersion        Int      @default(1)
+  customerProofReleased  Boolean  @default(false)
+  customerAccessGrantId  String?
+  customerNotificationId String?
+  decidedAt              DateTime @default(now())
+  createdAt              DateTime @default(now())
+
+  @@index([bookingId, decidedAt])
+  @@index([vendorId, decision, decidedAt])
+  @@index([managerDecisionId])
+  @@index([packageHash])
+  @@index([decisionHash])
+  @@map("service_video_admin_audit_decision_evidence")
+}
+
 model PrivateProofAccessGrant {
-  id                String    @id @default(cuid())
-  packageId         String    @unique
-  bookingId         String
-  vendorId          String
-  customerUserId    String
-  managerDecisionId String
-  status            String    @default("ACTIVE")
-  grantedByUserId   String
-  grantedAt         DateTime  @default(now())
-  revokedAt         DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                   String    @id @default(cuid())
+  packageId            String    @unique
+  bookingId            String
+  vendorId             String
+  customerUserId       String
+  managerDecisionId    String
+  adminAuditDecisionId String?
+  status               String    @default("ACTIVE")
+  grantedByUserId      String
+  grantedAt            DateTime  @default(now())
+  revokedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([bookingId, customerUserId, status])
   @@index([vendorId, status, grantedAt])
+  @@index([adminAuditDecisionId])
   @@map("private_proof_access_grants")
 }
 

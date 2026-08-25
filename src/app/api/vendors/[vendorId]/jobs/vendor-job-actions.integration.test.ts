@@ -21,6 +21,8 @@ const hoisted = vi.hoisted(() => {
   const consentRecordFindFirst = vi.fn();
   const consentRecordCount = vi.fn();
   const bookingNotificationCount = vi.fn();
+  const serviceVideoPackageFindFirst = vi.fn();
+  const serviceVideoAdminDecisionFindFirst = vi.fn();
   const txEmployeeCertificationUpdateMany = vi.fn();
   const txConsentRequestLinkUpdateMany = vi.fn();
   const txBookingNotificationUpdateMany = vi.fn();
@@ -62,6 +64,8 @@ const hoisted = vi.hoisted(() => {
       count: consentRecordCount,
     },
     bookingNotification: { count: bookingNotificationCount },
+    serviceVideoPackageEvidence: { findFirst: serviceVideoPackageFindFirst },
+    serviceVideoAdminAuditDecisionEvidence: { findFirst: serviceVideoAdminDecisionFindFirst },
     $transaction: transaction,
   };
 
@@ -79,6 +83,8 @@ const hoisted = vi.hoisted(() => {
     consentRecordFindFirst,
     consentRecordCount,
     bookingNotificationCount,
+    serviceVideoPackageFindFirst,
+    serviceVideoAdminDecisionFindFirst,
     txEmployeeCertificationUpdateMany,
     txConsentRequestLinkUpdateMany,
     txBookingNotificationUpdateMany,
@@ -205,6 +211,9 @@ describe("vendor job actions integration", () => {
     hoisted.consentRecordCount.mockResolvedValue(0);
     hoisted.bookingNotificationCount.mockReset();
     hoisted.bookingNotificationCount.mockResolvedValue(0);
+    hoisted.serviceVideoPackageFindFirst.mockReset();
+    hoisted.serviceVideoPackageFindFirst.mockResolvedValue(null);
+    hoisted.serviceVideoAdminDecisionFindFirst.mockReset();
     hoisted.txEmployeeCertificationUpdateMany.mockReset();
     hoisted.txConsentRequestLinkUpdateMany.mockReset();
     hoisted.txBookingNotificationUpdateMany.mockReset();
@@ -220,6 +229,39 @@ describe("vendor job actions integration", () => {
     const res = await PATCH(req, ctx as any);
     expect(res.status).toBe(403);
     expect(hoisted.bookingFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("blocks every general manager mutation while the exact package awaits Reliance Audit", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", vendorId: "v1", status: "COMPLETED" });
+    hoisted.serviceVideoPackageFindFirst.mockResolvedValue({
+      id: "package-1",
+      status: "AWAITING_ADMIN_REVIEW",
+      adminAuditDecisionId: null,
+    });
+    const { req, ctx } = patchReq("v1", "job1", "MOVE_CONTENT_TO_ARCHIVE");
+
+    const res = await PATCH(req, ctx as any);
+
+    expect(res.status).toBe(409);
+    expect(await toJson(res)).toMatchObject({ code: "ADMIN_AUDIT_IN_PROGRESS" });
+    expect(hoisted.mediaSessionUpdateMany).not.toHaveBeenCalled();
+    expect(hoisted.mediaAssetUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks destructive deletion after terminal Admin REJECT", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", status: "REJECTED" });
+    hoisted.serviceVideoPackageFindFirst.mockResolvedValue({
+      id: "package-1",
+      status: "ADMIN_REJECTED",
+      adminAuditDecisionId: "admin-audit-1",
+    });
+    const { req, ctx } = deleteReq("v1", "job1");
+
+    const res = await DELETE(req, ctx as any);
+
+    expect(res.status).toBe(409);
+    expect(await toJson(res)).toMatchObject({ code: "ADMIN_AUDIT_REJECTED_TERMINAL" });
+    expect(hoisted.transaction).not.toHaveBeenCalled();
   });
 
   it.each([

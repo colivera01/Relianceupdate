@@ -92,12 +92,34 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       select: {
         id: true,
         moderationStatus: true,
+        mediaSession: { select: { bookingId: true } },
       },
     });
     if (!existing) {
       return NextResponse.json(
         { success: false, error: "Media asset not found", message: "Media asset not found" },
         { status: 404 }
+      );
+    }
+    const coreAuditPackage = existing.mediaSession?.bookingId
+      ? await (prisma as any).serviceVideoPackageEvidence.findFirst({
+          where: {
+            bookingId: existing.mediaSession.bookingId,
+            isCurrent: true,
+            auditEvidenceVersion: { not: null },
+            status: { in: ["AWAITING_ADMIN_REVIEW", "PRIVATE_APPROVED", "ADMIN_REJECTED"] },
+          },
+          select: { id: true, status: true },
+        })
+      : null;
+    if (coreAuditPackage) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "CORE_ADMIN_AUDIT_PACKAGE_DECISION_REQUIRED",
+          message: "Core-audited Service Video stages are immutable. Use the exact package audit or the separate publication workflow.",
+        },
+        { status: 409 },
       );
     }
 

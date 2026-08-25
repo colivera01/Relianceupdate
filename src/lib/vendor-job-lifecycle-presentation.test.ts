@@ -49,6 +49,21 @@ describe("vendor job lifecycle presentation", () => {
     expect(state.responsibleParticipant).toBe("Vendor manager");
   });
 
+  it("distinguishes terminal Reliance Admin rejection from historical rejection", () => {
+    const state = resolveVendorJobLifecyclePresentation({
+      status: "REJECTED",
+      operationalPhase: "REJECTED",
+      adminAuditDecision: "REJECT",
+      adminAuditRejectionCategory: "UNVERIFIABLE",
+      adminAuditRejectionReason: "The submitted evidence could not be verified.",
+    });
+
+    expect(state.label).toBe("Reliance Audit Failed");
+    expect(state.detail).toContain("cannot be rerecorded");
+    expect(state.detail).toContain("UNVERIFIABLE");
+    expect(state.responsibleParticipant).toBe("No participant needs to act");
+  });
+
   it("shows service-order sent only as a read-only state", () => {
     const state = resolveVendorJobLifecyclePresentation({
       status: "CONFIRMED",

@@ -382,7 +382,7 @@ export async function loadCanonicalRecordingGate(input: {
         ...(input.vendorId ? { vendorId: input.vendorId } : {}),
         isCurrent: true,
       },
-      select: { id: true, status: true, managerDecisionId: true },
+      select: { id: true, status: true, managerDecisionId: true, adminAuditDecisionId: true },
     }),
   ]);
   const correctionDecision =
@@ -521,6 +521,22 @@ export async function loadCanonicalRecordingGate(input: {
         ? "Recording, uploads, and further Reliance work-record actions are permanently closed."
         : "Recording and uploads are permanently closed. Create a new Service Order if work must be rescheduled.",
       serviceMayContinue: false,
+    });
+  } else if (String(currentPackage?.status || "").toUpperCase() === "ADMIN_REJECTED") {
+    decision = blocked(base, {
+      code: "ADMIN_AUDIT_REJECTED_TERMINAL",
+      why: "Reliance Admin Audit rejected the submitted Service Video package.",
+      responsibleParticipant: "NO_PARTICIPANT",
+      resolution: "Recording, replacement, upload, retry, and resubmission are permanently closed for this Service Order.",
+      serviceMayContinue: false,
+    });
+  } else if (String(currentPackage?.status || "").toUpperCase() === "AWAITING_ADMIN_REVIEW") {
+    decision = blocked(base, {
+      code: "ADMIN_AUDIT_IN_PROGRESS",
+      why: "The vendor manager submitted the completed Service Videos for Reliance Admin Audit.",
+      responsibleParticipant: "ADMIN",
+      resolution: "Wait for Reliance Admin Audit.",
+      serviceMayContinue: true,
     });
   } else if (workRecordStatus === "AWAITING_REVIEW" || currentPackage?.status === "AWAITING_MANAGER_REVIEW") {
     decision = blocked(base, {

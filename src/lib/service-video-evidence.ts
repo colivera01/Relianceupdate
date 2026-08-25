@@ -27,16 +27,23 @@ export async function assertServiceVideoStageMutationAllowed(
 
   const currentPackage = await db.serviceVideoPackageEvidence.findFirst({
     where: { bookingId: input.bookingId, vendorId: input.vendorId, isCurrent: true },
-    select: { status: true, managerDecisionId: true },
+    select: { status: true, managerDecisionId: true, adminAuditDecisionId: true },
   });
+  const packageStatus = String(currentPackage?.status || "").toUpperCase();
+  if (packageStatus === "ADMIN_REJECTED") {
+    throw new ServiceVideoMutationBlockedError("ADMIN_AUDIT_REJECTED_TERMINAL");
+  }
+  if (packageStatus === "AWAITING_ADMIN_REVIEW") {
+    throw new ServiceVideoMutationBlockedError("ADMIN_AUDIT_IN_PROGRESS");
+  }
   if (
     String(booking.status || "").toUpperCase() === "AWAITING_REVIEW" ||
-    String(currentPackage?.status || "").toUpperCase() === "AWAITING_MANAGER_REVIEW"
+    packageStatus === "AWAITING_MANAGER_REVIEW"
   ) {
     throw new ServiceVideoMutationBlockedError("MANAGER_REVIEW_IN_PROGRESS");
   }
 
-  if (String(currentPackage?.status || "").toUpperCase() === "CORRECTION_REQUESTED") {
+  if (packageStatus === "CORRECTION_REQUESTED") {
     const decision = currentPackage?.managerDecisionId
       ? await db.serviceVideoManagerDecisionEvidence.findFirst({
           where: {
@@ -431,6 +438,37 @@ export async function submitServiceVideoPackage(input: {
     const current = await tx.serviceVideoPackageEvidence.findFirst({
       where: { bookingId: input.bookingId, vendorId: input.vendorId, isCurrent: true },
     });
+    const currentStatus = String(current?.status || "").toUpperCase();
+    if (currentStatus === "ADMIN_REJECTED") {
+      throw new ServiceVideoMutationBlockedError("ADMIN_AUDIT_REJECTED_TERMINAL");
+    }
+    if (currentStatus === "AWAITING_ADMIN_REVIEW" || currentStatus === "PRIVATE_APPROVED") {
+      throw new ServiceVideoMutationBlockedError("SERVICE_VIDEO_PACKAGE_RECORDING_CLOSED");
+    }
+    if (currentStatus === "CORRECTION_REQUESTED") {
+      const decision = current?.managerDecisionId
+        ? await tx.serviceVideoManagerDecisionEvidence.findFirst({
+            where: {
+              id: current.managerDecisionId,
+              packageId: current.id,
+              decision: "CORRECTION_REQUESTED",
+            },
+            select: { targetedStagesJson: true },
+          })
+        : null;
+      let targeted: string[] = [];
+      try {
+        const parsed = JSON.parse(String(decision?.targetedStagesJson || "[]"));
+        targeted = Array.isArray(parsed) ? parsed.map((stage) => String(stage).toUpperCase()) : [];
+      } catch {
+        targeted = [];
+      }
+      if (!REQUIRED_SERVICE_VIDEO_STAGES.every((stage) =>
+        targeted.includes(stage) || stages.some((row: any) => row.stage === stage && row.uploadState === "SAVED")
+      )) {
+        throw new ServiceVideoMutationBlockedError("CORRECTION_PACKAGE_INCOMPLETE");
+      }
+    }
     if (current?.status === "AWAITING_MANAGER_REVIEW" && current.packageHash === packageHash) {
       return current;
     }
@@ -535,8 +573,36 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
     where: { id: grant.packageId, bookingId: input.bookingId, isCurrent: true, status: "PRIVATE_APPROVED", managerDecisionId: grant.managerDecisionId, customerAccessGrantId: grant.id },
   });
   if (!pkg) return null;
-  const decision = await (prisma as any).serviceVideoManagerDecisionEvidence.findFirst({ where: { id: grant.managerDecisionId, packageId: pkg.id, decision: "PRIVATE_APPROVED", packageHash: pkg.packageHash } });
+  const isCoreAdminGrant = Boolean(grant.adminAuditDecisionId || pkg.adminAuditDecisionId);
+  const decision = await (prisma as any).serviceVideoManagerDecisionEvidence.findFirst({
+    where: {
+      id: grant.managerDecisionId,
+      packageId: pkg.id,
+      decision: isCoreAdminGrant ? "SUBMITTED_FOR_ADMIN_AUDIT" : "PRIVATE_APPROVED",
+      packageHash: pkg.packageHash,
+    },
+  });
   if (!decision) return null;
+  if (isCoreAdminGrant) {
+    if (
+      !grant.adminAuditDecisionId ||
+      pkg.adminAuditDecisionId !== grant.adminAuditDecisionId ||
+      !pkg.auditEvidenceVersion
+    ) return null;
+    const auditDecision = await (prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst({
+      where: {
+        id: grant.adminAuditDecisionId,
+        packageId: pkg.id,
+        bookingId: input.bookingId,
+        managerDecisionId: decision.id,
+        packageHash: pkg.packageHash,
+        decision: "PASS",
+        customerProofReleased: true,
+        customerAccessGrantId: grant.id,
+      },
+    });
+    if (!auditDecision) return null;
+  }
   const packageStages = JSON.parse(pkg.stageEvidenceJson) as Array<{
     stage: ServiceVideoStage;
     stageEvidenceId: string;

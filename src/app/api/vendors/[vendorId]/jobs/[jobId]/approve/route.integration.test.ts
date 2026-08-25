@@ -2,19 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   bookingFindFirst: vi.fn(),
-  privateProofAccessGrantFindFirst: vi.fn(),
-  approvePrivateServiceVideoPackage: vi.fn(),
-  sendVideoReadyNotification: vi.fn(),
+  submitPackageForCoreAdminAudit: vi.fn(),
+  sendCoreAdminAuditReadyNotification: vi.fn(),
   ensureRetentionSchedulesForBooking: vi.fn(),
 }));
 
-vi.mock("@/server/db", () => ({
-  prisma: {
-    booking: { findFirst: hoisted.bookingFindFirst },
-    privateProofAccessGrant: { findFirst: hoisted.privateProofAccessGrantFindFirst },
-  },
-}));
-
+vi.mock("@/server/db", () => ({ prisma: { booking: { findFirst: hoisted.bookingFindFirst } } }));
 vi.mock("@/lib/membership-auth", () => ({
   requireVendorManager: vi.fn(async () => ({
     vendorId: "v1",
@@ -22,19 +15,16 @@ vi.mock("@/lib/membership-auth", () => ({
     membershipId: "manager-membership-1",
   })),
 }));
-
-vi.mock("@/lib/service-video-evidence", () => ({
-  approvePrivateServiceVideoPackage: hoisted.approvePrivateServiceVideoPackage,
+vi.mock("@/lib/service-video-admin-audit", async () => {
+  const actual = await vi.importActual<any>("@/lib/service-video-admin-audit");
+  return { ...actual, submitPackageForCoreAdminAudit: hoisted.submitPackageForCoreAdminAudit };
+});
+vi.mock("@/lib/service-video-admin-audit-notifications", () => ({
+  sendCoreAdminAuditReadyNotification: hoisted.sendCoreAdminAuditReadyNotification,
 }));
-
-vi.mock("@/lib/notifications/send-video-ready", () => ({
-  sendVideoReadyNotification: hoisted.sendVideoReadyNotification,
-}));
-
 vi.mock("@/lib/media-lifecycle", () => ({
   ensureRetentionSchedulesForBooking: hoisted.ensureRetentionSchedulesForBooking,
 }));
-
 vi.mock("@/lib/lifecycle-audit", () => ({ recordLifecycleAudit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/trust-score-outcome-foundation", () => ({
   TRUST_OUTCOME_TYPES: { WORKFLOW_COMPLETED: "workflow_completed", LATE_COMPLETION: "late_completion" },
@@ -42,10 +32,10 @@ vi.mock("@/lib/trust-score-outcome-foundation", () => ({
 }));
 vi.mock("@/lib/trust-score-calculator", () => ({ tryRecalculateVendorTrustScore: vi.fn(async () => undefined) }));
 
-function request(vendorId = "v1", jobId = "job1") {
+function request() {
   return {
-    req: new Request(`http://localhost/api/vendors/${vendorId}/jobs/${jobId}/approve`, { method: "POST" }),
-    ctx: { params: Promise.resolve({ vendorId, jobId }) },
+    req: new Request("http://localhost/api/vendors/v1/jobs/job1/approve", { method: "POST" }),
+    ctx: { params: Promise.resolve({ vendorId: "v1", jobId: "job1" }) },
   };
 }
 
@@ -57,7 +47,7 @@ function booking(status: string) {
     status,
     title: "Outlet Installation",
     clientName: "Beta Customer",
-    customerMetadata: JSON.stringify({ client_email: "customer@example.test" }),
+    customerMetadata: "{}",
     scheduledFor: now,
     date: now,
     updatedAt: now,
@@ -67,18 +57,14 @@ function booking(status: string) {
   };
 }
 
-describe("vendor job Private Service Video approval", () => {
+describe("vendor manager Service Video audit submission", () => {
   beforeEach(() => {
-    hoisted.bookingFindFirst.mockReset();
-    hoisted.privateProofAccessGrantFindFirst.mockReset();
-    hoisted.approvePrivateServiceVideoPackage.mockReset();
-    hoisted.sendVideoReadyNotification.mockReset();
-    hoisted.ensureRetentionSchedulesForBooking.mockReset();
-    hoisted.sendVideoReadyNotification.mockResolvedValue({ ok: true, channels: [{ channel: "email", success: true }] });
+    vi.clearAllMocks();
+    hoisted.sendCoreAdminAuditReadyNotification.mockResolvedValue({ status: "SENT" });
     hoisted.ensureRetentionSchedulesForBooking.mockResolvedValue([]);
   });
 
-  it("blocks jobs that are not awaiting manager review", async () => {
+  it("blocks jobs outside manager review", async () => {
     const { POST } = await import("./route");
     hoisted.bookingFindFirst.mockResolvedValue(booking("CONFIRMED"));
     const { req, ctx } = request();
@@ -87,63 +73,42 @@ describe("vendor job Private Service Video approval", () => {
     expect(await response.json()).toMatchObject({ code: "INVALID_APPROVAL_STATUS" });
   });
 
-  it("fails closed when the complete evidence chain cannot be verified", async () => {
+  it("fails closed when the exact package evidence cannot be attested", async () => {
     const { POST } = await import("./route");
     hoisted.bookingFindFirst.mockResolvedValue(booking("AWAITING_REVIEW"));
-    hoisted.approvePrivateServiceVideoPackage.mockRejectedValue(new Error("SERVICE_VIDEO_EVIDENCE_CHAIN_INCOMPLETE"));
+    hoisted.submitPackageForCoreAdminAudit.mockRejectedValue(new Error("ADMIN_AUDIT_PACKAGE_INCOMPLETE"));
     const { req, ctx } = request();
     const response = await POST(req, ctx as any);
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ code: "PRIVATE_PROOF_EVIDENCE_CHAIN_INCOMPLETE" });
-    expect(hoisted.sendVideoReadyNotification).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ code: "ADMIN_AUDIT_EVIDENCE_CHAIN_INCOMPLETE" });
+    expect(hoisted.sendCoreAdminAuditReadyNotification).not.toHaveBeenCalled();
   });
 
-  it("treats a completed work record with an active grant as already approved", async () => {
-    const { POST } = await import("./route");
-    hoisted.bookingFindFirst.mockResolvedValue(booking("COMPLETED"));
-    hoisted.privateProofAccessGrantFindFirst.mockResolvedValue({ id: "grant-1" });
-    const { req, ctx } = request();
-    const response = await POST(req, ctx as any);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ success: true, alreadyApproved: true });
-    expect(hoisted.approvePrivateServiceVideoPackage).not.toHaveBeenCalled();
-    expect(hoisted.ensureRetentionSchedulesForBooking).toHaveBeenCalledWith("job1");
-  });
-
-  it("atomically approves customer-only Private proof and sends the customer notice", async () => {
+  it("submits for Admin Audit without granting or notifying customer proof", async () => {
     const { POST } = await import("./route");
     hoisted.bookingFindFirst.mockResolvedValue(booking("AWAITING_REVIEW"));
-    hoisted.approvePrivateServiceVideoPackage.mockResolvedValue({
-      package: { id: "package-1", version: 1, packageHash: "package-hash" },
-      grant: { id: "grant-1" },
-      booking: { id: "job1", status: "COMPLETED", date: new Date(), updatedAt: new Date() },
+    hoisted.submitPackageForCoreAdminAudit.mockResolvedValue({
+      booking: { id: "job1", status: "COMPLETED" },
+      package: { id: "package-1", version: 2, packageHash: "package-hash", status: "AWAITING_ADMIN_REVIEW" },
+      managerDecision: { id: "manager-decision-1" },
+      adminNotificationId: "admin-notification-1",
+      adminEmailNotificationId: "booking-notification-1",
+      firstTransition: true,
     });
     const { req, ctx } = request();
     const response = await POST(req, ctx as any);
-    const body = await response.json();
     expect(response.status).toBe(200);
-    expect(body).toMatchObject({
+    expect(await response.json()).toMatchObject({
       success: true,
-      privateProof: {
-        packageId: "package-1",
-        packageVersion: 1,
-        accessGrantId: "grant-1",
-        audience: "CUSTOMER_ONLY",
-      },
-      job: { status: "COMPLETED" },
+      message: expect.stringContaining("Customer access remains locked"),
+      adminAudit: { packageId: "package-1", packageVersion: 2, status: "AWAITING_ADMIN_REVIEW" },
     });
-    expect(hoisted.approvePrivateServiceVideoPackage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingId: "job1",
-        vendorId: "v1",
-        customerUserId: "customer-1",
-        managerUserId: "manager-1",
-        managerMembershipId: "manager-membership-1",
-        completedAt: expect.any(Date),
-        customerMetadata: expect.stringContaining("COMPLETED"),
-      }),
-    );
-    expect(hoisted.ensureRetentionSchedulesForBooking).toHaveBeenCalledWith("job1");
-    expect(hoisted.sendVideoReadyNotification).toHaveBeenCalledOnce();
+    expect(hoisted.submitPackageForCoreAdminAudit).toHaveBeenCalledWith({
+      bookingId: "job1",
+      vendorId: "v1",
+      managerUserId: "manager-1",
+      managerMembershipId: "manager-membership-1",
+    });
+    expect(hoisted.sendCoreAdminAuditReadyNotification).toHaveBeenCalledOnce();
   });
 });

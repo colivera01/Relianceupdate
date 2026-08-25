@@ -614,10 +614,42 @@ export async function GET(
           })
         )
       : [];
+    const currentServiceVideoPackages: any[] = bookingIds.length
+      ? await withTransientDbRetry(() =>
+          (prisma as any).serviceVideoPackageEvidence.findMany({
+            where: { bookingId: { in: bookingIds }, vendorId, isCurrent: true },
+          })
+        )
+      : [] as any[];
+    const adminAuditDecisionIds = currentServiceVideoPackages
+      .map((pkg: any) => String(pkg.adminAuditDecisionId || ""))
+      .filter(Boolean);
+    const adminAuditDecisions: any[] = adminAuditDecisionIds.length
+      ? await withTransientDbRetry(() =>
+          (prisma as any).serviceVideoAdminAuditDecisionEvidence.findMany({
+            where: { id: { in: adminAuditDecisionIds }, vendorId },
+            select: {
+              id: true,
+              decision: true,
+              rejectionCategory: true,
+              reason: true,
+              decidedAt: true,
+              packageId: true,
+              packageVersion: true,
+            },
+          })
+        )
+      : [] as any[];
     const mediaSummaryByBookingId = new Map<string, { linkedSessionCount: number; linkedMediaCount: number }>();
     const sessionsForPhaseByBookingId = new Map<string, any[]>();
     const latestConsentByBookingId = new Map<string, any>();
     const consentNotificationByBookingId = new Map<string, any>();
+    const currentPackageByBookingId = new Map(
+      currentServiceVideoPackages.map((pkg: any) => [String(pkg.bookingId), pkg]),
+    );
+    const adminAuditDecisionById = new Map(
+      adminAuditDecisions.map((decision: any) => [String(decision.id), decision]),
+    );
     for (const session of sessionsByBooking as any[]) {
       const key = String(session.bookingId || "");
       if (!key) continue;
@@ -670,6 +702,10 @@ export async function GET(
         linkedMediaCount: 0,
       };
       const latestConsentRecord = latestConsentByBookingId.get(String(booking.id)) || null;
+      const currentServiceVideoPackage = currentPackageByBookingId.get(String(booking.id)) as any;
+      const adminAuditDecision: any = currentServiceVideoPackage?.adminAuditDecisionId
+        ? adminAuditDecisionById.get(String(currentServiceVideoPackage.adminAuditDecisionId))
+        : null;
       const consentNotification =
         consentNotificationByBookingId.get(String(booking.id)) || null;
       const packageState = evaluateVendorJobPackageState(
@@ -749,6 +785,22 @@ export async function GET(
           releasedMembershipIds: legacyCompliance.releasedMembershipIds,
         },
         rejectionReason: booking.rejectionReason || null,
+        serviceVideoPackage: currentServiceVideoPackage
+          ? {
+              id: currentServiceVideoPackage.id,
+              version: currentServiceVideoPackage.version,
+              status: currentServiceVideoPackage.status,
+            }
+          : null,
+        adminAuditDecision: adminAuditDecision
+          ? {
+              decision: adminAuditDecision.decision,
+              rejectionCategory: adminAuditDecision.rejectionCategory,
+              reason: adminAuditDecision.reason,
+              decidedAt: adminAuditDecision.decidedAt?.toISOString?.() || null,
+              packageVersion: adminAuditDecision.packageVersion,
+            }
+          : null,
         rejectedAt: booking.rejectedAt?.toISOString?.() || null,
         consentStatus: permissionGate.permissionState,
         latestConsentId: latestConsentRecord?.id || null,

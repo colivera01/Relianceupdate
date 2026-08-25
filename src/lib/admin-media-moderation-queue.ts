@@ -9,6 +9,7 @@ import {
 } from "@/lib/admin-media-moderation-packages";
 import { launchExcludedVendorIds } from "@/lib/internal-identities";
 import { getRelianceOps, parseCustomerMetadataRecord } from "@/lib/vendor-job-operational-phase";
+import { loadCoreAdminAuditCandidate } from "@/lib/service-video-admin-audit";
 
 type GetAdminMediaModerationQueueOptions = {
   moderationStatus?: string | null;
@@ -176,7 +177,7 @@ export async function getAdminMediaModerationQueue(
     : completePackages.filter(
         (pack: any) => !excludedVendorIds.includes(String(pack.vendorId || "").trim())
       );
-  const managerApprovedPackages = launchFacingPackages.filter((pack: any) => {
+  const managerSubmittedPackages = launchFacingPackages.filter((pack: any) => {
     const bookingStatus = String(pack.bookingStatus || "").trim().toUpperCase();
     const phase = String(
       pack.videosByStage?.COMPLETED?.bookingOperationalPhase ||
@@ -186,6 +187,41 @@ export async function getAdminMediaModerationQueue(
     ).trim().toUpperCase();
     return bookingStatus === "COMPLETED" && phase === "AWAITING_ADMIN_REVIEW";
   });
+
+  const managerApprovedPackages = (
+    await Promise.all(
+      managerSubmittedPackages.map(async (pack: any) => {
+        try {
+          const candidate = await loadCoreAdminAuditCandidate(prisma as any, pack.bookingId);
+          const exactAssetIds = new Set(
+            candidate.packageStages.map((stage) => String(stage.mediaAssetId)),
+          );
+          const displayedAssetIds = new Set(
+            REQUIRED_MEDIA_MODERATION_STAGE_KEYS.map((stage) =>
+              String(pack.videosByStage?.[stage]?.assetId || ""),
+            ),
+          );
+          if (
+            exactAssetIds.size !== REQUIRED_MEDIA_MODERATION_STAGE_KEYS.length ||
+            displayedAssetIds.size !== REQUIRED_MEDIA_MODERATION_STAGE_KEYS.length ||
+            Array.from(exactAssetIds).some((assetId) => !displayedAssetIds.has(assetId))
+          ) {
+            return null;
+          }
+          return {
+            ...pack,
+            packageId: candidate.package.id,
+            packageVersion: candidate.package.version,
+            packageHash: candidate.package.packageHash,
+            managerDecisionId: candidate.managerDecision.id,
+            adminAuditEvidenceVersion: candidate.package.auditEvidenceVersion,
+          };
+        } catch {
+          return null;
+        }
+      }),
+    )
+  ).filter(Boolean);
 
   const filteredByStatus = moderationStatus
     ? managerApprovedPackages.filter((pack) =>

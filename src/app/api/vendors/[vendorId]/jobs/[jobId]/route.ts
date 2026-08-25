@@ -92,6 +92,28 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
       );
     }
 
+    const currentServiceVideoPackage = await (prisma as any).serviceVideoPackageEvidence.findFirst({
+      where: { bookingId: booking.id, vendorId, isCurrent: true },
+      select: { id: true, version: true, status: true, adminAuditDecisionId: true },
+    });
+    const adminAuditDecision = currentServiceVideoPackage?.adminAuditDecisionId
+      ? await (prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst({
+          where: {
+            id: currentServiceVideoPackage.adminAuditDecisionId,
+            packageId: currentServiceVideoPackage.id,
+            bookingId: booking.id,
+            vendorId,
+          },
+          select: {
+            decision: true,
+            rejectionCategory: true,
+            reason: true,
+            decidedAt: true,
+            packageVersion: true,
+          },
+        })
+      : null;
+
     const metadata = parseCustomerMetadata(booking.customerMetadata || null);
     const rawCancellation =
       metadata.vendor_job_cancellation &&
@@ -160,6 +182,22 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
         serviceName: booking.service?.name || "",
         serviceType: booking.service?.name || "",
         rejectionReason: booking.rejectionReason || null,
+        serviceVideoPackage: currentServiceVideoPackage
+          ? {
+              id: currentServiceVideoPackage.id,
+              version: currentServiceVideoPackage.version,
+              status: currentServiceVideoPackage.status,
+            }
+          : null,
+        adminAuditDecision: adminAuditDecision
+          ? {
+              decision: adminAuditDecision.decision,
+              rejectionCategory: adminAuditDecision.rejectionCategory,
+              reason: adminAuditDecision.reason,
+              decidedAt: adminAuditDecision.decidedAt?.toISOString?.() || null,
+              packageVersion: adminAuditDecision.packageVersion,
+            }
+          : null,
         rejectedAt: booking.rejectedAt?.toISOString?.() || null,
         notes: notes ? [{ text: notes }] : [],
         cancellation: rawCancellation
