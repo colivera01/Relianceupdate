@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  createRecordingScopeAssessment,
   deriveRecordingScopeAssessment,
   parseRecordingScopeAssessmentInput,
   SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
@@ -152,5 +153,36 @@ describe("recording subject assessment", () => {
       authorityHolderType: "vendor_manager",
       serviceCanContinueWithoutRecording: true,
     })).toBeNull();
+  });
+
+  it("keeps the production assessment writer on the current V3 contract", async () => {
+    const parsed = parseRecordingScopeAssessmentInput({
+      recordingLocation: "business",
+      propertyScope: "vendor_owned",
+      peopleScope: "none",
+      frameControl: "controlled",
+      audioRequested: false,
+    });
+    const assessment = deriveRecordingScopeAssessment(parsed!);
+    const create = vi.fn().mockResolvedValue({ id: "assessment-current-v3" });
+    const createMany = vi.fn().mockResolvedValue({ count: 1 });
+
+    await createRecordingScopeAssessment({
+      tx: {
+        recordingScopeAssessment: { create },
+        recordingAuthorityRequirement: { createMany },
+      },
+      bookingId: "booking-1",
+      vendorId: "vendor-1",
+      completedByUserId: "manager-1",
+      assessment,
+    });
+
+    const data = create.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty("contractVersion");
+    expect(JSON.parse(data.scopeJson).schemaVersion).toBe(
+      SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
+    );
+    expect(data.scopeJson).not.toContain("recording-assessment-v4-multiscope-safety-v1");
   });
 });

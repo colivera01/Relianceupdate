@@ -506,6 +506,7 @@ model RecordingScopeAssessment {
   generation                         Int       @default(1)
   isCurrent                          Boolean   @default(true)
   status                             String    @default("COMPLETE")
+  contractVersion                    String?
   locationType                       String
   riskLevel                          String
   propertyScope                      String
@@ -537,6 +538,7 @@ model RecordingScopeAssessment {
   @@unique([bookingId, generation])
   @@index([bookingId, isCurrent])
   @@index([vendorId, createdAt])
+  @@index([contractVersion])
   @@index([scopeHash])
   @@map("recording_scope_assessments")
 }
