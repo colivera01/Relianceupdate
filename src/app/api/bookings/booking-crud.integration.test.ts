@@ -919,6 +919,10 @@ describe('POST /api/bookings', () => {
         userId: 'customer-by-email',
       }),
     );
+    hoisted.recordingScopeAssessmentCreate.mockImplementationOnce(({ data }: any) => Promise.resolve({
+      id: 'assessment-1',
+      ...data,
+    }));
 
     const res = await bookingsCreatePOST(
       jsonRequest(
@@ -934,6 +938,7 @@ describe('POST /api/bookings', () => {
             recording_property_scope: 'vendor_owned',
             recording_people_scope: 'none',
             recording_frame_control: 'controlled',
+            recording_audio_requested: true,
             service_can_continue_without_recording: true,
           },
         },
@@ -954,6 +959,7 @@ describe('POST /api/bookings', () => {
       expect.objectContaining({
         bookingId: 'vendor-level-one-book',
         customerEmail: 'alex@example.com',
+        audioEnabled: true,
       }),
     );
     expect(createVerifiedPermissionRequest).not.toHaveBeenCalled();
@@ -961,6 +967,7 @@ describe('POST /api/bookings', () => {
       data: expect.objectContaining({
         authorityHolderType: 'vendor_manager',
         permissionRequired: false,
+        audioAllowed: true,
       }),
     });
     expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();

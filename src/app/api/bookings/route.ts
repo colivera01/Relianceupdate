@@ -960,6 +960,7 @@ export async function POST(request: NextRequest) {
           consentMediaSessionId: null,
           noticeNotificationId: noticeNotification?.id || null,
           assessmentScopeHash: createdAssessment?.scopeHash || null,
+          assessmentAudioEnabled: createdAssessment?.audioAllowed === true,
         };
       }
 
@@ -981,6 +982,7 @@ export async function POST(request: NextRequest) {
         consentMediaSessionId: mediaSession.id,
         noticeNotificationId: null,
         assessmentScopeHash: createdAssessment?.scopeHash || null,
+        assessmentAudioEnabled: createdAssessment?.audioAllowed === true,
       };
       });
     } catch (transactionError: any) {
@@ -1072,6 +1074,7 @@ export async function POST(request: NextRequest) {
           (await prisma.service.findUnique({ where: { id: serviceId }, select: { name: true } }))?.name ||
           (typeof title === 'string' ? title : null),
         scopeHash: transactionalCreate.assessmentScopeHash,
+        audioEnabled: transactionalCreate.assessmentAudioEnabled,
       });
       recordingNotice = {
         status: noticeResult.delivery?.status || 'FAILED',

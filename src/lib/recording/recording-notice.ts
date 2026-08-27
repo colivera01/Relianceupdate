@@ -12,6 +12,7 @@ import {
   normalizePermissionPhone,
 } from "@/lib/consent/recipient";
 import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
+import { permissionContentForAudio } from "@/lib/consent/content-version";
 
 export const CUSTOMER_RECORDING_NOTICE_KIND = "CUSTOMER_RECORDING_NOTICE";
 
@@ -39,6 +40,7 @@ export type RecordingNoticeInput = {
   vendorName?: string | null;
   serviceName?: string | null;
   scopeHash?: string | null;
+  audioEnabled: boolean;
 };
 
 function deliveryStatus(channels: NoticeChannel[]): "FAILED" | "PARTIAL" | "SENT" {
@@ -68,12 +70,15 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
   const email = normalizePermissionEmail(input.customerEmail);
   const phone = normalizePermissionPhone(input.customerPhone);
   const subject = `Reliance recording notice from ${vendorName}`;
+  const audioEnabled = input.audioEnabled === true;
+  const recordingFormat = audioEnabled ? "video-and-audio" : "video-only";
+  const audioDisclosure = permissionContentForAudio(audioEnabled).content.audio;
   const text = [
     `Hello${customerName ? ` ${customerName}` : ""},`,
     "",
-    `${vendorName} plans to create three short, video-only proof-of-service clips for ${serviceName}.`,
+    `${vendorName} plans to create three short, ${recordingFormat} proof-of-service clips for ${serviceName}.`,
     "The approved scope is limited to vendor-owned property or a controlled work area. People, conversations, sensitive information, and customer identifiers are outside the approved scope.",
-    "Audio is off. Recordings start Private. Public sharing would require a separate later decision.",
+    `${audioDisclosure} Recordings start Private. Public sharing would require a separate later decision.`,
     "No response is required. Contact the service provider if the planned recording no longer matches this description.",
     "",
     "- Reliance Team",
@@ -83,9 +88,9 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
     headline: "Private proof-of-service recording is planned",
     greeting: `Hello${customerName ? ` ${customerName}` : ""},`,
     bodyHtml: `
-      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> plans to create three short, video-only proof-of-service clips.</p>
+      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> plans to create three short, ${recordingFormat} proof-of-service clips.</p>
       <p style="margin:0 0 14px;">The approved scope is limited to vendor-owned property or a controlled work area. People, conversations, sensitive information, and customer identifiers are outside the approved scope.</p>
-      <p style="margin:0 0 14px;">Audio is off. Recordings start Private. Public sharing would require a separate later decision.</p>
+      <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(audioDisclosure)} Recordings start Private. Public sharing would require a separate later decision.</p>
       <p style="margin:0;">No response is required. Contact the service provider if the planned recording no longer matches this description.</p>
     `,
     details: [{ label: "Service", value: serviceName }],
@@ -119,7 +124,7 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
   }
 
   if (env.smsEnabled && phone) {
-    const body = `Reliance: ${vendorName} plans video-only Private proof for ${serviceName}. Scope: vendor-owned property or controlled work area only; no people or audio. No response required. Reply STOP to opt out.`;
+    const body = `Reliance: ${vendorName} plans ${recordingFormat} Private proof for ${serviceName}. Scope: vendor-owned property or controlled work area only; no people. ${audioDisclosure} No response required. Reply STOP to opt out.`;
     const result = await sendSms({ to: phone, body });
     channels.push({
       channel: "sms",
@@ -270,5 +275,6 @@ export async function retryRecordingNotice(notificationId: string, actorUserId: 
     vendorName: notification.booking.vendor?.businessName || notification.booking.vendor?.name,
     serviceName: notification.booking.service?.name || notification.booking.title,
     scopeHash: assessment.scopeHash,
+    audioEnabled: assessment.audioAllowed === true,
   });
 }

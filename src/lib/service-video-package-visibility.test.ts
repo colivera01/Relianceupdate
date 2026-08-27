@@ -89,6 +89,7 @@ function installFoundation({ passed = true } = {}) {
   hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
     peopleScope: "none",
     subjectJson: "{}",
+    scopeJson: JSON.stringify({ schemaVersion: "recording-assessment-v3-package-audio-v1" }),
     audioAllowed: false,
   });
 }
@@ -156,6 +157,63 @@ describe("package-level customer Service Video visibility", () => {
       new Set(["INTRO", "IN_PROGRESS", "COMPLETED"]),
     );
     expect(result.proposal).toEqual(expect.objectContaining({ status: "AWAITING_ADMIN_REVIEW" }));
+  });
+
+  it("blocks current-V1 Public eligibility when a protected nonparticipant may appear", async () => {
+    const { decidePackageVisibility } = await import("./service-video-publication");
+    hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
+      peopleScope: "none",
+      subjectJson: JSON.stringify({ protectedNonParticipantMayAppear: true }),
+      scopeJson: JSON.stringify({ schemaVersion: "recording-assessment-v3-package-audio-v1" }),
+      audioAllowed: false,
+    });
+
+    await expect(decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+    })).rejects.toThrow("PUBLICATION_PROTECTED_PERSON_BLOCK");
+    expect(hoisted.prisma.serviceVideoPublicationProposal.create).not.toHaveBeenCalled();
+  });
+
+  it("uses the current-V1 field rather than stale historical bystander keys", async () => {
+    const { decidePackageVisibility } = await import("./service-video-publication");
+    hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
+      peopleScope: "none",
+      subjectJson: JSON.stringify({
+        protectedNonParticipantMayAppear: false,
+        includesBystander: true,
+        bystanderMayAppear: true,
+      }),
+      scopeJson: JSON.stringify({ schemaVersion: "recording-assessment-v3-package-audio-v1" }),
+      audioAllowed: false,
+    });
+
+    await expect(decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+    })).resolves.toMatchObject({ proposal: { status: "AWAITING_ADMIN_REVIEW" } });
+  });
+
+  it("preserves historical bystander-key interpretation", async () => {
+    const { decidePackageVisibility } = await import("./service-video-publication");
+    hoisted.prisma.recordingScopeAssessment.findFirst.mockResolvedValue({
+      peopleScope: "none",
+      subjectJson: JSON.stringify({ includesBystander: true }),
+      scopeJson: JSON.stringify({ schemaVersion: "recording-assessment-v2-simplified-v1" }),
+      audioAllowed: false,
+    });
+
+    await expect(decidePackageVisibility({
+      bookingId: "booking-1",
+      customerUserId: "customer-1",
+      decision: "SHARE_PUBLICLY",
+      verificationMethod: "SIGNED_IN_CUSTOMER_SESSION",
+    })).rejects.toThrow("PUBLICATION_PROTECTED_PERSON_BLOCK");
+    expect(hoisted.prisma.serviceVideoPublicationProposal.create).not.toHaveBeenCalled();
   });
 
   it("requires an explicit audio warning confirmation before the complete package enters Public review", async () => {

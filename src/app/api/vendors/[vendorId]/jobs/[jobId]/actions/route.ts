@@ -874,6 +874,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             vendorName: booking.vendor?.businessName || booking.vendor?.name,
             serviceName: booking.service?.name || booking.title,
             scopeHash: scopeChange.createdAssessment.scopeHash,
+            audioEnabled: scopeChange.createdAssessment.audioAllowed === true,
           });
           workflowState = {
             ...workflowState,

@@ -5,6 +5,7 @@ import {
   REQUIRED_SERVICE_VIDEO_STAGES,
   type ServiceVideoStage,
 } from "@/lib/service-video-evidence";
+import { SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION } from "@/lib/recording/scope-assessment";
 
 export const PUBLICATION_STATUSES = {
   AWAITING_CUSTOMER: "AWAITING_CUSTOMER_DECISION",
@@ -72,6 +73,18 @@ function normalizeStage(value: unknown): ServiceVideoStage | null {
   return REQUIRED_SERVICE_VIDEO_STAGES.includes(stage as ServiceVideoStage)
     ? (stage as ServiceVideoStage)
     : null;
+}
+
+function assessmentContainsProtectedNonParticipant(assessment: {
+  scopeJson?: string | null;
+  subjectJson?: string | null;
+}): boolean {
+  const scope = parseJson<Record<string, unknown>>(assessment.scopeJson, {});
+  const subject = parseJson<Record<string, unknown>>(assessment.subjectJson, {});
+  if (scope.schemaVersion === SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION) {
+    return subject.protectedNonParticipantMayAppear === true;
+  }
+  return subject.includesBystander === true || subject.bystanderMayAppear === true;
 }
 
 function isPackageVisibilityProposal(proposal: any): boolean {
@@ -386,11 +399,11 @@ export async function decidePackageVisibility(input: {
     const assessment = await tx.recordingScopeAssessment.findFirst({
       where: { bookingId: input.bookingId, vendorId: foundation.booking.vendorId, isCurrent: true },
       orderBy: { generation: "desc" },
-      select: { peopleScope: true, subjectJson: true, audioAllowed: true },
+      select: { peopleScope: true, subjectJson: true, scopeJson: true, audioAllowed: true },
     });
     const subject = parseJson<Record<string, unknown>>(assessment?.subjectJson, {});
     const containsMinor = subject.includesMinor === true || subject.minorMayAppear === true;
-    const containsBystander = subject.includesBystander === true || subject.bystanderMayAppear === true;
+    const containsBystander = assessmentContainsProtectedNonParticipant(assessment || {});
     if (containsMinor || containsBystander) {
       throw new Error("PUBLICATION_PROTECTED_PERSON_BLOCK");
     }
