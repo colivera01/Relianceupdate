@@ -475,7 +475,7 @@ model Booking {
    * JSON string (snake_case keys). SQL Server provider has no Prisma `Json` type — use `String` + app parse/stringify.
    */
   customerMetadata   String?   @db.NVarChar(Max)
-  creationRequestKey String?
+  creationRequestKey String?   @db.NVarChar(255)
 
   // Relations
   user                        User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -527,7 +527,7 @@ model RecordingScopeAssessment {
   createdAt                          DateTime  @default(now())
   updatedAt                          DateTime  @updatedAt
 
-  booking            Booking                          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking            Booking                          @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   vendor             Vendor                           @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   authorities        RecordingAuthorityRequirement[]
   certifications     EmployeeRecordingCertification[]
@@ -553,7 +553,7 @@ model RecordingAuthorityRequirement {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([assessmentId, authorityType])
   @@index([assessmentId, status])
@@ -576,7 +576,7 @@ model EmployeeRecordingCertification {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   vendor     Vendor                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -601,7 +601,7 @@ model RecordingLocationAttempt {
   attemptedAt    DateTime @default(now())
   createdAt      DateTime @default(now())
 
-  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   vendor     Vendor                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -626,7 +626,7 @@ model RecordingLocationException {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking    Booking                  @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   vendor     Vendor                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   assessment RecordingScopeAssessment @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -648,7 +648,7 @@ model RecordingGateMetric {
   actorKind              String?
   createdAt              DateTime @default(now())
 
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   vendor  Vendor  @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([blockReason, createdAt])
@@ -753,6 +753,7 @@ model ServiceVideoStageEvidence {
   @@index([bookingId, isCurrent])
   @@index([recordingGateDecisionId])
   @@index([contentHash])
+  @@index([bookingId, audioPresence], map: "service_video_stage_evidence_bookingId_audioPresence_idx")
   @@map("service_video_stage_evidence")
 }
 
@@ -1388,7 +1389,7 @@ model BookingNotification {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  booking  Booking                      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking  Booking                      @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   attempts BookingNotificationAttempt[]
 
   @@unique([bookingId, kind])
@@ -1412,7 +1413,7 @@ model BookingNotificationAttempt {
   errorMessage      String?  @db.NVarChar(Max)
   attemptedAt       DateTime @default(now())
 
-  notification BookingNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  notification BookingNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([notificationId, channel, attemptNumber])
   @@index([consentRecordId, attemptedAt])
@@ -1645,6 +1646,7 @@ model MediaAsset {
   @@index([deviceId])
   @@index([contentHash])
   @@index([replacesMediaAssetId])
+  @@index([audioPresence], map: "media_assets_audioPresence_idx")
   @@map("media_assets")
 }
 
@@ -1973,7 +1975,7 @@ model ConsentRecord {
 
   booking                Booking                        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   vendor                 Vendor                         @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mediaSession           MediaSession?                  @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  mediaSession           MediaSession?                  @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "FK_consent_records_media_session")
   contentVersion         ConsentContentVersion?         @relation(fields: [contentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   events                 ConsentEvent[]
   requestLinks           ConsentRequestLink[]
@@ -2019,7 +2021,7 @@ model ConsentRequestLink {
   lastViewedAt     DateTime?
   createdAt        DateTime  @default(now())
 
-  consentRecord ConsentRecord                  @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
+  consentRecord ConsentRecord                  @relation(fields: [consentRecordId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   challenges    ConsentVerificationChallenge[]
 
   @@unique([consentRecordId, generation])
@@ -2041,7 +2043,7 @@ model ConsentVerificationChallenge {
   requestIpHash   String?
   createdAt       DateTime  @default(now())
 
-  consentRecord ConsentRecord      @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
+  consentRecord ConsentRecord      @relation(fields: [consentRecordId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   requestLink   ConsentRequestLink @relation(fields: [requestLinkId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([consentRecordId, channel, createdAt])
@@ -2061,7 +2063,7 @@ model ConsentDecisionSession {
   consumedAt          DateTime?
   createdAt           DateTime  @default(now())
 
-  consentRecord ConsentRecord @relation(fields: [consentRecordId], references: [id], onDelete: Cascade)
+  consentRecord ConsentRecord @relation(fields: [consentRecordId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([consentRecordId, expiresAt, consumedAt])
   @@map("consent_decision_sessions")

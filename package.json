@@ -13,6 +13,7 @@
     "reset:dev": "cross-env SEED_SECRET=devsecret node -e \"fetch('http://localhost:3001/api/admin/reset',{method:'POST',headers:{Authorization:'Bearer devsecret'}}).then(r=>r.text()).then(console.log)\"",
     "prisma:migrate": "prisma migrate dev --name init",
     "db:studio": "prisma studio",
+    "release:validate-sqlserver-schema": "node scripts/release/validate_sqlserver_schema_contract.cjs",
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
