@@ -101,33 +101,6 @@ export default function HomePage() {
             ctaHref="/auth/register?type=user"
           />
 
-          <div className="mb-10 max-w-5xl">
-            <div className="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--reliance-blue-soft)]">
-              Proof-of-service platform
-            </div>
-            <h1 className="mt-4 font-display text-5xl font-semibold leading-[0.96] text-white sm:text-6xl lg:text-7xl">
-              Reliance
-            </h1>
-            <p className="mt-5 max-w-4xl text-2xl font-semibold leading-tight text-white sm:text-3xl lg:text-4xl">
-              See real completed work before you decide who to trust.
-            </p>
-            <p className="mt-5 max-w-3xl text-lg leading-8 text-white/72 sm:text-xl">
-              Compare approved Public Service Videos, genuine customer reviews, and the Reliance Trust Score as separate trust signals.
-            </p>
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <Link href="/browse">
-                <Button size="lg" className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto">
-                  Explore Proof
-                </Button>
-              </Link>
-              <Link href="#how-reliance-helps">
-                <Button size="lg" variant="outline" className="w-full border-white/20 bg-white/5 text-white hover:bg-white/10 sm:w-auto">
-                  See How Reliance Helps
-                </Button>
-              </Link>
-            </div>
-          </div>
-
           <div className="grid gap-8 lg:grid-cols-[minmax(620px,1fr)_minmax(620px,1fr)] lg:items-start xl:gap-10 2xl:grid-cols-[minmax(700px,1fr)_minmax(700px,1fr)]">
             <div className="flex w-full flex-col">
               <div className="reliance-glass -mx-1 overflow-hidden rounded-[26px] border border-white/10 bg-[rgba(6,17,31,0.78)] p-1 shadow-[0_30px_90px_rgba(4,9,20,0.42)] sm:mx-0 sm:rounded-[34px] sm:p-2">

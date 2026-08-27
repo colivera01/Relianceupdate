@@ -22,10 +22,12 @@ const renderedShellSources = [
 ] as const;
 
 describe('proof-first platform shell', () => {
-  it('states the product purpose and keeps the trust signals distinct on the homepage', () => {
+  it('keeps the homepage proof comparison focused without the removed introduction block', () => {
     const source = read('src/app/page.tsx');
 
-    expect(source).toContain('See real completed work before you decide who to trust.');
+    expect(source).not.toContain('See real completed work before you decide who to trust.');
+    expect(source).not.toContain('Proof-of-service platform');
+    expect(source).not.toContain('See How Reliance Helps');
     expect(source).toContain('reliance-multitrade-collage-hero-v12.png');
     expect(source).toContain('Customer Reviews');
     expect(source).toContain('Public Service Videos');
