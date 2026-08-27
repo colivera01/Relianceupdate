@@ -23,6 +23,7 @@ export type ConsentLinkDeliveryInput = {
   consentTypeLabel?: string;
   absoluteBaseUrl?: string | null;
   contentVersion?: string | null;
+  audioEnabled?: boolean | null;
 };
 
 export type ChannelDelivery = {
@@ -83,6 +84,16 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
   const subject = `Recording permission request from ${vendorName}`;
   const label = formatConsentRequestLabel(input.consentTypeLabel || 'recording permission');
   const simplifiedV1 = isSimplifiedV1PermissionVersion(input.contentVersion);
+  const audioEnabled =
+    typeof input.audioEnabled === 'boolean'
+      ? input.audioEnabled
+      : String(input.contentVersion || '').trim() === 'recording-permission-v3-video-audio';
+  const audioEmailCopy = audioEnabled
+    ? 'This Service Video will include video and audio because sound is part of documenting the service.'
+    : 'Audio will not be recorded.';
+  const audioSmsCopy = audioEnabled
+    ? 'Video and audio are included.'
+    : 'Audio will not be recorded.';
   const decisionCopy = simplifiedV1
     ? 'You may allow recording, decline recording, or report that this request was sent to the wrong person. If you take no action, recording remains blocked.'
     : 'You may allow, decline, or decide later. The service may continue without Reliance recording.';
@@ -91,8 +102,8 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
     headline: 'Choose whether Reliance may record this service',
     greeting: `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
     bodyHtml: `
-      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> is asking for permission to record three short proof-of-service videos in Reliance.</p>
-      <p style="margin:0 0 14px;">Audio is off. Recordings start Private and public sharing would be a separate decision after the recordings exist.</p>
+      <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> is asking for permission to create one Service Video work record with three stages: Starting Condition, Work in Progress, and Final Result.</p>
+      <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(audioEmailCopy)} The Service Video starts Private. Public sharing would require a separate later customer decision.</p>
       <p style="margin:0;">${escapeRelianceEmailHtml(decisionCopy)}</p>
     `,
     details: [
@@ -107,10 +118,10 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
   const text = [
     `Hello${input.customerName ? ` ${input.customerName}` : ''},`,
     '',
-    `${vendorName} is asking for permission to record three short proof-of-service videos in Reliance.`,
+    `${vendorName} is asking for permission to create one Service Video work record with three stages: Starting Condition, Work in Progress, and Final Result.`,
     `Service: ${serviceName}`,
     ...(serviceDate ? [`Service date: ${serviceDate}`] : []),
-    'Audio is off. Recordings start Private. Public sharing is a separate later decision.',
+    `${audioEmailCopy} The Service Video starts Private. Public sharing requires a separate later customer decision.`,
     decisionCopy,
     `Request type: ${label}.`,
     '',
@@ -167,7 +178,7 @@ export async function sendConsentLinkNotification(input: ConsentLinkDeliveryInpu
     const smsActions = simplifiedV1
       ? "Allow recording, decline recording, or report wrong recipient"
       : "Allow, decline, or decide later";
-    const body = `Reliance: ${vendorName} requests permission to record ${serviceName}. Audio is off; videos start Private. ${smsActions}: ${absoluteFallbackLink} Reply STOP to opt out.`;
+    const body = `Reliance: ${vendorName} requests permission for one three-stage Service Video for ${serviceName}. ${audioSmsCopy} It starts Private. ${smsActions}: ${absoluteFallbackLink} Reply STOP to opt out.`;
     const r = await sendSms({ to: phone, body });
     channels.push({
       channel: 'sms',

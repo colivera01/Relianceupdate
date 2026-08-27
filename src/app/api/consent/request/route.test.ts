@@ -54,6 +54,8 @@ describe("POST /api/consent/request", () => {
       notificationId: "notification-1",
       state: "pending",
       generation: 1,
+      audioEnabled: false,
+      contentVersion: "recording-permission-v3-video-only",
       recipient: {
         name: "Customer One",
         email: "customer@example.com",
@@ -102,6 +104,12 @@ describe("POST /api/consent/request", () => {
       audioEnabled: false,
       initialAudience: "private",
     });
+    expect(hoisted.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audioEnabled: false,
+        contentVersion: "recording-permission-v3-video-only",
+      }),
+    );
     expect(JSON.stringify(json)).not.toContain("raw-secret-that-must-not-leave-the-server");
   });
 

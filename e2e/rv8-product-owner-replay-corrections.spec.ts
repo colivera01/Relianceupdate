@@ -448,7 +448,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.getByRole("button", { name: "Actions" }).click();
     const actionsMenu = page.getByRole("menu");
     await expect(actionsMenu.getByRole("button", { name: "View Details" })).toBeVisible();
-    await expect(actionsMenu.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(1);
+    await expect(actionsMenu.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Submit to Reliance Audit" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Request Changes" })).toHaveCount(0);
   });

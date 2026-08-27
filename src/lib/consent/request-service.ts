@@ -31,6 +31,8 @@ export type CreatedPermissionRequest = {
   recipient: ReturnType<typeof buildPermissionRecipient>;
   booking: any;
   generation: number;
+  audioEnabled?: boolean;
+  contentVersion?: string;
 };
 
 export async function createVerifiedPermissionRequest(input: {
@@ -244,6 +246,8 @@ export async function createVerifiedPermissionRequest(input: {
     recipient,
     booking,
     generation,
+    audioEnabled: Boolean(assessment.audioAllowed),
+    contentVersion: permissionContent.version,
   };
 }
 

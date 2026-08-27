@@ -131,7 +131,7 @@ describe("work-record media lifecycle route", () => {
     expect(hoisted.applyMediaWithdrawal).not.toHaveBeenCalled();
   });
 
-  it("preserves manager-authorized publication restriction and deletion requests", async () => {
+  it("retires Vendor Manager governance authority at the server boundary", async () => {
     hoisted.actor.mockResolvedValue(
       actor("manager-1", [
         { id: "membership-manager", vendorId: "vendor-1", role: "MANAGER" },
@@ -154,13 +154,10 @@ describe("work-record media lifecycle route", () => {
       { params: Promise.resolve({ id: "booking-1" }) },
     );
 
-    expect(withdrawal.status).toBe(200);
-    expect(deletion.status).toBe(201);
-    expect(hoisted.requestMediaDeletion).toHaveBeenCalledWith(expect.objectContaining({
-      bookingId: "booking-1",
-      actorRole: "VENDOR_MANAGER",
-      mediaAssetId: "asset-1",
-    }));
+    expect(withdrawal.status).toBe(403);
+    expect(deletion.status).toBe(403);
+    expect(hoisted.applyMediaWithdrawal).not.toHaveBeenCalled();
+    expect(hoisted.requestMediaDeletion).not.toHaveBeenCalled();
   });
 
   it("denies employee stored-media deletion even with active assignment membership", async () => {

@@ -24,7 +24,10 @@ export async function deliverVerifiedPermissionRequest(input: {
   const current = consentModel?.findUnique
     ? await consentModel.findUnique({
         where: { id: input.consentRecordId },
-        select: { contentVersion: { select: { version: true } } },
+        select: {
+          audioEnabled: true,
+          contentVersion: { select: { version: true } },
+        },
       })
     : null;
   const dispatched = await dispatchQueuedConsentNotification({
@@ -43,6 +46,7 @@ export async function deliverVerifiedPermissionRequest(input: {
     serviceDate: input.booking.scheduledFor || input.booking.date || null,
     consentTypeLabel: "recording permission",
     contentVersion: current?.contentVersion?.version || PERMISSION_CONTENT_VERSION,
+    audioEnabled: current?.audioEnabled === true,
   });
   const delivery = dispatched.delivery;
   const delivered =

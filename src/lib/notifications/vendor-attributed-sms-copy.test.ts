@@ -58,7 +58,7 @@ describe("vendor-attributed SMS copy", () => {
     });
 
     expect(hoisted.sendSms.mock.calls[0][0].body).toContain(
-      "Reliance: Electro LLC requests permission to record Outlet Installation."
+      "Reliance: Electro LLC requests permission for one three-stage Service Video for Outlet Installation."
     );
   });
 
@@ -85,6 +85,68 @@ describe("vendor-attributed SMS copy", () => {
     expect(email.text).toContain("allow recording, decline recording, or report");
     expect(`${email.text}\n${email.html}`).not.toContain("decide later");
     expect(`${email.text}\n${email.html}`).not.toContain("service may continue without Reliance recording");
+  });
+
+  it("keeps Video-only email and SMS copy consistent with the canonical scope", async () => {
+    hoisted.readNotificationEnv.mockReturnValue({
+      emailEnabled: true,
+      smsEnabled: true,
+      appBaseUrl: "https://relianceonline.org",
+    });
+    hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "email-video-only" });
+    const { sendConsentLinkNotification } = await import("./send-consent-link");
+
+    await sendConsentLinkNotification({
+      consentRecordId: "consent-video-only",
+      actorUserId: "vendor-user-1",
+      consentPath: "/consent/token-video-only",
+      customerEmail: "customer@example.com",
+      customerPhone: "4075550199",
+      vendorName: "Electro LLC",
+      serviceName: "Outlet Installation",
+      contentVersion: "recording-permission-v3-video-only",
+      audioEnabled: false,
+    });
+
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    const sms = hoisted.sendSms.mock.calls[0][0].body;
+    expect(`${email.text}\n${email.html}`).toContain("Audio will not be recorded.");
+    expect(sms).toContain("Audio will not be recorded.");
+    expect(`${email.text}\n${email.html}`).toContain(
+      "one Service Video work record with three stages: Starting Condition, Work in Progress, and Final Result",
+    );
+    expect(`${email.text}\n${email.html}`).not.toContain("three short proof-of-service videos");
+  });
+
+  it("keeps Video-and-audio email and SMS copy consistent with the canonical scope", async () => {
+    hoisted.readNotificationEnv.mockReturnValue({
+      emailEnabled: true,
+      smsEnabled: true,
+      appBaseUrl: "https://relianceonline.org",
+    });
+    hoisted.sendEmail.mockResolvedValue({ ok: true, providerMessageId: "email-video-audio" });
+    const { sendConsentLinkNotification } = await import("./send-consent-link");
+
+    await sendConsentLinkNotification({
+      consentRecordId: "consent-video-audio",
+      actorUserId: "vendor-user-1",
+      consentPath: "/consent/token-video-audio",
+      customerEmail: "customer@example.com",
+      customerPhone: "4075550199",
+      vendorName: "Electro LLC",
+      serviceName: "Outlet Installation",
+      contentVersion: "recording-permission-v3-video-audio",
+      audioEnabled: true,
+    });
+
+    const email = hoisted.sendEmail.mock.calls[0][0];
+    const sms = hoisted.sendSms.mock.calls[0][0].body;
+    expect(`${email.text}\n${email.html}`).toContain(
+      "This Service Video will include video and audio because sound is part of documenting the service.",
+    );
+    expect(sms).toContain("Video and audio are included.");
+    expect(`${email.text}\n${email.html}\n${sms}`).not.toContain("Audio is off");
+    expect(`${email.text}\n${email.html}\n${sms}`).not.toContain("Audio will not be recorded");
   });
 
   it("keeps SMS action copy bound to the permission content version", async () => {

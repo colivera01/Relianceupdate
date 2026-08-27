@@ -69,6 +69,8 @@ export async function POST(request: NextRequest) {
         bookingTitle: booking.title || null,
         serviceDate: booking.scheduledFor || booking.date || null,
         consentTypeLabel: "recording permission",
+        contentVersion: created.contentVersion || undefined,
+        audioEnabled: created.audioEnabled === true,
       });
       delivery = dispatched.delivery;
       const delivered = delivery?.status === "SENT" || delivery?.status === "PARTIAL";
@@ -104,7 +106,7 @@ export async function POST(request: NextRequest) {
           email: created.recipient.emailMasked,
           phone: created.recipient.phoneMasked,
         },
-        audioEnabled: false,
+        audioEnabled: created.audioEnabled === true,
         initialAudience: "private",
       },
       delivery: safeDelivery(delivery),
