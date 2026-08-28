@@ -23,22 +23,22 @@ ADD [locationAttemptEvidenceHash] NVARCHAR(64) NULL,
     [stage] NVARCHAR(64) NULL,
     [evidenceVersion] NVARCHAR(100) NULL;
 
-CREATE UNIQUE INDEX [employee_recording_safety_evidence_chainKey_submissionRequestHash_key]
+EXEC(N'CREATE UNIQUE INDEX [employee_recording_safety_evidence_chainKey_submissionRequestHash_key]
   ON [dbo].[employee_recording_safety_evidence]([chainKey], [submissionRequestHash])
-  WHERE [submissionRequestHash] IS NOT NULL;
+  WHERE [submissionRequestHash] IS NOT NULL;');
 
-CREATE UNIQUE INDEX [employee_recording_safety_evidence_locationAttemptId_key]
+EXEC(N'CREATE UNIQUE INDEX [employee_recording_safety_evidence_locationAttemptId_key]
   ON [dbo].[employee_recording_safety_evidence]([locationAttemptId])
-  WHERE [locationAttemptId] IS NOT NULL;
+  WHERE [locationAttemptId] IS NOT NULL;');
 
-CREATE INDEX [recording_location_attempts_bookingId_membershipId_stage_attemptedAt_idx]
-  ON [dbo].[recording_location_attempts]([bookingId], [membershipId], [stage], [attemptedAt]);
+EXEC(N'CREATE INDEX [recording_location_attempts_bookingId_membershipId_stage_attemptedAt_idx]
+  ON [dbo].[recording_location_attempts]([bookingId], [membershipId], [stage], [attemptedAt]);');
 
-CREATE INDEX [recording_location_attempts_evidenceHash_idx]
-  ON [dbo].[recording_location_attempts]([evidenceHash]);
+EXEC(N'CREATE INDEX [recording_location_attempts_evidenceHash_idx]
+  ON [dbo].[recording_location_attempts]([evidenceHash]);');
 
-CREATE INDEX [recording_gate_decision_evidence_safetyEvidenceId_idx]
-  ON [dbo].[recording_gate_decision_evidence]([safetyEvidenceId]);
+EXEC(N'CREATE INDEX [recording_gate_decision_evidence_safetyEvidenceId_idx]
+  ON [dbo].[recording_gate_decision_evidence]([safetyEvidenceId]);');
 
-CREATE INDEX [recording_gate_decision_evidence_locationAttemptId_idx]
-  ON [dbo].[recording_gate_decision_evidence]([locationAttemptId]);
+EXEC(N'CREATE INDEX [recording_gate_decision_evidence_locationAttemptId_idx]
+  ON [dbo].[recording_gate_decision_evidence]([locationAttemptId]);');
