@@ -111,6 +111,7 @@ model Vendor {
   trustScoreSnapshots         VendorTrustScoreSnapshot[]
   recordingAssessments        RecordingScopeAssessment[]
   recordingCertifications     EmployeeRecordingCertification[]
+  recordingSafetyEvidence     EmployeeRecordingSafetyEvidence[]
   recordingLocationAttempts   RecordingLocationAttempt[]
   recordingLocationExceptions RecordingLocationException[]
   recordingGateMetrics        RecordingGateMetric[]
@@ -478,9 +479,9 @@ model Booking {
   creationRequestKey String?   @db.NVarChar(255)
 
   // Relations
-  user                        User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service                     Service                          @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  vendor                      Vendor                           @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user                        User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service                     Service                           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  vendor                      Vendor                            @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   mediaSessions               MediaSession[]
   reviewWindows               ReviewWindow[]
   consentRecords              ConsentRecord[]
@@ -490,6 +491,7 @@ model Booking {
   notifications               BookingNotification[]
   recordingAssessments        RecordingScopeAssessment[]
   recordingCertifications     EmployeeRecordingCertification[]
+  recordingSafetyEvidence     EmployeeRecordingSafetyEvidence[]
   recordingLocationAttempts   RecordingLocationAttempt[]
   recordingLocationExceptions RecordingLocationException[]
   recordingGateMetrics        RecordingGateMetric[]
@@ -528,10 +530,11 @@ model RecordingScopeAssessment {
   createdAt                          DateTime  @default(now())
   updatedAt                          DateTime  @updatedAt
 
-  booking            Booking                          @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  vendor             Vendor                           @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking            Booking                           @relation(fields: [bookingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  vendor             Vendor                            @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   authorities        RecordingAuthorityRequirement[]
   certifications     EmployeeRecordingCertification[]
+  safetyEvidence     EmployeeRecordingSafetyEvidence[]
   locationAttempts   RecordingLocationAttempt[]
   locationExceptions RecordingLocationException[]
 
@@ -586,6 +589,47 @@ model EmployeeRecordingCertification {
   @@index([assessmentId, status])
   @@index([scopeHash])
   @@map("employee_recording_certifications")
+}
+
+// Immutable, append-only employee runtime-safety evidence for the future V2
+// recording contract. Current V3 and legacy recording gates do not require it.
+model EmployeeRecordingSafetyEvidence {
+  id                           String   @id @default(cuid())
+  bookingId                    String
+  vendorId                     String
+  assessmentId                 String
+  assessmentGeneration         Int
+  assessmentContractVersion    String
+  assessmentScopeHash          String   @db.NVarChar(64)
+  locationSnapshotEvidenceHash String   @db.NVarChar(64)
+  membershipId                 String
+  assignmentGeneration         Int
+  safetyContractVersion        String   @db.NVarChar(100)
+  checkType                    String   @db.NVarChar(64)
+  stage                        String   @db.NVarChar(64)
+  result                       String   @db.NVarChar(64)
+  issueCodesJson               String   @db.NVarChar(Max)
+  sequence                     Int
+  chainKey                     String   @db.NVarChar(64)
+  predecessorEvidenceId        String?
+  predecessorEvidenceHash      String?  @db.NVarChar(64)
+  canonicalJson                String   @db.NVarChar(Max)
+  evidenceHash                 String   @unique @db.NVarChar(64)
+  createdAt                    DateTime @default(now())
+
+  booking     Booking                           @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor      Vendor                            @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessment  RecordingScopeAssessment          @relation(fields: [assessmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membership  VendorMembership                  @relation(fields: [membershipId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  predecessor EmployeeRecordingSafetyEvidence?  @relation("EmployeeSafetyEvidencePredecessor", fields: [predecessorEvidenceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rechecks    EmployeeRecordingSafetyEvidence[] @relation("EmployeeSafetyEvidencePredecessor")
+
+  @@unique([chainKey, sequence])
+  @@index([bookingId, membershipId, stage, sequence])
+  @@index([assessmentId, stage, sequence])
+  @@index([predecessorEvidenceId])
+  @@index([result, createdAt])
+  @@map("employee_recording_safety_evidence")
 }
 
 model RecordingLocationAttempt {
@@ -1554,9 +1598,10 @@ model VendorMembership {
   pendingDeviceOs       String?
   pendingAppVersion     String?
 
-  vendor      Vendor             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assignments DeviceAssignment[]
+  vendor                  Vendor                            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  user                    User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments             DeviceAssignment[]
+  recordingSafetyEvidence EmployeeRecordingSafetyEvidence[]
 
   @@unique([vendorId, userId])
   @@index([vendorId, status])

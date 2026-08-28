@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
@@ -6,6 +7,7 @@ const db = vi.hoisted(() => ({
   certificationFindFirst: vi.fn(),
   locationAttemptFindFirst: vi.fn(),
   locationExceptionFindFirst: vi.fn(),
+  safetyFindMany: vi.fn(),
   bookingFindUnique: vi.fn(),
   packageFindFirst: vi.fn(),
   managerDecisionFindFirst: vi.fn(),
@@ -19,6 +21,7 @@ vi.mock("@/server/db", () => ({
     employeeRecordingCertification: { findFirst: db.certificationFindFirst },
     recordingLocationAttempt: { findFirst: db.locationAttemptFindFirst },
     recordingLocationException: { findFirst: db.locationExceptionFindFirst },
+    employeeRecordingSafetyEvidence: { findMany: db.safetyFindMany },
     booking: { findUnique: db.bookingFindUnique },
     serviceVideoPackageEvidence: { findFirst: db.packageFindFirst },
     serviceVideoManagerDecisionEvidence: { findFirst: db.managerDecisionFindFirst },
@@ -28,6 +31,14 @@ vi.mock("@/server/db", () => ({
 
 import { loadCanonicalRecordingGate } from "./recording-gate";
 import { buildStoredAuthorityEvidence, evaluatePermissionAuthority } from "./authority-validation";
+import {
+  parseRecordingAssessmentV2,
+  RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+} from "@/lib/recording/assessment-v2";
+import {
+  EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+  parseEmployeeRecordingSafetyEvidence,
+} from "@/lib/recording/employee-safety";
 
 const metadata = JSON.stringify({
   vendor_job_assigned_membership_ids: ["member-1"],
@@ -77,6 +88,147 @@ const assessment = {
     { authorityType: "CUSTOMER_OR_REPRESENTATIVE", required: true, status: "VERIFIED" },
   ],
 };
+
+function v2LocationMetadata() {
+  const verifiedAt = "2026-08-27T18:00:00.000Z";
+  const evidence = {
+    version: 2,
+    provider: "azure_maps",
+    providerApiVersion: "2025-01-01",
+    providerResultId: "provider-result-v2",
+    inputAddress: "2555 S Kirkman Rd, Orlando, FL 32811",
+    normalizedAddress: "2555 S Kirkman Rd, Orlando, FL 32811",
+    resultType: "Address",
+    precision: "ROOFTOP",
+    confidence: "HIGH",
+    matchCodes: ["GOOD"],
+    fallbackUsed: false,
+    verifiedAt,
+  };
+  const evidenceHash = createHash("sha256")
+    .update(JSON.stringify(evidence))
+    .digest("hex");
+  const providerEvidence = { ...evidence, evidenceHash, sourceLocationType: "business" };
+  const snapshot = {
+    type: "business",
+    source: "vendor_profile",
+    status: "verified_coordinates",
+    address: "2555 S Kirkman Rd",
+    city: "Orlando",
+    state: "FL",
+    zip_code: "32811",
+    latitude: 28.51,
+    longitude: -81.46,
+    geocoded_at: verifiedAt,
+    captured_at: "2026-08-27T18:01:00.000Z",
+    evidence_version: 2,
+    geocoding_evidence: providerEvidence,
+  } as Record<string, unknown>;
+  const snapshotEvidenceHash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        type: "business",
+        source: "vendor_profile",
+        address: snapshot.address,
+        city: snapshot.city,
+        state: snapshot.state,
+        zipCode: snapshot.zip_code,
+        latitude: snapshot.latitude,
+        longitude: snapshot.longitude,
+        providerEvidence,
+      }),
+    )
+    .digest("hex");
+  snapshot.snapshot_evidence_hash = snapshotEvidenceHash;
+  return {
+    snapshotEvidenceHash,
+    metadata: JSON.stringify({
+      vendor_job_assigned_membership_ids: ["member-1"],
+      vendor_job_service_order_released_membership_ids: ["member-1"],
+      vendor_job_service_order_released_at: "2026-08-27T18:05:00.000Z",
+      vendor_job_assignment_generation: 1,
+      vendor_job_recording_location: "business",
+      vendor_job_recording_location_snapshot: snapshot,
+    }),
+  };
+}
+
+const v2Location = v2LocationMetadata();
+const parsedV2Assessment = parseRecordingAssessmentV2({
+  contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+  location: {
+    type: "VENDOR_BUSINESS",
+    snapshotEvidenceHash: v2Location.snapshotEvidenceHash,
+  },
+  intendedSubjects: ["SERVICE_AREA_OR_EQUIPMENT"],
+  expectedPeople: ["NO_IDENTIFIABLE_PEOPLE"],
+  recordingFormat: "VIDEO_ONLY",
+  recordingArea: { boundary: "SERVICE_AREA_ONLY" },
+});
+const v2Assessment = {
+  ...assessment,
+  id: "assessment-v2",
+  generation: 2,
+  contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+  locationType: "business",
+  authorityHolderType: "vendor_manager",
+  subjectJson: parsedV2Assessment.subjectJson,
+  scopeJson: parsedV2Assessment.scopeJson,
+  scopeHash: parsedV2Assessment.scopeHash,
+  permissionRequired: false,
+  authorities: [{ authorityType: "VENDOR_MANAGER", required: true, status: "VERIFIED" }],
+};
+
+function storedV2Safety(input: {
+  result?: "READY" | "BLOCKED" | "MATERIAL_SCOPE_CHANGE_REQUIRED";
+  issues?: string[];
+  membershipId?: string;
+  locationHash?: string;
+  assessmentHash?: string;
+}) {
+  const result = input.result || "READY";
+  const parsed = parseEmployeeRecordingSafetyEvidence({
+    contractVersion: EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+    sequence: 1,
+    workRecord: { bookingId: "booking-1", vendorId: "vendor-1" },
+    assessment: {
+      id: v2Assessment.id,
+      generation: v2Assessment.generation,
+      contractVersion: v2Assessment.contractVersion,
+      scopeHash: input.assessmentHash || v2Assessment.scopeHash,
+    },
+    location: { snapshotEvidenceHash: input.locationHash || v2Location.snapshotEvidenceHash },
+    employee: { membershipId: input.membershipId || "member-1", assignmentGeneration: 1 },
+    check: { type: "INITIAL", stage: "STARTING_CONDITION" },
+    issues: input.issues || [],
+    result,
+    predecessor: null,
+    createdAt: "2026-08-27T18:10:00.000Z",
+  });
+  return {
+    id: "safety-v2",
+    bookingId: parsed.evidence.workRecord.bookingId,
+    vendorId: parsed.evidence.workRecord.vendorId,
+    assessmentId: parsed.evidence.assessment.id,
+    assessmentGeneration: parsed.evidence.assessment.generation,
+    assessmentContractVersion: parsed.evidence.assessment.contractVersion,
+    assessmentScopeHash: parsed.evidence.assessment.scopeHash,
+    locationSnapshotEvidenceHash: parsed.evidence.location.snapshotEvidenceHash,
+    membershipId: parsed.evidence.employee.membershipId,
+    assignmentGeneration: parsed.evidence.employee.assignmentGeneration,
+    safetyContractVersion: parsed.evidence.contractVersion,
+    checkType: parsed.evidence.check.type,
+    stage: parsed.evidence.check.stage,
+    result: parsed.evidence.result,
+    issueCodesJson: parsed.issueCodesJson,
+    sequence: parsed.evidence.sequence,
+    predecessorEvidenceId: null,
+    predecessorEvidenceHash: null,
+    canonicalJson: parsed.canonicalJson,
+    evidenceHash: parsed.evidenceHash,
+    createdAt: parsed.evidence.createdAt,
+  };
+}
 
 const authorityValidation = evaluatePermissionAuthority({
   assessment,
@@ -129,6 +281,7 @@ describe("database-backed canonical recording gate", () => {
     db.certificationFindFirst.mockResolvedValue({ id: "cert-1" });
     db.locationAttemptFindFirst.mockResolvedValue({ status: "VERIFIED", resultCode: "WITHIN_RADIUS" });
     db.locationExceptionFindFirst.mockResolvedValue(null);
+    db.safetyFindMany.mockResolvedValue([]);
     db.bookingFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
     db.packageFindFirst.mockResolvedValue(null);
     db.managerDecisionFindFirst.mockResolvedValue(null);
@@ -263,6 +416,108 @@ describe("database-backed canonical recording gate", () => {
       recordingUnlocked: true,
       audioAllowed: true,
     });
+    expect(db.safetyFindMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current V3 recording gate independent of Phase 2 safety evidence", async () => {
+    db.assessmentFindFirst.mockResolvedValue({
+      ...assessment,
+      contractVersion: null,
+      scopeJson: JSON.stringify({
+        schemaVersion: "recording-assessment-v3-package-audio-v1",
+        authorityHolderType: "customer",
+      }),
+    });
+
+    const gate = await load({ recordingStage: "INTRO" });
+    expect(gate).toMatchObject({ recordingUnlocked: true, blockCode: null });
+    expect(gate).not.toHaveProperty("v2Safety");
+    expect(db.safetyFindMany).not.toHaveBeenCalled();
+  });
+
+  it("requires a matching READY runtime-safety check for an explicit V2 stage", async () => {
+    db.assessmentFindFirst.mockResolvedValue(v2Assessment);
+    db.consentFindFirst.mockResolvedValue(null);
+
+    const missing = await load({ customerMetadata: v2Location.metadata, recordingStage: "INTRO" });
+    expect(missing).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+      v2Safety: { required: true, ready: false, stage: "STARTING_CONDITION" },
+    });
+
+    db.safetyFindMany.mockResolvedValue([storedV2Safety({})]);
+    const ready = await load({ customerMetadata: v2Location.metadata, recordingStage: "INTRO" });
+    expect(ready).toMatchObject({
+      recordingUnlocked: true,
+      blockCode: null,
+      v2Safety: { required: true, ready: true, result: "READY" },
+    });
+  });
+
+  it("keeps V2 recording blocked after the latest runtime-safety issue", async () => {
+    db.assessmentFindFirst.mockResolvedValue(v2Assessment);
+    db.consentFindFirst.mockResolvedValue(null);
+    db.safetyFindMany.mockResolvedValue([
+      storedV2Safety({ result: "BLOCKED", issues: ["PRIVATE_DOCUMENT_OR_SCREEN"] }),
+    ]);
+
+    const gate = await load({ customerMetadata: v2Location.metadata, recordingStage: "INTRO" });
+    expect(gate).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "V2_RUNTIME_SAFETY_BLOCKED",
+      block: { responsibleParticipant: "EMPLOYEE" },
+    });
+  });
+
+  it("fails V2 closed for material scope expansion and stale employee evidence", async () => {
+    db.assessmentFindFirst.mockResolvedValue(v2Assessment);
+    db.consentFindFirst.mockResolvedValue(null);
+    db.safetyFindMany.mockResolvedValue([
+      storedV2Safety({
+        result: "MATERIAL_SCOPE_CHANGE_REQUIRED",
+        issues: ["APPROVED_AUDIO_SCOPE_MISMATCH", "MATERIAL_SCOPE_EXPANSION_REQUIRED"],
+      }),
+    ]);
+    const material = await load({ customerMetadata: v2Location.metadata, recordingStage: "INTRO" });
+    expect(material).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "V2_RUNTIME_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED",
+      block: { responsibleParticipant: "VENDOR_MANAGER" },
+    });
+
+    db.safetyFindMany.mockResolvedValue([storedV2Safety({ membershipId: "member-other" })]);
+    const stale = await load({ customerMetadata: v2Location.metadata, recordingStage: "INTRO" });
+    expect(stale).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "V2_RUNTIME_SAFETY_BINDING_STALE",
+    });
+  });
+
+  it("fails V2 closed when canonical audio fields do not match the approved format", async () => {
+    db.assessmentFindFirst.mockResolvedValue({ ...v2Assessment, audioAllowed: true });
+    db.consentFindFirst.mockResolvedValue(null);
+    db.safetyFindMany.mockResolvedValue([storedV2Safety({})]);
+
+    const gate = await load({ customerMetadata: v2Location.metadata, recordingStage: "INTRO" });
+    expect(gate).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "V2_RECORDING_AUDIO_SCOPE_INVALID",
+    });
+  });
+
+  it("fails closed for an unknown explicit assessment contract", async () => {
+    db.assessmentFindFirst.mockResolvedValue({
+      ...assessment,
+      contractVersion: "recording-assessment-unknown-v99",
+    });
+
+    const gate = await load({ recordingStage: "INTRO" });
+    expect(gate).toMatchObject({
+      recordingUnlocked: false,
+      blockCode: "RECORDING_ASSESSMENT_CONTRACT_INVALID",
+    });
+    expect(db.safetyFindMany).not.toHaveBeenCalled();
   });
 
   it("requires employee certification for the current assignment and scope", async () => {

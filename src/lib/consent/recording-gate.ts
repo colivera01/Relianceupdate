@@ -13,6 +13,16 @@ import {
   storedAuthorityEvidenceIsCurrent,
   type AuthorityValidationResult,
 } from "./authority-validation";
+import {
+  resolveV2StageSafetyReadiness,
+  requiredSafetyCheckForStage,
+  type V2StageSafetyReadiness,
+} from "@/lib/recording/employee-safety";
+import {
+  parseRecordingAssessmentV2,
+  RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
+} from "@/lib/recording/assessment-v2";
+import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 
 export type RecordingPermissionRecord = {
   id?: string | null;
@@ -90,6 +100,7 @@ export type RecordingPermissionGate = {
   locationExceptionId: string | null;
   workRecordStatus: string | null;
   correctionRequestedStages: RecordingStage[];
+  v2Safety?: V2StageSafetyReadiness;
   blockCode: string | null;
   blockMessage: string | null;
   block: RecordingGateBlock | null;
@@ -458,6 +469,64 @@ export async function loadCanonicalRecordingGate(input: {
         orderBy: { createdAt: "desc" },
     })
     : null;
+  const capability = input.capability || "record";
+  const safetyRequirement = requiredSafetyCheckForStage(recordingStage);
+  const safetyRows =
+    capability === "record" &&
+    assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
+    (prisma as any).employeeRecordingSafetyEvidence?.findMany
+      ? await (prisma as any).employeeRecordingSafetyEvidence.findMany({
+          where: {
+            bookingId: input.bookingId,
+            ...(safetyRequirement
+              ? {
+                  stage: safetyRequirement.stage,
+                  checkType: safetyRequirement.checkType,
+                }
+              : {}),
+          },
+          orderBy: [{ sequence: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+        })
+      : [];
+  const v2Safety =
+    capability === "record" &&
+    assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
+      ? resolveV2StageSafetyReadiness({
+          bookingId: input.bookingId,
+          vendorId: input.vendorId || assessment.vendorId,
+          assessment,
+          membershipId: input.membershipId,
+          assignmentGeneration,
+          locationSnapshotEvidenceHash: locationSnapshot.ok
+            ? locationSnapshot.snapshot.snapshotEvidenceHash
+            : null,
+          recordingStage,
+          evidence: safetyRows,
+        })
+      : undefined;
+  const v2AudioScopeValid = (() => {
+    if (assessment?.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) return true;
+    try {
+      const parsed = parseRecordingAssessmentV2(JSON.parse(assessment.scopeJson));
+      const audioExpected = parsed.assessment.recordingFormat === "VIDEO_AUDIO";
+      return (
+        parsed.scopeHash === assessment.scopeHash &&
+        Boolean(assessment.audioRequested) === audioExpected &&
+        Boolean(assessment.audioAllowed) === audioExpected
+      );
+    } catch {
+      return false;
+    }
+  })();
+  const assessmentContractValid = (() => {
+    if (!assessment) return true;
+    try {
+      interpretRecordingAssessment(assessment);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
   const assessedSubjects = parseCustomerMetadata(assessment?.subjectJson || null);
   const assessedScope = parseCustomerMetadata(assessment?.scopeJson || null);
   const base = {
@@ -506,8 +575,8 @@ export async function loadCanonicalRecordingGate(input: {
     locationExceptionId: locationException?.id || null,
     workRecordStatus,
     correctionRequestedStages,
+    ...(v2Safety ? { v2Safety } : {}),
   };
-  const capability = input.capability || "record";
   let decision: RecordingPermissionGate;
   if (workRecordStatus === "CANCELED" || workRecordStatus === "CANCELLED") {
     const canceledAfterDecline = String(facts.permissionState || "").toUpperCase() === "DECLINED";
@@ -589,6 +658,22 @@ export async function loadCanonicalRecordingGate(input: {
         why: "The recording subject and scope have not been assessed.",
         responsibleParticipant: "VENDOR_MANAGER",
         resolution: "Complete the recording assessment for this work record.",
+        serviceMayContinue: true,
+      });
+    } else if (!assessmentContractValid) {
+      decision = blocked(base, {
+        code: "RECORDING_ASSESSMENT_CONTRACT_INVALID",
+        why: "The recording assessment contract or its stored evidence is invalid.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Create a supported canonical assessment before recording.",
+        serviceMayContinue: true,
+      });
+    } else if (!v2AudioScopeValid) {
+      decision = blocked(base, {
+        code: "V2_RECORDING_AUDIO_SCOPE_INVALID",
+        why: "The V2 assessment audio fields do not match its canonical approved recording format.",
+        responsibleParticipant: "VENDOR_MANAGER",
+        resolution: "Create a valid V2 assessment and permission chain before recording.",
         serviceMayContinue: true,
       });
     } else if (!locationSnapshot.ok) {
@@ -693,6 +778,23 @@ export async function loadCanonicalRecordingGate(input: {
         resolution: pendingException
           ? "An admin must approve or deny the exception; the requesting manager cannot decide it."
           : "Allow precise location and verify the saved service address.",
+        serviceMayContinue: true,
+      }, true);
+    } else if (capability === "record" && v2Safety && !v2Safety.ready) {
+      const materialChange =
+        v2Safety.code === "V2_RUNTIME_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED" ||
+        v2Safety.code === "V2_RUNTIME_SAFETY_PLAN_CHANGE_REQUIRED";
+      decision = blocked(base, {
+        code: v2Safety.code || "V2_RUNTIME_SAFETY_CHECK_REQUIRED",
+        why: materialChange
+          ? "The onsite recording plan would expand or conflict with the approved V2 recording scope."
+          : v2Safety.code === "V2_RUNTIME_SAFETY_BLOCKED"
+            ? "The latest employee runtime-safety check found an unresolved condition."
+            : "A current matching employee runtime-safety check is required for this Service Video stage.",
+        responsibleParticipant: materialChange ? "VENDOR_MANAGER" : "EMPLOYEE",
+        resolution: materialChange
+          ? "Do not record. A future material-change workflow must create a new assessment and permission chain."
+          : "Correct, remove, wait for, or reframe the unsafe condition, then perform a new safety check for this stage.",
         serviceMayContinue: true,
       }, true);
     } else {
