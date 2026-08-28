@@ -246,6 +246,10 @@ test("employee sees likeness-only withdrawal", async ({ page }) => {
   await expect(
     card.getByRole("button", { name: "Request deletion: media 1" }),
   ).toHaveCount(0);
+  await expect(
+    card.getByRole("button", { name: "Stop future recording" }),
+  ).toHaveCount(0);
+  await expect(card.getByText("Report a concern", { exact: true })).toBeVisible();
   await card.screenshot({
     path: path.join(screenshotRoot, "Mobile", "02-employee-likeness-only.png"),
   });

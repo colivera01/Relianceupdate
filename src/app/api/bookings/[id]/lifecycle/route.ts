@@ -42,6 +42,9 @@ async function loadAuthorizedBooking(request: Request, bookingId: string) {
   });
   if (!booking)
     throw new AuthorizationError("FORBIDDEN", "Work record not found.", 403);
+  const manager = actor.vendorMemberships.find(
+    (item) => item.vendorId === booking.vendorId && item.role === "MANAGER",
+  );
   const employeeMemberships = new Set(
     actor.vendorMemberships
       .filter((item) => item.vendorId === booking.vendorId)
@@ -53,7 +56,7 @@ async function loadAuthorizedBooking(request: Request, bookingId: string) {
   );
   const customer = booking.userId === actor.userId;
   const admin = actor.platformRoles.includes("ADMIN");
-  if (!customer && !employee && !admin) {
+  if (!customer && !manager && !employee && !admin) {
     throw new AuthorizationError(
       "FORBIDDEN",
       "You do not have access to this work record.",
@@ -62,14 +65,17 @@ async function loadAuthorizedBooking(request: Request, bookingId: string) {
   }
   const role = admin
     ? "ADMIN"
-    : employee
-      ? "EMPLOYEE"
-      : "CUSTOMER";
+    : manager
+      ? "VENDOR_MANAGER"
+      : employee
+        ? "EMPLOYEE"
+        : "CUSTOMER";
   return {
     actor,
     booking,
     role,
     customer,
+    manager: Boolean(manager),
     employee,
     admin,
   };
@@ -154,12 +160,12 @@ export async function GET(request: Request, context: Context) {
       auditEvents,
       publicState,
       allowedActions: {
-        withdrawRecording: access.customer,
+        withdrawRecording: access.customer || access.manager,
         withdrawPublication:
-          access.customer || access.employee,
+          access.customer || access.manager || access.employee,
         openDispute: true,
-        requestDeletion: access.customer,
-        appeal: access.customer || access.employee,
+        requestDeletion: access.customer || access.manager,
+        appeal: access.customer || access.manager || access.employee,
       },
     });
   } catch (error) {
@@ -200,10 +206,10 @@ export async function POST(request: Request, context: Context) {
     }
 
     if (action === "WITHDRAW_RECORDING") {
-      if (!access.customer)
+      if (!access.customer && !access.manager)
         throw new AuthorizationError(
           "FORBIDDEN",
-          "Only the customer may stop future recording for this work record.",
+          "Only the customer or vendor manager may stop future recording for this work record.",
           403,
         );
       const withdrawal = await applyMediaWithdrawal({
@@ -211,7 +217,7 @@ export async function POST(request: Request, context: Context) {
         vendorId: access.booking.vendorId,
         actorUserId: access.actor.userId,
         actorRole: access.role,
-        authorityType: "CUSTOMER",
+        authorityType: access.customer ? "CUSTOMER" : "VENDOR_REPRESENTATION",
         scope: "RECORDING",
         reason: String(body.reason || "").trim() || null,
         request,
@@ -232,10 +238,10 @@ export async function POST(request: Request, context: Context) {
           "Only the affected employee may withdraw their likeness permission.",
           403,
         );
-      if (!employeeLikeness && !access.customer) {
+      if (!employeeLikeness && !access.customer && !access.manager) {
         throw new AuthorizationError(
           "FORBIDDEN",
-          "Only the customer may withdraw Public publication approval.",
+          "Only the customer or vendor manager may restrict Public use.",
           403,
         );
       }
@@ -246,7 +252,9 @@ export async function POST(request: Request, context: Context) {
         actorRole: access.role,
         authorityType: employeeLikeness
           ? "EMPLOYEE_LIKENESS"
-          : "CUSTOMER",
+          : access.customer
+            ? "CUSTOMER"
+            : "VENDOR_REPRESENTATION",
         scope: employeeLikeness ? "LIKENESS" : "PUBLICATION",
         reason: String(body.reason || "").trim() || null,
         packageId: String(body.packageId || "").trim() || null,
@@ -298,10 +306,10 @@ export async function POST(request: Request, context: Context) {
     }
 
     if (action === "REQUEST_DELETION") {
-      if (!access.customer)
+      if (!access.customer && !access.manager)
         throw new AuthorizationError(
           "FORBIDDEN",
-          "Only the customer may request deletion for this work record.",
+          "Only the customer or vendor manager may request deletion for this work record.",
           403,
         );
       if (!mediaAssetId)

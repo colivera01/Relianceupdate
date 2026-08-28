@@ -70,6 +70,10 @@ describe("work-record media lifecycle route", () => {
       id: "withdrawal-1",
       status: "APPLIED",
     });
+    hoisted.openMediaLifecycleCase.mockResolvedValue({
+      id: "case-1",
+      status: "UNDER_REVIEW",
+    });
     hoisted.requestMediaDeletion.mockResolvedValue({ id: "deletion-1", status: "ACCESS_RESTRICTED" });
   });
 
@@ -131,17 +135,37 @@ describe("work-record media lifecycle route", () => {
     expect(hoisted.applyMediaWithdrawal).not.toHaveBeenCalled();
   });
 
-  it("retires Vendor Manager governance authority at the server boundary", async () => {
+  it("allows an active Vendor Manager to use all four protective governance actions", async () => {
     hoisted.actor.mockResolvedValue(
       actor("manager-1", [
         { id: "membership-manager", vendorId: "vendor-1", role: "MANAGER" },
       ]),
     );
-    const withdrawal = await POST(
+    const recordingWithdrawal = await POST(
+      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "WITHDRAW_RECORDING" }),
+      }),
+      { params: Promise.resolve({ id: "booking-1" }) },
+    );
+    const publicationWithdrawal = await POST(
       new Request("http://localhost/api/bookings/booking-1/lifecycle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "WITHDRAW_PUBLICATION", mediaAssetId: "asset-1" }),
+      }),
+      { params: Promise.resolve({ id: "booking-1" }) },
+    );
+    const concern = await POST(
+      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "OPEN_DISPUTE",
+          category: "PRIVACY",
+          reasonDetail: "Unintended private information may be visible.",
+        }),
       }),
       { params: Promise.resolve({ id: "booking-1" }) },
     );
@@ -154,10 +178,59 @@ describe("work-record media lifecycle route", () => {
       { params: Promise.resolve({ id: "booking-1" }) },
     );
 
-    expect(withdrawal.status).toBe(403);
-    expect(deletion.status).toBe(403);
+    expect(recordingWithdrawal.status).toBe(200);
+    expect(publicationWithdrawal.status).toBe(200);
+    expect(concern.status).toBe(201);
+    expect(deletion.status).toBe(201);
+    expect(hoisted.applyMediaWithdrawal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "booking-1",
+        actorRole: "VENDOR_MANAGER",
+        authorityType: "VENDOR_REPRESENTATION",
+        scope: "RECORDING",
+      }),
+    );
+    expect(hoisted.applyMediaWithdrawal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "booking-1",
+        actorRole: "VENDOR_MANAGER",
+        authorityType: "VENDOR_REPRESENTATION",
+        scope: "PUBLICATION",
+      }),
+    );
+    expect(hoisted.openMediaLifecycleCase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "booking-1",
+        actorRole: "VENDOR_MANAGER",
+        category: "PRIVACY",
+      }),
+    );
+    expect(hoisted.requestMediaDeletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingId: "booking-1",
+        actorRole: "VENDOR_MANAGER",
+        mediaAssetId: "asset-1",
+      }),
+    );
+  });
+
+  it("does not grant manager authority from a different vendor", async () => {
+    hoisted.actor.mockResolvedValue(
+      actor("manager-2", [
+        { id: "membership-other", vendorId: "vendor-2", role: "MANAGER" },
+      ]),
+    );
+    const response = await POST(
+      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "WITHDRAW_RECORDING" }),
+      }),
+      { params: Promise.resolve({ id: "booking-1" }) },
+    );
+
+    expect(response.status).toBe(403);
     expect(hoisted.applyMediaWithdrawal).not.toHaveBeenCalled();
-    expect(hoisted.requestMediaDeletion).not.toHaveBeenCalled();
   });
 
   it("denies employee stored-media deletion even with active assignment membership", async () => {

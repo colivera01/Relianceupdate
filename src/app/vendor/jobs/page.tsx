@@ -450,7 +450,8 @@ export default function VendorJobs() {
   const [preferredNextVideoStage, setPreferredNextVideoStage] = useState<'' | VendorJobVideoStage>('');
   const [preferredReplaceStage, setPreferredReplaceStage] = useState(false);
   const [search, setSearch] = useState('');
-  const [isEmployeeView, setIsEmployeeView] = useState(false);
+  const [vendorMembershipRole, setVendorMembershipRole] = useState('');
+  const isEmployeeView = vendorMembershipRole === 'EMPLOYEE';
   const [statusFilter, setStatusFilter] = useState('all');
   const [workflowFilter, setWorkflowFilter] = useState('all');
   const [showJobWorkflowGuide, setShowJobWorkflowGuide] = useState(false);
@@ -467,6 +468,30 @@ export default function VendorJobs() {
       setShowJobWorkflowGuide(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!authUserId) {
+      setVendorMembershipRole('');
+      return;
+    }
+    let active = true;
+    fetch('/api/vendor/context', {
+      credentials: 'include',
+      cache: 'no-store',
+      headers: getClientSessionHeaders(authUserId),
+    })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body?.error || 'Vendor context unavailable');
+        if (active) setVendorMembershipRole(String(body?.role || '').trim().toUpperCase());
+      })
+      .catch(() => {
+        if (active) setVendorMembershipRole('');
+      });
+    return () => {
+      active = false;
+    };
+  }, [authUserId]);
 
   const openJobWorkflowGuide = () => {
     setDontShowJobWorkflowGuideAgain(false);
@@ -8460,6 +8485,17 @@ export default function VendorJobs() {
                         onClick={(e) => e.stopPropagation()}
                         role="menu"
                       >
+                        {vendorMembershipRole === 'MANAGER' ? (
+                          <button
+                            className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
+                            onClick={() => {
+                              setActiveJobActionMenuId(null);
+                              router.push(`/vendor/jobs/${encodeURIComponent(String(job?.bookingId || job?.id || '').trim())}/privacy-governance`);
+                            }}
+                          >
+                            Privacy &amp; Governance
+                          </button>
+                        ) : null}
                         {(() => {
                           const status = String(job?.status || '').trim().toLowerCase();
                           const isPendingOrInProgress =

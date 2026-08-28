@@ -123,11 +123,17 @@ async function installVendorFixture(
   jobs: any[],
   consentStatusResponse?: string | string[],
   sessionGuardResponse?: Record<string, unknown>,
+  identity: { userId: string; role: "MANAGER" | "EMPLOYEE"; name: string; email: string } = {
+    userId: MANAGER_ID,
+    role: "MANAGER",
+    name: "Controlled Manager",
+    email: "manager@reliance.test",
+  },
 ) {
   let consentStatusRequestCount = 0;
   const session = createAuthSessionCookie({
-    userId: MANAGER_ID,
-    email: "manager@reliance.test",
+    userId: identity.userId,
+    email: identity.email,
     userType: "vendor",
     availableProfiles: ["vendor"],
   });
@@ -145,9 +151,9 @@ async function installVendorFixture(
     window.sessionStorage.setItem(
       "userData",
       JSON.stringify({
-        id: "rv8-manager",
-        name: "Controlled Manager",
-        email: "manager@reliance.test",
+        id: identity.userId,
+        name: identity.name,
+        email: identity.email,
         userType: "vendor",
         availableProfiles: ["vendor"],
       }),
@@ -165,9 +171,9 @@ async function installVendorFixture(
         body: JSON.stringify({
           authenticated: true,
           user: {
-            id: "rv8-manager",
-            name: "Controlled Manager",
-            email: "manager@reliance.test",
+            id: identity.userId,
+            name: identity.name,
+            email: identity.email,
             userType: "vendor",
             availableProfiles: ["vendor"],
           },
@@ -199,7 +205,7 @@ async function installVendorFixture(
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ success: true, vendorId: VENDOR_ID, businessName: "Controlled Services" }),
+        body: JSON.stringify({ success: true, vendorId: VENDOR_ID, businessName: "Controlled Services", role: identity.role }),
       });
       return;
     }
@@ -448,9 +454,23 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.getByRole("button", { name: "Actions" }).click();
     const actionsMenu = page.getByRole("menu");
     await expect(actionsMenu.getByRole("button", { name: "View Details" })).toBeVisible();
-    await expect(actionsMenu.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(0);
+    await expect(actionsMenu.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(1);
     await expect(actionsMenu.getByRole("button", { name: "Submit to Reliance Audit" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Request Changes" })).toHaveCount(0);
+  });
+
+  test("does not expose the manager governance entry to an Employee", async ({ page }) => {
+    await installVendorFixture(page, [managerReviewJob], undefined, undefined, {
+      userId: "rv8-employee",
+      role: "EMPLOYEE",
+      name: "Controlled Employee",
+      email: "employee@reliance.test",
+    });
+
+    await openVendorJobs(page);
+
+    await expect(page.getByRole("heading", { name: "My Assigned Work" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(0);
   });
 
   test("requires recipient correction and does not offer ordinary resend after a wrong-recipient report", async ({ page }) => {
