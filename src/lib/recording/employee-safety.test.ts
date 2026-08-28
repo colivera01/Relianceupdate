@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+  EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
   EmployeeRecordingSafetyValidationError,
   parseEmployeeRecordingSafetyEvidence,
   resolveV2StageSafetyReadiness,
@@ -18,6 +19,9 @@ const OTHER_LOCATION_HASH = "b".repeat(64);
 const ASSESSMENT_HASH = "9eddf097df685ac4bb41fc6985ba59d7a4a5936e1ec5916d25ba1da1f1be35c6";
 const SAFETY_HASH_A = "93a25638f4e18065493ed1e0d174c11b6dfb0c2c8c0e76db7f6070de7c548bf8";
 const SAFETY_HASH_B = "2e5f8c88499495479d2eda30f300309253fb5eb631a437defb2211d5196cdb80";
+const LOCATION_ATTEMPT_HASH = "c".repeat(64);
+const REQUEST_HASH = "d".repeat(64);
+const BODY_HASH = "e".repeat(64);
 
 function safetyFixture(overrides: Record<string, unknown> = {}) {
   return {
@@ -37,6 +41,20 @@ function safetyFixture(overrides: Record<string, unknown> = {}) {
     result: "READY",
     predecessor: null,
     createdAt: "2026-08-27T20:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function hardenedSafetyFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    ...safetyFixture(),
+    contractVersion: EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
+    location: {
+      snapshotEvidenceHash: LOCATION_HASH,
+      attemptId: "location-attempt-a",
+      attemptEvidenceHash: LOCATION_ATTEMPT_HASH,
+    },
+    submission: { requestHash: REQUEST_HASH, bodyHash: BODY_HASH },
     ...overrides,
   };
 }
@@ -66,6 +84,8 @@ function stored(
     assessmentContractVersion: evidence.assessment.contractVersion,
     assessmentScopeHash: evidence.assessment.scopeHash,
     locationSnapshotEvidenceHash: evidence.location.snapshotEvidenceHash,
+    locationAttemptId: evidence.location.attemptId || null,
+    locationAttemptEvidenceHash: evidence.location.attemptEvidenceHash || null,
     membershipId: evidence.employee.membershipId,
     assignmentGeneration: evidence.employee.assignmentGeneration,
     safetyContractVersion: evidence.contractVersion,
@@ -76,6 +96,8 @@ function stored(
     sequence: evidence.sequence,
     predecessorEvidenceId: evidence.predecessor?.id || null,
     predecessorEvidenceHash: evidence.predecessor?.evidenceHash || null,
+    submissionRequestHash: evidence.submission?.requestHash || null,
+    submissionBodyHash: evidence.submission?.bodyHash || null,
     canonicalJson: parsed.canonicalJson,
     evidenceHash: parsed.evidenceHash,
     createdAt: evidence.createdAt,
@@ -288,10 +310,20 @@ describe("employee runtime-safety canonical contract", () => {
     );
     expect(result.evidenceHash).toBe(SAFETY_HASH_B);
   });
+
+  it("matches the versioned Phase 3A safety-and-location golden fixture", () => {
+    const result = parseEmployeeRecordingSafetyEvidence(hardenedSafetyFixture());
+    expect(result.canonicalJson).toBe(
+      '{"assessment":{"contractVersion":"recording-assessment-v4-multiscope-safety-v1","generation":2,"id":"assessment-v2-a","scopeHash":"9eddf097df685ac4bb41fc6985ba59d7a4a5936e1ec5916d25ba1da1f1be35c6"},"check":{"stage":"STARTING_CONDITION","type":"INITIAL"},"contractVersion":"employee-pre-recording-safety-v2","createdAt":"2026-08-27T20:00:00.000Z","employee":{"assignmentGeneration":3,"membershipId":"membership-employee-a"},"issues":[],"location":{"attemptEvidenceHash":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","attemptId":"location-attempt-a","snapshotEvidenceHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"predecessor":null,"result":"READY","sequence":1,"submission":{"bodyHash":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","requestHash":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},"workRecord":{"bookingId":"booking-v2-a","vendorId":"vendor-v2-a"}}',
+    );
+    expect(result.evidenceHash).toBe(
+      "6bae01dbfdc4da89f875723a4acd5425ef12e8787bb7ea680c07f9e4b7137715",
+    );
+  });
 });
 
 describe("V2 stage safety readiness", () => {
-  const readyInitial = parseEmployeeRecordingSafetyEvidence(safetyFixture());
+  const readyInitial = parseEmployeeRecordingSafetyEvidence(hardenedSafetyFixture());
 
   it("requires evidence for V2 but not current V3 or legacy assessments", () => {
     expect(readiness([])).toMatchObject({
@@ -310,6 +342,8 @@ describe("V2 stage safety readiness", () => {
       result: null,
       evidenceId: null,
       evidenceHash: null,
+      locationAttemptId: null,
+      locationAttemptEvidenceHash: null,
       stage: null,
       checkType: null,
     });
@@ -369,12 +403,12 @@ describe("V2 stage safety readiness", () => {
 
   it("requires independent Work In Progress and Completed Work rechecks", () => {
     const work = parseEmployeeRecordingSafetyEvidence(
-      safetyFixture({
+      hardenedSafetyFixture({
         check: { type: "STAGE_RECHECK", stage: "WORK_IN_PROGRESS" },
       }),
     );
     const completed = parseEmployeeRecordingSafetyEvidence(
-      safetyFixture({
+      hardenedSafetyFixture({
         check: { type: "STAGE_RECHECK", stage: "COMPLETED_WORK" },
       }),
     );
@@ -391,7 +425,7 @@ describe("V2 stage safety readiness", () => {
 
   it("gives the latest BLOCKED check precedence over an older READY", () => {
     const blocked = parseEmployeeRecordingSafetyEvidence(
-      safetyFixture({
+      hardenedSafetyFixture({
         sequence: 2,
         issues: ["MINOR_PRESENT"],
         result: "BLOCKED",
@@ -411,7 +445,7 @@ describe("V2 stage safety readiness", () => {
 
   it("allows a later matching READY to restore readiness after remediation", () => {
     const blocked = parseEmployeeRecordingSafetyEvidence(
-      safetyFixture({
+      hardenedSafetyFixture({
         sequence: 2,
         issues: ["PRIVATE_DOCUMENT_OR_SCREEN"],
         result: "BLOCKED",
@@ -420,7 +454,7 @@ describe("V2 stage safety readiness", () => {
       }),
     );
     const restored = parseEmployeeRecordingSafetyEvidence(
-      safetyFixture({
+      hardenedSafetyFixture({
         sequence: 3,
         predecessor: { id: "safety-blocked", evidenceHash: blocked.evidenceHash },
         createdAt: "2026-08-27T20:15:00.000Z",
@@ -437,7 +471,7 @@ describe("V2 stage safety readiness", () => {
 
   it("does not let an older READY bypass material scope change evidence", () => {
     const material = parseEmployeeRecordingSafetyEvidence(
-      safetyFixture({
+      hardenedSafetyFixture({
         sequence: 2,
         issues: [
           "APPROVED_AUDIO_SCOPE_MISMATCH",
@@ -460,7 +494,7 @@ describe("V2 stage safety readiness", () => {
 
   it("does not let a later READY acknowledge away a material scope change", () => {
     const material = parseEmployeeRecordingSafetyEvidence(
-      safetyFixture({
+      hardenedSafetyFixture({
         sequence: 2,
         issues: ["MATERIAL_SCOPE_EXPANSION_REQUIRED"],
         result: "MATERIAL_SCOPE_CHANGE_REQUIRED",

@@ -494,6 +494,37 @@ describe("vendor media sessions consent enforcement integration", () => {
     expect(hoisted.mediaSessionCreate).toHaveBeenCalledTimes(1);
   });
 
+  it("re-evaluates authority inside the serializable transaction and denies a raced lifecycle change", async () => {
+    mockBookingLocation("business");
+    let insideTransaction = false;
+    hoisted.transaction.mockImplementation(async (callback: (tx: any) => Promise<any>) => {
+      insideTransaction = true;
+      return callback(hoisted.prisma);
+    });
+    hoisted.bookingFindUnique.mockImplementation(async () => ({
+      status: insideTransaction ? "CANCELED" : "IN_PROGRESS",
+    }));
+    const { req, ctx } = buildPostRequest({
+      locationContext: "business",
+      locationProof: {
+        latitude: 28.53831,
+        longitude: -81.37919,
+        accuracyMeters: 20,
+      },
+    });
+
+    const res = await POST(req, ctx as any);
+    const json = await toJson(res);
+
+    expect(res.status).toBe(409);
+    expect(json.code).toBe("SERVICE_ORDER_CANCELED");
+    expect(hoisted.transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: "Serializable",
+    });
+    expect(hoisted.recordingGateDecisionEvidenceCreate).not.toHaveBeenCalled();
+    expect(hoisted.mediaSessionCreate).not.toHaveBeenCalled();
+  });
+
   it("does not create a business snapshot at recording time when the immutable snapshot is missing", async () => {
     assessmentLocation = "business";
     hoisted.bookingFindFirst.mockResolvedValue({

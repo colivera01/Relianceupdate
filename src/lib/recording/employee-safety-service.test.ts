@@ -28,6 +28,10 @@ import {
   parseRecordingAssessmentV2,
   RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
 } from "./assessment-v2";
+import {
+  buildV2StageLocationEvidence,
+  V2_STAGE_LOCATION_EVIDENCE_VERSION,
+} from "./v2-safety-location";
 
 function buildLocationMetadata() {
   const verifiedAt = "2026-08-27T18:00:00.000Z";
@@ -119,6 +123,85 @@ const assessment = {
   scopeHash: canonicalAssessment.scopeHash,
 };
 
+const locationAttemptBase = {
+  id: "location-attempt-1",
+  bookingId: "booking-1",
+  vendorId: "vendor-1",
+  assessmentId: "assessment-1",
+  assessmentGeneration: 2,
+  membershipId: "membership-1",
+  assignmentGeneration: 4,
+  stage: "STARTING_CONDITION",
+  snapshotEvidenceHash: location.snapshotHash,
+  status: "VERIFIED",
+  resultCode: "LOCATION_VERIFIED",
+  method: "DEVICE_GEOLOCATION",
+  distanceMeters: 12,
+  accuracyMeters: 5,
+  latitude: 28.51,
+  longitude: -81.46,
+  capturedAt: new Date("2026-08-27T19:59:00.000Z"),
+  attemptedAt: new Date("2026-08-27T20:00:00.000Z"),
+};
+const locationAttemptEvidence = buildV2StageLocationEvidence({
+  attemptId: locationAttemptBase.id,
+  bookingId: locationAttemptBase.bookingId,
+  vendorId: locationAttemptBase.vendorId,
+  assessmentId: locationAttemptBase.assessmentId,
+  assessmentGeneration: locationAttemptBase.assessmentGeneration,
+  membershipId: locationAttemptBase.membershipId,
+  assignmentGeneration: locationAttemptBase.assignmentGeneration,
+  stage: locationAttemptBase.stage as "STARTING_CONDITION",
+  snapshotEvidenceHash: locationAttemptBase.snapshotEvidenceHash,
+  status: locationAttemptBase.status,
+  resultCode: locationAttemptBase.resultCode,
+  method: locationAttemptBase.method,
+  distanceMeters: locationAttemptBase.distanceMeters,
+  accuracyMeters: locationAttemptBase.accuracyMeters,
+  latitude: locationAttemptBase.latitude,
+  longitude: locationAttemptBase.longitude,
+  capturedAt: locationAttemptBase.capturedAt,
+  attemptedAt: locationAttemptBase.attemptedAt,
+});
+const locationAttempt = {
+  ...locationAttemptBase,
+  evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  canonicalJson: locationAttemptEvidence.canonicalJson,
+  evidenceHash: locationAttemptEvidence.evidenceHash,
+};
+const secondLocationAttemptBase = {
+  ...locationAttemptBase,
+  id: "location-attempt-2",
+  capturedAt: new Date("2026-08-27T20:03:00.000Z"),
+  attemptedAt: new Date("2026-08-27T20:04:00.000Z"),
+};
+const secondLocationAttemptEvidence = buildV2StageLocationEvidence({
+  attemptId: secondLocationAttemptBase.id,
+  bookingId: secondLocationAttemptBase.bookingId,
+  vendorId: secondLocationAttemptBase.vendorId,
+  assessmentId: secondLocationAttemptBase.assessmentId,
+  assessmentGeneration: secondLocationAttemptBase.assessmentGeneration,
+  membershipId: secondLocationAttemptBase.membershipId,
+  assignmentGeneration: secondLocationAttemptBase.assignmentGeneration,
+  stage: secondLocationAttemptBase.stage as "STARTING_CONDITION",
+  snapshotEvidenceHash: secondLocationAttemptBase.snapshotEvidenceHash,
+  status: secondLocationAttemptBase.status,
+  resultCode: secondLocationAttemptBase.resultCode,
+  method: secondLocationAttemptBase.method,
+  distanceMeters: secondLocationAttemptBase.distanceMeters,
+  accuracyMeters: secondLocationAttemptBase.accuracyMeters,
+  latitude: secondLocationAttemptBase.latitude,
+  longitude: secondLocationAttemptBase.longitude,
+  capturedAt: secondLocationAttemptBase.capturedAt,
+  attemptedAt: secondLocationAttemptBase.attemptedAt,
+});
+const secondLocationAttempt = {
+  ...secondLocationAttemptBase,
+  evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  canonicalJson: secondLocationAttemptEvidence.canonicalJson,
+  evidenceHash: secondLocationAttemptEvidence.evidenceHash,
+};
+
 const tx = {
   booking: { findFirst: db.bookingFindFirst },
   recordingScopeAssessment: { findFirst: db.assessmentFindFirst },
@@ -137,6 +220,8 @@ function append(overrides: Record<string, unknown> = {}) {
     bookingId: "booking-1",
     vendorId: "vendor-1",
     membershipId: "membership-1",
+    locationAttemptId: "location-attempt-1",
+    requestId: "phase3a-safety-request-0001",
     checkType: "INITIAL",
     stage: "STARTING_CONDITION",
     result: "READY",
@@ -157,7 +242,9 @@ describe("employee runtime-safety append service", () => {
     });
     db.assessmentFindFirst.mockResolvedValue(assessment);
     db.membershipFindFirst.mockResolvedValue({ id: "membership-1", userId: "employee-user-1" });
-    db.locationAttemptFindFirst.mockResolvedValue({ id: "location-attempt-1", status: "VERIFIED" });
+    db.locationAttemptFindFirst.mockImplementation(async ({ where }: any) =>
+      where.id === secondLocationAttempt.id ? secondLocationAttempt : locationAttempt,
+    );
     db.locationExceptionFindFirst.mockResolvedValue(null);
     db.safetyFindFirst.mockResolvedValue(null);
     db.safetyFindMany.mockResolvedValue([]);
@@ -179,7 +266,9 @@ describe("employee runtime-safety append service", () => {
         locationSnapshotEvidenceHash: location.snapshotHash,
         membershipId: "membership-1",
         assignmentGeneration: 4,
-        safetyContractVersion: "employee-pre-recording-safety-v1",
+        locationAttemptId: "location-attempt-1",
+        locationAttemptEvidenceHash: locationAttemptEvidence.evidenceHash,
+        safetyContractVersion: "employee-pre-recording-safety-v2",
         checkType: "INITIAL",
         stage: "STARTING_CONDITION",
         result: "READY",
@@ -187,6 +276,8 @@ describe("employee runtime-safety append service", () => {
         sequence: 1,
         predecessorEvidenceId: null,
         predecessorEvidenceHash: null,
+        submissionRequestHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        submissionBodyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
         canonicalJson: expect.any(String),
         evidenceHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
@@ -205,7 +296,11 @@ describe("employee runtime-safety append service", () => {
     db.safetyFindMany.mockResolvedValue([first]);
     db.safetyCreate.mockImplementationOnce(({ data }) => ({ id: "safety-ready", ...data }));
 
-    const second = await append({ now: new Date("2026-08-27T20:05:00.000Z") });
+    const second = await append({
+      locationAttemptId: "location-attempt-2",
+      requestId: "phase3a-safety-request-0002",
+      now: new Date("2026-08-27T20:04:00.000Z"),
+    });
 
     expect(second).toMatchObject({
       id: "safety-ready",
@@ -225,7 +320,10 @@ describe("employee runtime-safety append service", () => {
     db.safetyFindMany.mockResolvedValue([material]);
 
     await expect(
-      append({ now: new Date("2026-08-27T20:05:00.000Z") }),
+      append({
+        requestId: "phase3a-safety-request-0002",
+        now: new Date("2026-08-27T20:04:00.000Z"),
+      }),
     ).rejects.toMatchObject({ code: "V2_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED" });
     expect(db.safetyCreate).toHaveBeenCalledTimes(1);
   });
@@ -263,8 +361,8 @@ describe("employee runtime-safety append service", () => {
       vendorId: "vendor-1",
       customerMetadata: location.customerMetadata,
     });
-    db.locationAttemptFindFirst.mockResolvedValue({ id: "location-attempt-1", status: "FAILED" });
-    await expect(append()).rejects.toMatchObject({ code: "V2_SAFETY_LOCATION_NOT_VERIFIED" });
+    db.locationAttemptFindFirst.mockResolvedValue({ ...locationAttempt, status: "FAILED" });
+    await expect(append()).rejects.toMatchObject({ code: "V2_LOCATION_NOT_VERIFIED" });
     expect(db.safetyCreate).not.toHaveBeenCalled();
   });
 
@@ -278,7 +376,139 @@ describe("employee runtime-safety append service", () => {
         issues: [{ code: "PRIVATE_DOCUMENT_OR_SCREEN", description: "account 1234" }],
         result: "BLOCKED",
       }),
-    ).rejects.toMatchObject({ code: "UNKNOWN_ENUM_VALUE" });
+    ).rejects.toMatchObject({ code: "V2_SAFETY_ISSUE_INVALID" });
     expect(db.safetyCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns the original evidence for an identical idempotent retry", async () => {
+    const first = await append();
+    db.safetyFindFirst.mockResolvedValue(first);
+
+    const retried = await append();
+
+    expect(retried).toBe(first);
+    expect(db.safetyCreate).toHaveBeenCalledOnce();
+  });
+
+  it("returns an idempotent result after the original GPS freshness window", async () => {
+    const first = await append();
+    db.safetyFindFirst.mockResolvedValue(first);
+    db.locationAttemptFindFirst.mockResolvedValue({ ...locationAttempt, status: "FAILED" });
+
+    const retried = await append({ now: new Date("2026-08-27T21:00:00.000Z") });
+
+    expect(retried).toBe(first);
+    expect(db.safetyCreate).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when an idempotency key is reused with different content", async () => {
+    const first = await append();
+    db.safetyFindFirst.mockResolvedValue(first);
+
+    await expect(
+      append({ result: "BLOCKED", issues: ["PRIVATE_DOCUMENT_OR_SCREEN"] }),
+    ).rejects.toMatchObject({ code: "V2_SAFETY_IDEMPOTENCY_CONFLICT" });
+    expect(db.safetyCreate).toHaveBeenCalledOnce();
+  });
+
+  it("does not let a different submission reuse one physical location attempt", async () => {
+    const first = await append();
+    db.safetyFindFirst.mockImplementation(async ({ where }: any) =>
+      where.locationAttemptId === first.locationAttemptId ? first : null,
+    );
+
+    await expect(append({ requestId: "phase3a-safety-request-0002" })).rejects.toMatchObject({
+      code: "V2_SAFETY_LOCATION_ATTEMPT_ALREADY_USED",
+    });
+    expect(db.safetyCreate).toHaveBeenCalledOnce();
+  });
+
+  it("collapses concurrent duplicate retries into one canonical evidence row", async () => {
+    let storedRow: any = null;
+    db.safetyFindFirst.mockImplementation(async ({ where }: any) => {
+      if (!storedRow) return null;
+      if (where.submissionRequestHash === storedRow.submissionRequestHash) return storedRow;
+      if (where.locationAttemptId === storedRow.locationAttemptId) return storedRow;
+      return null;
+    });
+    db.safetyFindMany.mockImplementation(async () => (storedRow ? [storedRow] : []));
+    db.safetyCreate.mockImplementation(async ({ data }: any) => {
+      await Promise.resolve();
+      if (storedRow) {
+        const conflict: any = new Error("unique conflict");
+        conflict.code = "P2002";
+        throw conflict;
+      }
+      storedRow = { id: "safety-concurrent", ...data };
+      return storedRow;
+    });
+
+    const [first, second] = await Promise.all([append(), append()]);
+
+    expect(first.id).toBe("safety-concurrent");
+    expect(second.id).toBe("safety-concurrent");
+    expect(first.evidenceHash).toBe(second.evidenceHash);
+    expect(first.sequence).toBe(1);
+    expect(db.safetyCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it("serializes a concurrent READY versus BLOCKED race so the newer server event wins", async () => {
+    const rows: any[] = [];
+    let initialReads = 0;
+    let releaseInitialReads!: () => void;
+    const initialReadBarrier = new Promise<void>((resolve) => {
+      releaseInitialReads = resolve;
+    });
+    db.safetyFindFirst.mockImplementation(async ({ where }: any) => {
+      if (where.submissionRequestHash) {
+        return rows.find((row) => row.submissionRequestHash === where.submissionRequestHash) || null;
+      }
+      if (where.locationAttemptId) {
+        return rows.find((row) => row.locationAttemptId === where.locationAttemptId) || null;
+      }
+      return null;
+    });
+    db.safetyFindMany.mockImplementation(async () => {
+      initialReads += 1;
+      if (initialReads <= 2) {
+        if (initialReads === 2) releaseInitialReads();
+        await initialReadBarrier;
+        return [];
+      }
+      return [...rows].sort((left, right) => left.sequence - right.sequence);
+    });
+    db.safetyCreate.mockImplementation(async ({ data }: any) => {
+      if (data.result === "BLOCKED") {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+      if (rows.some((row) => row.chainKey === data.chainKey && row.sequence === data.sequence)) {
+        const conflict: any = new Error("chain sequence conflict");
+        conflict.code = "P2002";
+        throw conflict;
+      }
+      const row = { id: `safety-race-${rows.length + 1}`, ...data };
+      rows.push(row);
+      return row;
+    });
+
+    const [ready, blocked] = await Promise.all([
+      append(),
+      append({
+        locationAttemptId: "location-attempt-2",
+        requestId: "phase3a-safety-request-0002",
+        result: "BLOCKED",
+        issues: ["PRIVATE_DOCUMENT_OR_SCREEN"],
+        now: new Date("2026-08-27T20:04:00.000Z"),
+      }),
+    ]);
+
+    expect(ready).toMatchObject({ result: "READY", sequence: 1 });
+    expect(blocked).toMatchObject({
+      result: "BLOCKED",
+      sequence: 2,
+      predecessorEvidenceId: ready.id,
+      predecessorEvidenceHash: ready.evidenceHash,
+    });
+    expect(rows).toHaveLength(2);
   });
 });

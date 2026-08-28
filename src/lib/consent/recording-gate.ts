@@ -23,6 +23,7 @@ import {
   RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
 } from "@/lib/recording/assessment-v2";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
+import { validateV2SafetyLocationAttempt } from "@/lib/recording/v2-safety-location";
 
 export type RecordingPermissionRecord = {
   id?: string | null;
@@ -71,6 +72,7 @@ export type RecordingPermissionGate = {
   recipientNeedsCorrection: boolean;
   assessmentId: string | null;
   assessmentGeneration: number | null;
+  assessmentContractVersion: string | null;
   scopeHash: string | null;
   assessmentStatus: string | null;
   riskLevel: string | null;
@@ -258,6 +260,7 @@ export function resolveRecordingPermissionGate(input: {
     recipientNeedsCorrection: Boolean(facts.currentRecord?.recipientMismatch),
     assessmentId: null,
     assessmentGeneration: null,
+    assessmentContractVersion: null,
     scopeHash: null,
     assessmentStatus: null,
     riskLevel: null,
@@ -301,9 +304,10 @@ async function recordBlockMetric(input: {
   surface: RecordingGateSurface;
   block: RecordingGateBlock | null;
   actorKind?: string | null;
+  db?: any;
 }) {
   if (!input.block) return;
-  const model = (prisma as any).recordingGateMetric;
+  const model = (input.db || (prisma as any)).recordingGateMetric;
   if (!model?.create) return;
   try {
     await model.create({
@@ -332,8 +336,10 @@ export async function loadCanonicalRecordingGate(input: {
   actorKind?: string | null;
   recordingStage?: RecordingStage | string | null;
   now?: Date;
+  db?: any;
 }): Promise<RecordingPermissionGate> {
-  const assessmentModel = (prisma as any).recordingScopeAssessment;
+  const db = input.db || (prisma as any);
+  const assessmentModel = db.recordingScopeAssessment;
   // Isolated legacy test doubles do not expose the Epic 4 models. Production
   // Prisma always does, so this branch cannot weaken the deployed gate.
   if (!assessmentModel?.findFirst) {
@@ -349,7 +355,7 @@ export async function loadCanonicalRecordingGate(input: {
       orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
       include: { authorities: true },
     }),
-    (prisma as any).consentRecord.findFirst({
+    db.consentRecord.findFirst({
       where: {
         bookingId: input.bookingId,
         ...(input.vendorId ? { vendorId: input.vendorId } : {}),
@@ -382,12 +388,13 @@ export async function loadCanonicalRecordingGate(input: {
     resolveCanonicalMediaLifecycle({
       bookingId: input.bookingId,
       intendedAudience: "PRIVATE",
+      db,
     }),
-    (prisma as any).booking.findUnique({
+    db.booking.findUnique({
       where: { id: input.bookingId },
-      select: { status: true },
+      select: { status: true, customerMetadata: true },
     }),
-    (prisma as any).serviceVideoPackageEvidence.findFirst({
+    db.serviceVideoPackageEvidence.findFirst({
       where: {
         bookingId: input.bookingId,
         ...(input.vendorId ? { vendorId: input.vendorId } : {}),
@@ -398,7 +405,7 @@ export async function loadCanonicalRecordingGate(input: {
   ]);
   const correctionDecision =
     currentPackage?.status === "CORRECTION_REQUESTED" && currentPackage.managerDecisionId
-      ? await (prisma as any).serviceVideoManagerDecisionEvidence.findFirst({
+      ? await db.serviceVideoManagerDecisionEvidence.findFirst({
           where: {
             id: currentPackage.managerDecisionId,
             packageId: currentPackage.id,
@@ -424,14 +431,15 @@ export async function loadCanonicalRecordingGate(input: {
   })();
   const workRecordStatus = String(booking?.status || "").trim().toUpperCase() || null;
   const recordingStage = String(input.recordingStage || "").trim().toUpperCase() as RecordingStage | "";
-  const facts = permissionFacts({ ...input, assessment, consentRecord });
+  const authoritativeMetadata = booking?.customerMetadata ?? input.customerMetadata;
+  const facts = permissionFacts({ ...input, customerMetadata: authoritativeMetadata, assessment, consentRecord });
   const assessmentLocation = normalizeRecordingLocationChoice(assessment?.locationType);
   const locationSnapshot = validateRecordingLocationSnapshot(
-    input.customerMetadata,
+    authoritativeMetadata,
     assessmentLocation,
   );
-  const assignment = parseAssignmentMetadata(input.customerMetadata);
-  const metadata = parseCustomerMetadata(input.customerMetadata);
+  const assignment = parseAssignmentMetadata(authoritativeMetadata);
+  const metadata = parseCustomerMetadata(authoritativeMetadata);
   const assignmentGeneration = Number(metadata.vendor_job_assignment_generation || 1);
   const assigned = input.membershipId
     ? assignment.assignedMembershipIds.includes(input.membershipId)
@@ -440,7 +448,7 @@ export async function loadCanonicalRecordingGate(input: {
     ? facts.compliance.releasedMembershipIds.includes(input.membershipId)
     : Boolean(facts.compliance.serviceOrderReleasedAt);
   const certification = assessment && input.membershipId
-    ? await (prisma as any).employeeRecordingCertification.findFirst({
+    ? await db.employeeRecordingCertification.findFirst({
         where: {
           bookingId: input.bookingId,
           membershipId: input.membershipId,
@@ -454,7 +462,7 @@ export async function loadCanonicalRecordingGate(input: {
       })
     : null;
   const locationAttempt = assessment && input.membershipId
-    ? await (prisma as any).recordingLocationAttempt.findFirst({
+    ? await db.recordingLocationAttempt.findFirst({
         where: {
           bookingId: input.bookingId,
           membershipId: input.membershipId,
@@ -464,7 +472,7 @@ export async function loadCanonicalRecordingGate(input: {
       })
     : null;
   const locationException = assessment
-    ? await (prisma as any).recordingLocationException.findFirst({
+    ? await db.recordingLocationException.findFirst({
         where: { bookingId: input.bookingId, assessmentId: assessment.id },
         orderBy: { createdAt: "desc" },
     })
@@ -474,8 +482,8 @@ export async function loadCanonicalRecordingGate(input: {
   const safetyRows =
     capability === "record" &&
     assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION &&
-    (prisma as any).employeeRecordingSafetyEvidence?.findMany
-      ? await (prisma as any).employeeRecordingSafetyEvidence.findMany({
+    db.employeeRecordingSafetyEvidence?.findMany
+      ? await db.employeeRecordingSafetyEvidence.findMany({
           where: {
             bookingId: input.bookingId,
             ...(safetyRequirement
@@ -488,7 +496,7 @@ export async function loadCanonicalRecordingGate(input: {
           orderBy: [{ sequence: "desc" }, { createdAt: "desc" }, { id: "desc" }],
         })
       : [];
-  const v2Safety =
+  let v2Safety =
     capability === "record" &&
     assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION
       ? resolveV2StageSafetyReadiness({
@@ -504,6 +512,39 @@ export async function loadCanonicalRecordingGate(input: {
           evidence: safetyRows,
         })
       : undefined;
+  let v2LocationAttempt: any | null = null;
+  if (v2Safety?.ready && assessment && input.membershipId && safetyRequirement) {
+    try {
+      const validated = await validateV2SafetyLocationAttempt({
+        tx: db,
+        locationAttemptId: String(v2Safety.locationAttemptId || ""),
+        bookingId: input.bookingId,
+        vendorId: input.vendorId || assessment.vendorId,
+        assessmentId: assessment.id,
+        assessmentGeneration: assessment.generation,
+        membershipId: input.membershipId,
+        assignmentGeneration,
+        stage: safetyRequirement.stage,
+        snapshotEvidenceHash: locationSnapshot.ok
+          ? String(locationSnapshot.snapshot.snapshotEvidenceHash || "")
+          : "",
+        now: input.now,
+      });
+      if (validated.evidenceHash !== v2Safety.locationAttemptEvidenceHash) {
+        throw new Error("V2_LOCATION_EVIDENCE_HASH_MISMATCH");
+      }
+      v2LocationAttempt = validated.row;
+    } catch {
+      v2Safety = {
+        ...v2Safety,
+        ready: false,
+        code: "V2_RUNTIME_SAFETY_LOCATION_BINDING_STALE",
+      };
+    }
+  }
+  const usesV2Safety = assessment?.contractVersion === RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
+  const authoritativeLocationAttempt = usesV2Safety ? v2LocationAttempt : locationAttempt;
+  const authoritativeLocationException = usesV2Safety ? null : locationException;
   const v2AudioScopeValid = (() => {
     if (assessment?.contractVersion !== RECORDING_ASSESSMENT_V2_CONTRACT_VERSION) return true;
     try {
@@ -539,6 +580,7 @@ export async function loadCanonicalRecordingGate(input: {
     recipientNeedsCorrection: Boolean(facts.currentRecord?.recipientMismatch),
     assessmentId: assessment?.id || null,
     assessmentGeneration: assessment?.generation || null,
+    assessmentContractVersion: assessment?.contractVersion || null,
     scopeHash: assessment?.scopeHash || null,
     assessmentStatus: assessment?.status || null,
     riskLevel: assessment?.riskLevel || null,
@@ -567,12 +609,12 @@ export async function loadCanonicalRecordingGate(input: {
     certificationActive: Boolean(certification),
     certificationId: certification?.id || null,
     assignmentGeneration,
-    locationVerified: Boolean(locationAttempt?.status === "VERIFIED" || locationException?.status === "APPROVED"),
-    locationAttemptStatus: locationAttempt?.status || null,
-    locationAttemptResultCode: locationAttempt?.resultCode || null,
-    locationAttemptId: locationAttempt?.id || null,
-    locationExceptionStatus: locationException?.status || null,
-    locationExceptionId: locationException?.id || null,
+    locationVerified: Boolean(authoritativeLocationAttempt?.status === "VERIFIED" || authoritativeLocationException?.status === "APPROVED"),
+    locationAttemptStatus: authoritativeLocationAttempt?.status || null,
+    locationAttemptResultCode: authoritativeLocationAttempt?.resultCode || null,
+    locationAttemptId: authoritativeLocationAttempt?.id || null,
+    locationExceptionStatus: authoritativeLocationException?.status || null,
+    locationExceptionId: authoritativeLocationException?.id || null,
     workRecordStatus,
     correctionRequestedStages,
     ...(v2Safety ? { v2Safety } : {}),
@@ -767,19 +809,6 @@ export async function loadCanonicalRecordingGate(input: {
         resolution: "Review the approved scope and complete the pre-recording certification.",
         serviceMayContinue: true,
       }, true);
-    } else if (capability === "record" && locationAttempt?.status !== "VERIFIED" && locationException?.status !== "APPROVED") {
-      const pendingException = locationException?.status === "PENDING";
-      decision = blocked(base, {
-        code: pendingException ? "LOCATION_EXCEPTION_PENDING" : "LOCATION_VERIFICATION_REQUIRED",
-        why: pendingException
-          ? "A location exception is waiting for an independent admin decision."
-          : "The employee device has not verified the saved service location.",
-        responsibleParticipant: pendingException ? "ADMIN" : "EMPLOYEE",
-        resolution: pendingException
-          ? "An admin must approve or deny the exception; the requesting manager cannot decide it."
-          : "Allow precise location and verify the saved service address.",
-        serviceMayContinue: true,
-      }, true);
     } else if (capability === "record" && v2Safety && !v2Safety.ready) {
       const materialChange =
         v2Safety.code === "V2_RUNTIME_SAFETY_MATERIAL_SCOPE_CHANGE_REQUIRED" ||
@@ -795,6 +824,19 @@ export async function loadCanonicalRecordingGate(input: {
         resolution: materialChange
           ? "Do not record. A future material-change workflow must create a new assessment and permission chain."
           : "Correct, remove, wait for, or reframe the unsafe condition, then perform a new safety check for this stage.",
+        serviceMayContinue: true,
+      }, true);
+    } else if (capability === "record" && authoritativeLocationAttempt?.status !== "VERIFIED" && authoritativeLocationException?.status !== "APPROVED") {
+      const pendingException = authoritativeLocationException?.status === "PENDING";
+      decision = blocked(base, {
+        code: pendingException ? "LOCATION_EXCEPTION_PENDING" : "LOCATION_VERIFICATION_REQUIRED",
+        why: pendingException
+          ? "A location exception is waiting for an independent admin decision."
+          : "The employee device has not verified the saved service location.",
+        responsibleParticipant: pendingException ? "ADMIN" : "EMPLOYEE",
+        resolution: pendingException
+          ? "An admin must approve or deny the exception; the requesting manager cannot decide it."
+          : "Allow precise location and verify the saved service address.",
         serviceMayContinue: true,
       }, true);
     } else {
@@ -815,6 +857,7 @@ export async function loadCanonicalRecordingGate(input: {
     surface: input.surface,
     block: decision.block,
     actorKind: input.actorKind,
+    db,
   });
   return decision;
 }
@@ -825,8 +868,10 @@ async function loadLegacyPermissionGate(input: {
   customerMetadata: string | null | undefined;
   consentRecord?: any | null;
   now?: Date;
+  db?: any;
 }): Promise<RecordingPermissionGate> {
-  const consentRecord = input.consentRecord !== undefined ? input.consentRecord : await (prisma as any).consentRecord.findFirst({
+  const db = input.db || (prisma as any);
+  const consentRecord = input.consentRecord !== undefined ? input.consentRecord : await db.consentRecord.findFirst({
     where: {
       bookingId: input.bookingId,
       ...(input.vendorId ? { vendorId: input.vendorId } : {}),
@@ -874,6 +919,7 @@ export async function loadRecordingPermissionGate(input: {
   actorKind?: string | null;
   recordingStage?: RecordingStage | string | null;
   now?: Date;
+  db?: any;
 }): Promise<RecordingPermissionGate> {
   return loadCanonicalRecordingGate({
     ...input,

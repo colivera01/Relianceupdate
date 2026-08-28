@@ -29,6 +29,7 @@ describe("RecordingGateDecisionEvidence persistence contract", () => {
       membershipId: "membership-1",
       actorKind: "EMPLOYEE",
       surface: "media_session",
+      stage: "INTRO",
       gate: {
         block: null,
         blockCode: null,

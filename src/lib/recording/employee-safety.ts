@@ -8,6 +8,8 @@ import {
 
 export const EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION =
   "employee-pre-recording-safety-v1" as const;
+export const EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION =
+  "employee-pre-recording-safety-v2" as const;
 
 export const EMPLOYEE_RECORDING_SAFETY_CHECK_TYPES = ["INITIAL", "STAGE_RECHECK"] as const;
 export const EMPLOYEE_RECORDING_SAFETY_STAGES = [
@@ -44,7 +46,9 @@ export type EmployeeRecordingSafetyIssue =
   (typeof EMPLOYEE_RECORDING_SAFETY_ISSUES)[number];
 
 export type EmployeeRecordingSafetyEvidence = {
-  contractVersion: typeof EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION;
+  contractVersion:
+    | typeof EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION
+    | typeof EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION;
   sequence: number;
   workRecord: {
     bookingId: string;
@@ -58,6 +62,8 @@ export type EmployeeRecordingSafetyEvidence = {
   };
   location: {
     snapshotEvidenceHash: string;
+    attemptId?: string;
+    attemptEvidenceHash?: string;
   };
   employee: {
     membershipId: string;
@@ -69,6 +75,10 @@ export type EmployeeRecordingSafetyEvidence = {
   };
   issues: EmployeeRecordingSafetyIssue[];
   result: EmployeeRecordingSafetyResult;
+  submission?: {
+    requestHash: string;
+    bodyHash: string;
+  };
   predecessor: {
     id: string;
     evidenceHash: string;
@@ -92,6 +102,8 @@ export type StoredEmployeeRecordingSafetyEvidence = {
   assessmentContractVersion: string;
   assessmentScopeHash: string;
   locationSnapshotEvidenceHash: string;
+  locationAttemptId?: string | null;
+  locationAttemptEvidenceHash?: string | null;
   membershipId: string;
   assignmentGeneration: number;
   safetyContractVersion: string;
@@ -102,6 +114,8 @@ export type StoredEmployeeRecordingSafetyEvidence = {
   sequence: number;
   predecessorEvidenceId: string | null;
   predecessorEvidenceHash: string | null;
+  submissionRequestHash?: string | null;
+  submissionBodyHash?: string | null;
   evidenceHash: string;
   canonicalJson: string;
   createdAt: Date | string;
@@ -114,6 +128,8 @@ export type V2StageSafetyReadiness = {
   result: EmployeeRecordingSafetyResult | null;
   evidenceId: string | null;
   evidenceHash: string | null;
+  locationAttemptId: string | null;
+  locationAttemptEvidenceHash: string | null;
   stage: EmployeeRecordingSafetyStage | null;
   checkType: EmployeeRecordingSafetyCheckType | null;
 };
@@ -255,12 +271,14 @@ export function parseEmployeeRecordingSafetyEvidence(
       "check",
       "issues",
       "result",
+      "submission",
       "predecessor",
       "createdAt",
     ],
     "employee safety evidence",
   );
-  if (input.contractVersion !== EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION) {
+  const hardened = input.contractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION;
+  if (!hardened && input.contractVersion !== EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION) {
     invalid("CONTRACT_VERSION_MISMATCH", "The employee runtime-safety contract is required.");
   }
 
@@ -278,7 +296,13 @@ export function parseEmployeeRecordingSafetyEvidence(
   }
 
   const location = objectValue(input.location, "location");
-  rejectUnknownKeys(location, ["snapshotEvidenceHash"], "location");
+  rejectUnknownKeys(
+    location,
+    hardened
+      ? ["snapshotEvidenceHash", "attemptId", "attemptEvidenceHash"]
+      : ["snapshotEvidenceHash"],
+    "location",
+  );
   const employee = objectValue(input.employee, "employee");
   rejectUnknownKeys(employee, ["membershipId", "assignmentGeneration"], "employee");
   const check = objectValue(input.check, "check");
@@ -294,6 +318,18 @@ export function parseEmployeeRecordingSafetyEvidence(
   const issues = parseIssues(input.issues);
   const result = enumValue(input.result, EMPLOYEE_RECORDING_SAFETY_RESULTS, "result");
   validateResultIssues(result, issues);
+
+  let submission: EmployeeRecordingSafetyEvidence["submission"];
+  if (hardened) {
+    const value = objectValue(input.submission, "submission");
+    rejectUnknownKeys(value, ["requestHash", "bodyHash"], "submission");
+    submission = {
+      requestHash: hashValue(value.requestHash, "submission.requestHash"),
+      bodyHash: hashValue(value.bodyHash, "submission.bodyHash"),
+    };
+  } else if (input.submission !== undefined) {
+    invalid("UNKNOWN_FIELD", "Legacy safety evidence cannot contain submission identity.");
+  }
 
   let predecessor: EmployeeRecordingSafetyEvidence["predecessor"] = null;
   if (input.predecessor !== null) {
@@ -314,7 +350,9 @@ export function parseEmployeeRecordingSafetyEvidence(
   }
 
   const evidence: EmployeeRecordingSafetyEvidence = {
-    contractVersion: EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+    contractVersion: hardened
+      ? EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION
+      : EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
     sequence,
     workRecord: {
       bookingId: identifier(workRecord.bookingId, "workRecord.bookingId"),
@@ -331,6 +369,15 @@ export function parseEmployeeRecordingSafetyEvidence(
         location.snapshotEvidenceHash,
         "location.snapshotEvidenceHash",
       ),
+      ...(hardened
+        ? {
+            attemptId: identifier(location.attemptId, "location.attemptId"),
+            attemptEvidenceHash: hashValue(
+              location.attemptEvidenceHash,
+              "location.attemptEvidenceHash",
+            ),
+          }
+        : {}),
     },
     employee: {
       membershipId: identifier(employee.membershipId, "employee.membershipId"),
@@ -342,6 +389,7 @@ export function parseEmployeeRecordingSafetyEvidence(
     check: { type: checkType, stage },
     issues,
     result,
+    ...(hardened ? { submission } : {}),
     predecessor,
     createdAt: canonicalTimestamp(input.createdAt),
   };
@@ -399,7 +447,7 @@ export function storedSafetyEvidenceToCanonicalInput(
     return invalid("INVALID_STORED_ISSUES", "Stored safety issue evidence is invalid JSON.");
   }
   return {
-    contractVersion: row.safetyContractVersion as typeof EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+    contractVersion: row.safetyContractVersion as EmployeeRecordingSafetyEvidence["contractVersion"],
     sequence: row.sequence,
     workRecord: { bookingId: row.bookingId, vendorId: row.vendorId },
     assessment: {
@@ -409,7 +457,15 @@ export function storedSafetyEvidenceToCanonicalInput(
         row.assessmentContractVersion as typeof RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
       scopeHash: row.assessmentScopeHash,
     },
-    location: { snapshotEvidenceHash: row.locationSnapshotEvidenceHash },
+    location: {
+      snapshotEvidenceHash: row.locationSnapshotEvidenceHash,
+      ...(row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION
+        ? {
+            attemptId: String(row.locationAttemptId || ""),
+            attemptEvidenceHash: String(row.locationAttemptEvidenceHash || ""),
+          }
+        : {}),
+    },
     employee: {
       membershipId: row.membershipId,
       assignmentGeneration: row.assignmentGeneration,
@@ -420,6 +476,14 @@ export function storedSafetyEvidenceToCanonicalInput(
     },
     issues: issues as EmployeeRecordingSafetyIssue[],
     result: row.result as EmployeeRecordingSafetyResult,
+    ...(row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION
+      ? {
+          submission: {
+            requestHash: String(row.submissionRequestHash || ""),
+            bodyHash: String(row.submissionBodyHash || ""),
+          },
+        }
+      : {}),
     predecessor:
       row.predecessorEvidenceId && row.predecessorEvidenceHash
         ? { id: row.predecessorEvidenceId, evidenceHash: row.predecessorEvidenceHash }
@@ -437,6 +501,8 @@ function notRequired(): V2StageSafetyReadiness {
     result: null,
     evidenceId: null,
     evidenceHash: null,
+    locationAttemptId: null,
+    locationAttemptEvidenceHash: null,
     stage: null,
     checkType: null,
   };
@@ -455,6 +521,8 @@ function blockedReadiness(
     result: result ?? null,
     evidenceId: row?.id || null,
     evidenceHash: row?.evidenceHash || null,
+    locationAttemptId: row?.locationAttemptId || null,
+    locationAttemptEvidenceHash: row?.locationAttemptEvidenceHash || null,
     stage: requirement?.stage || null,
     checkType: requirement?.checkType || null,
   };
@@ -527,7 +595,11 @@ export function resolveV2StageSafetyReadiness(input: {
       row.locationSnapshotEvidenceHash === input.locationSnapshotEvidenceHash &&
       row.membershipId === input.membershipId &&
       row.assignmentGeneration === input.assignmentGeneration &&
-      row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+      row.safetyContractVersion === EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION &&
+      Boolean(row.locationAttemptId) &&
+      Boolean(row.locationAttemptEvidenceHash) &&
+      Boolean(row.submissionRequestHash) &&
+      Boolean(row.submissionBodyHash),
   );
   if (matching.length === 0) {
     return blockedReadiness(
@@ -597,6 +669,8 @@ export function resolveV2StageSafetyReadiness(input: {
       result: "READY",
       evidenceId: latest.id,
       evidenceHash: latest.evidenceHash,
+      locationAttemptId: latest.locationAttemptId || null,
+      locationAttemptEvidenceHash: latest.locationAttemptEvidenceHash || null,
       stage: requirement.stage,
       checkType: requirement.checkType,
     };

@@ -13,6 +13,7 @@ import { loadRecordingPermissionGate, recordingGateErrorBody } from "@/lib/conse
 import {
   assertServiceVideoStageMutationAllowed,
   persistAllowedRecordingGateDecision,
+  ServiceVideoMutationBlockedError,
 } from "@/lib/service-video-evidence";
 
 interface RouteParams {
@@ -347,17 +348,38 @@ export async function POST(
             vendorId,
             stage: normalizedStage!,
           });
+          const transactionalGate = await loadRecordingPermissionGate({
+            bookingId: validBookingId!,
+            vendorId,
+            customerMetadata: validBookingMetadata,
+            membershipId: stagedMembershipId!,
+            surface: "media_session",
+            capability: "record",
+            actorKind: stagedActorKind || "VENDOR_MEMBER",
+            recordingStage: normalizedStage!,
+            db: tx,
+          });
+          if (transactionalGate.blockCode || !transactionalGate.recordingUnlocked) {
+            throw new ServiceVideoMutationBlockedError(
+              transactionalGate.blockCode || "RECORDING_GATE_UNAVAILABLE",
+            );
+          }
           const gateEvidence = await persistAllowedRecordingGateDecision({
             bookingId: validBookingId!,
             vendorId,
             membershipId: stagedMembershipId!,
             actorKind: stagedActorKind || "VENDOR_MEMBER",
             surface: "media_session",
-            gate: stagedPermissionGate!,
+            stage: normalizedStage!,
+            gate: transactionalGate,
             tx,
           });
           return tx.mediaSession.create({
-            data: { ...createSessionData, recordingGateDecisionId: gateEvidence.id },
+            data: {
+              ...createSessionData,
+              audioExpected: Boolean(transactionalGate.audioAllowed),
+              recordingGateDecisionId: gateEvidence.id,
+            },
           });
         }, { isolationLevel: "Serializable" });
       } else {

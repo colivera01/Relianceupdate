@@ -36,9 +36,13 @@ import {
   RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
 } from "@/lib/recording/assessment-v2";
 import {
-  EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+  EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
   parseEmployeeRecordingSafetyEvidence,
 } from "@/lib/recording/employee-safety";
+import {
+  buildV2StageLocationEvidence,
+  V2_STAGE_LOCATION_EVIDENCE_VERSION,
+} from "@/lib/recording/v2-safety-location";
 
 const metadata = JSON.stringify({
   vendor_job_assigned_membership_ids: ["member-1"],
@@ -179,6 +183,53 @@ const v2Assessment = {
   authorities: [{ authorityType: "VENDOR_MANAGER", required: true, status: "VERIFIED" }],
 };
 
+const v2LocationAttemptBase = {
+  id: "location-attempt-v2",
+  bookingId: "booking-1",
+  vendorId: "vendor-1",
+  assessmentId: v2Assessment.id,
+  assessmentGeneration: v2Assessment.generation,
+  membershipId: "member-1",
+  assignmentGeneration: 1,
+  stage: "STARTING_CONDITION" as const,
+  snapshotEvidenceHash: v2Location.snapshotEvidenceHash,
+  status: "VERIFIED",
+  resultCode: "LOCATION_VERIFIED",
+  method: "DEVICE_GEOLOCATION",
+  distanceMeters: 12,
+  accuracyMeters: 5,
+  latitude: 28.51,
+  longitude: -81.46,
+  capturedAt: new Date("2026-08-27T18:09:00.000Z"),
+  attemptedAt: new Date("2026-08-27T18:10:00.000Z"),
+};
+const v2LocationAttemptCanonical = buildV2StageLocationEvidence({
+  attemptId: v2LocationAttemptBase.id,
+  bookingId: v2LocationAttemptBase.bookingId,
+  vendorId: v2LocationAttemptBase.vendorId,
+  assessmentId: v2LocationAttemptBase.assessmentId,
+  assessmentGeneration: v2LocationAttemptBase.assessmentGeneration,
+  membershipId: v2LocationAttemptBase.membershipId,
+  assignmentGeneration: v2LocationAttemptBase.assignmentGeneration,
+  stage: v2LocationAttemptBase.stage,
+  snapshotEvidenceHash: v2LocationAttemptBase.snapshotEvidenceHash,
+  status: v2LocationAttemptBase.status,
+  resultCode: v2LocationAttemptBase.resultCode,
+  method: v2LocationAttemptBase.method,
+  distanceMeters: v2LocationAttemptBase.distanceMeters,
+  accuracyMeters: v2LocationAttemptBase.accuracyMeters,
+  latitude: v2LocationAttemptBase.latitude,
+  longitude: v2LocationAttemptBase.longitude,
+  capturedAt: v2LocationAttemptBase.capturedAt,
+  attemptedAt: v2LocationAttemptBase.attemptedAt,
+});
+const v2LocationAttempt = {
+  ...v2LocationAttemptBase,
+  evidenceVersion: V2_STAGE_LOCATION_EVIDENCE_VERSION,
+  canonicalJson: v2LocationAttemptCanonical.canonicalJson,
+  evidenceHash: v2LocationAttemptCanonical.evidenceHash,
+};
+
 function storedV2Safety(input: {
   result?: "READY" | "BLOCKED" | "MATERIAL_SCOPE_CHANGE_REQUIRED";
   issues?: string[];
@@ -188,7 +239,7 @@ function storedV2Safety(input: {
 }) {
   const result = input.result || "READY";
   const parsed = parseEmployeeRecordingSafetyEvidence({
-    contractVersion: EMPLOYEE_RECORDING_SAFETY_CONTRACT_VERSION,
+    contractVersion: EMPLOYEE_RECORDING_SAFETY_HARDENED_CONTRACT_VERSION,
     sequence: 1,
     workRecord: { bookingId: "booking-1", vendorId: "vendor-1" },
     assessment: {
@@ -197,11 +248,16 @@ function storedV2Safety(input: {
       contractVersion: v2Assessment.contractVersion,
       scopeHash: input.assessmentHash || v2Assessment.scopeHash,
     },
-    location: { snapshotEvidenceHash: input.locationHash || v2Location.snapshotEvidenceHash },
+    location: {
+      snapshotEvidenceHash: input.locationHash || v2Location.snapshotEvidenceHash,
+      attemptId: v2LocationAttempt.id,
+      attemptEvidenceHash: v2LocationAttempt.evidenceHash,
+    },
     employee: { membershipId: input.membershipId || "member-1", assignmentGeneration: 1 },
     check: { type: "INITIAL", stage: "STARTING_CONDITION" },
     issues: input.issues || [],
     result,
+    submission: { requestHash: "d".repeat(64), bodyHash: "e".repeat(64) },
     predecessor: null,
     createdAt: "2026-08-27T18:10:00.000Z",
   });
@@ -214,6 +270,8 @@ function storedV2Safety(input: {
     assessmentContractVersion: parsed.evidence.assessment.contractVersion,
     assessmentScopeHash: parsed.evidence.assessment.scopeHash,
     locationSnapshotEvidenceHash: parsed.evidence.location.snapshotEvidenceHash,
+    locationAttemptId: parsed.evidence.location.attemptId,
+    locationAttemptEvidenceHash: parsed.evidence.location.attemptEvidenceHash,
     membershipId: parsed.evidence.employee.membershipId,
     assignmentGeneration: parsed.evidence.employee.assignmentGeneration,
     safetyContractVersion: parsed.evidence.contractVersion,
@@ -224,6 +282,8 @@ function storedV2Safety(input: {
     sequence: parsed.evidence.sequence,
     predecessorEvidenceId: null,
     predecessorEvidenceHash: null,
+    submissionRequestHash: parsed.evidence.submission?.requestHash || null,
+    submissionBodyHash: parsed.evidence.submission?.bodyHash || null,
     canonicalJson: parsed.canonicalJson,
     evidenceHash: parsed.evidenceHash,
     createdAt: parsed.evidence.createdAt,
@@ -269,6 +329,7 @@ function load(overrides: Record<string, unknown> = {}) {
     surface: "media_session",
     capability: "record",
     actorKind: "EMPLOYEE",
+    now: new Date("2026-08-27T18:10:30.000Z"),
     ...overrides,
   } as any);
 }
@@ -279,7 +340,7 @@ describe("database-backed canonical recording gate", () => {
     db.assessmentFindFirst.mockResolvedValue(assessment);
     db.consentFindFirst.mockResolvedValue(allowed);
     db.certificationFindFirst.mockResolvedValue({ id: "cert-1" });
-    db.locationAttemptFindFirst.mockResolvedValue({ status: "VERIFIED", resultCode: "WITHIN_RADIUS" });
+    db.locationAttemptFindFirst.mockResolvedValue(v2LocationAttempt);
     db.locationExceptionFindFirst.mockResolvedValue(null);
     db.safetyFindMany.mockResolvedValue([]);
     db.bookingFindUnique.mockResolvedValue({ status: "IN_PROGRESS" });
