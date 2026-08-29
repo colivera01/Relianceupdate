@@ -69,7 +69,7 @@ function SupportPageContent() {
                 >
                   <h4 className="font-semibold mb-1">Launch Follow-up</h4>
                   <p className="text-gray-600">
-                    Email <span className="text-[var(--reliance-blue-soft)]">{LAUNCH_SUPPORT_EMAIL}</span> for account access, jobs, media, consent, or approval questions.
+                    Email <span className="text-[var(--reliance-blue-soft)]">{LAUNCH_SUPPORT_EMAIL}</span> for account access, jobs, media, consent, approval, privacy, Public visibility, data, or deletion-request concerns.
                   </p>
                   <p className="text-gray-500">Expected follow-up is {LAUNCH_SUPPORT_RESPONSE_TIME}. Use the published launch support path while the in-app ticket form remains offline.</p>
                 </a>
@@ -93,6 +93,10 @@ function SupportPageContent() {
                   <p className="text-gray-500">There is no live agent queue or simulated chat.</p>
                 </div>
               </div>
+              <p className="mt-4 text-sm leading-6 text-gray-600">
+                Use this support path for privacy, inappropriate recording, Public visibility, account/data,
+                or deletion-request concerns. Include the work-record reference when available.
+              </p>
             </CardContent>
           </Card>
         </div>

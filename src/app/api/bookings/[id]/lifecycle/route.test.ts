@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const hoisted = vi.hoisted(() => ({
   bookingFindUnique: vi.fn(),
   actor: vi.fn(),
+  caseFindMany: vi.fn(),
+  caseFindFirst: vi.fn(),
+  withdrawalFindMany: vi.fn(),
+  deletionFindMany: vi.fn(),
+  holdFindMany: vi.fn(),
+  appealFindMany: vi.fn(),
+  auditFindMany: vi.fn(),
+  proposalFindFirst: vi.fn(),
+  publicEligibilityCount: vi.fn(),
   applyMediaWithdrawal: vi.fn(),
   ensureRetentionSchedulesForBooking: vi.fn(),
   resolveCanonicalMediaLifecycle: vi.fn(),
@@ -14,12 +23,14 @@ const hoisted = vi.hoisted(() => ({
 vi.mock("@/server/db", () => ({
   prisma: {
     booking: { findUnique: hoisted.bookingFindUnique },
-    mediaLifecycleCase: { findMany: vi.fn(), findFirst: vi.fn() },
-    mediaWithdrawalEvidence: { findMany: vi.fn() },
-    mediaDeletionRequest: { findMany: vi.fn() },
-    mediaEvidenceHold: { findMany: vi.fn() },
-    mediaLifecycleAppeal: { findMany: vi.fn() },
-    mediaLifecycleAuditEvent: { findMany: vi.fn() },
+    mediaLifecycleCase: { findMany: hoisted.caseFindMany, findFirst: hoisted.caseFindFirst },
+    mediaWithdrawalEvidence: { findMany: hoisted.withdrawalFindMany },
+    mediaDeletionRequest: { findMany: hoisted.deletionFindMany },
+    mediaEvidenceHold: { findMany: hoisted.holdFindMany },
+    mediaLifecycleAppeal: { findMany: hoisted.appealFindMany },
+    mediaLifecycleAuditEvent: { findMany: hoisted.auditFindMany },
+    serviceVideoPublicationProposal: { findFirst: hoisted.proposalFindFirst },
+    publicServiceVideoEligibility: { count: hoisted.publicEligibilityCount },
   },
 }));
 vi.mock("@/lib/request-actor", async () => {
@@ -36,7 +47,7 @@ vi.mock("@/lib/media-lifecycle", () => ({
   resolveCanonicalMediaLifecycle: hoisted.resolveCanonicalMediaLifecycle,
 }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const booking = {
   id: "booking-1",
@@ -58,14 +69,25 @@ const booking = {
 function actor(
   userId: string,
   memberships: Array<{ id: string; vendorId: string; role: string }> = [],
+  platformRoles: string[] = [],
 ) {
-  return { userId, vendorMemberships: memberships, platformRoles: [] };
+  return { userId, vendorMemberships: memberships, platformRoles };
 }
 
 describe("work-record media lifecycle route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.bookingFindUnique.mockResolvedValue(booking);
+    hoisted.caseFindMany.mockResolvedValue([]);
+    hoisted.caseFindFirst.mockResolvedValue(null);
+    hoisted.withdrawalFindMany.mockResolvedValue([]);
+    hoisted.deletionFindMany.mockResolvedValue([]);
+    hoisted.holdFindMany.mockResolvedValue([]);
+    hoisted.appealFindMany.mockResolvedValue([]);
+    hoisted.auditFindMany.mockResolvedValue([]);
+    hoisted.proposalFindFirst.mockResolvedValue(null);
+    hoisted.publicEligibilityCount.mockResolvedValue(0);
+    hoisted.resolveCanonicalMediaLifecycle.mockResolvedValue({ outcome: "AVAILABLE" });
     hoisted.applyMediaWithdrawal.mockResolvedValue({
       id: "withdrawal-1",
       status: "APPLIED",
@@ -91,27 +113,27 @@ describe("work-record media lifecycle route", () => {
     expect(hoisted.openMediaLifecycleCase).not.toHaveBeenCalled();
   });
 
-  it("allows the owning customer to withdraw Public publication", async () => {
+  it("denies all retired Customer self-service governance actions", async () => {
     hoisted.actor.mockResolvedValue(actor("customer-1"));
-    const response = await POST(
-      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "WITHDRAW_PUBLICATION",
-          mediaAssetId: "asset-1",
+    for (const body of [
+      { action: "WITHDRAW_RECORDING" },
+      { action: "WITHDRAW_PUBLICATION", mediaAssetId: "asset-1" },
+      { action: "OPEN_DISPUTE", category: "PRIVACY" },
+      { action: "REQUEST_DELETION", mediaAssetId: "asset-1" },
+    ]) {
+      const response = await POST(
+        new Request("http://localhost/api/bookings/booking-1/lifecycle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
         }),
-      }),
-      { params: Promise.resolve({ id: "booking-1" }) },
-    );
-    expect(response.status).toBe(200);
-    expect(hoisted.applyMediaWithdrawal).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actorUserId: "customer-1",
-        scope: "PUBLICATION",
-        mediaAssetId: "asset-1",
-      }),
-    );
+        { params: Promise.resolve({ id: "booking-1" }) },
+      );
+      expect(response.status).toBe(403);
+    }
+    expect(hoisted.applyMediaWithdrawal).not.toHaveBeenCalled();
+    expect(hoisted.openMediaLifecycleCase).not.toHaveBeenCalled();
+    expect(hoisted.requestMediaDeletion).not.toHaveBeenCalled();
   });
 
   it("limits an employee to their own likeness withdrawal", async () => {
@@ -135,25 +157,44 @@ describe("work-record media lifecycle route", () => {
     expect(hoisted.applyMediaWithdrawal).not.toHaveBeenCalled();
   });
 
-  it("allows an active Vendor Manager to use all four protective governance actions", async () => {
+  it("denies all retired Vendor Manager self-service governance actions", async () => {
     hoisted.actor.mockResolvedValue(
       actor("manager-1", [
         { id: "membership-manager", vendorId: "vendor-1", role: "MANAGER" },
       ]),
     );
-    const recordingWithdrawal = await POST(
-      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "WITHDRAW_RECORDING" }),
-      }),
-      { params: Promise.resolve({ id: "booking-1" }) },
+    for (const body of [
+      { action: "WITHDRAW_RECORDING" },
+      { action: "WITHDRAW_PUBLICATION", mediaAssetId: "asset-1" },
+      { action: "OPEN_DISPUTE", category: "PRIVACY" },
+      { action: "REQUEST_DELETION", mediaAssetId: "asset-1" },
+    ]) {
+      const response = await POST(
+        new Request("http://localhost/api/bookings/booking-1/lifecycle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+        { params: Promise.resolve({ id: "booking-1" }) },
+      );
+      expect(response.status).toBe(403);
+    }
+    expect(hoisted.applyMediaWithdrawal).not.toHaveBeenCalled();
+    expect(hoisted.openMediaLifecycleCase).not.toHaveBeenCalled();
+    expect(hoisted.requestMediaDeletion).not.toHaveBeenCalled();
+  });
+
+  it("preserves assigned-employee likeness withdrawal and concern reporting", async () => {
+    hoisted.actor.mockResolvedValue(
+      actor("employee-1", [
+        { id: "membership-employee", vendorId: "vendor-1", role: "EMPLOYEE" },
+      ]),
     );
-    const publicationWithdrawal = await POST(
+    const likeness = await POST(
       new Request("http://localhost/api/bookings/booking-1/lifecycle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "WITHDRAW_PUBLICATION", mediaAssetId: "asset-1" }),
+        body: JSON.stringify({ action: "WITHDRAW_LIKENESS", mediaAssetId: "asset-1" }),
       }),
       { params: Promise.resolve({ id: "booking-1" }) },
     );
@@ -161,57 +202,46 @@ describe("work-record media lifecycle route", () => {
       new Request("http://localhost/api/bookings/booking-1/lifecycle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "OPEN_DISPUTE",
-          category: "PRIVACY",
-          reasonDetail: "Unintended private information may be visible.",
-        }),
-      }),
-      { params: Promise.resolve({ id: "booking-1" }) },
-    );
-    const deletion = await POST(
-      new Request("http://localhost/api/bookings/booking-1/lifecycle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "REQUEST_DELETION", mediaAssetId: "asset-1" }),
+        body: JSON.stringify({ action: "OPEN_DISPUTE", category: "PRIVACY", reasonDetail: "Unintended capture." }),
       }),
       { params: Promise.resolve({ id: "booking-1" }) },
     );
 
-    expect(recordingWithdrawal.status).toBe(200);
-    expect(publicationWithdrawal.status).toBe(200);
+    expect(likeness.status).toBe(200);
     expect(concern.status).toBe(201);
-    expect(deletion.status).toBe(201);
     expect(hoisted.applyMediaWithdrawal).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingId: "booking-1",
-        actorRole: "VENDOR_MANAGER",
-        authorityType: "VENDOR_REPRESENTATION",
-        scope: "RECORDING",
-      }),
-    );
-    expect(hoisted.applyMediaWithdrawal).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingId: "booking-1",
-        actorRole: "VENDOR_MANAGER",
-        authorityType: "VENDOR_REPRESENTATION",
-        scope: "PUBLICATION",
-      }),
+      expect.objectContaining({ actorRole: "EMPLOYEE", authorityType: "EMPLOYEE_LIKENESS", scope: "LIKENESS" }),
     );
     expect(hoisted.openMediaLifecycleCase).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingId: "booking-1",
-        actorRole: "VENDOR_MANAGER",
-        category: "PRIVACY",
-      }),
+      expect.objectContaining({ actorRole: "EMPLOYEE", category: "PRIVACY" }),
     );
-    expect(hoisted.requestMediaDeletion).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bookingId: "booking-1",
-        actorRole: "VENDOR_MANAGER",
-        mediaAssetId: "asset-1",
-      }),
+  });
+
+  it("keeps historical Customer and Vendor governance evidence readable to Reliance Admin", async () => {
+    hoisted.actor.mockResolvedValue(actor("admin-1", [], ["ADMIN"]));
+    hoisted.withdrawalFindMany.mockResolvedValue([
+      { id: "withdrawal-customer", actorRole: "CUSTOMER", scope: "PUBLICATION", status: "APPLIED" },
+      { id: "withdrawal-vendor", actorRole: "VENDOR_MANAGER", scope: "RECORDING", status: "APPLIED" },
+    ]);
+
+    const response = await GET(
+      new Request("http://localhost/api/bookings/booking-1/lifecycle"),
+      { params: Promise.resolve({ id: "booking-1" }) },
     );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.withdrawals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "withdrawal-customer", actorRole: "CUSTOMER" }),
+      expect.objectContaining({ id: "withdrawal-vendor", actorRole: "VENDOR_MANAGER" }),
+    ]));
+    expect(body.allowedActions).toEqual({
+      withdrawRecording: false,
+      withdrawPublication: false,
+      openDispute: false,
+      requestDeletion: false,
+      appeal: false,
+    });
   });
 
   it("does not grant manager authority from a different vendor", async () => {
@@ -252,14 +282,16 @@ describe("work-record media lifecycle route", () => {
     expect(hoisted.requestMediaDeletion).not.toHaveBeenCalled();
   });
 
-  it("rejects a deletion request for media outside the work record", async () => {
-    hoisted.actor.mockResolvedValue(actor("customer-1"));
+  it("rejects a participant action for media outside the work record", async () => {
+    hoisted.actor.mockResolvedValue(actor("employee-1", [
+      { id: "membership-employee", vendorId: "vendor-1", role: "EMPLOYEE" },
+    ]));
     const response = await POST(
       new Request("http://localhost/api/bookings/booking-1/lifecycle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "REQUEST_DELETION",
+          action: "WITHDRAW_LIKENESS",
           mediaAssetId: "asset-other",
         }),
       }),

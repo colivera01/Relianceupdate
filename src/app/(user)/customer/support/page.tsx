@@ -75,6 +75,10 @@ export default async function CustomerSupportPage({
           <p className="mt-3 text-sm leading-7 text-[#dbe7ff]">
             Live chat, phone support, and in-app ticketing are not available yet.
           </p>
+          <p className="mt-3 text-sm leading-7 text-[#dbe7ff]">
+            Use this contact for privacy, inappropriate recording, Public visibility, account/data, or
+            deletion-request concerns. Include the work-record reference when available.
+          </p>
         </div>
 
         <div className="mt-8 grid gap-5 lg:grid-cols-3">

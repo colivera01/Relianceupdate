@@ -14,9 +14,7 @@ export default function Epic7LifecycleVisualFixture() {
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-white sm:px-8">
       <div className="mx-auto max-w-5xl">
         {role === "admin" ? <AdminMediaLifecyclePage /> : null}
-        {role === "customer" || role === "vendor" || role === "employee" ? (
-          <MediaLifecycleCard role={role} bookingId={BOOKING_ID} />
-        ) : null}
+        {role === "employee" ? <MediaLifecycleCard role="employee" bookingId={BOOKING_ID} /> : null}
       </div>
     </main>
   );

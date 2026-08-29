@@ -182,56 +182,15 @@ async function installLifecycleFixture(
   );
 }
 
-test("customer sees a complete Private outcome and truthful withdrawal/deletion states", async ({
-  page,
-}) => {
+test("customer self-service governance is absent and Support remains available", async ({ page }) => {
   await installGeneralSession(page, "customer");
-  await installLifecycleFixture(page, "CUSTOMER");
-  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/test-fixtures/epic7-lifecycle?role=customer");
+  await expect(page.getByTestId("media-lifecycle-customer")).toHaveCount(0);
+  await expect(page.getByText("Privacy, concerns, and retention", { exact: true })).toHaveCount(0);
 
-  const card = page.getByTestId("media-lifecycle-customer");
-  await expect(
-    card.getByText("No active restriction", { exact: true }),
-  ).toBeVisible();
-  await card.screenshot({
-    path: path.join(screenshotRoot, "Desktop", "01-customer-private-empty.png"),
-  });
-
-  await card.getByRole("button", { name: "Prevent Public sharing" }).click();
-  await expect(
-    card.getByText("PUBLICATION withdrawal is applied."),
-  ).toBeVisible();
-  await card.screenshot({
-    path: path.join(
-      screenshotRoot,
-      "Desktop",
-      "02-customer-public-withdrawn.png",
-    ),
-  });
-
-  await card
-    .getByRole("button", { name: "Request deletion: media 1" })
-    .click();
-  await expect(
-    card.getByText("Deletion requested, not yet deleted"),
-  ).toBeVisible();
-  await card.screenshot({
-    path: path.join(
-      screenshotRoot,
-      "Desktop",
-      "03-customer-deletion-requested.png",
-    ),
-  });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await card.screenshot({
-    path: path.join(
-      screenshotRoot,
-      "Mobile",
-      "01-customer-deletion-requested.png",
-    ),
-  });
+  await page.goto("/test-fixtures/rv8-support?role=customer");
+  await expect(page.getByRole("heading", { name: "Help without leaving your account" })).toBeVisible();
+  await expect(page.getByText(/privacy, inappropriate recording, Public visibility/i)).toBeVisible();
 });
 
 test("employee sees likeness-only withdrawal", async ({ page }) => {
@@ -255,30 +214,28 @@ test("employee sees likeness-only withdrawal", async ({ page }) => {
   });
 });
 
-test("vendor manager governance surface keeps the four governed actions separate", async ({ page }) => {
+test("vendor self-service governance is absent and Support remains available", async ({ page }) => {
   await installGeneralSession(page, "vendor");
-  await installLifecycleFixture(page, "VENDOR_MANAGER");
-  await page.setViewportSize({ width: 1100, height: 1000 });
   await page.goto("/test-fixtures/epic7-lifecycle?role=vendor");
-  const card = page.getByTestId("media-lifecycle-vendor");
-  await expect(card.getByRole("button", { name: "Prevent future Public sharing" })).toBeVisible();
-  await expect(card.getByRole("button", { name: "Stop future recording" })).toBeVisible();
-  await expect(card.getByText("Report a concern", { exact: true })).toBeVisible();
-  await expect(card.getByRole("button", { name: "Request deletion: media 1" })).toBeVisible();
-  await expect(card).toContainText("retention and legal-hold rules");
+  await expect(page.getByTestId("media-lifecycle-vendor")).toHaveCount(0);
+  await expect(page.getByText("Privacy, concerns, and retention", { exact: true })).toHaveCount(0);
+
+  await page.goto("/test-fixtures/rv8-support?role=vendor");
+  await expect(page.getByRole("heading", { name: /Help your team manage services/i })).toBeVisible();
+  await expect(page.getByText(/privacy, inappropriate recording, Public visibility, account\/data/i)).toBeVisible();
 });
 
 test("lifecycle loading and failure states explain what happened", async ({
   page,
 }) => {
-  await installGeneralSession(page, "customer");
-  await installLifecycleFixture(page, "CUSTOMER", {
+  await installGeneralSession(page, "vendor");
+  await installLifecycleFixture(page, "EMPLOYEE", {
     delayMs: 1000,
     fail: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/test-fixtures/epic7-lifecycle?role=customer");
-  const card = page.getByTestId("media-lifecycle-customer");
+  await page.goto("/test-fixtures/epic7-lifecycle?role=employee");
+  const card = page.getByTestId("media-lifecycle-employee");
   await expect(
     card.getByText("Loading lifecycle status...", { exact: true }),
   ).toBeVisible();

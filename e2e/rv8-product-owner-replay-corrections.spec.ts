@@ -454,7 +454,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.getByRole("button", { name: "Actions" }).click();
     const actionsMenu = page.getByRole("menu");
     await expect(actionsMenu.getByRole("button", { name: "View Details" })).toBeVisible();
-    await expect(actionsMenu.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(1);
+    await expect(actionsMenu.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Submit to Reliance Audit" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Request Changes" })).toHaveCount(0);
   });
@@ -471,6 +471,14 @@ test.describe("RV-8 Product Owner replay corrections", () => {
 
     await expect(page.getByRole("heading", { name: "My Assigned Work" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(0);
+  });
+
+  test("retired Vendor Manager governance route is unavailable", async ({ page }) => {
+    await installVendorFixture(page, [managerReviewJob]);
+    const response = await page.goto(`/vendor/jobs/${managerReviewJob.id}/privacy-governance`);
+
+    expect(response?.status()).toBe(404);
+    await expect(page.getByText("Privacy & Governance", { exact: true })).toHaveCount(0);
   });
 
   test("requires recipient correction and does not offer ordinary resend after a wrong-recipient report", async ({ page }) => {

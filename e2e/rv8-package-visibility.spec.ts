@@ -59,6 +59,7 @@ test("customer explicitly authorizes the complete package for separate Public re
   await page.goto("/test-fixtures/rv8-package-visibility?role=customer");
   const card = page.getByTestId("package-visibility-customer");
   await expect(card.getByText("Private by default", { exact: true })).toBeVisible();
+  await expect(page.getByText("Privacy, concerns, and retention", { exact: true })).toHaveCount(0);
   await expect(card).toContainText("Starting Condition, Work in Progress, and Final Result stay together");
   await card.getByRole("button", { name: "Share Publicly" }).click();
   await expect(page.getByTestId("package-public-confirmation")).toContainText("all three exact Admin-approved stages");

@@ -8485,17 +8485,6 @@ export default function VendorJobs() {
                         onClick={(e) => e.stopPropagation()}
                         role="menu"
                       >
-                        {vendorMembershipRole === 'MANAGER' ? (
-                          <button
-                            className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
-                            onClick={() => {
-                              setActiveJobActionMenuId(null);
-                              router.push(`/vendor/jobs/${encodeURIComponent(String(job?.bookingId || job?.id || '').trim())}/privacy-governance`);
-                            }}
-                          >
-                            Privacy &amp; Governance
-                          </button>
-                        ) : null}
                         {(() => {
                           const status = String(job?.status || '').trim().toLowerCase();
                           const isPendingOrInProgress =
