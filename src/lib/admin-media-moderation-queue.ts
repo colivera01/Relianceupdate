@@ -234,6 +234,24 @@ export async function getAdminMediaModerationQueue(
             managerAttestationHash: candidate.managerDecision.attestationHash,
             adminAuditEvidenceVersion: candidate.package.auditEvidenceVersion,
             audioAudit: candidate.audioAudit,
+            recordingScope:
+              candidate.recordingAssessmentInterpretation?.kind === "SIMPLIFIED_V1"
+                ? {
+                    contractVersion:
+                      candidate.recordingAssessmentInterpretation.contractVersion,
+                    siteControl:
+                      candidate.recordingAssessmentInterpretation.canonical.siteControl,
+                    intentionalParticipantPlan:
+                      candidate.recordingAssessmentInterpretation.canonical
+                        .intentionalParticipantPlan,
+                    recordingBoundary:
+                      candidate.recordingAssessmentInterpretation.canonical
+                        .recordingBoundary,
+                    prohibitedConditions:
+                      candidate.recordingAssessmentInterpretation.canonical
+                        .prohibitedConditions,
+                  }
+                : null,
           };
         } catch {
           return null;

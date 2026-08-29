@@ -41,6 +41,7 @@ export type RecordingNoticeInput = {
   serviceName?: string | null;
   scopeHash?: string | null;
   audioEnabled: boolean;
+  intentionalParticipantPlan?: string | null;
 };
 
 function deliveryStatus(channels: NoticeChannel[]): "FAILED" | "PARTIAL" | "SENT" {
@@ -73,11 +74,18 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
   const audioEnabled = input.audioEnabled === true;
   const recordingFormat = audioEnabled ? "video-and-audio" : "video-only";
   const audioDisclosure = permissionContentForAudio(audioEnabled).content.audio;
+  const participantPlan = String(input.intentionalParticipantPlan || "none").trim();
+  const participantDisclosure =
+    participantPlan === "assigned_service_professional"
+      ? "The assigned service professional may be intentionally identifiable."
+      : "No person should be intentionally identifiable.";
+  const scopeDisclosure = `Recording is limited to the service area, equipment or item, and the work being performed. ${participantDisclosure}`;
   const text = [
     `Hello${customerName ? ` ${customerName}` : ""},`,
     "",
     `${vendorName} plans to create three short, ${recordingFormat} proof-of-service clips for ${serviceName}.`,
-    "The approved scope is limited to vendor-owned property or a controlled work area. People, conversations, sensitive information, and customer identifiers are outside the approved scope.",
+    scopeDisclosure,
+    "Minors, unrelated people or conversations, private or sensitive information, credentials, keys, security details, and confidential information must not be recorded.",
     `${audioDisclosure} Recordings start Private. Public sharing would require a separate later decision.`,
     "No response is required. Contact the service provider if the planned recording no longer matches this description.",
     "",
@@ -89,7 +97,8 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
     greeting: `Hello${customerName ? ` ${customerName}` : ""},`,
     bodyHtml: `
       <p style="margin:0 0 14px;"><strong style="color:#ffffff;">${escapeRelianceEmailHtml(vendorName)}</strong> plans to create three short, ${recordingFormat} proof-of-service clips.</p>
-      <p style="margin:0 0 14px;">The approved scope is limited to vendor-owned property or a controlled work area. People, conversations, sensitive information, and customer identifiers are outside the approved scope.</p>
+      <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(scopeDisclosure)}</p>
+      <p style="margin:0 0 14px;">Minors, unrelated people or conversations, private or sensitive information, credentials, keys, security details, and confidential information must not be recorded.</p>
       <p style="margin:0 0 14px;">${escapeRelianceEmailHtml(audioDisclosure)} Recordings start Private. Public sharing would require a separate later decision.</p>
       <p style="margin:0;">No response is required. Contact the service provider if the planned recording no longer matches this description.</p>
     `,
@@ -124,7 +133,7 @@ export async function sendRecordingNotice(input: RecordingNoticeInput) {
   }
 
   if (env.smsEnabled && phone) {
-    const body = `Reliance: ${vendorName} plans ${recordingFormat} Private proof for ${serviceName}. Scope: vendor-owned property or controlled work area only; no people. ${audioDisclosure} No response required. Reply STOP to opt out.`;
+    const body = `Reliance: ${vendorName} plans ${recordingFormat} Private proof for ${serviceName}. ${scopeDisclosure} ${audioDisclosure} No response required. Reply STOP to opt out.`;
     const result = await sendSms({ to: phone, body });
     channels.push({
       channel: "sms",
@@ -261,7 +270,7 @@ export async function retryRecordingNotice(notificationId: string, actorUserId: 
     throw new Error("Recording notice not found");
   }
   const assessment = notification.booking.recordingAssessments?.[0];
-  if (!assessment || assessment.permissionRequired || assessment.riskLevel !== "LEVEL_1") {
+  if (!assessment || assessment.permissionRequired) {
     throw new Error("Recording notice no longer matches the current scope");
   }
   const customer = resolveBookingCustomer(notification.booking);
@@ -276,5 +285,12 @@ export async function retryRecordingNotice(notificationId: string, actorUserId: 
     serviceName: notification.booking.service?.name || notification.booking.title,
     scopeHash: assessment.scopeHash,
     audioEnabled: assessment.audioAllowed === true,
+    intentionalParticipantPlan: (() => {
+      try {
+        return JSON.parse(assessment.scopeJson || "{}").participantPlan || null;
+      } catch {
+        return null;
+      }
+    })(),
   });
 }

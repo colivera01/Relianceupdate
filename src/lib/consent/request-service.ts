@@ -9,6 +9,7 @@ import { buildPermissionRecipient } from "./recipient";
 import { PERMISSION_LINK_TTL_HOURS } from "./state-machine";
 import { createOpaqueSecret, hashOpaqueSecret } from "./token";
 import { verifiedPermissionRequestsEnabled } from "./lookup";
+import { SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION } from "@/lib/recording/scope-assessment";
 
 export const CUSTOMER_PERMISSION_NOTIFICATION_KIND = "CUSTOMER_PERMISSION_REQUEST";
 
@@ -91,7 +92,10 @@ export async function createVerifiedPermissionRequest(input: {
     recordingAssessmentId: assessment.id,
   });
   const scopeHash = String(assessment.scopeHash);
-  const permissionContent = permissionContentForAudio(Boolean(assessment.audioAllowed));
+  const permissionContent = permissionContentForAudio(
+    Boolean(assessment.audioAllowed),
+    assessment.contractVersion === SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+  );
   const now = new Date();
   const expiresAt = new Date(now.getTime() + PERMISSION_LINK_TTL_HOURS * 60 * 60 * 1000);
   const actionSecret = hasChannel && !recipientMismatch ? createOpaqueSecret() : null;

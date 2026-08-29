@@ -5,7 +5,21 @@ import { requireVendorManager } from "@/lib/membership-auth";
 import { createVerifiedPermissionRequest } from "@/lib/consent/request-service";
 import { deliverVerifiedPermissionRequest } from "@/lib/consent/delivery-service";
 import { recordLifecycleAudit } from "@/lib/lifecycle-audit";
-import { deriveRecordingScopeAssessment } from "@/lib/recording/scope-assessment";
+import { buildRecordingLocationSnapshot } from "@/lib/recording-location-snapshot";
+
+function verifiedVendorLocationMetadata() {
+  const snapshot = buildRecordingLocationSnapshot("business", "vendor_profile", {
+    address: "2555 S Kirkman Rd",
+    city: "Orlando",
+    state: "FL",
+    zipCode: "32811",
+    latitude: 28.51,
+    longitude: -81.46,
+    geocodedAt: new Date("2026-08-29T12:00:00.000Z"),
+    geocodingEvidence: null,
+  });
+  return { snapshot, snapshotEvidenceHash: String(snapshot.snapshot_evidence_hash) };
+}
 
 const hoisted = vi.hoisted(() => {
   const bookingFindFirst = vi.fn();
@@ -111,6 +125,7 @@ describe("material recording scope change", () => {
     hoisted.certificationFindFirst.mockResolvedValue({ id: "certification-1" });
     hoisted.serviceFindFirst.mockResolvedValue({ id: "service-2" });
     hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
+    const locationEvidence = verifiedVendorLocationMetadata();
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job-1",
       vendorId: "vendor-1",
@@ -119,6 +134,7 @@ describe("material recording scope change", () => {
       clientName: "Alex Customer",
       customerMetadata: JSON.stringify({
         vendor_job_recording_location: "business",
+        vendor_job_recording_location_snapshot: locationEvidence.snapshot,
         vendor_job_service_order_released_at: "2026-08-04T10:00:00.000Z",
         vendor_job_service_order_released_membership_ids: ["membership-1"],
         vendor_job_consent_accepted: true,
@@ -188,6 +204,7 @@ describe("material recording scope change", () => {
           action: "UPDATE_JOB",
           recordingAssessment: {
             recordingLocation: "business",
+            intentionalParticipantPlan: "customer",
             propertyScope: "customer_owned",
             peopleScope: "customer",
             frameControl: "controlled",
@@ -256,6 +273,7 @@ describe("material recording scope change", () => {
           action: "UPDATE_JOB",
           recordingAssessment: {
             recordingLocation: "residence",
+            intentionalParticipantPlan: "none",
             propertyScope: "customer_owned",
             peopleScope: "none",
             frameControl: "controlled",
@@ -281,28 +299,16 @@ describe("material recording scope change", () => {
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it("supersedes permission when the service changes even if the scope hash is unchanged", async () => {
+  it("supersedes permission when the service descriptor changes", async () => {
     const assessmentInput = {
       recordingLocation: "business" as const,
-      propertyScope: "customer_owned" as const,
-      peopleScope: "customer" as const,
-      frameControl: "controlled" as const,
-      authorityHolderType: "customer" as const,
-      minorMayAppear: false,
-      protectedNonParticipantMayAppear: false,
-      sensitiveInformationMayAppear: false,
-      identifiersMayAppear: false,
-      residenceInterior: false,
-      businessInterior: false,
-      serviceCanContinueWithoutRecording: true,
-      essentialPrivateRecording: false,
+      intentionalParticipantPlan: "customer" as const,
       audioRequested: false,
     };
-    const unchangedScope = deriveRecordingScopeAssessment(assessmentInput);
     hoisted.assessmentFindFirst.mockResolvedValue({
       id: "assessment-1",
       generation: 1,
-      scopeHash: unchangedScope.scopeHash,
+      scopeHash: "previous-scope-hash",
     });
 
     const response = await PATCH(
@@ -341,6 +347,7 @@ describe("material recording scope change", () => {
           clientName: "Different Customer",
           recordingAssessment: {
             recordingLocation: "business",
+            intentionalParticipantPlan: "customer",
             propertyScope: "customer_owned",
             peopleScope: "customer",
             frameControl: "controlled",
@@ -397,6 +404,7 @@ describe("material recording scope change", () => {
           action: "UPDATE_JOB",
           recordingAssessment: {
             recordingLocation: "business",
+            intentionalParticipantPlan: "customer",
             propertyScope: "customer_owned",
             peopleScope: "customer",
             frameControl: "controlled",

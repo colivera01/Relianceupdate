@@ -7,6 +7,10 @@ import {
 } from "./assessment-v2";
 import { interpretRecordingAssessment } from "./assessment-reader";
 import { SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION } from "./scope-assessment";
+import {
+  deriveRecordingScopeAssessment,
+  SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+} from "./scope-assessment";
 
 function v2Evidence() {
   const canonical = parseRecordingAssessmentV2({
@@ -29,6 +33,46 @@ function v2Evidence() {
 }
 
 describe("recording assessment version-aware reader", () => {
+  it("validates the explicit simplified work-scope contract without legacy risk facts", () => {
+    const canonical = deriveRecordingScopeAssessment(
+      {
+        recordingLocation: "customer-business",
+        intentionalParticipantPlan: "customer_and_assigned_service_professional",
+        audioRequested: true,
+      },
+      {
+        locationSnapshotEvidenceHash: "b".repeat(64),
+        generation: 2,
+        completedByUserId: "manager-1",
+        completedAt: new Date("2026-08-29T15:00:00.000Z"),
+      },
+    );
+    const result = interpretRecordingAssessment({
+      contractVersion: SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+      scopeJson: canonical.scopeJson,
+      subjectJson: canonical.subjectJson,
+      scopeHash: canonical.scopeHash,
+      propertyScope: "not_applicable",
+      peopleScope: "not_applicable",
+      frameControl: "not_applicable",
+      audioRequested: true,
+      audioAllowed: true,
+    });
+    expect(result).toMatchObject({
+      kind: "SIMPLIFIED_V1",
+      canonical: {
+        siteControl: "customer_controlled_business_location",
+        intentionalParticipantPlan: "customer_and_assigned_service_professional",
+        audioEnabled: true,
+        permissionRequired: true,
+        generation: 2,
+      },
+    });
+    if (result.kind !== "SIMPLIFIED_V1") {
+      throw new Error("Expected a simplified V1 assessment");
+    }
+    expect(result.subjectJson).not.toContain("minorMayAppear");
+  });
   it("uses canonical scopeJson for an explicitly versioned V2 row", () => {
     const result = interpretRecordingAssessment(v2Evidence());
     expect(result.kind).toBe("V2");
@@ -119,7 +163,7 @@ describe("recording assessment version-aware reader", () => {
       peopleScope: "multiple",
     });
     expect(result.kind).toBe("LEGACY");
-    if (result.kind !== "V2") {
+    if (result.kind === "LEGACY") {
       expect(result.scalarEvidence.peopleSummary).toBe(
         "Multiple people — historical assessment",
       );

@@ -20,6 +20,7 @@ import {
   createRecordingScopeAssessment,
   deriveRecordingScopeAssessment,
   parseRecordingScopeAssessmentInput,
+  recordingPermissionRequired,
 } from '@/lib/recording/scope-assessment';
 import {
   CUSTOMER_RECORDING_NOTICE_KIND,
@@ -76,7 +77,25 @@ function buildCustomerMetadataForCreate(body: {
   const timeZone = typeof body.service_time_zone === 'string' ? body.service_time_zone.trim() : '';
   if (timeZone) out.service_time_zone = timeZone;
   if (body.custom_fields && typeof body.custom_fields === 'object' && !Array.isArray(body.custom_fields)) {
-    const cf = body.custom_fields as Record<string, unknown>;
+    const cf = { ...(body.custom_fields as Record<string, unknown>) };
+    for (const removedField of [
+      'propertyScope',
+      'peopleScope',
+      'frameControl',
+      'minorMayAppear',
+      'protectedNonParticipantMayAppear',
+      'sensitiveInformationMayAppear',
+      'identifiersMayAppear',
+      'recording_property_scope',
+      'recording_people_scope',
+      'recording_frame_control',
+      'recording_minor_may_appear',
+      'recording_protected_non_participant_may_appear',
+      'recording_sensitive_information_may_appear',
+      'recording_identifiers_may_appear',
+    ]) {
+      delete cf[removedField];
+    }
     const recordingLocation = String(
       cf.vendor_job_recording_location || cf.recordingLocation || ''
     ).trim();
@@ -726,20 +745,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'Complete the recording subject assessment before creating this work record.',
+            'Complete the Service Video recording scope before creating this work record.',
           code: 'RECORDING_ASSESSMENT_REQUIRED',
           responsibleParticipant: 'VENDOR_MANAGER',
-          resolution: 'Describe the planned property, people, frame control, and recording risks.',
+          resolution: 'Choose who, if anyone, must be intentionally identifiable and confirm the audio scope.',
         },
         { status: 422 }
       );
     }
-    const recordingAssessment = assessmentInput
-      ? deriveRecordingScopeAssessment(assessmentInput)
-      : null;
     if (
       isVendorStaffForThisVendor &&
-      recordingAssessment &&
+      assessmentInput &&
       !normalizeServiceVideoCustomerEmail(clientEmailCombined)
     ) {
       return NextResponse.json(
@@ -755,8 +771,8 @@ export async function POST(request: NextRequest) {
     }
     if (
       isVendorStaffForThisVendor &&
-      recordingAssessment &&
-      recordingAssessment.recordingLocation !== recordingLocation
+      assessmentInput &&
+      assessmentInput.recordingLocation !== recordingLocation
     ) {
       return NextResponse.json(
         {
@@ -770,7 +786,7 @@ export async function POST(request: NextRequest) {
     }
     const requiresCustomerConsent =
       isVendorStaffForThisVendor &&
-      Boolean(recordingAssessment?.permissionRequired);
+      Boolean(assessmentInput && recordingPermissionRequired(assessmentInput));
     const customerProfileLocation =
       recordingLocation === 'residence' && bookingUserId
         ? await prisma.user.findUnique({
@@ -858,13 +874,23 @@ export async function POST(request: NextRequest) {
         );
       }
     }
+    let recordingAssessment: ReturnType<typeof deriveRecordingScopeAssessment> | null = null;
     if (recordingLocation) {
       const nextMeta = customerMetadataPayload || {};
-      nextMeta.vendor_job_recording_location_snapshot = buildRecordingLocationSnapshot(
+      const locationSnapshot = buildRecordingLocationSnapshot(
         recordingLocation as RecordingLocationType,
         resolvedRecordingLocationSource!,
         resolvedRecordingLocation
       );
+      nextMeta.vendor_job_recording_location_snapshot = locationSnapshot;
+      if (assessmentInput) {
+        recordingAssessment = deriveRecordingScopeAssessment(assessmentInput, {
+          locationSnapshotEvidenceHash: String(locationSnapshot.snapshot_evidence_hash || ''),
+          generation: 1,
+          completedByUserId: authUserId,
+          completedAt: new Date(),
+        });
+      }
       nextMeta.vendor_job_permission_workflow_version = 'SIMPLIFIED_V1';
       if (requiresCustomerConsent) {
         nextMeta.vendor_job_consent_accepted = false;
@@ -942,8 +968,7 @@ export async function POST(request: NextRequest) {
         const noticeNotification =
           isVendorStaffForThisVendor &&
           createdAssessment &&
-          recordingAssessment?.noticeRequired &&
-          recordingAssessment.riskLevel === 'LEVEL_1'
+          recordingAssessment?.noticeRequired
             ? await tx.bookingNotification.create({
                 data: {
                   bookingId: createdBooking.id,
@@ -961,6 +986,7 @@ export async function POST(request: NextRequest) {
           noticeNotificationId: noticeNotification?.id || null,
           assessmentScopeHash: createdAssessment?.scopeHash || null,
           assessmentAudioEnabled: createdAssessment?.audioAllowed === true,
+          assessmentParticipantPlan: recordingAssessment?.intentionalParticipantPlan || null,
         };
       }
 
@@ -983,6 +1009,7 @@ export async function POST(request: NextRequest) {
         noticeNotificationId: null,
         assessmentScopeHash: createdAssessment?.scopeHash || null,
         assessmentAudioEnabled: createdAssessment?.audioAllowed === true,
+        assessmentParticipantPlan: recordingAssessment?.intentionalParticipantPlan || null,
       };
       });
     } catch (transactionError: any) {
@@ -1075,6 +1102,7 @@ export async function POST(request: NextRequest) {
           (typeof title === 'string' ? title : null),
         scopeHash: transactionalCreate.assessmentScopeHash,
         audioEnabled: transactionalCreate.assessmentAudioEnabled,
+        intentionalParticipantPlan: transactionalCreate.assessmentParticipantPlan,
       });
       recordingNotice = {
         status: noticeResult.delivery?.status || 'FAILED',

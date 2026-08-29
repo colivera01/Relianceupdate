@@ -12,6 +12,7 @@ import {
   type ServiceVideoStage,
 } from "@/lib/service-video-evidence";
 import { isCoreAdminAuditRejectionCategory } from "@/lib/core-admin-audit-categories";
+import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 
 export const CORE_ADMIN_AUDIT_EVIDENCE_VERSION = 1;
 export const MANAGER_ADMIN_AUDIT_SUBMISSION = "SUBMITTED_FOR_ADMIN_AUDIT";
@@ -492,6 +493,34 @@ export async function loadCoreAdminAuditCandidate(db: any, bookingId: string) {
     vendorId: booking.vendorId,
   });
   const mediaAssets = await loadBoundMediaAssets(db, packageStages);
+  const assessmentIds = Array.from(
+    new Set(stageEvidence.map((stage: any) => String(stage.assessmentId || "")).filter(Boolean)),
+  );
+  if (assessmentIds.length !== 1) {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_RECORDING_SCOPE_MISMATCH");
+  }
+  const recordingAssessment = db.recordingScopeAssessment?.findFirst
+    ? await db.recordingScopeAssessment.findFirst({
+        where: {
+          id: assessmentIds[0],
+          bookingId,
+          vendorId: booking.vendorId,
+        },
+      })
+    : null;
+  const recordingAssessmentInterpretation = recordingAssessment
+    ? interpretRecordingAssessment(recordingAssessment)
+    : null;
+  if (
+    recordingAssessment &&
+    stageEvidence.some(
+      (stage: any) =>
+        Number(stage.assessmentGeneration) !== Number(recordingAssessment.generation) ||
+        String(stage.scopeHash || "") !== String(recordingAssessment.scopeHash || ""),
+    )
+  ) {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_RECORDING_SCOPE_MISMATCH");
+  }
   const audioAudit = validatePackageAudio(stageEvidence, mediaAssets, { strict: false });
   for (const asset of mediaAssets as any[]) {
     if (
@@ -501,7 +530,17 @@ export async function loadCoreAdminAuditCandidate(db: any, bookingId: string) {
       throw new CoreAdminAuditError("ADMIN_AUDIT_MEDIA_NOT_PRIVATE_PENDING");
     }
   }
-  return { booking, package: pkg, managerDecision, packageStages, stageEvidence, mediaAssets, audioAudit };
+  return {
+    booking,
+    package: pkg,
+    managerDecision,
+    packageStages,
+    stageEvidence,
+    mediaAssets,
+    audioAudit,
+    recordingAssessment,
+    recordingAssessmentInterpretation,
+  };
 }
 
 export async function isCoreAdminAuditEligible(db: any, bookingId: string): Promise<boolean> {

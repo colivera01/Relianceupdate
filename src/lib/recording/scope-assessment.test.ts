@@ -4,185 +4,147 @@ import {
   createRecordingScopeAssessment,
   deriveRecordingScopeAssessment,
   parseRecordingScopeAssessmentInput,
-  SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
+  SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+  SIMPLIFIED_V1_LEGACY_FIELD_SENTINEL,
+  SIMPLIFIED_V1_PROHIBITED_CONDITIONS,
 } from "./scope-assessment";
 
-describe("recording subject assessment", () => {
-  it("allows vendor authorization only for controlled vendor-owned property with no people or sensitive capture", () => {
+const LOCATION_HASH = "a".repeat(64);
+const COMPLETED_AT = new Date("2026-08-29T14:00:00.000Z");
+const context = (generation = 1) => ({
+  locationSnapshotEvidenceHash: LOCATION_HASH,
+  generation,
+  completedByUserId: "manager-1",
+  completedAt: COMPLETED_AT,
+});
+
+describe("simplified V1 work-record recording scope", () => {
+  it("derives safe vendor-business scope without customer permission", () => {
     const parsed = parseRecordingScopeAssessmentInput({
       recordingLocation: "business",
-      propertyScope: "vendor_owned",
-      peopleScope: "none",
-      frameControl: "controlled",
-      serviceCanContinueWithoutRecording: true,
+      intentionalParticipantPlan: "none",
+      audioRequested: false,
     });
     expect(parsed).not.toBeNull();
-    const result = deriveRecordingScopeAssessment(parsed!);
+    const result = deriveRecordingScopeAssessment(parsed!, context());
     expect(result).toMatchObject({
-      riskLevel: "LEVEL_1",
+      contractVersion: SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+      siteControl: "vendor_controlled_business_location",
+      intentionalParticipantPlan: "none",
+      recordingBoundary: "service_area_equipment_item_and_work",
       permissionRequired: false,
-      noticeRequired: true,
-      audioAllowed: false,
       authorityHolderType: "vendor_manager",
-      serviceCanContinueWithoutRecording: false,
-      essentialPrivateRecording: true,
-    });
-    expect(JSON.parse(result.scopeJson)).toMatchObject({
-      schemaVersion: SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
-      serviceCanContinueWithoutRecording: false,
-      essentialPrivateRecording: true,
+      riskLevel: "LEVEL_1",
     });
     expect(result.authorityRequirements).toEqual([
       { authorityType: "VENDOR_MANAGER", status: "VERIFIED", required: true },
     ]);
   });
 
-  it.each(["residence", "customer-business"] as const)(
-    "always requires affirmative customer authority at %s",
-    (recordingLocation) => {
-      const result = deriveRecordingScopeAssessment({
-        recordingLocation,
-        propertyScope: "customer_owned",
-        peopleScope: "none",
-        frameControl: "controlled",
-        minorMayAppear: false,
-        protectedNonParticipantMayAppear: false,
-        sensitiveInformationMayAppear: false,
-        identifiersMayAppear: false,
-        residenceInterior: recordingLocation === "residence",
-        businessInterior: recordingLocation === "customer-business",
-        audioRequested: false,
-        serviceCanContinueWithoutRecording: true,
-        essentialPrivateRecording: false,
-      });
-      expect(result.permissionRequired).toBe(true);
-      expect(result.authorityHolderType).toBe("customer");
-      expect(result.authorityRequirements).toContainEqual({
-        authorityType: "CUSTOMER",
-        status: "PENDING",
-        required: true,
-      });
-    },
-  );
-
-  it("raises uncontrolled minor capture to Level 4 without pretending V1 verified guardian authority", () => {
-    const result = deriveRecordingScopeAssessment({
-      recordingLocation: "business",
-      propertyScope: "vendor_owned",
-      peopleScope: "multiple",
-      frameControl: "uncontrolled",
-      minorMayAppear: true,
-      protectedNonParticipantMayAppear: true,
-      sensitiveInformationMayAppear: false,
-      identifiersMayAppear: false,
-      residenceInterior: false,
-      businessInterior: true,
-      audioRequested: false,
-      serviceCanContinueWithoutRecording: true,
-      essentialPrivateRecording: false,
+  it.each([
+    ["residence", "customer_controlled_residence"],
+    ["customer-business", "customer_controlled_business_location"],
+  ] as const)("requires customer permission at %s", (recordingLocation, siteControl) => {
+    const result = deriveRecordingScopeAssessment(
+      { recordingLocation, intentionalParticipantPlan: "none", audioRequested: false },
+      context(),
+    );
+    expect(result).toMatchObject({ permissionRequired: true, siteControl, authorityHolderType: "customer" });
+    expect(result.authorityRequirements).toContainEqual({
+      authorityType: "CUSTOMER",
+      status: "PENDING",
+      required: true,
     });
-    expect(result.riskLevel).toBe("LEVEL_4");
+  });
+
+  it("requires customer permission for intentional customer likeness at vendor business", () => {
+    const result = deriveRecordingScopeAssessment(
+      { recordingLocation: "business", intentionalParticipantPlan: "customer", audioRequested: false },
+      context(),
+    );
     expect(result.permissionRequired).toBe(true);
-    expect(result.authorityHolderType).toBe("customer");
-    expect(result.authorityRequirements).toEqual(expect.arrayContaining([
-      expect.objectContaining({ authorityType: "VERIFIED_GUARDIAN", status: "PENDING" }),
-      expect.objectContaining({ authorityType: "PROTECTED_NON_PARTICIPANT", status: "PENDING" }),
-    ]));
+    expect(result.authorityRequirements).toContainEqual(
+      expect.objectContaining({ authorityType: "CUSTOMER_LIKENESS" }),
+    );
   });
 
-  it("produces a stable scope hash and binds explicit package audio", () => {
-    const input = parseRecordingScopeAssessmentInput({
-      recordingLocation: "business",
-      propertyScope: "vendor_owned",
-      peopleScope: "employee",
-      frameControl: "controlled",
-      audioRequested: true,
-      serviceCanContinueWithoutRecording: true,
-    });
-    const first = deriveRecordingScopeAssessment(input!);
-    const second = deriveRecordingScopeAssessment(input!);
-    expect(first.scopeHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(second.scopeHash).toBe(first.scopeHash);
-    expect(first.audioRequested).toBe(true);
-    expect(first.audioAllowed).toBe(true);
-    expect(JSON.parse(first.scopeJson)).toMatchObject({
-      audioEnabled: true,
-      audioContractVersion: 2,
-    });
-    const videoOnly = deriveRecordingScopeAssessment({ ...input!, audioRequested: false });
-    expect(videoOnly.scopeHash).not.toBe(first.scopeHash);
-    expect(videoOnly.permissionRequired).toBe(first.permissionRequired);
-  });
-
-  it("derives customer authority when vendor-business scope requires customer permission", () => {
-    const parsed = parseRecordingScopeAssessmentInput({
-      recordingLocation: "business",
-      propertyScope: "customer_owned",
-      peopleScope: "customer",
-      frameControl: "controlled",
-      serviceCanContinueWithoutRecording: true,
-    });
-
-    expect(parsed).not.toBeNull();
-    expect(deriveRecordingScopeAssessment(parsed!)).toMatchObject({
-      permissionRequired: true,
-      authorityHolderType: "customer",
-    });
-  });
-
-  it.each(["authorized_representative", "guardian"] as const)(
-    "fails closed when a new V1 request explicitly claims unsupported %s authority",
-    (authorityHolderType) => {
-      expect(parseRecordingScopeAssessmentInput({
-        recordingLocation: "residence",
-        propertyScope: "customer_owned",
-        peopleScope: "none",
-        frameControl: "controlled",
-        authorityHolderType,
-        serviceCanContinueWithoutRecording: true,
-      })).toBeNull();
-    },
-  );
-
-  it("fails closed when an explicit authority contradicts the derived V1 scope", () => {
-    expect(parseRecordingScopeAssessmentInput({
-      recordingLocation: "business",
-      propertyScope: "customer_owned",
-      peopleScope: "customer",
-      frameControl: "controlled",
-      authorityHolderType: "vendor_manager",
-      serviceCanContinueWithoutRecording: true,
-    })).toBeNull();
-  });
-
-  it("keeps the production assessment writer on the current V3 contract", async () => {
-    const parsed = parseRecordingScopeAssessmentInput({
-      recordingLocation: "business",
-      propertyScope: "vendor_owned",
-      peopleScope: "none",
-      frameControl: "controlled",
-      audioRequested: false,
-    });
-    const assessment = deriveRecordingScopeAssessment(parsed!);
-    const create = vi.fn().mockResolvedValue({ id: "assessment-current-v3" });
-    const createMany = vi.fn().mockResolvedValue({ count: 1 });
-
-    await createRecordingScopeAssessment({
-      tx: {
-        recordingScopeAssessment: { create },
-        recordingAuthorityRequirement: { createMany },
+  it("does not treat an assigned professional alone as a customer-permission trigger", () => {
+    const result = deriveRecordingScopeAssessment(
+      {
+        recordingLocation: "business",
+        intentionalParticipantPlan: "assigned_service_professional",
+        audioRequested: true,
       },
+      context(),
+    );
+    expect(result.permissionRequired).toBe(false);
+    expect(result.audioAllowed).toBe(true);
+    expect(result.authorityRequirements).toContainEqual(
+      expect.objectContaining({ authorityType: "EMPLOYEE_LIKENESS" }),
+    );
+  });
+
+  it("does not serialize removed predictive fields as false facts", () => {
+    const result = deriveRecordingScopeAssessment(
+      { recordingLocation: "business", intentionalParticipantPlan: "none", audioRequested: false },
+      context(),
+    );
+    expect(result.subjectJson).not.toMatch(
+      /minorMayAppear|protectedNonParticipantMayAppear|sensitiveInformationMayAppear|identifiersMayAppear|propertyScope|frameControl/,
+    );
+    expect(JSON.parse(result.subjectJson).prohibitedConditions).toEqual(
+      SIMPLIFIED_V1_PROHIBITED_CONDITIONS,
+    );
+  });
+
+  it("binds location, generation, actor, timestamp, participants, boundary, and audio into the hash", () => {
+    const input = {
+      recordingLocation: "business" as const,
+      intentionalParticipantPlan: "none" as const,
+      audioRequested: false,
+    };
+    const baseline = deriveRecordingScopeAssessment(input, context());
+    expect(baseline.scopeHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(deriveRecordingScopeAssessment(input, context()).scopeHash).toBe(baseline.scopeHash);
+    expect(deriveRecordingScopeAssessment({ ...input, audioRequested: true }, context()).scopeHash).not.toBe(baseline.scopeHash);
+    expect(deriveRecordingScopeAssessment(input, context(2)).scopeHash).not.toBe(baseline.scopeHash);
+    expect(JSON.parse(baseline.scopeJson)).toMatchObject({
+      contractVersion: SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+      assessment: { generation: 1, completedByUserId: "manager-1", completedAt: COMPLETED_AT.toISOString() },
+      location: { type: "business", snapshotEvidenceHash: LOCATION_HASH },
+    });
+  });
+
+  it("fails closed without intentional participants or valid immutable location evidence", () => {
+    expect(parseRecordingScopeAssessmentInput({ recordingLocation: "business" })).toBeNull();
+    expect(() =>
+      deriveRecordingScopeAssessment(
+        { recordingLocation: "business", intentionalParticipantPlan: "none", audioRequested: false },
+        { ...context(), locationSnapshotEvidenceHash: "invalid" },
+      ),
+    ).toThrow(/location snapshot hash/i);
+  });
+
+  it("writes the explicit contract and uses not-applicable legacy columns", async () => {
+    const assessment = deriveRecordingScopeAssessment(
+      { recordingLocation: "business", intentionalParticipantPlan: "none", audioRequested: false },
+      context(),
+    );
+    const create = vi.fn().mockResolvedValue({ id: "assessment-current-v1" });
+    const createMany = vi.fn().mockResolvedValue({ count: 1 });
+    await createRecordingScopeAssessment({
+      tx: { recordingScopeAssessment: { create }, recordingAuthorityRequirement: { createMany } },
       bookingId: "booking-1",
       vendorId: "vendor-1",
       completedByUserId: "manager-1",
       assessment,
     });
-
-    const data = create.mock.calls[0][0].data;
-    expect(data).not.toHaveProperty("contractVersion");
-    expect(JSON.parse(data.scopeJson).schemaVersion).toBe(
-      SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
-    );
-    expect(data.scopeJson).not.toContain("recording-assessment-v4-multiscope-safety-v1");
+    expect(create.mock.calls[0][0].data).toMatchObject({
+      contractVersion: SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+      propertyScope: SIMPLIFIED_V1_LEGACY_FIELD_SENTINEL,
+      peopleScope: SIMPLIFIED_V1_LEGACY_FIELD_SENTINEL,
+      frameControl: SIMPLIFIED_V1_LEGACY_FIELD_SENTINEL,
+      completedAt: COMPLETED_AT,
+    });
   });
 });

@@ -21,6 +21,7 @@ import {
 import {
   normalizeRecordingLocationChoice,
   parseRecordingComplianceMetadata,
+  validateRecordingLocationSnapshot,
 } from "@/lib/job-assignment";
 import {
   loadRecordingPermissionGate,
@@ -574,15 +575,62 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           apiResponse(
             false,
             "RECORDING_ASSESSMENT_INCOMPLETE",
-            "Complete the location, subject, framing, and recording requirement before saving the recording scope.",
+            "Choose the recording location, intentional participant plan, and audio scope before saving.",
           ),
           { status: 422 },
         );
       }
-      const nextAssessment = parsedAssessment
-        ? deriveRecordingScopeAssessment(parsedAssessment)
-        : null;
       const currentCompliance = parseRecordingComplianceMetadata(booking.customerMetadata);
+      if (
+        parsedAssessment &&
+        currentCompliance.location &&
+        parsedAssessment.recordingLocation !== currentCompliance.location
+      ) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "RECORDING_LOCATION_SNAPSHOT_IMMUTABLE",
+            "The service location cannot be changed after its verified snapshot is saved. Create a corrected work record so permission and location evidence remain truthful.",
+            {
+              currentLocation: currentCompliance.location,
+              requestedLocation: parsedAssessment.recordingLocation,
+              responsibleParticipant: "VENDOR_MANAGER",
+            },
+          ),
+          { status: 409 },
+        );
+      }
+      const currentAssessment = parsedAssessment
+        ? await (prisma as any).recordingScopeAssessment.findFirst({
+            where: { bookingId: booking.id, vendorId, isCurrent: true },
+            orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
+          })
+        : null;
+      const snapshotValidation = parsedAssessment
+        ? validateRecordingLocationSnapshot(
+            booking.customerMetadata,
+            parsedAssessment.recordingLocation,
+          )
+        : null;
+      const locationSnapshot = snapshotValidation?.ok ? snapshotValidation.snapshot : null;
+      if (parsedAssessment && !locationSnapshot?.snapshotEvidenceHash) {
+        return NextResponse.json(
+          apiResponse(
+            false,
+            "RECORDING_LOCATION_EVIDENCE_INVALID",
+            "The immutable service-location evidence is unavailable or invalid. The recording scope was not changed.",
+          ),
+          { status: 409 },
+        );
+      }
+      const nextAssessment = parsedAssessment
+        ? deriveRecordingScopeAssessment(parsedAssessment, {
+            locationSnapshotEvidenceHash: locationSnapshot!.snapshotEvidenceHash!,
+            generation: Number(currentAssessment?.generation || 0) + 1,
+            completedByUserId: member.userId,
+            completedAt: new Date(),
+          })
+        : null;
       const serviceChanged =
         serviceId !== undefined && String(serviceId || "") !== String(booking.service?.id || "");
       const titleChanged =
@@ -633,31 +681,6 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
           { status: 422 },
         );
       }
-      if (
-        nextAssessment &&
-        currentCompliance.location &&
-        nextAssessment.recordingLocation !== currentCompliance.location
-      ) {
-        return NextResponse.json(
-          apiResponse(
-            false,
-            "RECORDING_LOCATION_SNAPSHOT_IMMUTABLE",
-            "The service location cannot be changed after its verified snapshot is saved. Create a corrected work record so permission and location evidence remain truthful.",
-            {
-              currentLocation: currentCompliance.location,
-              requestedLocation: nextAssessment.recordingLocation,
-              responsibleParticipant: "VENDOR_MANAGER",
-            },
-          ),
-          { status: 409 },
-        );
-      }
-      const currentAssessment = nextAssessment
-        ? await (prisma as any).recordingScopeAssessment.findFirst({
-            where: { bookingId: booking.id, vendorId, isCurrent: true },
-            orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
-          })
-        : null;
       const audioScopeChanged = Boolean(
         nextAssessment &&
           currentAssessment &&
@@ -695,18 +718,20 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         const now = new Date();
         const metadata = parseCustomerMetadata(booking.customerMetadata);
         metadata.vendor_job_recording_location = nextAssessment.recordingLocation;
-        metadata.recording_property_scope = nextAssessment.propertyScope;
-        metadata.recording_people_scope = nextAssessment.peopleScope;
-        metadata.recording_frame_control = nextAssessment.frameControl;
+        metadata.recording_intentional_participant_plan =
+          nextAssessment.intentionalParticipantPlan;
+        metadata.recording_site_control = nextAssessment.siteControl;
+        metadata.recording_boundary = nextAssessment.recordingBoundary;
         metadata.recording_authority_holder_type = nextAssessment.authorityHolderType;
-        metadata.recording_minor_may_appear = nextAssessment.minorMayAppear;
-        metadata.recording_protected_non_participant_may_appear =
-          nextAssessment.protectedNonParticipantMayAppear;
-        metadata.recording_sensitive_information_may_appear =
-          nextAssessment.sensitiveInformationMayAppear;
-        metadata.recording_identifiers_may_appear = nextAssessment.identifiersMayAppear;
-        metadata.recording_residence_interior = nextAssessment.residenceInterior;
-        metadata.recording_business_interior = nextAssessment.businessInterior;
+        delete metadata.recording_property_scope;
+        delete metadata.recording_people_scope;
+        delete metadata.recording_frame_control;
+        delete metadata.recording_minor_may_appear;
+        delete metadata.recording_protected_non_participant_may_appear;
+        delete metadata.recording_sensitive_information_may_appear;
+        delete metadata.recording_identifiers_may_appear;
+        delete metadata.recording_residence_interior;
+        delete metadata.recording_business_interior;
         metadata.recording_audio_requested = nextAssessment.audioAllowed;
         metadata.service_can_continue_without_recording =
           nextAssessment.serviceCanContinueWithoutRecording;
@@ -875,6 +900,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
             serviceName: booking.service?.name || booking.title,
             scopeHash: scopeChange.createdAssessment.scopeHash,
             audioEnabled: scopeChange.createdAssessment.audioAllowed === true,
+            intentionalParticipantPlan: nextAssessment.intentionalParticipantPlan,
           });
           workflowState = {
             ...workflowState,

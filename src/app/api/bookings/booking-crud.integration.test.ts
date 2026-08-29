@@ -169,10 +169,7 @@ function jsonRequest(url: string, body?: unknown, method: 'GET' | 'POST' | 'PUT'
               suppliedFields.recordingLocation ||
               suppliedFields.vendor_job_recording_location ||
               'business',
-            propertyScope: 'vendor_owned',
-            peopleScope: 'none',
-            frameControl: 'controlled',
-            serviceCanContinueWithoutRecording: true,
+            intentionalParticipantPlan: 'none',
             ...suppliedFields,
           },
         }
@@ -552,7 +549,6 @@ describe('POST /api/bookings', () => {
       custom_fields: {
         service_address: '1 Main St',
         recordingLocation: 'business',
-        propertyScope: 'vendor_owned',
       },
     });
     const j = await readJson(res);

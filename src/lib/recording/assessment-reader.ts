@@ -1,4 +1,12 @@
-import { SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION } from "./scope-assessment";
+import { createHash } from "node:crypto";
+
+import { stableJson } from "@/lib/consent/content-version";
+import {
+  SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+  SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
+  type DerivedSiteControl,
+  type IntentionalParticipantPlan,
+} from "./scope-assessment";
 import {
   parseRecordingAssessmentV2,
   RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
@@ -23,6 +31,29 @@ export type RecordingAssessmentInterpretation =
       kind: "V2";
       contractVersion: typeof RECORDING_ASSESSMENT_V2_CONTRACT_VERSION;
       canonical: CanonicalRecordingAssessmentV2;
+    }
+  | {
+      kind: "SIMPLIFIED_V1";
+      contractVersion: typeof SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION;
+      scopeJson: string;
+      subjectJson: string;
+      scopeHash: string;
+      scopeEvidence: Record<string, unknown>;
+      subjectEvidence: Record<string, unknown>;
+      canonical: {
+        recordingLocation: string;
+        locationSnapshotEvidenceHash: string;
+        siteControl: DerivedSiteControl;
+        intentionalParticipantPlan: IntentionalParticipantPlan;
+        recordingBoundary: string;
+        prohibitedConditions: string[];
+        audioEnabled: boolean;
+        permissionRequired: boolean;
+        authorityHolderType: string;
+        generation: number;
+        completedByUserId: string;
+        completedAt: string;
+      };
     }
   | {
       kind: "CURRENT_V3" | "LEGACY";
@@ -98,6 +129,77 @@ export function interpretRecordingAssessment(
       kind: "V2",
       contractVersion: RECORDING_ASSESSMENT_V2_CONTRACT_VERSION,
       canonical,
+    };
+  }
+
+  if (explicitVersion === SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION) {
+    if (
+      parsedScope.contractVersion !== SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION ||
+      stableJson(parsedScope) !== row.scopeJson ||
+      stableJson(parsedSubject) !== row.subjectJson ||
+      createHash("sha256").update(row.scopeJson).digest("hex") !== row.scopeHash
+    ) {
+      throw new RecordingAssessmentV2ValidationError(
+        "INVALID_SIMPLIFIED_V1_EVIDENCE",
+        "Stored simplified-V1 scope evidence is not canonical or its hash does not match.",
+      );
+    }
+    const location = parseJsonObject(stableJson(parsedScope.location));
+    const audio = parseJsonObject(stableJson(parsedScope.audio));
+    const assessment = parseJsonObject(stableJson(parsedScope.assessment));
+    const participantPlan = String(parsedScope.participantPlan || "") as IntentionalParticipantPlan;
+    const siteControl = String(parsedScope.siteControl || "") as DerivedSiteControl;
+    const allowedPlans = [
+      "none",
+      "customer",
+      "assigned_service_professional",
+      "customer_and_assigned_service_professional",
+    ];
+    const allowedSiteControls = [
+      "customer_controlled_residence",
+      "customer_controlled_business_location",
+      "vendor_controlled_business_location",
+    ];
+    const prohibitedConditions = Array.isArray(parsedSubject.prohibitedConditions)
+      ? parsedSubject.prohibitedConditions.map(String)
+      : [];
+    if (
+      !allowedPlans.includes(participantPlan) ||
+      !allowedSiteControls.includes(siteControl) ||
+      !/^[a-f0-9]{64}$/.test(String(location.snapshotEvidenceHash || "")) ||
+      !Number.isInteger(Number(assessment.generation)) ||
+      Number(assessment.generation) < 1 ||
+      !String(assessment.completedByUserId || "").trim() ||
+      !Number.isFinite(Date.parse(String(assessment.completedAt || ""))) ||
+      prohibitedConditions.length === 0
+    ) {
+      throw new RecordingAssessmentV2ValidationError(
+        "INVALID_SIMPLIFIED_V1_EVIDENCE",
+        "Stored simplified-V1 scope evidence is incomplete.",
+      );
+    }
+    return {
+      kind: "SIMPLIFIED_V1",
+      contractVersion: SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+      scopeJson: row.scopeJson,
+      subjectJson: row.subjectJson,
+      scopeHash: row.scopeHash,
+      scopeEvidence: parsedScope,
+      subjectEvidence: parsedSubject,
+      canonical: {
+        recordingLocation: String(location.type || ""),
+        locationSnapshotEvidenceHash: String(location.snapshotEvidenceHash),
+        siteControl,
+        intentionalParticipantPlan: participantPlan,
+        recordingBoundary: String(parsedScope.recordingBoundary || ""),
+        prohibitedConditions,
+        audioEnabled: audio.enabled === true,
+        permissionRequired: parsedScope.permissionRequired === true,
+        authorityHolderType: String(parsedScope.authorityHolderType || ""),
+        generation: Number(assessment.generation),
+        completedByUserId: String(assessment.completedByUserId),
+        completedAt: String(assessment.completedAt),
+      },
     };
   }
 

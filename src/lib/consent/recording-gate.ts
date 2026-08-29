@@ -77,15 +77,19 @@ export type RecordingPermissionGate = {
   assessmentStatus: string | null;
   riskLevel: string | null;
   scopeSummary: {
-    propertyScope: string;
-    peopleScope: string;
-    frameControl: string;
-    sensitiveCapture: boolean;
-    identifiersMayAppear: boolean;
-    minorPresent: boolean;
-    protectedParticipantPresent: boolean;
-    residenceInterior: boolean;
-    businessInterior: boolean;
+    siteControl?: string;
+    intentionalParticipantPlan?: string;
+    recordingBoundary?: string;
+    prohibitedConditions?: string[];
+    propertyScope?: string;
+    peopleScope?: string;
+    frameControl?: string;
+    sensitiveCapture?: boolean;
+    identifiersMayAppear?: boolean;
+    minorPresent?: boolean;
+    protectedParticipantPresent?: boolean;
+    residenceInterior?: boolean;
+    businessInterior?: boolean;
     authorityHolderType: string;
     serviceCanContinueWithoutRecording: boolean;
     essentialPrivateRecording: boolean;
@@ -559,10 +563,11 @@ export async function loadCanonicalRecordingGate(input: {
       return false;
     }
   })();
+  let assessmentInterpretation: ReturnType<typeof interpretRecordingAssessment> | null = null;
   const assessmentContractValid = (() => {
     if (!assessment) return true;
     try {
-      interpretRecordingAssessment(assessment);
+      assessmentInterpretation = interpretRecordingAssessment(assessment);
       return true;
     } catch {
       return false;
@@ -585,7 +590,18 @@ export async function loadCanonicalRecordingGate(input: {
     assessmentStatus: assessment?.status || null,
     riskLevel: assessment?.riskLevel || null,
     scopeSummary: assessment
-      ? {
+      ? assessmentInterpretation?.kind === "SIMPLIFIED_V1"
+        ? {
+            siteControl: assessmentInterpretation.canonical.siteControl,
+            intentionalParticipantPlan:
+              assessmentInterpretation.canonical.intentionalParticipantPlan,
+            recordingBoundary: assessmentInterpretation.canonical.recordingBoundary,
+            prohibitedConditions: assessmentInterpretation.canonical.prohibitedConditions,
+            authorityHolderType: assessmentInterpretation.canonical.authorityHolderType,
+            serviceCanContinueWithoutRecording: false,
+            essentialPrivateRecording: true,
+          }
+        : {
           propertyScope: String(assessment.propertyScope || ""),
           peopleScope: String(assessment.peopleScope || ""),
           frameControl: String(assessment.frameControl || ""),
@@ -603,7 +619,7 @@ export async function loadCanonicalRecordingGate(input: {
           essentialPrivateRecording: Boolean(
             assessedScope.essentialPrivateRecording ?? assessment.essentialPrivateRecording,
           ),
-        }
+          }
       : null,
     audioAllowed: Boolean(assessment?.audioAllowed),
     certificationActive: Boolean(certification),

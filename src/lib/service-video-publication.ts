@@ -6,6 +6,7 @@ import {
   type ServiceVideoStage,
 } from "@/lib/service-video-evidence";
 import { SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION } from "@/lib/recording/scope-assessment";
+import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 
 export const PUBLICATION_STATUSES = {
   AWAITING_CUSTOMER: "AWAITING_CUSTOMER_DECISION",
@@ -399,17 +400,42 @@ export async function decidePackageVisibility(input: {
     const assessment = await tx.recordingScopeAssessment.findFirst({
       where: { bookingId: input.bookingId, vendorId: foundation.booking.vendorId, isCurrent: true },
       orderBy: { generation: "desc" },
-      select: { peopleScope: true, subjectJson: true, scopeJson: true, audioAllowed: true },
+      select: {
+        contractVersion: true,
+        peopleScope: true,
+        propertyScope: true,
+        frameControl: true,
+        subjectJson: true,
+        scopeJson: true,
+        scopeHash: true,
+        audioRequested: true,
+        audioAllowed: true,
+      },
     });
     const subject = parseJson<Record<string, unknown>>(assessment?.subjectJson, {});
-    const containsMinor = subject.includesMinor === true || subject.minorMayAppear === true;
-    const containsBystander = assessmentContainsProtectedNonParticipant(assessment || {});
+    const interpretedAssessment = assessment
+      ? interpretRecordingAssessment(assessment)
+      : null;
+    const isCurrentSimplifiedScope = interpretedAssessment?.kind === "SIMPLIFIED_V1";
+    const containsMinor = isCurrentSimplifiedScope
+      ? false
+      : subject.includesMinor === true || subject.minorMayAppear === true;
+    const containsBystander = isCurrentSimplifiedScope
+      ? false
+      : assessmentContainsProtectedNonParticipant(assessment || {});
     if (containsMinor || containsBystander) {
       throw new Error("PUBLICATION_PROTECTED_PERSON_BLOCK");
     }
     const peopleScope = String(assessment?.peopleScope || "none").toLowerCase();
-    const containsCustomerLikeness = ["customer", "multiple"].includes(peopleScope);
-    const containsEmployeeLikeness = ["employee", "multiple"].includes(peopleScope);
+    const participantPlan = isCurrentSimplifiedScope
+      ? interpretedAssessment.canonical.intentionalParticipantPlan
+      : null;
+    const containsCustomerLikeness = participantPlan
+      ? ["customer", "customer_and_assigned_service_professional"].includes(participantPlan)
+      : ["customer", "multiple"].includes(peopleScope);
+    const containsEmployeeLikeness = participantPlan
+      ? ["assigned_service_professional", "customer_and_assigned_service_professional"].includes(participantPlan)
+      : ["employee", "multiple"].includes(peopleScope);
     const includesAudio = packageIncludesAudio;
 
     const exactStages = [] as Array<{

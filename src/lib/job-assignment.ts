@@ -267,6 +267,29 @@ export function validateRecordingLocationSnapshot(
       fallbackUsed: evidence.fallbackUsed,
       evidenceHash,
     };
+  } else {
+    const storedSnapshotHash = String(snapshot.snapshot_evidence_hash || "").trim() || null;
+    if (storedSnapshotHash) {
+      const expectedSnapshotHash = createHash("sha256")
+        .update(
+          JSON.stringify({
+            type: expected,
+            source,
+            address,
+            city,
+            state,
+            zipCode,
+            latitude,
+            longitude,
+            providerEvidence: null,
+          }),
+        )
+        .digest("hex");
+      if (storedSnapshotHash !== expectedSnapshotHash) {
+        return { ok: false, code: "RECORDING_LOCATION_SNAPSHOT_EVIDENCE_HASH_INVALID" };
+      }
+      snapshotEvidenceHash = storedSnapshotHash;
+    }
   }
 
   return {

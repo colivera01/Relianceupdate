@@ -21,15 +21,20 @@ type Permission = {
   actionExpiresAt: string;
   verificationOptions: { account: boolean; email: boolean; sms: boolean };
   plannedScope: {
-    propertyScope: string;
-    peopleScope: string;
-    frameControl: string;
-    residenceInterior: boolean;
-    businessInterior: boolean;
-    minorMayAppear: boolean;
-    protectedNonParticipantMayAppear: boolean;
-    sensitiveInformationMayAppear: boolean;
-    identifiersMayAppear: boolean;
+    contractVersion?: string;
+    siteControl?: string;
+    intentionalParticipantPlan?: string;
+    recordingBoundary?: string;
+    prohibitedConditions?: string[];
+    propertyScope?: string;
+    peopleScope?: string;
+    frameControl?: string;
+    residenceInterior?: boolean;
+    businessInterior?: boolean;
+    minorMayAppear?: boolean;
+    protectedNonParticipantMayAppear?: boolean;
+    sensitiveInformationMayAppear?: boolean;
+    identifiersMayAppear?: boolean;
     authorityHolderType: string;
     serviceCanContinueWithoutRecording: boolean;
     essentialPrivateRecording: boolean;
@@ -97,6 +102,12 @@ function scopeLabel(value: string) {
     authorized_representative: "Customer's authorized representative",
     guardian: "Parent or legal guardian",
     vendor_manager: "Vendor manager",
+    customer_controlled_residence: "Customer-controlled residence",
+    customer_controlled_business_location: "Customer-controlled business location",
+    vendor_controlled_business_location: "Vendor-controlled business location",
+    assigned_service_professional: "Assigned service professional",
+    customer_and_assigned_service_professional: "Customer and assigned service professional",
+    service_area_equipment_item_and_work: "Service area, equipment or item, and the work being performed",
   };
   return labels[value] || value.replace(/_/g, " ");
 }
@@ -238,9 +249,20 @@ export default function PermissionPage() {
 
         {permission.plannedScope ? (
           <div className={styles.serviceCard} aria-label="Approved recording scope">
-            <div><span>Whose property may be recorded</span><strong>{scopeLabel(permission.plannedScope.propertyScope)}</strong></div>
-            <div><span>Who may be identifiable</span><strong>{scopeLabel(permission.plannedScope.peopleScope)}</strong></div>
-            <div><span>What the camera will show</span><strong>{scopeLabel(permission.plannedScope.frameControl)}</strong></div>
+            {permission.plannedScope.intentionalParticipantPlan ? (
+              <>
+                <div><span>Service site control</span><strong>{scopeLabel(permission.plannedScope.siteControl || "")}</strong></div>
+                <div><span>Who may be intentionally identifiable</span><strong>{scopeLabel(permission.plannedScope.intentionalParticipantPlan)}</strong></div>
+                <div><span>Recording boundary</span><strong>{scopeLabel(permission.plannedScope.recordingBoundary || "")}</strong></div>
+                <div><span>Keep out of the recording</span><strong>Minors, unrelated people or conversations, private or sensitive information, credentials, keys, security details, and confidential information</strong></div>
+              </>
+            ) : (
+              <>
+                <div><span>Whose property may be recorded</span><strong>{scopeLabel(permission.plannedScope.propertyScope || "")}</strong></div>
+                <div><span>Who may be identifiable</span><strong>{scopeLabel(permission.plannedScope.peopleScope || "")}</strong></div>
+                <div><span>What the camera will show</span><strong>{scopeLabel(permission.plannedScope.frameControl || "")}</strong></div>
+              </>
+            )}
             <div><span>Recording decision</span><strong>{permission.plannedScope.authorityHolderType === "customer" ? "Verified customer contact" : scopeLabel(permission.plannedScope.authorityHolderType)}</strong></div>
             {!simplifiedV1 ? <div><span>Is recording required</span><strong>{permission.plannedScope.serviceCanContinueWithoutRecording ? "No - service may continue without recording" : "Yes - recording is required for this service"}</strong></div> : null}
             {permission.plannedScope.minorMayAppear ? <div><span>Children under 18</span><strong>May appear</strong></div> : null}

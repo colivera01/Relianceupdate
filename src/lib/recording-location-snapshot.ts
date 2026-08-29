@@ -48,7 +48,7 @@ export function buildRecordingLocationSnapshot(
   const providerEvidence = address?.geocodingEvidence
     ? { ...address.geocodingEvidence, sourceLocationType: location }
     : null;
-  const snapshotEvidenceHash = providerEvidence
+  const snapshotEvidenceHash = hasVerifiedCoordinates
     ? createHash('sha256')
         .update(
           JSON.stringify({

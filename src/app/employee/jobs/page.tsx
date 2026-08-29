@@ -64,12 +64,16 @@ type RecordingComplianceState = {
   serviceLocation?: string | null;
   serviceLocationType?: RecordingLocationChoice | null;
   scopeSummary?: {
-    propertyScope: string;
-    peopleScope: string;
-    frameControl: string;
-    sensitiveCapture: boolean;
-    minorPresent: boolean;
-    protectedParticipantPresent: boolean;
+    siteControl?: string;
+    intentionalParticipantPlan?: string;
+    recordingBoundary?: string;
+    prohibitedConditions?: string[];
+    propertyScope?: string;
+    peopleScope?: string;
+    frameControl?: string;
+    sensitiveCapture?: boolean;
+    minorPresent?: boolean;
+    protectedParticipantPresent?: boolean;
   } | null;
   canonicalBlock?: {
     code: string;
@@ -1690,15 +1694,16 @@ export default function EmployeeJobsPage() {
           <div className="mt-3 rounded-xl border border-blue-300/30 bg-blue-950/40 px-4 py-3 text-blue-50">
             <p className="text-sm font-bold">Approved recording scope</p>
             <p className="mt-1 text-sm leading-5">
-              Record {job.recordingCompliance.scopeSummary.propertyScope.replaceAll("_", " ").toLowerCase()}.
-              {" "}People: {job.recordingCompliance.scopeSummary.peopleScope.replaceAll("_", " ").toLowerCase()}.
+              {job.recordingCompliance.scopeSummary.intentionalParticipantPlan
+                ? `Record only the service area, equipment or item, and the work being performed. Intentionally identifiable: ${job.recordingCompliance.scopeSummary.intentionalParticipantPlan.replaceAll("_", " ").toLowerCase()}.`
+                : `Record ${(job.recordingCompliance.scopeSummary.propertyScope || "approved work area").replaceAll("_", " ").toLowerCase()}. People: ${(job.recordingCompliance.scopeSummary.peopleScope || "approved participants").replaceAll("_", " ").toLowerCase()}.`}
               {" "}{serviceVideoAudioLabel(
                 Boolean(job.recordingCompliance.audioAllowed),
                 Boolean(job.recordingCompliance.permissionRequired),
               )}.
             </p>
             <p className="mt-1 text-xs leading-5 text-blue-100/80">
-              Avoid unrelated people, minors, documents, screens, private areas, identifiers, and anything outside this scope. Stop if conditions change.
+              Do not record minors, unrelated people or conversations, private documents or screens, sensitive account information, credentials, keys, security details, confidential information, or anything outside this scope. Stop if conditions change.
             </p>
           </div>
         ) : null}

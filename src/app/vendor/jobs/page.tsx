@@ -250,13 +250,7 @@ export default function VendorJobs() {
     customerBusinessZipCode: '',
     customerBusinessLatitude: null,
     customerBusinessLongitude: null,
-    propertyScope: '',
-    peopleScope: '',
-    frameControl: '',
-    minorMayAppear: false,
-    protectedNonParticipantMayAppear: false,
-    sensitiveInformationMayAppear: false,
-    identifiersMayAppear: false,
+    intentionalParticipantPlan: '',
     audioRequested: false,
   });
 
@@ -405,13 +399,7 @@ export default function VendorJobs() {
     customerBusinessZipCode: '',
     customerBusinessLatitude: null,
     customerBusinessLongitude: null,
-    propertyScope: '',
-    peopleScope: '',
-    frameControl: '',
-    minorMayAppear: false,
-    protectedNonParticipantMayAppear: false,
-    sensitiveInformationMayAppear: false,
-    identifiersMayAppear: false,
+    intentionalParticipantPlan: '',
     audioRequested: false,
   });
   const [newServiceForJob, setNewServiceForJob] = useState({
@@ -2841,9 +2829,7 @@ export default function VendorJobs() {
           ? 'Enter the complete customer business address where this service will be recorded.'
           : '',
       recordingAssessment:
-        newJob.propertyScope &&
-        newJob.peopleScope &&
-        newJob.frameControl
+        newJob.intentionalParticipantPlan
           ? ''
           : 'Complete the recording subject assessment.',
     };
@@ -2929,16 +2915,8 @@ export default function VendorJobs() {
             serviceId: serviceId || undefined,
             recordingAssessment: changedMaterialFields.length > 0 ? {
               recordingLocation,
-              propertyScope: newJob.propertyScope,
-              peopleScope: newJob.peopleScope,
-              frameControl: newJob.frameControl,
-              minorMayAppear: newJob.minorMayAppear,
-              protectedNonParticipantMayAppear: newJob.protectedNonParticipantMayAppear,
-              sensitiveInformationMayAppear: newJob.sensitiveInformationMayAppear,
-              identifiersMayAppear: newJob.identifiersMayAppear,
+              intentionalParticipantPlan: newJob.intentionalParticipantPlan,
               audioRequested: newJob.audioRequested,
-              residenceInterior: recordingLocation === 'residence',
-              businessInterior: recordingLocation === 'customer-business',
             } : undefined,
           }
         );
@@ -3055,18 +3033,8 @@ export default function VendorJobs() {
           recordingLocation === 'residence' || recordingLocation === 'customer-business'
             ? 'customer'
             : 'vendor_business',
-        recording_property_scope: newJob.propertyScope,
-        recording_people_scope: newJob.peopleScope,
-        recording_frame_control: newJob.frameControl,
-        recording_minor_may_appear: newJob.minorMayAppear,
-        recording_protected_non_participant_may_appear:
-          newJob.protectedNonParticipantMayAppear,
-        recording_sensitive_information_may_appear:
-          newJob.sensitiveInformationMayAppear,
-        recording_identifiers_may_appear: newJob.identifiersMayAppear,
+        recording_intentional_participant_plan: newJob.intentionalParticipantPlan,
         recording_audio_requested: newJob.audioRequested,
-        recording_residence_interior: recordingLocation === 'residence',
-        recording_business_interior: recordingLocation === 'customer-business',
       },
     };
     const creationFingerprint = JSON.stringify(payload);
@@ -3420,13 +3388,7 @@ export default function VendorJobs() {
       customerBusinessZipCode: '',
       customerBusinessLatitude: null,
       customerBusinessLongitude: null,
-      propertyScope: String(scope.propertyScope || 'customer_owned'),
-      peopleScope: String(scope.peopleScope || 'none'),
-      frameControl: String(scope.frameControl || 'controlled'),
-      minorMayAppear: Boolean(scope.minorPresent),
-      protectedNonParticipantMayAppear: Boolean(scope.protectedParticipantPresent),
-      sensitiveInformationMayAppear: Boolean(scope.sensitiveCapture),
-      identifiersMayAppear: Boolean(scope.identifiersMayAppear),
+      intentionalParticipantPlan: String(scope.intentionalParticipantPlan || 'none'),
       audioRequested: Boolean(scope.audioAllowed),
     };
     setNewJob(editForm);
@@ -6285,58 +6247,26 @@ export default function VendorJobs() {
                 </div>
               ) : null}
               <div className="mt-5 border-t border-slate-200 pt-4">
-                  <p className="text-sm font-semibold text-slate-900">What may appear in the Service Video?</p>
+                  <p className="text-sm font-semibold text-slate-900">Service Video recording scope</p>
                   <p className="mt-1 text-xs leading-5 text-slate-600">
-                    This keeps the employee inside the approved scope. Changing this scope replaces prior permission and employee certification.
+                    The video is limited to the service area, equipment or item, and the work being performed. Changing this scope replaces prior permission and employee certification.
                   </p>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="mt-3 grid gap-3">
                     <label className="text-xs font-semibold text-slate-700">
-                      Whose property may appear in the video?
+                      Who, if anyone, needs to be intentionally identifiable in the Service Video?
                       <select
-                        value={newJob.propertyScope}
+                        value={newJob.intentionalParticipantPlan}
                         onChange={(event) => {
-                          setNewJob({ ...newJob, propertyScope: event.target.value });
+                          setNewJob({ ...newJob, intentionalParticipantPlan: event.target.value });
                           setJobFieldErrors((current) => ({ ...current, recordingAssessment: '' }));
                         }}
                         className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
                       >
                         <option value="">Choose one</option>
-                        <option value="vendor_owned">Only the vendor&apos;s property or work area</option>
-                        <option value="customer_owned">Only the customer&apos;s property</option>
-                        <option value="mixed">Both vendor and customer property</option>
-                      </select>
-                    </label>
-                    <label className="text-xs font-semibold text-slate-700">
-                      Could anyone be identifiable in the video?
-                      <select
-                        value={newJob.peopleScope}
-                        onChange={(event) => {
-                          setNewJob({ ...newJob, peopleScope: event.target.value });
-                          setJobFieldErrors((current) => ({ ...current, recordingAssessment: '' }));
-                        }}
-                        className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
-                      >
-                        <option value="">Choose one</option>
-                        <option value="none">No identifiable people</option>
+                        <option value="none">No identifiable person</option>
                         <option value="customer">Customer</option>
-                        <option value="employee">Assigned employee</option>
-                        <option value="multiple">More than one person</option>
-                      </select>
-                    </label>
-                    <label className="text-xs font-semibold text-slate-700">
-                      What will the camera primarily show?
-                      <select
-                        value={newJob.frameControl}
-                        onChange={(event) => {
-                          setNewJob({ ...newJob, frameControl: event.target.value });
-                          setJobFieldErrors((current) => ({ ...current, recordingAssessment: '' }));
-                        }}
-                        className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900"
-                      >
-                        <option value="">Choose one</option>
-                        <option value="controlled">Only the planned work area</option>
-                        <option value="partial">The work area and some surroundings</option>
-                        <option value="uncontrolled">An area where people may enter unexpectedly</option>
+                        <option value="assigned_service_professional">Assigned service professional</option>
+                        <option value="customer_and_assigned_service_professional">Customer and assigned service professional</option>
                       </select>
                     </label>
                   </div>
@@ -6364,25 +6294,9 @@ export default function VendorJobs() {
                     </div>
                     {newJob.audioRequested ? <p className="mt-2 text-xs leading-5 text-amber-800">Conversations and unrelated private information must not be intentionally recorded.</p> : null}
                   </fieldset>
-                  <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
-                    {[
-                      ['minorMayAppear', 'A child under 18 may appear in the video'],
-                      ['protectedNonParticipantMayAppear', 'A bystander or another person who is not part of the service may appear'],
-                      ['sensitiveInformationMayAppear', 'Private documents, screens, records, or sensitive information may appear'],
-                      ['identifiersMayAppear', 'An address, license plate, account number, key, access code, or security equipment may appear'],
-                    ].map(([field, label]) => (
-                      <label key={field} className="flex items-start gap-2">
-                        <input
-                          type="checkbox"
-                          checked={Boolean((newJob as any)[field])}
-                          onChange={(event) =>
-                            setNewJob({ ...newJob, [field]: event.target.checked })
-                          }
-                          className="mt-1"
-                        />
-                        <span>{label}</span>
-                      </label>
-                    ))}
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-950">
+                    <strong className="block text-sm">Keep prohibited content out of the recording</strong>
+                    Do not record minors, unrelated bystanders or conversations, private documents or screens, sensitive financial or account information, credentials, access codes, keys, security information, or other confidential information.
                   </div>
                   <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950">
                     {newJob.audioRequested ? 'Audio is included for the complete three-stage package.' : 'Audio is off for the complete three-stage package.'} Public sharing is never included in this assessment and requires a separate later customer decision.

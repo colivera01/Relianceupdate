@@ -3,6 +3,7 @@ export type MaterialWorkRecordEdit = {
   client?: unknown;
   serviceId?: unknown;
   recordingLocation?: unknown;
+  intentionalParticipantPlan?: unknown;
   propertyScope?: unknown;
   peopleScope?: unknown;
   frameControl?: unknown;
@@ -20,6 +21,7 @@ const MATERIAL_FIELDS: Array<keyof MaterialWorkRecordEdit> = [
   "client",
   "serviceId",
   "recordingLocation",
+  "intentionalParticipantPlan",
   "propertyScope",
   "peopleScope",
   "frameControl",

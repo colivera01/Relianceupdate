@@ -85,6 +85,13 @@ type QueuePackage = {
     conformance: string;
     stages: Array<{ stage: string; expected: boolean; presence: string; evidenceVersion: number }>;
   };
+  recordingScope?: {
+    contractVersion: string;
+    siteControl: string;
+    intentionalParticipantPlan: string;
+    recordingBoundary: string;
+    prohibitedConditions: string[];
+  } | null;
 };
 
 type AiModerationSuggestion = {
@@ -1204,6 +1211,14 @@ export default function AdminMediaModerationClient({
                     </div>
                     <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 text-sm">
                       <div className="font-medium text-white">Package Status</div>
+                      {pack.recordingScope ? (
+                        <div className="mt-2 space-y-1 border-b border-slate-700 pb-3 text-slate-300">
+                          <p>Site control: {prettyStatus(pack.recordingScope.siteControl)}</p>
+                          <p>Intentionally identifiable: {prettyStatus(pack.recordingScope.intentionalParticipantPlan)}</p>
+                          <p>Boundary: Service area, equipment or item, and the work being performed</p>
+                          <p className="text-xs text-amber-200">Reject as Privacy or Scope if the submitted package includes minors, unrelated people or conversations, private or sensitive information, credentials, keys, security details, confidential information, or content outside this boundary.</p>
+                        </div>
+                      ) : null}
                       <p className="mt-2 text-slate-300">
                         Audio scope: {pack.audioAudit?.expected ? 'Video and audio' : 'Video only'}
                         {' · '}Evidence: {pack.audioAudit?.conformance === 'CONFORMING' ? 'Conforming' : 'Mismatch'}

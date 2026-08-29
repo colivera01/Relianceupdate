@@ -6,6 +6,7 @@ import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
 import { loadPackageVisibilityView } from "@/lib/service-video-publication";
+import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 
 interface RouteParams {
   params: Promise<{ vendorId: string; jobId: string }>;
@@ -102,11 +103,14 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
       orderBy: { generation: "desc" },
       select: {
         id: true,
+        contractVersion: true,
         generation: true,
         locationType: true,
         propertyScope: true,
         peopleScope: true,
         frameControl: true,
+        subjectJson: true,
+        scopeJson: true,
         permissionRequired: true,
         scopeHash: true,
         audioAllowed: true,
@@ -197,7 +201,27 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
           serviceOrderReleasedAt: recordingCompliance.serviceOrderReleasedAt,
           audioAllowed: permissionGate.audioAllowed,
         },
-        recordingAssessment: currentRecordingAssessment,
+        recordingAssessment: currentRecordingAssessment
+          ? (() => {
+              const interpreted = interpretRecordingAssessment(currentRecordingAssessment);
+              return interpreted.kind === "SIMPLIFIED_V1"
+                ? {
+                    id: currentRecordingAssessment.id,
+                    generation: currentRecordingAssessment.generation,
+                    contractVersion: interpreted.contractVersion,
+                    locationType: interpreted.canonical.recordingLocation,
+                    siteControl: interpreted.canonical.siteControl,
+                    intentionalParticipantPlan:
+                      interpreted.canonical.intentionalParticipantPlan,
+                    recordingBoundary: interpreted.canonical.recordingBoundary,
+                    prohibitedConditions: interpreted.canonical.prohibitedConditions,
+                    permissionRequired: interpreted.canonical.permissionRequired,
+                    scopeHash: interpreted.scopeHash,
+                    audioAllowed: interpreted.canonical.audioEnabled,
+                  }
+                : currentRecordingAssessment;
+            })()
+          : null,
         serviceName: booking.service?.name || "",
         serviceType: booking.service?.name || "",
         rejectionReason: booking.rejectionReason || null,

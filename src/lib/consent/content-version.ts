@@ -3,10 +3,16 @@ import { hashOpaqueSecret } from "./token";
 export const PERMISSION_CONTENT_VERSION = "recording-permission-v2-simplified-v1";
 export const PERMISSION_SCOPE_SCHEMA_VERSION = "recording-scope-v2-simplified-v1";
 export const AUDIO_PERMISSION_SCOPE_SCHEMA_VERSION = "recording-scope-v3-package-audio-v1";
+export const SIMPLIFIED_WORK_SCOPE_PERMISSION_SCHEMA_VERSION =
+  "recording-scope-v4-simplified-work-scope-v1";
 
 export function isSimplifiedV1PermissionVersion(value: unknown): boolean {
   const version = String(value || "").trim();
-  return version === PERMISSION_CONTENT_VERSION || version.startsWith("recording-permission-v3-");
+  return (
+    version === PERMISSION_CONTENT_VERSION ||
+    version.startsWith("recording-permission-v3-") ||
+    version.startsWith("recording-permission-v4-")
+  );
 }
 
 export const PERMISSION_CONTENT = {
@@ -38,19 +44,36 @@ export const PERMISSION_CONTENT_HASH = hashOpaqueSecret(
   PERMISSION_CONTENT_JSON,
 );
 
-export function permissionContentForAudio(audioEnabled: boolean) {
+export function permissionContentForAudio(
+  audioEnabled: boolean,
+  simplifiedWorkScope = false,
+) {
   const content = {
     ...PERMISSION_CONTENT,
+    ...(simplifiedWorkScope
+      ? {
+          boundary:
+            "Recording is limited to the service area, equipment or item, and the work being performed.",
+          prohibited:
+            "Minors, unrelated people or conversations, private documents or screens, sensitive account information, credentials, keys, security details, and confidential information must not be intentionally recorded.",
+        }
+      : {}),
     audio: audioEnabled
       ? "This Service Video will include sound because audio is part of documenting the service. Conversations and unrelated private information should not be intentionally recorded."
       : "Audio will not be recorded.",
   };
   const contentJson = stableJson(content);
   return {
-    version: audioEnabled
-      ? "recording-permission-v3-video-audio"
-      : "recording-permission-v3-video-only",
-    scopeSchemaVersion: AUDIO_PERMISSION_SCOPE_SCHEMA_VERSION,
+    version: simplifiedWorkScope
+      ? audioEnabled
+        ? "recording-permission-v4-simplified-work-scope-video-audio"
+        : "recording-permission-v4-simplified-work-scope-video-only"
+      : audioEnabled
+        ? "recording-permission-v3-video-audio"
+        : "recording-permission-v3-video-only",
+    scopeSchemaVersion: simplifiedWorkScope
+      ? SIMPLIFIED_WORK_SCOPE_PERMISSION_SCHEMA_VERSION
+      : AUDIO_PERMISSION_SCOPE_SCHEMA_VERSION,
     content,
     contentJson,
     contentHash: hashOpaqueSecret(contentJson),

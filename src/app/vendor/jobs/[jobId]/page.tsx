@@ -75,9 +75,13 @@ type JobLike = {
     id: string;
     generation: number;
     locationType: string;
-    propertyScope: string;
-    peopleScope: string;
-    frameControl: string;
+    siteControl?: string;
+    intentionalParticipantPlan?: string;
+    recordingBoundary?: string;
+    prohibitedConditions?: string[];
+    propertyScope?: string;
+    peopleScope?: string;
+    frameControl?: string;
     permissionRequired: boolean;
     scopeHash: string;
     audioAllowed: boolean;
@@ -673,9 +677,20 @@ export default function VendorJobDetailPage() {
                 <CardContent className="p-4">
                   <p className="text-xs font-semibold uppercase text-gray-500">Approved recording scope</p>
                   <p className="mt-1 text-sm text-gray-800">Location: {readableEvidenceValue(job.recordingAssessment?.locationType || job.recordingCompliance?.location)}</p>
-                  <p className="mt-1 text-sm text-gray-800">Property: {readableEvidenceValue(job.recordingAssessment?.propertyScope)}</p>
-                  <p className="mt-1 text-sm text-gray-800">People: {readableEvidenceValue(job.recordingAssessment?.peopleScope)}</p>
-                  <p className="mt-1 text-sm text-gray-800">Camera: {readableEvidenceValue(job.recordingAssessment?.frameControl)}</p>
+                  {job.recordingAssessment?.intentionalParticipantPlan ? (
+                    <>
+                      <p className="mt-1 text-sm text-gray-800">Site control: {readableEvidenceValue(job.recordingAssessment.siteControl)}</p>
+                      <p className="mt-1 text-sm text-gray-800">Intentionally identifiable: {readableEvidenceValue(job.recordingAssessment.intentionalParticipantPlan)}</p>
+                      <p className="mt-1 text-sm text-gray-800">Boundary: Service area, equipment or item, and the work being performed</p>
+                      <p className="mt-2 text-xs text-gray-500">Minors, unrelated people or conversations, private or sensitive information, credentials, keys, security details, and confidential information must not be recorded.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-sm text-gray-800">Property: {readableEvidenceValue(job.recordingAssessment?.propertyScope)}</p>
+                      <p className="mt-1 text-sm text-gray-800">People: {readableEvidenceValue(job.recordingAssessment?.peopleScope)}</p>
+                      <p className="mt-1 text-sm text-gray-800">Camera: {readableEvidenceValue(job.recordingAssessment?.frameControl)}</p>
+                    </>
+                  )}
                   <p className="mt-1 text-sm text-gray-800">Recording: {job.recordingAssessment?.audioAllowed ? 'Video + audio' : 'Video only'}</p>
                 </CardContent>
               </Card>

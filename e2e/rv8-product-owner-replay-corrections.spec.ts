@@ -350,7 +350,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     expect(decisionRequests).toBe(2);
   });
 
-  test("uses plain-language mutually exclusive recording-scope questions", async ({ page }) => {
+  test("uses the simplified work-record recording-scope contract", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installVendorFixture(page, []);
     await openVendorJobs(page);
@@ -358,9 +358,13 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.getByRole("button", { name: "Add Work Record" }).click();
     const dialog = page.getByRole("dialog", { name: "Add Work Record" });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("combobox", { name: "Whose property may appear in the video?" })).toBeVisible();
-    await expect(dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" })).toBeVisible();
-    await expect(dialog.getByRole("combobox", { name: "What will the camera primarily show?" })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "Who, if anyone, needs to be intentionally identifiable in the Service Video?" })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "Whose property may appear in the video?" })).toHaveCount(0);
+    await expect(dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" })).toHaveCount(0);
+    await expect(dialog.getByRole("combobox", { name: "What will the camera primarily show?" })).toHaveCount(0);
+    await expect(dialog.getByText("The video is limited to the service area, equipment or item, and the work being performed.", { exact: false })).toBeVisible();
+    await expect(dialog.getByText("Keep prohibited content out of the recording", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Do not record minors, unrelated bystanders or conversations", { exact: false })).toBeVisible();
     await expect(dialog.getByText("Does this Service Video need audio?", { exact: true })).toBeVisible();
     await expect(dialog.getByRole("radio", { name: /No - Video only/ })).toBeChecked();
     await expect(dialog.getByRole("radio", { name: /Yes - Video and audio/ })).not.toBeChecked();
@@ -401,9 +405,7 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await dialog.getByPlaceholder("City").fill("Oviedo");
     await dialog.getByPlaceholder("State").fill("FL");
     await dialog.getByPlaceholder("ZIP code").fill("32765");
-    await dialog.getByRole("combobox", { name: "Whose property may appear in the video?" }).selectOption("customer_owned");
-    await dialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" }).selectOption("none");
-    await dialog.getByRole("combobox", { name: "What will the camera primarily show?" }).selectOption("controlled");
+    await dialog.getByRole("combobox", { name: "Who, if anyone, needs to be intentionally identifiable in the Service Video?" }).selectOption("none");
     await dialog.getByRole("button", { name: "Add Work Record" }).click();
 
     await expect(dialog.getByText("We could not verify this address. Check the address or choose the correct suggested location.")).toBeVisible();

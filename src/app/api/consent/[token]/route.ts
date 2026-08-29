@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { actionLinkAvailability, findPermissionByActionSecret } from "@/lib/consent/lookup";
 import { buildIdentitySafePermissionSummary } from "@/lib/consent/public-summary";
 import { permissionAuthorityPresentation } from "@/lib/consent/authority-validation";
+import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 
 type Context = { params: Promise<{ token: string }> };
 
@@ -18,6 +19,19 @@ function parseMetadata(value: string | null | undefined): Record<string, unknown
 
 function exactScopeSummary(assessment: any) {
   if (!assessment) return null;
+  const interpreted = interpretRecordingAssessment(assessment);
+  if (interpreted.kind === "SIMPLIFIED_V1") {
+    return {
+      contractVersion: interpreted.contractVersion,
+      siteControl: interpreted.canonical.siteControl,
+      intentionalParticipantPlan: interpreted.canonical.intentionalParticipantPlan,
+      recordingBoundary: interpreted.canonical.recordingBoundary,
+      prohibitedConditions: interpreted.canonical.prohibitedConditions,
+      authorityHolderType: interpreted.canonical.authorityHolderType,
+      audioEnabled: interpreted.canonical.audioEnabled,
+      initialAudience: "private" as const,
+    };
+  }
   const subjects = parseMetadata(assessment.subjectJson);
   const scope = parseMetadata(assessment.scopeJson);
   return {
@@ -73,6 +87,7 @@ export async function GET(_request: Request, context: Context) {
         orderBy: [{ generation: "desc" }, { completedAt: "desc" }],
         select: {
           id: true,
+          contractVersion: true,
           generation: true,
           locationType: true,
           scopeHash: true,

@@ -1,45 +1,51 @@
 import { createHash } from "node:crypto";
+
 import { stableJson } from "@/lib/consent/content-version";
 import {
   normalizeRecordingLocationChoice,
   type RecordingLocationChoice,
 } from "@/lib/job-assignment";
 
-export type RecordingPropertyScope = "vendor_owned" | "customer_owned" | "mixed";
-export type RecordingPeopleScope = "none" | "customer" | "employee" | "multiple";
-export type RecordingFrameControl = "controlled" | "partial" | "uncontrolled";
-export type RecordingAuthorityHolder =
+export type RecordingAuthorityHolder = "customer" | "vendor_manager";
+export type IntentionalParticipantPlan =
+  | "none"
   | "customer"
-  | "authorized_representative"
-  | "guardian"
-  | "vendor_manager";
+  | "assigned_service_professional"
+  | "customer_and_assigned_service_professional";
+export type DerivedSiteControl =
+  | "customer_controlled_residence"
+  | "customer_controlled_business_location"
+  | "vendor_controlled_business_location";
 
 export type RecordingScopeAssessmentInput = {
   recordingLocation: RecordingLocationChoice;
-  propertyScope: RecordingPropertyScope;
-  peopleScope: RecordingPeopleScope;
-  frameControl: RecordingFrameControl;
-  minorMayAppear: boolean;
-  protectedNonParticipantMayAppear: boolean;
-  sensitiveInformationMayAppear: boolean;
-  identifiersMayAppear: boolean;
-  residenceInterior: boolean;
-  businessInterior: boolean;
+  intentionalParticipantPlan: IntentionalParticipantPlan;
   audioRequested: boolean;
-  authorityHolderType?: RecordingAuthorityHolder;
-  serviceCanContinueWithoutRecording: boolean;
-  essentialPrivateRecording: boolean;
 };
 
-export type DerivedRecordingScopeAssessment = Omit<
-  RecordingScopeAssessmentInput,
-  "authorityHolderType"
-> & {
+export type RecordingScopeAssessmentContext = {
+  locationSnapshotEvidenceHash: string;
+  generation: number;
+  completedByUserId: string;
+  completedAt: Date;
+};
+
+export type DerivedRecordingScopeAssessment = RecordingScopeAssessmentInput & {
+  contractVersion: typeof SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION;
+  siteControl: DerivedSiteControl;
+  recordingBoundary: typeof SIMPLIFIED_V1_RECORDING_BOUNDARY;
+  prohibitedConditions: readonly string[];
+  locationSnapshotEvidenceHash: string;
+  generation: number;
+  completedByUserId: string;
+  completedAt: Date;
   authorityHolderType: RecordingAuthorityHolder;
-  riskLevel: "LEVEL_1" | "LEVEL_2" | "LEVEL_3" | "LEVEL_4";
+  riskLevel: "LEVEL_1" | "LEVEL_2" | "LEVEL_3";
   permissionRequired: boolean;
   noticeRequired: true;
   audioAllowed: boolean;
+  serviceCanContinueWithoutRecording: false;
+  essentialPrivateRecording: true;
   scopeHash: string;
   subjectJson: string;
   scopeJson: string;
@@ -50,10 +56,28 @@ export type DerivedRecordingScopeAssessment = Omit<
   }>;
 };
 
+/** Historical NULL-contract rows use this schema version and remain immutable. */
 export const SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION =
   "recording-assessment-v3-package-audio-v1";
 
+/** New current-V1 work records use this explicit, non-V2 contract. */
+export const SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION =
+  "recording-assessment-v3-simplified-work-scope-v2";
+export const SIMPLIFIED_V1_RECORDING_BOUNDARY =
+  "service_area_equipment_item_and_work";
+export const SIMPLIFIED_V1_LEGACY_FIELD_SENTINEL = "not_applicable";
 export const SERVICE_VIDEO_AUDIO_CONTRACT_VERSION = 2;
+
+export const SIMPLIFIED_V1_PROHIBITED_CONDITIONS = [
+  "minors",
+  "unrelated_bystanders_or_conversations",
+  "private_documents_or_screens",
+  "sensitive_financial_or_account_information",
+  "credentials_access_codes_keys_or_security_information",
+  "confidential_information",
+] as const;
+
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 function bool(value: unknown): boolean {
   return value === true || String(value || "").trim().toLowerCase() === "true";
@@ -64,33 +88,35 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | nul
   return allowed.includes(normalized) ? normalized : null;
 }
 
+export function deriveSiteControl(location: RecordingLocationChoice): DerivedSiteControl {
+  if (location === "residence") return "customer_controlled_residence";
+  if (location === "customer-business") return "customer_controlled_business_location";
+  return "vendor_controlled_business_location";
+}
+
+export function participantPlanIncludesCustomer(plan: IntentionalParticipantPlan): boolean {
+  return plan === "customer" || plan === "customer_and_assigned_service_professional";
+}
+
+export function participantPlanIncludesEmployee(plan: IntentionalParticipantPlan): boolean {
+  return (
+    plan === "assigned_service_professional" ||
+    plan === "customer_and_assigned_service_professional"
+  );
+}
+
 export function recordingPermissionRequired(
-  input: Pick<
-    RecordingScopeAssessmentInput,
-    | "recordingLocation"
-    | "propertyScope"
-    | "peopleScope"
-    | "minorMayAppear"
-    | "protectedNonParticipantMayAppear"
-    | "sensitiveInformationMayAppear"
-    | "identifiersMayAppear"
-  >,
+  input: Pick<RecordingScopeAssessmentInput, "recordingLocation" | "intentionalParticipantPlan">,
 ): boolean {
   return (
     input.recordingLocation === "residence" ||
     input.recordingLocation === "customer-business" ||
-    input.propertyScope !== "vendor_owned" ||
-    input.peopleScope === "customer" ||
-    input.peopleScope === "multiple" ||
-    input.minorMayAppear ||
-    input.protectedNonParticipantMayAppear ||
-    input.sensitiveInformationMayAppear ||
-    input.identifiersMayAppear
+    participantPlanIncludesCustomer(input.intentionalParticipantPlan)
   );
 }
 
 export function deriveV1RecordingAuthority(
-  input: Parameters<typeof recordingPermissionRequired>[0],
+  input: Pick<RecordingScopeAssessmentInput, "recordingLocation" | "intentionalParticipantPlan">,
 ): RecordingAuthorityHolder {
   return recordingPermissionRequired(input) ? "customer" : "vendor_manager";
 }
@@ -98,127 +124,90 @@ export function deriveV1RecordingAuthority(
 export function parseRecordingScopeAssessmentInput(
   source: Record<string, unknown>,
 ): RecordingScopeAssessmentInput | null {
-  const location = normalizeRecordingLocationChoice(
+  const recordingLocation = normalizeRecordingLocationChoice(
     source.recordingLocation ?? source.vendor_job_recording_location,
   );
-  const propertyScope = oneOf(source.propertyScope ?? source.recording_property_scope, [
-    "vendor_owned",
-    "customer_owned",
-    "mixed",
-  ] as const);
-  const peopleScope = oneOf(source.peopleScope ?? source.recording_people_scope, [
-    "none",
-    "customer",
-    "employee",
-    "multiple",
-  ] as const);
-  const frameControl = oneOf(source.frameControl ?? source.recording_frame_control, [
-    "controlled",
-    "partial",
-    "uncontrolled",
-  ] as const);
-  if (!location || !propertyScope || !peopleScope || !frameControl) {
-    return null;
-  }
-  const parsed = {
-    recordingLocation: location,
-    propertyScope,
-    peopleScope,
-    frameControl,
-    minorMayAppear: bool(source.minorMayAppear ?? source.recording_minor_may_appear),
-    protectedNonParticipantMayAppear: bool(
-      source.protectedNonParticipantMayAppear ??
-        source.recording_protected_non_participant_may_appear,
-    ),
-    sensitiveInformationMayAppear: bool(
-      source.sensitiveInformationMayAppear ?? source.recording_sensitive_information_may_appear,
-    ),
-    identifiersMayAppear: bool(
-      source.identifiersMayAppear ?? source.recording_identifiers_may_appear,
-    ),
-    residenceInterior: bool(source.residenceInterior ?? source.recording_residence_interior),
-    businessInterior: bool(source.businessInterior ?? source.recording_business_interior),
+  const intentionalParticipantPlan = oneOf(
+    source.intentionalParticipantPlan ?? source.recording_intentional_participant_plan,
+    [
+      "none",
+      "customer",
+      "assigned_service_professional",
+      "customer_and_assigned_service_professional",
+    ] as const,
+  );
+  if (!recordingLocation || !intentionalParticipantPlan) return null;
+
+  const requestedAuthority = String(
+    source.authorityHolderType ?? source.recording_authority_holder_type ?? "",
+  ).trim().toLowerCase();
+  const authorityHolderType = deriveV1RecordingAuthority({
+    recordingLocation,
+    intentionalParticipantPlan,
+  });
+  if (requestedAuthority && requestedAuthority !== authorityHolderType) return null;
+
+  return {
+    recordingLocation,
+    intentionalParticipantPlan,
     audioRequested: bool(source.audioRequested ?? source.recording_audio_requested),
-    // These columns remain for historical compatibility. New simplified-V1
-    // records have one lifecycle: Decline cancels the Reliance work record.
-    serviceCanContinueWithoutRecording: false,
-    essentialPrivateRecording: true,
   };
-  const authorityValue =
-    source.authorityHolderType ?? source.recording_authority_holder_type;
-  const requestedAuthorityText = String(authorityValue || "").trim().toLowerCase();
-  const requestedAuthority = requestedAuthorityText
-    ? oneOf(requestedAuthorityText, [
-        "customer",
-        "authorized_representative",
-        "guardian",
-        "vendor_manager",
-      ] as const)
-    : null;
-  const authorityHolderType = deriveV1RecordingAuthority(parsed);
-
-  // Ordinary V1 creation derives authority from location and scope. Explicit
-  // unsupported or contradictory authority claims fail closed at the API edge.
-  if (
-    requestedAuthorityText &&
-    (!requestedAuthority ||
-      requestedAuthority === "authorized_representative" ||
-      requestedAuthority === "guardian" ||
-      requestedAuthority !== authorityHolderType)
-  ) {
-    return null;
-  }
-
-  return { ...parsed, authorityHolderType };
 }
 
 export function deriveRecordingScopeAssessment(
   input: RecordingScopeAssessmentInput,
+  context: RecordingScopeAssessmentContext,
 ): DerivedRecordingScopeAssessment {
-  const level4 =
-    input.minorMayAppear ||
-    input.protectedNonParticipantMayAppear ||
-    input.frameControl === "uncontrolled";
-  const level3 =
-    input.peopleScope !== "none" ||
-    input.sensitiveInformationMayAppear ||
-    input.identifiersMayAppear;
-  const level2 =
-    input.propertyScope !== "vendor_owned" ||
-    input.residenceInterior ||
-    input.businessInterior ||
-    input.frameControl === "partial";
-  const riskLevel = level4
-    ? "LEVEL_4"
-    : level3
-      ? "LEVEL_3"
-      : level2
-        ? "LEVEL_2"
-        : "LEVEL_1";
+  const locationSnapshotEvidenceHash = String(
+    context.locationSnapshotEvidenceHash || "",
+  ).trim().toLowerCase();
+  if (!SHA256_PATTERN.test(locationSnapshotEvidenceHash)) {
+    throw new Error("A valid immutable location snapshot hash is required.");
+  }
+  if (!Number.isInteger(context.generation) || context.generation < 1) {
+    throw new Error("A positive assessment generation is required.");
+  }
+  const completedByUserId = String(context.completedByUserId || "").trim();
+  if (
+    !completedByUserId ||
+    !(context.completedAt instanceof Date) ||
+    !Number.isFinite(context.completedAt.getTime())
+  ) {
+    throw new Error("A valid assessment actor and timestamp are required.");
+  }
+
+  const siteControl = deriveSiteControl(input.recordingLocation);
   const permissionRequired = recordingPermissionRequired(input);
   const authorityHolderType = deriveV1RecordingAuthority(input);
   const subject = {
-    propertyScope: input.propertyScope,
-    peopleScope: input.peopleScope,
-    frameControl: input.frameControl,
-    minorMayAppear: input.minorMayAppear,
-    protectedNonParticipantMayAppear: input.protectedNonParticipantMayAppear,
-    sensitiveInformationMayAppear: input.sensitiveInformationMayAppear,
-    identifiersMayAppear: input.identifiersMayAppear,
-    residenceInterior: input.residenceInterior,
-    businessInterior: input.businessInterior,
+    intentionalParticipantPlan: input.intentionalParticipantPlan,
+    prohibitedConditions: [...SIMPLIFIED_V1_PROHIBITED_CONDITIONS],
+    recordingBoundary: SIMPLIFIED_V1_RECORDING_BOUNDARY,
+    siteControl,
   };
   const scope = {
-    schemaVersion: SIMPLIFIED_V1_ASSESSMENT_SCHEMA_VERSION,
-    recordingLocation: input.recordingLocation,
-    subject,
-    audioEnabled: input.audioRequested,
-    audioContractVersion: SERVICE_VIDEO_AUDIO_CONTRACT_VERSION,
-    initialAudience: "private",
-    publicSharingIncluded: false,
-    serviceCanContinueWithoutRecording: false,
-    essentialPrivateRecording: true,
+    assessment: {
+      completedAt: context.completedAt.toISOString(),
+      completedByUserId,
+      generation: context.generation,
+    },
+    audio: {
+      contractVersion: SERVICE_VIDEO_AUDIO_CONTRACT_VERSION,
+      enabled: input.audioRequested,
+    },
     authorityHolderType,
+    contractVersion: SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+    initialAudience: "private",
+    location: {
+      snapshotEvidenceHash: locationSnapshotEvidenceHash,
+      type: input.recordingLocation,
+    },
+    participantPlan: input.intentionalParticipantPlan,
+    permissionRequired,
+    publicSharingIncluded: false,
+    recordingBoundary: SIMPLIFIED_V1_RECORDING_BOUNDARY,
+    siteControl,
+    subject,
   };
   const subjectJson = stableJson(subject);
   const scopeJson = stableJson(scope);
@@ -227,25 +216,37 @@ export function deriveRecordingScopeAssessment(
     ["VENDOR_MANAGER", "VERIFIED"],
   ]);
   if (permissionRequired) authorities.set("CUSTOMER", "PENDING");
-  if (input.peopleScope === "customer" || input.peopleScope === "multiple") {
+  if (participantPlanIncludesCustomer(input.intentionalParticipantPlan)) {
     authorities.set("CUSTOMER_LIKENESS", "PENDING");
   }
-  if (input.peopleScope === "employee" || input.peopleScope === "multiple") {
+  if (participantPlanIncludesEmployee(input.intentionalParticipantPlan)) {
     authorities.set("EMPLOYEE_LIKENESS", "PENDING");
   }
-  if (input.minorMayAppear) authorities.set("VERIFIED_GUARDIAN", "PENDING");
-  if (input.protectedNonParticipantMayAppear) {
-    authorities.set("PROTECTED_NON_PARTICIPANT", "PENDING");
-  }
+  const riskLevel =
+    participantPlanIncludesCustomer(input.intentionalParticipantPlan) ||
+    participantPlanIncludesEmployee(input.intentionalParticipantPlan)
+      ? "LEVEL_3"
+      : input.recordingLocation === "business"
+        ? "LEVEL_1"
+        : "LEVEL_2";
+
   return {
     ...input,
-    serviceCanContinueWithoutRecording: false,
-    essentialPrivateRecording: true,
+    contractVersion: SIMPLIFIED_V1_ASSESSMENT_CONTRACT_VERSION,
+    siteControl,
+    recordingBoundary: SIMPLIFIED_V1_RECORDING_BOUNDARY,
+    prohibitedConditions: SIMPLIFIED_V1_PROHIBITED_CONDITIONS,
+    locationSnapshotEvidenceHash,
+    generation: context.generation,
+    completedByUserId,
+    completedAt: context.completedAt,
     authorityHolderType,
     riskLevel,
     permissionRequired,
     noticeRequired: true,
     audioAllowed: input.audioRequested,
+    serviceCanContinueWithoutRecording: false,
+    essentialPrivateRecording: true,
     scopeHash,
     subjectJson,
     scopeJson,
@@ -265,7 +266,13 @@ export async function createRecordingScopeAssessment(input: {
   assessment: DerivedRecordingScopeAssessment;
   generation?: number;
 }) {
-  const generation = input.generation ?? 1;
+  const generation = input.generation ?? input.assessment.generation;
+  if (generation !== input.assessment.generation) {
+    throw new Error("Assessment generation does not match its canonical evidence.");
+  }
+  if (input.completedByUserId !== input.assessment.completedByUserId) {
+    throw new Error("Assessment actor does not match its canonical evidence.");
+  }
   const created = await input.tx.recordingScopeAssessment.create({
     data: {
       bookingId: input.bookingId,
@@ -273,11 +280,12 @@ export async function createRecordingScopeAssessment(input: {
       generation,
       isCurrent: true,
       status: "COMPLETE",
+      contractVersion: input.assessment.contractVersion,
       locationType: input.assessment.recordingLocation,
       riskLevel: input.assessment.riskLevel,
-      propertyScope: input.assessment.propertyScope,
-      peopleScope: input.assessment.peopleScope,
-      frameControl: input.assessment.frameControl,
+      propertyScope: SIMPLIFIED_V1_LEGACY_FIELD_SENTINEL,
+      peopleScope: SIMPLIFIED_V1_LEGACY_FIELD_SENTINEL,
+      frameControl: SIMPLIFIED_V1_LEGACY_FIELD_SENTINEL,
       subjectJson: input.assessment.subjectJson,
       scopeJson: input.assessment.scopeJson,
       scopeHash: input.assessment.scopeHash,
@@ -285,11 +293,11 @@ export async function createRecordingScopeAssessment(input: {
       audioAllowed: input.assessment.audioAllowed,
       permissionRequired: input.assessment.permissionRequired,
       noticeRequired: true,
-      serviceCanContinueWithoutRecording:
-        input.assessment.serviceCanContinueWithoutRecording,
-      essentialPrivateRecording: input.assessment.essentialPrivateRecording,
+      serviceCanContinueWithoutRecording: false,
+      essentialPrivateRecording: true,
       authorityHolderType: input.assessment.authorityHolderType,
       completedByUserId: input.completedByUserId,
+      completedAt: input.assessment.completedAt,
     },
   });
   await input.tx.recordingAuthorityRequirement.createMany({
@@ -298,7 +306,7 @@ export async function createRecordingScopeAssessment(input: {
       ...requirement,
       actorUserId:
         requirement.authorityType === "VENDOR_MANAGER" ? input.completedByUserId : null,
-      verifiedAt: requirement.status === "VERIFIED" ? new Date() : null,
+      verifiedAt: requirement.status === "VERIFIED" ? input.assessment.completedAt : null,
     })),
   });
   return created;
