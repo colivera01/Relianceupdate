@@ -3,7 +3,17 @@ export function sanitizeAuthNextPath(value: string | null | undefined): string |
   const trimmed = String(value).trim();
   if (!trimmed.startsWith('/')) return null;
   if (trimmed.startsWith('//')) return null;
-  return trimmed;
+  if (/[\\\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  if (/%5c/i.test(trimmed)) return null;
+
+  try {
+    const base = new URL('http://reliance.local');
+    const resolved = new URL(trimmed, base);
+    if (resolved.origin !== base.origin) return null;
+    return `${resolved.pathname}${resolved.search}`;
+  } catch {
+    return null;
+  }
 }
 
 export function appendAuthNext(path: string, nextPath: string | null | undefined): string {
@@ -13,6 +23,15 @@ export function appendAuthNext(path: string, nextPath: string | null | undefined
   const url = new URL(path, 'http://reliance.local');
   url.searchParams.set('next', safeNextPath);
   return `${url.pathname}${url.search}`;
+}
+
+export function getProtectedReturnPath(
+  pathname: string | null | undefined,
+  search: string | null | undefined,
+  fallbackPath: string
+): string {
+  const query = String(search || '').replace(/^\?/, '');
+  return sanitizeAuthNextPath(`${pathname || ''}${query ? `?${query}` : ''}`) || fallbackPath;
 }
 
 export type CustomerServiceVideoIntent = {

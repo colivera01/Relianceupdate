@@ -1,1 +1,1 @@
-export { default } from '@/components/auth/VendorPageBoundary';
+export { VendorManagerPageBoundary as default } from '@/components/auth/VendorPageBoundary';

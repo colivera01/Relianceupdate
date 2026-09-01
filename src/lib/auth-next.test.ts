@@ -7,6 +7,7 @@ import {
   getAuthEntryBackHref,
   getAuthEntryBackLabel,
   getAuthEntryDescription,
+  getProtectedReturnPath,
   resolveAuthPostLoginRedirect,
   sanitizeAuthNextPath,
 } from './auth-next';
@@ -19,6 +20,16 @@ describe('auth next helpers', () => {
   it('rejects unsafe next paths', () => {
     expect(sanitizeAuthNextPath('https://example.com')).toBeNull();
     expect(sanitizeAuthNextPath('//evil.test')).toBeNull();
+    expect(sanitizeAuthNextPath('/\\evil.test')).toBeNull();
+    expect(sanitizeAuthNextPath('/%5cevil.test')).toBeNull();
+    expect(sanitizeAuthNextPath('/vendor/jobs\nLocation: https://evil.test')).toBeNull();
+  });
+
+  it('preserves the exact protected route and query for sign-in recovery', () => {
+    expect(getProtectedReturnPath('/vendor/jobs/job-1', 'tab=video&review=1', '/vendor/dashboard')).toBe(
+      '/vendor/jobs/job-1?tab=video&review=1'
+    );
+    expect(getProtectedReturnPath('//evil.test', '', '/vendor/dashboard')).toBe('/vendor/dashboard');
   });
 
   it('appends next to auth routes without losing existing query params', () => {

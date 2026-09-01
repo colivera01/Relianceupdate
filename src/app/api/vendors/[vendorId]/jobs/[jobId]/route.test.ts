@@ -242,4 +242,72 @@ describe("GET /api/vendors/[vendorId]/jobs/[jobId]", () => {
       },
     });
   });
+
+  it("keeps the same active Vendor Manager authorized to read an Admin-PASS package", async () => {
+    vi.mocked(prisma.booking.findFirst).mockResolvedValue({
+      id: "job-admin-passed",
+      title: "Breaker Replacement",
+      clientName: "Reliance Demo Customer",
+      status: "COMPLETED",
+      date: new Date("2026-09-01T20:00:00.000Z"),
+      createdAt: new Date("2026-09-01T19:00:00.000Z"),
+      updatedAt: new Date("2026-09-01T22:30:34.163Z"),
+      customerMetadata: "{}",
+      rejectionReason: null,
+      rejectedAt: null,
+      service: { name: "Breaker Replacement" },
+      user: { name: "Reliance Demo Customer", email: "customer@example.com", phone: null },
+    } as any);
+    vi.mocked((prisma as any).serviceVideoPackageEvidence.findFirst).mockResolvedValue({
+      id: "package-passed",
+      version: 1,
+      status: "PRIVATE_APPROVED",
+      adminAuditDecisionId: "decision-pass",
+      audioExpected: false,
+      audioConformance: "CONFORMING",
+      audioEvidenceVersion: "service-video-audio-evidence-v1",
+    });
+    vi.mocked((prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst).mockResolvedValue({
+      decision: "PASS",
+      rejectionCategory: null,
+      reason: null,
+      decidedAt: new Date("2026-09-01T22:30:34.163Z"),
+      packageVersion: 1,
+    });
+    vi.mocked(loadPackageVisibilityView).mockResolvedValue({
+      state: "PRIVATE",
+      visibilityDecision: null,
+      proposal: null,
+      privateProofReleased: true,
+    } as any);
+
+    const response = await GET(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-admin-passed"),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-admin-passed" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(requireVendorMembership).toHaveBeenCalledWith(expect.any(Request), "vendor-1");
+    await expect(response.json()).resolves.toMatchObject({
+      job: {
+        id: "job-admin-passed",
+        serviceVideoPackage: { id: "package-passed", status: "PRIVATE_APPROVED" },
+        adminAuditDecision: { decision: "PASS", packageVersion: 1 },
+        packageVisibility: { state: "PRIVATE", privateProofReleased: true },
+      },
+    });
+  });
+
+  it("keeps a wrong-Vendor Manager denied", async () => {
+    vi.mocked(requireVendorMembership).mockRejectedValue(
+      new Error("Forbidden: Vendor membership required")
+    );
+
+    const response = await GET(
+      new Request("http://localhost/api/vendors/vendor-1/jobs/job-admin-passed"),
+      { params: Promise.resolve({ vendorId: "vendor-1", jobId: "job-admin-passed" }) }
+    );
+
+    expect(response.status).toBe(403);
+  });
 });

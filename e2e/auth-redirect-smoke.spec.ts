@@ -91,6 +91,31 @@ test('vendor login from booking-origin auth lands on vendor dashboard', async ({
   });
 });
 
+test('Vendor Manage Jobs denial recovers to the exact protected route after sign-in', async ({ page }) => {
+  const protectedRoute = '/vendor/jobs?recovery=server-boundary';
+  await page.goto(protectedRoute);
+  await page.waitForLoadState('domcontentloaded');
+
+  await expect(page.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+  await expect.poll(async () => page.url(), { timeout: 30_000 }).toContain('/auth/login');
+  expect(new URL(page.url()).searchParams.get('next')).toBe(protectedRoute);
+
+  await completeLoginFromUi(page, {
+    email: VENDOR_EMAIL,
+    password: DEFAULT_PASSWORD,
+    next: protectedRoute,
+  });
+
+  await expect.poll(async () => page.url(), { timeout: 60_000 }).toContain(protectedRoute);
+  await expect(page.getByRole('heading', { name: 'Manage Jobs & Work Records' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText('Access protected', { exact: true })).toHaveCount(0);
+});
+
 test('admin login from booking-origin auth lands on admin dashboard', async ({ page }) => {
   await completeLoginFromUi(page, {
     email: ADMIN_EMAIL,

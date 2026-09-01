@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { useAuth, type AuthUser } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
   resolveAuthPostLoginRedirect,
   sanitizeAuthNextPath,
 } from '@/lib/auth-next';
+import { completeLoginWithFreshServerNavigation } from '@/lib/auth-post-login';
 import { Mail, Lock, Eye, EyeOff, KeyRound } from 'lucide-react';
 
 type FormMessageTone = 'info' | 'success' | 'error';
@@ -28,7 +29,6 @@ type FormMessage = {
 };
 
 function LoginPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
   const requestedNext = searchParams?.get('next') || null;
@@ -189,7 +189,9 @@ function LoginPageContent() {
 
     login(sessionUser, data.token != null ? String(data.token) : null);
 
-    router.push(resolveAuthPostLoginRedirect(safeNextPath, normalizedType));
+    completeLoginWithFreshServerNavigation(
+      resolveAuthPostLoginRedirect(safeNextPath, normalizedType)
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
