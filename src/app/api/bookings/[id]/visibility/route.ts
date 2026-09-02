@@ -56,6 +56,7 @@ export async function GET(request: Request, context: Context) {
       role: access.customer ? "CUSTOMER" : access.manager ? "VENDOR_MANAGER" : "ADMIN",
       canDecide: access.customer &&
         visibility?.auditPassed === true &&
+        visibility?.publicRestrictionActive !== true &&
         visibility?.publicDisplayEligibility !== "PRIVATE_ONLY",
       visibility: roleVisibility,
     });

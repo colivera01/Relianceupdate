@@ -508,6 +508,7 @@ function BookingMediaDetailPageContent() {
                       title="Report this video"
                       description="Tell us if this video seems unsafe, private, misleading, or otherwise concerning."
                       signInHref={`/auth/login?next=${encodeURIComponent(`/my-bookings/${bookingId}`)}`}
+                      technicalHelpHref={supportHref}
                       className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"
                     />
                   </div>

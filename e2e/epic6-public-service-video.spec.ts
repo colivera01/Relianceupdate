@@ -153,7 +153,7 @@ test("vendor sees Final Result as the optional Public proposal default", async (
 
   await page.goto(`/test-fixtures/epic6-publication?role=vendor`);
   await expect(page.getByText("Final Result", { exact: true }).last()).toBeVisible();
-  await expect(page.getByText("Private proof is complete on its own.")).toBeVisible();
+  await expect(page.getByText("Public sharing is optional. The complete Reliance-audited Service Video remains the exact package of record.")).toBeVisible();
   await captureCard(page, "vendor", "Desktop", "01-vendor-final-result-default.png");
 });
 

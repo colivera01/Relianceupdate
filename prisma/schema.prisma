@@ -1826,34 +1826,103 @@ model AdminNotification {
 }
 
 model ContentReport {
-  id                 String    @id @default(cuid())
-  targetType         String
-  targetId           String
-  bookingId          String?
-  vendorId           String?
-  reportedUserId     String?
-  reportedVendorId   String?
-  reporterUserId     String?
-  reporterVendorId   String?
-  reporterRole       String
-  reasonCategory     String
-  reasonDetail       String?   @db.NVarChar(Max)
-  status             String    @default("open")
-  severity           String    @default("medium")
-  autoHidden         Boolean   @default(false)
-  adminOwnerUserId   String?
-  notificationSentAt DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  resolvedAt         DateTime?
-  resolutionNotes    String?   @db.NVarChar(Max)
+  id                                 String                   @id @default(cuid())
+  targetType                         String
+  targetId                           String
+  bookingId                          String?
+  vendorId                           String?
+  reportedUserId                     String?
+  reportedVendorId                   String?
+  reporterUserId                     String?
+  reporterVendorId                   String?
+  reporterRole                       String
+  reasonCategory                     String
+  reasonDetail                       String?                  @db.NVarChar(Max)
+  status                             String                   @default("open")
+  severity                           String                   @default("medium")
+  autoHidden                         Boolean                  @default(false)
+  adminOwnerUserId                   String?
+  notificationSentAt                 DateTime?
+  createdAt                          DateTime                 @default(now())
+  updatedAt                          DateTime                 @updatedAt
+  resolvedAt                         DateTime?
+  resolutionNotes                    String?                  @db.NVarChar(Max)
+  caseReference                      String?                  @unique
+  contractVersion                    Int                      @default(1)
+  accessBasis                        String?
+  packageId                          String?
+  packageVersion                     Int?
+  packageHash                        String?
+  stageEvidenceId                    String?
+  stage                              String?
+  stageVersion                       Int?
+  stageHash                          String?
+  mediaContentHash                   String?
+  adminAuditDecisionId               String?
+  visibilityAtReport                 String?
+  policyCategory                     String?
+  groupingKey                        String?
+  lifecycleCaseId                    String?
+  publicHoldAppliedAt                DateTime?
+  notificationAttemptedAt            DateTime?
+  notificationFailedAt               DateTime?
+  notificationProviderResult         String?                  @db.NVarChar(Max)
+  reporterNotificationAttemptedAt    DateTime?
+  reporterNotificationSentAt         DateTime?
+  reporterNotificationFailedAt       DateTime?
+  reporterNotificationProviderResult String?                  @db.NVarChar(Max)
+  closedAt                           DateTime?
+  events                             ContentReportCaseEvent[]
+  request                            ContentReportRequest?
 
   @@index([targetType, targetId])
   @@index([status, createdAt])
   @@index([vendorId, createdAt])
   @@index([reportedUserId, createdAt])
   @@index([reportedVendorId, createdAt])
+  @@index([packageId, createdAt])
+  @@index([groupingKey, createdAt])
+  @@index([lifecycleCaseId])
   @@map("content_reports")
+}
+
+model ContentReportRequest {
+  id             String   @id @default(cuid())
+  idempotencyKey String   @unique
+  semanticKey    String   @unique
+  requestId      String
+  reporterUserId String
+  targetType     String
+  targetId       String
+  payloadHash    String
+  reportId       String   @unique
+  createdAt      DateTime @default(now())
+
+  report ContentReport @relation(fields: [reportId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([reporterUserId, targetType, targetId, createdAt])
+  @@map("content_report_requests")
+}
+
+model ContentReportCaseEvent {
+  id              String   @id @default(cuid())
+  reportId        String
+  eventType       String
+  actorUserId     String?
+  actorRole       String
+  priorStatus     String?
+  resultingStatus String?
+  reason          String?  @db.NVarChar(Max)
+  metadataJson    String   @db.NVarChar(Max)
+  evidenceHash    String
+  createdAt       DateTime @default(now())
+
+  report ContentReport @relation(fields: [reportId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([reportId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([evidenceHash])
+  @@map("content_report_case_events")
 }
 
 model BookingServiceIssue {

@@ -680,6 +680,17 @@ export async function loadPackageVisibilityView(input: { bookingId: string }) {
         orderBy: { version: "desc" },
       })
     : null;
+  const activePublicRestriction = (prisma as any).mediaLifecycleRestriction?.findFirst
+    ? await (prisma as any).mediaLifecycleRestriction.findFirst({
+        where: {
+          bookingId: input.bookingId,
+          active: true,
+          scope: { in: ["PUBLIC", "ALL"] },
+          outcome: { in: ["RESTRICTED", "HELD"] },
+        },
+        select: { id: true, reasonCode: true, appliedAt: true },
+      })
+    : null;
   const auditPassed = adminDecision?.decision === "PASS" &&
     adminDecision?.customerProofReleased === true &&
     Boolean(grant);
@@ -692,6 +703,8 @@ export async function loadPackageVisibilityView(input: { bookingId: string }) {
     ? "AUDIT_FAILED"
     : !auditPassed
       ? "AUDIT_PENDING"
+      : activePublicRestriction && visibilityDecision?.decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY
+        ? "PUBLIC_VISIBILITY_HOLD"
       : publicDisplayEligibility === PRIVATE_ONLY
         ? "PRIVATE_ONLY"
         : visibilityDecision?.decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY
@@ -711,6 +724,8 @@ export async function loadPackageVisibilityView(input: { bookingId: string }) {
     privateProofReleased: auditPassed,
     publicDisplayEligibility,
     publicDisplayReason: immediatePublicationContract ? adminDecision.publicDisplayReason || null : null,
+    publicRestrictionActive: Boolean(activePublicRestriction),
+    publicRestrictionReason: activePublicRestriction?.reasonCode || null,
     visibilityContractVersion: immediatePublicationContract
       ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
       : PACKAGE_VISIBILITY_CONTRACT_VERSION,
@@ -1557,6 +1572,114 @@ export async function resolveCanonicalPublicAssetIds(filters: { bookingId?: stri
     validImmediate.push(...group.map(({ row }: { row: any }) => row.mediaAssetId));
   }
   return [...validLegacy, ...validImmediate];
+}
+
+export async function restoreImmediatePublicVisibilityAfterHold(input: {
+  bookingId: string;
+  actorUserId: string;
+}) {
+  return (prisma as any).$transaction(async (tx: any) => {
+    const proposal = await tx.serviceVideoPublicationProposal.findFirst({
+      where: {
+        bookingId: input.bookingId,
+        isCurrent: true,
+        status: PUBLICATION_STATUSES.PUBLIC,
+        contractVersion: { gte: IMMEDIATE_PUBLICATION_CONTRACT_VERSION },
+        authorizationModel: IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL,
+      },
+    });
+    if (!proposal) throw new Error("PUBLICATION_CURRENT_PUBLIC_PROPOSAL_NOT_FOUND");
+    const foundation = await loadPrivateFoundation(tx, proposal.bookingId, proposal.vendorId);
+    const stages = await tx.serviceVideoPublicationStage.findMany({
+      where: { proposalId: proposal.id },
+      orderBy: { stage: "asc" },
+    });
+    const visibilityDecision = await tx.serviceVideoPackageVisibilityDecision.findFirst({
+      where: {
+        id: proposal.packageVisibilityDecisionId,
+        bookingId: proposal.bookingId,
+        packageId: proposal.packageId,
+        packageVersion: proposal.packageVersion,
+        packageHash: proposal.packageHash,
+        isCurrent: true,
+        decision: PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY,
+      },
+    });
+    if (!visibilityDecision) throw new Error("PUBLICATION_CUSTOMER_APPROVAL_INCOMPLETE");
+    if (
+      !isImmediatePublicationAudit(foundation.adminAuditDecision) ||
+      String(foundation.adminAuditDecision.publicDisplayEligibility).toUpperCase() !== PUBLIC_DISPLAY_ELIGIBLE
+    ) throw new Error("PUBLICATION_PUBLIC_DISPLAY_INELIGIBLE");
+    if (
+      foundation.package.id !== proposal.packageId ||
+      foundation.package.packageHash !== proposal.packageHash ||
+      Number(foundation.package.version) !== Number(proposal.packageVersion)
+    ) throw new Error("PUBLICATION_PACKAGE_VERSION_MISMATCH");
+    if (
+      stages.length !== REQUIRED_SERVICE_VIDEO_STAGES.length ||
+      !REQUIRED_SERVICE_VIDEO_STAGES.every((stage) => stages.filter((row: any) => row.stage === stage).length === 1)
+    ) throw new Error("PUBLICATION_PACKAGE_STAGE_SET_INVALID");
+    await assertNoActivePublicRestriction(tx, proposal.bookingId);
+    await assertRequiredDecisions(tx, proposal, stages);
+    for (const stage of stages) {
+      const packaged = foundation.packageStages.find(
+        (row: ExactPackageStage) => row.stageEvidenceId === stage.stageEvidenceId,
+      );
+      if (
+        !packaged ||
+        packaged.mediaAssetId !== stage.mediaAssetId ||
+        packaged.contentHash !== stage.contentHash ||
+        Number(packaged.stageVersion) !== Number(stage.stageVersion)
+      ) throw new Error("PUBLICATION_STAGE_VERSION_MISMATCH");
+      await loadExactStage(tx, foundation, packaged);
+    }
+    const eligibility = await tx.publicServiceVideoEligibility.findMany({
+      where: {
+        proposalId: proposal.id,
+        packageVisibilityDecisionId: visibilityDecision.id,
+      },
+    });
+    if (
+      eligibility.length !== REQUIRED_SERVICE_VIDEO_STAGES.length ||
+      !stages.every((stage: any) => eligibility.some((row: any) =>
+        row.stageId === stage.id &&
+        row.mediaAssetId === stage.mediaAssetId &&
+        row.packageHash === proposal.packageHash &&
+        row.contentHash === stage.contentHash
+      ))
+    ) throw new Error("PUBLICATION_HOLD_EVIDENCE_MISMATCH");
+    const now = new Date();
+    await tx.publicServiceVideoEligibility.updateMany({
+      where: { id: { in: eligibility.map((row: any) => row.id) } },
+      data: { status: "ACTIVE", invalidatedAt: null, invalidationReason: null },
+    });
+    const activated = await tx.mediaAsset.updateMany({
+      where: {
+        id: { in: stages.map((stage: any) => stage.mediaAssetId) },
+        deletedAt: null,
+        uploadState: "SAVED",
+        moderationStatus: "approved",
+      },
+      data: { visibilityStatus: "public" },
+    });
+    if (Number(activated.count || 0) !== REQUIRED_SERVICE_VIDEO_STAGES.length) {
+      throw new Error("PUBLICATION_MEDIA_ACTIVATION_RACE");
+    }
+    await writeAudit(tx, {
+      proposalId: proposal.id,
+      bookingId: proposal.bookingId,
+      vendorId: proposal.vendorId,
+      actorUserId: input.actorUserId,
+      actorRole: "ADMIN",
+      eventType: "REPORT_PUBLIC_HOLD_RELEASED_AND_REVALIDATED",
+      metadata: {
+        restoredAt: now.toISOString(),
+        packageHash: proposal.packageHash,
+        packageVisibilityDecisionId: visibilityDecision.id,
+      },
+    });
+    return { restored: true, proposalId: proposal.id, packageId: proposal.packageId };
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function listAdminPublicationQueue() {

@@ -1,139 +1,103 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/server/db";
+
 import { requireAdmin } from "@/lib/admin-auth";
+import { appendContentReportEvent } from "@/lib/content-reporting";
+import { launchExcludedUserIds, launchExcludedVendorIds } from "@/lib/internal-identities";
 import {
-  launchExcludedUserIds,
-  launchExcludedVendorIds,
-} from "@/lib/internal-identities";
-import {
-  BOOKING_SERVICE_ISSUE_TYPES,
-  tryRecordBookingServiceIssue,
-} from "@/lib/trust-score-outcome-foundation";
-import { tryRecalculateVendorTrustScore } from "@/lib/trust-score-calculator";
+  createEvidenceHold,
+  openMediaLifecycleCase,
+  releaseContentReportPublicHold,
+  releaseEvidenceHold,
+} from "@/lib/media-lifecycle";
+import { sendContentReportResolution } from "@/lib/notifications/send-content-report-resolution";
+import { restoreImmediatePublicVisibilityAfterHold } from "@/lib/service-video-publication";
+import { prisma } from "@/server/db";
 
 const TARGET_TYPES = new Set(["review", "media_asset"]);
-const REPORT_STATUSES = new Set([
-  "open",
-  "triaged",
-  "under_review",
-  "resolved_action_taken",
-  "resolved_no_action",
-  "dismissed",
-]);
+const REPORT_STATUSES = new Set(["open", "triaged", "under_review", "resolved_action_taken", "resolved_no_action", "dismissed"]);
 const SEVERITIES = new Set(["low", "medium", "high", "critical"]);
-const REASONS = new Set([
-  "harassment",
-  "hate",
-  "nudity",
-  "violence",
-  "spam",
-  "fraud",
-  "copyright",
-  "privacy",
-  "misleading",
-  "other",
-]);
-const RESOLVED_STATUSES = new Set([
-  "resolved_action_taken",
-  "resolved_no_action",
-  "dismissed",
-]);
+const TERMINAL_STATUSES = new Set(["resolved_action_taken", "resolved_no_action", "dismissed"]);
+const ACTION_STATUS: Record<string, string> = {
+  mark_triaged: "triaged",
+  begin_investigation: "under_review",
+  resolve_no_violation: "resolved_no_action",
+  resolve_action_taken: "resolved_action_taken",
+  dismiss: "dismissed",
+};
 
-function normalizeString(value: unknown): string {
+function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function parseLimit(value: string | null): number {
-  const parsed = Number.parseInt(value || "25", 10);
-  if (!Number.isFinite(parsed)) return 25;
-  return Math.min(Math.max(parsed, 1), 100);
-}
-
-function serializeDate(value: unknown): string | null {
+function date(value: unknown): string | null {
   if (!value) return null;
-  if (value instanceof Date) return value.toISOString();
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
-function forbiddenResponse(error: any) {
+function forbidden(error: any) {
   const message = error?.message || "Forbidden";
   return NextResponse.json({ success: false, error: message, message }, { status: 403 });
 }
 
-function buildModerationHref(report: any): string | null {
-  if (report.targetType === "review") {
-    return `/admin/reviews?q=${encodeURIComponent(report.targetId)}`;
-  }
-  if (report.targetType === "media_asset") {
-    const search = report.bookingId || report.targetId;
-    return `/admin/media-moderation?search=${encodeURIComponent(search)}`;
-  }
+function moderationHref(report: any): string | null {
+  if (report.targetType === "review") return `/admin/reviews?q=${encodeURIComponent(report.targetId)}`;
+  if (report.targetType === "media_asset") return `/admin/media-moderation?search=${encodeURIComponent(report.targetId)}`;
   return null;
 }
 
 function buildWhere(searchParams: URLSearchParams) {
-  const targetType = normalizeString(searchParams.get("targetType")).toLowerCase();
-  const status = normalizeString(searchParams.get("status")).toLowerCase();
-  const severity = normalizeString(searchParams.get("severity")).toLowerCase();
-  const reasonCategory = normalizeString(searchParams.get("reasonCategory")).toLowerCase();
-  const q = normalizeString(searchParams.get("q"));
-  const includeInternal = normalizeString(searchParams.get("includeInternal")) === "1";
-
-  const where: Record<string, unknown> = {};
-  const andClauses: Record<string, unknown>[] = [];
+  const targetType = text(searchParams.get("targetType")).toLowerCase();
+  const status = text(searchParams.get("status")).toLowerCase();
+  const severity = text(searchParams.get("severity")).toLowerCase();
+  const reasonCategory = text(searchParams.get("reasonCategory")).toLowerCase();
+  const q = text(searchParams.get("q"));
+  const includeInternal = text(searchParams.get("includeInternal")) === "1";
+  const where: Record<string, any> = {};
   if (TARGET_TYPES.has(targetType)) where.targetType = targetType;
   if (REPORT_STATUSES.has(status)) where.status = status;
   if (SEVERITIES.has(severity)) where.severity = severity;
-  if (REASONS.has(reasonCategory)) where.reasonCategory = reasonCategory;
+  if (reasonCategory) where.reasonCategory = reasonCategory;
   if (q) {
-    where.OR = [
-      { id: { contains: q } },
-      { targetId: { contains: q } },
-      { bookingId: { contains: q } },
-      { vendorId: { contains: q } },
-      { reportedUserId: { contains: q } },
-      { reportedVendorId: { contains: q } },
-      { reporterUserId: { contains: q } },
-      { reporterVendorId: { contains: q } },
-      { reasonDetail: { contains: q } },
+    where.OR = ["id", "caseReference", "targetId", "bookingId", "vendorId", "packageId", "reporterUserId", "reasonDetail"]
+      .map((field) => ({ [field]: { contains: q } }));
+  }
+  if (!includeInternal) {
+    where.AND = [
+      { OR: [{ vendorId: null }, { vendorId: { notIn: launchExcludedVendorIds() } }] },
+      { OR: [{ reportedVendorId: null }, { reportedVendorId: { notIn: launchExcludedVendorIds() } }] },
+      { OR: [{ reporterVendorId: null }, { reporterVendorId: { notIn: launchExcludedVendorIds() } }] },
+      { OR: [{ reportedUserId: null }, { reportedUserId: { notIn: launchExcludedUserIds() } }] },
+      { OR: [{ reporterUserId: null }, { reporterUserId: { notIn: launchExcludedUserIds() } }] },
     ];
   }
+  return { where, appliedFilters: { targetType: targetType || null, status: status || null, severity: severity || null, reasonCategory: reasonCategory || null, q: q || null, includeInternal } };
+}
 
-  if (!includeInternal) {
-    andClauses.push(
-      { OR: [{ vendorId: null }, { vendorId: { notIn: launchExcludedVendorIds() } }] },
-      {
-        OR: [
-          { reportedVendorId: null },
-          { reportedVendorId: { notIn: launchExcludedVendorIds() } },
-        ],
-      },
-      {
-        OR: [
-          { reporterVendorId: null },
-          { reporterVendorId: { notIn: launchExcludedVendorIds() } },
-        ],
-      },
-      { OR: [{ reportedUserId: null }, { reportedUserId: { notIn: launchExcludedUserIds() } }] },
-      { OR: [{ reporterUserId: null }, { reporterUserId: { notIn: launchExcludedUserIds() } }] }
-    );
-  }
-
-  if (andClauses.length) {
-    where.AND = andClauses;
-  }
-
+async function enrichReport(report: any) {
+  const [events, activeRestriction, asset, booking] = await Promise.all([
+    (prisma as any).contentReportCaseEvent.findMany({ where: { reportId: report.id }, orderBy: { createdAt: "asc" } }),
+    report.bookingId
+      ? (prisma as any).mediaLifecycleRestriction.findFirst({ where: { bookingId: report.bookingId, active: true, scope: { in: ["PUBLIC", "ALL"] } }, orderBy: { appliedAt: "desc" } })
+      : null,
+    report.targetType === "media_asset"
+      ? (prisma as any).mediaAsset.findUnique({ where: { id: report.targetId }, select: { visibilityStatus: true, deletedAt: true } })
+      : null,
+    report.bookingId
+      ? (prisma as any).booking.findUnique({ where: { id: report.bookingId }, select: { title: true, clientName: true, user: { select: { name: true } }, vendor: { select: { name: true, businessName: true } }, service: { select: { name: true } } } })
+      : null,
+  ]);
   return {
-    where,
-    appliedFilters: {
-      targetType: TARGET_TYPES.has(targetType) ? targetType : null,
-      status: REPORT_STATUSES.has(status) ? status : null,
-      severity: SEVERITIES.has(severity) ? severity : null,
-      reasonCategory: REASONS.has(reasonCategory) ? reasonCategory : null,
-      q: q || null,
-      includeInternal,
-    },
+    ...report,
+    createdAt: date(report.createdAt), updatedAt: date(report.updatedAt), resolvedAt: date(report.resolvedAt), closedAt: date(report.closedAt),
+    notificationSentAt: date(report.notificationSentAt), publicHoldAppliedAt: date(report.publicHoldAppliedAt),
+    currentVisibility: activeRestriction ? "PUBLIC_VISIBILITY_HOLD" : String(asset?.visibilityStatus || report.visibilityAtReport || "legacy / unavailable").toUpperCase(),
+    publicHoldActive: Boolean(activeRestriction),
+    serviceName: booking?.service?.name || booking?.title || null,
+    customerName: booking?.user?.name || booking?.clientName || null,
+    vendorName: booking?.vendor?.businessName || booking?.vendor?.name || null,
+    events: events.map((event: any) => ({ ...event, createdAt: date(event.createdAt) })),
+    moderationHref: moderationHref(report),
   };
 }
 
@@ -142,155 +106,144 @@ export async function GET(request: Request): Promise<NextResponse> {
     await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const page = Math.max(Number.parseInt(searchParams.get("page") || "1", 10) || 1, 1);
-    const limit = parseLimit(searchParams.get("limit"));
-    const skip = (page - 1) * limit;
+    const limit = Math.min(Math.max(Number.parseInt(searchParams.get("limit") || "25", 10) || 25, 1), 100);
     const { where, appliedFilters } = buildWhere(searchParams);
-
     const [total, reports] = await Promise.all([
       (prisma as any).contentReport.count({ where }),
-      (prisma as any).contentReport.findMany({
-        where,
-        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-        skip,
-        take: limit,
-      }),
+      (prisma as any).contentReport.findMany({ where, orderBy: [{ status: "asc" }, { createdAt: "desc" }], skip: (page - 1) * limit, take: limit }),
     ]);
-
-    return NextResponse.json({
-      success: true,
-      reports: reports.map((report: any) => ({
-        id: report.id,
-        targetType: report.targetType,
-        targetId: report.targetId,
-        bookingId: report.bookingId,
-        vendorId: report.vendorId,
-        reportedUserId: report.reportedUserId,
-        reportedVendorId: report.reportedVendorId,
-        reporterUserId: report.reporterUserId,
-        reporterVendorId: report.reporterVendorId,
-        reporterRole: report.reporterRole,
-        reasonCategory: report.reasonCategory,
-        reasonDetail: report.reasonDetail,
-        status: report.status,
-        severity: report.severity,
-        autoHidden: Boolean(report.autoHidden),
-        notificationSentAt: serializeDate(report.notificationSentAt),
-        createdAt: serializeDate(report.createdAt),
-        updatedAt: serializeDate(report.updatedAt),
-        resolvedAt: serializeDate(report.resolvedAt),
-        resolutionNotes: report.resolutionNotes,
-        moderationHref: buildModerationHref(report),
-      })),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-      appliedFilters,
-    });
+    return NextResponse.json({ success: true, reports: await Promise.all(reports.map(enrichReport)), pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }, appliedFilters });
   } catch (error: any) {
     console.error("[admin/reported-content] GET error:", error);
-    if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
-      return forbiddenResponse(error);
-    }
-    return NextResponse.json(
-      { success: false, error: "Failed to fetch reported content" },
-      { status: 500 }
-    );
+    if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) return forbidden(error);
+    return NextResponse.json({ success: false, error: "Failed to fetch reported content" }, { status: 500 });
+  }
+}
+
+async function applyPublicHold(report: any, adminUserId: string, reason: string, request: Request) {
+  if (!report.bookingId || !report.vendorId || !report.packageId || report.targetType !== "media_asset") {
+    throw new Error("REPORT_PUBLIC_HOLD_EVIDENCE_INCOMPLETE");
+  }
+  if (report.lifecycleCaseId) return report.lifecycleCaseId;
+  const lifecycleCase = await openMediaLifecycleCase({
+    bookingId: report.bookingId,
+    vendorId: report.vendorId,
+    actorUserId: adminUserId,
+    actorRole: "ADMIN",
+    category: report.policyCategory || "SAFETY",
+    reasonDetail: reason,
+    packageId: report.packageId,
+    mediaAssetId: report.targetId,
+    contentReportId: report.id,
+    forcePublicRestriction: true,
+    request,
+  });
+  const activeRestriction = await (prisma as any).mediaLifecycleRestriction.findFirst({ where: { caseId: lifecycleCase.id, active: true, scope: "PUBLIC" } });
+  if (!activeRestriction) {
+    await createEvidenceHold({
+      bookingId: report.bookingId,
+      vendorId: report.vendorId,
+      mediaAssetId: report.targetId,
+      caseId: lifecycleCase.id,
+      actorUserId: adminUserId,
+      purpose: "Reported Service Video investigation",
+      authority: "RELIANCE_ADMIN",
+      reviewDueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      scope: { packageId: report.packageId, reportId: report.id, scope: "COMPLETE_SERVICE_VIDEO_PACKAGE" },
+      request,
+    });
+  }
+  await (prisma as any).$transaction(async (tx: any) => {
+    await tx.contentReport.update({ where: { id: report.id }, data: { lifecycleCaseId: lifecycleCase.id, publicHoldAppliedAt: new Date(), autoHidden: true } });
+    await appendContentReportEvent(tx, { reportId: report.id, eventType: "PUBLIC_HOLD_APPLIED", actorUserId: adminUserId, actorRole: "ADMIN", priorStatus: report.status, resultingStatus: report.status, reason, metadata: { lifecycleCaseId: lifecycleCase.id } });
+  });
+  return lifecycleCase.id;
+}
+
+async function releasePublicHold(report: any, adminUserId: string, reason: string, request: Request) {
+  if (!report.lifecycleCaseId) return { released: false, restored: false };
+  const hold = await (prisma as any).mediaEvidenceHold.findFirst({ where: { caseId: report.lifecycleCaseId, status: { in: ["ACTIVE", "REVIEW_DUE", "EXTENDED"] } }, orderBy: { startedAt: "desc" } });
+  if (hold) await releaseEvidenceHold({ holdId: hold.id, actorUserId: adminUserId, reason, request });
+  await releaseContentReportPublicHold({ lifecycleCaseId: report.lifecycleCaseId, actorUserId: adminUserId, reason, request });
+  let restored = false;
+  try {
+    restored = Boolean((await restoreImmediatePublicVisibilityAfterHold({ bookingId: report.bookingId, actorUserId: adminUserId })).restored);
+  } catch {
+    restored = false;
+  }
+  await (prisma as any).$transaction(async (tx: any) => {
+    await tx.contentReport.update({ where: { id: report.id }, data: { autoHidden: false } });
+    await appendContentReportEvent(tx, { reportId: report.id, eventType: "PUBLIC_HOLD_RELEASED", actorUserId: adminUserId, actorRole: "ADMIN", priorStatus: report.status, resultingStatus: report.status, reason, metadata: { lifecycleCaseId: report.lifecycleCaseId, publicVisibilityRestored: restored } });
+  });
+  return { released: true, restored };
+}
+
+async function notifyReporter(report: any, request: Request) {
+  if (!report.reporterUserId || !report.caseReference) return;
+  const user = await (prisma as any).user.findUnique({ where: { id: report.reporterUserId }, select: { email: true } });
+  if (!user?.email) return;
+  const attemptedAt = new Date();
+  try {
+    await (prisma as any).contentReport.update({ where: { id: report.id }, data: { reporterNotificationAttemptedAt: attemptedAt } });
+  } catch (error) {
+    console.error("[admin/reported-content] reporter notification attempt could not be recorded", { reportId: report.id, error });
+    return;
+  }
+  const result = await sendContentReportResolution({ reportId: report.id, caseReference: report.caseReference, recipient: user.email, actionTaken: report.status === "resolved_action_taken", baseUrl: new URL(request.url).origin }).catch((error) => ({ ok: false, errorMessage: String(error) }));
+  const now = new Date();
+  try {
+    await (prisma as any).$transaction(async (tx: any) => {
+      await tx.contentReport.update({ where: { id: report.id }, data: { reporterNotificationSentAt: result.ok ? now : null, reporterNotificationFailedAt: result.ok ? null : now, reporterNotificationProviderResult: JSON.stringify({ sent: result.ok, error: result.errorMessage || null }) } });
+      await appendContentReportEvent(tx, { reportId: report.id, eventType: result.ok ? "REPORTER_RESOLUTION_NOTIFICATION_SENT" : "REPORTER_RESOLUTION_NOTIFICATION_FAILED", actorRole: "SYSTEM", resultingStatus: report.status, metadata: { sent: result.ok } });
+    });
+  } catch (error) {
+    console.error("[admin/reported-content] reporter notification result could not be recorded", { reportId: report.id, error });
   }
 }
 
 export async function PATCH(request: Request): Promise<NextResponse> {
   try {
-    const { userId: adminOwnerUserId } = await requireAdmin(request);
+    const { userId: adminUserId } = await requireAdmin(request);
     const body = await request.json().catch(() => ({}));
-    const reportId = normalizeString(body?.reportId);
-    const status = normalizeString(body?.status).toLowerCase();
-    const resolutionNotes = normalizeString(body?.resolutionNotes);
-
-    if (!reportId) {
-      return NextResponse.json({ success: false, error: "reportId is required" }, { status: 400 });
+    const reportId = text(body?.reportId);
+    const requestedAction = text(body?.action).toLowerCase();
+    const requestedStatus = text(body?.status).toLowerCase();
+    const action = requestedAction || Object.entries(ACTION_STATUS).find(([, value]) => value === requestedStatus)?.[0] || "";
+    const notes = text(body?.resolutionNotes);
+    if (!reportId) return NextResponse.json({ success: false, error: "reportId is required" }, { status: 400 });
+    const report = await (prisma as any).contentReport.findUnique({ where: { id: reportId } });
+    if (!report) return NextResponse.json({ success: false, error: "Report not found" }, { status: 404 });
+    const nextStatus = ACTION_STATUS[action];
+    if (TERMINAL_STATUSES.has(report.status) && nextStatus) {
+      if (nextStatus === report.status) {
+        return NextResponse.json({ success: true, idempotent: true, report: { id: report.id, status: report.status, resolutionNotes: report.resolutionNotes, resolvedAt: date(report.resolvedAt), updatedAt: date(report.updatedAt) } });
+      }
+      return NextResponse.json({ success: false, error: "This report case is already closed." }, { status: 409 });
     }
-    if (!REPORT_STATUSES.has(status)) {
-      return NextResponse.json({ success: false, error: "Unsupported report status" }, { status: 422 });
+    if (["resolve_no_violation", "resolve_action_taken", "dismiss", "apply_public_hold", "release_public_hold"].includes(action) && !notes) {
+      return NextResponse.json({ success: false, error: "Resolution notes are required for this action." }, { status: 422 });
     }
-    if (RESOLVED_STATUSES.has(status) && !resolutionNotes) {
-      return NextResponse.json(
-        { success: false, error: "resolutionNotes is required when resolving or dismissing a report" },
-        { status: 422 }
-      );
+    if (action === "apply_public_hold") {
+      const lifecycleCaseId = await applyPublicHold(report, adminUserId, notes, request);
+      return NextResponse.json({ success: true, report: { id: report.id, status: report.status, lifecycleCaseId, publicHoldActive: true } });
     }
-
-    const updated = await (prisma as any).contentReport.update({
-      where: { id: reportId },
-      data: {
-        status,
-        adminOwnerUserId,
-        resolutionNotes: resolutionNotes || null,
-        resolvedAt: RESOLVED_STATUSES.has(status) ? new Date() : null,
-      },
-    });
-
-    // Trust Score Phase 1A: only a report that an admin finalized WITH action taken
-    // (and that is tied to a concrete booking + vendor) maps to a finalized, score-affecting
-    // BookingServiceIssue. Dismissed / no-action / non-booking reports never become a service issue.
-    const resolvedVendorId =
-      (updated?.vendorId && String(updated.vendorId)) ||
-      (updated?.reportedVendorId && String(updated.reportedVendorId)) ||
-      "";
-    if (
-      status === "resolved_action_taken" &&
-      updated?.bookingId &&
-      resolvedVendorId
-    ) {
-      const validatedAt = updated?.resolvedAt instanceof Date ? updated.resolvedAt : new Date();
-      await tryRecordBookingServiceIssue(prisma as any, {
-        bookingId: String(updated.bookingId),
-        vendorId: resolvedVendorId,
-        issueType: BOOKING_SERVICE_ISSUE_TYPES.VALIDATED_DISPUTE,
-        status: "VALIDATED",
-        sourceEntityType: "content_report",
-        sourceEntityId: String(updated.id),
-        reportedByUserId: updated?.reporterUserId ? String(updated.reporterUserId) : null,
-        validatedAt,
-        finalizedAt: validatedAt,
-        finalizedByUserId: adminOwnerUserId,
-        resolutionNotes: resolutionNotes || null,
-        metadata: {
-          reasonCategory: updated?.reasonCategory ?? null,
-          targetType: updated?.targetType ?? null,
-          severity: updated?.severity ?? null,
-        },
-      });
-
-      // Internal-only, non-blocking Trust Score recalculation.
-      await tryRecalculateVendorTrustScore(
-        prisma as any,
-        resolvedVendorId,
-        "reported_content_resolved",
-        "reported_content"
-      );
+    if (action === "release_public_hold") {
+      const release = await releasePublicHold(report, adminUserId, notes, request);
+      return NextResponse.json({ success: true, report: { id: report.id, status: report.status, publicHoldActive: false, publicVisibilityRestored: release.restored } });
     }
-
-    return NextResponse.json({
-      success: true,
-      report: {
-        id: updated.id,
-        status: updated.status,
-        resolutionNotes: updated.resolutionNotes,
-        resolvedAt: serializeDate(updated.resolvedAt),
-        updatedAt: serializeDate(updated.updatedAt),
-      },
-    });
+    if (!nextStatus || !REPORT_STATUSES.has(nextStatus)) return NextResponse.json({ success: false, error: "Unsupported report action" }, { status: 422 });
+    if (["resolve_no_violation", "dismiss"].includes(action) && report.lifecycleCaseId) await releasePublicHold(report, adminUserId, notes, request);
+    const now = new Date();
+    const updated = await (prisma as any).$transaction(async (tx: any) => {
+      const row = await tx.contentReport.update({ where: { id: report.id }, data: { status: nextStatus, adminOwnerUserId: adminUserId, resolutionNotes: TERMINAL_STATUSES.has(nextStatus) ? notes : report.resolutionNotes, resolvedAt: TERMINAL_STATUSES.has(nextStatus) ? now : null, closedAt: TERMINAL_STATUSES.has(nextStatus) ? now : null } });
+      await appendContentReportEvent(tx, { reportId: report.id, eventType: action.toUpperCase(), actorUserId: adminUserId, actorRole: "ADMIN", priorStatus: report.status, resultingStatus: nextStatus, reason: notes || null, metadata: { lifecycleCaseId: report.lifecycleCaseId || null } });
+      return row;
+    }, { isolationLevel: "Serializable" });
+    if (TERMINAL_STATUSES.has(nextStatus)) await notifyReporter(updated, request);
+    return NextResponse.json({ success: true, report: { id: updated.id, status: updated.status, resolutionNotes: updated.resolutionNotes, resolvedAt: date(updated.resolvedAt), updatedAt: date(updated.updatedAt) } });
   } catch (error: any) {
     console.error("[admin/reported-content] PATCH error:", error);
-    if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) {
-      return forbiddenResponse(error);
-    }
-    return NextResponse.json(
-      { success: false, error: "Failed to update reported content" },
-      { status: 500 }
-    );
+    if (error.message === "Unauthorized" || String(error.message).includes("Forbidden")) return forbidden(error);
+    return NextResponse.json({ success: false, error: error.message || "Failed to update reported content" }, { status: 500 });
   }
 }

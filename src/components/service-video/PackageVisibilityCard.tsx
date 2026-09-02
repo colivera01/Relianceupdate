@@ -16,6 +16,7 @@ type VisibilityState =
   | "PRIVATE_DEFAULT"
   | "PRIVATE"
   | "PRIVATE_ONLY"
+  | "PUBLIC_VISIBILITY_HOLD"
   | "PUBLIC_WAITING_PERMISSION"
   | "PUBLIC_REVIEW_PENDING"
   | "PUBLIC";
@@ -28,6 +29,7 @@ type VisibilityResponse = {
     privateProofReleased: boolean;
     publicDisplayEligibility?: string | null;
     publicDisplayReason?: string | null;
+    publicRestrictionActive?: boolean;
     visibilityContractVersion?: number;
     visibilityDecision?: { decision?: string; decidedAt?: string } | null;
     proposal?: { status?: string } | null;
@@ -56,6 +58,10 @@ const COPY: Record<VisibilityState, { title: string; detail: string }> = {
   PRIVATE_ONLY: {
     title: "Private",
     detail: "This Service Video is available as Private Proof but is not eligible for Public display.",
+  },
+  PUBLIC_VISIBILITY_HOLD: {
+    title: "Public visibility temporarily paused",
+    detail: "Reliance is investigating a reported concern. Your Public authorization and Private Proof remain preserved.",
   },
   PUBLIC_WAITING_PERMISSION: {
     title: "Waiting for Public-sharing permission",
@@ -147,7 +153,7 @@ export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; 
               Service Video visibility
             </CardTitle>
             <Badge className={isPublic ? "bg-emerald-600 text-white" : "bg-blue-950 text-blue-100"}>
-              {isPublic ? "Public" : state === "PUBLIC_WAITING_PERMISSION" ? "Waiting for permission" : "Private"}
+              {isPublic ? "Public" : state === "PUBLIC_VISIBILITY_HOLD" ? "Public hold" : state === "PUBLIC_WAITING_PERMISSION" ? "Waiting for permission" : "Private"}
             </Badge>
           </div>
           <p className="text-sm text-slate-300">Starting Condition, Work in Progress, and Final Result always stay together as one exact Service Video.</p>

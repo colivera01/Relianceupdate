@@ -638,6 +638,23 @@ function ServiceDetailPageContent() {
                   </div>
                 )}
               </div>
+              {heroVideoItem ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3">
+                  <p className="text-xs text-slate-500">Reporting identifies this exact Service Video stage.</p>
+                  <ReportContentDialog
+                    targetType="media_asset"
+                    targetId={heroVideoItem.id}
+                    isSignedIn={isSignedIn}
+                    userId={resolveCustomerUserId(user?.id)}
+                    triggerLabel="Report a problem with this video"
+                    title="Report this Service Video"
+                    description="Tell Reliance about a privacy, safety, identity, or content concern with this exact stage."
+                    signInHref={`/auth/login?next=${encodeURIComponent(`/service/${serviceId}`)}`}
+                    technicalHelpHref={`/customer/support?returnTo=${encodeURIComponent(`/service/${serviceId}`)}`}
+                    className="text-xs font-medium text-red-700 underline underline-offset-4 hover:text-red-800"
+                  />
+                </div>
+              ) : null}
               
               {((service.images && service.images.length > 0) || serviceVideoCount > 0) && (
                 <div className="border-t border-slate-100 p-5">
@@ -993,6 +1010,18 @@ function ServiceDetailPageContent() {
                                 Approved public service video
                               </p>
                             )}
+                            <ReportContentDialog
+                              targetType="media_asset"
+                              targetId={video.id}
+                              isSignedIn={isSignedIn}
+                              userId={resolveCustomerUserId(user?.id)}
+                              triggerLabel="Report a problem with this video"
+                              title={`Report ${video.stageLabel || 'this Service Video stage'}`}
+                              description="Tell Reliance about a content concern with this exact stage."
+                              signInHref={`/auth/login?next=${encodeURIComponent(`/service/${serviceId}`)}`}
+                              technicalHelpHref={`/customer/support?returnTo=${encodeURIComponent(`/service/${serviceId}`)}`}
+                              className="mt-2 text-xs font-medium text-red-700 underline underline-offset-4 hover:text-red-800"
+                            />
                           </div>
                         </div>
                       ))}

@@ -167,10 +167,23 @@ async function audit(tx: any, input: {
 
 async function restrictPublicEligibility(tx: any, bookingId: string, reason: string, now: Date) {
   if (!tx.publicServiceVideoEligibility?.updateMany) return;
+  const activeRows = tx.publicServiceVideoEligibility.findMany
+    ? await tx.publicServiceVideoEligibility.findMany({
+        where: { bookingId, status: "ACTIVE", invalidatedAt: null },
+        select: { mediaAssetId: true },
+      })
+    : [];
   await tx.publicServiceVideoEligibility.updateMany({
     where: { bookingId, status: "ACTIVE", invalidatedAt: null },
     data: { status: "INVALIDATED", invalidatedAt: now, invalidationReason: reason },
   });
+  const mediaAssetIds = activeRows.map((row: any) => String(row.mediaAssetId || "")).filter(Boolean);
+  if (mediaAssetIds.length && tx.mediaAsset?.updateMany) {
+    await tx.mediaAsset.updateMany({
+      where: { id: { in: mediaAssetIds }, visibilityStatus: "public" },
+      data: { visibilityStatus: "customer_only" },
+    });
+  }
 }
 
 export async function applyMediaWithdrawal(input: {
@@ -207,16 +220,15 @@ export async function applyMediaWithdrawal(input: {
 
 const IMMEDIATE_RESTRICTION_CATEGORIES = new Set(["PRIVACY", "IDENTITY", "AUTHORITY", "SAFETY", "MINOR", "MATERIAL_MISREPRESENTATION"]);
 
-export async function openMediaLifecycleCase(input: {
+export async function openMediaLifecycleCaseInTransaction(tx: any, input: {
   bookingId: string; vendorId: string; actorUserId: string; actorRole: string; category: string;
   reasonDetail?: string | null; packageId?: string | null; proposalId?: string | null; mediaAssetId?: string | null;
-  contentReportId?: string | null; request?: Request | null;
+  contentReportId?: string | null; request?: Request | null; forcePublicRestriction?: boolean;
 }) {
   const category = String(input.category).trim().toUpperCase();
-  const restrict = IMMEDIATE_RESTRICTION_CATEGORIES.has(category);
+  const restrict = input.forcePublicRestriction === true || IMMEDIATE_RESTRICTION_CATEGORIES.has(category);
   const now = new Date();
-  return (prisma as any).$transaction(async (tx: any) => {
-    const lifecycleCase = await tx.mediaLifecycleCase.create({
+  const lifecycleCase = await tx.mediaLifecycleCase.create({
       data: {
         bookingId: input.bookingId, vendorId: input.vendorId, packageId: input.packageId || null,
         proposalId: input.proposalId || null, mediaAssetId: input.mediaAssetId || null,
@@ -224,21 +236,78 @@ export async function openMediaLifecycleCase(input: {
         exposureOutcome: restrict ? "RESTRICTED" : "PRIVATE", reasonDetail: input.reasonDetail || null,
         openedByUserId: input.actorUserId, openedByRole: input.actorRole, restrictedAt: restrict ? now : null,
       },
-    });
-    if (restrict) {
-      await tx.mediaLifecycleRestriction.create({
+  });
+  if (restrict) {
+    await tx.mediaLifecycleRestriction.create({
         data: {
           caseId: lifecycleCase.id, bookingId: input.bookingId, vendorId: input.vendorId,
           mediaAssetId: input.mediaAssetId || null, scope: "PUBLIC", outcome: "RESTRICTED",
           reasonCode: `DISPUTE_${category}`, active: true, appliedByUserId: input.actorUserId,
           appliedByRole: input.actorRole, evidenceHash: sha256(`${lifecycleCase.id}:PUBLIC:${category}`),
         },
-      });
-      await restrictPublicEligibility(tx, input.bookingId, `DISPUTE_${category}`, now);
-    }
-    await audit(tx, { ...input, caseId: lifecycleCase.id, eventType: "CASE_OPENED", resultingState: lifecycleCase.status, metadata: { category, restricted: restrict }, request: input.request });
-    return lifecycleCase;
-  });
+    });
+    await restrictPublicEligibility(tx, input.bookingId, `DISPUTE_${category}`, now);
+  }
+  await audit(tx, { ...input, caseId: lifecycleCase.id, eventType: "CASE_OPENED", resultingState: lifecycleCase.status, metadata: { category, restricted: restrict }, request: input.request });
+  return lifecycleCase;
+}
+
+export async function openMediaLifecycleCase(input: {
+  bookingId: string; vendorId: string; actorUserId: string; actorRole: string; category: string;
+  reasonDetail?: string | null; packageId?: string | null; proposalId?: string | null; mediaAssetId?: string | null;
+  contentReportId?: string | null; request?: Request | null; forcePublicRestriction?: boolean;
+}) {
+  return (prisma as any).$transaction(
+    (tx: any) => openMediaLifecycleCaseInTransaction(tx, input),
+    { isolationLevel: "Serializable" },
+  );
+}
+
+export async function releaseContentReportPublicHold(input: {
+  lifecycleCaseId: string;
+  actorUserId: string;
+  reason: string;
+  request?: Request | null;
+}) {
+  return (prisma as any).$transaction(async (tx: any) => {
+    const lifecycleCase = await tx.mediaLifecycleCase.findUnique({ where: { id: input.lifecycleCaseId } });
+    if (!lifecycleCase) throw new Error("REPORT_PUBLIC_HOLD_NOT_FOUND");
+    const now = new Date();
+    await tx.mediaLifecycleRestriction.updateMany({
+      where: { caseId: lifecycleCase.id, active: true, scope: "PUBLIC" },
+      data: {
+        active: false,
+        releasedByUserId: input.actorUserId,
+        releasedAt: now,
+        releaseReason: input.reason,
+      },
+    });
+    const updated = await tx.mediaLifecycleCase.update({
+      where: { id: lifecycleCase.id },
+      data: {
+        status: "RESOLVED",
+        exposureOutcome: "PRIVATE",
+        decision: "HOLD_RELEASED",
+        decisionReason: input.reason,
+        decidedAt: now,
+        finalizedAt: now,
+      },
+    });
+    await audit(tx, {
+      bookingId: lifecycleCase.bookingId,
+      vendorId: lifecycleCase.vendorId,
+      caseId: lifecycleCase.id,
+      mediaAssetId: lifecycleCase.mediaAssetId,
+      actorUserId: input.actorUserId,
+      actorRole: "ADMIN",
+      eventType: "PUBLIC_HOLD_RELEASED",
+      priorState: lifecycleCase.status,
+      resultingState: "RESOLVED",
+      metadata: { reason: input.reason },
+      request: input.request,
+    });
+    return updated;
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function requestMediaDeletion(input: {

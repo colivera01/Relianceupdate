@@ -31,6 +31,25 @@ type ReportRow = {
   resolvedAt: string | null;
   resolutionNotes: string | null;
   moderationHref: string | null;
+  caseReference: string | null;
+  accessBasis: string | null;
+  packageId: string | null;
+  packageVersion: number | null;
+  packageHash: string | null;
+  stageEvidenceId: string | null;
+  stage: string | null;
+  stageVersion: number | null;
+  stageHash: string | null;
+  mediaContentHash: string | null;
+  adminAuditDecisionId: string | null;
+  visibilityAtReport: string | null;
+  currentVisibility: string;
+  publicHoldActive: boolean;
+  policyCategory: string | null;
+  serviceName: string | null;
+  customerName: string | null;
+  vendorName: string | null;
+  events: Array<{ id: string; eventType: string; actorRole: string; createdAt: string | null }>;
 };
 
 type DisputeSummarySuggestion = {
@@ -96,15 +115,15 @@ const statuses = [
 ];
 const severities = ['low', 'medium', 'high', 'critical'];
 const reasons = [
-  'harassment',
-  'hate',
-  'nudity',
-  'violence',
-  'spam',
-  'fraud',
+  'private_sensitive_information',
+  'wrong_service_or_video',
+  'person_or_voice_without_permission',
+  'inappropriate_or_abusive',
+  'hate_or_harassment',
+  'sexual_or_nudity',
+  'violence_or_threats',
+  'fraud_scam_or_misleading',
   'copyright',
-  'privacy',
-  'misleading',
   'other',
 ];
 
@@ -243,6 +262,25 @@ export default function AdminReportedContentClient({
       await fetchReports();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update report');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const runReportAction = async (report: ReportRow, action: string) => {
+    setSavingId(report.id);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/reported-content', {
+        method: 'PATCH',
+        headers: getAdminRequestHeaders(),
+        body: JSON.stringify({ reportId: report.id, action, resolutionNotes: resolutionNotes[report.id] || '' }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json?.error || json?.message || `Status ${response.status}`);
+      await fetchReports();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update report case');
     } finally {
       setSavingId(null);
     }
@@ -513,14 +551,17 @@ export default function AdminReportedContentClient({
                         <Badge variant="outline">{formatLabel(report.targetType)}</Badge>
                         {report.autoHidden && (
                           <Badge variant="outline" className="border-orange-300 text-orange-700">
-                            auto hidden
+                            Public hold
                           </Badge>
                         )}
                       </div>
                       <div>
                         <h2 className="font-semibold text-gray-900">
-                          {formatLabel(report.targetType)} report for {report.reasonCategory}
+                          {report.caseReference || 'Legacy report'}: {formatLabel(report.reasonCategory)}
                         </h2>
+                        <p className="mt-1 text-sm font-medium text-slate-700">
+                          {report.serviceName || 'Service Video'} · {report.vendorName || report.vendorId || 'Vendor unavailable'}
+                        </p>
                         <p className="mt-1 text-sm text-gray-600">
                           Target ID: <span className="font-mono">{report.targetId}</span>
                           {report.bookingId ? (
@@ -546,7 +587,30 @@ export default function AdminReportedContentClient({
                         <div>Resolved: {formatDate(report.resolvedAt)}</div>
                         <div>Vendor ID: {report.vendorId || report.reportedVendorId || 'Not linked'}</div>
                         <div>User ID: {report.reportedUserId || 'Not linked'}</div>
+                        <div>Access: {report.accessBasis ? formatLabel(report.accessBasis) : 'legacy / unavailable'}</div>
+                        <div>Stage: {report.stage ? `${formatLabel(report.stage)} v${report.stageVersion || '?'}` : 'legacy / unavailable'}</div>
+                        <div>Visibility reported: {report.visibilityAtReport || 'legacy / unavailable'}</div>
+                        <div>Current visibility: {formatLabel(report.currentVisibility)}</div>
                       </div>
+                      {report.packageId ? (
+                        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                          <p>Package: <span className="font-mono">{report.packageId}</span> v{report.packageVersion}</p>
+                          <p className="mt-1 break-all">Package hash: <span className="font-mono">{report.packageHash}</span></p>
+                          <p className="mt-1 break-all">Stage hash: <span className="font-mono">{report.stageHash}</span></p>
+                          <p className="mt-1 break-all">Media hash: <span className="font-mono">{report.mediaContentHash}</span></p>
+                          <p className="mt-1">Reliance Audit PASS: <span className="font-mono">{report.adminAuditDecisionId}</span></p>
+                        </div>
+                      ) : null}
+                      {report.publicHoldActive ? (
+                        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                          Public visibility is temporarily paused. Private Proof and original evidence remain preserved.
+                        </div>
+                      ) : null}
+                      {report.events?.length ? (
+                        <div className="text-xs text-slate-600">
+                          Case history: {report.events.map((event) => formatLabel(event.eventType)).join(' → ')}
+                        </div>
+                      ) : null}
                       {report.moderationHref && (
                         <Link
                           href={report.moderationHref}
@@ -731,6 +795,22 @@ export default function AdminReportedContentClient({
                           </Button>
                         ))}
                       </div>
+                      {report.targetType === 'media_asset' ? (
+                        <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
+                          {!report.publicHoldActive ? (
+                            <Button type="button" size="sm" variant="outline" disabled={savingId === report.id || !hasResolutionNotes} onClick={() => runReportAction(report, 'apply_public_hold')}>
+                              Apply Public hold
+                            </Button>
+                          ) : (
+                            <Button type="button" size="sm" variant="outline" disabled={savingId === report.id || !hasResolutionNotes} onClick={() => runReportAction(report, 'release_public_hold')}>
+                              Release hold
+                            </Button>
+                          )}
+                          <Button type="button" size="sm" variant="outline" disabled={savingId === report.id} onClick={() => runReportAction(report, 'begin_investigation')}>
+                            Begin investigation
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </CardContent>
@@ -744,8 +824,8 @@ export default function AdminReportedContentClient({
         <CardContent className="flex gap-3 pt-6 text-sm text-orange-900">
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <p>
-            This is a first-pass queue for persisted reports. Public guest report buttons, appeal flows,
-            assigned case ownership, and automated escalations remain intentionally deferred.
+            Reports are allegations. Case status and generic resolution do not change Trust Score or customer ratings.
+            Public holds preserve the exact package and Private Proof while Reliance investigates.
           </p>
         </CardContent>
       </Card>

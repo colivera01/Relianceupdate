@@ -26,20 +26,21 @@ type ReportContentDialogProps = {
   title?: string;
   description?: string;
   signInHref?: string;
+  technicalHelpHref?: string;
   className?: string;
 };
 
 const REPORT_REASONS = [
-  { value: "harassment", label: "Harassment or abuse" },
-  { value: "hate", label: "Hateful content" },
-  { value: "nudity", label: "Nudity or sexual content" },
-  { value: "violence", label: "Violence or threats" },
-  { value: "spam", label: "Spam" },
-  { value: "fraud", label: "Fraud or scam" },
+  { value: "private_sensitive_information", label: "Private or sensitive information" },
+  { value: "wrong_service_or_video", label: "Wrong service or wrong video" },
+  { value: "person_or_voice_without_permission", label: "Person or voice shown without permission" },
+  { value: "inappropriate_or_abusive", label: "Inappropriate or abusive content" },
+  { value: "hate_or_harassment", label: "Hate or harassment" },
+  { value: "sexual_or_nudity", label: "Sexual or nudity content" },
+  { value: "violence_or_threats", label: "Violence or threats" },
+  { value: "fraud_scam_or_misleading", label: "Fraud, scam, or misleading content" },
   { value: "copyright", label: "Copyright concern" },
-  { value: "privacy", label: "Privacy concern" },
-  { value: "misleading", label: "Misleading content" },
-  { value: "other", label: "Something else" },
+  { value: "other", label: "Other content concern" },
 ] as const;
 
 export function ReportContentDialog({
@@ -50,23 +51,38 @@ export function ReportContentDialog({
   title = "Report this content",
   description = "Tell us what feels wrong. Reliance will review it without notifying the person who posted it.",
   signInHref = "/auth/login",
+  technicalHelpHref = "/customer/support",
   className,
 }: ReportContentDialogProps) {
   const REPORT_REQUEST_TIMEOUT_MS = 15000;
   const [open, setOpen] = useState(false);
-  const [reasonCategory, setReasonCategory] = useState<(typeof REPORT_REASONS)[number]["value"]>("privacy");
+  const [reasonCategory, setReasonCategory] = useState<(typeof REPORT_REASONS)[number]["value"]>("private_sensitive_information");
   const [reasonDetail, setReasonDetail] = useState("");
+  const [requestId, setRequestId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [caseReference, setCaseReference] = useState<string | null>(null);
+  const [caseStatus, setCaseStatus] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setStatusMessage(null);
     setErrorMessage(null);
-  }, [open, targetId]);
+    setRequestId(window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+    if (!isSignedIn || !targetId) return;
+    const params = new URLSearchParams({ targetType, targetId });
+    void fetch(`/api/reports/content?${params.toString()}`, { headers: getClientAuthHeaders(), cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((body) => {
+        const report = Array.isArray(body?.reports) ? body.reports[0] : null;
+        setCaseReference(report?.caseReference || null);
+        setCaseStatus(report?.status || null);
+      })
+      .catch(() => undefined);
+  }, [isSignedIn, open, targetId, targetType]);
 
-  const canSubmit = isSignedIn && Boolean(targetId) && !submitting;
+  const canSubmit = isSignedIn && Boolean(targetId) && Boolean(requestId) && !submitting && !statusMessage;
 
   const submitReport = async () => {
     if (!canSubmit) return;
@@ -86,9 +102,9 @@ export function ReportContentDialog({
         body: JSON.stringify({
           targetType,
           targetId,
+          requestId,
           reasonCategory,
           reasonDetail,
-          severity: "medium",
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -96,7 +112,9 @@ export function ReportContentDialog({
         throw new Error(String(json?.message || json?.error || "Could not submit report"));
       }
       setReasonDetail("");
-      setStatusMessage("Thanks. Your report was sent to Reliance for review.");
+      setCaseReference(String(json?.report?.caseReference || ""));
+      setCaseStatus(String(json?.report?.status || "Received"));
+      setStatusMessage("We received your report. Reliance will review the concern.");
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         setErrorMessage(
@@ -161,6 +179,15 @@ export function ReportContentDialog({
                 placeholder="Add a short note if it helps us understand the concern."
               />
             </label>
+            <a href={technicalHelpHref} className="inline-flex text-sm font-medium text-blue-700 underline underline-offset-4">
+              Having trouble playing this video?
+            </a>
+            {caseReference ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800">
+                <p className="font-semibold">Report {caseStatus || "Received"}</p>
+                <p className="mt-1">Reference: <span className="font-mono">{caseReference}</span></p>
+              </div>
+            ) : null}
             {statusMessage ? <p className="text-sm text-emerald-700">{statusMessage}</p> : null}
             {errorMessage ? <p className="text-sm text-red-700">{errorMessage}</p> : null}
           </div>
