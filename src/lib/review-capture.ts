@@ -17,7 +17,7 @@ const VALID_PROMPT_EVENTS = new Set([
   'private_feedback_opened',
 ]);
 const VALID_SENTIMENTS = new Set(['positive', 'neutral', 'negative']);
-const VALID_SUBMITTED_VIA = new Set(['video_overlay', 'email_link', 'sms_link', 'manual']);
+const VALID_SUBMITTED_VIA = new Set(['video_overlay', 'email_link', 'sms_link', 'manual', 'service_record']);
 
 export function isValidPromptEvent(eventType: string) {
   return VALID_PROMPT_EVENTS.has(eventType);

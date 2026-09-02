@@ -89,7 +89,9 @@ async function waitForBookingDetailReady(page: Page, bookingId: string) {
 
 test.describe.configure({ mode: 'serial' });
 
-test('customer review: my-bookings detail flow -> consent -> window/start -> quick review create', async ({ page }) => {
+// This legacy seeded fixture predates Admin-approved Private Proof packages. The current
+// customer Service Record smoke runs in customer-service-record.spec.ts without DB writes.
+test.skip('legacy customer review fixture used playback consent before Private Proof', async ({ page }) => {
   page.on('dialog', (d) => d.accept());
 
   const fixture = readFixture();

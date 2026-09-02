@@ -10,6 +10,7 @@ import {
   isTransientDbConnectivityError,
 } from '@/lib/transient-db-errors';
 import { assertCoreAdminAuditMutationAllowed, CoreAdminAuditError } from '@/lib/service-video-admin-audit';
+import { parseAssignmentMetadata } from '@/lib/job-assignment';
 
 // TODO: Import your database models
 // import { BookingModel } from '@/lib/models/Booking';
@@ -116,9 +117,45 @@ export async function GET(
         comment: true,
         date: true,
         createdAt: true,
+        employeeCustomerRating: {
+          select: {
+            rating: true,
+            employeeMembershipId: true,
+            employeeUserId: true,
+            employeeNameSnapshot: true,
+            submittedAt: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    const assignment = parseAssignmentMetadata(booking.customerMetadata);
+    let assignedServiceProfessional: {
+      membershipId: string;
+      userId: string;
+      name: string;
+    } | null = null;
+    if (assignment.assignedMembershipIds.length === 1) {
+      const membershipId = assignment.assignedMembershipIds[0];
+      const membership = await prisma.vendorMembership.findFirst({
+        where: { id: membershipId, vendorId: booking.vendorId },
+        select: {
+          id: true,
+          userId: true,
+          user: { select: { name: true, email: true } },
+        },
+      });
+      if (membership?.userId) {
+        assignedServiceProfessional = {
+          membershipId: membership.id,
+          userId: membership.userId,
+          name:
+            String(assignment.primaryEmployeeName || membership.user?.name || membership.user?.email || '').trim() ||
+            'Assigned service professional',
+        };
+      }
+    }
 
     const lifecycle = deriveCustomerBookingLifecycle({
       bookingStatus: booking.status,
@@ -134,11 +171,21 @@ export async function GET(
             id: String(customerReview.id),
             rating: Number(customerReview.rating),
             comment: String(customerReview.comment || ''),
+            employeeRating: customerReview.employeeCustomerRating
+              ? {
+                  rating: Number(customerReview.employeeCustomerRating.rating),
+                  employeeMembershipId: customerReview.employeeCustomerRating.employeeMembershipId,
+                  employeeUserId: customerReview.employeeCustomerRating.employeeUserId,
+                  employeeName: customerReview.employeeCustomerRating.employeeNameSnapshot,
+                  submittedAt: customerReview.employeeCustomerRating.submittedAt.toISOString(),
+                }
+              : null,
             submittedAt:
               (customerReview.date || customerReview.createdAt)?.toISOString?.() ||
               customerReview.createdAt.toISOString(),
           }
         : null,
+      assignedServiceProfessional,
       customerLifecycle: {
         ...lifecycle,
         reviewSubmittedAt:

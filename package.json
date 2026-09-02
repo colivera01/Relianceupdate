@@ -23,7 +23,7 @@
     "test:e2e:smoke:auth": "node scripts/dev/run-playwright-live-aware.cjs --skip-global-db-setup e2e/auth-redirect-smoke.spec.ts",
     "test:e2e:smoke:employee": "node scripts/dev/run-playwright-live-aware.cjs --skip-global-db-setup e2e/employee-jobs-smoke.spec.ts",
     "test:e2e:smoke:favorites": "node scripts/dev/run-playwright-live-aware.cjs e2e/favorites-smoke.spec.ts",
-    "test:e2e:smoke:review": "node scripts/dev/run-playwright-live-aware.cjs e2e/review-smoke.spec.ts",
+    "test:e2e:smoke:review": "playwright test e2e/customer-service-record.spec.ts --config=playwright.mocked.config.ts",
     "test:e2e:smoke:routes": "node scripts/dev/run-playwright-live-aware.cjs --skip-global-db-setup e2e/route-smoke.spec.ts",
     "test:ai:focused": "vitest run src/lib/ai/moderation-assistant.test.ts src/lib/ai/dispute-summary-assistant.test.ts src/lib/ai/vendor-coaching-summary-assistant.test.ts src/lib/ai/evals.test.ts src/lib/ai/output-guards.test.ts src/lib/ai/feedback.test.ts src/lib/ai/reporting.test.ts src/lib/ai/rollout-status.test.ts src/lib/ai/prompt-registry.test.ts src/app/api/admin/ai/feedback/route.test.ts src/app/api/admin/activity/ai-export/route.test.ts src/app/api/admin/media/admin-media-moderation-ai.integration.test.ts src/app/api/admin/reported-content/reported-content-ai.integration.test.ts src/app/api/vendor/coaching-summary/route.test.ts",
     "test:ai:gate": "npm run test:ai:focused && npx tsc --noEmit --pretty false --incremental false && npm run test:ai:evals",

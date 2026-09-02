@@ -160,7 +160,6 @@ export default function MyBookingsPage() {
           booking.created_at
         );
         return (
-          isCompletedStatus(statusKey) ||
           isArchivedStatus(statusKey) ||
           bookingMatchesTab('needs_follow_up', statusKey, scheduleInstant, now)
         );
@@ -322,18 +321,6 @@ export default function MyBookingsPage() {
   }, [proofCandidates, user?.id, proofSignalByBooking]);
 
   const listNow = new Date();
-  const latestProofBooking = useMemo(() => {
-    const candidates = Object.entries(proofSignalByBooking)
-      .filter(([, signal]) => signal?.hasSharedProof)
-      .map(([bookingId, signal]) => ({
-        bookingId,
-        ts: signal.lastSharedAt ? new Date(signal.lastSharedAt).getTime() : 0,
-        booking: bookings.find((item) => item.id === bookingId) || null,
-      }))
-      .sort((a, b) => b.ts - a.ts);
-    return candidates[0] || null;
-  }, [bookings, proofSignalByBooking]);
-
   return (
     <div className="min-h-full">
       <div className="pt-6 space-y-4">
@@ -372,7 +359,7 @@ export default function MyBookingsPage() {
             <div className="space-y-1">
               <p className="font-medium text-gray-900">Service updates appear here</p>
               <p className="text-gray-700">
-                Vendors can share approved service videos or images after work is done. Open a service record to view what has been published for you and leave feedback when the review flow is available.
+                Completed services and approved Service Videos appear here. Open a record to watch your video or leave a review.
               </p>
             </div>
           </div>
@@ -418,30 +405,6 @@ export default function MyBookingsPage() {
         {actionMessage ? (
           <div className="text-sm rounded border border-blue-200 bg-blue-50 text-blue-800 p-4 mb-10">
             {actionMessage}
-          </div>
-        ) : null}
-
-        {latestProofBooking && activeTab !== 'archived' && activeTab !== 'needs_follow_up' ? (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 mb-10">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-medium text-emerald-900">
-                  A completed service video is ready to review for your recent service.
-                </p>
-                {latestProofBooking.booking ? (
-                  <p className="mt-1 text-xs text-emerald-800">
-                    {latestProofBooking.booking.service.name} with {latestProofBooking.booking.vendor.name}
-                    {' '}is also listed in your service-record history. You may be asked to confirm consent before playback.
-                  </p>
-                ) : null}
-              </div>
-              <Link
-                href={`/my-bookings/${latestProofBooking.bookingId}`}
-                className="rounded border border-emerald-300 bg-white px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100"
-              >
-                Open service video
-              </Link>
-            </div>
           </div>
         ) : null}
 
@@ -609,6 +572,46 @@ export default function MyBookingsPage() {
                     : hasSharedMediaNoVideo
                       ? 'Open service-record media status'
                       : 'Open service-record detail';
+
+              if (activeTab === 'past' && completedRecord) {
+                return (
+                  <div
+                    key={booking.id}
+                    className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+                    data-testid={`my-bookings-row-${booking.id}`}
+                  >
+                    <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-start">
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-slate-500">Service</p>
+                        <h2 className="mt-1 text-lg font-semibold text-slate-950">{booking.service.name}</h2>
+                        <p className="mt-2 text-sm text-slate-700"><span className="font-medium">Vendor:</span> {booking.vendor.name}</p>
+                        <div className="mt-4 grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
+                          <p><span className="font-medium text-slate-500">Status:</span> Completed</p>
+                          <p><span className="font-medium text-slate-500">Service Video:</span> {customerVisibleCompletedVideo ? 'Ready' : completedVideoPendingApproval ? 'Pending approval' : 'Not available'}</p>
+                          <p><span className="font-medium text-slate-500">Review:</span> {reviewSubmitted ? 'Reviewed' : reviewEligible ? 'Leave a review' : 'Not available'}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 md:justify-end">
+                        <Link
+                          href={bookingProofHref}
+                          className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                        >
+                          View Service Record
+                        </Link>
+                        {reviewEligible && !reviewSubmitted ? (
+                          <Link
+                            href={`${bookingProofHref}#your-review`}
+                            className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Leave a review
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                    <p className="mt-4 text-xs text-slate-500">Reference: <span className="font-mono">{booking.id}</span></p>
+                  </div>
+                );
+              }
 
               return (
                 <div

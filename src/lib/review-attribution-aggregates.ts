@@ -53,15 +53,26 @@ export async function getEmployeeRatingStats(
     return { averageRating: 0, reviewCount: 0, ratingSum: 0 };
   }
   try {
-    const rows = await (prisma as any).review.findMany({
-      where: countableReviewWhere({
-        vendorId,
-        assignedMembershipId: normalizedMembershipId,
-        ...ELIGIBLE_REVIEW_WHERE,
+    const [legacyRows, employeeRows] = await Promise.all([
+      (prisma as any).review.findMany({
+        where: countableReviewWhere({
+          vendorId,
+          assignedMembershipId: normalizedMembershipId,
+          attributionVersion: { lt: 3 },
+          ...ELIGIBLE_REVIEW_WHERE,
+        }),
+        select: { rating: true },
       }),
-      select: { rating: true },
-    });
-    return toStatsFromRows(rows);
+      (prisma as any).employeeCustomerRatingEvidence.findMany({
+        where: {
+          vendorId,
+          employeeMembershipId: normalizedMembershipId,
+          review: { is: countableReviewWhere(ELIGIBLE_REVIEW_WHERE) },
+        },
+        select: { rating: true },
+      }),
+    ]);
+    return toStatsFromRows([...legacyRows, ...employeeRows]);
   } catch {
     return { averageRating: 0, reviewCount: 0, ratingSum: 0 };
   }
@@ -82,31 +93,55 @@ export async function getEmployeeRatingsForVendor(
     ? Array.from(new Set(membershipIds.map((id) => String(id || "").trim()).filter(Boolean)))
     : null;
 
-  const where: any = countableReviewWhere({
+  const legacyWhere: any = countableReviewWhere({
     vendorId,
     ...ELIGIBLE_REVIEW_WHERE,
     assignedMembershipId: { not: null },
+    attributionVersion: { lt: 3 },
   });
   if (normalizedIds && normalizedIds.length > 0) {
-    where.assignedMembershipId = { in: normalizedIds };
+    legacyWhere.assignedMembershipId = { in: normalizedIds };
   }
 
-  let rows: Array<{ assignedMembershipId: string | null; rating: number }> = [];
+  let legacyRows: Array<{ assignedMembershipId: string | null; rating: number }> = [];
+  let employeeRows: Array<{ employeeMembershipId: string; rating: number }> = [];
   try {
-    rows = await (prisma as any).review.findMany({
-      where,
-      select: {
-        assignedMembershipId: true,
-        rating: true,
-      },
-    });
+    [legacyRows, employeeRows] = await Promise.all([
+      (prisma as any).review.findMany({
+        where: legacyWhere,
+        select: {
+          assignedMembershipId: true,
+          rating: true,
+        },
+      }),
+      (prisma as any).employeeCustomerRatingEvidence.findMany({
+        where: {
+          vendorId,
+          ...(normalizedIds && normalizedIds.length > 0
+            ? { employeeMembershipId: { in: normalizedIds } }
+            : {}),
+          review: { is: countableReviewWhere(ELIGIBLE_REVIEW_WHERE) },
+        },
+        select: {
+          employeeMembershipId: true,
+          rating: true,
+        },
+      }),
+    ]);
   } catch {
     return [];
   }
 
   const byMembershipId = new Map<string, Array<{ rating: number }>>();
-  for (const row of rows) {
+  for (const row of legacyRows) {
     const membershipId = String(row.assignedMembershipId || "").trim();
+    if (!membershipId) continue;
+    const list = byMembershipId.get(membershipId) || [];
+    list.push({ rating: normalizeRating(row.rating) });
+    byMembershipId.set(membershipId, list);
+  }
+  for (const row of employeeRows) {
+    const membershipId = String(row.employeeMembershipId || "").trim();
     if (!membershipId) continue;
     const list = byMembershipId.get(membershipId) || [];
     list.push({ rating: normalizeRating(row.rating) });

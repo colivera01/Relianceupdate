@@ -7,13 +7,18 @@ import {
 
 const hoisted = vi.hoisted(() => {
   const reviewFindMany = vi.fn();
+  const employeeRatingFindMany = vi.fn();
   return {
     prisma: {
       review: {
         findMany: reviewFindMany,
       },
+      employeeCustomerRatingEvidence: {
+        findMany: employeeRatingFindMany,
+      },
     },
     reviewFindMany,
+    employeeRatingFindMany,
   };
 });
 
@@ -24,6 +29,8 @@ vi.mock("@/server/db", () => ({
 describe("review attribution aggregates", () => {
   beforeEach(() => {
     hoisted.reviewFindMany.mockReset();
+    hoisted.employeeRatingFindMany.mockReset();
+    hoisted.employeeRatingFindMany.mockResolvedValue([]);
   });
 
   it("getVendorRatingStats includes all eligible vendor reviews", async () => {
@@ -60,6 +67,21 @@ describe("review attribution aggregates", () => {
           assignedMembershipId: "m1",
           source: "customer",
           moderationStatus: "approved",
+        }),
+      })
+    );
+  });
+
+  it("keeps the optional employee rating separate from the vendor review rating", async () => {
+    hoisted.reviewFindMany.mockResolvedValue([]);
+    hoisted.employeeRatingFindMany.mockResolvedValue([{ rating: 2 }]);
+    const stats = await getEmployeeRatingStats("v1", "m1");
+    expect(stats).toEqual({ averageRating: 2, reviewCount: 1, ratingSum: 2 });
+    expect(hoisted.employeeRatingFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          vendorId: "v1",
+          employeeMembershipId: "m1",
         }),
       })
     );

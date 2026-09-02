@@ -17,6 +17,7 @@ type Props = {
   className?: string;
   onEnded?: () => void;
   autoPlayToken?: number;
+  onAutoPlayBlocked?: () => void;
   /** When false, plays video only (no review prompts or review API calls). Default true. */
   reviewCaptureEnabled?: boolean;
   /**
@@ -35,6 +36,7 @@ export function SmartVideoPlayer({
   className,
   onEnded,
   autoPlayToken,
+  onAutoPlayBlocked,
   reviewCaptureEnabled = true,
   userId,
 }: Props) {
@@ -52,7 +54,7 @@ export function SmartVideoPlayer({
   const [reviewAlreadySubmitted, setReviewAlreadySubmitted] = useState(false);
 
   const trimmedUserId = useMemo(() => String(userId ?? '').trim(), [userId]);
-  /** Review APIs + UI; false ⇒ watch-only (terminal cancel, or missing user id). Consent checks on server unchanged when true. */
+  /** Review APIs + UI; false means watch-only (terminal cancel, or missing user id). */
   const reviewApisEnabled = Boolean(reviewCaptureEnabled && trimmedUserId);
 
   const reviewJsonHeaders = useMemo(
@@ -207,8 +209,7 @@ export function SmartVideoPlayer({
       try {
         await video.play();
       } catch {
-        // Browser autoplay can still be blocked; keep the new stage selected
-        // and let the viewer press play manually if needed.
+        if (!cancelled) onAutoPlayBlocked?.();
       }
     };
 
@@ -226,7 +227,7 @@ export function SmartVideoPlayer({
       cancelled = true;
       video.removeEventListener('loadeddata', onLoadedData);
     };
-  }, [autoPlayToken, src]);
+  }, [autoPlayToken, onAutoPlayBlocked, src]);
 
   const handleSentiment = async (sentiment: 'positive' | 'neutral' | 'negative') => {
     setPrompt('none');
@@ -335,6 +336,7 @@ export function SmartVideoPlayer({
           ref={videoRef}
           src={src}
           poster={poster}
+          preload="metadata"
           controls={reviewApisEnabled ? !accessError : true}
           className="block h-auto w-full max-h-[70vh] object-contain bg-black"
         />

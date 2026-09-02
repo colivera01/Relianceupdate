@@ -8,6 +8,7 @@ const hoisted = vi.hoisted(() => {
   const reviewWindowUpdate = vi.fn();
   const reviewWindowUpdateMany = vi.fn();
   const reviewPromptEventCreate = vi.fn();
+  const employeeCustomerRatingCreate = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
   const mediaAssetFindFirst = vi.fn();
 
@@ -24,6 +25,7 @@ const hoisted = vi.hoisted(() => {
           updateMany: reviewWindowUpdateMany,
         },
         reviewPromptEvent: { create: reviewPromptEventCreate },
+        employeeCustomerRatingEvidence: { create: employeeCustomerRatingCreate },
       })
     ),
   };
@@ -36,6 +38,7 @@ const hoisted = vi.hoisted(() => {
     reviewWindowUpdate,
     reviewWindowUpdateMany,
     reviewPromptEventCreate,
+    employeeCustomerRatingCreate,
     vendorMembershipFindFirst,
     mediaAssetFindFirst,
   };
@@ -77,6 +80,12 @@ vi.mock("@/lib/review-capture", () => ({
 
 vi.mock("@/lib/admin-audit", () => ({
   createAdminAuditLog: vi.fn(async () => undefined),
+}));
+
+vi.mock("@/lib/service-video-evidence", () => ({
+  loadAuthorizedPrivateProof: vi.fn(async () => ({
+    stages: [{ stage: "COMPLETED", mediaSessionId: "media-1" }],
+  })),
 }));
 
 function reviewRequest(body: Record<string, unknown>) {
@@ -129,6 +138,7 @@ describe("POST /api/reviews/create attribution", () => {
     hoisted.reviewWindowUpdate.mockReset();
     hoisted.reviewWindowUpdateMany.mockReset();
     hoisted.reviewPromptEventCreate.mockReset();
+    hoisted.employeeCustomerRatingCreate.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.mediaAssetFindFirst.mockReset();
     hoisted.prisma.$transaction.mockClear();
@@ -144,14 +154,15 @@ describe("POST /api/reviews/create attribution", () => {
           assignedMembershipId: null,
           assignedEmployeeName: null,
           assignedUserId: null,
-          attributionVersion: 2,
+          attributionVersion: 3,
         }),
       })
     );
   });
 
-  it("attaches employee attribution only when the customer selects assigned worker or crew", async () => {
-    const response = await POST(reviewRequest({ reviewAttributionTarget: "assigned_team" }));
+  it("creates a separate optional employee rating without copying the vendor rating", async () => {
+    hoisted.employeeCustomerRatingCreate.mockResolvedValue({ id: "employee-rating-1", rating: 3 });
+    const response = await POST(reviewRequest({ employeeRating: 3 }));
     expect(response.status).toBe(200);
     expect(hoisted.reviewCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -159,7 +170,69 @@ describe("POST /api/reviews/create attribution", () => {
           assignedMembershipId: "membership-1",
           assignedEmployeeName: "Hector Rivera",
           assignedUserId: "employee-user-1",
-          attributionVersion: 2,
+          attributionVersion: 3,
+        }),
+      })
+    );
+    expect(hoisted.employeeCustomerRatingCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          bookingId: "booking-1",
+          vendorId: "vendor-1",
+          employeeMembershipId: "membership-1",
+          employeeUserId: "employee-user-1",
+          rating: 3,
+        }),
+      })
+    );
+  });
+
+  it("fails closed when an employee rating cannot be bound to one assigned professional", async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "booking-1",
+      userId: "user-1",
+      vendorId: "vendor-1",
+      status: "COMPLETED",
+      customerMetadata: JSON.stringify({
+        vendor_job_assigned_membership_ids: ["membership-1", "membership-2"],
+        vendor_job_assigned_employees: ["Hector Rivera", "Jordan Lee"],
+      }),
+    });
+
+    const response = await POST(reviewRequest({ employeeRating: 4 }));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "EMPLOYEE_RATING_ASSIGNMENT_AMBIGUOUS",
+    });
+    expect(hoisted.vendorMembershipFindFirst).not.toHaveBeenCalled();
+    expect(hoisted.reviewCreate).not.toHaveBeenCalled();
+  });
+
+  it("binds the rating to the sole assignment instead of stale primary metadata", async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({
+      id: "booking-1",
+      userId: "user-1",
+      vendorId: "vendor-1",
+      status: "COMPLETED",
+      customerMetadata: JSON.stringify({
+        vendor_job_primary_membership_id: "stale-membership",
+        vendor_job_primary_employee: "Former Employee",
+        vendor_job_assigned_membership_ids: ["membership-1"],
+        vendor_job_assigned_employees: ["Hector Rivera"],
+      }),
+    });
+    hoisted.employeeCustomerRatingCreate.mockResolvedValue({ id: "employee-rating-1", rating: 4 });
+
+    const response = await POST(reviewRequest({ employeeRating: 4 }));
+    expect(response.status).toBe(200);
+    expect(hoisted.vendorMembershipFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "membership-1", vendorId: "vendor-1" } })
+    );
+    expect(hoisted.employeeCustomerRatingCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          employeeMembershipId: "membership-1",
+          employeeNameSnapshot: "Hector Rivera",
         }),
       })
     );

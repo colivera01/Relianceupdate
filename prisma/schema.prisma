@@ -1519,17 +1519,39 @@ model Review {
   seedBatchId          String?
 
   // Relations
-  user         User          @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  vendor       Vendor        @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  booking      Booking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  mediaSession MediaSession? @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  reviewWindow ReviewWindow?
+  user                   User                            @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendor                 Vendor                          @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking                Booking?                        @relation(fields: [bookingId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  mediaSession           MediaSession?                   @relation(fields: [mediaSessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  reviewWindow           ReviewWindow?
+  employeeCustomerRating EmployeeCustomerRatingEvidence?
 
   @@index([bookingId])
   @@index([vendorId, assignedMembershipId])
   @@index([vendorId, moderationStatus])
   @@index([assignedMembershipId, moderationStatus])
   @@map("reviews")
+}
+
+model EmployeeCustomerRatingEvidence {
+  id                   String   @id @default(cuid())
+  reviewId             String   @unique
+  bookingId            String   @unique
+  vendorId             String
+  customerUserId       String
+  employeeMembershipId String
+  employeeUserId       String
+  employeeNameSnapshot String
+  rating               Int
+  evidenceVersion      Int      @default(1)
+  submittedAt          DateTime @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([vendorId, employeeMembershipId, submittedAt])
+  @@index([employeeUserId, submittedAt])
+  @@index([customerUserId, submittedAt])
+  @@map("employee_customer_rating_evidence")
 }
 
 model Device {

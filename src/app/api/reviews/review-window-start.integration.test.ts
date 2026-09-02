@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { POST as reviewWindowStartPOST } from './window/start/route';
 import { sendReviewInvitation } from '@/lib/review-notifications';
 import { getUserIdFromRequest } from '@/lib/auth';
+import { loadAuthorizedPrivateProof } from '@/lib/service-video-evidence';
 
 const hoisted = vi.hoisted(() => {
   const bookingFindUnique = vi.fn();
@@ -55,6 +56,10 @@ vi.mock('@/lib/auth', () => ({
   getUserIdFromRequest: vi.fn().mockResolvedValue('u1'),
 }));
 
+vi.mock('@/lib/service-video-evidence', () => ({
+  loadAuthorizedPrivateProof: vi.fn(),
+}));
+
 function postJson(body: Record<string, unknown>) {
   return new NextRequest('http://localhost/api/reviews/window/start', {
     method: 'POST',
@@ -79,6 +84,9 @@ describe('POST /api/reviews/window/start', () => {
     hoisted.reviewWindowUpdate.mockReset();
     vi.mocked(sendReviewInvitation).mockClear();
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue({
+      stages: [{ stage: 'COMPLETED', mediaSessionId: 'ms1' }],
+    } as any);
     hoisted.mediaAssetFindFirst.mockResolvedValue({ id: 'asset-visible' });
     hoisted.reviewFindFirst.mockResolvedValue(null);
   });
@@ -143,15 +151,11 @@ describe('POST /api/reviews/window/start', () => {
     expect(hoisted.mediaSessionFindUnique).not.toHaveBeenCalled();
   });
 
-  it('returns 409 when the selected media session is not the completed-stage service video', async () => {
+  it('returns 409 when the selected media session is not the exact approved Final Result', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
-    hoisted.mediaSessionFindUnique.mockResolvedValue({
-      id: 'ms1',
-      bookingId: 'b1',
-      vendorId: 'v1',
-      sessionType: 'JOB_SERVICE_VIDEO',
-      vendorJobVideoStage: 'INTRO',
-    });
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue({
+      stages: [{ stage: 'COMPLETED', mediaSessionId: 'ms-final' }],
+    } as any);
 
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
@@ -159,7 +163,7 @@ describe('POST /api/reviews/window/start', () => {
 
     expect(res.status).toBe(409);
     const j = await readJson(res);
-    expect(j.code).toBe('REVIEW_REQUIRES_COMPLETED_STAGE_VIDEO');
+    expect(j.code).toBe('REVIEW_PROOF_BINDING_MISMATCH');
     expect(hoisted.consentRecordFindFirst).not.toHaveBeenCalled();
   });
 
@@ -172,77 +176,51 @@ describe('POST /api/reviews/window/start', () => {
     expect(hoisted.mediaSessionFindUnique).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when media session missing', async () => {
+  it('returns 403 when no active Private Proof exists', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
-    hoisted.mediaSessionFindUnique.mockResolvedValue(null);
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue(null);
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
     );
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
     const j = await readJson(res);
-    expect(j.error).toBe('Invalid mediaSession for booking/vendor');
+    expect(j.code).toBe('REVIEW_PRIVATE_PROOF_REQUIRED');
   });
 
-  it('returns 404 when media session vendor does not match', async () => {
+  it('rejects proof that cannot be authorized for this customer', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
-    hoisted.mediaSessionFindUnique.mockResolvedValue({
-      id: 'ms1',
-      bookingId: 'b1',
-      vendorId: 'v-other',
-      sessionType: 'JOB_SERVICE_VIDEO',
-      vendorJobVideoStage: 'COMPLETED',
-    });
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue(null);
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
     );
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
-  it('returns 404 when media session bookingId does not match', async () => {
+  it('rejects proof from another booking', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
-    hoisted.mediaSessionFindUnique.mockResolvedValue({
-      id: 'ms1',
-      bookingId: 'b-other',
-      vendorId: 'v1',
-      sessionType: 'JOB_SERVICE_VIDEO',
-      vendorJobVideoStage: 'COMPLETED',
-    });
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue(null);
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
     );
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
-  it('returns 403 when video consent is not accepted', async () => {
+  it('does not require obsolete playback consent when Private Proof is active', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
-    hoisted.mediaSessionFindUnique.mockResolvedValue({
-      id: 'ms1',
-      bookingId: 'b1',
-      vendorId: 'v1',
-      sessionType: 'JOB_SERVICE_VIDEO',
-      vendorJobVideoStage: 'COMPLETED',
-    });
     hoisted.consentRecordFindFirst.mockResolvedValue(null);
+    hoisted.reviewWindowFindFirst.mockResolvedValue({
+      id: 'rw-active', bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1', status: 'active',
+    });
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
     );
-    expect(res.status).toBe(403);
-    const j = await readJson(res);
-    expect(String(j.error)).toContain('consent');
-    expect(hoisted.reviewWindowFindFirst).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(hoisted.consentRecordFindFirst).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when the completed-stage video is not customer-visible yet', async () => {
+  it('returns 403 when the approved package is not customer-visible yet', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
-    hoisted.mediaSessionFindUnique.mockResolvedValue({
-      id: 'ms1',
-      bookingId: 'b1',
-      vendorId: 'v1',
-      sessionType: 'JOB_SERVICE_VIDEO',
-      vendorJobVideoStage: 'COMPLETED',
-    });
-    hoisted.consentRecordFindFirst.mockResolvedValue({ id: 'consent-1' });
-    hoisted.mediaAssetFindFirst.mockResolvedValue(null);
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue(null);
 
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
@@ -250,7 +228,7 @@ describe('POST /api/reviews/window/start', () => {
 
     expect(res.status).toBe(403);
     const j = await readJson(res);
-    expect(j.error).toBe('Selected media session is not customer-visible');
+    expect(j.code).toBe('REVIEW_PRIVATE_PROOF_REQUIRED');
     expect(hoisted.reviewWindowFindFirst).not.toHaveBeenCalled();
   });
 
@@ -286,7 +264,7 @@ describe('POST /api/reviews/window/start', () => {
     expect(vi.mocked(sendReviewInvitation)).not.toHaveBeenCalled();
   });
 
-  it('returns 200, creates availability, and sends one invitation when created', async () => {
+  it('returns 200 and creates availability only after the customer intentionally starts review', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms1',
@@ -317,13 +295,7 @@ describe('POST /api/reviews/window/start', () => {
     expect(j.created).toBe(true);
     expect((j.reviewWindow as { id: string }).id).toBe('rw-new');
     expect(hoisted.reviewWindowCreate).toHaveBeenCalled();
-    expect(vi.mocked(sendReviewInvitation)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(sendReviewInvitation)).toHaveBeenCalledWith({
-      reviewWindowId: 'rw-new',
-      bookingId: 'b1',
-      vendorId: 'v1',
-      mediaSessionId: 'ms1',
-    });
+    expect(vi.mocked(sendReviewInvitation)).not.toHaveBeenCalled();
   });
 
   it('returns 200 when window create races with unique conflict (P2002)', async () => {
@@ -381,25 +353,18 @@ describe('POST /api/reviews/window/start', () => {
     expect(j.error).toBe('Forbidden: booking does not belong to this user');
   });
 
-  it('returns 403 when selected media is not customer-visible', async () => {
+  it('returns 403 when selected media is outside the active Private Proof', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
-    hoisted.mediaSessionFindUnique.mockResolvedValue({
-      id: 'ms1',
-      bookingId: 'b1',
-      vendorId: 'v1',
-      sessionType: 'JOB_SERVICE_VIDEO',
-      vendorJobVideoStage: 'COMPLETED',
-    });
-    hoisted.mediaAssetFindFirst.mockResolvedValue(null);
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue(null);
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
     );
     expect(res.status).toBe(403);
     const j = await readJson(res);
-    expect(j.error).toBe('Selected media session is not customer-visible');
+    expect(j.code).toBe('REVIEW_PRIVATE_PROOF_REQUIRED');
   });
 
-  it('accepts booking-level consent across different media sessions', async () => {
+  it('accepts the exact Final Result media session from the active Private Proof', async () => {
     hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
     hoisted.mediaSessionFindUnique.mockResolvedValue({
       id: 'ms-completed',
@@ -409,6 +374,9 @@ describe('POST /api/reviews/window/start', () => {
       vendorJobVideoStage: 'COMPLETED',
     });
     hoisted.consentRecordFindFirst.mockResolvedValue({ id: 'consent-booking-level' });
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue({
+      stages: [{ stage: 'COMPLETED', mediaSessionId: 'ms-completed' }],
+    } as any);
     hoisted.reviewWindowFindFirst.mockResolvedValue({
       id: 'rw-completed',
       bookingId: 'b1',

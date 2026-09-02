@@ -4,6 +4,7 @@ import { POST as createReviewPOST } from './create/route';
 import { POST as expireReviewPOST } from './window/expire/route';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { createAdminAuditLog } from '@/lib/admin-audit';
+import { loadAuthorizedPrivateProof } from '@/lib/service-video-evidence';
 
 const futureExpires = () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -16,6 +17,7 @@ const hoisted = vi.hoisted(() => {
   const vendorMembershipFindFirst = vi.fn();
   const reviewCreate = vi.fn();
   const reviewPromptEventCreate = vi.fn();
+  const employeeCustomerRatingCreate = vi.fn();
   const reviewCount = vi.fn();
   const mediaAssetFindFirst = vi.fn();
   const $transaction = vi.fn();
@@ -31,6 +33,7 @@ const hoisted = vi.hoisted(() => {
     review: { findFirst: reviewFindFirst, count: reviewCount },
     mediaAsset: { findFirst: mediaAssetFindFirst },
     reviewPromptEvent: { create: reviewPromptEventCreate },
+    employeeCustomerRatingEvidence: { create: employeeCustomerRatingCreate },
     $transaction,
   };
 
@@ -44,6 +47,7 @@ const hoisted = vi.hoisted(() => {
     vendorMembershipFindFirst,
     reviewCreate,
     reviewPromptEventCreate,
+    employeeCustomerRatingCreate,
     reviewCount,
     mediaAssetFindFirst,
     $transaction,
@@ -64,6 +68,10 @@ vi.mock('@/lib/admin-audit', () => ({
 
 vi.mock('@/lib/email-verification-enforcement', () => ({
   requireVerifiedEmailForAction: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('@/lib/service-video-evidence', () => ({
+  loadAuthorizedPrivateProof: vi.fn(),
 }));
 
 function jsonRequest(url: string, body: unknown): NextRequest {
@@ -90,9 +98,13 @@ describe('POST /api/reviews/create', () => {
     hoisted.reviewWindowUpdate.mockReset();
     hoisted.reviewWindowUpdateMany.mockReset();
     hoisted.reviewPromptEventCreate.mockReset();
+    hoisted.employeeCustomerRatingCreate.mockReset();
     hoisted.mediaAssetFindFirst.mockReset();
     hoisted.mediaAssetFindFirst.mockResolvedValue({ id: 'asset-visible' });
     vi.mocked(createAdminAuditLog).mockClear();
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue({
+      stages: [{ stage: 'COMPLETED', mediaSessionId: 'ms1' }],
+    } as any);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -177,7 +189,7 @@ describe('POST /api/reviews/create', () => {
     expect(hoisted.reviewCreate).not.toHaveBeenCalled();
   });
 
-  it('requires manager-approved customer-visible final proof at submission time', async () => {
+  it('requires an active exact Private Proof at submission time', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
     hoisted.reviewWindowFindUnique.mockResolvedValue({
       id: 'rw1',
@@ -193,7 +205,7 @@ describe('POST /api/reviews/create', () => {
       vendorId: 'v1',
       status: 'COMPLETED',
     });
-    hoisted.mediaAssetFindFirst.mockResolvedValue(null);
+    vi.mocked(loadAuthorizedPrivateProof).mockResolvedValue(null);
 
     const res = await createReviewPOST(
       jsonRequest('http://localhost/api/reviews/create', {
@@ -206,7 +218,7 @@ describe('POST /api/reviews/create', () => {
     );
 
     expect(res.status).toBe(409);
-    expect((await readJson(res)).code).toBe('REVIEW_PROOF_NOT_CUSTOMER_VISIBLE');
+    expect((await readJson(res)).code).toBe('REVIEW_PRIVATE_PROOF_REQUIRED');
     expect(hoisted.reviewCreate).not.toHaveBeenCalled();
   });
 
@@ -297,6 +309,7 @@ describe('POST /api/reviews/create', () => {
           updateMany: hoisted.reviewWindowUpdateMany,
         },
         reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
+        employeeCustomerRatingEvidence: { create: hoisted.employeeCustomerRatingCreate },
       };
       hoisted.reviewCreate.mockResolvedValue(createdReview);
       hoisted.reviewWindowUpdate.mockResolvedValue({ id: 'rw1', status: 'submitted' });
@@ -352,7 +365,7 @@ describe('POST /api/reviews/create', () => {
     );
   });
 
-  it('creates review with primary assigned employee attribution from booking metadata', async () => {
+  it('creates a separate employee rating bound to the primary assigned employee', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-a');
     hoisted.reviewWindowFindUnique.mockResolvedValue({
       id: 'rw1',
@@ -368,8 +381,8 @@ describe('POST /api/reviews/create', () => {
       vendorId: 'v1',
       status: 'COMPLETED',
       customerMetadata: JSON.stringify({
-        vendor_job_assigned_membership_ids: ['membership-1', 'membership-2'],
-        vendor_job_assigned_employees: ['Tech One', 'Tech Two'],
+        vendor_job_assigned_membership_ids: ['membership-2'],
+        vendor_job_assigned_employees: ['Tech Two'],
         vendor_job_primary_membership_id: 'membership-2',
         vendor_job_primary_employee: 'Tech Two',
       }),
@@ -388,11 +401,13 @@ describe('POST /api/reviews/create', () => {
           updateMany: hoisted.reviewWindowUpdateMany,
         },
         reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
+        employeeCustomerRatingEvidence: { create: hoisted.employeeCustomerRatingCreate },
       };
       hoisted.reviewCreate.mockResolvedValue({ id: 'rev-attr' });
       hoisted.reviewWindowUpdate.mockResolvedValue({ id: 'rw1', status: 'submitted' });
       hoisted.reviewWindowUpdateMany.mockResolvedValue({ count: 0 });
       hoisted.reviewPromptEventCreate.mockResolvedValue({});
+      hoisted.employeeCustomerRatingCreate.mockResolvedValue({ id: 'employee-rating-1', rating: 3 });
       return fn(tx);
     });
 
@@ -403,7 +418,7 @@ describe('POST /api/reviews/create', () => {
         vendorId: 'v1',
         rating: 5,
         submittedVia: 'video_overlay',
-        reviewAttributionTarget: 'assigned_team',
+        employeeRating: 3,
       })
     );
     expect(res.status).toBe(200);
@@ -413,7 +428,21 @@ describe('POST /api/reviews/create', () => {
           assignedMembershipId: 'membership-2',
           assignedEmployeeName: 'Tech Two',
           assignedUserId: 'employee-user-1',
-          attributionVersion: 2,
+          attributionVersion: 3,
+        }),
+      })
+    );
+    expect(hoisted.employeeCustomerRatingCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          reviewId: 'rev-attr',
+          bookingId: 'b1',
+          vendorId: 'v1',
+          customerUserId: 'customer-a',
+          employeeMembershipId: 'membership-2',
+          employeeUserId: 'employee-user-1',
+          employeeNameSnapshot: 'Tech Two',
+          rating: 3,
         }),
       })
     );
@@ -446,6 +475,7 @@ describe('POST /api/reviews/create', () => {
           updateMany: hoisted.reviewWindowUpdateMany,
         },
         reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
+        employeeCustomerRatingEvidence: { create: hoisted.employeeCustomerRatingCreate },
       };
       hoisted.reviewCreate.mockResolvedValue({ id: 'rev-no-assignee' });
       hoisted.reviewWindowUpdate.mockResolvedValue({ id: 'rw1', status: 'submitted' });
@@ -470,7 +500,7 @@ describe('POST /api/reviews/create', () => {
           assignedMembershipId: null,
           assignedEmployeeName: null,
           assignedUserId: null,
-          attributionVersion: 2,
+          attributionVersion: 3,
         }),
       })
     );
@@ -502,6 +532,7 @@ describe('POST /api/reviews/create', () => {
           updateMany: hoisted.reviewWindowUpdateMany,
         },
         reviewPromptEvent: { create: hoisted.reviewPromptEventCreate },
+        employeeCustomerRatingEvidence: { create: hoisted.employeeCustomerRatingCreate },
       };
       hoisted.reviewCreate.mockRejectedValue({ code: 'P2002', message: 'Unique constraint failed' });
       return fn(tx);

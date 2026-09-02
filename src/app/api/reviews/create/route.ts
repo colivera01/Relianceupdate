@@ -14,10 +14,9 @@ import { parseAssignmentMetadata } from '@/lib/job-assignment';
 import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcement';
 import {
   normalizeReviewAttributionTarget,
-  shouldAttributeReviewToAssignedTeam,
 } from '@/lib/review-attribution-intent';
-import { getVisibilityStatusesForAudience } from '@/lib/media-visibility';
 import { isCompletedStatus, normalizeBookingStatusKey } from '@/lib/my-bookings';
+import { loadAuthorizedPrivateProof } from '@/lib/service-video-evidence';
 
 export async function POST(request: NextRequest) {
   let step = 'parse_request';
@@ -46,8 +45,9 @@ export async function POST(request: NextRequest) {
     const rating = Number(body?.rating);
     const comment = String(body?.comment || '').trim();
     const submittedVia = String(body?.submittedVia || '').trim();
+    const employeeRatingProvided = body?.employeeRating !== undefined && body?.employeeRating !== null && body?.employeeRating !== '';
+    const employeeRating = employeeRatingProvided ? Number(body.employeeRating) : null;
     const reviewAttributionTarget = normalizeReviewAttributionTarget(body?.reviewAttributionTarget);
-    const shouldAttributeToTeam = shouldAttributeReviewToAssignedTeam(reviewAttributionTarget);
     debug = {
       reviewWindowId,
       bookingId,
@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
       rating,
       submittedVia,
       reviewAttributionTarget,
+      employeeRating,
     };
 
     if (!reviewWindowId || !bookingId || !vendorId || !Number.isFinite(rating)) {
@@ -68,6 +69,15 @@ export async function POST(request: NextRequest) {
     await ensureVendorAccountCanOperate(vendorId);
     if (rating < 1 || rating > 5) {
       return NextResponse.json({ success: false, error: 'rating must be between 1 and 5' }, { status: 400 });
+    }
+    if (
+      employeeRatingProvided &&
+      (!Number.isInteger(employeeRating) || Number(employeeRating) < 1 || Number(employeeRating) > 5)
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'employeeRating must be an integer between 1 and 5' },
+        { status: 400 }
+      );
     }
     if (!isValidSubmittedVia(submittedVia)) {
       return NextResponse.json({ success: false, error: 'Invalid submittedVia' }, { status: 400 });
@@ -134,29 +144,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    step = 'customer_visible_final_proof_check';
-    const customerVisibleFinalProof = await (prisma as any).mediaAsset.findFirst({
-      where: {
-        mediaSessionId: windowMediaSessionId,
-        deletedAt: null,
-        moderationStatus: 'approved',
-        archiveStatus: 'active',
-        visibilityStatus: { in: getVisibilityStatusesForAudience('customer') },
-        mediaSession: {
-          bookingId,
-          vendorId,
-          sessionType: 'JOB_SERVICE_VIDEO',
-          vendorJobVideoStage: 'COMPLETED',
-        },
-      },
-      select: { id: true },
+    step = 'authorized_private_proof_check';
+    const privateProof = await loadAuthorizedPrivateProof({
+      bookingId,
+      customerUserId: String(userId),
     });
-    if (!customerVisibleFinalProof) {
+    const finalStage = privateProof?.stages.find(
+      (stage: any) => String(stage.stage || '').toUpperCase() === 'COMPLETED'
+    );
+    if (!privateProof || !finalStage || String(finalStage.mediaSessionId || '') !== windowMediaSessionId) {
       return NextResponse.json(
         {
           success: false,
-          error: 'An approved customer-visible final service video is required before reviewing',
-          code: 'REVIEW_PROOF_NOT_CUSTOMER_VISIBLE',
+          error: 'An active approved Private Proof is required before reviewing',
+          code: 'REVIEW_PRIVATE_PROOF_REQUIRED',
         },
         { status: 409 }
       );
@@ -182,14 +183,28 @@ export async function POST(request: NextRequest) {
     const assignmentMetadata = parseAssignmentMetadata(booking.customerMetadata);
     const assignedMembershipIds = assignmentMetadata.assignedMembershipIds;
     const assignedEmployees = assignmentMetadata.assignedEmployees;
-    const resolvedAssignedMembershipId =
-      String(assignmentMetadata.primaryMembershipId || '').trim() ||
-      (assignedMembershipIds.length > 0 ? String(assignedMembershipIds[0] || '').trim() : '');
-    const assignedMembershipId = shouldAttributeToTeam ? resolvedAssignedMembershipId : '';
+    if (employeeRatingProvided && assignedMembershipIds.length !== 1) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Employee rating is available only when one service professional is assigned',
+          code: 'EMPLOYEE_RATING_ASSIGNMENT_AMBIGUOUS',
+        },
+        { status: 409 }
+      );
+    }
+    const assignedMembershipId = employeeRatingProvided
+      ? String(assignedMembershipIds[0] || '').trim()
+      : '';
+    const assignedMembershipIndex = assignedMembershipIds.findIndex(
+      (membershipId) => String(membershipId) === assignedMembershipId
+    );
     let assignedEmployeeName =
-      shouldAttributeToTeam
-        ? String(assignmentMetadata.primaryEmployeeName || '').trim() ||
-          (assignedEmployees.length > 0 ? String(assignedEmployees[0] || '').trim() : '')
+      employeeRatingProvided
+        ? String(assignedEmployees[assignedMembershipIndex] || '').trim() ||
+          (String(assignmentMetadata.primaryMembershipId || '').trim() === assignedMembershipId
+            ? String(assignmentMetadata.primaryEmployeeName || '').trim()
+            : '')
         : '';
     let assignedUserId: string | null = null;
     if (assignedMembershipId) {
@@ -206,6 +221,16 @@ export async function POST(request: NextRequest) {
         const fallbackEmail = String(membership?.user?.email || '').trim();
         assignedEmployeeName = fallbackName || fallbackEmail;
       }
+    }
+    if (employeeRatingProvided && (!assignedMembershipId || !assignedUserId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'The assigned service professional could not be verified for this work record',
+          code: 'EMPLOYEE_RATING_ASSIGNMENT_UNAVAILABLE',
+        },
+        { status: 409 }
+      );
     }
 
     step = 'create_review_transaction';
@@ -224,12 +249,28 @@ export async function POST(request: NextRequest) {
           assignedMembershipId: assignedMembershipId || null,
           assignedEmployeeName: assignedEmployeeName || null,
           assignedUserId: assignedUserId || null,
-          attributionVersion: 2,
+          attributionVersion: 3,
           moderationStatus: 'pending_review',
           visibilityStatus: 'private',
           date: new Date(),
         },
       });
+
+      const employeeCustomerRating = employeeRatingProvided
+        ? await (tx as any).employeeCustomerRatingEvidence.create({
+            data: {
+              reviewId: review.id,
+              bookingId,
+              vendorId,
+              customerUserId: String(userId),
+              employeeMembershipId: assignedMembershipId,
+              employeeUserId: String(assignedUserId),
+              employeeNameSnapshot: assignedEmployeeName,
+              rating: Number(employeeRating),
+              evidenceVersion: 1,
+            },
+          })
+        : null;
 
       await (tx as any).reviewWindow.update({
         where: { id: reviewWindowId },
@@ -256,18 +297,19 @@ export async function POST(request: NextRequest) {
             rating,
             submittedVia,
             reviewAttributionTarget,
-            employeeAttributionApplied: Boolean(assignedMembershipId),
+            employeeRatingProvided,
+            employeeRatingEvidenceId: employeeCustomerRating?.id || null,
           }),
         },
       });
-      return review;
+      return { review, employeeCustomerRating };
     });
 
     step = 'admin_audit_log';
     await createAdminAuditLog({
       actionType: 'review_capture_submitted',
       entityType: 'review',
-      entityId: created.id,
+      entityId: created.review.id,
       actorUserId: String(userId),
       metadata: {
         bookingId,
@@ -275,7 +317,8 @@ export async function POST(request: NextRequest) {
         reviewWindowId,
         submittedVia,
         reviewAttributionTarget,
-        employeeAttributionApplied: Boolean(assignedMembershipId),
+        employeeRatingProvided,
+        employeeRatingEvidenceId: created.employeeCustomerRating?.id || null,
       },
     });
 
@@ -286,14 +329,15 @@ export async function POST(request: NextRequest) {
         title: 'Customer review waiting for moderation',
         message: `A customer submitted a ${rating}-star review that needs admin review before public visibility.`,
         metadata: {
-          reviewId: created.id,
+          reviewId: created.review.id,
           bookingId,
           vendorId,
           reviewWindowId,
           rating,
           submittedVia,
           reviewAttributionTarget,
-          employeeAttributionApplied: Boolean(assignedMembershipId),
+          employeeRatingProvided,
+          employeeRatingEvidenceId: created.employeeCustomerRating?.id || null,
         },
         surfaceHref: '/admin/reviews',
         baseUrl: request.nextUrl.origin,
@@ -305,7 +349,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      review: created,
+      review: created.review,
+      employeeCustomerRating: created.employeeCustomerRating,
       reviewWindowId,
       links: {
         bookingId,
