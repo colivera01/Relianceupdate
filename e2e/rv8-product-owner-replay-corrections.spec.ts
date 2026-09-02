@@ -118,6 +118,66 @@ const canceledJob = {
   },
 };
 
+const passedAuditJob = {
+  ...releasedJob,
+  id: "rv8-admin-pass-job",
+  title: "Admin passed Private Proof",
+  status: "COMPLETED",
+  operationalPhase: "COMPLETED",
+  uploadedVideoStages: ["INTRO", "IN_PROGRESS", "COMPLETED"],
+  serviceVideoPackage: {
+    id: "rv8-package-pass",
+    version: 1,
+    status: "PRIVATE_APPROVED",
+  },
+  adminAuditDecision: {
+    decision: "PASS",
+    decidedAt: "2026-08-16T16:00:00.000Z",
+    packageVersion: 1,
+  },
+};
+
+const rejectedAuditJob = {
+  ...passedAuditJob,
+  id: "rv8-admin-reject-job",
+  title: "Admin rejected package",
+  status: "REJECTED",
+  operationalPhase: "REJECTED",
+  serviceVideoPackage: {
+    id: "rv8-package-reject",
+    version: 1,
+    status: "ADMIN_REJECTED",
+  },
+  adminAuditDecision: {
+    decision: "REJECT",
+    rejectionCategory: "PRIVACY_OR_SCOPE",
+    reason: "Recording exceeded the approved scope.",
+    decidedAt: "2026-08-16T16:00:00.000Z",
+    packageVersion: 1,
+  },
+};
+
+const genericCompletedJob = {
+  ...passedAuditJob,
+  id: "rv8-generic-completed-job",
+  title: "Generic completed work",
+  serviceVideoPackage: null,
+  adminAuditDecision: null,
+};
+
+const pendingAdminAuditJob = {
+  ...passedAuditJob,
+  id: "rv8-admin-pending-job",
+  title: "Pending Reliance Audit",
+  operationalPhase: "AWAITING_ADMIN_REVIEW",
+  serviceVideoPackage: {
+    id: "rv8-package-pending",
+    version: 1,
+    status: "AWAITING_ADMIN_REVIEW",
+  },
+  adminAuditDecision: null,
+};
+
 async function installVendorFixture(
   page: Page,
   jobs: any[],
@@ -306,7 +366,10 @@ async function openVendorJobs(page: Page) {
     .then(() => true)
     .catch(() => false);
   if (guideOpened) {
-    await workflowGuide.getByRole("button", { name: "Got it" }).click();
+    await workflowGuide
+      .getByRole("button", { name: "Got it" })
+      .click({ timeout: 5_000 })
+      .catch(() => undefined);
   }
 }
 
@@ -459,6 +522,49 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(actionsMenu.getByRole("button", { name: "Privacy & Governance" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Submit to Reliance Audit" })).toHaveCount(0);
     await expect(actionsMenu.getByRole("button", { name: "Request Changes" })).toHaveCount(0);
+  });
+
+  test("renders canonical Admin PASS and requires approved evidence for the Private Proof filter", async ({ page }) => {
+    await installVendorFixture(page, [passedAuditJob, genericCompletedJob]);
+    await openVendorJobs(page);
+
+    const passedCard = page.getByTestId(`vendor-job-card-${passedAuditJob.id}`);
+    await expect(passedCard.getByLabel("Work record progress")).toContainText("Reliance Audit Passed");
+    await expect(passedCard.getByLabel("Work record progress")).toContainText("No participant needs to act");
+    await expect(passedCard.getByLabel("Work record progress")).toContainText("read-only evidence");
+    await passedCard.getByRole("button", { name: "Actions" }).click();
+    await expect(page.getByRole("menu").getByRole("button", { name: "View Details" })).toBeVisible();
+    await expect(page.getByRole("menu").getByRole("button", { name: "Archive Job" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: /Private Proof/ }).click();
+    await expect(page.getByText(passedAuditJob.title, { exact: true })).toBeVisible();
+    await expect(page.getByText(genericCompletedJob.title, { exact: true })).toHaveCount(0);
+
+    await page.getByRole("button", { name: /Active Work/ }).click();
+    await expect(page.getByText(genericCompletedJob.title, { exact: true })).toBeVisible();
+    await expect(page.getByText(passedAuditJob.title, { exact: true })).toHaveCount(0);
+  });
+
+  test("renders terminal Admin REJECT without exposing Archive Job", async ({ page }) => {
+    await installVendorFixture(page, [rejectedAuditJob]);
+    await openVendorJobs(page);
+
+    const rejectedCard = page.getByTestId(`vendor-job-card-${rejectedAuditJob.id}`);
+    await expect(rejectedCard.getByLabel("Work record progress")).toContainText("Reliance Audit Failed");
+    await expect(rejectedCard.getByLabel("Work record progress")).toContainText("No participant needs to act");
+    await rejectedCard.getByRole("button", { name: "Actions" }).click();
+    await expect(page.getByRole("menu").getByRole("button", { name: "View Details" })).toBeVisible();
+    await expect(page.getByRole("menu").getByRole("button", { name: "Archive Job" })).toHaveCount(0);
+  });
+
+  test("keeps only an actionable package in the Reliance Audit filter", async ({ page }) => {
+    await installVendorFixture(page, [pendingAdminAuditJob, passedAuditJob, rejectedAuditJob]);
+    await openVendorJobs(page);
+
+    await page.getByRole("button", { name: /Reliance Audit/ }).click();
+    await expect(page.getByText(pendingAdminAuditJob.title, { exact: true })).toBeVisible();
+    await expect(page.getByText(passedAuditJob.title, { exact: true })).toHaveCount(0);
+    await expect(page.getByText(rejectedAuditJob.title, { exact: true })).toHaveCount(0);
   });
 
   test("does not expose the manager governance entry to an Employee", async ({ page }) => {

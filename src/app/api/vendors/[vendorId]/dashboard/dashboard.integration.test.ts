@@ -433,6 +433,55 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(body.publicServiceOrderCount).toBe(0);
   });
 
+  it("returns the current package and terminal Admin decision needed by Manage Jobs cards", async () => {
+    mockHappyPathData();
+    hoisted.serviceVideoPackageEvidenceFindMany.mockResolvedValue([
+      {
+        id: "package-pass",
+        bookingId: "job-1",
+        vendorId: "v1",
+        version: 2,
+        isCurrent: true,
+        status: "PRIVATE_APPROVED",
+        adminAuditDecisionId: "audit-pass",
+      },
+    ]);
+    hoisted.serviceVideoAdminAuditDecisionEvidenceFindMany.mockResolvedValue([
+      {
+        id: "audit-pass",
+        decision: "PASS",
+        rejectionCategory: null,
+        reason: null,
+        decidedAt: new Date("2026-04-15T13:00:00.000Z"),
+        packageId: "package-pass",
+        packageVersion: 2,
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard?jobsOnly=1", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    const body = await readJson(res);
+
+    expect(res.status).toBe(200);
+    expect(body.recentJobs).toEqual([
+      expect.objectContaining({
+        id: "job-1",
+        serviceVideoPackage: {
+          id: "package-pass",
+          version: 2,
+          status: "PRIVATE_APPROVED",
+        },
+        adminAuditDecision: expect.objectContaining({
+          decision: "PASS",
+          packageVersion: 2,
+        }),
+      }),
+    ]);
+  });
+
   it("reports awaiting-review lifecycle counts from actual booking status instead of inferring from reviews", async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue("user-1");
     vi.mocked(getVendorMembership).mockResolvedValue({

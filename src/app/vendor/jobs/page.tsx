@@ -9,6 +9,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput';
 import { mergeAuthoritativeVendorJobState } from '@/lib/vendor-job-client-state';
+import {
+  canExposeVendorJobArchiveAction,
+  getVendorJobWorkflowBucket as getJobWorkflowBucket,
+  isTerminalAdminAuditJob,
+  preserveVendorDashboardCanonicalEvidence,
+} from '@/lib/vendor-job-card-state';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Search, Filter, Trash2, Info, Video, Upload, X, MapPin, Shield, AlertTriangle, Edit, Users, Clock, CheckCircle, Calendar, ChevronDown, ChevronLeft, ChevronRight, Eye, HardDrive, Sparkles } from 'lucide-react';
@@ -2260,6 +2266,7 @@ export default function VendorJobs() {
       recordingCompliance: job?.recordingCompliance || null,
       consentNotification: job?.consentNotification || null,
       cancellation: job?.cancellation || null,
+      ...preserveVendorDashboardCanonicalEvidence(job),
       archivedAt: status === 'archived' ? (job?.date || new Date().toISOString()) : null,
       archiveReason: status === 'archived' ? 'Archived job' : '',
     };
@@ -2645,22 +2652,6 @@ export default function VendorJobs() {
       cancelled = true;
     };
   }, [jobs, jobsLoading, consentStatusByBookingId]);
-
-  const getJobWorkflowBucket = (job: any) => {
-    const phase = String(job?.operationalPhase || '').trim().toUpperCase();
-    const status = String(job?.status || '').trim().toLowerCase();
-    if (phase === 'REJECTED' || status === 'rejected' || jobHasRejectedMedia(job)) return 'rejected';
-    if (status === 'canceled' || status === 'cancelled') return 'canceled';
-    if (phase === 'AWAITING_ADMIN_REVIEW') return 'moderator_review';
-    if (phase === 'COMPLETED' || status === 'completed') {
-      const hasPublicMedia = getJobVideos(job).some(
-        (video: any) => String(video?.visibilityStatus || '').trim().toLowerCase() === 'public'
-      );
-      return hasPublicMedia ? 'public_approved' : 'private_complete';
-    }
-    if (phase === 'AWAITING_VENDOR_REVIEW' || status === 'awaiting_review' || status === 'awaiting review') return 'manager_review';
-    return 'active';
-  };
 
   const workflowTabs = [
     { value: 'all', label: 'All' },
@@ -8065,6 +8056,7 @@ export default function VendorJobs() {
             {filteredJobs.map(job => (
           <Card
             key={job.id}
+            data-testid={`vendor-job-card-${job.id}`}
             className="cursor-pointer select-none transition-all hover:shadow-md hover:border-blue-200"
             onClick={(event) => handleJobCardClick(event, job)}
           >
@@ -8426,7 +8418,21 @@ export default function VendorJobs() {
                                CONSENT_STATE.DELIVERY_FAILED,
                                CONSENT_STATE.WRONG_RECIPIENT,
                                CONSENT_STATE.NO_DIGITAL_CHANNEL,
-                             ].includes(permissionState as any);
+                              ].includes(permissionState as any);
+
+                          if (isTerminalAdminAuditJob(job)) {
+                            return (
+                              <button
+                                className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
+                                onClick={() => {
+                                  openJobDetails(job);
+                                  setActiveJobActionMenuId(null);
+                                }}
+                              >
+                                View Details
+                              </button>
+                            );
+                          }
 
                           if (isCompleted) {
                             return (
@@ -8440,7 +8446,7 @@ export default function VendorJobs() {
                                 >
                                   View Details
                                 </button>
-                                {!job.adminAuditDecision ? (
+                                {canExposeVendorJobArchiveAction(job) ? (
                                   <button
                                     className="w-full px-3 py-2.5 text-left text-sm text-slate-100 transition hover:bg-blue-500/15 hover:text-white"
                                     onClick={() => {
