@@ -48,11 +48,16 @@ export async function GET(request: Request, context: Context) {
     const { id } = await context.params;
     const access = await authorize(request, id);
     const visibility = await loadPackageVisibilityView({ bookingId: id });
+    const roleVisibility = visibility && !access.admin
+      ? { ...visibility, publicDisplayReason: null }
+      : visibility;
     return NextResponse.json({
       success: true,
       role: access.customer ? "CUSTOMER" : access.manager ? "VENDOR_MANAGER" : "ADMIN",
-      canDecide: access.customer && visibility?.auditPassed === true,
-      visibility,
+      canDecide: access.customer &&
+        visibility?.auditPassed === true &&
+        visibility?.publicDisplayEligibility !== "PRIVATE_ONLY",
+      visibility: roleVisibility,
     });
   } catch (error) {
     return failure(error);
@@ -66,7 +71,7 @@ export async function POST(request: Request, context: Context) {
     if (!access.customer) {
       throw new AuthorizationError(
         "FORBIDDEN",
-        "Only the customer may decide whether the complete approved Service Video enters Public review.",
+        "Only the customer may control Public visibility for the complete approved Service Video.",
         403,
       );
     }

@@ -15,6 +15,7 @@ import {
 } from "@/lib/service-video-admin-audit-notifications";
 import { isCoreAdminAuditRejectionCategory } from "@/lib/core-admin-audit-categories";
 import {
+  CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY,
   CoreAdminAuditError,
   decideCoreServiceVideoAdminAudit,
 } from "@/lib/service-video-admin-audit";
@@ -50,6 +51,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     const decision = rawAction === "APPROVE" ? "PASS" : rawAction;
     const rejectionCategory = String(body?.rejectionCategory || "").trim();
     const reason = String(body?.reason || body?.moderationReason || "").trim();
+    const publicDisplayEligibility = String(body?.publicDisplayEligibility || "").trim().toUpperCase();
+    const publicDisplayReason = String(body?.publicDisplayReason || "").trim();
     if (decision !== "PASS" && decision !== "REJECT") {
       return NextResponse.json(
         { success: false, error: "Admin audit requires PASS or REJECT." },
@@ -68,6 +71,25 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         { status: 422 },
       );
     }
+    if (
+      decision === "PASS" &&
+      !Object.values(CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY).includes(publicDisplayEligibility as any)
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Choose whether the exact package is eligible for Public display." },
+        { status: 422 },
+      );
+    }
+    if (
+      decision === "PASS" &&
+      publicDisplayEligibility === CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY.PRIVATE_ONLY &&
+      !publicDisplayReason
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Explain why this package is available only as Private Proof." },
+        { status: 422 },
+      );
+    }
 
     const result = await decideCoreServiceVideoAdminAudit({
       bookingId,
@@ -76,6 +98,8 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       decision,
       rejectionCategory,
       reason,
+      publicDisplayEligibility: decision === "PASS" ? publicDisplayEligibility as any : null,
+      publicDisplayReason: decision === "PASS" ? publicDisplayReason : null,
     });
 
     const booking = await (prisma as any).booking.findUnique({
@@ -175,6 +199,7 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       packageId: result.package.id,
       packageVersion: result.package.version,
       customerProofReleased: decision === "PASS",
+      publicDisplayEligibility: result.decision.publicDisplayEligibility || null,
       notification,
       vendorNotification,
       message: decision === "PASS"

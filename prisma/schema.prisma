@@ -882,32 +882,38 @@ model ServiceVideoManagerDecisionEvidence {
 }
 
 model ServiceVideoAdminAuditDecisionEvidence {
-  id                     String   @id @default(cuid())
-  bookingId              String
-  vendorId               String
-  packageId              String   @unique
-  packageVersion         Int
-  packageHash            String
-  stageEvidenceJson      String   @db.NVarChar(Max)
-  managerDecisionId      String
-  adminUserId            String
-  adminRole              String   @default("ADMIN")
-  decision               String
-  rejectionCategory      String?
-  reason                 String?  @db.NVarChar(Max)
-  decisionHash           String
-  evidenceVersion        Int      @default(1)
-  customerProofReleased  Boolean  @default(false)
-  customerAccessGrantId  String?
-  customerNotificationId String?
-  decidedAt              DateTime @default(now())
-  createdAt              DateTime @default(now())
+  id                               String   @id @default(cuid())
+  bookingId                        String
+  vendorId                         String
+  packageId                        String   @unique
+  packageVersion                   Int
+  packageHash                      String
+  stageEvidenceJson                String   @db.NVarChar(Max)
+  managerDecisionId                String
+  adminUserId                      String
+  adminRole                        String   @default("ADMIN")
+  decision                         String
+  rejectionCategory                String?
+  reason                           String?  @db.NVarChar(Max)
+  decisionHash                     String
+  evidenceVersion                  Int      @default(1)
+  customerProofReleased            Boolean  @default(false)
+  customerAccessGrantId            String?
+  customerNotificationId           String?
+  publicDisplayEligibility         String?
+  publicDisplayReason              String?  @db.NVarChar(Max)
+  publicEligibilityHash            String?
+  publicEligibilityEvidenceVersion Int?
+  decidedAt                        DateTime @default(now())
+  createdAt                        DateTime @default(now())
 
   @@index([bookingId, decidedAt])
   @@index([vendorId, decision, decidedAt])
   @@index([managerDecisionId])
   @@index([packageHash])
   @@index([decisionHash])
+  @@index([publicDisplayEligibility, decidedAt])
+  @@index([publicEligibilityHash])
   @@map("service_video_admin_audit_decision_evidence")
 }
 

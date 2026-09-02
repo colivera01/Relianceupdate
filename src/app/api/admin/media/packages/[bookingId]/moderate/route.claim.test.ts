@@ -68,7 +68,10 @@ describe("core Admin Service Video audit route", () => {
     const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "PASS" }),
+      body: JSON.stringify({
+        action: "PASS",
+        publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
+      }),
     }), { params: Promise.resolve({ bookingId: "b1" }) });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ decision: "PASS", customerProofReleased: true });
@@ -107,7 +110,10 @@ describe("core Admin Service Video audit route", () => {
       new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "PASS" }),
+        body: JSON.stringify({
+          action: "PASS",
+          publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
+        }),
       }),
       { params: Promise.resolve({ bookingId: "b1" }) },
     );
@@ -123,6 +129,17 @@ describe("core Admin Service Video audit route", () => {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "REJECT", reason: "Not verifiable" }),
+    }), { params: Promise.resolve({ bookingId: "b1" }) });
+    expect(response.status).toBe(422);
+    expect(hoisted.decide).not.toHaveBeenCalled();
+  });
+
+  it("requires a Public-display eligibility outcome for PASS", async () => {
+    const { PATCH } = await import("./route");
+    const response = await PATCH(new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "PASS" }),
     }), { params: Promise.resolve({ bookingId: "b1" }) });
     expect(response.status).toBe(422);
     expect(hoisted.decide).not.toHaveBeenCalled();

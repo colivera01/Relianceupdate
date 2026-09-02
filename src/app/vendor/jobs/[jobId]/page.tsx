@@ -569,8 +569,9 @@ export default function VendorJobDetailPage() {
       events.push(`Customer kept Private: ${formatDateTimeUtc(job.packageVisibility.decidedAt)}`);
     } else if (job?.packageVisibility?.decision === "SHARE_PUBLICLY") {
       events.push(`Customer authorized Public sharing: ${formatDateTimeUtc(job.packageVisibility.decidedAt)}`);
-      if (job.packageVisibility.state === "PUBLIC_REVIEW_PENDING") events.push("Public review pending");
-      if (job.packageVisibility.state === "PUBLIC") events.push("Public approved");
+      if (job.packageVisibility.state === "PUBLIC_WAITING_PERMISSION") events.push("Waiting for Public-sharing permission");
+      if (job.packageVisibility.state === "PUBLIC_REVIEW_PENDING") events.push("Historical Public processing pending");
+      if (job.packageVisibility.state === "PUBLIC") events.push("Service Video became Public");
     }
     if (normalizedStatus === "CANCELED") {
       const actor = String(job?.cancellation?.canceledBy || "Vendor manager").trim();

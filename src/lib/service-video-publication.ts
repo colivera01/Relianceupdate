@@ -27,7 +27,11 @@ export const PACKAGE_VISIBILITY_DECISIONS = {
 } as const;
 
 const PACKAGE_VISIBILITY_CONTRACT_VERSION = 2;
+const IMMEDIATE_PUBLICATION_CONTRACT_VERSION = 3;
 const PACKAGE_VISIBILITY_AUTHORIZATION_MODEL = "CUSTOMER_COMPLETE_PACKAGE";
+const IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL = "CUSTOMER_COMPLETE_PACKAGE_IMMEDIATE_PUBLICATION";
+const PUBLIC_DISPLAY_ELIGIBLE = "PUBLIC_DISPLAY_ELIGIBLE";
+const PRIVATE_ONLY = "PRIVATE_ONLY";
 
 export type PublicationStageInput = {
   stage: ServiceVideoStage;
@@ -90,7 +94,44 @@ function assessmentContainsProtectedNonParticipant(assessment: {
 
 function isPackageVisibilityProposal(proposal: any): boolean {
   return Number(proposal?.contractVersion || 1) >= PACKAGE_VISIBILITY_CONTRACT_VERSION &&
-    String(proposal?.authorizationModel || "") === PACKAGE_VISIBILITY_AUTHORIZATION_MODEL;
+    [PACKAGE_VISIBILITY_AUTHORIZATION_MODEL, IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL].includes(
+      String(proposal?.authorizationModel || ""),
+    );
+}
+
+function isImmediatePublicationProposal(proposal: any): boolean {
+  return Number(proposal?.contractVersion || 1) >= IMMEDIATE_PUBLICATION_CONTRACT_VERSION &&
+    String(proposal?.authorizationModel || "") === IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL;
+}
+
+function isImmediatePublicationAudit(adminDecision: any): boolean {
+  if (!(String(adminDecision?.decision || "").toUpperCase() === "PASS" &&
+    Number(adminDecision?.evidenceVersion || 0) >= 2 &&
+    Number(adminDecision?.publicEligibilityEvidenceVersion || 0) >= 1 &&
+    Boolean(String(adminDecision?.publicEligibilityHash || "").trim()) &&
+    [PUBLIC_DISPLAY_ELIGIBLE, PRIVATE_ONLY].includes(
+      String(adminDecision?.publicDisplayEligibility || "").toUpperCase(),
+    ))) return false;
+  const stages = parseJson<ExactPackageStage[]>(adminDecision.stageEvidenceJson, []);
+  const decidedAt = new Date(adminDecision.decidedAt);
+  if (stages.length !== REQUIRED_SERVICE_VIDEO_STAGES.length || Number.isNaN(decidedAt.getTime())) return false;
+  const evidenceDocument = {
+    evidenceVersion: Number(adminDecision.publicEligibilityEvidenceVersion),
+    bookingId: adminDecision.bookingId,
+    vendorId: adminDecision.vendorId,
+    packageId: adminDecision.packageId,
+    packageVersion: adminDecision.packageVersion,
+    packageHash: adminDecision.packageHash,
+    stageEvidence: REQUIRED_SERVICE_VIDEO_STAGES.map(
+      (stage) => stages.find((candidate) => candidate.stage === stage),
+    ),
+    adminUserId: adminDecision.adminUserId,
+    eligibility: String(adminDecision.publicDisplayEligibility).toUpperCase(),
+    reason: adminDecision.publicDisplayReason || null,
+    decidedAt: decidedAt.toISOString(),
+  };
+  return !evidenceDocument.stageEvidence.includes(undefined) &&
+    sha256(stableJson(evidenceDocument)) === adminDecision.publicEligibilityHash;
 }
 
 function exactPackageStageSetHash(packageStages: ExactPackageStage[]): string {
@@ -323,10 +364,21 @@ export async function decidePackageVisibility(input: {
       foundation.adminAuditDecision.customerProofReleased !== true) {
       throw new Error("PACKAGE_VISIBILITY_CORE_ADMIN_PASS_REQUIRED");
     }
+    const immediatePublicationContract = isImmediatePublicationAudit(foundation.adminAuditDecision);
+    const publicDisplayEligibility = String(
+      foundation.adminAuditDecision.publicDisplayEligibility || "",
+    ).toUpperCase();
     if (foundation.booking.userId !== input.customerUserId) {
       throw new Error("PACKAGE_VISIBILITY_CUSTOMER_FORBIDDEN");
     }
     const packageIncludesAudio = Boolean(foundation.package.audioExpected);
+    if (
+      decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY &&
+      immediatePublicationContract &&
+      publicDisplayEligibility === PRIVATE_ONLY
+    ) {
+      throw new Error("PUBLICATION_PUBLIC_DISPLAY_INELIGIBLE");
+    }
     if (
       decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY &&
       packageIncludesAudio &&
@@ -348,7 +400,14 @@ export async function decidePackageVisibility(input: {
       const proposal = existing.publicationProposalId
         ? await tx.serviceVideoPublicationProposal.findUnique({ where: { id: existing.publicationProposalId } })
         : null;
-      return { decision: existing, proposal, idempotent: true };
+      if (
+        decision !== PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY ||
+        ![PUBLICATION_STATUSES.DECLINED_PRIVATE, PUBLICATION_STATUSES.SUPERSEDED].includes(
+          String(proposal?.status || "") as any,
+        )
+      ) {
+        return { decision: existing, proposal, idempotent: true };
+      }
     }
 
     const latest = await tx.serviceVideoPackageVisibilityDecision.findFirst({
@@ -358,7 +417,9 @@ export async function decidePackageVisibility(input: {
     await supersedeCurrentPublicAuthorization(tx, input.bookingId);
     const version = Number(latest?.version || 0) + 1;
     const evidenceDocument = {
-      evidenceVersion: PACKAGE_VISIBILITY_CONTRACT_VERSION,
+      evidenceVersion: immediatePublicationContract
+        ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+        : PACKAGE_VISIBILITY_CONTRACT_VERSION,
       bookingId: input.bookingId,
       vendorId: foundation.booking.vendorId,
       customerUserId: input.customerUserId,
@@ -372,6 +433,10 @@ export async function decidePackageVisibility(input: {
       verificationMethod: input.verificationMethod,
       audioIncluded: packageIncludesAudio,
       audioConfirmation: packageIncludesAudio && decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY,
+      publicDisplayEligibility: immediatePublicationContract ? publicDisplayEligibility : null,
+      publicEligibilityHash: immediatePublicationContract
+        ? foundation.adminAuditDecision.publicEligibilityHash
+        : null,
     };
     const decisionHash = sha256(stableJson(evidenceDocument));
     const visibilityDecision = await tx.serviceVideoPackageVisibilityDecision.create({
@@ -387,7 +452,9 @@ export async function decidePackageVisibility(input: {
         decision,
         version,
         isCurrent: true,
-        evidenceVersion: PACKAGE_VISIBILITY_CONTRACT_VERSION,
+        evidenceVersion: immediatePublicationContract
+          ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+          : PACKAGE_VISIBILITY_CONTRACT_VERSION,
         decisionHash,
         verificationMethod: input.verificationMethod,
       },
@@ -459,8 +526,12 @@ export async function decidePackageVisibility(input: {
     }
     exactStages.sort((a, b) => a.packaged.stage.localeCompare(b.packaged.stage));
     const proposalDocument = {
-      contractVersion: PACKAGE_VISIBILITY_CONTRACT_VERSION,
-      authorizationModel: PACKAGE_VISIBILITY_AUTHORIZATION_MODEL,
+      contractVersion: immediatePublicationContract
+        ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+        : PACKAGE_VISIBILITY_CONTRACT_VERSION,
+      authorizationModel: immediatePublicationContract
+        ? IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL
+        : PACKAGE_VISIBILITY_AUTHORIZATION_MODEL,
       visibilityDecisionId: visibilityDecision.id,
       visibilityDecisionHash: decisionHash,
       bookingId: input.bookingId,
@@ -485,11 +556,17 @@ export async function decidePackageVisibility(input: {
         packageHash: foundation.package.packageHash,
         version: Number(latestProposal?.version || 0) + 1,
         isCurrent: true,
-        status: PUBLICATION_STATUSES.AWAITING_ADMIN,
+        status: immediatePublicationContract
+          ? PUBLICATION_STATUSES.AWAITING_PARTICIPANTS
+          : PUBLICATION_STATUSES.AWAITING_ADMIN,
         audience: "PUBLIC",
         proposalHash,
-        contractVersion: PACKAGE_VISIBILITY_CONTRACT_VERSION,
-        authorizationModel: PACKAGE_VISIBILITY_AUTHORIZATION_MODEL,
+        contractVersion: immediatePublicationContract
+          ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+          : PACKAGE_VISIBILITY_CONTRACT_VERSION,
+        authorizationModel: immediatePublicationContract
+          ? IMMEDIATE_PUBLICATION_AUTHORIZATION_MODEL
+          : PACKAGE_VISIBILITY_AUTHORIZATION_MODEL,
         packageVisibilityDecisionId: visibilityDecision.id,
         proposedByUserId: input.customerUserId,
         proposedByMembershipId: null,
@@ -523,9 +600,19 @@ export async function decidePackageVisibility(input: {
     const requirements = await requiredParticipantRows(tx, proposal, stages, visibilityDecision);
     const nextStatus = requirements.length
       ? PUBLICATION_STATUSES.AWAITING_PARTICIPANTS
-      : PUBLICATION_STATUSES.AWAITING_ADMIN;
-    if (nextStatus !== proposal.status) {
+      : immediatePublicationContract
+        ? PUBLICATION_STATUSES.PUBLIC
+        : PUBLICATION_STATUSES.AWAITING_ADMIN;
+    if (nextStatus !== proposal.status && nextStatus !== PUBLICATION_STATUSES.PUBLIC) {
       await tx.serviceVideoPublicationProposal.update({ where: { id: proposal.id }, data: { status: nextStatus } });
+    }
+    if (nextStatus === PUBLICATION_STATUSES.PUBLIC) {
+      await activateImmediatePublicVisibility(tx, {
+        foundation,
+        proposal: { ...proposal, status: PUBLICATION_STATUSES.AWAITING_PARTICIPANTS },
+        stages,
+        visibilityDecision: { ...visibilityDecision, publicationProposalId: proposal.id },
+      });
     }
     await writeAudit(tx, {
       proposalId: proposal.id,
@@ -540,6 +627,7 @@ export async function decidePackageVisibility(input: {
         proposalHash,
         stageSetHash,
         status: nextStatus,
+        immediatePublication: immediatePublicationContract,
       },
     });
     return {
@@ -547,7 +635,7 @@ export async function decidePackageVisibility(input: {
       proposal: { ...proposal, status: nextStatus },
       idempotent: false,
     };
-  });
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function loadPackageVisibilityView(input: { bookingId: string }) {
@@ -596,14 +684,24 @@ export async function loadPackageVisibilityView(input: { bookingId: string }) {
     adminDecision?.customerProofReleased === true &&
     Boolean(grant);
   const auditFailed = adminDecision?.decision === "REJECT";
+  const immediatePublicationContract = isImmediatePublicationAudit(adminDecision);
+  const publicDisplayEligibility = immediatePublicationContract
+    ? String(adminDecision.publicDisplayEligibility || "").toUpperCase()
+    : null;
   const state = auditFailed
     ? "AUDIT_FAILED"
     : !auditPassed
       ? "AUDIT_PENDING"
-      : visibilityDecision?.decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY
+      : publicDisplayEligibility === PRIVATE_ONLY
+        ? "PRIVATE_ONLY"
+        : visibilityDecision?.decision === PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY
         ? proposal?.status === PUBLICATION_STATUSES.PUBLIC
           ? "PUBLIC"
-          : "PUBLIC_REVIEW_PENDING"
+          : immediatePublicationContract
+            ? proposal?.status === PUBLICATION_STATUSES.AWAITING_PARTICIPANTS
+              ? "PUBLIC_WAITING_PERMISSION"
+              : "PRIVATE"
+            : "PUBLIC_REVIEW_PENDING"
         : visibilityDecision?.decision === PACKAGE_VISIBILITY_DECISIONS.KEEP_PRIVATE
           ? "PRIVATE"
           : "PRIVATE_DEFAULT";
@@ -611,6 +709,11 @@ export async function loadPackageVisibilityView(input: { bookingId: string }) {
     state,
     auditPassed,
     privateProofReleased: auditPassed,
+    publicDisplayEligibility,
+    publicDisplayReason: immediatePublicationContract ? adminDecision.publicDisplayReason || null : null,
+    visibilityContractVersion: immediatePublicationContract
+      ? IMMEDIATE_PUBLICATION_CONTRACT_VERSION
+      : PACKAGE_VISIBILITY_CONTRACT_VERSION,
     package: pkg ? { id: pkg.id, version: pkg.version, packageHash: pkg.packageHash, audioIncluded: Boolean(pkg.audioExpected) } : null,
     visibilityDecision,
     proposal,
@@ -788,6 +891,148 @@ async function requiredParticipantRows(db: any, proposal: any, stages: any[], cu
   return requirements;
 }
 
+async function assertNoActivePublicRestriction(db: any, bookingId: string) {
+  const restriction = db.mediaLifecycleRestriction?.findFirst
+    ? await db.mediaLifecycleRestriction.findFirst({
+        where: {
+          bookingId,
+          active: true,
+          scope: { in: ["PUBLIC", "ALL"] },
+          outcome: { in: ["RESTRICTED", "HELD"] },
+        },
+        select: { id: true },
+      })
+    : null;
+  if (restriction) throw new Error("PUBLICATION_ACTIVE_RESTRICTION");
+}
+
+async function activateImmediatePublicVisibility(
+  tx: any,
+  input: {
+    foundation: Awaited<ReturnType<typeof loadPrivateFoundation>>;
+    proposal: any;
+    stages: any[];
+    visibilityDecision: any;
+  },
+) {
+  const { foundation, proposal, stages, visibilityDecision } = input;
+  if (!isImmediatePublicationProposal(proposal)) {
+    throw new Error("PUBLICATION_IMMEDIATE_CONTRACT_REQUIRED");
+  }
+  if (
+    !isImmediatePublicationAudit(foundation.adminAuditDecision) ||
+    String(foundation.adminAuditDecision.publicDisplayEligibility).toUpperCase() !== PUBLIC_DISPLAY_ELIGIBLE
+  ) {
+    throw new Error("PUBLICATION_PUBLIC_DISPLAY_INELIGIBLE");
+  }
+  if (
+    foundation.package.id !== proposal.packageId ||
+    foundation.package.packageHash !== proposal.packageHash ||
+    Number(foundation.package.version) !== Number(proposal.packageVersion)
+  ) {
+    throw new Error("PUBLICATION_PACKAGE_VERSION_MISMATCH");
+  }
+  if (
+    visibilityDecision.id !== proposal.packageVisibilityDecisionId ||
+    visibilityDecision.isCurrent !== true ||
+    visibilityDecision.decision !== PACKAGE_VISIBILITY_DECISIONS.SHARE_PUBLICLY ||
+    visibilityDecision.packageId !== proposal.packageId ||
+    visibilityDecision.packageHash !== proposal.packageHash
+  ) {
+    throw new Error("PUBLICATION_CUSTOMER_APPROVAL_INCOMPLETE");
+  }
+  await assertNoActivePublicRestriction(tx, proposal.bookingId);
+  const approvals = await assertRequiredDecisions(tx, proposal, stages);
+  const now = new Date();
+  for (const stage of stages) {
+    if (stage.containsMinor || stage.containsBystander) {
+      throw new Error("PUBLICATION_PROTECTED_PERSON_BLOCK");
+    }
+    const packaged = foundation.packageStages.find(
+      (row: ExactPackageStage) => row.stageEvidenceId === stage.stageEvidenceId,
+    );
+    if (
+      !packaged ||
+      packaged.mediaAssetId !== stage.mediaAssetId ||
+      packaged.contentHash !== stage.contentHash ||
+      Number(packaged.stageVersion) !== Number(stage.stageVersion)
+    ) {
+      throw new Error("PUBLICATION_STAGE_VERSION_MISMATCH");
+    }
+    await loadExactStage(tx, foundation, packaged);
+    const relatedParticipantIds = approvals.participantDecisions
+      .filter((row: any) => row.stageId === stage.id)
+      .map((row: any) => row.id)
+      .sort();
+    const eligibilityDocument = {
+      contractVersion: IMMEDIATE_PUBLICATION_CONTRACT_VERSION,
+      proposalHash: proposal.proposalHash,
+      packageHash: proposal.packageHash,
+      presentationHash: stage.presentationHash,
+      contentHash: stage.contentHash,
+      packageVisibilityDecisionId: visibilityDecision.id,
+      coreAdminAuditDecisionId: foundation.adminAuditDecision.id,
+      coreAdminPublicEligibilityHash: foundation.adminAuditDecision.publicEligibilityHash,
+      participantDecisionIds: relatedParticipantIds,
+      audience: "PUBLIC",
+    };
+    await tx.publicServiceVideoEligibility.create({
+      data: {
+        proposalId: proposal.id,
+        stageId: stage.id,
+        bookingId: proposal.bookingId,
+        vendorId: proposal.vendorId,
+        mediaAssetId: stage.mediaAssetId,
+        packageId: proposal.packageId,
+        packageHash: proposal.packageHash,
+        proposalHash: proposal.proposalHash,
+        presentationHash: stage.presentationHash,
+        contentHash: stage.contentHash,
+        eligibilityHash: sha256(stableJson(eligibilityDocument)),
+        audience: "PUBLIC",
+        status: "ACTIVE",
+        adminDecisionId: foundation.adminAuditDecision.id,
+        customerDecisionId: visibilityDecision.id,
+        vendorDecisionId: null,
+        packageVisibilityDecisionId: visibilityDecision.id,
+        participantDecisionIdsJson: stableJson(relatedParticipantIds),
+        eligibleAt: now,
+      },
+    });
+  }
+  const published = await tx.mediaAsset.updateMany({
+    where: {
+      id: { in: stages.map((row: any) => row.mediaAssetId) },
+      deletedAt: null,
+      uploadState: "SAVED",
+      moderationStatus: "approved",
+    },
+    data: { visibilityStatus: "public" },
+  });
+  if (Number(published.count || 0) !== REQUIRED_SERVICE_VIDEO_STAGES.length) {
+    throw new Error("PUBLICATION_MEDIA_ACTIVATION_RACE");
+  }
+  await tx.serviceVideoPublicationProposal.update({
+    where: { id: proposal.id },
+    data: { status: PUBLICATION_STATUSES.PUBLIC },
+  });
+  await writeAudit(tx, {
+    proposalId: proposal.id,
+    bookingId: proposal.bookingId,
+    vendorId: proposal.vendorId,
+    actorUserId: visibilityDecision.customerUserId,
+    actorRole: "CUSTOMER",
+    eventType: "CUSTOMER_PACKAGE_PUBLIC_VISIBILITY_ACTIVATED",
+    metadata: {
+      contractVersion: IMMEDIATE_PUBLICATION_CONTRACT_VERSION,
+      packageVisibilityDecisionId: visibilityDecision.id,
+      coreAdminAuditDecisionId: foundation.adminAuditDecision.id,
+      packageHash: proposal.packageHash,
+    },
+  });
+  return { status: PUBLICATION_STATUSES.PUBLIC };
+}
+
 async function publicationContext(db: any, proposalId: string) {
   const proposal = await db.serviceVideoPublicationProposal.findUnique({ where: { id: proposalId } });
   if (!proposal || !proposal.isCurrent) throw new Error("PUBLICATION_PROPOSAL_NOT_CURRENT");
@@ -912,11 +1157,23 @@ export async function decidePublicationAsParticipant(input: {
     const nextStatus = declined
       ? PUBLICATION_STATUSES.DECLINED_PRIVATE
       : complete
-        ? isPackageVisibilityProposal(proposal)
+        ? isImmediatePublicationProposal(proposal)
+          ? PUBLICATION_STATUSES.PUBLIC
+          : isPackageVisibilityProposal(proposal)
           ? PUBLICATION_STATUSES.AWAITING_ADMIN
           : PUBLICATION_STATUSES.AWAITING_VENDOR
         : PUBLICATION_STATUSES.AWAITING_PARTICIPANTS;
-    await tx.serviceVideoPublicationProposal.update({ where: { id: proposal.id }, data: { status: nextStatus } });
+    if (nextStatus === PUBLICATION_STATUSES.PUBLIC) {
+      const foundation = await loadPrivateFoundation(tx, proposal.bookingId, proposal.vendorId);
+      await activateImmediatePublicVisibility(tx, {
+        foundation,
+        proposal,
+        stages,
+        visibilityDecision: customer,
+      });
+    } else {
+      await tx.serviceVideoPublicationProposal.update({ where: { id: proposal.id }, data: { status: nextStatus } });
+    }
     await writeAudit(tx, {
       proposalId: proposal.id,
       bookingId: proposal.bookingId,
@@ -927,7 +1184,7 @@ export async function decidePublicationAsParticipant(input: {
       metadata: { status: nextStatus, decisionCount: input.decisions.length, proposalHash: proposal.proposalHash },
     });
     return { status: nextStatus };
-  });
+  }, { isolationLevel: "Serializable" });
 }
 
 async function assertRequiredDecisions(db: any, proposal: any, stages: any[]) {
@@ -1026,6 +1283,9 @@ export async function moderatePublicationProposal(input: {
 }) {
   return prisma.$transaction(async (tx: any) => {
     const { proposal, stages } = await publicationContext(tx, input.proposalId);
+    if (isImmediatePublicationProposal(proposal)) {
+      throw new Error("PUBLICATION_SECOND_ADMIN_AUDIT_NOT_ALLOWED");
+    }
     if (proposal.status !== PUBLICATION_STATUSES.AWAITING_ADMIN) throw new Error("PUBLICATION_NOT_READY_FOR_ADMIN");
     const foundation = await loadPrivateFoundation(tx, proposal.bookingId, proposal.vendorId);
     if (foundation.package.id !== proposal.packageId || foundation.package.packageHash !== proposal.packageHash || Number(foundation.package.version) !== Number(proposal.packageVersion)) {
@@ -1160,6 +1420,7 @@ async function canonicalEligibilityValid(db: any, row: any, filters?: { serviceI
   if (!exact) return false;
   if (filters?.serviceId && exact.session.serviceId !== filters.serviceId) return false;
   const packageLevel = isPackageVisibilityProposal(proposal);
+  const immediatePublication = isImmediatePublicationProposal(proposal);
   const [customer, vendor, admin] = await Promise.all([
     packageLevel
       ? db.serviceVideoPackageVisibilityDecision.findFirst({
@@ -1177,7 +1438,18 @@ async function canonicalEligibilityValid(db: any, row: any, filters?: { serviceI
     packageLevel
       ? Promise.resolve(null)
       : db.serviceVideoPublicationVendorDecision.findFirst({ where: { id: row.vendorDecisionId, proposalId: proposal.id, proposalHash: proposal.proposalHash, decision: "APPROVED" } }),
-    db.serviceVideoPublicationAdminDecision.findFirst({ where: { id: row.adminDecisionId, proposalId: proposal.id, proposalHash: proposal.proposalHash, decision: "APPROVED", approvedAudience: "PUBLIC" } }),
+    immediatePublication
+      ? db.serviceVideoAdminAuditDecisionEvidence.findFirst({
+          where: {
+            id: row.adminDecisionId,
+            packageId: proposal.packageId,
+            packageHash: proposal.packageHash,
+            decision: "PASS",
+            publicDisplayEligibility: PUBLIC_DISPLAY_ELIGIBLE,
+            publicEligibilityHash: { not: null },
+          },
+        })
+      : db.serviceVideoPublicationAdminDecision.findFirst({ where: { id: row.adminDecisionId, proposalId: proposal.id, proposalHash: proposal.proposalHash, decision: "APPROVED", approvedAudience: "PUBLIC" } }),
   ]);
   if (!customer || (!packageLevel && !vendor) || !admin || (!packageLevel && !approvedStageIds(customer).has(stage.id))) return false;
   if (packageLevel) {
@@ -1192,12 +1464,50 @@ async function canonicalEligibilityValid(db: any, row: any, filters?: { serviceI
       contentHash: row.contentHash,
     })));
     if (customer.stageSetHash !== stageSetHash) return false;
+    if (immediatePublication) {
+      const activeRows = await db.publicServiceVideoEligibility.findMany({
+        where: {
+          proposalId: proposal.id,
+          packageVisibilityDecisionId: customer.id,
+          status: "ACTIVE",
+          invalidatedAt: null,
+        },
+        select: { stageId: true },
+      });
+      if (
+        activeRows.length !== REQUIRED_SERVICE_VIDEO_STAGES.length ||
+        !proposalStages.every((proposalStage: any) =>
+          activeRows.some((active: any) => active.stageId === proposalStage.id),
+        )
+      ) return false;
+      try {
+        await assertNoActivePublicRestriction(db, proposal.bookingId);
+      } catch {
+        return false;
+      }
+    }
   }
   const requirements = await requiredParticipantRows(db, proposal, [stage], customer);
   const expectedParticipantIds = parseJson<string[]>(row.participantDecisionIdsJson, []);
   if (requirements.length) {
     const decisions = await db.serviceVideoPublicationParticipantDecision.findMany({ where: { id: { in: expectedParticipantIds }, proposalId: proposal.id, stageId: stage.id, decision: "APPROVED", proposalHash: proposal.proposalHash, presentationHash: stage.presentationHash } });
     if (!requirements.every((required) => decisions.some((decision: any) => decision.actorUserId === required.actorUserId && decision.authorityType === required.authorityType))) return false;
+  }
+  if (immediatePublication) {
+    if (!isImmediatePublicationAudit(admin)) return false;
+    const eligibilityDocument = {
+      contractVersion: IMMEDIATE_PUBLICATION_CONTRACT_VERSION,
+      proposalHash: proposal.proposalHash,
+      packageHash: proposal.packageHash,
+      presentationHash: stage.presentationHash,
+      contentHash: stage.contentHash,
+      packageVisibilityDecisionId: customer.id,
+      coreAdminAuditDecisionId: admin.id,
+      coreAdminPublicEligibilityHash: admin.publicEligibilityHash,
+      participantDecisionIds: [...expectedParticipantIds].sort(),
+      audience: "PUBLIC",
+    };
+    if (sha256(stableJson(eligibilityDocument)) !== row.eligibilityHash) return false;
   }
   return exact.asset.visibilityStatus === "public" && exact.asset.moderationStatus === "approved";
 }
@@ -1213,17 +1523,40 @@ export async function resolveCanonicalPublicAssetIds(filters: { bookingId?: stri
     },
     orderBy: { eligibleAt: "desc" },
   });
-  const valid: string[] = [];
+  const validLegacy: string[] = [];
+  const immediateGroups = new Map<string, Array<{ row: any; valid: boolean }>>();
   for (const row of rows) {
-    if (!(await canonicalEligibilityValid(prisma as any, row, { serviceId: filters.serviceId }))) continue;
+    const proposal = await (prisma as any).serviceVideoPublicationProposal.findFirst({
+      where: { id: row.proposalId, bookingId: row.bookingId, vendorId: row.vendorId },
+      select: { id: true, contractVersion: true, authorizationModel: true },
+    });
+    const valid = await canonicalEligibilityValid(prisma as any, row, { serviceId: filters.serviceId });
+    if (isImmediatePublicationProposal(proposal)) {
+      const group = immediateGroups.get(row.proposalId) || [];
+      group.push({ row, valid });
+      immediateGroups.set(row.proposalId, group);
+      continue;
+    }
+    if (!valid) continue;
     const lifecycle = await resolveCanonicalMediaLifecycle({
       bookingId: row.bookingId,
       mediaAssetId: row.mediaAssetId,
       intendedAudience: "PUBLIC",
     });
-    if (lifecycle.publicAllowed) valid.push(row.mediaAssetId);
+    if (lifecycle.publicAllowed) validLegacy.push(row.mediaAssetId);
   }
-  return valid;
+  const validImmediate: string[] = [];
+  for (const group of Array.from(immediateGroups.values())) {
+    if (group.length !== REQUIRED_SERVICE_VIDEO_STAGES.length || group.some((item: { valid: boolean }) => !item.valid)) continue;
+    const lifecycle = await Promise.all(group.map(({ row }: { row: any }) => resolveCanonicalMediaLifecycle({
+      bookingId: row.bookingId,
+      mediaAssetId: row.mediaAssetId,
+      intendedAudience: "PUBLIC",
+    })));
+    if (lifecycle.some((item) => !item.publicAllowed)) continue;
+    validImmediate.push(...group.map(({ row }: { row: any }) => row.mediaAssetId));
+  }
+  return [...validLegacy, ...validImmediate];
 }
 
 export async function listAdminPublicationQueue() {

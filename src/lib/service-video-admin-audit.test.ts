@@ -144,6 +144,9 @@ function adminDecisionTx(decision: "PASS" | "REJECT") {
     packageId: pkg.id,
     decision,
     customerProofReleased: false,
+    publicDisplayEligibility: decision === "PASS" ? "PUBLIC_DISPLAY_ELIGIBLE" : null,
+    publicEligibilityHash: decision === "PASS" ? "public-eligibility-hash" : null,
+    publicEligibilityEvidenceVersion: decision === "PASS" ? 1 : null,
     decidedAt: new Date("2026-08-24T13:00:00Z"),
   };
   const tx: any = {
@@ -299,6 +302,7 @@ describe("core Service Video Admin Audit evidence", () => {
       adminUserId: "admin-1",
       adminRole: "ADMIN",
       decision: "PASS",
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
     });
 
     expect(result).toMatchObject({ alreadyDecided: false, grant: { id: "grant-1" } });
@@ -321,6 +325,48 @@ describe("core Service Video Admin Audit evidence", () => {
     });
     expect(tx.bookingNotification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: "VENDOR_CORE_AUDIT_PASSED_V1" }),
+    });
+    expect(tx.serviceVideoAdminAuditDecisionEvidence.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        evidenceVersion: 2,
+        publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
+        publicEligibilityEvidenceVersion: 1,
+        publicEligibilityHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    });
+  });
+
+  it("requires Admin to establish Public-display eligibility as part of PASS", async () => {
+    const { decideCoreServiceVideoAdminAudit } = await import("./service-video-admin-audit");
+
+    await expect(decideCoreServiceVideoAdminAudit({
+      bookingId: "booking-1",
+      adminUserId: "admin-1",
+      adminRole: "ADMIN",
+      decision: "PASS",
+    })).rejects.toMatchObject({ code: "ADMIN_AUDIT_PUBLIC_ELIGIBILITY_REQUIRED" });
+    expect(hoisted.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("supports a Private Proof PASS that is explicitly unavailable for Public display", async () => {
+    const { tx } = adminDecisionTx("PASS");
+    hoisted.prisma.$transaction.mockImplementationOnce(async (callback: any) => callback(tx));
+    const { decideCoreServiceVideoAdminAudit } = await import("./service-video-admin-audit");
+
+    await expect(decideCoreServiceVideoAdminAudit({
+      bookingId: "booking-1",
+      adminUserId: "admin-1",
+      adminRole: "ADMIN",
+      decision: "PASS",
+      publicDisplayEligibility: "PRIVATE_ONLY",
+      publicDisplayReason: "Contains customer-private information unsuitable for Public display.",
+    })).resolves.toMatchObject({ alreadyDecided: false, grant: { id: "grant-1" } });
+    expect(tx.serviceVideoAdminAuditDecisionEvidence.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        decision: "PASS",
+        publicDisplayEligibility: "PRIVATE_ONLY",
+        publicDisplayReason: "Contains customer-private information unsuitable for Public display.",
+      }),
     });
   });
 
@@ -354,6 +400,7 @@ describe("core Service Video Admin Audit evidence", () => {
       adminUserId: "admin-1",
       adminRole: "ADMIN",
       decision: "PASS",
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
     })).rejects.toMatchObject({ code: "ADMIN_AUDIT_AUDIO_SCOPE_MISMATCH" });
     expect(tx.serviceVideoPackageEvidence.updateMany).not.toHaveBeenCalled();
     expect(tx.privateProofAccessGrant.create).not.toHaveBeenCalled();
@@ -381,6 +428,7 @@ describe("core Service Video Admin Audit evidence", () => {
       adminUserId: "admin-1",
       adminRole: "ADMIN",
       decision: "PASS",
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
     })).resolves.toMatchObject({ alreadyDecided: false });
     expect(tx.privateProofAccessGrant.create).toHaveBeenCalledTimes(1);
   });
@@ -407,6 +455,7 @@ describe("core Service Video Admin Audit evidence", () => {
       adminUserId: "admin-1",
       adminRole: "ADMIN",
       decision: "PASS",
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
     })).rejects.toMatchObject({ code: "ADMIN_AUDIT_AUDIO_SCOPE_MISMATCH" });
     expect(tx.privateProofAccessGrant.create).not.toHaveBeenCalled();
   });
@@ -468,6 +517,7 @@ describe("core Service Video Admin Audit evidence", () => {
       id: "admin-audit-existing",
       packageId: pkg.id,
       decision: "PASS",
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
       customerNotificationId: "customer-notification-existing",
     });
     tx.booking.findUnique.mockResolvedValue(booking);
@@ -479,6 +529,7 @@ describe("core Service Video Admin Audit evidence", () => {
       adminUserId: "admin-1",
       adminRole: "ADMIN",
       decision: "PASS",
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
     });
 
     expect(result).toMatchObject({
@@ -507,6 +558,7 @@ describe("core Service Video Admin Audit evidence", () => {
       adminUserId: "admin-1",
       adminRole: "ADMIN",
       decision: "PASS",
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
     })).rejects.toMatchObject({ code: "ADMIN_AUDIT_TERMINAL_DECISION_CONFLICT" });
 
     expect(tx.serviceVideoPackageEvidence.updateMany).not.toHaveBeenCalled();

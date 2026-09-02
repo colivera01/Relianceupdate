@@ -15,6 +15,8 @@ type VisibilityState =
   | "AUDIT_FAILED"
   | "PRIVATE_DEFAULT"
   | "PRIVATE"
+  | "PRIVATE_ONLY"
+  | "PUBLIC_WAITING_PERMISSION"
   | "PUBLIC_REVIEW_PENDING"
   | "PUBLIC";
 
@@ -24,6 +26,9 @@ type VisibilityResponse = {
     state: VisibilityState;
     auditPassed: boolean;
     privateProofReleased: boolean;
+    publicDisplayEligibility?: string | null;
+    publicDisplayReason?: string | null;
+    visibilityContractVersion?: number;
     visibilityDecision?: { decision?: string; decidedAt?: string } | null;
     proposal?: { status?: string } | null;
     legacyProposal?: { id?: string; status?: string } | null;
@@ -41,30 +46,32 @@ const COPY: Record<VisibilityState, { title: string; detail: string }> = {
     detail: "No Private Proof or Public-sharing decision is available for this closed work record.",
   },
   PRIVATE_DEFAULT: {
-    title: "Private by default",
-    detail: "The complete approved Service Video is available as Private Proof. No Public-sharing authorization has been given.",
+    title: "Private",
+    detail: "Your Service Video is visible only to you.",
   },
   PRIVATE: {
     title: "Private",
-    detail: "The customer chose to keep the complete approved Service Video private.",
+    detail: "Your Service Video is visible only to you.",
+  },
+  PRIVATE_ONLY: {
+    title: "Private",
+    detail: "This Service Video is available as Private Proof but is not eligible for Public display.",
+  },
+  PUBLIC_WAITING_PERMISSION: {
+    title: "Waiting for Public-sharing permission",
+    detail: "Your Service Video remains Private until all required participant permissions are complete.",
   },
   PUBLIC_REVIEW_PENDING: {
-    title: "Public Review Pending",
-    detail: "The customer authorized the complete approved package to enter Reliance Public review. It is not Public yet.",
+    title: "Public visibility pending",
+    detail: "This historical record is still governed by its original Public-processing contract.",
   },
   PUBLIC: {
     title: "Public",
-    detail: "Reliance approved the customer-authorized complete package for Public visibility.",
+    detail: "Your Service Video is publicly viewable on Reliance.",
   },
 };
 
-export function PackageVisibilityCard({
-  bookingId,
-  role,
-}: {
-  bookingId: string;
-  role: "customer" | "vendor";
-}) {
+export function PackageVisibilityCard({ bookingId, role }: { bookingId: string; role: "customer" | "vendor" }) {
   const { user } = useAuth();
   const userId = typeof user?.id === "string" || typeof user?.id === "number" ? String(user.id) : "";
   const headers = useMemo(() => getClientSessionHeaders(userId), [userId]);
@@ -72,7 +79,7 @@ export function PackageVisibilityCard({
   const [data, setData] = useState<VisibilityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
-  const [confirmPublic, setConfirmPublic] = useState(false);
+  const [confirmation, setConfirmation] = useState<"public" | "private" | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -110,9 +117,11 @@ export function PackageVisibilityCard({
       const body = await response.json().catch(() => ({}));
       if (!response.ok || body?.success === false) throw new Error(body?.error || "The visibility decision could not be saved");
       setMessage(decision === "KEEP_PRIVATE"
-        ? "The complete Service Video will remain Private."
-        : "The complete Service Video was sent to Reliance Public review. It is not Public yet.");
-      setConfirmPublic(false);
+        ? "Your Service Video is now Private. Your Private Proof remains available."
+        : body?.proposal?.status === "PUBLIC"
+          ? "Your complete Service Video is now Public."
+          : "Your Service Video remains Private while required Public-sharing permission is completed.");
+      setConfirmation(null);
       await load();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "The visibility decision could not be saved");
@@ -123,75 +132,90 @@ export function PackageVisibilityCard({
 
   const state = data?.visibility?.state || "AUDIT_PENDING";
   const copy = COPY[state];
-  const publicState = state === "PUBLIC" || state === "PUBLIC_REVIEW_PENDING";
+  const isPublic = state === "PUBLIC";
   const canDecide = role === "customer" && data?.canDecide === true;
+  const canShare = canDecide && ["PRIVATE_DEFAULT", "PRIVATE"].includes(state);
+  const canMakePrivate = canDecide && isPublic;
 
   return (
     <>
-    <Card className="border-slate-700 bg-slate-950 text-white shadow-sm" data-testid={`package-visibility-${role}`}>
-      <CardHeader className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle className="flex items-center gap-2 text-lg text-white">
-            {publicState ? <Globe2 className="h-5 w-5 text-emerald-300" /> : <LockKeyhole className="h-5 w-5 text-blue-300" />}
-            Service Video visibility
-          </CardTitle>
-          <Badge className={publicState ? "bg-emerald-600 text-white" : "bg-blue-950 text-blue-100"}>
-            {state === "PUBLIC" ? "Public" : state === "PUBLIC_REVIEW_PENDING" ? "Public review" : "Private"}
-          </Badge>
-        </div>
-        <p className="text-sm text-slate-300">The Starting Condition, Work in Progress, and Final Result stay together as one exact package.</p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {loading ? <div className="flex min-h-20 items-center gap-2 text-sm text-slate-300" role="status"><Loader2 className="h-4 w-4 animate-spin" /> Loading visibility...</div> : null}
-        {error ? <div role="alert" className="rounded-md border border-red-400/40 bg-red-950/40 p-3 text-sm text-red-100"><p>{error}</p><Button size="sm" variant="outline" className="mt-3 border-red-300/50 bg-transparent text-white" onClick={() => void load()}><RefreshCw className="mr-2 h-4 w-4" /> Try again</Button></div> : null}
-        {message ? <div className="rounded-md border border-emerald-400/40 bg-emerald-950/40 p-3 text-sm text-emerald-100">{message}</div> : null}
-        {!loading && data?.visibility ? (
-          <div className="rounded-md border border-white/10 bg-white/5 p-3">
-            <p className="font-semibold text-white">{copy.title}</p>
-            <p className="mt-1 text-sm text-slate-300">{copy.detail}</p>
+      <Card className="border-slate-700 bg-slate-950 text-white shadow-sm" data-testid={`package-visibility-${role}`}>
+        <CardHeader className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-lg text-white">
+              {isPublic ? <Globe2 className="h-5 w-5 text-emerald-300" /> : <LockKeyhole className="h-5 w-5 text-blue-300" />}
+              Service Video visibility
+            </CardTitle>
+            <Badge className={isPublic ? "bg-emerald-600 text-white" : "bg-blue-950 text-blue-100"}>
+              {isPublic ? "Public" : state === "PUBLIC_WAITING_PERMISSION" ? "Waiting for permission" : "Private"}
+            </Badge>
           </div>
-        ) : null}
-        {!loading && data?.visibility?.legacyProposal ? (
-          <div className="rounded-md border border-amber-400/30 bg-amber-950/25 p-3 text-sm text-amber-100">
-            This historical record uses the earlier stage-based Public-sharing contract. Its original evidence remains readable and unchanged.
-          </div>
-        ) : null}
-        {canDecide && !confirmPublic ? (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-300">Public sharing is optional. No action keeps the complete package Private.</p>
-            <div className="flex flex-wrap gap-2">
-              <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => void decide("KEEP_PRIVATE")}>
-                <LockKeyhole className="mr-2 h-4 w-4" /> Keep Private
-              </Button>
-              <Button disabled={working} className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => setConfirmPublic(true)}>
+          <p className="text-sm text-slate-300">Starting Condition, Work in Progress, and Final Result always stay together as one exact Service Video.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? <div className="flex min-h-20 items-center gap-2 text-sm text-slate-300" role="status"><Loader2 className="h-4 w-4 animate-spin" /> Loading visibility...</div> : null}
+          {error ? <div role="alert" className="rounded-md border border-red-400/40 bg-red-950/40 p-3 text-sm text-red-100"><p>{error}</p><Button size="sm" variant="outline" className="mt-3 border-red-300/50 bg-transparent text-white" onClick={() => void load()}><RefreshCw className="mr-2 h-4 w-4" /> Try again</Button></div> : null}
+          {message ? <div role="status" className="rounded-md border border-emerald-400/40 bg-emerald-950/40 p-3 text-sm text-emerald-100">{message}</div> : null}
+          {!loading && data?.visibility ? (
+            <div className="rounded-md border border-white/10 bg-white/5 p-3">
+              <p className="font-semibold text-white">{copy.title}</p>
+              <p className="mt-1 text-sm text-slate-300">{copy.detail}</p>
+            </div>
+          ) : null}
+          {!loading && data?.visibility?.legacyProposal ? (
+            <div className="rounded-md border border-amber-400/30 bg-amber-950/25 p-3 text-sm text-amber-100">
+              This historical record uses the earlier stage-based Public-sharing contract. Its original evidence remains readable and unchanged.
+            </div>
+          ) : null}
+          {canShare && confirmation === null ? (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-300">Public sharing is optional. No action keeps the complete package Private.</p>
+              <Button disabled={working} className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => setConfirmation("public")}>
                 <Globe2 className="mr-2 h-4 w-4" /> Share Publicly
               </Button>
             </div>
-          </div>
-        ) : null}
-        {canDecide && confirmPublic ? (
-          <div className="rounded-md border border-blue-400/30 bg-blue-950/30 p-4" data-testid="package-public-confirmation">
-            <p className="flex items-center gap-2 font-semibold text-blue-100"><ShieldCheck className="h-4 w-4" /> Authorize the complete package?</p>
-            <p className="mt-2 text-sm text-blue-100/80">This sends all three exact Admin-approved stages to Reliance Public review. Nothing becomes Public unless that separate review passes.</p>
-            {data?.visibility?.package?.audioIncluded ? (
-              <p className="mt-2 rounded-md border border-amber-300/30 bg-amber-950/30 p-3 text-sm font-semibold text-amber-100">
-                This Service Video contains audio. If you continue, the approved video and its audio may become publicly viewable if the package passes Reliance Public review.
-              </p>
-            ) : null}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button disabled={working} className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void decide("SHARE_PUBLICLY")}>
-                {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe2 className="mr-2 h-4 w-4" />}
-                Authorize Public Review
-              </Button>
-              <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmPublic(false)}>Go Back</Button>
+          ) : null}
+          {canMakePrivate && confirmation === null ? (
+            <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmation("private")}>
+              <LockKeyhole className="mr-2 h-4 w-4" /> Make Private
+            </Button>
+          ) : null}
+          {canShare && confirmation === "public" ? (
+            <div className="rounded-md border border-blue-400/30 bg-blue-950/30 p-4" data-testid="package-public-confirmation">
+              <p className="flex items-center gap-2 font-semibold text-blue-100"><ShieldCheck className="h-4 w-4" /> Make this Service Video public?</p>
+              <p className="mt-2 text-sm text-blue-100/80">Your complete Service Video, including Starting Condition, Work in Progress, and Final Result, will become publicly viewable on Reliance when all required permissions are complete.</p>
+              {data?.visibility?.package?.audioIncluded ? (
+                <p className="mt-2 rounded-md border border-amber-300/30 bg-amber-950/30 p-3 text-sm font-semibold text-amber-100">
+                  This Service Video contains audio. If you continue, the approved video and its audio will become publicly viewable.
+                </p>
+              ) : null}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button disabled={working} className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void decide("SHARE_PUBLICLY")}>
+                  {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe2 className="mr-2 h-4 w-4" />}
+                  Confirm Share Publicly
+                </Button>
+                <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmation(null)}>Cancel</Button>
+              </div>
             </div>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
-    {role === "customer" && data?.visibility?.legacyProposal ? (
-      <PublicationWorkflowCard role="customer" bookingId={bookingId} />
-    ) : null}
+          ) : null}
+          {canMakePrivate && confirmation === "private" ? (
+            <div className="rounded-md border border-slate-500 bg-slate-900 p-4" data-testid="package-private-confirmation">
+              <p className="font-semibold text-white">Make this Service Video private?</p>
+              <p className="mt-2 text-sm text-slate-300">It will no longer be publicly viewable on Reliance. You will still have access through your Private Proof.</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button disabled={working} onClick={() => void decide("KEEP_PRIVATE")}>
+                  {working ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LockKeyhole className="mr-2 h-4 w-4" />}
+                  Confirm Make Private
+                </Button>
+                <Button disabled={working} variant="outline" className="border-slate-500 bg-transparent text-white" onClick={() => setConfirmation(null)}>Cancel</Button>
+              </div>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+      {role === "customer" && data?.visibility?.legacyProposal ? (
+        <PublicationWorkflowCard role="customer" bookingId={bookingId} />
+      ) : null}
     </>
   );
 }

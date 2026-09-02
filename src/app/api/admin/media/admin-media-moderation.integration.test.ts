@@ -64,6 +64,10 @@ vi.mock("@/lib/service-video-admin-audit", () => {
   }
   return {
     CoreAdminAuditError,
+    CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY: {
+      PUBLIC_DISPLAY_ELIGIBLE: "PUBLIC_DISPLAY_ELIGIBLE",
+      PRIVATE_ONLY: "PRIVATE_ONLY",
+    },
     loadCoreAdminAuditCandidate: hoisted.loadCoreAdminAuditCandidate,
     decideCoreServiceVideoAdminAudit: hoisted.decideCoreServiceVideoAdminAudit,
   };
@@ -770,7 +774,11 @@ describe("PATCH /api/admin/media/packages/[bookingId]/moderate", () => {
     const req = new Request("http://localhost/api/admin/media/packages/b1/moderate", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "approve", visibility: "public" }),
+      body: JSON.stringify({
+        action: "approve",
+        visibility: "public",
+        publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
+      }),
     });
     const res = await packageModeratePATCH(req, { params: Promise.resolve({ bookingId: "b1" }) });
     expect(res.status).toBe(200);
@@ -801,7 +809,11 @@ describe("PATCH /api/admin/media/packages/[bookingId]/moderate", () => {
     const req = new Request("http://localhost/api/admin/media/packages/b1/moderate", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "approve", visibility: "customer_only" }),
+      body: JSON.stringify({
+        action: "approve",
+        visibility: "customer_only",
+        publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
+      }),
     });
     const res = await packageModeratePATCH(req, { params: Promise.resolve({ bookingId: "b1" }) });
     expect(res.status).toBe(200);

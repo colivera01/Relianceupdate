@@ -19,6 +19,29 @@ describe("Service Video Public governance presentation", () => {
     expect(vendorPublicationWithdrawalCopy(state).label).toBe("Withdraw from Public review");
   });
 
+  it("uses permission-waiting wording for the immediate-publication contract", () => {
+    const state = resolveServiceVideoPublicState({
+      proposalStatus: "AWAITING_PARTICIPANT_DECISIONS",
+      proposalContractVersion: 3,
+      proposalAuthorizationModel:
+        "CUSTOMER_COMPLETE_PACKAGE_IMMEDIATE_PUBLICATION",
+    });
+    expect(state).toBe("PUBLIC_WAITING_PERMISSION");
+    expect(vendorPublicationWithdrawalCopy(state)).toEqual({
+      label: "Withdraw Public-sharing authorization",
+      detail:
+        "Keep this package Private while preserving its Public-sharing permission history.",
+    });
+  });
+
+  it("preserves historical pending-review presentation", () => {
+    expect(resolveServiceVideoPublicState({
+      proposalStatus: "AWAITING_PARTICIPANT_DECISIONS",
+      proposalContractVersion: 2,
+      proposalAuthorizationModel: "CUSTOMER_COMPLETE_PACKAGE",
+    })).toBe("PUBLIC_REVIEW_PENDING");
+  });
+
   it("uses remove wording only for canonically Public evidence", () => {
     const state = resolveServiceVideoPublicState({
       proposalStatus: "PUBLIC",

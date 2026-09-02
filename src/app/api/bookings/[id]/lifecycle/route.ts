@@ -120,7 +120,7 @@ export async function GET(request: Request, context: Context) {
       (prisma as any).serviceVideoPublicationProposal.findFirst({
         where: { bookingId: id, isCurrent: true },
         orderBy: { version: "desc" },
-        select: { status: true },
+        select: { status: true, contractVersion: true, authorizationModel: true },
       }),
       (prisma as any).publicServiceVideoEligibility.count({
         where: { bookingId: id, status: "ACTIVE", audience: "PUBLIC", invalidatedAt: null },
@@ -128,6 +128,8 @@ export async function GET(request: Request, context: Context) {
     ]);
     const publicState = resolveServiceVideoPublicState({
       proposalStatus: publicationProposal?.status,
+      proposalContractVersion: publicationProposal?.contractVersion,
+      proposalAuthorizationModel: publicationProposal?.authorizationModel,
       activePublicEligibilityCount,
       publicationWithdrawn: withdrawals.some(
         (item: any) => String(item.scope || "").toUpperCase() === "PUBLICATION" && String(item.status || "").toUpperCase() === "APPLIED",

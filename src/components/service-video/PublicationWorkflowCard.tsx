@@ -21,7 +21,14 @@ type PublicationStage = {
 };
 
 type PublicationView = {
-  proposal: { id: string; status: string; version: number; proposalHash: string };
+  proposal: {
+    id: string;
+    status: string;
+    version: number;
+    proposalHash: string;
+    contractVersion?: number;
+    authorizationModel?: string;
+  };
   stages: PublicationStage[];
   customerDecision?: { decision?: string; decisionJson?: string } | null;
   participantDecisions?: Array<{ stageId: string; authorityType: string; decision: string }>;
@@ -164,7 +171,23 @@ export function PublicationWorkflowCard({
   if (role !== "vendor" && !loading && !publication && !error) return null;
 
   const status = publication?.proposal?.status || "PRIVATE_ONLY";
-  const statusCopy = STATUS_COPY[status];
+  const immediatePublication =
+    Number(publication?.proposal?.contractVersion || 0) >= 3 &&
+    publication?.proposal?.authorizationModel ===
+      "CUSTOMER_COMPLETE_PACKAGE_IMMEDIATE_PUBLICATION";
+  const statusCopy = immediatePublication && status === "AWAITING_PARTICIPANT_DECISIONS"
+    ? {
+        title: "Waiting for Public-sharing permission",
+        detail:
+          "The complete Service Video remains Private until every required participant permission is complete.",
+      }
+    : immediatePublication && status === "PUBLIC"
+      ? {
+          title: "Complete Service Video is Public",
+          detail:
+            "The exact Reliance-audited three-stage package is publicly viewable.",
+        }
+      : STATUS_COPY[status];
   const customerDecisions = parseCustomerDecisions(publication?.customerDecision?.decisionJson);
 
   return (
@@ -173,14 +196,14 @@ export function PublicationWorkflowCard({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-lg text-white">
             {status === "PUBLIC" ? <Globe2 className="h-5 w-5 text-emerald-300" /> : <LockKeyhole className="h-5 w-5 text-blue-300" />}
-            Public Service Video
+            Service Video visibility
           </CardTitle>
           <Badge className={status === "PUBLIC" ? "bg-emerald-600 text-white" : "bg-blue-950 text-blue-100"}>
             {status === "PUBLIC" ? "Public" : "Private"}
           </Badge>
         </div>
         <p className="text-sm text-slate-300">
-          Private proof is complete on its own. Public sharing is optional and uses a separate decision for the exact saved clips.
+          Public sharing is optional. The complete Reliance-audited Service Video remains the exact package of record.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -326,7 +349,7 @@ export function PublicationWorkflowCard({
         ) : null}
 
         {status === "PUBLIC" ? (
-          <div className="flex items-center gap-2 text-sm text-emerald-200"><CheckCircle2 className="h-4 w-4" /> Canonical publication evidence is active.</div>
+          <div className="flex items-center gap-2 text-sm text-emerald-200"><CheckCircle2 className="h-4 w-4" /> Canonical Public visibility evidence is active.</div>
         ) : null}
       </CardContent>
     </Card>

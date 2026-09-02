@@ -155,6 +155,7 @@ type ModerationAction =
   | 'flag';
 
 type PackageModerationAction = 'pass' | 'reject';
+type PublicDisplayEligibility = 'PUBLIC_DISPLAY_ELIGIBLE' | 'PRIVATE_ONLY';
 
 /** Visibility tier when approving or updating an already-approved asset (maps to API enums). */
 type VisibilityLevel = 'customer_only' | 'vendor_archive_only' | 'private';
@@ -479,6 +480,8 @@ export default function AdminMediaModerationClient({
   const [auditConfirmationAction, setAuditConfirmationAction] = useState<PackageModerationAction | null>(null);
   const [auditConfirmationReason, setAuditConfirmationReason] = useState('');
   const [auditConfirmationCategory, setAuditConfirmationCategory] = useState('CONTENT_QUALITY');
+  const [auditPublicEligibility, setAuditPublicEligibility] = useState<PublicDisplayEligibility>('PUBLIC_DISPLAY_ELIGIBLE');
+  const [auditPublicEligibilityReason, setAuditPublicEligibilityReason] = useState('');
   const [assetPlaybackUrl, setAssetPlaybackUrl] = useState('');
   const [assetPlaybackLoading, setAssetPlaybackLoading] = useState(false);
   const [assetPlaybackError, setAssetPlaybackError] = useState('');
@@ -613,6 +616,8 @@ export default function AdminMediaModerationClient({
     action: PackageModerationAction,
     moderationReason?: string,
     moderationRejectionCategory?: string,
+    publicDisplayEligibility?: PublicDisplayEligibility,
+    publicDisplayReason?: string,
   ) => {
     setPackageActionLoadingId(`${pack.packageId}:${action}`);
     setFeedback(null);
@@ -624,6 +629,8 @@ export default function AdminMediaModerationClient({
           action,
           rejectionCategory: action === 'reject' ? moderationRejectionCategory : undefined,
           reason: moderationReason || undefined,
+          publicDisplayEligibility: action === 'pass' ? publicDisplayEligibility : undefined,
+          publicDisplayReason: action === 'pass' ? publicDisplayReason || undefined : undefined,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -896,16 +903,25 @@ export default function AdminMediaModerationClient({
 
   const confirmAuditDecision = async () => {
     if (!auditConfirmationTarget || !auditConfirmationAction) return;
+    if (
+      auditConfirmationAction === 'pass' &&
+      auditPublicEligibility === 'PRIVATE_ONLY' &&
+      !auditPublicEligibilityReason.trim()
+    ) return;
     await applyPackageAction(
       auditConfirmationTarget,
       auditConfirmationAction,
       auditConfirmationAction === 'reject' ? auditConfirmationReason : undefined,
       auditConfirmationAction === 'reject' ? auditConfirmationCategory : undefined,
+      auditConfirmationAction === 'pass' ? auditPublicEligibility : undefined,
+      auditConfirmationAction === 'pass' ? auditPublicEligibilityReason.trim() : undefined,
     );
     setAuditConfirmationTarget(null);
     setAuditConfirmationAction(null);
     setAuditConfirmationReason('');
     setAuditConfirmationCategory('CONTENT_QUALITY');
+    setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+    setAuditPublicEligibilityReason('');
     resetModerationReasonModal();
   };
 
@@ -996,16 +1012,17 @@ export default function AdminMediaModerationClient({
         description="PASS releases this exact package as customer Private Proof. REJECT permanently closes this Reliance work record without judging the underlying real-world service."
         bullets={[
           'Confirm all three submitted stages and the manager attestation before deciding.',
+          'For PASS, also decide whether this exact unchanged package is eligible for later customer-controlled Public display.',
           'REJECT requires a controlled category, a clear reason, and a final terminal-action confirmation.',
-          'Public Proof remains a separate exact-media review and is never created by this audit.',
+          'Public eligibility does not publish anything. The package remains Private until the customer chooses Share Publicly and all participant permissions are complete.',
         ]}
         tone="blue"
       />
 
       <div className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="font-semibold">Public sharing uses a separate exact-media review.</p>
-          <p className="mt-1 text-sm text-blue-800">This queue controls Private package moderation only. It cannot make a clip Public.</p>
+          <p className="font-semibold">Reliance Audit establishes Private Proof and Public-display eligibility.</p>
+          <p className="mt-1 text-sm text-blue-800">PASS releases Private Proof. Public display still requires the customer&apos;s later choice and every required participant permission.</p>
         </div>
         <Button asChild className="bg-blue-600 text-white hover:bg-blue-700">
           <Link href="/admin/publication-moderation">Open Public Proof Review</Link>
@@ -1269,7 +1286,7 @@ export default function AdminMediaModerationClient({
                     <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3 space-y-3">
                       <div className="text-sm font-medium text-white">Reliance Audit decision</div>
                       <p className="text-xs text-slate-300">
-                        Review the exact manager-submitted Starting Condition, Work in Progress, and Final Result package. PASS releases Private Proof to the customer. REJECT is terminal for this Service Order.
+                        Review the exact manager-submitted Starting Condition, Work in Progress, and Final Result package. PASS releases Private Proof and records Public-display eligibility. REJECT is terminal for this Service Order.
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -1278,6 +1295,8 @@ export default function AdminMediaModerationClient({
                           onClick={() => {
                             setAuditConfirmationTarget(pack);
                             setAuditConfirmationAction('pass');
+                            setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+                            setAuditPublicEligibilityReason('');
                           }}
                         >
                           PASS Audit
@@ -1598,6 +1617,8 @@ export default function AdminMediaModerationClient({
             setAuditConfirmationAction(null);
             setAuditConfirmationReason('');
             setAuditConfirmationCategory('CONTENT_QUALITY');
+            setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+            setAuditPublicEligibilityReason('');
             if (!moderationReasonModalOpen) resetModerationReasonModal();
           }
         }}
@@ -1609,7 +1630,7 @@ export default function AdminMediaModerationClient({
             </DialogTitle>
             <DialogDescription>
               {auditConfirmationAction === 'pass'
-                ? 'This releases the exact manager-attested package as customer Private Proof. It does not make any video Public.'
+                ? 'This releases the exact manager-attested package as customer Private Proof and records its Public-display eligibility. It does not make any video Public.'
                 : 'This permanently closes the Reliance work record. Rerecording, correction, retry, and resubmission will not be available. This does not mean the underlying real-world service failed.'}
             </DialogDescription>
           </DialogHeader>
@@ -1619,18 +1640,71 @@ export default function AdminMediaModerationClient({
               <div className="mt-1"><strong>Reason:</strong> {auditConfirmationReason}</div>
             </div>
           ) : null}
+          {auditConfirmationAction === 'pass' ? (
+            <div className="space-y-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">Public visibility eligibility</div>
+                <p className="mt-1 text-sm text-slate-600">
+                  This is part of the same Reliance Audit. It does not make the Service Video Public.
+                </p>
+              </div>
+              <label className="flex cursor-pointer gap-3 rounded-md border border-slate-300 p-3">
+                <input
+                  type="radio"
+                  name="public-display-eligibility"
+                  value="PUBLIC_DISPLAY_ELIGIBLE"
+                  checked={auditPublicEligibility === 'PUBLIC_DISPLAY_ELIGIBLE'}
+                  onChange={() => {
+                    setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+                    setAuditPublicEligibilityReason('');
+                  }}
+                />
+                <span>
+                  <span className="block font-semibold text-slate-950">Eligible for Public display</span>
+                  <span className="block text-sm text-slate-600">The customer may later make the exact package Public after all required permissions are complete.</span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer gap-3 rounded-md border border-slate-300 p-3">
+                <input
+                  type="radio"
+                  name="public-display-eligibility"
+                  value="PRIVATE_ONLY"
+                  checked={auditPublicEligibility === 'PRIVATE_ONLY'}
+                  onChange={() => setAuditPublicEligibility('PRIVATE_ONLY')}
+                />
+                <span>
+                  <span className="block font-semibold text-slate-950">Private Proof only</span>
+                  <span className="block text-sm text-slate-600">The package passes Reliance Audit for the customer but cannot be made Public.</span>
+                </span>
+              </label>
+              {auditPublicEligibility === 'PRIVATE_ONLY' ? (
+                <div>
+                  <Label htmlFor="private-only-reason">Private-only explanation</Label>
+                  <Input
+                    id="private-only-reason"
+                    className="mt-1"
+                    value={auditPublicEligibilityReason}
+                    onChange={(event) => setAuditPublicEligibilityReason(event.target.value)}
+                    placeholder="Explain why Public display is unavailable"
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setAuditConfirmationTarget(null);
               setAuditConfirmationAction(null);
               setAuditConfirmationReason('');
               setAuditConfirmationCategory('CONTENT_QUALITY');
+              setAuditPublicEligibility('PUBLIC_DISPLAY_ELIGIBLE');
+              setAuditPublicEligibilityReason('');
             }}>
               Go Back
             </Button>
             <Button
               className={auditConfirmationAction === 'reject' ? 'bg-red-700 text-white hover:bg-red-800' : undefined}
-              disabled={Boolean(packageActionLoadingId)}
+              disabled={Boolean(packageActionLoadingId) || (auditConfirmationAction === 'pass' && auditPublicEligibility === 'PRIVATE_ONLY' && !auditPublicEligibilityReason.trim())}
               onClick={confirmAuditDecision}
             >
               {auditConfirmationAction === 'pass' ? 'Confirm PASS and Release Private Proof' : 'Confirm Terminal REJECT'}

@@ -15,6 +15,12 @@ import { isCoreAdminAuditRejectionCategory } from "@/lib/core-admin-audit-catego
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
 
 export const CORE_ADMIN_AUDIT_EVIDENCE_VERSION = 1;
+export const CORE_ADMIN_AUDIT_DECISION_EVIDENCE_VERSION = 2;
+export const CORE_ADMIN_PUBLIC_ELIGIBILITY_EVIDENCE_VERSION = 1;
+export const CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY = {
+  ELIGIBLE: "PUBLIC_DISPLAY_ELIGIBLE",
+  PRIVATE_ONLY: "PRIVATE_ONLY",
+} as const;
 export const MANAGER_ADMIN_AUDIT_SUBMISSION = "SUBMITTED_FOR_ADMIN_AUDIT";
 export const PACKAGE_AWAITING_ADMIN_AUDIT = "AWAITING_ADMIN_REVIEW";
 export const PACKAGE_ADMIN_AUDIT_REJECTED = "ADMIN_REJECTED";
@@ -25,6 +31,8 @@ export const CORE_VENDOR_AUDIT_PASSED_NOTIFICATION_KIND = "VENDOR_CORE_AUDIT_PAS
 export const CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND = "VENDOR_CORE_AUDIT_REJECTED_V1";
 
 export type CoreAdminAuditDecision = "PASS" | "REJECT";
+export type CoreAdminPublicDisplayEligibility =
+  typeof CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY[keyof typeof CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY];
 
 type PackageStage = {
   stage: ServiceVideoStage;
@@ -559,10 +567,14 @@ export async function decideCoreServiceVideoAdminAudit(input: {
   decision: CoreAdminAuditDecision;
   rejectionCategory?: string | null;
   reason?: string | null;
+  publicDisplayEligibility?: CoreAdminPublicDisplayEligibility | null;
+  publicDisplayReason?: string | null;
 }) {
   const decision = String(input.decision || "").toUpperCase() as CoreAdminAuditDecision;
   const rejectionCategory = String(input.rejectionCategory || "").trim().toUpperCase();
   const reason = String(input.reason || "").trim();
+  const publicDisplayEligibility = String(input.publicDisplayEligibility || "").trim().toUpperCase();
+  const publicDisplayReason = String(input.publicDisplayReason || "").trim();
   if (!(["PASS", "REJECT"] as string[]).includes(decision)) {
     throw new CoreAdminAuditError("ADMIN_AUDIT_DECISION_INVALID");
   }
@@ -571,6 +583,19 @@ export async function decideCoreServiceVideoAdminAudit(input: {
   }
   if (decision === "REJECT" && !reason) {
     throw new CoreAdminAuditError("ADMIN_AUDIT_REJECTION_REASON_REQUIRED");
+  }
+  if (
+    decision === "PASS" &&
+    !Object.values(CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY).includes(publicDisplayEligibility as CoreAdminPublicDisplayEligibility)
+  ) {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_PUBLIC_ELIGIBILITY_REQUIRED");
+  }
+  if (
+    decision === "PASS" &&
+    publicDisplayEligibility === CORE_ADMIN_PUBLIC_DISPLAY_ELIGIBILITY.PRIVATE_ONLY &&
+    !publicDisplayReason
+  ) {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_PRIVATE_ONLY_REASON_REQUIRED");
   }
 
   return (prisma as any).$transaction(async (tx: any) => {
@@ -583,6 +608,12 @@ export async function decideCoreServiceVideoAdminAudit(input: {
     });
     if (priorDecision) {
       if (String(priorDecision.decision).toUpperCase() !== decision) {
+        throw new CoreAdminAuditError("ADMIN_AUDIT_TERMINAL_DECISION_CONFLICT");
+      }
+      if (
+        decision === "PASS" &&
+        String(priorDecision.publicDisplayEligibility || "").toUpperCase() !== publicDisplayEligibility
+      ) {
         throw new CoreAdminAuditError("ADMIN_AUDIT_TERMINAL_DECISION_CONFLICT");
       }
       return {
@@ -600,8 +631,21 @@ export async function decideCoreServiceVideoAdminAudit(input: {
       throw new CoreAdminAuditError("ADMIN_AUDIT_AUDIO_SCOPE_MISMATCH");
     }
     const now = new Date();
+    const publicEligibilityDocument = decision === "PASS" ? {
+      evidenceVersion: CORE_ADMIN_PUBLIC_ELIGIBILITY_EVIDENCE_VERSION,
+      bookingId: input.bookingId,
+      vendorId: candidate.booking.vendorId,
+      packageId: candidate.package.id,
+      packageVersion: candidate.package.version,
+      packageHash: candidate.package.packageHash,
+      stageEvidence: candidate.packageStages,
+      adminUserId: input.adminUserId,
+      eligibility: publicDisplayEligibility,
+      reason: publicDisplayReason || null,
+      decidedAt: now.toISOString(),
+    } : null;
     const decisionDocument = {
-      evidenceVersion: CORE_ADMIN_AUDIT_EVIDENCE_VERSION,
+      evidenceVersion: CORE_ADMIN_AUDIT_DECISION_EVIDENCE_VERSION,
       bookingId: input.bookingId,
       vendorId: candidate.booking.vendorId,
       packageId: candidate.package.id,
@@ -615,6 +659,8 @@ export async function decideCoreServiceVideoAdminAudit(input: {
       decision,
       rejectionCategory: decision === "REJECT" ? rejectionCategory : null,
       reason: decision === "REJECT" ? reason : null,
+      publicDisplayEligibility: decision === "PASS" ? publicDisplayEligibility : null,
+      publicDisplayReason: decision === "PASS" ? publicDisplayReason || null : null,
       decidedAt: now.toISOString(),
     };
     const nextPackageStatus = decision === "PASS" ? "PRIVATE_APPROVED" : PACKAGE_ADMIN_AUDIT_REJECTED;
@@ -645,8 +691,14 @@ export async function decideCoreServiceVideoAdminAudit(input: {
         rejectionCategory: decision === "REJECT" ? rejectionCategory : null,
         reason: decision === "REJECT" ? reason : null,
         decisionHash: sha256(decisionDocument),
-        evidenceVersion: CORE_ADMIN_AUDIT_EVIDENCE_VERSION,
+        evidenceVersion: CORE_ADMIN_AUDIT_DECISION_EVIDENCE_VERSION,
         customerProofReleased: false,
+        publicDisplayEligibility: decision === "PASS" ? publicDisplayEligibility : null,
+        publicDisplayReason: decision === "PASS" ? publicDisplayReason || null : null,
+        publicEligibilityHash: publicEligibilityDocument ? sha256(publicEligibilityDocument) : null,
+        publicEligibilityEvidenceVersion: publicEligibilityDocument
+          ? CORE_ADMIN_PUBLIC_ELIGIBILITY_EVIDENCE_VERSION
+          : null,
         decidedAt: now,
       },
     });
@@ -798,6 +850,8 @@ export async function decideCoreServiceVideoAdminAudit(input: {
           packageHash: candidate.package.packageHash,
           managerDecisionId: candidate.managerDecision.id,
           rejectionCategory: decision === "REJECT" ? rejectionCategory : null,
+          publicDisplayEligibility: decision === "PASS" ? publicDisplayEligibility : null,
+          publicEligibilityHash: publicEligibilityDocument ? sha256(publicEligibilityDocument) : null,
         }),
       },
     });

@@ -250,6 +250,7 @@ export async function GET(request: Request, context: RouteParams): Promise<NextR
               decision: packageVisibility.visibilityDecision?.decision || null,
               decidedAt: packageVisibility.visibilityDecision?.decidedAt?.toISOString?.() || null,
               publicReviewStatus: packageVisibility.proposal?.status || null,
+              publicVisibilityStatus: packageVisibility.proposal?.status || null,
               privateProofReleased: packageVisibility.privateProofReleased,
             }
           : null,

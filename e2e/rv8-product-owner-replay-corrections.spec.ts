@@ -378,8 +378,11 @@ test.describe("RV-8 Product Owner replay corrections", () => {
 
   test("uses Reliance Audit terminology and requires explicit PASS and terminal REJECT confirmation", async ({ page }) => {
     let decisionRequests = 0;
+    let passRequest: Record<string, unknown> | null = null;
     await page.route("**/api/admin/media/packages/audit-booking-1/moderate", async (route) => {
       decisionRequests += 1;
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      if (String(body.action).toUpperCase() === "PASS") passRequest = body;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -398,6 +401,10 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     expect(decisionRequests).toBe(0);
     await page.getByRole("button", { name: "Confirm PASS and Release Private Proof" }).click();
     expect(decisionRequests).toBe(1);
+    expect(passRequest).toMatchObject({
+      action: "pass",
+      publicDisplayEligibility: "PUBLIC_DISPLAY_ELIGIBLE",
+    });
 
     await page.reload();
     await page.getByRole("button", { name: "REJECT Audit" }).click();
@@ -411,6 +418,34 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await expect(terminalDialog.getByText("Privacy or recording scope", { exact: false })).toBeVisible();
     await terminalDialog.getByRole("button", { name: "Confirm Terminal REJECT" }).click();
     expect(decisionRequests).toBe(2);
+  });
+
+  test("records a Private Proof-only outcome within the single Reliance Audit", async ({ page }) => {
+    let requestBody: Record<string, unknown> | null = null;
+    await page.route("**/api/admin/media/packages/audit-booking-1/moderate", async (route) => {
+      requestBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, message: "Audit decision recorded" }),
+      });
+    });
+
+    await page.goto("/test-fixtures/rv8-admin-audit");
+    await page.getByRole("button", { name: "PASS Audit" }).click();
+    const dialog = page.getByRole("dialog", { name: "Confirm Reliance Audit PASS" });
+    await dialog.getByLabel("Private Proof only").check();
+    await dialog.getByLabel("Private-only explanation").fill(
+      "Customer-visible evidence contains details unsuitable for Public display.",
+    );
+    await dialog.getByRole("button", { name: "Confirm PASS and Release Private Proof" }).click();
+
+    expect(requestBody).toMatchObject({
+      action: "pass",
+      publicDisplayEligibility: "PRIVATE_ONLY",
+      publicDisplayReason:
+        "Customer-visible evidence contains details unsuitable for Public display.",
+    });
   });
 
   test("uses the simplified work-record recording-scope contract", async ({ page }) => {
@@ -607,7 +642,8 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     page.on("request", (request) => {
       if (new URL(request.url()).pathname.includes("/actions")) actionRequests.push(request.url());
     });
-    await installVendorFixture(page, [pendingConsentJob], ["pending", "accepted"]);
+    // React can hydrate the same pending status twice before the first state update settles.
+    await installVendorFixture(page, [pendingConsentJob], ["pending", "pending", "accepted"]);
     await openVendorJobs(page);
 
     await page.getByRole("button", { name: "Refresh Permission Status" }).click();
@@ -653,7 +689,9 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     await page.getByRole("button", { name: "Actions" }).click();
     await page.getByRole("button", { name: "Edit" }).click();
     const editDialog = page.getByRole("dialog", { name: "Edit Work Record" });
-    await editDialog.getByRole("combobox", { name: "Could anyone be identifiable in the video?" }).selectOption("customer");
+    await editDialog
+      .getByRole("combobox", { name: "Who, if anyone, needs to be intentionally identifiable in the Service Video?" })
+      .selectOption("customer");
     await editDialog.getByRole("button", { name: "Save Work" }).click();
 
     const warning = page.getByRole("dialog", { name: "Request new recording permission?" });
