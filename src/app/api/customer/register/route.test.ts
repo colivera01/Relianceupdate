@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
+import { issueCustomerBookingClaimToken } from "@/lib/customer-booking-claim";
+import { claimCustomerBookingWithinTransaction } from "@/lib/customer-booking-claim-service";
 
 const hoisted = vi.hoisted(() => {
   const userUpsert = vi.fn();
   const userFindUnique = vi.fn();
   const bookingFindUnique = vi.fn();
+  const consentRecordFindFirst = vi.fn();
   const bookingUpdateMany = vi.fn();
   const privateProofAccessGrantUpdateMany = vi.fn();
   const recordCustomerRegistrationEvidence = vi.fn();
@@ -20,6 +23,7 @@ const hoisted = vi.hoisted(() => {
     userUpsert,
     userFindUnique,
     bookingFindUnique,
+    consentRecordFindFirst,
     bookingUpdateMany,
     privateProofAccessGrantUpdateMany,
     recordCustomerRegistrationEvidence,
@@ -34,6 +38,7 @@ const hoisted = vi.hoisted(() => {
         findUnique: bookingFindUnique,
         updateMany: bookingUpdateMany,
       },
+      consentRecord: { findFirst: consentRecordFindFirst },
     },
   };
 });
@@ -73,6 +78,11 @@ vi.mock("@/lib/geocoding", () => ({
   geocodeAddress: vi.fn(),
 }));
 
+vi.mock("@/lib/customer-booking-claim-service", async () => {
+  const actual = await vi.importActual<any>("@/lib/customer-booking-claim-service");
+  return { ...actual, claimCustomerBookingWithinTransaction: vi.fn() };
+});
+
 function createCustomerRegisterRequest(overrides: Record<string, unknown> = {}) {
   const request = new Request("https://beta.relianceonline.org/api/customer/register", {
     method: "POST",
@@ -110,12 +120,23 @@ describe("POST /api/customer/register", () => {
     hoisted.userFindUnique.mockReset();
     hoisted.userFindUnique.mockResolvedValue(null);
     hoisted.bookingFindUnique.mockReset();
+    hoisted.consentRecordFindFirst.mockReset();
+    hoisted.consentRecordFindFirst.mockResolvedValue(null);
     hoisted.bookingUpdateMany.mockReset();
     hoisted.privateProofAccessGrantUpdateMany.mockReset();
     hoisted.privateProofAccessGrantUpdateMany.mockResolvedValue({ count: 0 });
     hoisted.recordCustomerRegistrationEvidence.mockReset();
     hoisted.recordCustomerRegistrationEvidence.mockResolvedValue({ id: "evidence-1" });
     hoisted.transaction.mockClear();
+    vi.mocked(claimCustomerBookingWithinTransaction).mockReset();
+    vi.mocked(claimCustomerBookingWithinTransaction).mockResolvedValue({
+      bookingId: "booking-1",
+      grantId: "grant-1",
+      packageId: "package-1",
+      claimed: true,
+      grantRebound: true,
+      alreadyConnected: false,
+    });
   });
 
   afterEach(() => {
@@ -243,39 +264,42 @@ describe("POST /api/customer/register", () => {
       "@/lib/auth-email-verification"
     );
     vi.mocked(sendOrPreviewEmailVerification).mockClear();
+    const issued = issueCustomerBookingClaimToken(
+      {
+        claim_status: "UNCLAIMED",
+        client_email: "beta.customer@reliance.test",
+      },
+      new Date("2026-09-01T12:00:00.000Z"),
+    );
     hoisted.bookingFindUnique.mockResolvedValueOnce({
       id: "booking-1",
       userId: "placeholder-1",
-      customerMetadata: JSON.stringify({
-        claim_status: "UNCLAIMED",
-        claim_contact_email: "beta.customer@reliance.test",
-      }),
+      customerMetadata: JSON.stringify(issued.metadata),
       user: { email: "unclaimed+booking-1@reliance.local" },
     });
     hoisted.userUpsert.mockResolvedValueOnce({ id: "customer-1" });
-    hoisted.bookingUpdateMany.mockResolvedValueOnce({ count: 1 });
-    const nextPath = "/my-bookings/booking-1?videoReady=1";
+    const nextPath = `/my-bookings/booking-1?videoReady=1&claimToken=${encodeURIComponent(issued.rawToken)}`;
 
     const response = await POST(
       createCustomerRegisterRequest({ registrationNextPath: nextPath })
     );
 
     expect(response.status).toBe(200);
-    expect(hoisted.bookingUpdateMany).toHaveBeenCalledWith(
+    expect(claimCustomerBookingWithinTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "booking-1", userId: "placeholder-1" },
-        data: expect.objectContaining({ userId: "customer-1" }),
-      })
+        bookingId: "booking-1",
+        customerUserId: "customer-1",
+        claimToken: issued.rawToken,
+        verification: "REGISTRATION_CLAIM_TOKEN",
+      }),
     );
     expect(sendOrPreviewEmailVerification).toHaveBeenCalledWith(
       expect.objectContaining({ nextPath })
     );
-    const updateData = hoisted.bookingUpdateMany.mock.calls[0][0].data;
-    expect(JSON.parse(updateData.customerMetadata)).toMatchObject({
-      claim_status: "CLAIMED",
-      customer_account_linked: true,
-      linked_customer_user_id: "customer-1",
-    });
+    expect(hoisted.transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: "Serializable" },
+    );
   });
 
   it("restores a deactivated customer identity and keeps its already-linked service record", async () => {
@@ -329,7 +353,13 @@ describe("POST /api/customer/register", () => {
         emailVerifiedAt: null,
       })
     );
-    expect(hoisted.bookingUpdateMany).not.toHaveBeenCalled();
+    expect(claimCustomerBookingWithinTransaction).toHaveBeenCalledWith({
+      tx: expect.any(Object),
+      bookingId: "booking-1",
+      customerUserId: "customer-deactivated",
+      claimToken: "",
+      verification: "REGISTRATION_CLAIM_TOKEN",
+    });
   });
 
   it("does not overwrite an existing active account through registration", async () => {

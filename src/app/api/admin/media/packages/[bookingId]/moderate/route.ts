@@ -91,6 +91,18 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         user: { select: { name: true, email: true, phone: true } },
         vendor: { select: { name: true, businessName: true } },
         service: { select: { name: true } },
+        consentRecords: {
+          where: {
+            isCurrent: true,
+            supersededAt: null,
+            recipientMismatch: false,
+            verifiedDecision: true,
+            lifecycleStatus: "ALLOWED",
+          },
+          orderBy: [{ generation: "desc" }, { createdAt: "desc" }],
+          take: 1,
+          select: { recipientEmailHash: true },
+        },
       },
     });
     if (!booking) {
@@ -98,7 +110,11 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     }
 
     const metadata = parseMetadata(booking.customerMetadata);
-    const customer = resolveBookingCustomer(booking);
+    const customer = resolveBookingCustomer({
+      ...booking,
+      currentRecipientEmailHash:
+        booking.consentRecords?.[0]?.recipientEmailHash || null,
+    });
     let claimToken = "";
     if (decision === "PASS" && isUnclaimedBookingUserEmail(booking.user?.email)) {
       const issued = issueCustomerBookingClaimToken(metadata);

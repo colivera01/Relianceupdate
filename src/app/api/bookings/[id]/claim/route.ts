@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getUserIdFromRequest } from "@/lib/auth";
 import {
-  markCustomerBookingClaimed,
-  parseCustomerBookingClaimMetadata,
-  validateCustomerBookingClaim,
-} from "@/lib/customer-booking-claim";
+  claimCustomerBooking,
+  CustomerBookingClaimError,
+} from "@/lib/customer-booking-claim-service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -28,96 +27,27 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const claimToken = String(body?.claimToken || "").trim();
 
-    const [booking, account] = await Promise.all([
-      prisma.booking.findUnique({
-        where: { id: bookingId },
-        select: {
-          id: true,
-          userId: true,
-          customerMetadata: true,
-          user: { select: { email: true } },
-        },
-      }),
-      prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, email: true },
-      }),
-    ]);
-
-    if (!booking) {
-      return NextResponse.json(
-        { success: false, error: "Service record not found" },
-        { status: 404 }
-      );
-    }
-    if (!account?.email) {
-      return NextResponse.json(
-        { success: false, error: "Your customer account has no verified email context." },
-        { status: 409 }
-      );
-    }
-    if (String(booking.userId) === String(userId)) {
-      return NextResponse.json({
-        success: true,
-        claimed: false,
-        alreadyConnected: true,
-        bookingId,
-      });
-    }
-
-    const metadata = parseCustomerBookingClaimMetadata(
-      booking.customerMetadata
-    );
-    const validation = validateCustomerBookingClaim({
-      metadata,
-      bookingUserEmail: booking.user?.email,
-      accountEmail: account.email,
+    const result = await claimCustomerBooking({
+      prisma,
+      bookingId,
+      customerUserId: userId,
       claimToken,
     });
-    if (!validation.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: validation.error,
-          code: validation.code,
-        },
-        {
-          status:
-            validation.code === "BOOKING_ALREADY_CLAIMED" ? 409 : 403,
-        }
-      );
-    }
-
-    const updated = await prisma.booking.updateMany({
-      where: {
-        id: bookingId,
-        userId: booking.userId,
-      },
-      data: {
-        userId,
-        customerMetadata: JSON.stringify(
-          markCustomerBookingClaimed(metadata, userId)
-        ),
-      },
-    });
-    if (updated.count !== 1) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "This service record changed while it was being connected. Refresh and try again.",
-          code: "BOOKING_CLAIM_CONFLICT",
-        },
-        { status: 409 }
-      );
-    }
 
     return NextResponse.json({
       success: true,
-      claimed: true,
-      alreadyConnected: false,
+      claimed: result.claimed,
+      grantRebound: result.grantRebound,
+      alreadyConnected: result.alreadyConnected,
       bookingId,
     });
   } catch (error) {
+    if (error instanceof CustomerBookingClaimError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
     console.error("[bookings/:id/claim] POST error:", error);
     return NextResponse.json(
       {

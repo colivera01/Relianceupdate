@@ -1,6 +1,9 @@
+import { resolveCanonicalCustomerRecipient } from "@/lib/customer-recipient";
+
 type BookingCustomerSource = {
   clientName?: string | null;
   customerMetadata?: string | null;
+  currentRecipientEmailHash?: string | null;
   user?: {
     id?: string | null;
     name?: string | null;
@@ -25,14 +28,14 @@ function clean(value: unknown): string {
   return String(value || "").trim();
 }
 
-function usableEmail(value: unknown): string {
-  const email = clean(value);
-  return email && !email.toLowerCase().endsWith("@reliance.local") ? email : "";
-}
-
 /** Work-order fields are authoritative; the linked account is only a fallback. */
 export function resolveBookingCustomer(booking: BookingCustomerSource) {
   const metadata = parseMetadata(booking.customerMetadata);
+  const recipient = resolveCanonicalCustomerRecipient({
+    customerMetadata: metadata,
+    linkedAccountEmail: booking.user?.email,
+    currentRecipientEmailHash: booking.currentRecipientEmailHash,
+  });
   return {
     id: clean(booking.user?.id) || null,
     name:
@@ -40,11 +43,7 @@ export function resolveBookingCustomer(booking: BookingCustomerSource) {
       clean(booking.clientName) ||
       clean(booking.user?.name) ||
       null,
-    email:
-      usableEmail(metadata.client_email) ||
-      usableEmail(metadata.claim_contact_email) ||
-      usableEmail(booking.user?.email) ||
-      null,
+    email: recipient.email,
     phone: clean(metadata.client_phone) || clean(booking.user?.phone) || null,
   };
 }

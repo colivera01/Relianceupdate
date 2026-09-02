@@ -4,6 +4,7 @@ import {
   markCustomerBookingClaimed,
   validateCustomerBookingClaim,
 } from "./customer-booking-claim";
+import { hashPermissionContact } from "@/lib/consent/recipient";
 
 describe("customer booking claim helpers", () => {
   const now = new Date("2026-07-24T12:00:00.000Z");
@@ -43,6 +44,36 @@ describe("customer booking claim helpers", () => {
         claimToken: issued.rawToken,
         now,
       })
+    ).toMatchObject({ ok: false, code: "CLAIM_EMAIL_MISMATCH" });
+  });
+
+  it("uses the current permission recipient instead of stale historical claim metadata", () => {
+    const issued = issueCustomerBookingClaimToken(
+      {
+        client_email: "current@example.com",
+        claim_contact_email: "historical@example.com",
+      },
+      now,
+    );
+    expect(
+      validateCustomerBookingClaim({
+        metadata: issued.metadata,
+        bookingUserEmail: "unclaimed+123@reliance.local",
+        accountEmail: "current@example.com",
+        claimToken: issued.rawToken,
+        currentRecipientEmailHash: hashPermissionContact("current@example.com"),
+        now,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateCustomerBookingClaim({
+        metadata: issued.metadata,
+        bookingUserEmail: "unclaimed+123@reliance.local",
+        accountEmail: "historical@example.com",
+        claimToken: issued.rawToken,
+        currentRecipientEmailHash: hashPermissionContact("current@example.com"),
+        now,
+      }),
     ).toMatchObject({ ok: false, code: "CLAIM_EMAIL_MISMATCH" });
   });
 

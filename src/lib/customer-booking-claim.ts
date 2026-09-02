@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { resolveCanonicalCustomerRecipient } from "@/lib/customer-recipient";
 
 const CLAIM_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
@@ -40,10 +41,14 @@ export function isUnclaimedBookingUserEmail(value: unknown): boolean {
 }
 
 export function getCustomerBookingClaimContactEmail(
-  metadata: CustomerBookingClaimMetadata
+  metadata: CustomerBookingClaimMetadata,
+  currentRecipientEmailHash?: unknown,
 ): string {
-  return normalizeCustomerBookingClaimEmail(
-    metadata.claim_contact_email || metadata.client_email
+  return (
+    resolveCanonicalCustomerRecipient({
+      customerMetadata: metadata,
+      currentRecipientEmailHash,
+    }).email || ""
   );
 }
 
@@ -82,10 +87,14 @@ export function validateCustomerBookingClaim(input: {
   accountEmail: unknown;
   restorableUserId?: unknown;
   claimToken?: unknown;
+  currentRecipientEmailHash?: unknown;
   now?: Date;
 }): CustomerBookingClaimValidation {
   const accountEmail = normalizeCustomerBookingClaimEmail(input.accountEmail);
-  const contactEmail = getCustomerBookingClaimContactEmail(input.metadata);
+  const contactEmail = getCustomerBookingClaimContactEmail(
+    input.metadata,
+    input.currentRecipientEmailHash,
+  );
   if (!accountEmail || !contactEmail || accountEmail !== contactEmail) {
     return {
       ok: false,

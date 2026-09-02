@@ -1,31 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { getUserIdFromRequest } from "@/lib/auth";
+import {
+  claimCustomerBooking,
+  CustomerBookingClaimError,
+} from "@/lib/customer-booking-claim-service";
 
-const hoisted = vi.hoisted(() => {
-  const bookingFindUnique = vi.fn();
-  const bookingUpdateMany = vi.fn();
-  const userFindUnique = vi.fn();
-  return {
-    bookingFindUnique,
-    bookingUpdateMany,
-    userFindUnique,
-    prisma: {
-      booking: {
-        findUnique: bookingFindUnique,
-        updateMany: bookingUpdateMany,
-      },
-      user: {
-        findUnique: userFindUnique,
-      },
-    },
-  };
-});
-
-vi.mock("@/server/db", () => ({ prisma: hoisted.prisma }));
+vi.mock("@/server/db", () => ({ prisma: { marker: "prisma" } }));
 vi.mock("@/lib/auth", () => ({ getUserIdFromRequest: vi.fn() }));
-
-function request(claimToken = "") {
+vi.mock("@/lib/customer-booking-claim-service", async () => {
+  const actual = await vi.importActual<any>("@/lib/customer-booking-claim-service");
+  return { ...actual, claimCustomerBooking: vi.fn() };
+});
+function request(claimToken = "claim-token") {
   return new Request("https://beta.relianceonline.org/api/bookings/booking-1/claim", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -36,81 +23,72 @@ function request(claimToken = "") {
 describe("POST /api/bookings/[id]/claim", () => {
   beforeEach(() => {
     vi.mocked(getUserIdFromRequest).mockReset();
-    hoisted.bookingFindUnique.mockReset();
-    hoisted.bookingUpdateMany.mockReset();
-    hoisted.userFindUnique.mockReset();
+    vi.mocked(claimCustomerBooking).mockReset();
     vi.mocked(getUserIdFromRequest).mockResolvedValue("customer-1");
-    hoisted.userFindUnique.mockResolvedValue({
-      id: "customer-1",
-      email: "customer@example.com",
-    });
   });
 
-  it("connects a legacy unclaimed work order to the signed-in matching customer", async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({
-      id: "booking-1",
-      userId: "placeholder-1",
-      customerMetadata: JSON.stringify({
-        claim_status: "UNCLAIMED",
-        claim_contact_email: "customer@example.com",
-      }),
-      user: { email: "unclaimed+123@reliance.local" },
+  it("uses the transactional claim service for the exact link context", async () => {
+    vi.mocked(claimCustomerBooking).mockResolvedValue({
+      bookingId: "booking-1",
+      grantId: "grant-1",
+      packageId: "package-1",
+      claimed: true,
+      grantRebound: true,
+      alreadyConnected: false,
     });
-    hoisted.bookingUpdateMany.mockResolvedValue({ count: 1 });
 
     const response = await POST(request(), {
       params: Promise.resolve({ id: "booking-1" }),
     });
-    const json = await response.json();
-
     expect(response.status).toBe(200);
-    expect(json).toMatchObject({ success: true, claimed: true });
-    expect(hoisted.bookingUpdateMany).toHaveBeenCalledWith(
+    expect(await response.json()).toMatchObject({
+      success: true,
+      claimed: true,
+      grantRebound: true,
+    });
+    expect(claimCustomerBooking).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "booking-1", userId: "placeholder-1" },
-        data: expect.objectContaining({ userId: "customer-1" }),
-      })
+        bookingId: "booking-1",
+        customerUserId: "customer-1",
+        claimToken: "claim-token",
+      }),
     );
   });
 
-  it("does not connect the work order to a different email account", async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({
-      id: "booking-1",
-      userId: "placeholder-1",
-      customerMetadata: JSON.stringify({
-        claim_status: "UNCLAIMED",
-        claim_contact_email: "intended@example.com",
-      }),
-      user: { email: "unclaimed+123@reliance.local" },
-    });
-
+  it("preserves the mismatch denial from the canonical transaction", async () => {
+    vi.mocked(claimCustomerBooking).mockRejectedValue(
+      new CustomerBookingClaimError(
+        "CLAIM_EMAIL_MISMATCH",
+        "Use the customer email address that received this service-video link.",
+        403,
+      ),
+    );
     const response = await POST(request(), {
       params: Promise.resolve({ id: "booking-1" }),
     });
-    const json = await response.json();
-
     expect(response.status).toBe(403);
-    expect(json).toMatchObject({ code: "CLAIM_EMAIL_MISMATCH" });
-    expect(hoisted.bookingUpdateMany).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "CLAIM_EMAIL_MISMATCH",
+    });
   });
 
-  it("is idempotent when the booking already belongs to the signed-in customer", async () => {
-    hoisted.bookingFindUnique.mockResolvedValue({
-      id: "booking-1",
-      userId: "customer-1",
-      customerMetadata: "{}",
-      user: { email: "customer@example.com" },
+  it("returns the completed idempotent state", async () => {
+    vi.mocked(claimCustomerBooking).mockResolvedValue({
+      bookingId: "booking-1",
+      grantId: "grant-1",
+      packageId: "package-1",
+      claimed: false,
+      grantRebound: false,
+      alreadyConnected: true,
     });
-
     const response = await POST(request(), {
       params: Promise.resolve({ id: "booking-1" }),
     });
-
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       success: true,
       alreadyConnected: true,
     });
-    expect(hoisted.bookingUpdateMany).not.toHaveBeenCalled();
   });
 });

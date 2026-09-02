@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { hashPermissionContact } from "@/lib/consent/recipient";
 
 const hoisted = vi.hoisted(() => ({
   bookingFindUnique: vi.fn(),
@@ -79,6 +80,41 @@ describe("core Admin Service Video audit route", () => {
       notificationId: "vendor-notification-1",
     }));
     expect(hoisted.sendRejected).not.toHaveBeenCalled();
+  });
+
+  it("sends Private Proof to the corrected current recipient, not historical claim metadata", async () => {
+    const current = "current@example.com";
+    hoisted.bookingFindUnique.mockResolvedValue({
+      ...booking(),
+      customerMetadata: JSON.stringify({
+        client_email: current,
+        claim_contact_email: "historical@example.com",
+      }),
+      user: { email: "unclaimed+b1@reliance.local", name: "Alex", phone: null },
+      consentRecords: [
+        { recipientEmailHash: hashPermissionContact(current) },
+      ],
+    });
+    hoisted.decide.mockResolvedValue({
+      decision: { id: "audit-1", decidedAt: new Date() },
+      package: { id: "package-1", version: 1 },
+      customerNotificationId: "notification-1",
+      vendorNotificationId: "vendor-notification-1",
+      alreadyDecided: false,
+    });
+    const { PATCH } = await import("./route");
+    const response = await PATCH(
+      new Request("https://beta.relianceonline.org/api/admin/media/packages/b1/moderate", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "PASS" }),
+      }),
+      { params: Promise.resolve({ bookingId: "b1" }) },
+    );
+    expect(response.status).toBe(200);
+    expect(hoisted.sendReady).toHaveBeenCalledWith(
+      expect.objectContaining({ customerEmail: current }),
+    );
   });
 
   it("requires a category and reason for terminal REJECT", async () => {

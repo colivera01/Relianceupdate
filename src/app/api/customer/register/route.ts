@@ -10,10 +10,10 @@ import {
   sanitizeAuthNextPath,
 } from "@/lib/auth-next";
 import {
-  markCustomerBookingClaimed,
   parseCustomerBookingClaimMetadata,
   validateCustomerBookingClaim,
 } from "@/lib/customer-booking-claim";
+import { claimCustomerBookingWithinTransaction } from "@/lib/customer-booking-claim-service";
 import {
   parseRegistrationBoolean,
   recordCustomerRegistrationEvidence,
@@ -202,18 +202,36 @@ export async function POST(request: NextRequest) {
           user: { email: string | null } | null;
         }
       | null = null;
+    let currentClaimRecipientEmailHash: string | null = null;
 
     if (serviceVideoIntent) {
       try {
-        claimBooking = await prisma.booking.findUnique({
-          where: { id: serviceVideoIntent.bookingId },
-          select: {
-            id: true,
-            userId: true,
-            customerMetadata: true,
-            user: { select: { email: true } },
-          },
-        });
+        const [bookingResult, currentConsent] = await Promise.all([
+          prisma.booking.findUnique({
+            where: { id: serviceVideoIntent.bookingId },
+            select: {
+              id: true,
+              userId: true,
+              customerMetadata: true,
+              user: { select: { email: true } },
+            },
+          }),
+          (prisma as any).consentRecord.findFirst({
+            where: {
+              bookingId: serviceVideoIntent.bookingId,
+              isCurrent: true,
+              supersededAt: null,
+              recipientMismatch: false,
+              verifiedDecision: true,
+              lifecycleStatus: "ALLOWED",
+            },
+            orderBy: [{ generation: "desc" }, { createdAt: "desc" }],
+            select: { recipientEmailHash: true },
+          }),
+        ]);
+        claimBooking = bookingResult;
+        currentClaimRecipientEmailHash =
+          String(currentConsent?.recipientEmailHash || "").trim() || null;
       } catch (claimLookupError) {
         console.error("Customer service-record claim lookup failed:", claimLookupError);
         return NextResponse.json(
@@ -247,6 +265,7 @@ export async function POST(request: NextRequest) {
           ? existingCustomer?.id
           : null,
         claimToken: serviceVideoIntent.claimToken,
+        currentRecipientEmailHash: currentClaimRecipientEmailHash,
       });
       if (!claimValidation.ok) {
         return NextResponse.json(
@@ -368,37 +387,22 @@ export async function POST(request: NextRequest) {
             db: tx,
           });
 
-          if (claimBooking && claimBooking.userId !== customerId) {
-            const claimMetadata = parseCustomerBookingClaimMetadata(
-              claimBooking.customerMetadata
-            );
-            const claimed = await tx.booking.updateMany({
-              where: {
-                id: claimBooking.id,
-                userId: claimBooking.userId,
-              },
-              data: {
-                userId: customerId,
-                customerMetadata: JSON.stringify(
-                  markCustomerBookingClaimed(claimMetadata, customerId)
-                ),
-              },
-            });
-            if (claimed.count !== 1) {
-              throw new Error("CUSTOMER_BOOKING_CLAIM_CONFLICT");
-            }
-            await (tx as any).privateProofAccessGrant.updateMany({
-              where: {
-                bookingId: claimBooking.id,
-                customerUserId: claimBooking.userId,
-                status: "ACTIVE",
-              },
-              data: { customerUserId: customerId },
+          if (
+            claimBooking &&
+            serviceVideoIntent
+          ) {
+            await claimCustomerBookingWithinTransaction({
+              tx,
+              bookingId: claimBooking.id,
+              customerUserId: customerId,
+              claimToken: serviceVideoIntent.claimToken,
+              verification: "REGISTRATION_CLAIM_TOKEN",
             });
           }
 
           return { customerId, credentialId: String(credential.id) };
-        }
+        },
+        { isolationLevel: "Serializable" },
       );
       persistedCustomerId = registrationWrite.customerId;
       if (!isProductionRuntime) {
