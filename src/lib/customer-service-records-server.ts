@@ -380,7 +380,7 @@ export async function loadCustomerServiceRecords(input: {
   const start = (effectivePage - 1) * safeLimit;
 
   return {
-    records: matching.slice(start, start + safeLimit).map((record) => record.contract),
+    records: (input.includeAll ? matching : matching.slice(start, start + safeLimit)).map((record) => record.contract),
     counts,
     selectedTab,
     pagination: {

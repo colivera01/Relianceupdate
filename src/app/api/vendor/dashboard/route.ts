@@ -10,6 +10,7 @@ import {
   countableReviewWhere,
   vendorOperationalBookingWhere,
 } from "@/lib/metrics-exclusion";
+import { canonicalVerifiedCustomerRatingWhere } from "@/lib/review-rating-validity";
 
 function approvedCustomerReviewWhereForVendor(
   vendorId: string,
@@ -21,6 +22,13 @@ function approvedCustomerReviewWhereForVendor(
     moderationStatus: "approved",
     bookingId: { not: null },
     ...extra,
+  });
+}
+
+function verifiedCustomerRatingWhereForVendor(vendorId: string) {
+  return countableReviewWhere({
+    vendorId,
+    ...canonicalVerifiedCustomerRatingWhere(),
   });
 }
 
@@ -129,7 +137,7 @@ export async function GET(request: Request) {
 
       prisma.review.findMany({
 
-        where: approvedCustomerReviewWhereForVendor(vendorId),
+        where: verifiedCustomerRatingWhereForVendor(vendorId),
 
         select: { rating: true },
 

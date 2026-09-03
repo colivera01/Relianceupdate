@@ -14,6 +14,12 @@ const hoisted = vi.hoisted(() => {
   const favoriteDelete = vi.fn();
   const mediaAssetFindMany = vi.fn();
   const serviceFindUnique = vi.fn();
+  const vendorFindUnique = vi.fn();
+  const vendorFavoriteCount = vi.fn();
+  const vendorFavoriteFindMany = vi.fn();
+  const vendorFavoriteFindFirst = vi.fn();
+  const vendorFavoriteUpsert = vi.fn();
+  const vendorFavoriteDelete = vi.fn();
 
   const prisma = {
     favorite: {
@@ -25,6 +31,14 @@ const hoisted = vi.hoisted(() => {
     },
     mediaAsset: { findMany: mediaAssetFindMany },
     service: { findUnique: serviceFindUnique },
+    vendor: { findUnique: vendorFindUnique },
+    vendorFavorite: {
+      count: vendorFavoriteCount,
+      findMany: vendorFavoriteFindMany,
+      findFirst: vendorFavoriteFindFirst,
+      upsert: vendorFavoriteUpsert,
+      delete: vendorFavoriteDelete,
+    },
   };
 
   return {
@@ -36,6 +50,12 @@ const hoisted = vi.hoisted(() => {
     favoriteDelete,
     mediaAssetFindMany,
     serviceFindUnique,
+    vendorFindUnique,
+    vendorFavoriteCount,
+    vendorFavoriteFindMany,
+    vendorFavoriteFindFirst,
+    vendorFavoriteUpsert,
+    vendorFavoriteDelete,
   };
 });
 
@@ -87,11 +107,52 @@ describe('GET /api/users/favorites', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.favoriteCount.mockReset();
     hoisted.favoriteFindMany.mockReset();
+    hoisted.vendorFavoriteCount.mockReset();
+    hoisted.vendorFavoriteCount.mockResolvedValue(0);
+    hoisted.vendorFavoriteFindMany.mockReset();
+    hoisted.vendorFavoriteFindMany.mockResolvedValue([]);
     hoisted.mediaAssetFindMany.mockReset();
     vi.mocked(getVendorReviewAggregatesForPublic).mockReset();
     vi.mocked(getVendorReviewAggregatesForPublic).mockResolvedValue(new Map());
     vi.mocked(resolveCanonicalPublicAssetIds).mockReset();
     vi.mocked(resolveCanonicalPublicAssetIds).mockResolvedValue([]);
+  });
+
+  it('returns full Service and Vendor counts independently of the selected page', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
+    hoisted.favoriteCount.mockResolvedValue(67);
+    hoisted.vendorFavoriteCount.mockResolvedValue(14);
+    hoisted.favoriteFindMany.mockResolvedValue([]);
+    const res = await favoritesGET(new NextRequest('http://localhost/api/users/favorites?type=service&page=4&limit=20'));
+    expect(res.status).toBe(200);
+    await expect(getJson(res)).resolves.toMatchObject({
+      counts: { all: 81, services: 67, vendors: 14 },
+      pagination: { page: 4, limit: 20, total: 67, totalPages: 4 },
+    });
+  });
+
+  it('searches and paginates saved Vendors on the server', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
+    hoisted.favoriteCount.mockResolvedValue(0);
+    hoisted.vendorFavoriteCount.mockResolvedValue(1);
+    hoisted.vendorFavoriteFindMany.mockResolvedValue([{
+      id: 'vendor-favorite-1',
+      createdAt: new Date('2026-09-03T00:00:00.000Z'),
+      vendor: {
+        id: 'vendor-1', name: 'Electro', businessName: 'Electro LLC', businessType: 'Electrical',
+        category: 'Electrician', city: 'Orlando', state: 'FL', isPubliclyListed: true,
+        _count: { services: 3 },
+      },
+    }]);
+    const res = await favoritesGET(new NextRequest('http://localhost/api/users/favorites?type=vendor&search=Electro&page=1&limit=12'));
+    expect(res.status).toBe(200);
+    const body = await getJson(res);
+    expect(body.items).toEqual([expect.objectContaining({ entityType: 'vendor', vendorId: 'vendor-1', vendorName: 'Electro LLC' })]);
+    expect(hoisted.vendorFavoriteFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ userId: 'user-1', OR: expect.any(Array) }),
+      skip: 0,
+      take: 12,
+    }));
   });
 
   it('returns 401 when no identity (no auth, no userId query)', async () => {
@@ -162,6 +223,35 @@ describe('POST /api/users/favorites', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.serviceFindUnique.mockReset();
     hoisted.favoriteUpsert.mockReset();
+    hoisted.vendorFindUnique.mockReset();
+    hoisted.vendorFavoriteUpsert.mockReset();
+  });
+
+  it('saves a Vendor idempotently without fabricating a Service favorite', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
+    hoisted.vendorFindUnique.mockResolvedValue({ id: 'v1', isPubliclyListed: true, accountStatus: 'active' });
+    hoisted.vendorFavoriteUpsert.mockResolvedValue({ id: 'vf1', vendorId: 'v1', createdAt: new Date('2026-09-03T00:00:00.000Z') });
+    const res = await favoritesPOST(new NextRequest('http://localhost/api/users/favorites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType: 'vendor', vendorId: 'v1' }),
+    }));
+    expect(res.status).toBe(200);
+    await expect(getJson(res)).resolves.toMatchObject({ favorite: { entityType: 'vendor', favoriteId: 'vf1', vendorId: 'v1' } });
+    expect(hoisted.vendorFavoriteUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId_vendorId: { userId: 'u1', vendorId: 'v1' } },
+    }));
+    expect(hoisted.favoriteUpsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported favorite targets', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
+    const res = await favoritesPOST(new NextRequest('http://localhost/api/users/favorites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType: 'review', reviewId: 'r1' }),
+    }));
+    expect(res.status).toBe(422);
+    expect(hoisted.favoriteUpsert).not.toHaveBeenCalled();
+    expect(hoisted.vendorFavoriteUpsert).not.toHaveBeenCalled();
   });
 
   it('returns 401 when no user identity', async () => {
@@ -272,6 +362,20 @@ describe('DELETE /api/users/favorites/[id]', () => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.favoriteFindFirst.mockReset();
     hoisted.favoriteDelete.mockReset();
+    hoisted.vendorFavoriteFindFirst.mockReset();
+    hoisted.vendorFavoriteDelete.mockReset();
+  });
+
+  it('removes only the authenticated customer\'s Vendor favorite', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
+    hoisted.vendorFavoriteFindFirst.mockResolvedValue({ id: 'vf1', vendorId: 'v1' });
+    const req = new NextRequest('http://localhost/api/users/favorites/vf1?type=vendor', { method: 'DELETE' });
+    const res = await favoriteDELETE(req, { params: Promise.resolve({ id: 'vf1' }) });
+    expect(res.status).toBe(200);
+    expect(hoisted.vendorFavoriteFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'u1', OR: [{ id: 'vf1' }, { vendorId: 'vf1' }] },
+    }));
+    expect(hoisted.vendorFavoriteDelete).toHaveBeenCalledWith({ where: { id: 'vf1' } });
   });
 
   it('returns 401 when no user identity', async () => {

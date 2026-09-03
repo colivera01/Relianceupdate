@@ -11,13 +11,15 @@ type ReviewModerationAction =
   | "approve_public"
   | "approve_vendor_private"
   | "reject"
-  | "flag";
+  | "flag"
+  | "invalidate_review";
 
 const ACTIONS = new Set<ReviewModerationAction>([
   "approve_public",
   "approve_vendor_private",
   "reject",
   "flag",
+  "invalidate_review",
 ]);
 
 export async function PATCH(request: Request, context: RouteParams): Promise<NextResponse> {
@@ -35,9 +37,9 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
       );
     }
 
-    if (action === "reject" && !moderationReason) {
+    if ((action === "reject" || action === "invalidate_review") && !moderationReason) {
       return NextResponse.json(
-        { success: false, error: "moderationReason is required for reject", message: "moderationReason is required for reject" },
+        { success: false, error: "moderationReason is required for this action", message: "moderationReason is required for this action" },
         { status: 422 }
       );
     }
@@ -52,6 +54,11 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         moderationReason: true,
         moderatedAt: true,
         moderatedByUserId: true,
+        contractVersion: true,
+        ratingValidityStatus: true,
+        ratingInvalidationReason: true,
+        ratingInvalidatedAt: true,
+        ratingInvalidatedByUserId: true,
       },
     });
 
@@ -70,6 +77,46 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
         : action === "reject"
         ? { moderationStatus: "rejected", visibilityStatus: "private", moderationReason }
         : { moderationStatus: "flagged", visibilityStatus: "private", moderationReason: moderationReason || null };
+
+    if (action === "invalidate_review") {
+      if (!existing.contractVersion || existing.contractVersion < 2) {
+        return NextResponse.json(
+          { success: false, error: "Historical reviews retain their original moderation contract", message: "Historical reviews retain their original moderation contract" },
+          { status: 409 }
+        );
+      }
+      if (existing.ratingValidityStatus === "invalid") {
+        return NextResponse.json({ success: true, message: "Review is already invalidated", review: existing });
+      }
+      const invalidatedAt = new Date();
+      const updated = await prisma.review.update({
+        where: { id: reviewId },
+        data: {
+          ratingValidityStatus: "invalid",
+          ratingInvalidationReason: moderationReason,
+          ratingInvalidatedAt: invalidatedAt,
+          ratingInvalidatedByUserId: userId,
+          visibilityStatus: "private",
+        },
+      });
+      await createAdminAuditLog({
+        actionType: "REVIEW_RATING_INVALIDATED",
+        entityType: "review",
+        entityId: reviewId,
+        actorUserId: userId,
+        previousValue: {
+          ratingValidityStatus: existing.ratingValidityStatus,
+          ratingInvalidationReason: existing.ratingInvalidationReason,
+        },
+        newValue: {
+          ratingValidityStatus: "invalid",
+          ratingInvalidationReason: moderationReason,
+          ratingInvalidatedAt: invalidatedAt.toISOString(),
+        },
+        metadata: { source: "PATCH /api/admin/reviews/[reviewId]/moderate", vendorId: existing.vendorId },
+      });
+      return NextResponse.json({ success: true, message: "Review rating evidence invalidated", review: updated });
+    }
 
     const noChange =
       existing.moderationStatus === nextState.moderationStatus &&

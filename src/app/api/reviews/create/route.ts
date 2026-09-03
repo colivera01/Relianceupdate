@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
 import {
@@ -15,8 +16,18 @@ import { requireVerifiedEmailForAction } from '@/lib/email-verification-enforcem
 import {
   normalizeReviewAttributionTarget,
 } from '@/lib/review-attribution-intent';
-import { isCompletedStatus, normalizeBookingStatusKey } from '@/lib/my-bookings';
-import { loadAuthorizedPrivateProof } from '@/lib/service-video-evidence';
+import { loadCustomerReviewEligibility } from '@/lib/customer-review-eligibility';
+import { REVIEW_CONTRACT_VERSION, VERIFIED_RATING_STATUS } from '@/lib/review-rating-validity';
+
+function reviewSubmissionHash(input: Record<string, unknown>): string {
+  return createHash('sha256').update(JSON.stringify(input)).digest('hex');
+}
+
+function publicEligibilityCode(code: string): string {
+  if (code === 'SERVICE_NOT_COMPLETED') return 'BOOKING_NOT_COMPLETED';
+  if (code === 'PRIVATE_PROOF_REQUIRED') return 'REVIEW_PRIVATE_PROOF_REQUIRED';
+  return code;
+}
 
 export async function POST(request: NextRequest) {
   let step = 'parse_request';
@@ -48,6 +59,16 @@ export async function POST(request: NextRequest) {
     const employeeRatingProvided = body?.employeeRating !== undefined && body?.employeeRating !== null && body?.employeeRating !== '';
     const employeeRating = employeeRatingProvided ? Number(body.employeeRating) : null;
     const reviewAttributionTarget = normalizeReviewAttributionTarget(body?.reviewAttributionTarget);
+    const submissionRequestId = String(body?.requestId || '').trim() || null;
+    const submissionRequestHash = reviewSubmissionHash({
+      bookingId,
+      vendorId,
+      rating,
+      comment: comment || null,
+      employeeRating,
+      submittedVia,
+      reviewAttributionTarget,
+    });
     debug = {
       reviewWindowId,
       bookingId,
@@ -58,6 +79,8 @@ export async function POST(request: NextRequest) {
       submittedVia,
       reviewAttributionTarget,
       employeeRating,
+      submissionRequestId,
+      submissionRequestHash,
     };
 
     if (!reviewWindowId || !bookingId || !vendorId || !Number.isFinite(rating)) {
@@ -81,6 +104,27 @@ export async function POST(request: NextRequest) {
     }
     if (!isValidSubmittedVia(submittedVia)) {
       return NextResponse.json({ success: false, error: 'Invalid submittedVia' }, { status: 400 });
+    }
+    if (comment.length > 2000) {
+      return NextResponse.json({ success: false, error: 'comment must be 2000 characters or fewer' }, { status: 400 });
+    }
+    if (submissionRequestId && submissionRequestId.length > 200) {
+      return NextResponse.json({ success: false, error: 'requestId must be 200 characters or fewer' }, { status: 400 });
+    }
+    if (submissionRequestId) {
+      const requestReplay = await (prisma as any).review.findFirst({
+        where: { userId: String(userId), submissionRequestId },
+        select: { id: true, bookingId: true, submissionRequestId: true, submissionRequestHash: true },
+      });
+      if (requestReplay) {
+        if (requestReplay.submissionRequestHash === submissionRequestHash) {
+          return NextResponse.json({ success: true, idempotent: true, review: requestReplay });
+        }
+        return NextResponse.json(
+          { success: false, error: 'Review request conflicts with an earlier submission', code: 'REVIEW_IDEMPOTENCY_CONFLICT' },
+          { status: 409 }
+        );
+      }
     }
 
     step = 'assert_review_window_active';
@@ -133,31 +177,28 @@ export async function POST(request: NextRequest) {
     if (String(booking.userId) !== String(userId)) {
       return NextResponse.json({ success: false, error: 'Only the booking customer can submit review' }, { status: 403 });
     }
-    if (!isCompletedStatus(normalizeBookingStatusKey(booking.status))) {
+    step = 'canonical_review_eligibility';
+    const eligibility = await loadCustomerReviewEligibility({
+      bookingId,
+      customerUserId: String(userId),
+      db: prisma,
+    });
+    if (!eligibility.eligible && eligibility.code !== 'REVIEW_ALREADY_EXISTS') {
       return NextResponse.json(
         {
           success: false,
-          error: 'A review is available only after the booking is completed',
-          code: 'BOOKING_NOT_COMPLETED',
+          error: eligibility.message,
+          code: publicEligibilityCode(eligibility.code),
         },
         { status: 409 }
       );
     }
-
-    step = 'authorized_private_proof_check';
-    const privateProof = await loadAuthorizedPrivateProof({
-      bookingId,
-      customerUserId: String(userId),
-    });
-    const finalStage = privateProof?.stages.find(
-      (stage: any) => String(stage.stage || '').toUpperCase() === 'COMPLETED'
-    );
-    if (!privateProof || !finalStage || String(finalStage.mediaSessionId || '') !== windowMediaSessionId) {
+    if (eligibility.eligible && String(eligibility.mediaSessionId || '') !== windowMediaSessionId) {
       return NextResponse.json(
         {
           success: false,
-          error: 'An active approved Private Proof is required before reviewing',
-          code: 'REVIEW_PRIVATE_PROOF_REQUIRED',
+          error: 'Review window is not bound to the current approved Service Video',
+          code: 'REVIEW_PROOF_BINDING_MISMATCH',
         },
         { status: 409 }
       );
@@ -165,10 +206,18 @@ export async function POST(request: NextRequest) {
 
     step = 'existing_review_lookup';
     const existingReview = await (prisma as any).review.findFirst({
-      where: { bookingId },
-      select: { id: true },
+      where: { bookingId, userId: String(userId) },
+      select: { id: true, submissionRequestId: true, submissionRequestHash: true },
     });
     if (existingReview) {
+      if (existingReview.submissionRequestHash === submissionRequestHash) {
+        return NextResponse.json({
+          success: true,
+          idempotent: true,
+          review: existingReview,
+          reviewWindowId,
+        });
+      }
       return NextResponse.json(
         {
           success: false,
@@ -235,6 +284,40 @@ export async function POST(request: NextRequest) {
 
     step = 'create_review_transaction';
     const created = await prisma.$transaction(async (tx) => {
+      const transactionalEligibility = await loadCustomerReviewEligibility({
+        bookingId,
+        customerUserId: String(userId),
+        db: tx,
+      });
+      if (!transactionalEligibility.eligible || transactionalEligibility.mediaSessionId !== windowMediaSessionId) {
+        const eligibilityError = new Error(transactionalEligibility.message) as Error & { code?: string };
+        eligibilityError.code = transactionalEligibility.code;
+        throw eligibilityError;
+      }
+      const transactionalWindow = await (tx as any).reviewWindow.findFirst({
+        where: { id: reviewWindowId, bookingId, vendorId, mediaSessionId: windowMediaSessionId, status: 'active' },
+        select: { id: true },
+      });
+      if (!transactionalWindow) {
+        const windowError = new Error('Review window is no longer active') as Error & { code?: string };
+        windowError.code = 'REVIEW_WINDOW_NOT_ACTIVE';
+        throw windowError;
+      }
+      if (employeeRatingProvided) {
+        const currentBooking = await (tx as any).booking.findUnique({
+          where: { id: bookingId },
+          select: { customerMetadata: true },
+        });
+        const currentAssignment = parseAssignmentMetadata(currentBooking?.customerMetadata);
+        if (
+          currentAssignment.assignedMembershipIds.length !== 1 ||
+          String(currentAssignment.assignedMembershipIds[0]) !== assignedMembershipId
+        ) {
+          const assignmentError = new Error('The assigned service professional changed before review submission') as Error & { code?: string };
+          assignmentError.code = 'EMPLOYEE_RATING_ASSIGNMENT_STALE';
+          throw assignmentError;
+        }
+      }
       const review = await (tx as any).review.create({
         data: {
           userId: String(userId),
@@ -250,8 +333,12 @@ export async function POST(request: NextRequest) {
           assignedEmployeeName: assignedEmployeeName || null,
           assignedUserId: assignedUserId || null,
           attributionVersion: 3,
-          moderationStatus: 'pending_review',
+          moderationStatus: comment ? 'pending_review' : 'not_applicable',
           visibilityStatus: 'private',
+          contractVersion: REVIEW_CONTRACT_VERSION,
+          ratingValidityStatus: VERIFIED_RATING_STATUS,
+          submissionRequestId,
+          submissionRequestHash,
           date: new Date(),
         },
       });
@@ -303,7 +390,7 @@ export async function POST(request: NextRequest) {
         },
       });
       return { review, employeeCustomerRating };
-    });
+    }, { isolationLevel: 'Serializable' });
 
     step = 'admin_audit_log';
     await createAdminAuditLog({
@@ -322,12 +409,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    try {
+    if (comment) try {
       await createAdminNotificationWithEmail({
         vendorId,
         type: 'REVIEW_MODERATION_REQUIRED',
-        title: 'Customer review waiting for moderation',
-        message: `A customer submitted a ${rating}-star review that needs admin review before public visibility.`,
+        title: 'Customer comment waiting for moderation',
+        message: 'A verified Customer Review includes written content that needs a publication decision. The Vendor Rating is already counted.',
         metadata: {
           reviewId: created.review.id,
           bookingId,
@@ -340,7 +427,7 @@ export async function POST(request: NextRequest) {
           employeeRatingEvidenceId: created.employeeCustomerRating?.id || null,
         },
         surfaceHref: '/admin/reviews',
-        baseUrl: request.nextUrl.origin,
+        baseUrl: new URL(request.url).origin,
         actorUserId: String(userId),
       });
     } catch (notificationError) {
@@ -363,6 +450,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }
     if (error?.code === 'P2002') {
+      const requestReplay = debug.submissionRequestId && debug.userId
+        ? await (prisma as any).review.findFirst({
+            where: {
+              userId: String(debug.userId),
+              submissionRequestId: String(debug.submissionRequestId),
+            },
+            select: { id: true, submissionRequestHash: true },
+          })
+        : null;
+      if (requestReplay) {
+        if (requestReplay.submissionRequestHash === debug.submissionRequestHash) {
+          return NextResponse.json({ success: true, idempotent: true, review: requestReplay });
+        }
+        return NextResponse.json(
+          { success: false, error: 'Review request conflicts with an earlier submission', code: 'REVIEW_IDEMPOTENCY_CONFLICT' },
+          { status: 409 }
+        );
+      }
+      const existing = debug.bookingId && debug.userId
+        ? await (prisma as any).review.findFirst({
+            where: { bookingId: String(debug.bookingId), userId: String(debug.userId) },
+            select: { id: true, submissionRequestId: true, submissionRequestHash: true },
+          })
+        : null;
+      if (existing?.submissionRequestHash === debug.submissionRequestHash) {
+        return NextResponse.json({ success: true, idempotent: true, review: existing });
+      }
       return NextResponse.json(
         {
           success: false,

@@ -21,8 +21,26 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     const { id } = await params;
     const rawId = String(id || "").trim();
+    const entityType = String(searchParams.get("type") || "service").trim().toLowerCase();
     if (!rawId) {
       return NextResponse.json({ error: "Favorite id is required" }, { status: 400 });
+    }
+
+    if (entityType === "vendor") {
+      const favorite = await (prisma as any).vendorFavorite.findFirst({
+        where: { userId, OR: [{ id: rawId }, { vendorId: rawId }] },
+        select: { id: true, vendorId: true },
+      });
+      if (!favorite) return NextResponse.json({ error: "Favorite not found" }, { status: 404 });
+      await (prisma as any).vendorFavorite.delete({ where: { id: favorite.id } });
+      return NextResponse.json({
+        success: true,
+        removed: { entityType: "vendor", favoriteId: favorite.id, vendorId: favorite.vendorId },
+        message: "Saved Vendor removed",
+      });
+    }
+    if (entityType !== "service") {
+      return NextResponse.json({ error: "Unsupported favorite type" }, { status: 422 });
     }
 
     const favorite = await prisma.favorite.findFirst({
@@ -47,6 +65,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return NextResponse.json({
       success: true,
       removed: {
+        entityType: "service",
         favoriteId: favorite.id,
         serviceId: favorite.serviceId,
       },

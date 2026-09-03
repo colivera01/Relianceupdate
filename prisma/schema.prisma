@@ -115,6 +115,7 @@ model Vendor {
   recordingLocationAttempts   RecordingLocationAttempt[]
   recordingLocationExceptions RecordingLocationException[]
   recordingGateMetrics        RecordingGateMetric[]
+  vendorFavorites             VendorFavorite[]
 
   @@map("vendors")
 }
@@ -266,6 +267,7 @@ model User {
   invitesCreated                  VendorInvite[]                           @relation("InvitesCreated")
   mediaSessions                   MediaSession[]
   favorites                       Favorite[]
+  vendorFavorites                 VendorFavorite[]
   customerRegistrationEvidence    CustomerRegistrationEvidence[]
   serviceRecordOrganizationEvents CustomerServiceRecordOrganizationEvent[]
 
@@ -1528,31 +1530,38 @@ model BookingNotificationAttempt {
 }
 
 model Review {
-  id                   String    @id @default(cuid())
-  userId               String
-  vendorId             String
-  bookingId            String?
-  mediaSessionId       String?
-  assignedMembershipId String?
-  assignedEmployeeName String?
-  assignedUserId       String?
-  attributionVersion   Int       @default(1)
-  clientName           String? // Client name (or use user relation)
-  jobType              String? // Type of job/service reviewed
-  rating               Int
-  comment              String?
-  source               String    @default("customer")
-  submittedVia         String    @default("manual")
-  moderationStatus     String    @default("approved")
-  visibilityStatus     String    @default("private")
-  moderationReason     String?
-  moderatedAt          DateTime?
-  moderatedByUserId    String?
-  date                 DateTime? // Review date (defaults to createdAt if not set)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  demo                 Boolean   @default(false)
-  seedBatchId          String?
+  id                        String    @id @default(cuid())
+  userId                    String
+  vendorId                  String
+  bookingId                 String?
+  mediaSessionId            String?
+  assignedMembershipId      String?
+  assignedEmployeeName      String?
+  assignedUserId            String?
+  attributionVersion        Int       @default(1)
+  clientName                String? // Client name (or use user relation)
+  jobType                   String? // Type of job/service reviewed
+  rating                    Int
+  comment                   String?
+  source                    String    @default("customer")
+  submittedVia              String    @default("manual")
+  moderationStatus          String    @default("approved")
+  visibilityStatus          String    @default("private")
+  moderationReason          String?
+  moderatedAt               DateTime?
+  moderatedByUserId         String?
+  contractVersion           Int?
+  ratingValidityStatus      String?
+  ratingInvalidationReason  String?
+  ratingInvalidatedAt       DateTime?
+  ratingInvalidatedByUserId String?
+  submissionRequestId       String?
+  submissionRequestHash     String?
+  date                      DateTime? // Review date (defaults to createdAt if not set)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  demo                      Boolean   @default(false)
+  seedBatchId               String?
 
   // Relations
   user                   User                            @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1566,6 +1575,8 @@ model Review {
   @@index([vendorId, assignedMembershipId])
   @@index([vendorId, moderationStatus])
   @@index([assignedMembershipId, moderationStatus])
+  @@index([userId, submissionRequestId])
+  @@index([vendorId, ratingValidityStatus])
   @@map("reviews")
 }
 
@@ -2079,6 +2090,22 @@ model Favorite {
   @@index([userId, createdAt])
   @@index([serviceId])
   @@map("favorites")
+}
+
+model VendorFavorite {
+  id        String   @id @default(cuid())
+  userId    String
+  vendorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, vendorId])
+  @@index([userId, createdAt])
+  @@index([vendorId])
+  @@map("vendor_favorites")
 }
 
 model ReviewWindow {

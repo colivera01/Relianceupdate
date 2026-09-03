@@ -8,8 +8,13 @@ import {
   ensureUserAccountCanAct,
   ensureVendorAccountCanOperate,
 } from '@/lib/account-status';
-import { isCompletedStatus, normalizeBookingStatusKey } from '@/lib/my-bookings';
-import { loadAuthorizedPrivateProof } from '@/lib/service-video-evidence';
+import { loadCustomerReviewEligibility } from '@/lib/customer-review-eligibility';
+
+function publicEligibilityCode(code: string): string {
+  if (code === 'SERVICE_NOT_COMPLETED') return 'BOOKING_NOT_COMPLETED';
+  if (code === 'PRIVATE_PROOF_REQUIRED') return 'REVIEW_PRIVATE_PROOF_REQUIRED';
+  return code;
+}
 
 export async function POST(request: NextRequest) {
   let bookingId = '';
@@ -33,9 +38,9 @@ export async function POST(request: NextRequest) {
     vendorId = String(body?.vendorId || '').trim();
     mediaSessionId = String(body?.mediaSessionId || '').trim();
 
-    if (!bookingId || !vendorId || !mediaSessionId) {
+    if (!bookingId) {
       return NextResponse.json(
-        { success: false, error: 'bookingId, vendorId, and mediaSessionId are required' },
+        { success: false, error: 'bookingId is required' },
         { status: 400 }
       );
     }
@@ -43,85 +48,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized: customer context is required' }, { status: 401 });
     }
     await ensureUserAccountCanAct(requesterUserId);
-    await ensureVendorAccountCanOperate(vendorId);
-
-    step = 'booking_lookup';
+    step = 'review_eligibility';
     logStep(step);
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      select: { id: true, vendorId: true, userId: true, status: true },
-    });
-
-    step = 'booking_vendor_check';
-    logStep(step, {
-      bookingFound: Boolean(booking),
-      bookingVendorId: booking?.vendorId ?? null,
-      bookingUserId: booking?.userId ?? null,
-      requesterUserId,
-    });
-    if (!booking || String(booking.vendorId) !== vendorId) {
-      return NextResponse.json({ success: false, error: 'Invalid booking/vendor pair' }, { status: 404 });
-    }
-    if (String(booking.userId || '') !== String(requesterUserId)) {
-      return NextResponse.json({ success: false, error: 'Forbidden: booking does not belong to this user' }, { status: 403 });
-    }
-    if (!isCompletedStatus(normalizeBookingStatusKey(booking.status))) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'An optional review is available only after the booking is completed',
-          code: 'BOOKING_NOT_COMPLETED',
-        },
-        { status: 409 }
-      );
-    }
-
-    step = 'existing_review_check';
-    logStep(step);
-    const existingReview = await (prisma as any).review.findFirst({
-      where: { bookingId },
-      select: { id: true },
-    });
-    if (existingReview?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'A review already exists for this booking',
-          code: 'REVIEW_ALREADY_EXISTS',
-        },
-        { status: 409 }
-      );
-    }
-
-    step = 'private_proof_validate';
-    logStep(step);
-    const privateProof = await loadAuthorizedPrivateProof({
+    const eligibility = await loadCustomerReviewEligibility({
       bookingId,
       customerUserId: requesterUserId,
+      db: prisma,
     });
-    if (!privateProof) {
+    if (!eligibility.eligible) {
+      const status = eligibility.code === 'BOOKING_NOT_FOUND'
+        ? 404
+        : eligibility.code === 'WRONG_CUSTOMER'
+          ? 403
+          : eligibility.code === 'PRIVATE_PROOF_REQUIRED'
+            ? 403
+          : 409;
       return NextResponse.json(
         {
           success: false,
-          error: 'An active approved Private Proof is required before reviewing',
-          code: 'REVIEW_PRIVATE_PROOF_REQUIRED',
+          error: eligibility.message,
+          code: publicEligibilityCode(eligibility.code),
         },
-        { status: 403 }
+        { status }
       );
     }
-    const finalStage = privateProof.stages.find(
-      (stage: any) => String(stage.stage || '').toUpperCase() === 'COMPLETED'
-    );
-    if (!finalStage || String(finalStage.mediaSessionId || '') !== mediaSessionId) {
+    vendorId = String(eligibility.vendorId || '');
+    mediaSessionId = String(eligibility.mediaSessionId || '');
+    if (!vendorId || !mediaSessionId) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'The review must use the exact approved Final Result from this Private Proof',
-          code: 'REVIEW_PROOF_BINDING_MISMATCH',
-        },
+        { success: false, error: 'Review evidence is incomplete', code: 'REVIEW_PRIVATE_PROOF_REQUIRED' },
         { status: 409 }
       );
     }
+    if (body?.vendorId && String(body.vendorId).trim() !== vendorId) {
+      return NextResponse.json(
+        { success: false, error: 'Review Vendor does not match this Service Record', code: 'REVIEW_VENDOR_MISMATCH' },
+        { status: 404 }
+      );
+    }
+    if (body?.mediaSessionId && String(body.mediaSessionId).trim() !== mediaSessionId) {
+      return NextResponse.json(
+        { success: false, error: 'Review evidence does not match the approved Service Video', code: 'REVIEW_PROOF_BINDING_MISMATCH' },
+        { status: 409 }
+      );
+    }
+    await ensureVendorAccountCanOperate(vendorId);
 
     step = 'review_window_get_or_create';
     logStep(step);

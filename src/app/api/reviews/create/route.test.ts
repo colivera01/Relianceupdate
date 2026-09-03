@@ -11,6 +11,7 @@ const hoisted = vi.hoisted(() => {
   const employeeCustomerRatingCreate = vi.fn();
   const vendorMembershipFindFirst = vi.fn();
   const mediaAssetFindFirst = vi.fn();
+  const adminNotification = vi.fn();
 
   const prisma = {
     booking: { findUnique: bookingFindUnique },
@@ -19,8 +20,10 @@ const hoisted = vi.hoisted(() => {
     mediaAsset: { findFirst: mediaAssetFindFirst },
     $transaction: vi.fn(async (callback: (tx: any) => Promise<any>) =>
       callback({
-        review: { create: reviewCreate },
+        booking: { findUnique: bookingFindUnique },
+        review: { findFirst: reviewFindFirst, create: reviewCreate },
         reviewWindow: {
+          findFirst: vi.fn(async () => ({ id: "rw-1" })),
           update: reviewWindowUpdate,
           updateMany: reviewWindowUpdateMany,
         },
@@ -41,6 +44,7 @@ const hoisted = vi.hoisted(() => {
     employeeCustomerRatingCreate,
     vendorMembershipFindFirst,
     mediaAssetFindFirst,
+    adminNotification,
   };
 });
 
@@ -80,6 +84,10 @@ vi.mock("@/lib/review-capture", () => ({
 
 vi.mock("@/lib/admin-audit", () => ({
   createAdminAuditLog: vi.fn(async () => undefined),
+}));
+
+vi.mock("@/lib/admin-notifications", () => ({
+  createAdminNotificationWithEmail: hoisted.adminNotification,
 }));
 
 vi.mock("@/lib/service-video-evidence", () => ({
@@ -141,6 +149,7 @@ describe("POST /api/reviews/create attribution", () => {
     hoisted.employeeCustomerRatingCreate.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.mediaAssetFindFirst.mockReset();
+    hoisted.adminNotification.mockReset().mockResolvedValue(undefined);
     hoisted.prisma.$transaction.mockClear();
     setupBooking();
   });
@@ -236,5 +245,43 @@ describe("POST /api/reviews/create attribution", () => {
         }),
       })
     );
+  });
+
+  it("does not queue text moderation for a star-only review", async () => {
+    const response = await POST(reviewRequest({ comment: "" }));
+    expect(response.status).toBe(200);
+    expect(hoisted.reviewCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ moderationStatus: "not_applicable", ratingValidityStatus: "verified" }),
+    }));
+    expect(hoisted.adminNotification).not.toHaveBeenCalled();
+  });
+
+  it("returns the original review for an identical idempotent retry", async () => {
+    const requestId = "review-request-1";
+    const first = await POST(reviewRequest({ requestId }));
+    expect(first.status).toBe(200);
+    const createdData = hoisted.reviewCreate.mock.calls[0][0].data;
+    hoisted.reviewFindFirst.mockResolvedValue({
+      id: "review-1",
+      bookingId: "booking-1",
+      submissionRequestId: requestId,
+      submissionRequestHash: createdData.submissionRequestHash,
+    });
+    const retry = await POST(reviewRequest({ requestId }));
+    expect(retry.status).toBe(200);
+    await expect(retry.json()).resolves.toMatchObject({ success: true, idempotent: true, review: { id: "review-1" } });
+    expect(hoisted.reviewCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when an idempotency key is reused with different content", async () => {
+    hoisted.reviewFindFirst.mockResolvedValue({
+      id: "review-1",
+      submissionRequestId: "review-request-1",
+      submissionRequestHash: "different-payload-hash",
+    });
+    const response = await POST(reviewRequest({ requestId: "review-request-1", rating: 2 }));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "REVIEW_IDEMPOTENCY_CONFLICT" });
+    expect(hoisted.reviewCreate).not.toHaveBeenCalled();
   });
 });

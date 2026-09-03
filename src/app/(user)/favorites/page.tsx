@@ -1,226 +1,97 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import { Heart, MapPin, Trash2, Search } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { useFavorites, useRemoveFavorite } from '@/hooks/useFavorites';
+import { useEffect, useState } from 'react';
+import { Building2, ChevronLeft, ChevronRight, Heart, MapPin, Search, Trash2 } from 'lucide-react';
+import { useAllFavorites } from '@/hooks/useFavorites';
 import { useAuth } from '@/contexts/AuthContext';
+import { favoritesSDK } from '@/sdk/favorites';
+import type { FavoriteListItem } from '@/types/api';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
 
-export default function FavoritesPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [pendingRemovalIds, setPendingRemovalIds] = useState<string[]>([]);
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { data, isLoading, isError, error, isFetching } = useFavorites({ page: 1, limit: 200 });
-  const removeFavorite = useRemoveFavorite();
-  const canLoadFavorites = authLoading || isAuthenticated;
+type Filter = 'all' | 'service' | 'vendor';
 
-  const favorites = data?.favorites || [];
-  const filteredFavorites = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    const visibleFavorites = favorites.filter((item) => !pendingRemovalIds.includes(item.favoriteId));
-    if (!query) return visibleFavorites;
-    return visibleFavorites.filter((item) => {
-      return (
-        item.serviceName.toLowerCase().includes(query) ||
-        item.vendorName.toLowerCase().includes(query) ||
-        item.serviceDescription.toLowerCase().includes(query)
-      );
-    });
-  }, [favorites, pendingRemovalIds, searchQuery]);
-  const favoritesCountLabel =
-    authLoading || (isLoading && !data) || (isFetching && !data)
-      ? 'Loading...'
-      : `${filteredFavorites.length} saved`;
+export default function FavoritesPage() {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [filter, setFilter] = useState<Filter>('all');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const query = useAllFavorites({ page, limit: 12, type: filter, search });
 
   useEffect(() => {
-    if (!pendingRemovalIds.length) return;
-    const activeFavoriteIds = new Set(favorites.map((item) => item.favoriteId));
-    setPendingRemovalIds((current) => current.filter((id) => activeFavoriteIds.has(id)));
-  }, [favorites, pendingRemovalIds.length]);
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
 
-  const handleRemove = async (favoriteId: string) => {
-    setPendingRemovalIds((current) => (current.includes(favoriteId) ? current : [...current, favoriteId]));
+  const remove = async (item: FavoriteListItem) => {
+    setBusyId(item.favoriteId);
+    setActionError(null);
     try {
-      await removeFavorite.mutateAsync(favoriteId);
-    } catch (error) {
-      setPendingRemovalIds((current) => current.filter((id) => id !== favoriteId));
-      throw error;
+      if (item.entityType === 'vendor') await favoritesSDK.removeVendorFavorite(item.favoriteId, user?.id);
+      else await favoritesSDK.removeFavorite(item.favoriteId, user?.id);
+      await query.refetch();
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : 'Unable to remove this favorite.');
+    } finally {
+      setBusyId(null);
     }
   };
-  const serviceReturnHref = '/favorites';
-  const serviceReturnLabel = 'Back to My Favorites';
+
+  if (!authLoading && !isAuthenticated) {
+    return <main className="mx-auto max-w-4xl py-12"><h1 className="text-3xl font-semibold text-slate-950">Favorites</h1><p className="mt-3 text-slate-600">Sign in to see your Saved Services and Saved Vendors.</p><Link href="/auth/login?next=%2Ffavorites" className="mt-5 inline-flex rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Sign In</Link></main>;
+  }
+
+  const items = query.data?.items || [];
+  const counts = query.data?.counts || { all: 0, services: 0, vendors: 0 };
+  const pagination = query.data?.pagination || { page: 1, totalPages: 0, total: 0, limit: 12 };
+  const empty = filter === 'service' ? 'No saved services yet.' : filter === 'vendor' ? 'No saved businesses yet.' : 'No favorites yet.';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="pt-6">
-        <div className="mb-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold mb-6 text-gray-900">My Favorites</h1>
-              <Badge variant="secondary" className="text-sm">
-                {favoritesCountLabel}
-              </Badge>
-            </div>
-            <Link href="/discover">
-                <Button size="sm">Explore Proof</Button>
-            </Link>
+    <main className="mx-auto w-full max-w-6xl space-y-6 pb-12">
+      <header className="border-b border-slate-200 pb-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div><p className="text-xs font-semibold uppercase text-blue-700">Repeat business</p><h1 className="mt-2 text-3xl font-semibold text-slate-950">Favorites</h1><p className="mt-2 text-sm text-slate-600">Keep Services and Vendors you may want to use again.</p></div>
+          <Link href="/discover" className="inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Explore Proof</Link>
         </div>
+        <label className="relative mt-5 block max-w-xl"><span className="sr-only">Search Favorites</span><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search Saved Services or Vendors" className="w-full rounded-md border border-slate-300 py-2.5 pl-10 pr-3 text-sm" /></label>
+      </header>
+
+      <div role="tablist" aria-label="Favorite type" className="flex gap-2 border-b border-slate-200">
+        {([
+          ['all', 'All', counts.all],
+          ['service', 'Services', counts.services],
+          ['vendor', 'Vendors', counts.vendors],
+        ] as const).map(([value, label, count]) => <button key={value} role="tab" aria-selected={filter === value} onClick={() => { setFilter(value); setPage(1); }} className={`border-b-2 px-3 py-3 text-sm font-semibold ${filter === value ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>{label} <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs">{count}</span></button>)}
       </div>
 
-      <div>
-        {!authLoading && !isAuthenticated ? (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 mb-10">
-            <h2 className="text-lg font-semibold text-blue-900 mb-2">Sign in to use favorites</h2>
-            <p className="text-sm text-blue-800 mb-4">
-              Save vendors, services, reviews, or videos when you want to come back later.
-            </p>
-            <Link href="/auth/login?next=%2Ffavorites">
-              <Button size="sm">Sign In</Button>
-            </Link>
-          </div>
-        ) : null}
+      {actionError ? <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</p> : null}
+      {authLoading || query.isLoading ? <p className="text-sm text-slate-600">Loading Favorites...</p> : query.isError ? <p className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">Unable to load Favorites.</p> : items.length === 0 ? <div className="py-12 text-center"><Heart className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-semibold text-slate-900">{empty}</p>{search ? <p className="mt-1 text-sm text-slate-500">Try a different search.</p> : null}</div> : (
+        <section className="grid gap-4 lg:grid-cols-2">
+          {items.map((item) => item.entityType === 'vendor'
+            ? <VendorCard key={`vendor-${item.favoriteId}`} item={item} busy={busyId === item.favoriteId} onRemove={() => void remove(item)} />
+            : <ServiceCard key={`service-${item.favoriteId}`} item={item} busy={busyId === item.favoriteId} onRemove={() => void remove(item)} />)}
+        </section>
+      )}
 
-        {canLoadFavorites ? (
-          <>
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-10">
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <Input
-                  placeholder="Search saved services, videos, reviews, or vendors..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            {authLoading || isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="animate-pulse">
-                <div className="h-40 bg-gray-200 rounded-t-lg" />
-                <CardContent className="p-4">
-                  <div className="h-4 bg-gray-200 rounded mb-2" />
-                  <div className="h-3 bg-gray-200 rounded w-3/4" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-            ) : isError ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 mb-10 text-red-700">
-            Failed to load favorites.
-            {error instanceof Error ? ` ${error.message}` : ''}
-          </div>
-            ) : filteredFavorites.length === 0 ? (
-          <div className="text-center py-12 mb-10">
-            <Heart size={48} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">No saved services yet</h3>
-            <p className="text-gray-600 mb-6">
-              {searchQuery.trim() ? 'Try a different search.' : 'Save vendors or services offered when you want to revisit them.'}
-            </p>
-            <Link href="/discover">
-              <Button>Explore Proof</Button>
-            </Link>
-          </div>
-            ) : (
-          <div className="space-y-4 mb-10">
-            {isFetching ? <p className="text-sm text-gray-500">Refreshing favorites...</p> : null}
-            {filteredFavorites.map((item) => (
-              <Card
-                key={item.favoriteId}
-                className="border border-gray-200 bg-white mb-4"
-                data-testid={`favorites-row-${item.serviceId}`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="w-full md:w-48 h-28 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                      <PublicMediaPreview
-                        url={item.previewMediaUrl}
-                        type={item.previewMediaType}
-                        alt={item.serviceName}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-semibold text-lg text-gray-900">{item.serviceName}</h3>
-                          <p className="text-sm text-gray-700">By {item.vendorName}</p>
-                          {!item.publicListing.serviceEligible ? (
-                            <Badge className="mt-2 border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-100">
-                              No longer available
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-600 hover:text-red-700"
-                          disabled={pendingRemovalIds.includes(item.favoriteId)}
-                          aria-label="Remove from favorites"
-                          data-testid={`favorites-remove-${item.favoriteId}`}
-                          onClick={() => handleRemove(item.favoriteId)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      <p className="text-sm text-gray-600 mt-2 line-clamp-2">
-                        {item.serviceDescription || 'No description available.'}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                        <Badge variant="outline">{item.vendorCategory || item.vendorBusinessType || 'Service'}</Badge>
-                        {item.location ? (
-                          <span className="inline-flex items-center text-gray-600">
-                            <MapPin className="h-4 w-4 mr-1" />
-                            {item.location}
-                          </span>
-                        ) : null}
-                        {typeof item.rating === 'number' && typeof item.reviewCount === 'number' ? (
-                          <span className="text-gray-700">
-                            {item.rating.toFixed(1)} rating ({item.reviewCount} reviews)
-                          </span>
-                        ) : null}
-                        <span className="text-gray-600">Reference estimate: ${item.price.toFixed(2)}</span>
-                        <span className="text-gray-500">
-                          Favorited {new Date(item.favoritedAt).toLocaleDateString()}
-                        </span>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {item.publicListing.serviceEligible ? (
-                          <Link
-                            href={`/service/${item.serviceId}?returnTo=${encodeURIComponent(serviceReturnHref)}&returnLabel=${encodeURIComponent(serviceReturnLabel)}`}
-                          >
-                            <Button size="sm">View Service Details</Button>
-                          </Link>
-                        ) : null}
-                        <Link href={`/vendors/${item.vendorId}`}>
-                          <Button size="sm" variant="outline">View Vendor</Button>
-                        </Link>
-                        {item.publicListing.serviceEligible ? (
-                          <Link href={`/booking/${item.serviceId}`}>
-                            <Button size="sm" variant="outline">Request Service</Button>
-                          </Link>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-            )}
-          </>
-        ) : null}
-      </div>
-    </div>
+      {pagination.totalPages > 1 ? <nav aria-label="Favorite pages" className="flex items-center justify-between border-t border-slate-200 pt-5"><p className="text-sm text-slate-500">Page {pagination.page} of {pagination.totalPages} · {pagination.total} saved</p><div className="flex gap-2"><button aria-label="Previous page" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded-md border border-slate-300 p-2 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button><button aria-label="Next page" disabled={page >= pagination.totalPages} onClick={() => setPage((value) => value + 1)} className="rounded-md border border-slate-300 p-2 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button></div></nav> : null}
+    </main>
   );
+}
+
+function RemoveButton({ busy, onRemove }: { busy: boolean; onRemove: () => void }) {
+  return <button type="button" aria-label="Remove from Favorites" disabled={busy} onClick={onRemove} className="rounded-md p-2 text-slate-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" /></button>;
+}
+
+function VendorCard({ item, busy, onRemove }: { item: Extract<FavoriteListItem, { entityType: 'vendor' }>; busy: boolean; onRemove: () => void }) {
+  return <article className="rounded-md border border-slate-200 bg-white p-5"><div className="flex items-start justify-between gap-3"><div className="flex gap-3"><span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-700"><Building2 className="h-5 w-5" /></span><div><p className="text-xs font-semibold uppercase text-blue-700">Saved Vendor</p><h2 className="text-lg font-semibold text-slate-950">{item.vendorName}</h2></div></div><RemoveButton busy={busy} onRemove={onRemove} /></div><div className="mt-4 flex flex-wrap gap-3 text-sm text-slate-600">{item.location ? <span className="inline-flex items-center gap-1"><MapPin className="h-4 w-4" />{item.location}</span> : null}<span>{item.serviceCount} available {item.serviceCount === 1 ? 'service' : 'services'}</span>{item.rating != null && item.reviewCount != null ? <span>{item.rating.toFixed(1)} Vendor Rating · {item.reviewCount}</span> : null}</div><div className="mt-5 flex gap-2"><Link href={`/vendors/${item.vendorId}?returnTo=${encodeURIComponent('/favorites')}&returnLabel=${encodeURIComponent('Back to Favorites')}`} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white">View Business</Link></div></article>;
+}
+
+function ServiceCard({ item, busy, onRemove }: { item: Exclude<FavoriteListItem, { entityType: 'vendor' }>; busy: boolean; onRemove: () => void }) {
+  return <article className="rounded-md border border-slate-200 bg-white p-5"><div className="flex gap-4"><div className="h-24 w-32 shrink-0 overflow-hidden rounded-md bg-slate-100"><PublicMediaPreview url={item.previewMediaUrl} type={item.previewMediaType} alt={item.serviceName} className="h-full w-full object-cover" /></div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><p className="text-xs font-semibold uppercase text-blue-700">Saved Service</p><h2 className="truncate text-lg font-semibold text-slate-950">{item.serviceName}</h2><p className="text-sm text-slate-600">{item.vendorName}</p></div><RemoveButton busy={busy} onRemove={onRemove} /></div>{item.rating != null && item.reviewCount != null ? <p className="mt-2 text-sm text-slate-600">{item.rating.toFixed(1)} Vendor Rating · {item.reviewCount}</p> : null}</div></div><div className="mt-5 flex flex-wrap gap-2">{item.publicListing.serviceEligible ? <Link href={`/service/${item.serviceId}?returnTo=${encodeURIComponent('/favorites')}&returnLabel=${encodeURIComponent('Back to Favorites')}`} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white">View Service</Link> : null}<Link href={`/vendors/${item.vendorId}`} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">View Business</Link>{item.publicListing.serviceEligible ? <Link href={`/booking/${item.serviceId}`} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Request Service</Link> : null}</div></article>;
 }

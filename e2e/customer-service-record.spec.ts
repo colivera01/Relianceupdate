@@ -29,6 +29,28 @@ async function installCustomerSession(page: Page) {
 }
 
 async function installServiceRecord(page: Page) {
+  await page.route('**/api/users/favorites**', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, favorite: { id: 'vendor-favorite-1' } }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        items: [],
+        favorites: [],
+        counts: { all: 0, services: 0, vendors: 0 },
+        pagination: { page: 1, limit: 1, total: 0, totalPages: 0 },
+      }),
+    });
+  });
+
   await page.route(new RegExp(`/api/bookings/${bookingId}$`), async (route) => {
     await route.fulfill({
       status: 200,
@@ -198,6 +220,8 @@ test('customer watches forward from any stage and submits separate vendor and em
   await page.getByRole('button', { name: 'Submit review' }).click();
 
   await expect(page.getByText('Thank you for your review.')).toBeVisible();
+  await expect(page.getByText('Want to use Electro LLC again?')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save Electro LLC' }).last()).toBeVisible();
   expect(reviewSubmissions).toEqual([
     expect.objectContaining({
       bookingId,
@@ -211,6 +235,19 @@ test('customer watches forward from any stage and submits separate vendor and em
 
 test('completed service cards present the record, video, and one review action without media inventory clutter', async ({ page }) => {
   await installCustomerSession(page);
+  await page.route('**/api/users/favorites**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        items: [],
+        favorites: [],
+        counts: { all: 0, services: 0, vendors: 0 },
+        pagination: { page: 1, limit: 1, total: 0, totalPages: 0 },
+      }),
+    });
+  });
   const mediaRequests: string[] = [];
   const organizationRequests: Array<Record<string, unknown>> = [];
   await page.route('**/api/bookings?**', async (route) => {

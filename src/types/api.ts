@@ -425,6 +425,7 @@ export interface CreateFavoriteDTO {
 }
 
 export interface FavoriteServiceItem {
+  entityType?: 'service';
   favoriteId: string;
   serviceId: string;
   serviceName: string;
@@ -446,9 +447,28 @@ export interface FavoriteServiceItem {
   favoritedAt: string;
 }
 
+export interface FavoriteVendorItem {
+  entityType: 'vendor';
+  favoriteId: string;
+  vendorId: string;
+  vendorName: string;
+  vendorCategory: string | null;
+  vendorBusinessType: string | null;
+  location: string | null;
+  rating: number | null;
+  reviewCount: number | null;
+  serviceCount: number;
+  isPubliclyListed: boolean;
+  favoritedAt: string;
+}
+
+export type FavoriteListItem = FavoriteServiceItem | FavoriteVendorItem;
+
 export interface FavoritesListResponse {
   success: boolean;
   favorites: FavoriteServiceItem[];
+  items?: FavoriteListItem[];
+  counts?: { all: number; services: number; vendors: number };
   pagination: Pagination;
 }
 

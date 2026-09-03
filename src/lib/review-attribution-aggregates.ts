@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db";
 import { countableReviewWhere } from "@/lib/metrics-exclusion";
+import { canonicalVerifiedCustomerRatingWhere } from "@/lib/review-rating-validity";
 
 type RatingStats = {
   averageRating: number;
@@ -7,11 +8,7 @@ type RatingStats = {
   ratingSum: number;
 };
 
-const ELIGIBLE_REVIEW_WHERE = {
-  source: "customer",
-  moderationStatus: "approved",
-  bookingId: { not: null as string | null },
-};
+const ELIGIBLE_REVIEW_WHERE = canonicalVerifiedCustomerRatingWhere();
 
 function normalizeRating(value: unknown): number {
   const n = Number(value || 0);
@@ -94,9 +91,9 @@ export async function getEmployeeRatingsForVendor(
     : null;
 
   const legacyWhere: any = countableReviewWhere({
-    vendorId,
-    ...ELIGIBLE_REVIEW_WHERE,
-    assignedMembershipId: { not: null },
+          vendorId,
+          ...ELIGIBLE_REVIEW_WHERE,
+          assignedMembershipId: { not: null },
     attributionVersion: { lt: 3 },
   });
   if (normalizedIds && normalizedIds.length > 0) {

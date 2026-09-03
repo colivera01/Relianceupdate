@@ -66,6 +66,10 @@ vi.mock('@/lib/admin-audit', () => ({
   createAdminAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/lib/admin-notifications', () => ({
+  createAdminNotificationWithEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('@/lib/email-verification-enforcement', () => ({
   requireVerifiedEmailForAction: vi.fn().mockResolvedValue(null),
 }));
@@ -303,8 +307,10 @@ describe('POST /api/reviews/create', () => {
     };
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        review: { create: hoisted.reviewCreate },
+        booking: { findUnique: hoisted.bookingFindUnique },
+        review: { findFirst: hoisted.reviewFindFirst, create: hoisted.reviewCreate },
         reviewWindow: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'rw1' }),
           update: hoisted.reviewWindowUpdate,
           updateMany: hoisted.reviewWindowUpdateMany,
         },
@@ -339,8 +345,10 @@ describe('POST /api/reviews/create', () => {
     expect(hoisted.reviewCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          moderationStatus: 'pending_review',
+          moderationStatus: 'not_applicable',
           visibilityStatus: 'private',
+          contractVersion: 2,
+          ratingValidityStatus: 'verified',
         }),
       })
     );
@@ -395,8 +403,10 @@ describe('POST /api/reviews/create', () => {
 
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        review: { create: hoisted.reviewCreate },
+        booking: { findUnique: hoisted.bookingFindUnique },
+        review: { findFirst: hoisted.reviewFindFirst, create: hoisted.reviewCreate },
         reviewWindow: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'rw1' }),
           update: hoisted.reviewWindowUpdate,
           updateMany: hoisted.reviewWindowUpdateMany,
         },
@@ -469,8 +479,10 @@ describe('POST /api/reviews/create', () => {
 
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        review: { create: hoisted.reviewCreate },
+        booking: { findUnique: hoisted.bookingFindUnique },
+        review: { findFirst: hoisted.reviewFindFirst, create: hoisted.reviewCreate },
         reviewWindow: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'rw1' }),
           update: hoisted.reviewWindowUpdate,
           updateMany: hoisted.reviewWindowUpdateMany,
         },
@@ -526,8 +538,10 @@ describe('POST /api/reviews/create', () => {
     hoisted.reviewFindFirst.mockResolvedValue(null);
     hoisted.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        review: { create: hoisted.reviewCreate },
+        booking: { findUnique: hoisted.bookingFindUnique },
+        review: { findFirst: hoisted.reviewFindFirst, create: hoisted.reviewCreate },
         reviewWindow: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'rw1' }),
           update: hoisted.reviewWindowUpdate,
           updateMany: hoisted.reviewWindowUpdateMany,
         },

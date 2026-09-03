@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import { PUBLIC_DB_UNAVAILABLE_CODE, PUBLIC_DB_UNAVAILABLE_MESSAGE } from '@/lib/transient-db-errors';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
+import { VendorFavoriteButton } from '@/components/favorites/VendorFavoriteButton';
 import { ArrowLeft, Building2, Clock, MapPin, ShieldCheck, Star, Video } from 'lucide-react';
 
 interface PublicService {
@@ -279,6 +280,7 @@ export default function PublicVendorProfilePage() {
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-3">
+                  <VendorFavoriteButton vendorId={vendor.vendorId} vendorName={vendor.vendorName} tone="dark" />
                   {vendor.category ? (
                     <Badge className="rounded-full bg-white/10 px-4 py-2 text-white hover:bg-white/10">{vendor.category}</Badge>
                   ) : null}
@@ -316,8 +318,8 @@ export default function PublicVendorProfilePage() {
                     </div>
                     <div className="mt-1 text-sm text-white/66">
                       {typeof vendor.reviewCount === 'number'
-                        ? `${vendor.reviewCount} public review${vendor.reviewCount === 1 ? '' : 's'}`
-                        : 'Reviews are still building'}
+                        ? `${vendor.reviewCount} verified customer rating${vendor.reviewCount === 1 ? '' : 's'}`
+                        : 'Customer ratings are still building'}
                     </div>
                   </div>
                   <div className="rounded-[24px] border border-white/10 bg-white/8 px-4 py-4 text-white backdrop-blur-xl">

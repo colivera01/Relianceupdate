@@ -18,7 +18,7 @@ type Props = {
   onEnded?: () => void;
   autoPlayToken?: number;
   onAutoPlayBlocked?: () => void;
-  /** When false, plays video only (no review prompts or review API calls). Default true. */
+  /** Opt-in legacy overlay capture. The completed Service Record uses its explicit review action. */
   reviewCaptureEnabled?: boolean;
   /**
    * Customer user id used only to decide whether review capture should run.
@@ -37,10 +37,11 @@ export function SmartVideoPlayer({
   onEnded,
   autoPlayToken,
   onAutoPlayBlocked,
-  reviewCaptureEnabled = true,
+  reviewCaptureEnabled = false,
   userId,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const reviewRequestIdRef = useRef<string | null>(null);
   const [reviewWindowId, setReviewWindowId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<'none' | 'soft' | 'reinforcement'>('none');
   const [showExit, setShowExit] = useState(false);
@@ -73,6 +74,7 @@ export function SmartVideoPlayer({
 
   useEffect(() => {
     setReviewAlreadySubmitted(false);
+    reviewRequestIdRef.current = null;
   }, [bookingId, mediaSessionId]);
 
   const logPromptEvent = useCallback(
@@ -262,6 +264,7 @@ export function SmartVideoPlayer({
         headers: { ...reviewJsonHeaders },
         body: JSON.stringify({
           reviewWindowId,
+          requestId: reviewRequestIdRef.current || (reviewRequestIdRef.current = globalThis.crypto.randomUUID()),
           bookingId,
           vendorId,
           rating: payload.rating,

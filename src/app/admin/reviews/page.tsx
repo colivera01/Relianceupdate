@@ -28,6 +28,9 @@ type ReviewQueueRow = {
   visibilityStatus: string;
   moderationReason: string | null;
   moderatedAt: string | null;
+  contractVersion?: number | null;
+  ratingValidityStatus?: string | null;
+  ratingInvalidationReason?: string | null;
   aiRecommendation?: {
     aiRunId: string;
     promptVersion: string;
@@ -78,7 +81,8 @@ type ReviewModerationAction =
   | 'approve_public'
   | 'approve_vendor_private'
   | 'reject'
-  | 'flag';
+  | 'flag'
+  | 'invalidate_review';
 
 function ReviewsPageContent() {
   const searchParams = useSearchParams();
@@ -103,7 +107,7 @@ function ReviewsPageContent() {
   const [moderationNoteModalOpen, setModerationNoteModalOpen] = useState(false);
   const [moderationNoteReason, setModerationNoteReason] = useState('');
   const [moderationNoteTarget, setModerationNoteTarget] = useState<ReviewQueueRow | null>(null);
-  const [moderationNoteAction, setModerationNoteAction] = useState<'reject' | 'flag' | null>(null);
+  const [moderationNoteAction, setModerationNoteAction] = useState<'reject' | 'flag' | 'invalidate_review' | null>(null);
 
   const fetchQueue = async (
     nextPage = page,
@@ -338,7 +342,7 @@ function ReviewsPageContent() {
     return { pending, approvedPublic, approvedPrivate, flaggedOrRejected };
   }, [reviews]);
 
-  const openModerationNoteModal = (review: ReviewQueueRow, action: 'reject' | 'flag') => {
+  const openModerationNoteModal = (review: ReviewQueueRow, action: 'reject' | 'flag' | 'invalidate_review') => {
     setModerationNoteTarget(review);
     setModerationNoteAction(action);
     setModerationNoteReason('');
@@ -551,6 +555,9 @@ function ReviewsPageContent() {
                         })()}
                       </div>
                       <div>Rating: {review.rating}/5</div>
+                      {review.contractVersion && review.contractVersion >= 2 ? (
+                        <div>Rating evidence: {review.ratingValidityStatus === 'invalid' ? 'Invalidated' : 'Verified and counted'}</div>
+                      ) : null}
                       {review.jobType ? <div>Job Type: {review.jobType}</div> : null}
                       <div className="text-gray-700">Comment: {review.comment || '-'}</div>
                       <div>Created: {new Date(review.createdAt).toLocaleString()}</div>
@@ -595,12 +602,17 @@ function ReviewsPageContent() {
                         Keep Private
                       </Button>
                       <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'reject')}>
-                        Reject
+                        Do Not Publish Comment
                       </Button>
                       <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'flag')}>
                         <ShieldAlert className="w-4 h-4 mr-1" />
                         Flag
                       </Button>
+                      {review.contractVersion && review.contractVersion >= 2 && review.ratingValidityStatus !== 'invalid' ? (
+                        <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => openModerationNoteModal(review, 'invalidate_review')}>
+                          Invalidate Review Evidence
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                   {review.aiRecommendation ? (
@@ -733,17 +745,19 @@ function ReviewsPageContent() {
       <Dialog open={moderationNoteModalOpen} onOpenChange={(open) => !open && closeModerationNoteModal()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{moderationNoteAction === 'flag' ? 'Flag Review' : 'Reject Review'}</DialogTitle>
+            <DialogTitle>{moderationNoteAction === 'flag' ? 'Flag Comment' : moderationNoteAction === 'invalidate_review' ? 'Invalidate Review Evidence' : 'Do Not Publish Comment'}</DialogTitle>
             <DialogDescription>
               {moderationNoteAction === 'flag'
-                ? 'Provide moderation reason to flag this review for follow-up.'
-                : 'Provide moderation reason to reject this review.'}
+                ? 'Provide a reason to flag this written comment for follow-up. The verified Vendor Rating remains counted.'
+                : moderationNoteAction === 'invalidate_review'
+                  ? 'Use only for fraud, duplicate evidence, account abuse, or another reason the entire Customer Review is invalid. This excludes its stars from canonical metrics.'
+                  : 'Provide a reason not to publish this written comment. The verified Vendor Rating remains counted.'}
             </DialogDescription>
           </DialogHeader>
           <textarea
             value={moderationNoteReason}
             onChange={(e) => setModerationNoteReason(e.target.value)}
-            placeholder={moderationNoteAction === 'flag' ? 'Enter flag reason...' : 'Enter rejection reason...'}
+            placeholder={moderationNoteAction === 'flag' ? 'Enter flag reason...' : moderationNoteAction === 'invalidate_review' ? 'Enter evidence invalidation reason...' : 'Enter comment decision reason...'}
             className="w-full min-h-[120px] rounded border border-input px-3 py-2 text-sm"
           />
           <DialogFooter>
@@ -751,7 +765,7 @@ function ReviewsPageContent() {
               Cancel
             </Button>
             <Button onClick={submitModerationNote} disabled={!moderationNoteReason.trim() || Boolean(reviewActionLoadingId)}>
-              {moderationNoteAction === 'flag' ? 'Submit Flag' : 'Submit Rejection'}
+              {moderationNoteAction === 'flag' ? 'Submit Flag' : moderationNoteAction === 'invalidate_review' ? 'Invalidate Review Evidence' : 'Do Not Publish Comment'}
             </Button>
           </DialogFooter>
         </DialogContent>

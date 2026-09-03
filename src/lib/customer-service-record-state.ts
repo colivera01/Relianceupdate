@@ -1,3 +1,5 @@
+import { deriveCustomerReviewEligibility } from '@/lib/customer-review-eligibility';
+
 export const CUSTOMER_RECORD_LIFECYCLES = {
   UPCOMING: 'UPCOMING',
   COMPLETED: 'COMPLETED',
@@ -168,7 +170,15 @@ export function deriveCustomerServiceRecordState(input: {
     normalize(input.publicationStatus) === 'PUBLIC' &&
     input.publicRestrictionActive !== true;
   const reviewSubmitted = input.reviewSubmitted === true;
-  const reviewAvailable = lifecycle === CUSTOMER_RECORD_LIFECYCLES.COMPLETED && videoReady;
+  const reviewEligibility = deriveCustomerReviewEligibility({
+    bookingId: 'customer-record',
+    ownsBooking: true,
+    serviceCompleted: lifecycle === CUSTOMER_RECORD_LIFECYCLES.COMPLETED,
+    privateProofAvailable: videoReady,
+    existingReviewId: reviewSubmitted ? 'submitted-review' : null,
+    mediaSessionId: videoReady ? 'approved-package' : null,
+  });
+  const reviewAvailable = reviewEligibility.eligible;
   const archiveLifecycleEligible =
     lifecycle === CUSTOMER_RECORD_LIFECYCLES.COMPLETED ||
     lifecycle === CUSTOMER_RECORD_LIFECYCLES.CANCELLED;

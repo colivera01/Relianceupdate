@@ -101,16 +101,20 @@ describe('POST /api/reviews/window/start', () => {
     expect(String(j.error)).toContain('required');
   });
 
-  it('returns 400 when vendorId is missing', async () => {
+  it('derives vendorId when the client omits it', async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
+    hoisted.reviewWindowFindFirst.mockResolvedValue({ id: 'rw-derived-vendor', bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1', status: 'active' });
     const res = await reviewWindowStartPOST(
       postJson({ bookingId: 'b1', mediaSessionId: 'ms1' })
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
   });
 
-  it('returns 400 when mediaSessionId is missing', async () => {
+  it('derives the exact approved media session when the client omits it', async () => {
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
+    hoisted.reviewWindowFindFirst.mockResolvedValue({ id: 'rw-derived-proof', bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1', status: 'active' });
     const res = await reviewWindowStartPOST(postJson({ bookingId: 'b1', vendorId: 'v1' }));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
   });
 
   it('returns 404 when booking not found', async () => {
@@ -120,7 +124,7 @@ describe('POST /api/reviews/window/start', () => {
     );
     expect(res.status).toBe(404);
     const j = await readJson(res);
-    expect(j.error).toBe('Invalid booking/vendor pair');
+    expect(j.error).toBe('Service Record not found.');
     expect(hoisted.mediaSessionFindUnique).not.toHaveBeenCalled();
   });
 
@@ -350,7 +354,7 @@ describe('POST /api/reviews/window/start', () => {
     );
     expect(res.status).toBe(403);
     const j = await readJson(res);
-    expect(j.error).toBe('Forbidden: booking does not belong to this user');
+    expect(j.error).toBe('This Service Record does not belong to this customer.');
   });
 
   it('returns 403 when selected media is outside the active Private Proof', async () => {

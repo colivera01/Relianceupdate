@@ -852,18 +852,19 @@ export async function approvePrivateServiceVideoPackage(input: {
   });
 }
 
-export async function loadAuthorizedPrivateProof(input: { bookingId: string; customerUserId: string }) {
-  const grant = await (prisma as any).privateProofAccessGrant.findFirst({
+export async function loadAuthorizedPrivateProof(input: { bookingId: string; customerUserId: string; db?: any }) {
+  const db = input.db || prisma;
+  const grant = await (db as any).privateProofAccessGrant.findFirst({
     where: { bookingId: input.bookingId, customerUserId: input.customerUserId, status: "ACTIVE", revokedAt: null },
     orderBy: { grantedAt: "desc" },
   });
   if (!grant) return null;
-  const pkg = await (prisma as any).serviceVideoPackageEvidence.findFirst({
+  const pkg = await (db as any).serviceVideoPackageEvidence.findFirst({
     where: { id: grant.packageId, bookingId: input.bookingId, isCurrent: true, status: "PRIVATE_APPROVED", managerDecisionId: grant.managerDecisionId, customerAccessGrantId: grant.id },
   });
   if (!pkg) return null;
   const isCoreAdminGrant = Boolean(grant.adminAuditDecisionId || pkg.adminAuditDecisionId);
-  const decision = await (prisma as any).serviceVideoManagerDecisionEvidence.findFirst({
+  const decision = await (db as any).serviceVideoManagerDecisionEvidence.findFirst({
     where: {
       id: grant.managerDecisionId,
       packageId: pkg.id,
@@ -878,7 +879,7 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
       pkg.adminAuditDecisionId !== grant.adminAuditDecisionId ||
       !pkg.auditEvidenceVersion
     ) return null;
-    const auditDecision = await (prisma as any).serviceVideoAdminAuditDecisionEvidence.findFirst({
+    const auditDecision = await (db as any).serviceVideoAdminAuditDecisionEvidence.findFirst({
       where: {
         id: grant.adminAuditDecisionId,
         packageId: pkg.id,
@@ -903,7 +904,7 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
   if (!REQUIRED_SERVICE_VIDEO_STAGES.every((stage) => packageStages.filter((row) => row.stage === stage).length === 1)) {
     return null;
   }
-  const stages: any[] = await (prisma as any).serviceVideoStageEvidence.findMany({
+  const stages: any[] = await (db as any).serviceVideoStageEvidence.findMany({
     where: {
       id: { in: packageStages.map((row) => row.stageEvidenceId) },
       bookingId: input.bookingId,
@@ -924,7 +925,7 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
     ) {
       return null;
     }
-    const gate = await (prisma as any).recordingGateDecisionEvidence.findFirst({
+    const gate = await (db as any).recordingGateDecisionEvidence.findFirst({
       where: {
         id: stage.recordingGateDecisionId,
         bookingId: input.bookingId,
@@ -935,7 +936,7 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
         decision: "ALLOWED",
       },
     });
-    const session = await (prisma as any).mediaSession.findFirst({
+    const session = await (db as any).mediaSession.findFirst({
       where: {
         id: stage.mediaSessionId,
         bookingId: input.bookingId,
@@ -945,7 +946,7 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
         status: "COMPLETED",
       },
     });
-    const asset = await (prisma as any).mediaAsset.findFirst({
+    const asset = await (db as any).mediaAsset.findFirst({
       where: {
         id: stage.mediaAssetId,
         vendorId: pkg.vendorId,
@@ -965,6 +966,7 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
       bookingId: input.bookingId,
       mediaAssetId: stage.mediaAssetId,
       intendedAudience: "PRIVATE",
+      db,
     });
     if (!lifecycle.privateAllowed) return null;
   }

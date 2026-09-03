@@ -82,7 +82,7 @@ export default function UserDiscoverPage() {
     data: favoritesData,
     isLoading: favoritesLoading,
     isError: favoritesError,
-  } = useFavoritesOptional({ page: 1, limit: 200 });
+  } = useFavoritesOptional({ page: 1, limit: 50 });
   const addFavorite = useAddFavorite();
   const removeFavorite = useRemoveFavorite();
 

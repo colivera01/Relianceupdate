@@ -6,6 +6,7 @@ import { Archive, ChevronLeft, ChevronRight, RotateCcw, Search } from 'lucide-re
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import type { CustomerRecordTab, CustomerServiceRecordState } from '@/lib/customer-service-record-state';
+import { VendorFavoriteButton } from '@/components/favorites/VendorFavoriteButton';
 
 type CustomerRecordRow = {
   id: string;
@@ -286,6 +287,7 @@ export default function MyServiceRecordsPage() {
                     <div className="mt-5 flex flex-wrap items-center gap-2">
                       <Link href={detailHref} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">View Service Record</Link>
                       {state.review.state === 'LEAVE_REVIEW' ? <Link href={`${detailHref}#your-review`} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10">Leave a review</Link> : null}
+                      {state.lifecycle === 'COMPLETED' && record.vendor?.id ? <VendorFavoriteButton vendorId={record.vendor.id} vendorName={record.vendor.name || 'Vendor'} tone="dark" /> : null}
                       {state.archiveEligible ? <button type="button" disabled={busyId === record.id} onClick={() => void changeOrganization(record, 'ARCHIVE')} className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium text-white/60 hover:bg-white/5 hover:text-white disabled:opacity-50"><Archive className="h-4 w-4" /> Archive Service Record</button> : null}
                       {state.restoreEligible ? <button type="button" disabled={busyId === record.id} onClick={() => void changeOrganization(record, 'RESTORE')} className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"><RotateCcw className="h-4 w-4" /> Restore to Service Records</button> : null}
                       {state.lifecycle === 'UPCOMING' && !state.archived ? <button type="button" disabled={busyId === record.id} onClick={() => void cancelRecord(record)} className="ml-auto rounded-md px-2 py-2 text-xs font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-50">Cancel service</button> : null}

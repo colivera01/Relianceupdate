@@ -18,7 +18,7 @@ describe("completed customer Service Record contract", () => {
     expect(detailPage).not.toContain("Approve video access first");
     expect(detailPage).not.toContain("sessionStorage");
     expect(reviewWindowRoute).not.toContain("consentRecord");
-    expect(reviewWindowRoute).toContain("loadAuthorizedPrivateProof");
+    expect(reviewWindowRoute).toContain("loadCustomerReviewEligibility");
   });
 
   it("presents the approved three-stage Service Video before secondary details", () => {

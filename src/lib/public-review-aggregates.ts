@@ -1,5 +1,6 @@
 import { prisma } from "@/server/db";
 import { countableReviewWhere } from "@/lib/metrics-exclusion";
+import { canonicalVerifiedCustomerRatingWhere } from "@/lib/review-rating-validity";
 
 export interface VendorReviewAggregate {
   vendorId: string;
@@ -10,11 +11,8 @@ export interface VendorReviewAggregate {
 /**
  * Public-safe aggregation for reviews.
  *
- * Raw review content is public-eligible only when:
- * - moderationStatus = "approved"
- * - visibilityStatus = "public"
- *
- * We align vendor-level aggregates to the same eligibility rule.
+ * Vendor stars are verified customer-rating evidence. Optional written content
+ * remains subject to its separate public moderation contract.
  */
 export async function getVendorReviewAggregatesForPublic(
   vendorIds: string[]
@@ -30,12 +28,7 @@ export async function getVendorReviewAggregatesForPublic(
     by: ["vendorId"],
     where: countableReviewWhere({
       vendorId: { in: ids },
-      moderationStatus: "approved",
-      visibilityStatus: "public",
-      rating: {
-        gte: 1,
-        lte: 5,
-      },
+      ...canonicalVerifiedCustomerRatingWhere(),
     }),
     _avg: {
       rating: true,

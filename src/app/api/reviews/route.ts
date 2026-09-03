@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
 
     const where: Record<string, unknown> = countableReviewWhere({
+      moderationStatus: 'approved',
+      visibilityStatus: 'public',
       ...(vendorId ? { vendorId } : {}),
       ...(userId ? { userId } : {}),
       ...(rating >= 1 && rating <= 5 ? { rating } : {}),

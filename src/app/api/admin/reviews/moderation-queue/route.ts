@@ -68,6 +68,9 @@ export async function GET(request: Request): Promise<NextResponse> {
           visibilityStatus: true,
           moderationReason: true,
           moderatedAt: true,
+          contractVersion: true,
+          ratingValidityStatus: true,
+          ratingInvalidationReason: true,
           vendor: {
             select: {
               id: true,
@@ -106,6 +109,9 @@ export async function GET(request: Request): Promise<NextResponse> {
       visibilityStatus: review.visibilityStatus,
       moderationReason: review.moderationReason,
       moderatedAt: review.moderatedAt,
+      contractVersion: review.contractVersion,
+      ratingValidityStatus: review.ratingValidityStatus,
+      ratingInvalidationReason: review.ratingInvalidationReason,
       aiRecommendation: aiRecommendationsByReviewId[String(review.id)] || null,
     }));
 

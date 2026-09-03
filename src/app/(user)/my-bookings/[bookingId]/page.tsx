@@ -20,6 +20,7 @@ import {
 import { SmartVideoPlayer } from '@/components/reviews/SmartVideoPlayer';
 import { ReportContentDialog } from '@/components/reports/ReportContentDialog';
 import { PackageVisibilityCard } from '@/components/service-video/PackageVisibilityCard';
+import { VendorFavoriteButton } from '@/components/favorites/VendorFavoriteButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { appendAuthNext } from '@/lib/auth-next';
 import { getClientSessionHeaders } from '@/lib/client-session';
@@ -174,6 +175,7 @@ function BookingMediaDetailPageContent() {
   const [showDetails, setShowDetails] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewWindowId, setReviewWindowId] = useState<string | null>(null);
+  const [reviewRequestId, setReviewRequestId] = useState<string | null>(null);
   const [vendorRating, setVendorRating] = useState(0);
   const [employeeRating, setEmployeeRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
@@ -284,7 +286,7 @@ function BookingMediaDetailPageContent() {
   const customerRecord = booking?.customerRecord || null;
   const completedRecord = customerRecord?.lifecycle === 'COMPLETED';
   const videoReady = completedRecord && customerRecord?.video.state === 'READY';
-  const canReview = Boolean(privateProofAvailable && finalVideo?.mediaSessionId && booking?.vendor?.id && !existingReview);
+  const canReview = Boolean(customerRecord?.review.state === 'LEAVE_REVIEW' && booking?.vendor?.id && !existingReview);
   const supportHref = `/customer/support?returnTo=${encodeURIComponent(`/my-bookings/${bookingId}`)}&returnLabel=${encodeURIComponent('Back to service record')}`;
 
   const changeOrganization = async (action: 'ARCHIVE' | 'RESTORE') => {
@@ -364,7 +366,7 @@ function BookingMediaDetailPageContent() {
   };
 
   const beginReview = async () => {
-    if (!canReview || !finalVideo?.mediaSessionId || !booking?.vendor?.id || reviewBusy) return;
+    if (!canReview || !booking?.vendor?.id || reviewBusy) return;
     setReviewOpen(true);
     setReviewBusy(true);
     setReviewError(null);
@@ -375,7 +377,6 @@ function BookingMediaDetailPageContent() {
         body: JSON.stringify({
           bookingId,
           vendorId: String(booking.vendor.id),
-          mediaSessionId: finalVideo.mediaSessionId,
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -383,6 +384,7 @@ function BookingMediaDetailPageContent() {
         throw new Error(String(body?.error || 'Unable to start your review.'));
       }
       setReviewWindowId(String(body.reviewWindow.id));
+      setReviewRequestId((current) => current || globalThis.crypto.randomUUID());
     } catch (caught) {
       setReviewWindowId(null);
       setReviewError(caught instanceof Error ? caught.message : 'Unable to start your review.');
@@ -404,9 +406,9 @@ function BookingMediaDetailPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reviewWindowId,
+          requestId: reviewRequestId || globalThis.crypto.randomUUID(),
           bookingId,
           vendorId: String(booking.vendor.id),
-          mediaSessionId: finalVideo?.mediaSessionId,
           rating: vendorRating,
           employeeRating: employeeRating || undefined,
           comment: reviewComment.trim(),
@@ -508,6 +510,11 @@ function BookingMediaDetailPageContent() {
           </p>
           <h1 id="service-heading" className="mt-2 text-3xl font-semibold text-slate-950">{serviceName}</h1>
           <p className="mt-2 text-lg text-slate-700">{vendorName}</p>
+          {completedRecord && booking?.vendor?.id ? (
+            <div className="mt-4">
+              <VendorFavoriteButton vendorId={String(booking.vendor.id)} vendorName={vendorName} />
+            </div>
+          ) : null}
           <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-600">
             <Calendar className="h-4 w-4" /> {completedRecord ? 'Completed' : customerRecord?.lifecycle === 'CANCELLED' ? 'Service date' : 'Scheduled'} {formatDate(booking?.booking_date)}
           </p>
@@ -675,6 +682,12 @@ function BookingMediaDetailPageContent() {
             <p className="mt-3 text-sm text-slate-600">A review becomes available with an approved Private Service Video.</p>
           )}
           {reviewSuccess ? <p className="mt-3 text-sm font-medium text-emerald-700">{reviewSuccess}</p> : null}
+          {reviewSuccess && booking?.vendor?.id ? (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <p className="font-semibold text-blue-950">Want to use {vendorName} again?</p>
+              <VendorFavoriteButton vendorId={String(booking.vendor.id)} vendorName={vendorName} className="mt-3" />
+            </div>
+          ) : null}
         </section> : null}
 
         {videoReady ? <section aria-labelledby="visibility-heading" className="border-t border-slate-200 pt-6">

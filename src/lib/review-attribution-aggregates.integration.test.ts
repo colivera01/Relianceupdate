@@ -46,7 +46,10 @@ describe("review attribution aggregates", () => {
         where: expect.objectContaining({
           vendorId: "v1",
           source: "customer",
-          moderationStatus: "approved",
+          OR: expect.arrayContaining([
+            expect.objectContaining({ contractVersion: { gte: 2 }, ratingValidityStatus: "verified" }),
+            expect.objectContaining({ contractVersion: null, moderationStatus: "approved" }),
+          ]),
         }),
       })
     );
@@ -66,7 +69,7 @@ describe("review attribution aggregates", () => {
           vendorId: "v1",
           assignedMembershipId: "m1",
           source: "customer",
-          moderationStatus: "approved",
+          OR: expect.any(Array),
         }),
       })
     );

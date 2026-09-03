@@ -2,438 +2,188 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Star } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { GuidanceCallout } from '@/components/guidance/GuidanceCallout';
-import { TrustScoreEducationCard } from '@/components/guidance/TrustScoreEducationCard';
-import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
+import { ChevronLeft, ChevronRight, Search, Star } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
-import { getClientSessionHeaders } from '@/lib/client-session';
-import { tutorialGuides } from '@/lib/user-guidance';
 
-type PendingReviewItem = {
+type ReadyReview = {
   bookingId: string;
-  vendorId: string;
   vendorName: string;
   serviceName: string;
   serviceDate: string | null;
-  status: string;
-  videoUrl: string | null;
-  proofUrl: string | null;
+  archived: boolean;
 };
 
-type AwaitingReviewItem = {
-  bookingId: string;
-  vendorId: string;
-  vendorName: string;
-  serviceName: string;
-  serviceDate: string | null;
-  status: string;
-  videoState: 'pending_approval' | 'approved_not_customer_visible' | 'rejected' | 'not_submitted';
-  statusMessage: string;
-};
-
-type SubmittedReviewItem = {
+type SubmittedReview = {
   reviewId: string;
   bookingId: string | null;
-  vendorId: string;
   vendorName: string;
   serviceName: string;
   rating: number;
   comment: string;
   submittedAt: string;
-  hasVideo: boolean;
-  videoUrl: string | null;
-  hasProof: boolean;
-  proofUrl: string | null;
-  hasLinkedMediaRecord: boolean;
-  mediaState: 'customer_visible_video' | 'linked_media_unavailable' | 'no_linked_media';
-  statusMessage: string | null;
+  employeeRating: { rating: number; employeeName: string } | null;
+  commentStatus: 'NONE' | 'CHECKING' | 'PUBLISHED' | 'NOT_PUBLISHED' | 'LEGACY';
+  ratingStatus: 'COUNTED' | 'INVALID';
 };
 
-type ReviewsMeResponse = {
-  pending: PendingReviewItem[];
-  awaiting: AwaitingReviewItem[];
-  submitted: SubmittedReviewItem[];
+type Pagination = { page: number; limit: number; total: number; totalPages: number };
+type ReviewsResponse = {
+  ready: ReadyReview[];
+  awaiting: Array<ReadyReview & { statusMessage: string }>;
+  submitted: SubmittedReview[];
+  counts: { ready: number; awaiting: number; submitted: number };
+  pagination: { ready: Pagination; submitted: Pagination };
 };
 
-function reviewsCacheKey(userId: string | null | undefined): string | null {
-  if (!userId) return null;
-  return `customer_reviews_cache:${userId}`;
-}
-
-function readCachedReviews(userId: string | null | undefined): ReviewsMeResponse | null {
-  if (typeof window === 'undefined') return null;
-  const key = reviewsCacheKey(userId);
-  if (!key) return null;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<ReviewsMeResponse>;
-    return {
-      pending: Array.isArray(parsed?.pending) ? parsed.pending : [],
-      awaiting: Array.isArray(parsed?.awaiting) ? parsed.awaiting : [],
-      submitted: Array.isArray(parsed?.submitted) ? parsed.submitted : [],
-    };
-  } catch {
-    return null;
-  }
-}
-
-function writeCachedReviews(userId: string | null | undefined, value: ReviewsMeResponse): void {
-  if (typeof window === 'undefined') return;
-  const key = reviewsCacheKey(userId);
-  if (!key) return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Ignore client storage failures and keep the live view working.
-  }
-}
-
-function formatDate(value: string | null | undefined): string {
+function formatDate(value: string | null): string {
   if (!value) return 'Date unavailable';
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Date unavailable';
-  return parsed.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
+  return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function renderStars(rating: number) {
-  const rounded = Math.max(0, Math.min(5, Number.isFinite(rating) ? Math.round(rating) : 0));
+function Stars({ rating }: { rating: number }) {
   return (
-    <div className="flex items-center gap-1">
-      {Array.from({ length: 5 }).map((_, index) => (
-        <Star
-          key={index}
-          className={`h-4 w-4 ${index < rounded ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
-        />
-      ))}
+    <div className="flex gap-1" aria-label={`${rating} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((star) => <Star key={star} className={`h-4 w-4 ${star <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />)}
     </div>
   );
 }
 
-function bookingMetaRow(bookingId: string | null | undefined, dateLabel: string, dateValue: string | null | undefined) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-      <p>{dateLabel}: {formatDate(dateValue)}</p>
-      {bookingId ? (
-        <p>
-          Reference ID:{' '}
-          <span className="font-mono text-[11px] text-gray-600">{bookingId}</span>
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function reviewsBookingHref(bookingId: string): string {
-  return `/my-bookings/${bookingId}?returnTo=${encodeURIComponent('/reviews')}`;
-}
-
-function sectionEmptyState(message: string) {
-  return (
-    <div className="bg-white rounded-xl shadow-sm border p-3 mb-3 text-sm text-gray-600">{message}</div>
-  );
-}
-
-function sectionSkeletonRows() {
-  return Array.from({ length: 3 }).map((_, index) => (
-    <div key={`skeleton-${index}`} className="bg-white rounded-xl shadow-sm border p-3 mb-3 space-y-3">
-        <div className="h-5 w-52 rounded bg-gray-200 animate-pulse" />
-        <div className="h-4 w-40 rounded bg-gray-200 animate-pulse" />
-        <div className="h-4 w-64 rounded bg-gray-100 animate-pulse" />
-    </div>
-  ));
+function commentStatusLabel(status: SubmittedReview['commentStatus']): string | null {
+  if (status === 'CHECKING') return 'Written comment being checked before public display';
+  if (status === 'PUBLISHED') return 'Written comment published';
+  if (status === 'NOT_PUBLISHED') return 'Written comment not published';
+  if (status === 'LEGACY') return 'Submitted under an earlier review contract';
+  return null;
 }
 
 export default function ReviewsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const userId = resolveCustomerUserId(user?.id);
-
-  const [data, setData] = useState<ReviewsMeResponse>({
-    pending: [],
-    awaiting: [],
-    submitted: [],
-  });
+  const [data, setData] = useState<ReviewsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showCachedNotice, setShowCachedNotice] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [readyPage, setReadyPage] = useState(1);
+  const [submittedPage, setSubmittedPage] = useState(1);
 
-  const loadReviews = useCallback(async () => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setReadyPage(1);
+      setSubmittedPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  const load = useCallback(async () => {
     if (!userId) {
       setLoading(false);
-      setError('Unauthorized. Sign in to view your reviews.');
       return;
     }
-
     setLoading(true);
     setError(null);
-    setShowCachedNotice(false);
     try {
-      const headers = getClientSessionHeaders(userId);
-      const response = await fetch('/api/reviews/me', {
-        method: 'GET',
-        headers,
-        cache: 'no-store',
-        credentials: 'include',
-      });
-      const json = (await response.json().catch(() => ({}))) as Partial<ReviewsMeResponse> & { error?: string };
-      if (!response.ok) {
-        throw new Error(String(json?.error || `Failed to load reviews (${response.status})`));
-      }
-
-      const nextData = {
-        pending: Array.isArray(json?.pending) ? json.pending : [],
-        awaiting: Array.isArray(json?.awaiting) ? json.awaiting : [],
-        submitted: Array.isArray(json?.submitted) ? json.submitted : [],
-      };
-      setData(nextData);
-      writeCachedReviews(userId, nextData);
-    } catch (fetchError) {
-      const cachedData = readCachedReviews(userId);
-      if (cachedData) {
-        setData(cachedData);
-        setShowCachedNotice(true);
-        setError(null);
-      } else {
-        setError(fetchError instanceof Error ? fetchError.message : 'Failed to load reviews');
-        setData({
-          pending: [],
-          awaiting: [],
-          submitted: [],
-        });
-      }
+      const params = new URLSearchParams({ readyPage: String(readyPage), submittedPage: String(submittedPage), limit: '10' });
+      if (search) params.set('search', search);
+      const response = await fetch(`/api/reviews/me?${params}`, { credentials: 'include', cache: 'no-store' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(body?.error || 'Unable to load your reviews.'));
+      setData(body as ReviewsResponse);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to load your reviews.');
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [readyPage, search, submittedPage, userId]);
 
   useEffect(() => {
-    if (authLoading) return;
-    void loadReviews();
-  }, [authLoading, loadReviews]);
+    if (!authLoading) void load();
+  }, [authLoading, load]);
 
-  const proofBackedSubmittedCount = data.submitted.filter((item) => item.hasProof).length;
-  const awaitingVideoCount = data.awaiting.length;
+  if (!authLoading && !userId) {
+    return <div className="mx-auto max-w-4xl py-12"><p className="text-slate-700">Sign in to view your Customer Reviews.</p></div>;
+  }
 
   return (
-    <div className="w-full max-w-5xl space-y-8">
-      <header className="reliance-operator-hero rounded-[32px] px-6 py-7">
-        <div className="reliance-kicker border border-white/10 bg-white/6 text-white/64">
-          Your reviews
-        </div>
-        <div className="mt-5 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl space-y-4">
-            <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">
-              Review completed services
-            </h1>
-            <p className="max-w-2xl text-sm leading-7 text-white/72 sm:text-base">
-              Your service is complete. You may leave an optional review after an approved customer-visible
-              service video is available. If you submit nothing, your service record remains complete.
-            </p>
-            <p className="text-sm leading-7 text-white/68">
-              {loading || authLoading
-                ? 'Loading your review totals and service-record feedback history...'
-                : `You have ${data.pending.length} ${data.pending.length === 1 ? 'service' : 'services'} ready for a review${
-                    awaitingVideoCount > 0
-                      ? `, ${awaitingVideoCount} completed ${awaitingVideoCount === 1 ? 'service is' : 'services are'} still waiting on review access,`
-                      : ''
-                  } and ${data.submitted.length} submitted ${data.submitted.length === 1 ? 'review' : 'reviews'}.${
-                    proofBackedSubmittedCount > 0
-                      ? ` ${proofBackedSubmittedCount} submitted ${
-                          proofBackedSubmittedCount === 1 ? 'review is' : 'reviews are'
-                        } tied to customer-visible service videos or images.`
-                      : ''
-                  }`}
-            </p>
-          </div>
-          <div className="grid min-w-[220px] grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)]">
-              <p className="text-xs uppercase tracking-[0.28em] text-white/46">Ready now</p>
-              <p className="mt-2 text-3xl font-semibold text-white">{data.pending.length}</p>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)]">
-              <p className="text-xs uppercase tracking-[0.28em] text-white/46">Not ready yet</p>
-              <p className="mt-2 text-3xl font-semibold text-white">{awaitingVideoCount}</p>
-            </div>
-            <div className="rounded-3xl border border-white/10 bg-slate-950/45 px-5 py-4 shadow-[0_18px_55px_rgba(4,10,22,0.24)] sm:col-span-3 xl:col-span-1">
-              <p className="text-xs uppercase tracking-[0.28em] text-white/46">Submitted</p>
-              <p className="mt-2 text-3xl font-semibold text-white">{data.submitted.length}</p>
-            </div>
-          </div>
-        </div>
+    <main className="mx-auto w-full max-w-5xl space-y-8 pb-12">
+      <header className="border-b border-slate-200 pb-6">
+        <p className="text-xs font-semibold uppercase text-blue-700">Your Reviews</p>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-950">Customer Reviews</h1>
+        <p className="mt-2 text-sm text-slate-600">Review completed services and revisit feedback you have submitted.</p>
+        <label className="relative mt-5 block max-w-xl">
+          <span className="sr-only">Search reviews</span>
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search service, Vendor, or reference" className="w-full rounded-md border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm" />
+        </label>
       </header>
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="flex-1">
-          <TrustScoreEducationCard surface="dark" />
-        </div>
-        <TutorialEntryPoint guide={tutorialGuides.reviewHub} surface="dark" className="self-start" />
-      </div>
+      {error ? <p className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p> : null}
+      {loading ? <p className="text-sm text-slate-600">Loading Customer Reviews...</p> : null}
 
-      <GuidanceCallout
-        title="How your review is counted"
-        description="Your Vendor rating describes the overall experience with the business and may appear publicly after customer-review moderation. A Service Professional rating is optional and separate."
-        bullets={[
-          'Public business rating: approved customer reviews customers can see.',
-          'Service professional rating: an optional, separate rating for the assigned professional.',
-          'Reliance Trust Score: separate from your star rating and based on verified operational activity.',
-        ]}
-        tone="blue"
-      />
-
-      <div className="flex items-center justify-end">
-        <Button variant="outline" onClick={() => void loadReviews()} disabled={loading || authLoading}>
-          Refresh
-        </Button>
-      </div>
-
-      {loading || authLoading ? (
-        <section className="mb-10">
-          <h2 className="text-xl font-semibold text-gray-900">Loading your reviews...</h2>
-          {sectionSkeletonRows()}
-        </section>
-      ) : null}
-
-      {error ? (
-        <div className="reliance-operator-surface rounded-[28px] border border-red-200/70 bg-red-50/80 p-4 mb-10 space-y-3">
-          <p className="text-sm text-red-700">We couldn&apos;t load your reviews.</p>
-          <Button type="button" variant="outline" onClick={() => void loadReviews()}>
-            Retry
-          </Button>
-        </div>
-      ) : null}
-
-      {!loading && !authLoading && !error && showCachedNotice ? (
-        <div className="reliance-operator-surface rounded-[28px] border border-amber-200/70 bg-amber-50/80 p-4 mb-6 text-sm text-amber-900">
-          Showing your most recent saved review history while Reliance refreshes live review data.
-        </div>
-      ) : null}
-
-      {!loading && !authLoading && !error ? (
+      {!loading && data ? (
         <>
-          <section className="mb-10">
-            <div className="space-y-1 mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Optional Reviews Available</h2>
-              <p className="text-sm text-gray-600">
-                These completed services have approved Private Proof packages. Review them whenever you choose.
-              </p>
+          <section aria-labelledby="waiting-reviews-heading">
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <h2 id="waiting-reviews-heading" className="text-2xl font-semibold text-slate-950">Reviews waiting for me</h2>
+                <p className="mt-1 text-sm text-slate-600">{data.counts.ready} {data.counts.ready === 1 ? 'service is' : 'services are'} ready for your review.</p>
+              </div>
             </div>
-            {data.pending.length === 0
-              ? sectionEmptyState('You have no completed services with an optional review available.')
-              : data.pending.map((item) => (
-                  <div
-                    key={item.bookingId}
-                    className="reliance-operator-surface rounded-[28px] border border-amber-200/70 bg-amber-50/80 p-4 mb-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
-                  >
-                    <div className="space-y-1">
-                      <p className="text-lg font-bold text-gray-900">{item.serviceName}</p>
-                      <p className="text-sm text-gray-700">{item.vendorName}</p>
-                      {bookingMetaRow(item.bookingId, 'Service date', item.serviceDate)}
-                    </div>
-                    <Link href={reviewsBookingHref(item.bookingId)}>
-                      <Button
-                        size="default"
-                        className="bg-[var(--reliance-blue)] text-white hover:bg-[#1f56cf]"
-                      >
-                        <Star className="mr-2 h-4 w-4 fill-current" />
-                        Leave Review
-                      </Button>
-                    </Link>
-                  </div>
+            {data.ready.length === 0 ? <p className="rounded-md border border-slate-200 bg-white p-5 text-sm text-slate-600">No services are waiting for your review.</p> : (
+              <div className="space-y-3">
+                {data.ready.map((item) => (
+                  <article key={item.bookingId} className="flex flex-col justify-between gap-4 rounded-md border border-slate-200 bg-white p-5 sm:flex-row sm:items-center">
+                    <div><h3 className="font-semibold text-slate-950">{item.serviceName}</h3><p className="text-sm text-slate-600">{item.vendorName} · {formatDate(item.serviceDate)}</p>{item.archived ? <p className="mt-1 text-xs text-slate-500">Archived Service Record</p> : null}</div>
+                    <Link href={`/my-bookings/${item.bookingId}#your-review`} className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Star className="h-4 w-4" /> Leave Review</Link>
+                  </article>
                 ))}
+              </div>
+            )}
+            {data.pagination.ready.totalPages > 1 ? <Pager value={data.pagination.ready} onPrevious={() => setReadyPage((page) => page - 1)} onNext={() => setReadyPage((page) => page + 1)} /> : null}
           </section>
 
           {data.awaiting.length > 0 ? (
-            <section className="mb-10">
-              <div className="space-y-1 mb-4">
-                <h2 className="text-xl font-semibold text-gray-900">Optional Review Not Available Yet</h2>
-                <p className="text-sm text-gray-600">
-                  These completed services are not reviewable yet. Open the service record to see whether
-                  Reliance Audit or Private Proof release is still pending.
-                </p>
+            <section aria-labelledby="not-ready-heading">
+              <h2 id="not-ready-heading" className="text-lg font-semibold text-slate-950">Not ready yet</h2>
+              <div className="mt-3 space-y-2">
+                {data.awaiting.map((item) => <div key={item.bookingId} className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm"><span className="font-medium text-slate-900">{item.serviceName}</span><span className="text-slate-600"> · {item.statusMessage}</span></div>)}
               </div>
-              <GuidanceCallout
-                title="Why some completed service records still are not reviewable"
-                description="Reliance makes an optional review available after a completed service has an approved Private Proof package for the owning customer."
-                bullets={[
-                  'Completed work can still be waiting on Reliance Audit.',
-                  'Private Proof is released only after the Service Video package passes.',
-                  'Once approved Private Proof is available, the service moves into Optional Reviews Available.',
-                ]}
-                tone="amber"
-                className="mb-4"
-              />
-              {data.awaiting.map((item) => (
-                <div
-                  key={item.bookingId}
-                  className="bg-white rounded-[28px] shadow-sm border p-4 mb-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="space-y-1">
-                    <p className="text-lg font-bold text-gray-900">{item.serviceName}</p>
-                    <p className="text-sm text-gray-700">{item.vendorName}</p>
-                    {bookingMetaRow(item.bookingId, 'Service date', item.serviceDate)}
-                    <p className="text-xs text-amber-700">{item.statusMessage}</p>
-                  </div>
-                  <Link href={reviewsBookingHref(item.bookingId)}>
-                    <Button variant="outline">View service record</Button>
-                  </Link>
-                </div>
-              ))}
             </section>
           ) : null}
 
-          <section className="mb-10">
-            <div className="space-y-1 mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Submitted Reviews</h2>
-              <p className="text-sm text-gray-600">
-                Your saved review history. Reviews connected to approved Private Proof packages are marked below.
-              </p>
-            </div>
-            {data.submitted.length === 0
-              ? sectionEmptyState('No submitted reviews yet. Your completed feedback will appear here.')
-              : data.submitted.map((item) => (
-                  <div
-                    key={item.reviewId}
-                    className="bg-white rounded-[28px] shadow-sm border p-4 mb-3 flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
-                  >
-                    <div className="space-y-2.5">
-                      {item.hasProof ? (
-                        <p className="text-xs font-medium uppercase tracking-wide text-green-700">
-                          Verified with customer-visible service video
-                        </p>
-                      ) : null}
-                      <p className="text-lg font-semibold text-gray-900">{item.serviceName}</p>
-                      <p className="text-sm text-gray-700">{item.vendorName}</p>
-                      {bookingMetaRow(item.bookingId, 'Review submitted', item.submittedAt)}
-                      {renderStars(item.rating)}
-                      <p className="text-sm text-gray-600 leading-6 line-clamp-2">
-                        {item.comment || 'No written comment.'}
-                      </p>
-                      {!item.hasProof && item.statusMessage ? (
-                        <p className="text-xs text-gray-500">{item.statusMessage}</p>
-                      ) : null}
-                    </div>
-                    {item.bookingId && item.videoUrl ? (
-                      <Link href={reviewsBookingHref(item.bookingId)}>
-                        <Button variant="outline">View service videos</Button>
-                      </Link>
-                    ) : item.bookingId ? (
-                      <Link href={reviewsBookingHref(item.bookingId)}>
-                        <Button variant="outline">View service record</Button>
-                      </Link>
-                    ) : null}
-                  </div>
-                ))}
+          <section aria-labelledby="submitted-reviews-heading">
+            <div className="mb-4"><h2 id="submitted-reviews-heading" className="text-2xl font-semibold text-slate-950">Submitted Reviews</h2><p className="mt-1 text-sm text-slate-600">{data.counts.submitted} submitted {data.counts.submitted === 1 ? 'review' : 'reviews'}.</p></div>
+            {data.submitted.length === 0 ? <p className="rounded-md border border-slate-200 bg-white p-5 text-sm text-slate-600">No submitted reviews yet.</p> : (
+              <div className="space-y-3">
+                {data.submitted.map((item) => {
+                  const moderationLabel = commentStatusLabel(item.commentStatus);
+                  return <article key={item.reviewId} className="rounded-md border border-slate-200 bg-white p-5">
+                    <div className="flex flex-col justify-between gap-3 sm:flex-row"><div><h3 className="font-semibold text-slate-950">{item.serviceName}</h3><p className="text-sm text-slate-600">{item.vendorName} · {formatDate(item.submittedAt)}</p></div>{item.bookingId ? <Link href={`/my-bookings/${item.bookingId}`} className="text-sm font-semibold text-blue-700">View Service Record</Link> : null}</div>
+                    <div className="mt-3"><p className="mb-1 text-xs font-medium text-slate-500">Vendor Rating</p><Stars rating={item.rating} /></div>
+                    {item.comment ? <p className="mt-3 text-sm leading-6 text-slate-700">{item.comment}</p> : <p className="mt-3 text-sm text-slate-500">No written comment.</p>}
+                    {moderationLabel ? <p className="mt-2 text-xs text-slate-500">{moderationLabel}.</p> : null}
+                    {item.employeeRating ? <div className="mt-3 border-t border-slate-100 pt-3"><p className="text-xs font-medium text-slate-500">Service Professional Rating · {item.employeeRating.employeeName}</p><Stars rating={item.employeeRating.rating} /></div> : null}
+                    {item.ratingStatus === 'INVALID' ? <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">This rating is not included in Vendor metrics.</p> : null}
+                  </article>;
+                })}
+              </div>
+            )}
+            {data.pagination.submitted.totalPages > 1 ? <Pager value={data.pagination.submitted} onPrevious={() => setSubmittedPage((page) => page - 1)} onNext={() => setSubmittedPage((page) => page + 1)} /> : null}
           </section>
+
+          <details className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <summary className="cursor-pointer font-semibold text-slate-950">How ratings work</summary>
+            <div className="mt-3 space-y-2"><p><strong>Vendor Rating:</strong> your overall experience with the business.</p><p><strong>Service Professional Rating:</strong> optional feedback about the person who performed the service.</p><p><strong>Reliance Trust Score:</strong> a separate measure based on verified platform activity.</p></div>
+          </details>
         </>
       ) : null}
-    </div>
+    </main>
   );
+}
+
+function Pager({ value, onPrevious, onNext }: { value: Pagination; onPrevious: () => void; onNext: () => void }) {
+  return <nav aria-label="Review pages" className="mt-4 flex items-center justify-between"><p className="text-sm text-slate-500">Page {value.page} of {value.totalPages}</p><div className="flex gap-2"><button type="button" aria-label="Previous page" disabled={value.page <= 1} onClick={onPrevious} className="rounded-md border border-slate-300 p-2 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button><button type="button" aria-label="Next page" disabled={value.page >= value.totalPages} onClick={onNext} className="rounded-md border border-slate-300 p-2 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button></div></nav>;
 }
