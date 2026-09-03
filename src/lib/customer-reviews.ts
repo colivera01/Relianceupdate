@@ -26,15 +26,15 @@ export function getCustomerReviewGateMessage({
   consentAllowsInlineReview: boolean;
 }): string | null {
   if (!hasReviewableCompletedVideo) {
-    return "This booking is not ready for the video-based review flow because no customer-visible approved final-result video is attached.";
+    return "This service record is not ready for review because an approved Private Proof package is not available.";
   }
 
   if (!canShowInlineReview) {
-    return "Switch to the Final Result stage to submit your review.";
+    return "Open the completed Service Record to leave your review.";
   }
 
   if (!consentAllowsInlineReview) {
-    return "Approve video access before leaving your review.";
+    return "Private Proof access is required before a review can be submitted.";
   }
 
   return null;

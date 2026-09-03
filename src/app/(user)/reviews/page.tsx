@@ -279,10 +279,10 @@ export default function ReviewsPage() {
 
       <GuidanceCallout
         title="How your review is counted"
-        description="Your star rating can affect the vendor's public business rating after Reliance approval. When you leave the review, you can tell Reliance whether the feedback is about the overall business, the assigned worker or crew, scheduling/management, or you are not sure."
+        description="Your Vendor rating describes the overall experience with the business and may appear publicly after customer-review moderation. A Service Professional rating is optional and separate."
         bullets={[
           'Public business rating: approved customer reviews customers can see.',
-          'Private team performance: only used when feedback is clearly about the assigned worker or crew.',
+          'Service professional rating: an optional, separate rating for the assigned professional.',
           'Reliance Trust Score: separate from your star rating and based on verified operational activity.',
         ]}
         tone="blue"
@@ -322,7 +322,7 @@ export default function ReviewsPage() {
             <div className="space-y-1 mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Optional Reviews Available</h2>
               <p className="text-sm text-gray-600">
-                These completed services have approved customer-visible service videos. Review them whenever you choose.
+                These completed services have approved Private Proof packages. Review them whenever you choose.
               </p>
             </div>
             {data.pending.length === 0
@@ -356,16 +356,16 @@ export default function ReviewsPage() {
                 <h2 className="text-xl font-semibold text-gray-900">Optional Review Not Available Yet</h2>
                 <p className="text-sm text-gray-600">
                   These completed services are not reviewable yet. Open the service record to see whether
-                  the service video is pending approval, not customer-visible, or still unavailable.
+                  Reliance Audit or Private Proof release is still pending.
                 </p>
               </div>
               <GuidanceCallout
                 title="Why some completed service records still are not reviewable"
-                description="Reliance makes an optional review available only after an approved final-result customer-visible video exists for that service record."
+                description="Reliance makes an optional review available after a completed service has an approved Private Proof package for the owning customer."
                 bullets={[
-                  'Completed work can still be waiting on service-video approval.',
-                  'A video can exist without being customer-visible yet.',
-                  'Once the approved final-result video is available, this section moves the service record into Optional Reviews Available.',
+                  'Completed work can still be waiting on Reliance Audit.',
+                  'Private Proof is released only after the Service Video package passes.',
+                  'Once approved Private Proof is available, the service moves into Optional Reviews Available.',
                 ]}
                 tone="amber"
                 className="mb-4"
@@ -393,8 +393,7 @@ export default function ReviewsPage() {
             <div className="space-y-1 mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Submitted Reviews</h2>
               <p className="text-sm text-gray-600">
-                Your saved review history. Reviews connected to customer-visible approved
-                final-result videos are marked below.
+                Your saved review history. Reviews connected to approved Private Proof packages are marked below.
               </p>
             </div>
             {data.submitted.length === 0

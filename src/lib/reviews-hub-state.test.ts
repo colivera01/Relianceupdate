@@ -48,7 +48,7 @@ describe("reviews-hub-state", () => {
         videoSubmitted: true,
         videoPendingApproval: false,
       })
-    ).toContain("not customer-visible");
+    ).toContain("not available as Private Proof");
 
     expect(
       getReviewsHubUnavailableMessage({
@@ -58,7 +58,7 @@ describe("reviews-hub-state", () => {
         videoSubmitted: true,
         videoPendingApproval: false,
       })
-    ).toContain("not customer-visible");
+    ).toContain("did not pass Reliance Audit");
 
     expect(
       getReviewsHubUnavailableMessage({

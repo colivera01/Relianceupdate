@@ -52,7 +52,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
     return {
       effectiveStatus: "REVIEW_SUBMITTED_WITHOUT_ELIGIBLE_VIDEO",
       lifecycleNote:
-        "A historical review is on file, but there is no current customer-visible approved final-result video.",
+        "A historical review is on file, but an approved Private Proof package is not currently available.",
       customerLifecycle,
     };
   }
@@ -70,7 +70,7 @@ export function deriveReviewWindowLifecycleTruth(input: {
     return {
       effectiveStatus: "REVIEW_OPEN",
       lifecycleNote:
-        "A customer-visible approved final-result video exists, so an optional customer review is available.",
+        "An approved Private Proof package is available, so an optional customer review is open.",
       customerLifecycle,
     };
   }
@@ -80,28 +80,28 @@ export function deriveReviewWindowLifecycleTruth(input: {
       return {
         effectiveStatus: "VIDEO_PENDING_APPROVAL",
         lifecycleNote:
-          "Service work is complete, but the final-result video is still pending approval.",
+          "Service work is complete, but the Service Video package is still awaiting Reliance Audit.",
         customerLifecycle,
       };
     case "approved_not_customer_visible":
       return {
         effectiveStatus: "VIDEO_APPROVED_NOT_CUSTOMER_VISIBLE",
         lifecycleNote:
-          "A final-result video is approved internally, but it is not customer-visible yet.",
+          "The Service Video package is approved internally, but Private Proof is not currently available.",
         customerLifecycle,
       };
     case "rejected":
       return {
         effectiveStatus: "VIDEO_REJECTED",
         lifecycleNote:
-          "A final-result video exists, but the current customer-facing copy should not promise playback or review because the video was rejected.",
+          "The submitted Service Video package did not pass Reliance Audit, so playback and review are unavailable.",
         customerLifecycle,
       };
     default:
       return {
         effectiveStatus: "NO_COMPLETED_VIDEO_SUBMITTED",
         lifecycleNote:
-          "The booking is complete, but no final-result video has been submitted for customer review access.",
+          "The service is complete, but an approved Private Proof package is not available.",
         customerLifecycle,
       };
   }

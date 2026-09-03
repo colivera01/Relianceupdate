@@ -13,34 +13,34 @@ describe("partitionBookingsByVideoAvailability", () => {
 });
 
 describe("getCustomerReviewGateMessage", () => {
-  it("prioritizes missing video over missing consent", () => {
+  it("prioritizes missing Private Proof over obsolete local display state", () => {
     expect(
       getCustomerReviewGateMessage({
         hasReviewableCompletedVideo: false,
         canShowInlineReview: false,
         consentAllowsInlineReview: false,
       })
-    ).toContain("no customer-visible approved final-result video");
+    ).toContain("approved Private Proof package is not available");
   });
 
-  it("prompts the customer to switch to the final result stage when review video exists but is not selected", () => {
+  it("directs the customer to the completed Service Record when inline review is unavailable", () => {
     expect(
       getCustomerReviewGateMessage({
         hasReviewableCompletedVideo: true,
         canShowInlineReview: false,
         consentAllowsInlineReview: false,
       })
-    ).toBe("Switch to the Final Result stage to submit your review.");
+    ).toBe("Open the completed Service Record to leave your review.");
   });
 
-  it("returns consent guidance once the completed review stage is active", () => {
+  it("requires durable Private Proof access without requesting playback consent", () => {
     expect(
       getCustomerReviewGateMessage({
         hasReviewableCompletedVideo: true,
         canShowInlineReview: true,
         consentAllowsInlineReview: false,
       })
-    ).toBe("Approve video access before leaving your review.");
+    ).toBe("Private Proof access is required before a review can be submitted.");
   });
 
   it("returns null when review can proceed", () => {

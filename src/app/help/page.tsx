@@ -237,8 +237,8 @@ export default async function PublicHelpPage({
                   >
                     {LAUNCH_SUPPORT_EMAIL}
                   </a>
-                  . Use this for account access, service-record questions, vendor approval, video or media concerns,
-                  public listing issues, or safety and moderation follow-up. Reliance aims to respond{' '}
+                  . Use this for account access, service-record questions, vendor approval, technical playback help,
+                  public listing questions, or general assistance. Reliance aims to respond{' '}
                   {LAUNCH_SUPPORT_RESPONSE_TIME}.
                 </p>
               ) : (

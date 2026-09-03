@@ -190,7 +190,8 @@ test("customer self-service governance is absent and Support remains available",
 
   await page.goto("/test-fixtures/rv8-support?role=customer");
   await expect(page.getByRole("heading", { name: "Help without leaving your account" })).toBeVisible();
-  await expect(page.getByText(/privacy, inappropriate recording, Public visibility/i)).toBeVisible();
+  await expect(page.getByText("Relianceorg.support@gmail.com", { exact: true })).toBeVisible();
+  await expect(page.getByText(/use Report a problem with this video/i)).toBeVisible();
 });
 
 test("employee sees likeness-only withdrawal", async ({ page }) => {

@@ -45,8 +45,8 @@ export default async function CustomerSupportPage({
           Help without leaving your account
         </h1>
         <p className="mt-5 max-w-3xl text-base leading-8 text-white/72">
-          Use this page for account access, service-record questions, public service-video concerns, reviews,
-          vendor approval questions, or media follow-up. Your customer navigation stays visible so you
+          Use this page for account access, service-record questions, technical playback help, reviews,
+          vendor approval questions, or general assistance. Your customer navigation stays visible so you
           can move back to your records, profile, and saved services without starting over.
         </p>
 
@@ -76,8 +76,10 @@ export default async function CustomerSupportPage({
             Live chat, phone support, and in-app ticketing are not available yet.
           </p>
           <p className="mt-3 text-sm leading-7 text-[#dbe7ff]">
-            Use this contact for privacy, inappropriate recording, Public visibility, account/data, or
-            deletion-request concerns. Include the work-record reference when available.
+            For a wrong video, unauthorized person or voice, privacy issue, or inappropriate or unsafe
+            content, use Report a problem with this video from the Service Record. That preserves the
+            evidence Reliance needs to investigate. If reporting itself is unavailable, email Support for
+            technical help.
           </p>
         </div>
 

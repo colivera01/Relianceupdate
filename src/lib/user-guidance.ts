@@ -177,11 +177,11 @@ export const tutorialGuides = {
     steps: [
       {
         title: "Check the service-record state row",
-        detail: "Use the lifecycle panel to see whether work is complete, whether a final-result video was submitted, and whether customer access is open yet.",
+        detail: "Use the lifecycle panel to see whether work is complete, whether the Service Video package passed Reliance Audit, and whether Private Proof is available.",
       },
       {
         title: "Wait for approved customer access",
-        detail: "Customers cannot watch service videos or leave a review until an approved final-result customer-visible video is available.",
+        detail: "Customers can watch the complete Service Video package and leave a review after approved Private Proof access is available.",
       },
       {
         title: "Use Help when the state looks unexpected",
@@ -201,28 +201,28 @@ export const tutorialGuides = {
     badge: "Customer reviews",
     title: "How review eligibility works",
     summary:
-      "Reliance opens the review flow only after an approved final-result customer-visible video is available for the service record.",
+      "Reliance opens the review flow after the completed service has an approved Private Proof package for the owning customer.",
     video: SERVICE_VIDEOS_AND_REVIEWS_TUTORIAL,
 
     steps: [
       {
         title: "Use Ready to Review first",
-        detail: "These service records have the approved customer-facing video state needed for the review workflow.",
+        detail: "These completed service records have active approved Private Proof access and are ready for an optional review.",
       },
       {
         title: "Open Review Not Open Yet for the why",
-        detail: "Completed jobs can still be waiting on moderation, customer visibility, or final-result media availability.",
+        detail: "A completed service can still be waiting for Reliance Audit or Private Proof release.",
       },
       {
         title: "Track submitted reviews here",
-        detail: "Submitted feedback stays linked to the service record and can wait on moderation before it appears publicly.",
+        detail: "Submitted feedback stays linked to the service record. Written reviews may be moderated before appearing publicly.",
       },
     ],
     reminders: [
       "A submitted review does not automatically become public.",
       "Customer reviews do not change the Reliance Trust Score.",
     ],
-    futureVideoNote: "Tutorial video placeholder: Reviews, moderation, and public visibility",
+    futureVideoNote: "Tutorial video placeholder: Customer reviews and public visibility",
   },
   vendorProfileSetup: {
     badge: "Existing account adding vendor access",

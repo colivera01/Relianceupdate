@@ -726,18 +726,18 @@ export default function MyBookingsPage() {
                                 ? 'Use the service-record detail page to check whether any retained media is attached to this archived record.'
                         : hasSharedVideoPublished
                           ? primaryProofVideo
-                            ? 'A completed service video is ready on the service-record detail page. You may be asked to confirm consent before playback.'
+                            ? 'Your approved Private Proof package is ready on the Service Record detail page.'
                           : 'Shared media is ready on the service-record detail page. A completed work video has not been published yet.'
                         : activeTab === 'past' && completedRecord && customerLifecycle
                           ? customerVisibleCompletedVideo
-                            ? 'Service completed. An approved final-result video is available on the service record.'
+                            ? 'Service completed. The approved Private Proof package is available on the Service Record.'
                             : completedVideoPendingApproval
-                              ? 'Service completed. Video is pending approval.'
+                              ? 'Service completed. The Service Video package is awaiting Reliance Audit.'
                               : lifecycleVideoState === 'rejected'
-                                ? 'Service completed. A final-result video was submitted, but it is not customer-visible right now.'
+                                ? 'Service completed. The submitted Service Video package did not pass Reliance Audit.'
                                 : lifecycleVideoState === 'approved_not_customer_visible'
-                                ? 'Service completed. A final-result video exists, but it is not customer-visible right now.'
-                                  : 'Service completed. No final-result video has been submitted yet.'
+                                ? 'Service completed. Private Proof is not currently available.'
+                                  : 'Service completed. An approved Private Proof package is not available yet.'
                           : activeWorkflowRecord
                             ? statusKey === 'awaiting_review' || statusKey === 'awaiting review'
                               ? 'Service work is complete and awaiting final review. Customer-visible service videos or images appear here after review and approval.'
@@ -756,7 +756,7 @@ export default function MyBookingsPage() {
                               ? 'Approved service video is already attached. Open the service-record detail page to continue into the service media flow.'
                             : mediaLoaded && mediaTotal === 0
                               ? reviewCaptureOk
-                                ? 'No customer-visible approved final-result video is currently attached to this completed service record. Open the service record to confirm the current media and review state.'
+                                ? 'An approved Private Proof package is not currently attached to this completed Service Record. Open it to confirm the current video and review state.'
                                 : 'No approved media is available yet. Your vendor may still be uploading, or items may still be in review.'
                               : mediaState?.error
                                 ? 'Could not load the list. See the message under the button.'
@@ -768,26 +768,26 @@ export default function MyBookingsPage() {
                           ? 'This archived record is kept for reference. New review prompts are no longer active here.'
                           : activeTab === 'past' && completedRecord && customerLifecycle
                             ? reviewSubmittedWithoutEligibleVideo
-                              ? 'A review is already on file from an earlier workflow, but no customer-visible approved final-result video is currently available.'
+                              ? 'A review is already on file, but an approved Private Proof package is not currently available.'
                               : reviewSubmitted
                                 ? 'Your review is already on file for this completed service record.'
                                 : reviewEligible
-                                ? 'Open the approved final-result video to continue into the video-based review flow.'
+                                ? 'Open the completed Service Record to watch the Service Video or leave your review.'
                                   : completedVideoPendingApproval
-                                    ? 'Review opens after the final-result video is approved for customer viewing.'
-                                    : 'Review opens only after a customer-visible approved final-result video is available.'
+                                    ? 'Review opens after the Service Video package passes Reliance Audit and Private Proof is released.'
+                                    : 'Review opens when approved Private Proof is available for this completed service.'
                           : activeWorkflowRecord
                             ? statusKey === 'awaiting_review' || statusKey === 'awaiting review'
-                              ? 'Review opens after the final-result video is approved for customer viewing.'
-                              : 'Review is not open yet. It becomes available only after final-result video approval.'
+                              ? 'Review opens after the Service Video package passes Reliance Audit and Private Proof is released.'
+                              : 'Review is not open yet. It becomes available after the service is complete and approved Private Proof is available.'
                           : mediaState?.loading && reviewCaptureOk
-                            ? 'We are checking whether this service record is ready for the video-based review flow.'
+                            ? 'We are checking whether this Service Record has approved Private Proof and is ready for review.'
                           : reviewCaptureOk
                             ? hasSharedVideoPublished
-                              ? 'After you open the service record and playback starts, watch for prompts to leave quick feedback.'
+                              ? 'Open the completed Service Record to watch the Service Video or leave your review.'
                             : !mediaLoaded && proofLikelyReady
-                                ? 'Open the service-record detail page to continue into the service media and review flow.'
-                              : 'The video-based review flow only opens when a customer-visible final-result video is attached. Some completed service records may already have a review on file even if no playable video is available here.'
+                                ? 'Open the Service Record to view approved Private Proof and the review option.'
+                              : 'Review opens for a completed service with active approved Private Proof. A historical review may remain on file even when playback is no longer available here.'
                             : 'Not offered for cancelled services.'}
                       </li>
                     </ul>
@@ -885,7 +885,7 @@ export default function MyBookingsPage() {
                       <p className="mb-2 text-xs text-gray-600">
                         {archivedRecord
                           ? 'These files are kept with the archived record for reference. Open the service-record detail page to review them in the full timeline experience.'
-                          : 'These files are approved and customer-visible. Open the service-record detail page to review them in the full timeline experience and complete any consent step required before playback.'}
+                          : 'These files are approved and customer-visible. Open the Service Record to watch the complete Private Proof package.'}
                       </p>
                       {primaryProofVideo ? (
                         <div className="mb-2 rounded border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-900">
@@ -896,7 +896,7 @@ export default function MyBookingsPage() {
                         <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
                           {archivedRecord
                             ? <><strong>No retained featured video.</strong> If archived media exists, it will appear here for reference.</>
-                            : <><strong>No completed work video yet.</strong> A featured clip will appear here once published.</>}
+                            : <><strong>No approved Service Video package yet.</strong> Open the Service Record for its current status.</>}
                         </div>
                       )}
                       <div className="mb-3 flex flex-wrap gap-2">
