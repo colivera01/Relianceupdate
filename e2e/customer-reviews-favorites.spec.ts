@@ -76,7 +76,7 @@ for (const device of [
       await installCustomerSession(page);
       const requests: string[] = [];
       let removedVendor = false;
-      await page.route('**/api/users/favorites**', async (route) => {
+      await page.route(/\/api\/users\/favorites(?:\/|\?|$)/, async (route) => {
         const request = route.request();
         requests.push(request.url());
         if (request.method() === 'DELETE') {
@@ -139,7 +139,7 @@ for (const device of [
       await page.route('**/api/vendors/vendor-1/trust-score', async (route) => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, trustScore: null }) });
       });
-      await page.route('**/api/users/favorites**', async (route) => {
+      await page.route(/\/api\/users\/favorites(?:\/|\?|$)/, async (route) => {
         if (route.request().method() === 'POST') favoriteMutations.push('POST');
         await route.fulfill({
           status: 200,

@@ -76,4 +76,15 @@ describe('GET /api/reviews/me', () => {
     expect(body.counts.submitted).toBe(1);
     expect(body.submitted[0].serviceName).toBe('Service 14');
   });
+
+  it('returns a safe correlated load error when the required record delegate fails', async () => {
+    h.records.mockRejectedValueOnce(new TypeError("Cannot read properties of undefined (reading 'findMany')"));
+    const response = await GET(new Request('http://localhost/api/reviews/me'));
+    const body = await response.json();
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({ success: false, code: 'CUSTOMER_LOAD_FAILED', message: 'Unable to load your reviews.' });
+    expect(body.correlationId).toMatch(/^[a-f0-9-]{36}$/);
+    expect(JSON.stringify(body)).not.toContain('findMany');
+    expect(body.counts).toBeUndefined();
+  });
 });

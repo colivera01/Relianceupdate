@@ -1447,6 +1447,31 @@ describe('GET /api/bookings customer summary', () => {
 });
 
 describe('GET /api/bookings customer Service Records view', () => {
+  it.each(['view=customer_service_records', 'summaryOnly=1'])('returns a safe error without false counts when %s fails', async (query) => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.loadCustomerServiceRecords.mockRejectedValueOnce(new TypeError('private Prisma findMany error'));
+    const response = await bookingsListGET(new NextRequest(`http://localhost/api/bookings?${query}`));
+    const body = await response.json();
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({ success: false, code: 'CUSTOMER_LOAD_FAILED', message: 'Unable to load your Service Records.' });
+    expect(body.correlationId).toMatch(/^[a-f0-9-]{36}$/);
+    expect(body.counts).toBeUndefined();
+    expect(body.summary).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain('Prisma');
+  });
+
+  it('detail shared-loader failure is not represented as a missing booking', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.bookingFindUnique.mockResolvedValue(baseHydratedBooking());
+    hoisted.loadCustomerServiceRecords.mockRejectedValueOnce(new Error('private Prisma detail'));
+    const response = await bookingDetailGET(jsonRequest('http://localhost/api/bookings/book-1'), { params: Promise.resolve({ id: 'book-1' }) });
+    const body = await response.json();
+    expect(response.status).toBe(500);
+    expect(body.message).toBe('Unable to load this Service Record.');
+    expect(body.booking).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain('Prisma');
+  });
+
   it('uses the canonical customer Service Records loader for server-backed tabs, search, counts, and pages', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
     hoisted.loadCustomerServiceRecords.mockResolvedValue({

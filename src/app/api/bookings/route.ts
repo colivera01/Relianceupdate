@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { customerLoadError } from '@/lib/customer-load-error';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
 import {
@@ -438,30 +439,10 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    const err = error as any;
-    console.error("[BOOKINGS_API_ERROR]", err);
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }
-    if (isTransientDbConnectivityError(err)) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "DB_UNAVAILABLE",
-          message: "The database is temporarily unavailable. Please try again.",
-        },
-        { status: 503 }
-      );
-    }
-    return NextResponse.json(
-      {
-        success: false,
-        code: "INTERNAL_ERROR",
-        message: err?.message || "Unknown error",
-        stack: process.env.NODE_ENV !== "production" ? err?.stack : undefined,
-      },
-      { status: 500 }
-    );
+    return customerLoadError(error, 'BOOKINGS_API_ERROR', 'Unable to load your Service Records.', isTransientDbConnectivityError(error) ? 503 : 500);
   }
 }
 

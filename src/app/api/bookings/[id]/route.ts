@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { customerLoadError } from '@/lib/customer-load-error';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from '@/lib/account-status';
@@ -203,7 +204,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('Error fetching booking:', error);
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }
@@ -213,10 +213,7 @@ export async function GET(
         { status: 503 }
       );
     }
-    return NextResponse.json(
-      { error: 'Failed to fetch booking' },
-      { status: 500 }
-    );
+    return customerLoadError(error, 'booking/detail', 'Unable to load this Service Record.');
   }
 }
 

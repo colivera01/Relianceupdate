@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
+import { customerLoadError } from '@/lib/customer-load-error';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
 import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from '@/lib/account-status';
-import { isTransientDbConnectivityError, PUBLIC_DB_UNAVAILABLE_CODE } from '@/lib/transient-db-errors';
+import { isTransientDbConnectivityError } from '@/lib/transient-db-errors';
 import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
 import { customerCommentModerationState } from '@/lib/review-rating-validity';
 
@@ -142,16 +143,9 @@ export async function GET(request: Request): Promise<NextResponse> {
       search,
     });
   } catch (error: any) {
-    console.error('[reviews/me] GET error:', error);
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }
-    if (isTransientDbConnectivityError(error)) {
-      return NextResponse.json(
-        { success: false, code: PUBLIC_DB_UNAVAILABLE_CODE, error: 'Your review history is temporarily unavailable. Please try again.' },
-        { status: 503 }
-      );
-    }
-    return NextResponse.json({ success: false, error: 'Failed to load customer reviews' }, { status: 500 });
+    return customerLoadError(error, 'reviews/me', 'Unable to load your reviews.', isTransientDbConnectivityError(error) ? 503 : 500);
   }
 }

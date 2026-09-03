@@ -3,6 +3,9 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   outputFileTracingRoot: __dirname,
+  outputFileTracingIncludes: {
+    '/*': ['./node_modules/.prisma/client/**/*', './node_modules/@prisma/client/**/*', './node_modules/@img/sharp-linux-x64/**/*', './node_modules/@img/sharp-libvips-linux-x64/**/*'],
+  },
   images: {
     // Azure Run From Package mounts .next read-only. Keep optimization active,
     // but prevent the optimizer from writing its runtime disk cache there.

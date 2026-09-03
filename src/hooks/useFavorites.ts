@@ -81,7 +81,7 @@ export const useAllFavorites = (params?: { page?: number; limit?: number; type?:
   const { user, isAuthenticated, isLoading } = useAuth();
   return useQuery({
     queryKey: favoriteKeys.list({ ...(params || {}), scope: 'all-supported', _authUserId: user?.id ?? '' }),
-    queryFn: () => favoritesSDK.listAllFavorites(params, user?.id),
+    queryFn: ({ signal }) => favoritesSDK.listAllFavorites(params, user?.id, signal),
     enabled: !isLoading && isAuthenticated,
     staleTime: 60 * 1000,
     retry: false,

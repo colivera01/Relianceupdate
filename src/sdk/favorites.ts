@@ -1,5 +1,6 @@
 import type { FavoriteListItem, FavoritesListResponse, Pagination } from "../types/api";
 import { getClientAuthHeaders } from "@/lib/client-session";
+import { customerFavoritesResponseSchema } from '@/lib/customer-load-contract';
 
 type FavoritesHttpError = Error & { status?: number };
 
@@ -55,14 +56,17 @@ export const favoritesSDK = {
 
   async listAllFavorites(
     params?: { page?: number; limit?: number; type?: 'all' | 'service' | 'vendor'; search?: string },
-    authUserIdFromCaller?: string
+    authUserIdFromCaller?: string,
+    signal?: AbortSignal
   ): Promise<{ success: boolean; items: FavoriteListItem[]; counts: { all: number; services: number; vendors: number }; pagination: Pagination }> {
     const searchParams = new URLSearchParams();
     searchParams.set('type', params?.type || 'all');
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.search) searchParams.set('search', params.search);
-    return requestJson(`/api/users/favorites?${searchParams.toString()}`, { method: 'GET' }, authUserIdFromCaller);
+    const body = await requestJson(`/api/users/favorites?${searchParams.toString()}`, { method: 'GET', signal }, authUserIdFromCaller);
+    if (!customerFavoritesResponseSchema.safeParse(body).success) throw new Error('Unable to load Favorites.');
+    return body as { success: boolean; items: FavoriteListItem[]; counts: { all: number; services: number; vendors: number }; pagination: Pagination };
   },
 
   async getVendorFavorite(vendorId: string, authUserIdFromCaller?: string): Promise<FavoriteListItem | null> {

@@ -131,6 +131,20 @@ describe('GET /api/users/favorites', () => {
     });
   });
 
+  it('does not return empty favorites or internal details when a required delegate fails', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
+    hoisted.favoriteCount.mockResolvedValue(0);
+    hoisted.vendorFavoriteCount.mockRejectedValueOnce(new Error('private Prisma count failure'));
+    const response = await favoritesGET(new NextRequest('http://localhost/api/users/favorites?type=all'));
+    const body = await response.json();
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({ success: false, code: 'CUSTOMER_LOAD_FAILED', message: 'Unable to load Favorites.' });
+    expect(body.correlationId).toMatch(/^[a-f0-9-]{36}$/);
+    expect(body.counts).toBeUndefined();
+    expect(body.items).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain('Prisma');
+  });
+
   it('searches and paginates saved Vendors on the server', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('user-1');
     hoisted.favoriteCount.mockResolvedValue(0);

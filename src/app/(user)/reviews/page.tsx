@@ -1,10 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Search, Star } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import { CustomerLoadError } from '@/components/customer/CustomerLoadError';
+import { useCustomerLoad } from '@/hooks/useCustomerLoad';
+import { customerReviewsResponseSchema } from '@/lib/customer-load-contract';
 
 type ReadyReview = {
   bookingId: string;
@@ -61,9 +64,6 @@ function commentStatusLabel(status: SubmittedReview['commentStatus']): string | 
 export default function ReviewsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const userId = resolveCustomerUserId(user?.id);
-  const [data, setData] = useState<ReviewsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [readyPage, setReadyPage] = useState(1);
@@ -78,30 +78,11 @@ export default function ReviewsPage() {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
-  const load = useCallback(async () => {
-    if (!userId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({ readyPage: String(readyPage), submittedPage: String(submittedPage), limit: '10' });
-      if (search) params.set('search', search);
-      const response = await fetch(`/api/reviews/me?${params}`, { credentials: 'include', cache: 'no-store' });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(String(body?.error || 'Unable to load your reviews.'));
-      setData(body as ReviewsResponse);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to load your reviews.');
-    } finally {
-      setLoading(false);
-    }
-  }, [readyPage, search, submittedPage, userId]);
-
-  useEffect(() => {
-    if (!authLoading) void load();
-  }, [authLoading, load]);
+  const params = new URLSearchParams({ readyPage: String(readyPage), submittedPage: String(submittedPage), limit: '10' });
+  if (search) params.set('search', search);
+  const load = useCustomerLoad(`/api/reviews/me?${params}`, userId, !authLoading, customerReviewsResponseSchema, 'Unable to load your reviews.');
+  const data = load.data as ReviewsResponse | null;
+  const loading = load.status === 'loading';
 
   if (!authLoading && !userId) {
     return <div className="mx-auto max-w-4xl py-12"><p className="text-slate-700">Sign in to view your Customer Reviews.</p></div>;
@@ -120,7 +101,7 @@ export default function ReviewsPage() {
         </label>
       </header>
 
-      {error ? <p className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p> : null}
+      {load.error ? <CustomerLoadError message={load.error} onRetry={load.reload} /> : null}
       {loading ? <p className="text-sm text-slate-600">Loading Customer Reviews...</p> : null}
 
       {!loading && data ? (

@@ -22,6 +22,8 @@ import Link from 'next/link';
 import { InfoPopover } from '@/components/guidance/InfoPopover';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
+import { CustomerLoadError } from '@/components/customer/CustomerLoadError';
+import { customerSummarySchemas, readCustomerResponse } from '@/lib/customer-load-contract';
 
 type CustomerProfile = {
   id?: string;
@@ -84,14 +86,11 @@ export default function UserDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(true);
   const [countsLoading, setCountsLoading] = useState(true);
+  const [countsError, setCountsError] = useState(false);
+  const [countsRetry, setCountsRetry] = useState(0);
   const [error, setError] = useState('');
   const [showAccountDetails, setShowAccountDetails] = useState(false);
-  const [dashboardCounts, setDashboardCounts] = useState({
-    activeBookings: 0,
-    savedFavorites: 0,
-    reviewsSubmitted: 0,
-    vendorsFollowed: 0,
-  });
+  const [dashboardCounts, setDashboardCounts] = useState<{ activeBookings: number; savedFavorites: number; reviewsSubmitted: number; vendorsFollowed: number } | null>(null);
 
   const userType = String(userData?.userType || authUser?.userType || '').toLowerCase();
 
@@ -148,7 +147,10 @@ export default function UserDashboardPage() {
     }
 
     let cancelled = false;
+    const controller = new AbortController();
     setCountsLoading(true);
+    setCountsError(false);
+    setDashboardCounts(null);
     const headers = {
       'Content-Type': 'application/json',
       ...getClientSessionHeaders(authUser.id),
@@ -157,48 +159,29 @@ export default function UserDashboardPage() {
     const loadCounts = async () => {
       try {
         const [bookingsRes, favoritesRes, reviewsRes] = await Promise.all([
-          fetch('/api/bookings?summaryOnly=1', { headers, cache: 'no-store' }),
-          fetch('/api/users/favorites?countsOnly=1', { headers, cache: 'no-store' }),
-          fetch('/api/reviews/me?summaryOnly=1', { headers, cache: 'no-store' }),
+          fetch('/api/bookings?summaryOnly=1', { headers, cache: 'no-store', signal: controller.signal }),
+          fetch('/api/users/favorites?countsOnly=1', { headers, cache: 'no-store', signal: controller.signal }),
+          fetch('/api/reviews/me?summaryOnly=1', { headers, cache: 'no-store', signal: controller.signal }),
         ]);
 
-        let activeBookings = 0;
-        let savedFavorites = 0;
-        let reviewsSubmitted = 0;
-        let vendorsFollowed = 0;
-
-        if (bookingsRes.ok) {
-          const bookingsPayload = await bookingsRes.json().catch(() => ({}));
-          activeBookings = Number(bookingsPayload?.summary?.activeTotal || 0);
-        }
-
-        if (favoritesRes.ok) {
-          const favoritesPayload = await favoritesRes.json().catch(() => ({}));
-          savedFavorites = Number(favoritesPayload?.summary?.total || 0);
-          vendorsFollowed = Number(favoritesPayload?.summary?.uniqueVendorCount || 0);
-        }
-
-        if (reviewsRes.ok) {
-          const reviewsPayload = await reviewsRes.json().catch(() => ({}));
-          reviewsSubmitted = Number(reviewsPayload?.summary?.submittedTotal || 0);
-        }
+        const [bookings, favorites, reviews] = await Promise.all([
+          readCustomerResponse(bookingsRes, customerSummarySchemas.bookings, 'Unable to load dashboard totals.'),
+          readCustomerResponse(favoritesRes, customerSummarySchemas.favorites, 'Unable to load dashboard totals.'),
+          readCustomerResponse(reviewsRes, customerSummarySchemas.reviews, 'Unable to load dashboard totals.'),
+        ]);
 
         if (!cancelled) {
           setDashboardCounts({
-            activeBookings,
-            savedFavorites,
-            reviewsSubmitted,
-            vendorsFollowed,
+            activeBookings: bookings.summary.activeTotal,
+            savedFavorites: favorites.summary.total,
+            reviewsSubmitted: reviews.summary.submittedTotal,
+            vendorsFollowed: favorites.summary.uniqueVendorCount,
           });
         }
       } catch {
         if (!cancelled) {
-          setDashboardCounts({
-            activeBookings: 0,
-            savedFavorites: 0,
-            reviewsSubmitted: 0,
-            vendorsFollowed: 0,
-          });
+          setDashboardCounts(null);
+          setCountsError(true);
         }
       } finally {
         if (!cancelled) {
@@ -210,8 +193,9 @@ export default function UserDashboardPage() {
     void loadCounts();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [authLoading, authUser?.id, isAuthenticated]);
+  }, [authLoading, authUser?.id, isAuthenticated, countsRetry]);
 
   if (loading) {
     return (
@@ -367,7 +351,7 @@ export default function UserDashboardPage() {
   const quickStats = [
     {
       label: 'Active Service Records',
-      value: String(dashboardCounts.activeBookings),
+      value: dashboardCounts ? String(dashboardCounts.activeBookings) : 'Unavailable',
       icon: Calendar,
       badgeClassName: 'bg-blue-100 text-blue-700',
       helpTitle: 'Active Service Records',
@@ -375,7 +359,7 @@ export default function UserDashboardPage() {
     },
     {
       label: 'Saved Favorites',
-      value: String(dashboardCounts.savedFavorites),
+      value: dashboardCounts ? String(dashboardCounts.savedFavorites) : 'Unavailable',
       icon: Bookmark,
       badgeClassName: 'bg-rose-100 text-rose-700',
       helpTitle: 'Saved Favorites',
@@ -383,7 +367,7 @@ export default function UserDashboardPage() {
     },
     {
       label: 'Reviews Submitted',
-      value: String(dashboardCounts.reviewsSubmitted),
+      value: dashboardCounts ? String(dashboardCounts.reviewsSubmitted) : 'Unavailable',
       icon: Star,
       badgeClassName: 'bg-amber-100 text-amber-700',
       helpTitle: 'Reviews Submitted',
@@ -391,7 +375,7 @@ export default function UserDashboardPage() {
     },
     {
       label: 'Saved Vendors',
-      value: String(dashboardCounts.vendorsFollowed),
+      value: dashboardCounts ? String(dashboardCounts.vendorsFollowed) : 'Unavailable',
       icon: Store,
       badgeClassName: 'bg-emerald-100 text-emerald-700',
       helpTitle: 'Saved Vendors',
@@ -480,6 +464,7 @@ export default function UserDashboardPage() {
           </div>
         )}
 
+        {countsError ? <CustomerLoadError message="Unable to load dashboard totals." onRetry={() => { setCountsLoading(true); setCountsError(false); setCountsRetry((value) => value + 1); }} /> : null}
         <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
           {quickStats.map((stat) => (
             <div
@@ -495,7 +480,7 @@ export default function UserDashboardPage() {
                     {shouldShowCountsSkeleton ? (
                       <div className="h-8 w-10 animate-pulse rounded bg-gray-200" />
                     ) : (
-                      <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+                      <div className={`${dashboardCounts ? 'text-2xl' : 'text-sm'} font-bold text-gray-900`}>{stat.value}</div>
                     )}
                     <div className="text-sm text-gray-600">{stat.label}</div>
                   </div>

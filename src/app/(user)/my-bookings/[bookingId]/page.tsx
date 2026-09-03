@@ -32,6 +32,8 @@ import {
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import type { CustomerServiceRecordState } from '@/lib/customer-service-record-state';
 import { getCustomerProofStageLabel } from '@/lib/vendor-job-video-stages';
+import { customerLoadMessage } from '@/lib/customer-load-contract';
+import { CustomerLoadError } from '@/components/customer/CustomerLoadError';
 
 type AssignedServiceProfessional = {
   membershipId: string;
@@ -224,10 +226,11 @@ function BookingMediaDetailPageContent() {
       ]);
       const bookingJson = await bookingResponse.json().catch(() => ({}));
       const mediaJson = await mediaResponse.json().catch(() => ({}));
-      if (!bookingResponse.ok) throw new Error(String(bookingJson?.error || 'Unable to load this service record.'));
+      if (!bookingResponse.ok) throw new Error(customerLoadMessage(bookingJson, 'Unable to load this Service Record.'));
+      if (bookingJson?.booking?.id !== bookingId) throw new Error('Unable to load this Service Record.');
       const resolvedCustomerRecord = bookingJson?.customerRecord as CustomerServiceRecordState | null;
-      if (!mediaResponse.ok && resolvedCustomerRecord?.video?.state === 'READY') {
-        throw new Error(String(mediaJson?.error || 'Unable to load the Service Video.'));
+      if (!mediaResponse.ok && (mediaResponse.status >= 500 || resolvedCustomerRecord?.video?.state === 'READY')) {
+        throw new Error('Unable to load the Service Video. Please try again.');
       }
 
       const nextBooking = (bookingJson?.booking || null) as BookingDetail | null;
@@ -471,9 +474,8 @@ function BookingMediaDetailPageContent() {
   if (error) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-10">
-        <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-800">{error}</div>
+        <CustomerLoadError message={error} onRetry={() => void loadPage()} />
         <div className="mt-4 flex gap-3 text-sm">
-          <button type="button" onClick={() => void loadPage()} className="font-medium text-blue-700 underline">Try again</button>
           <Link href={returnHref} className="font-medium text-blue-700 underline">{returnLabel}</Link>
         </div>
       </div>

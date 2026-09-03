@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { customerLoadError } from '@/lib/customer-load-error';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
 import {
@@ -213,9 +214,8 @@ export async function GET(request: NextRequest) {
       search,
     });
   } catch (error: any) {
-    console.error('[users/favorites] GET error:', error);
     if (error instanceof AccountStatusError) return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
-    return NextResponse.json({ error: 'Failed to fetch favorites', details: error?.message || 'Unknown error' }, { status: 500 });
+    return customerLoadError(error, 'users/favorites', 'Unable to load Favorites.');
   }
 }
 

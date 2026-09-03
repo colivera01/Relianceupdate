@@ -18,5 +18,6 @@ tmp-*
 CURSOR_AGENT_CONNECTION_TEST.txt
 `0`].{sku
 scripts/dev/.tmp/
+scripts/release/__pycache__/
 public/homepage/hero-concepts/reliance-multitrade-collage-hero*.png
 !public/homepage/hero-concepts/reliance-multitrade-collage-hero-v11.png

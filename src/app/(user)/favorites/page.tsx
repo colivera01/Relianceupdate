@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { favoritesSDK } from '@/sdk/favorites';
 import type { FavoriteListItem } from '@/types/api';
 import { PublicMediaPreview } from '@/components/public/PublicMediaPreview';
+import { CustomerLoadError } from '@/components/customer/CustomerLoadError';
 
 type Filter = 'all' | 'service' | 'vendor';
 
@@ -47,9 +48,10 @@ export default function FavoritesPage() {
     return <main className="mx-auto max-w-4xl py-12"><h1 className="text-3xl font-semibold text-slate-950">Favorites</h1><p className="mt-3 text-slate-600">Sign in to see your Saved Services and Saved Vendors.</p><Link href="/auth/login?next=%2Ffavorites" className="mt-5 inline-flex rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Sign In</Link></main>;
   }
 
-  const items = query.data?.items || [];
-  const counts = query.data?.counts || { all: 0, services: 0, vendors: 0 };
-  const pagination = query.data?.pagination || { page: 1, totalPages: 0, total: 0, limit: 12 };
+  const ready = !authLoading && query.isSuccess && !query.isFetching;
+  const items = ready ? query.data.items : [];
+  const counts = ready ? query.data.counts : null;
+  const pagination = ready ? query.data.pagination : { page: 1, totalPages: 0, total: 0, limit: 12 };
   const empty = filter === 'service' ? 'No saved services yet.' : filter === 'vendor' ? 'No saved businesses yet.' : 'No favorites yet.';
 
   return (
@@ -64,14 +66,14 @@ export default function FavoritesPage() {
 
       <div role="tablist" aria-label="Favorite type" className="flex gap-2 border-b border-slate-200">
         {([
-          ['all', 'All', counts.all],
-          ['service', 'Services', counts.services],
-          ['vendor', 'Vendors', counts.vendors],
+          ['all', 'All', counts?.all ?? '--'],
+          ['service', 'Services', counts?.services ?? '--'],
+          ['vendor', 'Vendors', counts?.vendors ?? '--'],
         ] as const).map(([value, label, count]) => <button key={value} role="tab" aria-selected={filter === value} onClick={() => { setFilter(value); setPage(1); }} className={`border-b-2 px-3 py-3 text-sm font-semibold ${filter === value ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>{label} <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs">{count}</span></button>)}
       </div>
 
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</p> : null}
-      {authLoading || query.isLoading ? <p className="text-sm text-slate-600">Loading Favorites...</p> : query.isError ? <p className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">Unable to load Favorites.</p> : items.length === 0 ? <div className="py-12 text-center"><Heart className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-semibold text-slate-900">{empty}</p>{search ? <p className="mt-1 text-sm text-slate-500">Try a different search.</p> : null}</div> : (
+      {authLoading || query.isPending || query.isFetching ? <p className="text-sm text-slate-600">Loading Favorites...</p> : query.isError ? <CustomerLoadError message="Unable to load Favorites." onRetry={() => void query.refetch()} /> : items.length === 0 ? <div className="py-12 text-center"><Heart className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-semibold text-slate-900">{empty}</p>{search ? <p className="mt-1 text-sm text-slate-500">Try a different search.</p> : null}</div> : (
         <section className="grid gap-4 lg:grid-cols-2">
           {items.map((item) => item.entityType === 'vendor'
             ? <VendorCard key={`vendor-${item.favoriteId}`} item={item} busy={busyId === item.favoriteId} onRemove={() => void remove(item)} />

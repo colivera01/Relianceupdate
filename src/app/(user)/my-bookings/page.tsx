@@ -1,12 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Archive, ChevronLeft, ChevronRight, RotateCcw, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import type { CustomerRecordTab, CustomerServiceRecordState } from '@/lib/customer-service-record-state';
 import { VendorFavoriteButton } from '@/components/favorites/VendorFavoriteButton';
+import { CustomerLoadError } from '@/components/customer/CustomerLoadError';
+import { useCustomerLoad } from '@/hooks/useCustomerLoad';
+import { customerRecordsResponseSchema } from '@/lib/customer-load-contract';
 
 type CustomerRecordRow = {
   id: string;
@@ -16,24 +19,6 @@ type CustomerRecordRow = {
   service: { id: string; name: string };
   vendor: { id: string; name: string };
   customer_record: CustomerServiceRecordState;
-};
-
-type Counts = {
-  upcoming: number;
-  completed: number;
-  needs_attention: number;
-  cancelled: number;
-  archived: number;
-  unclassified: number;
-};
-
-const EMPTY_COUNTS: Counts = {
-  upcoming: 0,
-  completed: 0,
-  needs_attention: 0,
-  cancelled: 0,
-  archived: 0,
-  unclassified: 0,
 };
 
 const TABS: Array<{ value: CustomerRecordTab; label: string }> = [
@@ -72,62 +57,29 @@ function createRequestId(): string {
 export default function MyServiceRecordsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const customerUserId = resolveCustomerUserId(user?.id);
-  const [records, setRecords] = useState<CustomerRecordRow[]>([]);
-  const [counts, setCounts] = useState<Counts>(EMPTY_COUNTS);
   const [activeTab, setActiveTab] = useState<CustomerRecordTab | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 250);
+    const timer = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 250);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
-  useEffect(() => setPage(1), [activeTab, search]);
-
-  const fetchRecords = useCallback(async () => {
-    if (!customerUserId) {
-      setRecords([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        view: 'customer_service_records',
-        page: String(page),
-        limit: '10',
-      });
-      if (activeTab) params.set('tab', activeTab);
-      if (search) params.set('q', search);
-      const response = await fetch(`/api/bookings?${params}`, { cache: 'no-store' });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(String(body?.error || 'Unable to load your Service Records.'));
-      setRecords(Array.isArray(body?.bookings) ? body.bookings : []);
-      setCounts({ ...EMPTY_COUNTS, ...(body?.counts || {}) });
-      setActiveTab((current) => current || body?.selectedTab || 'upcoming');
-      setPage(Number(body?.pagination?.page || 1));
-      setTotalPages(Number(body?.pagination?.totalPages || 0));
-      setTotal(Number(body?.pagination?.total || 0));
-    } catch (caught) {
-      setRecords([]);
-      setError(caught instanceof Error ? caught.message : 'Unable to load your Service Records.');
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTab, customerUserId, page, search]);
-
-  useEffect(() => {
-    if (!authLoading) void fetchRecords();
-  }, [authLoading, fetchRecords]);
+  const params = new URLSearchParams({ view: 'customer_service_records', page: String(page), limit: '10' });
+  if (activeTab) params.set('tab', activeTab);
+  if (search) params.set('q', search);
+  const load = useCustomerLoad(`/api/bookings?${params}`, customerUserId, !authLoading, customerRecordsResponseSchema, 'Unable to load your Service Records.');
+  const records = (load.data?.bookings || []) as CustomerRecordRow[];
+  const counts = load.data?.counts;
+  const selectedTab = activeTab || load.data?.selectedTab;
+  const totalPages = load.data?.pagination.totalPages || 0;
+  const total = load.data?.pagination.total || 0;
+  const currentPage = load.data?.pagination.page || page;
+  const fetchRecords = load.reload;
 
   const changeOrganization = async (record: CustomerRecordRow, action: 'ARCHIVE' | 'RESTORE') => {
     const confirmation = action === 'ARCHIVE'
@@ -189,7 +141,7 @@ export default function MyServiceRecordsPage() {
     );
   }
 
-  const visibleTabs = counts.unclassified > 0
+  const visibleTabs = counts && counts.unclassified > 0
     ? [...TABS, { value: 'unclassified' as const, label: 'Other Records' }]
     : TABS;
 
@@ -221,25 +173,25 @@ export default function MyServiceRecordsPage() {
                 key={tab.value}
                 type="button"
                 role="tab"
-                aria-selected={activeTab === tab.value}
-                onClick={() => setActiveTab(tab.value)}
-                className={`shrink-0 rounded-md border px-3 py-2 text-sm font-medium ${activeTab === tab.value ? 'border-blue-500 bg-blue-600 text-white' : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'}`}
+                aria-selected={selectedTab === tab.value}
+                onClick={() => { setActiveTab(tab.value); setPage(1); }}
+                className={`shrink-0 rounded-md border px-3 py-2 text-sm font-medium ${selectedTab === tab.value ? 'border-blue-500 bg-blue-600 text-white' : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'}`}
               >
-                {tab.label} <span className="ml-1 text-xs opacity-75">{counts[tab.value]}</span>
+                {tab.label} <span className="ml-1 text-xs opacity-75">{counts ? counts[tab.value] : <span aria-label="Count unavailable">--</span>}</span>
               </button>
             ))}
           </div>
         </section>
 
         {actionMessage ? <p className="mt-4 rounded-md border border-blue-400/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">{actionMessage}</p> : null}
-        {error ? <p className="mt-4 rounded-md border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</p> : null}
+        {load.error ? <CustomerLoadError message={load.error} onRetry={load.reload} /> : null}
 
         <section aria-live="polite" className="py-6">
-          {loading ? (
+          {load.status === 'loading' ? (
             <p className="text-sm text-white/65">Loading Service Records...</p>
-          ) : records.length === 0 ? (
+          ) : load.status === 'error' ? null : records.length === 0 ? (
             <div className="py-12 text-center">
-              <p className="text-lg font-medium text-white">{EMPTY_COPY[activeTab || 'upcoming']}</p>
+              <p className="text-lg font-medium text-white">{EMPTY_COPY[load.data!.selectedTab]}</p>
               {search ? <p className="mt-2 text-sm text-white/55">Try a different search.</p> : null}
             </div>
           ) : (
@@ -299,12 +251,12 @@ export default function MyServiceRecordsPage() {
           )}
         </section>
 
-        {!loading && totalPages > 1 ? (
+        {load.status === 'success' && totalPages > 1 ? (
           <nav aria-label="Service Record pages" className="flex items-center justify-between border-t border-white/10 py-5">
-            <p className="text-sm text-white/55">Page {page} of {totalPages} · {total} records</p>
+            <p className="text-sm text-white/55">Page {currentPage} of {totalPages} · {total} records</p>
             <div className="flex gap-2">
-              <button type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label="Previous page" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 text-white disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
-              <button type="button" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)} aria-label="Next page" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 text-white disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
+              <button type="button" disabled={currentPage <= 1} onClick={() => setPage(Math.max(1, currentPage - 1))} aria-label="Previous page" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 text-white disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
+              <button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)} aria-label="Next page" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 text-white disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
             </div>
           </nav>
         ) : null}
