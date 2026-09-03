@@ -498,17 +498,11 @@ export async function PATCH(request: Request, context: RouteParams): Promise<Nex
     }
 
     if (action === "UNARCHIVE_JOB") {
-      const updated = await prisma.booking.update({
-        where: { id: booking.id },
-        data: { status: "PENDING" },
-        select: { id: true, status: true },
-      });
       return NextResponse.json({
-        success: true,
-        action,
-        job: updated,
-        message: "Job restored to active jobs",
-      });
+        success: false,
+        code: "LEGACY_ARCHIVE_RESTORE_UNSAFE",
+        message: "This historical archive cannot be restored to active work because its prior lifecycle is not proven.",
+      }, { status: 409 });
     }
 
     if (action === "UPDATE_JOB") {

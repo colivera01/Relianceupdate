@@ -20,6 +20,7 @@ const hoisted = vi.hoisted(() => {
   const tryRecordFinalizedOperationalOutcome = vi.fn();
   const tryRecordBookingServiceIssue = vi.fn();
   const tryRecalculateVendorTrustScore = vi.fn();
+  const recordLifecycleAudit = vi.fn();
   const prisma = {
     booking: {
       findUnique: bookingFindUnique,
@@ -29,6 +30,7 @@ const hoisted = vi.hoisted(() => {
       findMany: mediaAssetFindMany,
     },
     serviceVideoPackageEvidence: { findFirst: serviceVideoPackageEvidenceFindFirst },
+    $transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) => callback(prisma)),
   };
   return {
     prisma,
@@ -41,6 +43,7 @@ const hoisted = vi.hoisted(() => {
     tryRecordFinalizedOperationalOutcome,
     tryRecordBookingServiceIssue,
     tryRecalculateVendorTrustScore,
+    recordLifecycleAudit,
   };
 });
 
@@ -66,6 +69,10 @@ vi.mock('@/lib/trust-score-outcome-foundation', () => ({
 
 vi.mock('@/lib/trust-score-calculator', () => ({
   tryRecalculateVendorTrustScore: hoisted.tryRecalculateVendorTrustScore,
+}));
+
+vi.mock('@/lib/lifecycle-audit', () => ({
+  recordLifecycleAudit: hoisted.recordLifecycleAudit,
 }));
 
 function mediaGetRequest(bookingId: string) {
@@ -250,6 +257,7 @@ describe('POST /api/bookings/[id]/cancel', () => {
     hoisted.tryRecordFinalizedOperationalOutcome.mockReset();
     hoisted.tryRecordBookingServiceIssue.mockReset();
     hoisted.tryRecalculateVendorTrustScore.mockReset();
+    hoisted.recordLifecycleAudit.mockReset();
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -265,7 +273,7 @@ describe('POST /api/bookings/[id]/cancel', () => {
   it('returns 404 when booking not found', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
     hoisted.bookingFindUnique.mockResolvedValueOnce(null);
-    const res = await bookingCancelPOST(cancelPostRequest('missing', { reason: 'x' }), {
+    const res = await bookingCancelPOST(cancelPostRequest('missing', { reason: 'No longer needed' }), {
       params: Promise.resolve({ id: 'missing' }),
     });
     expect(res.status).toBe(404);
@@ -279,7 +287,7 @@ describe('POST /api/bookings/[id]/cancel', () => {
       userId: 'other',
       status: 'PENDING',
     });
-    const res = await bookingCancelPOST(cancelPostRequest('book-1', {}), {
+    const res = await bookingCancelPOST(cancelPostRequest('book-1', { reason: 'No longer needed' }), {
       params: Promise.resolve({ id: 'book-1' }),
     });
     expect(res.status).toBe(403);
@@ -317,7 +325,8 @@ describe('POST /api/bookings/[id]/cancel', () => {
       },
     };
     hoisted.bookingFindUnique
-      .mockResolvedValueOnce({ id: 'book-1', userId: 'u1', status: 'PENDING' })
+      .mockResolvedValueOnce({ id: 'book-1', userId: 'u1', vendorId: 'v1', status: 'PENDING' })
+      .mockResolvedValueOnce({ id: 'book-1', userId: 'u1', vendorId: 'v1', status: 'PENDING', customerMetadata: null })
       .mockResolvedValueOnce(hydrated);
     hoisted.bookingUpdate.mockResolvedValue(hydrated);
 
@@ -334,50 +343,30 @@ describe('POST /api/bookings/[id]/cancel', () => {
     expect(j.message).toBe('Booking cancelled successfully');
     expect(j.cancellation_reason).toBe('Schedule conflict');
     expect(j.refund_requested).toBe(true);
-    expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'book-1' },
-      data: { status: 'CANCELED' },
-    });
+      data: expect.objectContaining({ status: 'CANCELED', customerMetadata: expect.stringContaining('Schedule conflict') }),
+    }));
+    expect(hoisted.recordLifecycleAudit).toHaveBeenCalledWith(expect.objectContaining({
+      actionType: 'customer_service_canceled',
+      actorUserId: 'u1',
+    }));
     const booking = j.booking as Record<string, unknown>;
     expect(booking.id).toBe('book-1');
     expect(booking.status).toBe('canceled');
     expect(booking.total_price).toBe(120);
   });
 
-  it('parses body when reason and refund_requested are omitted', async () => {
+  it('requires a customer cancellation reason before any mutation', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
-    const scheduled = new Date('2024-06-01T14:00:00.000Z');
-    const createdAt = new Date('2024-05-01T10:00:00.000Z');
-    const updatedAt = new Date('2024-06-02T10:00:00.000Z');
-    const hydrated = {
-      id: 'book-2',
-      userId: 'u1',
-      vendorId: 'v1',
-      serviceId: 's1',
-      title: 'T',
-      clientName: null,
-      amount: 0,
-      status: 'CANCELED',
-      scheduledFor: scheduled,
-      date: scheduled,
-      createdAt,
-      updatedAt,
-      customerMetadata: null,
-      service: { id: 's1', name: 'S', description: '', price: 50 },
-      vendor: { id: 'v1', name: 'V', businessName: null, phone: null, email: null, city: null, state: null },
-    };
-    hoisted.bookingFindUnique
-      .mockResolvedValueOnce({ id: 'book-2', userId: 'u1', status: 'CONFIRMED' })
-      .mockResolvedValueOnce(hydrated);
-    hoisted.bookingUpdate.mockResolvedValue({});
-
     const res = await bookingCancelPOST(cancelPostRequest('book-2', {}), {
       params: Promise.resolve({ id: 'book-2' }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(422);
     const j = await readJson(res);
-    expect(j.cancellation_reason).toBeUndefined();
-    expect(j.refund_requested).toBeUndefined();
+    expect(j.code).toBe('CANCELLATION_REASON_REQUIRED');
+    expect(hoisted.bookingFindUnique).not.toHaveBeenCalled();
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
   it('rejects cancellation after terminal Admin PASS before booking or Trust Score mutation', async () => {
@@ -387,6 +376,12 @@ describe('POST /api/bookings/[id]/cancel', () => {
       userId: 'u1',
       vendorId: 'v1',
       status: 'COMPLETED',
+    }).mockResolvedValueOnce({
+      id: 'book-1',
+      userId: 'u1',
+      vendorId: 'v1',
+      status: 'COMPLETED',
+      customerMetadata: null,
     });
     hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue({
       id: 'package-1',

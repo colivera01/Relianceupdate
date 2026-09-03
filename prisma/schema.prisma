@@ -257,16 +257,17 @@ model User {
   accountStatusAdminNotes   String?   @db.NVarChar(Max)
 
   // Relations
-  authCredential               AuthCredential?
-  bookings                     Booking[]
-  reviews                      Review[]
-  memberships                  VendorMembership[]
-  platformRoleGrants           PlatformRoleGrant[]            @relation("PlatformRoleGrantUser")
-  platformRolesGranted         PlatformRoleGrant[]            @relation("PlatformRoleGrantGrantedBy")
-  invitesCreated               VendorInvite[]                 @relation("InvitesCreated")
-  mediaSessions                MediaSession[]
-  favorites                    Favorite[]
-  customerRegistrationEvidence CustomerRegistrationEvidence[]
+  authCredential                  AuthCredential?
+  bookings                        Booking[]
+  reviews                         Review[]
+  memberships                     VendorMembership[]
+  platformRoleGrants              PlatformRoleGrant[]                      @relation("PlatformRoleGrantUser")
+  platformRolesGranted            PlatformRoleGrant[]                      @relation("PlatformRoleGrantGrantedBy")
+  invitesCreated                  VendorInvite[]                           @relation("InvitesCreated")
+  mediaSessions                   MediaSession[]
+  favorites                       Favorite[]
+  customerRegistrationEvidence    CustomerRegistrationEvidence[]
+  serviceRecordOrganizationEvents CustomerServiceRecordOrganizationEvent[]
 
   @@map("users")
 }
@@ -479,9 +480,9 @@ model Booking {
   creationRequestKey String?   @db.NVarChar(255)
 
   // Relations
-  user                        User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  service                     Service                           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  vendor                      Vendor                            @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user                        User                                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service                     Service                                  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  vendor                      Vendor                                   @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   mediaSessions               MediaSession[]
   reviewWindows               ReviewWindow[]
   consentRecords              ConsentRecord[]
@@ -495,8 +496,37 @@ model Booking {
   recordingLocationAttempts   RecordingLocationAttempt[]
   recordingLocationExceptions RecordingLocationException[]
   recordingGateMetrics        RecordingGateMetric[]
+  customerOrganizationEvents  CustomerServiceRecordOrganizationEvent[]
 
   @@map("bookings")
+}
+
+// Customer-owned organization history for Service Records. This is deliberately
+// independent from Booking.status so archive/restore never rewrites lifecycle.
+model CustomerServiceRecordOrganizationEvent {
+  id                   String   @id @default(cuid())
+  bookingId            String
+  customerUserId       String
+  action               String
+  sequence             Int
+  requestId            String   @db.NVarChar(255)
+  requestHash          String
+  previousEventId      String?
+  previousEvidenceHash String?
+  evidenceVersion      Int      @default(1)
+  evidenceHash         String
+  actedAt              DateTime @default(now())
+  createdAt            DateTime @default(now())
+
+  booking  Booking @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customer User    @relation(fields: [customerUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([bookingId, customerUserId, sequence])
+  @@unique([bookingId, customerUserId, requestId])
+  @@index([customerUserId, actedAt])
+  @@index([bookingId, actedAt])
+  @@index([evidenceHash])
+  @@map("customer_service_record_organization_events")
 }
 
 // Durable recording scope selected before a work record can be released.

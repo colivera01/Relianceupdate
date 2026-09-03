@@ -39,6 +39,7 @@ const hoisted = vi.hoisted(() => {
   const recordingAuthorityRequirementCreateMany = vi.fn();
   const queryRaw = vi.fn();
   const serviceVideoPackageEvidenceFindFirst = vi.fn();
+  const loadCustomerServiceRecords = vi.fn();
 
   const prisma: any = {
     booking: {
@@ -103,6 +104,7 @@ const hoisted = vi.hoisted(() => {
     transaction,
     queryRaw,
     serviceVideoPackageEvidenceFindFirst,
+    loadCustomerServiceRecords,
   };
 });
 
@@ -236,6 +238,7 @@ describe('GET /api/bookings', () => {
     hoisted.bookingCount.mockReset();
     hoisted.bookingFindMany.mockReset();
     hoisted.vendorMembershipFindFirst.mockReset();
+    hoisted.loadCustomerServiceRecords.mockReset();
   });
 
   it('returns 401 when neither user nor vendor context is available', async () => {
@@ -918,7 +921,11 @@ describe('POST /api/bookings', () => {
     hoisted.recordingScopeAssessmentCreate.mockImplementationOnce(({ data }: any) => Promise.resolve({
       id: 'assessment-1',
       ...data,
-    }));
+}));
+
+vi.mock('@/lib/customer-service-records-server', () => ({
+  loadCustomerServiceRecords: hoisted.loadCustomerServiceRecords,
+}));
 
     const res = await bookingsCreatePOST(
       jsonRequest(
@@ -1281,6 +1288,13 @@ describe('GET /api/bookings/[id]', () => {
   beforeEach(() => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.bookingFindUnique.mockReset();
+    hoisted.loadCustomerServiceRecords.mockReset();
+    hoisted.loadCustomerServiceRecords.mockResolvedValue({
+      records: [{ customer_record: { lifecycle: 'COMPLETED' } }],
+      counts: {},
+      selectedTab: 'completed',
+      pagination: { page: 1, limit: 1, total: 1, totalPages: 1 },
+    });
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -1353,15 +1367,8 @@ describe('PUT /api/bookings/[id]', () => {
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
   });
 
-  it('returns 200 and uppercases status; applies title and client_name', async () => {
+  it('rejects arbitrary customer lifecycle mutation through the generic update route', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'book-1', userId: 'customer-1' });
-    const updated = baseHydratedBooking({
-      status: 'CONFIRMED',
-      title: 'Updated title',
-      clientName: 'Sam',
-    });
-    hoisted.bookingUpdate.mockResolvedValue(updated);
     const res = await bookingPutPUT(
       jsonRequest(
         'http://localhost/api/bookings/book-1',
@@ -1370,19 +1377,25 @@ describe('PUT /api/bookings/[id]', () => {
       ),
       { params: Promise.resolve({ id: 'book-1' }) }
     );
-    expect(res.status).toBe(200);
-    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'book-1' },
-        data: expect.objectContaining({
-          status: 'CONFIRMED',
-          title: 'Updated title',
-          clientName: 'Sam',
-        }),
-      })
-    );
+    expect(res.status).toBe(422);
     const j = await readJson(res);
-    expect((j.booking as { status: string }).status).toBe('confirmed');
+    expect(j.code).toBe('BOOKING_STATUS_MUTATION_NOT_ALLOWED');
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
+  it('still permits owned non-lifecycle detail updates', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.bookingFindUnique.mockResolvedValue({ id: 'book-1', userId: 'customer-1' });
+    hoisted.bookingUpdate.mockResolvedValue(baseHydratedBooking({ title: 'Updated title', clientName: 'Sam' }));
+    const res = await bookingPutPUT(
+      jsonRequest('http://localhost/api/bookings/book-1', { title: 'Updated title', client_name: 'Sam' }, 'PUT'),
+      { params: Promise.resolve({ id: 'book-1' }) }
+    );
+    expect(res.status).toBe(200);
+    expect(hoisted.bookingUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'book-1' },
+      data: expect.objectContaining({ title: 'Updated title', clientName: 'Sam' }),
+    }));
   });
 
   it('rejects customer updates after a terminal Admin PASS before mutation', async () => {
@@ -1405,73 +1418,56 @@ describe('PUT /api/bookings/[id]', () => {
 });
 
 describe('DELETE /api/bookings/[id]', () => {
-  beforeEach(() => {
-    vi.mocked(getUserIdFromRequest).mockReset();
-    hoisted.bookingFindUnique.mockReset();
-    hoisted.bookingUpdate.mockReset();
-    hoisted.serviceVideoPackageEvidenceFindFirst.mockReset();
-    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue(null);
-  });
-
-  it('returns 401 when unauthenticated', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue(null);
+  it('requires the dedicated cancellation action instead of mutating status', async () => {
     const res = await bookingDeleteDELETE(jsonRequest('http://localhost/api/bookings/b1', undefined, 'DELETE'), {
       params: Promise.resolve({ id: 'b1' }),
     });
-    expect(res.status).toBe(401);
-  });
-
-  it('returns 404 when booking missing', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
-    hoisted.bookingFindUnique.mockResolvedValue(null);
-    const res = await bookingDeleteDELETE(jsonRequest('http://localhost/api/bookings/missing', undefined, 'DELETE'), {
-      params: Promise.resolve({ id: 'missing' }),
-    });
-    expect(res.status).toBe(404);
-    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 when not owner', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue('u1');
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', userId: 'other' });
-    const res = await bookingDeleteDELETE(jsonRequest('http://localhost/api/bookings/b1', undefined, 'DELETE'), {
-      params: Promise.resolve({ id: 'b1' }),
-    });
-    expect(res.status).toBe(403);
-  });
-
-  it('returns 200 and sets status CANCELED', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'book-1', userId: 'customer-1' });
-    hoisted.bookingUpdate.mockResolvedValue({});
-    const res = await bookingDeleteDELETE(
-      jsonRequest('http://localhost/api/bookings/book-1', undefined, 'DELETE'),
-      { params: Promise.resolve({ id: 'book-1' }) }
-    );
-    expect(res.status).toBe(200);
-    expect(hoisted.bookingUpdate).toHaveBeenCalledWith({
-      where: { id: 'book-1' },
-      data: { status: 'CANCELED' },
-    });
+    expect(res.status).toBe(405);
     const j = await readJson(res);
-    expect(j.success).toBe(true);
-  });
-
-  it('rejects customer deletion after terminal Admin REJECT before mutation', async () => {
-    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
-    hoisted.bookingFindUnique.mockResolvedValue({ id: 'book-1', userId: 'customer-1' });
-    hoisted.serviceVideoPackageEvidenceFindFirst.mockResolvedValue({
-      id: 'package-1',
-      status: 'ADMIN_REJECTED',
-      adminAuditDecisionId: 'audit-2',
-    });
-
-    const res = await bookingDeleteDELETE(
-      jsonRequest('http://localhost/api/bookings/book-1', undefined, 'DELETE'),
-      { params: Promise.resolve({ id: 'book-1' }) }
-    );
-
-    expect(res.status).toBe(409);
+    expect(j.code).toBe('BOOKING_CANCELLATION_ACTION_REQUIRED');
     expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/bookings customer summary', () => {
+  it('uses canonical customer lifecycle counts for the dashboard summary', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.loadCustomerServiceRecords.mockResolvedValue({
+      records: [],
+      counts: { upcoming: 3, completed: 12, needs_attention: 1, cancelled: 2, archived: 4, unclassified: 1 },
+      selectedTab: 'upcoming',
+      pagination: { page: 1, limit: 1, total: 3, totalPages: 3 },
+    });
+    const res = await bookingsListGET(new NextRequest('http://localhost/api/bookings?summaryOnly=1'));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      summary: { total: 22, activeTotal: 3, needsAttentionTotal: 1 },
+    });
+  });
+});
+
+describe('GET /api/bookings customer Service Records view', () => {
+  it('uses the canonical customer Service Records loader for server-backed tabs, search, counts, and pages', async () => {
+    vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+    hoisted.loadCustomerServiceRecords.mockResolvedValue({
+      records: [{ id: 'book-12', customer_record: { lifecycle: 'COMPLETED' } }],
+      counts: { upcoming: 3, completed: 12, needs_attention: 1, cancelled: 2, archived: 4, unclassified: 0 },
+      selectedTab: 'completed',
+      pagination: { page: 2, limit: 5, total: 12, totalPages: 3 },
+    });
+    const req = new NextRequest('http://localhost/api/bookings?view=customer_service_records&tab=completed&q=electro&page=2&limit=5');
+    const res = await bookingsListGET(req);
+    expect(res.status).toBe(200);
+    expect(hoisted.loadCustomerServiceRecords).toHaveBeenCalledWith(expect.objectContaining({
+      db: hoisted.prisma,
+      customerUserId: 'customer-1',
+      requestedTab: 'completed',
+      search: 'electro',
+      page: 2,
+      limit: 5,
+    }));
+    const body = await readJson(res);
+    expect(body.counts).toMatchObject({ completed: 12, archived: 4 });
+    expect(body.pagination).toMatchObject({ page: 2, totalPages: 3 });
   });
 });

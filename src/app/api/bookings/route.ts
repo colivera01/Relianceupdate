@@ -30,6 +30,7 @@ import { geocodeAddress, geocodeFailureMessage, hasCompleteAddress } from '@/lib
 import type { GeocodeEvidence, GeocodeFailureStatus } from '@/lib/geocoding';
 import { buildRecordingLocationSnapshot } from '@/lib/recording-location-snapshot';
 import type { RecordingLocationType } from '@/lib/recording-location-snapshot';
+import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
 
 function isTransientDbConnectivityError(error: any): boolean {
   const code = String(error?.code || '').toUpperCase();
@@ -234,6 +235,7 @@ export async function GET(request: NextRequest) {
     const requestedUserId = searchParams.get('userId');
     const vendorId = searchParams.get('vendorId');
     const status = searchParams.get('status');
+    const customerRecordsView = searchParams.get('view') === 'customer_service_records';
     const summaryOnly = searchParams.get('summaryOnly') === '1';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
@@ -249,6 +251,27 @@ export async function GET(request: NextRequest) {
       );
     }
     await ensureUserAccountCanAct(authUserId);
+
+    if (customerRecordsView && !vendorId) {
+      if (requestedUserId && String(requestedUserId) !== authUserId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      const result = await withTransientDbRetry(() => loadCustomerServiceRecords({
+        db: prisma,
+        customerUserId: authUserId,
+        requestedTab: searchParams.get('tab'),
+        search: searchParams.get('q'),
+        page,
+        limit,
+        bookingId: searchParams.get('bookingId'),
+      }));
+      return NextResponse.json({
+        bookings: result.records,
+        counts: result.counts,
+        selectedTab: result.selectedTab,
+        pagination: result.pagination,
+      });
+    }
 
     let userId: string | null = authUserId;
     if (vendorId) {
@@ -275,6 +298,26 @@ export async function GET(request: NextRequest) {
     };
 
     if (summaryOnly) {
+      if (!vendorId && userId) {
+        const records = await withTransientDbRetry(() => loadCustomerServiceRecords({
+          db: prisma,
+          customerUserId: String(userId),
+          limit: 1,
+        }));
+        const total =
+          records.counts.upcoming +
+          records.counts.completed +
+          records.counts.cancelled +
+          records.counts.archived +
+          records.counts.unclassified;
+        return NextResponse.json({
+          summary: {
+            total,
+            activeTotal: records.counts.upcoming,
+            needsAttentionTotal: records.counts.needs_attention,
+          },
+        });
+      }
       const [total, activeTotal] = await withTransientDbRetry(() =>
         Promise.all([
           prisma.booking.count({ where }),

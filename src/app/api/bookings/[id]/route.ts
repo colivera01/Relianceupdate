@@ -11,6 +11,7 @@ import {
 } from '@/lib/transient-db-errors';
 import { assertCoreAdminAuditMutationAllowed, CoreAdminAuditError } from '@/lib/service-video-admin-audit';
 import { parseAssignmentMetadata } from '@/lib/job-assignment';
+import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
 
 // TODO: Import your database models
 // import { BookingModel } from '@/lib/models/Booking';
@@ -163,6 +164,14 @@ export async function GET(
       hasSubmittedReview: Boolean(customerReview),
       reviewWindows: (booking as any).reviewWindows || [],
     });
+    const customerRecordResult = await loadCustomerServiceRecords({
+      db: prisma,
+      customerUserId: userId,
+      bookingId,
+      includeAll: true,
+      limit: 1,
+    });
+    const customerRecord = customerRecordResult.records[0]?.customer_record || null;
 
     return NextResponse.json({
       booking: mapBookingToContract(booking as any),
@@ -186,6 +195,7 @@ export async function GET(
           }
         : null,
       assignedServiceProfessional,
+      customerRecord,
       customerLifecycle: {
         ...lifecycle,
         reviewSubmittedAt:
@@ -235,6 +245,16 @@ export async function PUT(
     }
     await ensureUserAccountCanAct(userId);
 
+    if (status !== undefined) {
+      return NextResponse.json(
+        {
+          error: 'Service Record status cannot be changed through the generic update route.',
+          code: 'BOOKING_STATUS_MUTATION_NOT_ALLOWED',
+        },
+        { status: 422 }
+      );
+    }
+
     const existing = await prisma.booking.findUnique({
       where: { id: bookingId },
       select: { id: true, userId: true },
@@ -264,7 +284,6 @@ export async function PUT(
     const updated = await prisma.booking.update({
       where: { id: bookingId },
       data: {
-        ...(status ? { status: String(status).toUpperCase() } : {}),
         ...(title !== undefined ? { title: title ? String(title) : null } : {}),
         ...(client_name !== undefined ? { clientName: client_name ? String(client_name) : null } : {}),
         ...(scheduledForUpdate ? { scheduledFor: scheduledForUpdate, date: scheduledForUpdate } : {}),
@@ -316,60 +335,13 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id: bookingId } = await params;
-
-    if (!bookingId) {
-      return NextResponse.json(
-        { error: 'Invalid booking ID' },
-        { status: 400 }
-      );
-    }
-
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized: customer context is required' },
-        { status: 401 }
-      );
-    }
-    await ensureUserAccountCanAct(userId);
-
-    const existing = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      select: { id: true, userId: true },
-    });
-    if (!existing) {
-      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
-    }
-    if (existing.userId !== userId) {
-      return NextResponse.json(
-        { error: 'Forbidden: booking does not belong to this user' },
-        { status: 403 }
-      );
-    }
-    await assertCoreAdminAuditMutationAllowed(prisma as any, { bookingId });
-
-    await prisma.booking.update({
-      where: { id: bookingId },
-      data: { status: 'CANCELED' },
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Booking cancelled successfully',
-    });
-  } catch (error) {
-    console.error('Error cancelling booking:', error);
-    if (error instanceof AccountStatusError) {
-      return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
-    }
-    if (error instanceof CoreAdminAuditError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
-    }
-    return NextResponse.json(
-      { error: 'Failed to cancel booking' },
-      { status: 500 }
-    );
-  }
-} 
+  await params;
+  void request;
+  return NextResponse.json(
+    {
+      error: 'Use the dedicated cancellation action and provide a cancellation reason.',
+      code: 'BOOKING_CANCELLATION_ACTION_REQUIRED',
+    },
+    { status: 405, headers: { Allow: 'GET, PUT' } }
+  );
+}

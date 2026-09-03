@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
+  Archive,
   Calendar,
   CheckCircle2,
   ChevronDown,
@@ -11,6 +12,7 @@ import {
   CircleHelp,
   LogIn,
   Play,
+  RotateCcw,
   ShieldCheck,
   Star,
   UserPlus,
@@ -27,6 +29,7 @@ import {
   type CustomerServiceVideoStage,
 } from '@/lib/customer-service-video-playback';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
+import type { CustomerServiceRecordState } from '@/lib/customer-service-record-state';
 import { getCustomerProofStageLabel } from '@/lib/vendor-job-video-stages';
 
 type AssignedServiceProfessional = {
@@ -64,6 +67,7 @@ type BookingDetail = {
     businessName?: string | null;
   } | null;
   customerReview?: CustomerReview | null;
+  customerRecord?: CustomerServiceRecordState | null;
 };
 
 type BookingMediaAsset = {
@@ -176,6 +180,8 @@ function BookingMediaDetailPageContent() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
+  const [organizationBusy, setOrganizationBusy] = useState(false);
+  const [organizationMessage, setOrganizationMessage] = useState<string | null>(null);
 
   const loadPage = useCallback(async () => {
     if (!bookingId || !userId) {
@@ -217,14 +223,20 @@ function BookingMediaDetailPageContent() {
       const bookingJson = await bookingResponse.json().catch(() => ({}));
       const mediaJson = await mediaResponse.json().catch(() => ({}));
       if (!bookingResponse.ok) throw new Error(String(bookingJson?.error || 'Unable to load this service record.'));
-      if (!mediaResponse.ok) throw new Error(String(mediaJson?.error || 'Unable to load the Service Video.'));
+      const resolvedCustomerRecord = bookingJson?.customerRecord as CustomerServiceRecordState | null;
+      if (!mediaResponse.ok && resolvedCustomerRecord?.video?.state === 'READY') {
+        throw new Error(String(mediaJson?.error || 'Unable to load the Service Video.'));
+      }
 
       const nextBooking = (bookingJson?.booking || null) as BookingDetail | null;
-      if (nextBooking) nextBooking.customerReview = bookingJson?.customerReview || null;
-      const nextAssets = Array.isArray(mediaJson?.assets) ? mediaJson.assets as BookingMediaAsset[] : [];
+      if (nextBooking) {
+        nextBooking.customerReview = bookingJson?.customerReview || null;
+        nextBooking.customerRecord = bookingJson?.customerRecord || null;
+      }
+      const nextAssets = mediaResponse.ok && Array.isArray(mediaJson?.assets) ? mediaJson.assets as BookingMediaAsset[] : [];
       setBooking(nextBooking);
       setAssets(nextAssets);
-      setPrivateProofAvailable(mediaJson?.privateProofStatus === 'AVAILABLE');
+      setPrivateProofAvailable(mediaResponse.ok && mediaJson?.privateProofStatus === 'AVAILABLE');
       setAssignedProfessional(bookingJson?.assignedServiceProfessional || null);
       const firstStage = (['before', 'during', 'after'] as const).find((stage) =>
         nextAssets.some((asset) => asset.proofStage === stage && asset.downloadUrl)
@@ -269,8 +281,36 @@ function BookingMediaDetailPageContent() {
   const serviceName = booking?.service?.name || booking?.title || 'Service record';
   const vendorName = booking?.vendor?.business_name || booking?.vendor?.businessName || booking?.vendor?.name || 'Service provider';
   const existingReview = booking?.customerReview || null;
+  const customerRecord = booking?.customerRecord || null;
+  const completedRecord = customerRecord?.lifecycle === 'COMPLETED';
+  const videoReady = completedRecord && customerRecord?.video.state === 'READY';
   const canReview = Boolean(privateProofAvailable && finalVideo?.mediaSessionId && booking?.vendor?.id && !existingReview);
   const supportHref = `/customer/support?returnTo=${encodeURIComponent(`/my-bookings/${bookingId}`)}&returnLabel=${encodeURIComponent('Back to service record')}`;
+
+  const changeOrganization = async (action: 'ARCHIVE' | 'RESTORE') => {
+    if (!booking || organizationBusy) return;
+    const confirmed = window.confirm(action === 'ARCHIVE'
+      ? 'Archive this Service Record?\n\nIt will move to Archived. Your Service Record and authorized video remain available.'
+      : 'Restore this Service Record to My Service Records?');
+    if (!confirmed) return;
+    setOrganizationBusy(true);
+    setOrganizationMessage(null);
+    try {
+      const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/organization`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, requestId: globalThis.crypto.randomUUID() }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(body?.error || 'Unable to update this Service Record.'));
+      setOrganizationMessage(String(body?.message || 'Service Record updated.'));
+      await loadPage();
+    } catch (caught) {
+      setOrganizationMessage(caught instanceof Error ? caught.message : 'Unable to update this Service Record.');
+    } finally {
+      setOrganizationBusy(false);
+    }
+  };
 
   const startPlayback = (stage: CustomerServiceVideoStage) => {
     const queue = getForwardPlaybackStages(stage, availableStages);
@@ -448,16 +488,39 @@ function BookingMediaDetailPageContent() {
           </Link>
         </div>
 
+        {organizationMessage ? (
+          <p className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="status">
+            {organizationMessage}
+          </p>
+        ) : null}
+
         <section aria-labelledby="service-heading" className="border-b border-slate-200 pb-6">
-          <p className="text-xs font-semibold uppercase text-emerald-700">Reliance Service Video Approved</p>
+          <p className="text-xs font-semibold uppercase text-emerald-700">
+            {videoReady
+              ? 'Reliance Service Video Approved'
+              : customerRecord?.lifecycle === 'COMPLETED'
+                ? 'Completed Service Record'
+                : customerRecord?.lifecycle === 'CANCELLED'
+                  ? 'Cancelled Service Record'
+                  : customerRecord?.lifecycle === 'UPCOMING'
+                    ? 'Upcoming Service'
+                    : 'Service Record'}
+          </p>
           <h1 id="service-heading" className="mt-2 text-3xl font-semibold text-slate-950">{serviceName}</h1>
           <p className="mt-2 text-lg text-slate-700">{vendorName}</p>
           <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-600">
-            <Calendar className="h-4 w-4" /> Completed {formatDate(booking?.booking_date)}
+            <Calendar className="h-4 w-4" /> {completedRecord ? 'Completed' : customerRecord?.lifecycle === 'CANCELLED' ? 'Service date' : 'Scheduled'} {formatDate(booking?.booking_date)}
           </p>
+          {customerRecord?.cancellation ? (
+            <dl className="mt-4 space-y-1 rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              <div><dt className="inline font-medium text-slate-950">Cancelled by: </dt><dd className="inline">{customerRecord.cancellation.actorLabel || 'Unavailable for this historical record'}</dd></div>
+              <div><dt className="inline font-medium text-slate-950">Reason: </dt><dd className="inline">{customerRecord.cancellation.reason || 'Reason unavailable for this historical record'}</dd></div>
+              {customerRecord.cancellation.cancelledAt ? <div><dt className="inline font-medium text-slate-950">Date: </dt><dd className="inline">{formatDate(customerRecord.cancellation.cancelledAt)}</dd></div> : null}
+            </dl>
+          ) : null}
         </section>
 
-        <section aria-labelledby="video-heading" className="space-y-4">
+        {completedRecord ? <section aria-labelledby="video-heading" className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 id="video-heading" className="text-2xl font-semibold text-slate-950">Your Service Video</h2>
@@ -548,9 +611,9 @@ function BookingMediaDetailPageContent() {
               The approved Service Video is not available for this account.
             </div>
           )}
-        </section>
+        </section> : null}
 
-        {completePlaybackFinished && !existingReview ? (
+        {completedRecord && completePlaybackFinished && !existingReview ? (
           <section className="rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4">
             <p className="font-semibold text-emerald-950">That&apos;s the complete Service Video.</p>
             <p className="mt-1 text-sm text-emerald-900">How was your experience with {vendorName}?</p>
@@ -558,7 +621,7 @@ function BookingMediaDetailPageContent() {
           </section>
         ) : null}
 
-        <section id="your-review" aria-labelledby="review-heading" className="border-t border-slate-200 pt-6">
+        {completedRecord ? <section id="your-review" aria-labelledby="review-heading" className="border-t border-slate-200 pt-6">
           <h2 id="review-heading" className="text-2xl font-semibold text-slate-950">Your Review</h2>
           {existingReview ? (
             <div className="mt-4 rounded-lg border border-emerald-200 bg-white p-5">
@@ -612,12 +675,12 @@ function BookingMediaDetailPageContent() {
             <p className="mt-3 text-sm text-slate-600">A review becomes available with an approved Private Service Video.</p>
           )}
           {reviewSuccess ? <p className="mt-3 text-sm font-medium text-emerald-700">{reviewSuccess}</p> : null}
-        </section>
+        </section> : null}
 
-        <section aria-labelledby="visibility-heading" className="border-t border-slate-200 pt-6">
+        {videoReady ? <section aria-labelledby="visibility-heading" className="border-t border-slate-200 pt-6">
           <h2 id="visibility-heading" className="mb-3 text-2xl font-semibold text-slate-950">Visibility</h2>
           <PackageVisibilityCard role="customer" bookingId={bookingId} />
-        </section>
+        </section> : null}
 
         <section className="border-t border-slate-200 pt-4">
           <button type="button" onClick={() => setShowDetails((visible) => !visible)} aria-expanded={showDetails} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800 hover:text-blue-700">
@@ -627,13 +690,44 @@ function BookingMediaDetailPageContent() {
           {showDetails ? (
             <dl className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2">
               <div><dt className="font-medium text-slate-500">Reference</dt><dd className="mt-1 font-mono text-xs text-slate-900">{bookingId}</dd></div>
-              <div><dt className="font-medium text-slate-500">Approval</dt><dd className="mt-1 text-slate-900">Reliance Service Video Approved</dd></div>
+              <div><dt className="font-medium text-slate-500">Status</dt><dd className="mt-1 text-slate-900">{customerRecord?.lifecycleLabel || 'Status unavailable'}</dd></div>
               <div><dt className="font-medium text-slate-500">Service</dt><dd className="mt-1 text-slate-900">{serviceName}</dd></div>
               <div><dt className="font-medium text-slate-500">Vendor</dt><dd className="mt-1 text-slate-900">{vendorName}</dd></div>
-              <div><dt className="font-medium text-slate-500">Completed</dt><dd className="mt-1 text-slate-900">{formatDate(booking?.booking_date)}</dd></div>
+              <div><dt className="font-medium text-slate-500">{completedRecord ? 'Completed' : 'Service date'}</dt><dd className="mt-1 text-slate-900">{formatDate(booking?.booking_date)}</dd></div>
+              {videoReady ? <div><dt className="font-medium text-slate-500">Service Video</dt><dd className="mt-1 text-slate-900">Reliance approved</dd></div> : null}
               <div><dt className="font-medium text-slate-500">Assigned professional</dt><dd className="mt-1 text-slate-900">{assignedProfessional?.name || 'Not listed'}</dd></div>
               {booking?.notes?.trim() ? <div className="sm:col-span-2"><dt className="font-medium text-slate-500">Notes</dt><dd className="mt-1 text-slate-900">{booking.notes}</dd></div> : null}
             </dl>
+          ) : null}
+          {booking?.customerRecord && (booking.customerRecord.archiveEligible || booking.customerRecord.restoreEligible || booking.customerRecord.legacyRestoreBlocked) ? (
+          <div className="mt-5 border-t border-slate-200 pt-4">
+            {booking?.customerRecord?.archiveEligible ? (
+              <button
+                type="button"
+                disabled={organizationBusy}
+                onClick={() => void changeOrganization('ARCHIVE')}
+                className="inline-flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+              >
+                <Archive className="h-4 w-4" /> Archive Service Record
+              </button>
+            ) : null}
+            {booking?.customerRecord?.restoreEligible ? (
+              <button
+                type="button"
+                disabled={organizationBusy}
+                onClick={() => void changeOrganization('RESTORE')}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <RotateCcw className="h-4 w-4" /> Restore to Service Records
+              </button>
+            ) : null}
+            {booking?.customerRecord?.legacyRestoreBlocked ? (
+              <p className="text-sm text-slate-600">
+                This historical archive remains available, but its prior lifecycle cannot be safely restored.{' '}
+                <Link href={supportHref} className="font-medium text-blue-700 underline">Contact Support</Link>.
+              </p>
+            ) : null}
+          </div>
           ) : null}
         </section>
       </div>

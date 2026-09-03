@@ -1261,6 +1261,16 @@ describe("vendor job actions integration", () => {
     }));
   });
 
+  it("PATCH UNARCHIVE_JOB never fabricates PENDING lifecycle for a legacy archive", async () => {
+    hoisted.bookingFindFirst.mockResolvedValue({ id: "job1", vendorId: "v1", status: "ARCHIVED" });
+    const { req, ctx } = patchReq("v1", "job1", "UNARCHIVE_JOB");
+    const res = await PATCH(req, ctx as any);
+    expect(res.status).toBe(409);
+    const body = await toJson(res);
+    expect(body.code).toBe("LEGACY_ARCHIVE_RESTORE_UNSAFE");
+    expect(hoisted.bookingUpdate).not.toHaveBeenCalled();
+  });
+
   it("PATCH RESEND_COMPLETED_WORK_ORDER remains blocked until Admin PASS releases Private Proof", async () => {
     hoisted.bookingFindFirst.mockResolvedValue({
       id: "job1",

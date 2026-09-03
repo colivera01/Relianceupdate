@@ -11,6 +11,20 @@ import {
 } from '@/lib/trust-score-outcome-foundation';
 import { tryRecalculateVendorTrustScore } from '@/lib/trust-score-calculator';
 import { assertCoreAdminAuditMutationAllowed, CoreAdminAuditError } from '@/lib/service-video-admin-audit';
+import { recordLifecycleAudit } from '@/lib/lifecycle-audit';
+
+function parseMetadata(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== 'string' || !value.trim()) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 export async function POST(
   request: NextRequest,
@@ -20,6 +34,7 @@ export async function POST(
     const { id: bookingId } = await params;
     const body = await request.json();
     const { reason, refund_requested } = body;
+    const cancellationReason = String(reason || '').trim();
 
     if (!bookingId) {
       return NextResponse.json(
@@ -35,6 +50,13 @@ export async function POST(
       );
     }
     await ensureUserAccountCanAct(userId);
+
+    if (cancellationReason.length < 3) {
+      return NextResponse.json(
+        { error: 'Enter a brief reason for cancelling this service.', code: 'CANCELLATION_REASON_REQUIRED' },
+        { status: 422 }
+      );
+    }
 
     const existing = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -52,17 +74,42 @@ export async function POST(
         { status: 403 }
       );
     }
-    await assertCoreAdminAuditMutationAllowed(prisma as any, {
-      bookingId,
-      vendorId: existing.vendorId || undefined,
-    });
-
-    await prisma.booking.update({
-      where: { id: bookingId },
-      data: { status: 'CANCELED' },
-    });
     const canceledAt = new Date();
-    if (existing.vendorId) {
+    const cancellation = await prisma.$transaction(async (tx) => {
+      const current = await tx.booking.findUnique({
+        where: { id: bookingId },
+        select: { id: true, userId: true, vendorId: true, status: true, customerMetadata: true },
+      });
+      if (!current) throw new Error('BOOKING_STATE_CHANGED');
+      if (String(current.userId) !== userId) throw new Error('BOOKING_OWNER_CHANGED');
+      await assertCoreAdminAuditMutationAllowed(tx as any, {
+        bookingId,
+        vendorId: current.vendorId || undefined,
+      });
+      const normalizedStatus = String(current.status || '').trim().toUpperCase();
+      if (normalizedStatus === 'CANCELED' || normalizedStatus === 'CANCELLED') {
+        return { booking: current, previousStatus: normalizedStatus, idempotent: true };
+      }
+      if (!['PENDING', 'CONFIRMED', 'IN_PROGRESS'].includes(normalizedStatus)) {
+        throw new Error('CUSTOMER_CANCELLATION_STATE_NOT_ALLOWED');
+      }
+      const metadata = parseMetadata(current.customerMetadata);
+      metadata.vendor_job_cancellation = {
+        status: 'CANCELED',
+        canceled_at: canceledAt.toISOString(),
+        canceled_by_user_id: userId,
+        canceled_by_membership_id: null,
+        reason: cancellationReason,
+        source: 'CUSTOMER_CANCELLATION',
+      };
+      const booking = await tx.booking.update({
+        where: { id: bookingId },
+        data: { status: 'CANCELED', customerMetadata: JSON.stringify(metadata) },
+      });
+      return { booking, previousStatus: normalizedStatus, idempotent: false };
+    }, { isolationLevel: 'Serializable' });
+
+    if (existing.vendorId && !cancellation.idempotent) {
       await tryRecordFinalizedOperationalOutcome(prisma as any, {
         vendorId: existing.vendorId,
         bookingId,
@@ -72,8 +119,8 @@ export async function POST(
         finalizedAt: canceledAt,
         finalizedByUserId: userId,
         metadata: {
-          previousStatus: existing.status,
-          cancellationReason: typeof reason === 'string' ? reason : null,
+          previousStatus: cancellation.previousStatus,
+          cancellationReason,
           refundRequested: Boolean(refund_requested),
         },
       });
@@ -88,7 +135,7 @@ export async function POST(
           sourceEntityId: bookingId,
           reportedByUserId: userId,
           metadata: {
-            cancellationReason: typeof reason === 'string' ? reason : null,
+            cancellationReason,
             refundRequestedAt: canceledAt.toISOString(),
           },
         });
@@ -101,6 +148,15 @@ export async function POST(
         'booking_canceled',
         'booking_cancel'
       );
+      await recordLifecycleAudit({
+        actionType: 'customer_service_canceled',
+        entityType: 'booking',
+        entityId: bookingId,
+        actorUserId: userId,
+        previousValue: { status: cancellation.previousStatus },
+        newValue: { status: 'CANCELED', reason: cancellationReason, canceledAt: canceledAt.toISOString() },
+        metadata: { vendorId: existing.vendorId, customerOwnedAction: true },
+      });
     }
     const hydrated = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -127,8 +183,9 @@ export async function POST(
       success: true,
       message: 'Booking cancelled successfully',
       booking: hydrated ? mapBookingToContract(hydrated as any) : null,
-      cancellation_reason: reason,
+      cancellation_reason: cancellationReason,
       refund_requested,
+      idempotent: cancellation.idempotent,
     });
   } catch (error) {
     console.error('Error cancelling booking:', error);
@@ -137,6 +194,18 @@ export async function POST(
     }
     if (error instanceof CoreAdminAuditError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === 'CUSTOMER_CANCELLATION_STATE_NOT_ALLOWED') {
+      return NextResponse.json(
+        { error: 'This Service Record can no longer be cancelled by the customer.', code: error.message },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === 'BOOKING_STATE_CHANGED') {
+      return NextResponse.json({ error: 'Booking not found', code: error.message }, { status: 404 });
+    }
+    if (error instanceof Error && error.message === 'BOOKING_OWNER_CHANGED') {
+      return NextResponse.json({ error: 'This booking no longer belongs to your account.', code: error.message }, { status: 403 });
     }
     return NextResponse.json(
       { error: 'Failed to cancel booking' },
