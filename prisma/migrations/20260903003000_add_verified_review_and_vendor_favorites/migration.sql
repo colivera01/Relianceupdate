@@ -7,9 +7,9 @@ ADD [contractVersion] INT NULL,
     [submissionRequestId] NVARCHAR(1000) NULL,
     [submissionRequestHash] NVARCHAR(1000) NULL;
 
-ALTER TABLE [dbo].[reviews]
+EXEC(N'ALTER TABLE [dbo].[reviews]
 ADD CONSTRAINT [reviews_ratingValidityStatus_check]
-CHECK ([ratingValidityStatus] IS NULL OR [ratingValidityStatus] IN ('verified', 'invalid'));
+CHECK ([ratingValidityStatus] IS NULL OR [ratingValidityStatus] IN (''verified'', ''invalid''))');
 
 EXEC(N'CREATE INDEX [reviews_userId_submissionRequestId_idx]
   ON [dbo].[reviews]([userId], [submissionRequestId])');
