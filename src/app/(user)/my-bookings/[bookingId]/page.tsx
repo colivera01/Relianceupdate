@@ -243,10 +243,8 @@ function BookingMediaDetailPageContent() {
       setAssets(nextAssets);
       setPrivateProofAvailable(mediaResponse.ok && mediaJson?.privateProofStatus === 'AVAILABLE');
       setAssignedProfessional(bookingJson?.assignedServiceProfessional || null);
-      const firstStage = (['before', 'during', 'after'] as const).find((stage) =>
-        nextAssets.some((asset) => asset.proofStage === stage && asset.downloadUrl)
-      );
-      setActiveStage(firstStage || null);
+      // Playback begins only after the customer chooses a stage or the complete sequence.
+      setActiveStage(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to load this service record.');
       setBooking(null);

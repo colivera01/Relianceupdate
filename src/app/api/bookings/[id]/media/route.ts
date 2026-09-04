@@ -12,7 +12,7 @@ import {
   PUBLIC_DB_UNAVAILABLE_MESSAGE,
   isTransientDbConnectivityError,
 } from "@/lib/transient-db-errors";
-import { loadAuthorizedPrivateProof, recordPrivateProofAccess } from "@/lib/service-video-evidence";
+import { loadAuthorizedPrivateProof, recordPrivateProofAccessBestEffort } from "@/lib/service-video-evidence";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -106,15 +106,15 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
       },
     });
 
-    await recordPrivateProofAccess({
-      grantId: privateProof.grant.id,
+    await recordPrivateProofAccessBestEffort({
+      accessGrantId: privateProof.grant.id,
       packageId: privateProof.package.id,
       bookingId,
       actorUserId: userId,
       eventType: "VIEW",
       ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,
       userAgent: request.headers.get("user-agent"),
-    }).catch(() => undefined);
+    });
 
     const proofSafeAssets = assets.filter((asset: any) =>
       shouldIncludeAssetForCustomerPublicProof(asset?.mediaSession || null)
@@ -143,7 +143,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
         bytes: typeof asset.bytes === "bigint" ? asset.bytes.toString() : String(asset.bytes || "0"),
         mimeType,
         blobKey: asset.blobKey,
-        // Customer playback should go through the consent-aware download route.
+        // Customer playback stays behind the exact Private Proof grant and package checks.
         blobUrl: null,
         archiveStatus: asset.archiveStatus,
         moderationReason: asset.moderationReason,

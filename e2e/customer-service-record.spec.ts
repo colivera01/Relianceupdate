@@ -101,7 +101,7 @@ async function installServiceRecord(page: Page) {
             type: 'video',
             moderationStatus: 'approved',
             visibilityStatus: 'customer_only',
-            downloadUrl: 'data:video/mp4;base64,AAAA',
+            downloadUrl: '/homepage/service-video-stages/before-service.mp4',
             mimeType: 'video/mp4',
             mediaSessionId: 'session-before',
             proofStage: 'before',
@@ -112,7 +112,7 @@ async function installServiceRecord(page: Page) {
             type: 'video',
             moderationStatus: 'approved',
             visibilityStatus: 'customer_only',
-            downloadUrl: 'data:video/mp4;base64,AAAA',
+            downloadUrl: '/homepage/service-video-stages/during-service.mp4',
             mimeType: 'video/mp4',
             mediaSessionId: 'session-during',
             proofStage: 'during',
@@ -123,7 +123,7 @@ async function installServiceRecord(page: Page) {
             type: 'video',
             moderationStatus: 'approved',
             visibilityStatus: 'customer_only',
-            downloadUrl: 'data:video/mp4;base64,AAAA',
+            downloadUrl: '/homepage/service-video-stages/completed-service.mp4',
             mimeType: 'video/mp4',
             mediaSessionId: 'session-after',
             proofStage: 'after',
@@ -196,6 +196,7 @@ test('customer watches forward from any stage and submits separate vendor and em
   await expect(page.getByText('Current service-record state', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Request video access', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Approve video access first', { exact: true })).toHaveCount(0);
+  await expect(page.locator('video')).toHaveCount(0);
   expect(recordingPermissionRequests).toEqual([]);
 
   const workInProgressCard = page.getByText('Work in Progress', { exact: true }).first().locator('..');
@@ -231,6 +232,34 @@ test('customer watches forward from any stage and submits separate vendor and em
     }),
   ]);
   expect(recordingPermissionRequests).toEqual([]);
+});
+
+test('customer playback starts on demand and a media failure offers a retry', async ({ page }) => {
+  await installCustomerSession(page);
+  await installServiceRecord(page);
+  await page.addInitScript(() => {
+    const originalLoad = HTMLMediaElement.prototype.load;
+    HTMLMediaElement.prototype.load = function load() {
+      const state = window as typeof window & { __serviceVideoRetryCount?: number };
+      state.__serviceVideoRetryCount = (state.__serviceVideoRetryCount || 0) + 1;
+      return originalLoad.call(this);
+    };
+  });
+
+  await page.goto(`/test-fixtures/customer-service-record/${bookingId}`);
+  await expect(page.locator('video')).toHaveCount(0);
+
+  const startingConditionCard = page.getByText('Starting Condition', { exact: true }).first().locator('..');
+  await startingConditionCard.getByRole('button', { name: 'Watch' }).click();
+  const video = page.locator('video');
+  await expect(video).toBeVisible();
+  await video.dispatchEvent('error');
+  await expect(page.getByRole('alert').filter({ hasText: 'The Service Video could not be played.' })).toContainText(
+    'The Service Video could not be played. Please try again.'
+  );
+
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __serviceVideoRetryCount?: number }).__serviceVideoRetryCount || 0)).toBeGreaterThan(0);
 });
 
 test('completed service cards present the record, video, and one review action without media inventory clutter', async ({ page }) => {

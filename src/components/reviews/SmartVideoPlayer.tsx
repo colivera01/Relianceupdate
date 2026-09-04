@@ -53,6 +53,7 @@ export function SmartVideoPlayer({
   const [accessError, setAccessError] = useState<string | null>(null);
   const [accessErrorDetails, setAccessErrorDetails] = useState<string | null>(null);
   const [reviewAlreadySubmitted, setReviewAlreadySubmitted] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const trimmedUserId = useMemo(() => String(userId ?? '').trim(), [userId]);
   /** Review APIs + UI; false means watch-only (terminal cancel, or missing user id). */
@@ -75,7 +76,12 @@ export function SmartVideoPlayer({
   useEffect(() => {
     setReviewAlreadySubmitted(false);
     reviewRequestIdRef.current = null;
+    setPlaybackError(null);
   }, [bookingId, mediaSessionId]);
+
+  useEffect(() => {
+    setPlaybackError(null);
+  }, [src]);
 
   const logPromptEvent = useCallback(
     async (eventType: string, metadata?: Record<string, unknown>) => {
@@ -231,6 +237,33 @@ export function SmartVideoPlayer({
     };
   }, [autoPlayToken, onAutoPlayBlocked, src]);
 
+  const handlePlaybackError = useCallback(() => {
+    const video = videoRef.current;
+    const errorCode = video?.error?.code || 0;
+    const message = errorCode === 2
+      ? 'The Service Video could not be loaded. Check your connection and try again.'
+      : errorCode === 3 || errorCode === 4
+        ? 'Your browser could not play this Service Video. Try again or use another supported browser.'
+        : 'The Service Video could not be played. Please try again.';
+    setPlaybackError(message);
+    console.error('[service-video-player] playback failed', {
+      errorCode,
+      networkState: video?.networkState ?? null,
+      readyState: video?.readyState ?? null,
+      sourceKind: src.startsWith('/') ? 'authorized-route' : 'other',
+    });
+  }, [src]);
+
+  const retryPlayback = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    setPlaybackError(null);
+    video.load();
+    if (autoPlayToken != null) {
+      void video.play().catch(() => onAutoPlayBlocked?.());
+    }
+  }, [autoPlayToken, onAutoPlayBlocked]);
+
   const handleSentiment = async (sentiment: 'positive' | 'neutral' | 'negative') => {
     setPrompt('none');
     setSubmitSuccess(null);
@@ -341,9 +374,23 @@ export function SmartVideoPlayer({
           poster={poster}
           preload="metadata"
           controls={reviewApisEnabled ? !accessError : true}
+          onError={handlePlaybackError}
+          onLoadedData={() => setPlaybackError(null)}
           className="block h-auto w-full max-h-[70vh] object-contain bg-black"
         />
       </div>
+      {playbackError ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2" role="alert">
+          <p className="text-sm text-amber-950">{playbackError}</p>
+          <button
+            type="button"
+            onClick={retryPlayback}
+            className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-semibold text-amber-950 hover:bg-amber-100"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       {reviewApisEnabled && submitError ? <p className="mt-2 text-xs text-red-600">{submitError}</p> : null}
       {reviewApisEnabled && submitSuccess ? <p className="mt-2 text-xs text-emerald-700">{submitSuccess}</p> : null}
       {reviewApisEnabled && accessError ? <p className="mt-2 text-xs text-red-600">{accessError}</p> : null}

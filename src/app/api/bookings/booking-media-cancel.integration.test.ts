@@ -15,7 +15,7 @@ const hoisted = vi.hoisted(() => {
   const bookingUpdate = vi.fn();
   const mediaAssetFindMany = vi.fn();
   const loadAuthorizedPrivateProof = vi.fn();
-  const recordPrivateProofAccess = vi.fn();
+  const recordPrivateProofAccessBestEffort = vi.fn();
   const serviceVideoPackageEvidenceFindFirst = vi.fn();
   const tryRecordFinalizedOperationalOutcome = vi.fn();
   const tryRecordBookingServiceIssue = vi.fn();
@@ -38,7 +38,7 @@ const hoisted = vi.hoisted(() => {
     bookingUpdate,
     mediaAssetFindMany,
     loadAuthorizedPrivateProof,
-    recordPrivateProofAccess,
+    recordPrivateProofAccessBestEffort,
     serviceVideoPackageEvidenceFindFirst,
     tryRecordFinalizedOperationalOutcome,
     tryRecordBookingServiceIssue,
@@ -57,7 +57,7 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/service-video-evidence', () => ({
   loadAuthorizedPrivateProof: hoisted.loadAuthorizedPrivateProof,
-  recordPrivateProofAccess: hoisted.recordPrivateProofAccess,
+  recordPrivateProofAccessBestEffort: hoisted.recordPrivateProofAccessBestEffort,
 }));
 
 vi.mock('@/lib/trust-score-outcome-foundation', () => ({
@@ -99,13 +99,13 @@ describe('GET /api/bookings/[id]/media', () => {
     hoisted.bookingFindUnique.mockReset();
     hoisted.mediaAssetFindMany.mockReset();
     hoisted.loadAuthorizedPrivateProof.mockReset();
-    hoisted.recordPrivateProofAccess.mockReset();
+    hoisted.recordPrivateProofAccessBestEffort.mockReset();
     hoisted.loadAuthorizedPrivateProof.mockResolvedValue({
       grant: { id: 'grant-1' },
       package: { id: 'package-1' },
       assetIds: ['asset-img', 'asset-vid'],
     });
-    hoisted.recordPrivateProofAccess.mockResolvedValue(undefined);
+    hoisted.recordPrivateProofAccessBestEffort.mockResolvedValue({ recorded: true, correlationId: null });
   });
 
   it('returns 401 when unauthenticated', async () => {

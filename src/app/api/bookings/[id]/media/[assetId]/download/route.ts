@@ -4,7 +4,7 @@ import { getUserIdFromRequest } from '@/lib/auth';
 import { accountStatusErrorBody, AccountStatusError, ensureUserAccountCanAct } from '@/lib/account-status';
 import { generateDownloadUrl } from '@/lib/azure-blob-storage';
 import { getVisibilityStatusesForAudience } from '@/lib/media-visibility';
-import { loadAuthorizedPrivateProof, recordPrivateProofAccess } from '@/lib/service-video-evidence';
+import { loadAuthorizedPrivateProof, recordPrivateProofAccessBestEffort } from '@/lib/service-video-evidence';
 
 type RouteContext = {
   params: Promise<{ id: string; assetId: string }>;
@@ -82,8 +82,8 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
       return NextResponse.json({ success: false, error: 'Playable URL is unavailable for this media asset' }, { status: 500 });
     }
 
-    await recordPrivateProofAccess({
-      grantId: privateProof.grant.id,
+    await recordPrivateProofAccessBestEffort({
+      accessGrantId: privateProof.grant.id,
       packageId: privateProof.package.id,
       bookingId,
       mediaAssetId: assetId,
@@ -91,7 +91,7 @@ export async function GET(request: Request, context: RouteContext): Promise<Next
       eventType: 'DOWNLOAD',
       ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
       userAgent: request.headers.get('user-agent'),
-    }).catch(() => undefined);
+    });
 
     return NextResponse.redirect(secureUrl, { status: 302, headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
   } catch (error: any) {

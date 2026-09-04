@@ -1,4 +1,5 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { resolveCanonicalMediaLifecycle } from "@/lib/media-lifecycle";
 import { prisma } from "@/server/db";
 import {
@@ -977,15 +978,45 @@ export async function loadAuthorizedPrivateProof(input: { bookingId: string; cus
   return { grant, package: pkg, decision, stages, assetIds };
 }
 
-export async function recordPrivateProofAccess(input: {
-  grantId: string;
-  packageId: string;
-  bookingId: string;
-  mediaAssetId?: string | null;
-  actorUserId: string;
+export type PrivateProofAccessEventInput = Omit<
+  Pick<
+    Prisma.PrivateProofAccessEventUncheckedCreateInput,
+    | "accessGrantId"
+    | "packageId"
+    | "bookingId"
+    | "mediaAssetId"
+    | "actorUserId"
+    | "eventType"
+    | "ipAddress"
+    | "userAgent"
+  >,
+  "eventType"
+> & {
   eventType: "VIEW" | "DOWNLOAD";
-  ipAddress?: string | null;
-  userAgent?: string | null;
-}) {
-  await (prisma as any).privateProofAccessEvent.create({ data: input });
+};
+
+export async function recordPrivateProofAccess(input: PrivateProofAccessEventInput) {
+  return prisma.privateProofAccessEvent.create({ data: input });
+}
+
+export async function recordPrivateProofAccessBestEffort(input: PrivateProofAccessEventInput) {
+  try {
+    await recordPrivateProofAccess(input);
+    return { recorded: true as const, correlationId: null };
+  } catch (error) {
+    const correlationId = randomUUID();
+    console.error("[private-proof-access-audit] persistence failed", {
+      correlationId,
+      accessAuthorized: true,
+      auditRecorded: false,
+      eventType: input.eventType,
+      accessGrantId: input.accessGrantId,
+      packageId: input.packageId,
+      bookingId: input.bookingId,
+      mediaAssetId: input.mediaAssetId || null,
+      actorUserId: input.actorUserId,
+      error,
+    });
+    return { recorded: false as const, correlationId };
+  }
 }

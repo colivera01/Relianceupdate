@@ -5,7 +5,7 @@ const hoisted = vi.hoisted(() => ({
   bookingFindUnique: vi.fn(),
   mediaAssetFindMany: vi.fn(),
   loadAuthorizedPrivateProof: vi.fn(),
-  recordPrivateProofAccess: vi.fn(),
+  recordPrivateProofAccessBestEffort: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ getUserIdFromRequest: hoisted.getUserIdFromRequest }));
@@ -22,14 +22,14 @@ vi.mock("@/server/db", () => ({
 }));
 vi.mock("@/lib/service-video-evidence", () => ({
   loadAuthorizedPrivateProof: hoisted.loadAuthorizedPrivateProof,
-  recordPrivateProofAccess: hoisted.recordPrivateProofAccess,
+  recordPrivateProofAccessBestEffort: hoisted.recordPrivateProofAccessBestEffort,
 }));
 
 describe("customer Private Service Video list", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.getUserIdFromRequest.mockResolvedValue("customer-1");
-    hoisted.recordPrivateProofAccess.mockResolvedValue(undefined);
+    hoisted.recordPrivateProofAccessBestEffort.mockResolvedValue({ recorded: true, correlationId: null });
   });
 
   it("blocks a customer from another customer's work record", async () => {
@@ -99,6 +99,7 @@ describe("customer Private Service Video list", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
     expect(body).toMatchObject({
       privateProofStatus: "AVAILABLE",
       assets: [{ id: "asset-3", blobUrl: null, downloadUrl: "/api/bookings/booking-1/media/asset-3/download" }],
@@ -106,8 +107,41 @@ describe("customer Private Service Video list", () => {
     expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ id: { in: ["asset-1", "asset-2", "asset-3"] } }) }),
     );
-    expect(hoisted.recordPrivateProofAccess).toHaveBeenCalledWith(
-      expect.objectContaining({ grantId: "grant-1", packageId: "package-1", eventType: "VIEW" }),
+    expect(hoisted.recordPrivateProofAccessBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({ accessGrantId: "grant-1", packageId: "package-1", eventType: "VIEW" }),
     );
+  });
+
+  it("keeps authorized VIEW availability when access-audit persistence fails", async () => {
+    const { GET } = await import("./route");
+    hoisted.bookingFindUnique.mockResolvedValue({ id: "booking-1", userId: "customer-1", vendorId: "vendor-1" });
+    hoisted.loadAuthorizedPrivateProof.mockResolvedValue({
+      grant: { id: "grant-1" },
+      package: { id: "package-1" },
+      assetIds: ["asset-1"],
+    });
+    hoisted.mediaAssetFindMany.mockResolvedValue([]);
+    hoisted.recordPrivateProofAccessBestEffort.mockResolvedValue({ recorded: false, correlationId: "correlation-1" });
+
+    const response = await GET(new Request("http://localhost/api/bookings/booking-1/media"), {
+      params: Promise.resolve({ id: "booking-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ success: true, privateProofStatus: "AVAILABLE" });
+  });
+
+  it("does not attempt access auditing when no active exact Private Proof is authorized", async () => {
+    const { GET } = await import("./route");
+    hoisted.bookingFindUnique.mockResolvedValue({ id: "booking-1", userId: "customer-1", vendorId: "vendor-1" });
+    hoisted.loadAuthorizedPrivateProof.mockResolvedValue(null);
+
+    const response = await GET(new Request("http://localhost/api/bookings/booking-1/media"), {
+      params: Promise.resolve({ id: "booking-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ privateProofStatus: "NOT_AVAILABLE", assets: [] });
+    expect(hoisted.recordPrivateProofAccessBestEffort).not.toHaveBeenCalled();
   });
 });
