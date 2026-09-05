@@ -19,6 +19,8 @@ import ProfileToggle from '@/components/ProfileToggle';
 import { useAvailableRoles } from '@/hooks/useAvailableRoles';
 import { RelianceLogo } from '@/components/public/RelianceLogo';
 import VendorSessionGuard from '@/components/vendor/VendorSessionGuard';
+import VendorManagerRecoveryPanel from '@/components/auth/VendorManagerRecoveryPanel';
+import { isVendorManagerWorkflowPath } from '@/lib/vendor-access-recovery';
 
 // TODO Future mobile: convert this sidebar into a bottom nav or slide-out
 // drawer for an app-like experience on small screens. The sidebar is hidden
@@ -78,6 +80,7 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
   } = useVendorProfile();
   const { availableRoles, userId } = useAvailableRoles('vendor');
   const pathname = usePathname() || '';
+  const isVendorManagerWorkflow = isVendorManagerWorkflowPath(pathname);
   const hasLiveVendorAccess =
     Boolean(vendorProfile?.id) ||
     approvalPending ||
@@ -113,6 +116,14 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
   }
 
   if (!authUser) {
+    if (isVendorManagerWorkflow) {
+      return (
+        <VendorManagerRecoveryPanel
+          authenticated={false}
+          fallbackPath={pathname || '/vendor/jobs'}
+        />
+      );
+    }
     return (
       <div className="min-h-screen bg-slate-100 px-6 py-10">
         <div className="mx-auto max-w-2xl rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
@@ -153,6 +164,14 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
   }
 
   if (!hasLiveVendorAccess) {
+    if (isVendorManagerWorkflow) {
+      return (
+        <VendorManagerRecoveryPanel
+          authenticated
+          fallbackPath={pathname || '/vendor/jobs'}
+        />
+      );
+    }
     return (
       <div className="min-h-screen bg-slate-100 px-6 py-10">
         <div className="mx-auto max-w-2xl rounded-xl border border-amber-200 bg-white p-6 shadow-sm">

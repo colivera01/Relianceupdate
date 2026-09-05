@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { completeLoginWithFreshServerNavigation } from '@/lib/auth-post-login';
 
 export interface AuthUser {
   id: string;
@@ -201,13 +202,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       clearClientSession();
 
-      router.push(safeRedirectTo);
+      completeLoginWithFreshServerNavigation(safeRedirectTo);
     } catch (error) {
       console.error('Logout error:', error);
       userRef.current = null;
       setUser(null);
       clearClientSession();
-      router.push(safeRedirectTo);
+      completeLoginWithFreshServerNavigation(safeRedirectTo);
     }
   };
 

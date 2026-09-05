@@ -20,8 +20,12 @@ const fixtures = {
   customerId: 'epic3-phase-a-customer',
   managerId: 'epic3-phase-a-manager',
   employeeId: 'epic3-phase-a-employee',
+  wrongManagerId: 'epic3-phase-a-wrong-manager',
   adminId: 'epic3-phase-a-admin',
   vendorId: 'epic3-phase-a-vendor',
+  wrongVendorId: 'epic3-phase-a-wrong-vendor',
+  serviceId: 'epic3-phase-a-service',
+  jobId: 'epic3-phase-a-manager-review-job',
 };
 
 function token(userId: string, userType: 'customer' | 'vendor' | 'admin') {
@@ -80,6 +84,7 @@ test.beforeAll(async () => {
     [fixtures.customerId, 'Phase A Customer'],
     [fixtures.managerId, 'Phase A Manager'],
     [fixtures.employeeId, 'Phase A Employee'],
+    [fixtures.wrongManagerId, 'Phase A Wrong Vendor Manager'],
     [fixtures.adminId, 'Phase A Admin'],
   ] as const) {
     await prisma.user.upsert({
@@ -102,6 +107,19 @@ test.beforeAll(async () => {
     update: { accountStatus: 'active' },
   });
 
+  await prisma.vendor.upsert({
+    where: { id: fixtures.wrongVendorId },
+    create: {
+      id: fixtures.wrongVendorId,
+      name: 'Different Test Services',
+      businessName: 'Different Test Services',
+      email: 'epic3-phase-a-wrong-vendor@reliance.test',
+      accountStatus: 'active',
+      demo: true,
+    },
+    update: { accountStatus: 'active' },
+  });
+
   await prisma.vendorMembership.upsert({
     where: {
       vendorId_userId: { vendorId: fixtures.vendorId, userId: fixtures.managerId },
@@ -115,6 +133,52 @@ test.beforeAll(async () => {
       approvedAt: new Date(),
     },
     update: { role: 'MANAGER', status: 'ACTIVE', revokedAt: null },
+  });
+
+  await prisma.vendorMembership.upsert({
+    where: {
+      vendorId_userId: {
+        vendorId: fixtures.wrongVendorId,
+        userId: fixtures.wrongManagerId,
+      },
+    },
+    create: {
+      id: 'epic3-phase-a-wrong-manager-membership',
+      vendorId: fixtures.wrongVendorId,
+      userId: fixtures.wrongManagerId,
+      role: 'MANAGER',
+      status: 'ACTIVE',
+      approvedAt: new Date(),
+    },
+    update: { role: 'MANAGER', status: 'ACTIVE', revokedAt: null },
+  });
+
+  await prisma.service.upsert({
+    where: { id: fixtures.serviceId },
+    create: {
+      id: fixtures.serviceId,
+      vendorId: fixtures.vendorId,
+      name: 'Manager Review Test Service',
+      price: 100,
+      demo: true,
+      isPublished: true,
+    },
+    update: { vendorId: fixtures.vendorId, isPublished: true },
+  });
+
+  await prisma.booking.upsert({
+    where: { id: fixtures.jobId },
+    create: {
+      id: fixtures.jobId,
+      userId: fixtures.customerId,
+      serviceId: fixtures.serviceId,
+      vendorId: fixtures.vendorId,
+      title: 'Manager Review Test Service',
+      clientName: 'Phase A Customer',
+      status: 'AWAITING_REVIEW',
+      demo: true,
+    },
+    update: { status: 'AWAITING_REVIEW' },
   });
 
   await prisma.vendorMembership.upsert({
@@ -147,12 +211,24 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await prisma.platformRoleGrant.deleteMany({ where: { userId: fixtures.adminId } });
-  await prisma.vendorMembership.deleteMany({ where: { vendorId: fixtures.vendorId } });
-  await prisma.vendor.deleteMany({ where: { id: fixtures.vendorId } });
+  await prisma.booking.deleteMany({ where: { id: fixtures.jobId } });
+  await prisma.service.deleteMany({ where: { id: fixtures.serviceId } });
+  await prisma.vendorMembership.deleteMany({
+    where: { vendorId: { in: [fixtures.vendorId, fixtures.wrongVendorId] } },
+  });
+  await prisma.vendor.deleteMany({
+    where: { id: { in: [fixtures.vendorId, fixtures.wrongVendorId] } },
+  });
   await prisma.user.deleteMany({
     where: {
       id: {
-        in: [fixtures.customerId, fixtures.managerId, fixtures.employeeId, fixtures.adminId],
+        in: [
+          fixtures.customerId,
+          fixtures.managerId,
+          fixtures.employeeId,
+          fixtures.wrongManagerId,
+          fixtures.adminId,
+        ],
       },
     },
   });
@@ -223,5 +299,62 @@ test('mobile wrong-role state stays clear and protected', async ({ page, context
   await page.screenshot({
     path: path.join(root, 'Mobile', 'customer-blocked-from-vendor-mobile.png'),
     fullPage: true,
+  });
+});
+
+test('signed-out Manager Review email link preserves its exact sign-in destination', async ({ page }) => {
+  await page.goto(`/vendor/jobs/${fixtures.jobId}?view=package`);
+
+  await expect(page.getByRole('heading', { name: 'Sign in to review this package' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute(
+    'href',
+    `/auth/login?next=%2Fvendor%2Fjobs%2F${fixtures.jobId}%3Fview%3Dpackage`
+  );
+  await expect(page.getByRole('link', { name: 'Register as a vendor' })).toHaveCount(0);
+});
+
+test('customer session can switch accounts and retain the exact Manager Review destination', async ({ page, context }) => {
+  await setGeneralSession(context, fixtures.customerId, 'customer');
+  await page.goto(`/vendor/jobs/${fixtures.jobId}?view=package`);
+
+  await expect(page.getByRole('heading', { name: 'Switch account to review this package' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Register as a vendor' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Go to customer dashboard' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Switch Account' }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/auth/login\\?next=%2Fvendor%2Fjobs%2F${fixtures.jobId}%3Fview%3Dpackage`)
+  );
+});
+
+test('wrong Vendor Manager cannot open another Vendor manager-review job', async ({ page, context }) => {
+  await setGeneralSession(context, fixtures.wrongManagerId, 'vendor');
+  await page.goto(`/vendor/jobs/${fixtures.jobId}`);
+
+  await expect(
+    page.getByRole('heading', { name: 'You do not have access to this Service Record' })
+  ).toBeVisible();
+  await expect(page.getByText('Phase A Customer')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Switch Account' })).toBeVisible();
+});
+
+test('Employee membership cannot open Manager Review', async ({ page, context }) => {
+  await setGeneralSession(context, fixtures.employeeId, 'vendor');
+  await page.goto(`/vendor/jobs/${fixtures.jobId}`);
+
+  await expect(
+    page.getByRole('heading', { name: 'You do not have access to this Service Record' })
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Switch Account' })).toBeVisible();
+});
+
+test('correct Vendor Manager opens the exact Manager Review job', async ({ page, context }) => {
+  await setGeneralSession(context, fixtures.managerId, 'vendor');
+  await page.goto(`/vendor/jobs/${fixtures.jobId}`);
+
+  await expect(
+    page.getByRole('heading', { name: 'You do not have access to this Service Record' })
+  ).toHaveCount(0);
+  await expect(page.getByText('Manager Review Test Service', { exact: true }).first()).toBeVisible({
+    timeout: 60_000,
   });
 });

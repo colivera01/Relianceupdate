@@ -21,7 +21,8 @@ type ForbiddenReason =
   | 'ADMIN_ACCOUNT'
   | 'CANONICAL_FORBIDDEN'
   | 'VENDOR_ROLE_REQUIRED'
-  | 'VENDOR_MEMBERSHIP_REQUIRED';
+  | 'VENDOR_MEMBERSHIP_REQUIRED'
+  | 'VENDOR_RESOURCE_ACCESS_REQUIRED';
 type ResolutionFailureReason =
   | 'SESSION_VERIFICATION_FAILED'
   | 'ACTOR_NOT_RESOLVED'
@@ -64,6 +65,7 @@ export async function resolveServerRoleBoundaryAccess(
     role: ParticipantRole;
     allowPendingVendorOnboarding?: boolean;
     requiredVendorRole?: 'MANAGER' | 'EMPLOYEE';
+    requiredVendorId?: string;
   },
   dependencies: Dependencies = DEFAULT_DEPENDENCIES
 ): Promise<ServerRoleBoundaryOutcome> {
@@ -129,15 +131,23 @@ export async function resolveServerRoleBoundaryAccess(
   if (options.role === 'customer') {
     return { status: 'allowed', actor };
   }
+  const vendorMemberships = options.requiredVendorId
+    ? actor.vendorMemberships.filter(
+        (membership) => membership.vendorId === options.requiredVendorId
+      )
+    : actor.vendorMemberships;
   if (
-    actor.vendorMemberships.length > 0 &&
+    vendorMemberships.length > 0 &&
     (!options.requiredVendorRole ||
-      actor.vendorMemberships.some((membership) => membership.role === options.requiredVendorRole))
+      vendorMemberships.some((membership) => membership.role === options.requiredVendorRole))
   ) {
     return { status: 'allowed', actor };
   }
-  if (actor.vendorMemberships.length > 0 && options.requiredVendorRole) {
+  if (vendorMemberships.length > 0 && options.requiredVendorRole) {
     return { status: 'forbidden', reason: 'VENDOR_ROLE_REQUIRED' };
+  }
+  if (options.requiredVendorId && actor.vendorMemberships.length > 0) {
+    return { status: 'forbidden', reason: 'VENDOR_RESOURCE_ACCESS_REQUIRED' };
   }
 
   if (options.allowPendingVendorOnboarding) {

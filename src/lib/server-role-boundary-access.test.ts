@@ -147,6 +147,45 @@ describe('server role boundary access', () => {
     expect(outcome).toEqual({ status: 'forbidden', reason: 'VENDOR_ROLE_REQUIRED' });
   });
 
+  it('allows only a Manager membership for the exact job Vendor', async () => {
+    const outcome = await resolveServerRoleBoundaryAccess(
+      request,
+      { role: 'vendor', requiredVendorRole: 'MANAGER', requiredVendorId: 'vendor-1' },
+      dependencies()
+    );
+
+    expect(outcome).toEqual({ status: 'allowed', actor: managerActor });
+  });
+
+  it('denies a Manager whose active membership belongs to another Vendor', async () => {
+    const outcome = await resolveServerRoleBoundaryAccess(
+      request,
+      { role: 'vendor', requiredVendorRole: 'MANAGER', requiredVendorId: 'vendor-2' },
+      dependencies()
+    );
+
+    expect(outcome).toEqual({
+      status: 'forbidden',
+      reason: 'VENDOR_RESOURCE_ACCESS_REQUIRED',
+    });
+  });
+
+  it('denies an Employee at the exact Vendor Manager resource boundary', async () => {
+    const employeeActor: RequestActor = {
+      ...managerActor,
+      vendorMemberships: [
+        { id: 'membership-employee', vendorId: 'vendor-1', role: 'EMPLOYEE' },
+      ],
+    };
+    const outcome = await resolveServerRoleBoundaryAccess(
+      request,
+      { role: 'vendor', requiredVendorRole: 'MANAGER', requiredVendorId: 'vendor-1' },
+      dependencies({ resolveActor: vi.fn(async () => employeeActor) })
+    );
+
+    expect(outcome).toEqual({ status: 'forbidden', reason: 'VENDOR_ROLE_REQUIRED' });
+  });
+
   it('does not grant participant access to an Admin actor', async () => {
     const actor = { ...managerActor, platformRoles: ['ADMIN'] as const };
     const outcome = await resolveServerRoleBoundaryAccess(

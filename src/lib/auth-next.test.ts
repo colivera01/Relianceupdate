@@ -32,6 +32,20 @@ describe('auth next helpers', () => {
     expect(getProtectedReturnPath('//evil.test', '', '/vendor/dashboard')).toBe('/vendor/dashboard');
   });
 
+  it('preserves an exact Manager Review email destination through account switching', () => {
+    const destination = getProtectedReturnPath(
+      '/vendor/jobs/cmtoz4dp40016nzfju8bcqbva',
+      'view=package',
+      '/vendor/jobs'
+    );
+
+    expect(appendAuthNext('/auth/login', destination)).toBe(
+      '/auth/login?next=%2Fvendor%2Fjobs%2Fcmtoz4dp40016nzfju8bcqbva%3Fview%3Dpackage'
+    );
+    expect(resolveAuthPostLoginRedirect(destination, 'vendor')).toBe(destination);
+    expect(resolveAuthPostLoginRedirect(destination, 'customer')).toBe('/user-dashboard');
+  });
+
   it('appends next to auth routes without losing existing query params', () => {
     expect(appendAuthNext('/auth/reset-password?token=abc', '/booking/service-123')).toBe(
       '/auth/reset-password?token=abc&next=%2Fbooking%2Fservice-123'
