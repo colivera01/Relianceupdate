@@ -109,6 +109,8 @@ export type CustomerServiceRecordListResult = {
   records: Array<Record<string, unknown> & { customer_record: CustomerServiceRecordState }>;
   counts: CustomerServiceRecordCounts;
   selectedTab: CustomerRecordTab;
+  businesses: Array<{ id: string; name: string }>;
+  selectedBusinessId: string | null;
   pagination: {
     page: number;
     limit: number;
@@ -131,6 +133,7 @@ export async function loadCustomerServiceRecords(input: {
   page?: number;
   limit?: number;
   bookingId?: string | null;
+  businessId?: string | null;
   includeAll?: boolean;
 }): Promise<CustomerServiceRecordListResult> {
   const { db, customerUserId } = input;
@@ -189,12 +192,30 @@ export async function loadCustomerServiceRecords(input: {
   });
 
   const bookingIds = bookings.map((booking: any) => String(booking.id));
+  const businessById = new Map<string, { id: string; name: string }>();
+  for (const booking of bookings) {
+    const id = String(booking.vendorId || booking.vendor?.id || '').trim();
+    if (!id || businessById.has(id)) continue;
+    businessById.set(id, {
+      id,
+      name: String(booking.vendor?.businessName || booking.vendor?.name || 'Business unavailable').trim(),
+    });
+  }
+  const businesses = Array.from(businessById.values()).sort((left, right) =>
+    left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }) || left.id.localeCompare(right.id)
+  );
+  const requestedBusinessId = String(input.businessId || '').trim();
+  const selectedBusinessId = requestedBusinessId && businessById.has(requestedBusinessId)
+    ? requestedBusinessId
+    : null;
   if (bookingIds.length === 0) {
     const counts = { upcoming: 0, completed: 0, needs_attention: 0, cancelled: 0, archived: 0, unclassified: 0 };
     return {
       records: [],
       counts,
       selectedTab: defaultTab(counts),
+      businesses,
+      selectedBusinessId,
       pagination: { page: 1, limit: safeLimit, total: 0, totalPages: 0 },
     };
   }
@@ -355,18 +376,23 @@ export async function loadCustomerServiceRecords(input: {
     });
   }
 
+  const businessScoped = selectedBusinessId
+    ? resolved.filter((record) => String(record.source.vendorId || record.source.vendor?.id || '') === selectedBusinessId)
+    : resolved;
   const counts: CustomerServiceRecordCounts = {
-    upcoming: resolved.filter((record) => customerRecordMatchesTab(record.state, 'upcoming')).length,
-    completed: resolved.filter((record) => customerRecordMatchesTab(record.state, 'completed')).length,
-    needs_attention: resolved.filter((record) => customerRecordMatchesTab(record.state, 'needs_attention')).length,
-    cancelled: resolved.filter((record) => customerRecordMatchesTab(record.state, 'cancelled')).length,
-    archived: resolved.filter((record) => customerRecordMatchesTab(record.state, 'archived')).length,
-    unclassified: unclassified.length,
+    upcoming: businessScoped.filter((record) => customerRecordMatchesTab(record.state, 'upcoming')).length,
+    completed: businessScoped.filter((record) => customerRecordMatchesTab(record.state, 'completed')).length,
+    needs_attention: businessScoped.filter((record) => customerRecordMatchesTab(record.state, 'needs_attention')).length,
+    cancelled: businessScoped.filter((record) => customerRecordMatchesTab(record.state, 'cancelled')).length,
+    archived: businessScoped.filter((record) => customerRecordMatchesTab(record.state, 'archived')).length,
+    unclassified: businessScoped.filter((record) =>
+      !record.state.archived && record.state.lifecycle === CUSTOMER_RECORD_LIFECYCLES.UNCLASSIFIED
+    ).length,
   };
 
   const requested = String(input.requestedTab || '').trim().toLowerCase() as CustomerRecordTab;
   const selectedTab = CUSTOMER_RECORD_TABS.has(requested) ? requested : defaultTab(counts);
-  const matching = resolved
+  const matching = businessScoped
     .filter((record) => input.includeAll || customerRecordMatchesTab(record.state, selectedTab))
     .filter((record) => recordMatchesSearch(record.source, String(input.search || '')))
     .sort((left, right) => {
@@ -383,6 +409,8 @@ export async function loadCustomerServiceRecords(input: {
     records: (input.includeAll ? matching : matching.slice(start, start + safeLimit)).map((record) => record.contract),
     counts,
     selectedTab,
+    businesses,
+    selectedBusinessId,
     pagination: {
       page: effectivePage,
       limit: safeLimit,

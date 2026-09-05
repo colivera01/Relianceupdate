@@ -1293,6 +1293,8 @@ describe('GET /api/bookings/[id]', () => {
       records: [{ customer_record: { lifecycle: 'COMPLETED' } }],
       counts: {},
       selectedTab: 'completed',
+      businesses: [],
+      selectedBusinessId: null,
       pagination: { page: 1, limit: 1, total: 1, totalPages: 1 },
     });
   });
@@ -1436,6 +1438,8 @@ describe('GET /api/bookings customer summary', () => {
       records: [],
       counts: { upcoming: 3, completed: 12, needs_attention: 1, cancelled: 2, archived: 4, unclassified: 1 },
       selectedTab: 'upcoming',
+      businesses: [],
+      selectedBusinessId: null,
       pagination: { page: 1, limit: 1, total: 3, totalPages: 3 },
     });
     const res = await bookingsListGET(new NextRequest('http://localhost/api/bookings?summaryOnly=1'));
@@ -1478,9 +1482,11 @@ describe('GET /api/bookings customer Service Records view', () => {
       records: [{ id: 'book-12', customer_record: { lifecycle: 'COMPLETED' } }],
       counts: { upcoming: 3, completed: 12, needs_attention: 1, cancelled: 2, archived: 4, unclassified: 0 },
       selectedTab: 'completed',
+      businesses: [{ id: 'vendor-1', name: 'Electro LLC' }],
+      selectedBusinessId: 'vendor-1',
       pagination: { page: 2, limit: 5, total: 12, totalPages: 3 },
     });
-    const req = new NextRequest('http://localhost/api/bookings?view=customer_service_records&tab=completed&q=electro&page=2&limit=5');
+    const req = new NextRequest('http://localhost/api/bookings?view=customer_service_records&tab=completed&q=electro&businessId=vendor-1&page=2&limit=5');
     const res = await bookingsListGET(req);
     expect(res.status).toBe(200);
     expect(hoisted.loadCustomerServiceRecords).toHaveBeenCalledWith(expect.objectContaining({
@@ -1488,11 +1494,14 @@ describe('GET /api/bookings customer Service Records view', () => {
       customerUserId: 'customer-1',
       requestedTab: 'completed',
       search: 'electro',
+      businessId: 'vendor-1',
       page: 2,
       limit: 5,
     }));
     const body = await readJson(res);
     expect(body.counts).toMatchObject({ completed: 12, archived: 4 });
+    expect(body.businesses).toEqual([{ id: 'vendor-1', name: 'Electro LLC' }]);
+    expect(body.selectedBusinessId).toBe('vendor-1');
     expect(body.pagination).toMatchObject({ page: 2, totalPages: 3 });
   });
 });

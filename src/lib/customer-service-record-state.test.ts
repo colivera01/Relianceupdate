@@ -141,6 +141,7 @@ describe('customer Service Record canonical state', () => {
     const unknown = resolve({ bookingStatus: 'ARCHIVED' });
     expect(unknown.archived).toBe(true);
     expect(unknown.lifecycle).toBe('UNCLASSIFIED');
+    expect(unknown.lifecycleLabel).toBe('Archived historical record');
     expect(unknown.legacyRestoreBlocked).toBe(true);
     expect(unknown.restoreEligible).toBe(false);
 

@@ -363,7 +363,7 @@ export default function UserDashboardPage() {
       icon: Bookmark,
       badgeClassName: 'bg-rose-100 text-rose-700',
       helpTitle: 'Saved Favorites',
-      helpBody: 'Vendor services or providers you saved so you can compare them or come back later.',
+      helpBody: 'Public services or businesses you saved so you can compare them or come back later.',
     },
     {
       label: 'Reviews Submitted',
@@ -374,12 +374,12 @@ export default function UserDashboardPage() {
       helpBody: 'Customer reviews you already sent through Reliance.',
     },
     {
-      label: 'Saved Vendors',
+      label: 'Saved Businesses',
       value: dashboardCounts ? String(dashboardCounts.vendorsFollowed) : 'Unavailable',
       icon: Store,
       badgeClassName: 'bg-emerald-100 text-emerald-700',
-      helpTitle: 'Saved Vendors',
-      helpBody: 'Unique vendors connected to the items you saved.',
+      helpTitle: 'Saved Businesses',
+      helpBody: 'Unique businesses connected to the items you saved.',
     },
   ];
 

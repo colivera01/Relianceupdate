@@ -60,7 +60,7 @@ for (const device of [
       expect(waitingBox).not.toBeNull();
       expect(submittedBox).not.toBeNull();
       expect(waitingBox!.y).toBeLessThan(submittedBox!.y);
-      await expect(page.getByRole('link', { name: 'Leave Review' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Leave Review' })).toHaveAttribute('href', /action=review/);
       await expect(page.getByText('Archived Service Record')).toBeVisible();
       await expect(page.getByText('24 submitted reviews.')).toBeVisible();
       await expect(page.getByText('Clear and professional.')).toBeVisible();
@@ -72,7 +72,7 @@ for (const device of [
       await expect.poll(() => requests.some((url) => url.includes('search=Panel'))).toBe(true);
     });
 
-    test('Favorites supports only saved Services and Vendors with server filters', async ({ page }) => {
+    test('Favorites clearly separates saved public Services and Businesses with server filters', async ({ page }) => {
       await installCustomerSession(page);
       const requests: string[] = [];
       let removedVendor = false;
@@ -99,15 +99,16 @@ for (const device of [
       await page.goto('/test-fixtures/customer-favorites');
       await expect(page.getByRole('heading', { name: 'Favorites' })).toBeVisible();
       await expect(page.getByRole('tab', { name: /Services 1/ })).toBeVisible();
-      await expect(page.getByRole('tab', { name: /Vendors 1/ })).toBeVisible();
-      await expect(page.getByText('Saved Service')).toBeVisible();
-      await expect(page.getByText('Saved Vendor')).toBeVisible();
+      await expect(page.getByRole('tab', { name: /Businesses 1/ })).toBeVisible();
+      await expect(page.getByText('Saved Public Service')).toBeVisible();
+      await expect(page.getByText('Saved Business')).toBeVisible();
+      await expect(page.getByText(/completed work remains in/i)).toBeVisible();
       await expect(page.getByText('videos, reviews, or vendors')).toHaveCount(0);
 
-      await page.getByRole('tab', { name: /Vendors 1/ }).click();
+      await page.getByRole('tab', { name: /Businesses 1/ }).click();
       await expect.poll(() => requests.some((url) => url.includes('type=vendor'))).toBe(true);
       await expect(page.getByRole('heading', { name: 'Electro LLC' })).toBeVisible();
-      await page.getByPlaceholder('Search Saved Services or Vendors').fill('Electro');
+      await page.getByPlaceholder('Search saved services or businesses').fill('Electro');
       await expect.poll(() => requests.some((url) => url.includes('search=Electro'))).toBe(true);
       await page.getByRole('button', { name: 'Remove from Favorites' }).click();
       await expect(page.getByText('No saved businesses yet.')).toBeVisible();

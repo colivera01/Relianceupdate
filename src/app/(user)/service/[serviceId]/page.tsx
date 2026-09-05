@@ -565,13 +565,14 @@ function ServiceDetailPageContent() {
                   }
                   onClick={handleToggleFavorite}
                   disabled={favoriteLoading || favoriteStatusPending}
-                  className={`p-2 rounded-full transition-colors ${
+                  className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
                     isFavorite
                       ? 'bg-pink-500/16 text-pink-200'
                       : 'bg-white/8 text-white/64 hover:bg-pink-500/16 hover:text-pink-200'
                   } ${favoriteLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
+                  <span>{favoriteStatusPending ? 'Checking...' : isFavorite ? 'Saved service' : 'Save service'}</span>
                 </button>
               ) : (
                 <Link

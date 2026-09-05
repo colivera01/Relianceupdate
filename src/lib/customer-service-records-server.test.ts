@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadCustomerServiceRecords } from '@/lib/customer-service-records-server';
 
-function booking(index: number, status: string, options: { service?: string; vendor?: string } = {}) {
+function booking(index: number, status: string, options: { service?: string; vendor?: string; vendorId?: string } = {}) {
   const date = new Date(Date.UTC(2026, 8, index + 1, 12));
   return {
     id: `booking-${String(index).padStart(2, '0')}`,
     userId: 'customer-1',
-    vendorId: `vendor-${index}`,
+    vendorId: options.vendorId || `vendor-${index}`,
     serviceId: `service-${index}`,
     title: `Record ${index}`,
     clientName: 'Customer',
@@ -18,7 +18,7 @@ function booking(index: number, status: string, options: { service?: string; ven
     updatedAt: date,
     customerMetadata: null,
     service: { id: `service-${index}`, name: options.service || `Service ${index}`, description: '', price: 100 },
-    vendor: { id: `vendor-${index}`, name: options.vendor || `Vendor ${index}`, businessName: null, phone: null, email: null, city: null, state: null },
+    vendor: { id: options.vendorId || `vendor-${index}`, name: options.vendor || `Vendor ${index}`, businessName: null, phone: null, email: null, city: null, state: null },
     mediaSessions: [],
   };
 }
@@ -96,6 +96,53 @@ describe('customer Service Records server loader', () => {
     expect(result.records.map((record) => record.id)).toEqual(['booking-15']);
     expect(result.pagination.total).toBe(1);
     expect(result.counts.upcoming).toBe(14);
+  });
+
+  it('scopes lifecycle counts, search, and pagination to a validated customer-owned business', async () => {
+    const rows = [
+      booking(1, 'PENDING', { vendorId: 'business-b', vendor: 'Bravo Plumbing', service: 'Pipe Repair' }),
+      booking(2, 'COMPLETED', { vendorId: 'business-a', vendor: 'Electro LLC', service: 'Breaker Replacement' }),
+      booking(3, 'COMPLETED', { vendorId: 'business-a', vendor: 'Electro LLC', service: 'Outlet Installation' }),
+      booking(4, 'CANCELLED', { vendorId: 'business-a', vendor: 'Electro LLC', service: 'Panel Repair' }),
+    ];
+    const db = database({
+      bookings: rows,
+      organizationEvents: [{ id: 'archive-1', bookingId: 'booking-03', action: 'ARCHIVE', sequence: 1, evidenceHash: 'hash', actedAt: new Date() }],
+    });
+
+    const result = await loadCustomerServiceRecords({
+      db,
+      customerUserId: 'customer-1',
+      businessId: 'business-a',
+      requestedTab: 'completed',
+      search: 'breaker',
+      page: 1,
+      limit: 1,
+    });
+
+    expect(result.businesses).toEqual([
+      { id: 'business-b', name: 'Bravo Plumbing' },
+      { id: 'business-a', name: 'Electro LLC' },
+    ]);
+    expect(result.selectedBusinessId).toBe('business-a');
+    expect(result.counts).toEqual({ upcoming: 0, completed: 1, needs_attention: 0, cancelled: 1, archived: 1, unclassified: 0 });
+    expect(result.records.map((record) => record.id)).toEqual(['booking-02']);
+    expect(result.pagination).toEqual({ page: 1, limit: 1, total: 1, totalPages: 1 });
+  });
+
+  it('ignores a foreign business filter without revealing or excluding owned records', async () => {
+    const db = database({ bookings: [booking(1, 'PENDING', { vendorId: 'owned-business', vendor: 'Owned Business' })] });
+    const result = await loadCustomerServiceRecords({
+      db,
+      customerUserId: 'customer-1',
+      businessId: 'foreign-business',
+      requestedTab: 'upcoming',
+    });
+
+    expect(result.selectedBusinessId).toBeNull();
+    expect(result.businesses).toEqual([{ id: 'owned-business', name: 'Owned Business' }]);
+    expect(result.counts.upcoming).toBe(1);
+    expect(result.records.map((record) => record.id)).toEqual(['booking-01']);
   });
 
   it('selects a useful default without forcing Needs Attention', async () => {

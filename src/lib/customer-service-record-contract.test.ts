@@ -33,11 +33,13 @@ describe("completed customer Service Record contract", () => {
   });
 
   it("starts the canonical review window only from an intentional customer action", () => {
-    expect(detailPage).toContain("const beginReview = async");
+    expect(detailPage).toContain("const beginReview = useCallback(async");
     expect(detailPage).toContain("onClick={() => void beginReview()}");
+    expect(detailPage).toContain("searchParams?.get('action') === 'review'");
+    expect(detailPage).toContain("reviewIntentHandled.current = true");
     const reviewStartCall = detailPage.indexOf("fetch('/api/reviews/window/start'");
     expect(detailPage.slice(Math.max(0, reviewStartCall - 500), reviewStartCall)).toContain(
-      "const beginReview = async"
+      "const beginReview = useCallback(async"
     );
     expect(reviewWindowRoute).not.toContain("sendReviewInvitation");
   });

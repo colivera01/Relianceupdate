@@ -112,13 +112,13 @@ test('customer favorites: discover → service → favorites on/off', async ({ p
   await expect
     .poll(async () => await serviceFavorite.getAttribute('aria-label'), { timeout: 30_000 })
     .not.toBe('Checking favorite status');
-  if ((await serviceFavorite.getAttribute('aria-label')) === 'Remove from favorites') {
+  if ((await serviceFavorite.getAttribute('aria-label')) === 'Remove saved service') {
     await serviceFavorite.click();
-    await expect(serviceFavorite).toHaveAttribute('aria-label', 'Add to favorites', { timeout: 15_000 });
+    await expect(serviceFavorite).toHaveAttribute('aria-label', 'Save service', { timeout: 15_000 });
   }
-  await expect(serviceFavorite).toHaveAttribute('aria-label', 'Add to favorites');
+  await expect(serviceFavorite).toHaveAttribute('aria-label', 'Save service');
   await serviceFavorite.click();
-  await expect(serviceFavorite).toHaveAttribute('aria-label', 'Remove from favorites', { timeout: 15_000 });
+  await expect(serviceFavorite).toHaveAttribute('aria-label', 'Remove saved service', { timeout: 15_000 });
 
   await page.goto('/favorites');
   await expect(page.getByRole('heading', { name: 'My Favorites' })).toBeVisible();
@@ -130,9 +130,9 @@ test('customer favorites: discover → service → favorites on/off', async ({ p
   await row.getByRole('link', { name: 'View Service' }).click();
   await page.waitForURL(new RegExp(`/service/${fixture.serviceId}(\\?.*)?$`));
 
-  await expect(serviceFavorite).toHaveAttribute('aria-label', 'Remove from favorites');
+  await expect(serviceFavorite).toHaveAttribute('aria-label', 'Remove saved service');
   await serviceFavorite.click();
-  await expect(serviceFavorite).toHaveAttribute('aria-label', 'Add to favorites', { timeout: 15_000 });
+  await expect(serviceFavorite).toHaveAttribute('aria-label', 'Save service', { timeout: 15_000 });
 
   await page.goto('/favorites');
   await expect(page.getByTestId(`favorites-row-${fixture.serviceId}`)).toHaveCount(0, { timeout: 20_000 });

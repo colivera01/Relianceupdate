@@ -45,7 +45,7 @@ export function VendorFavoriteButton({
       className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-55 ${base} ${className}`}
     >
       <Heart className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
-      {saved ? 'Saved Vendor' : `Save ${vendorName}`}
+      {saved ? 'Saved Business' : `Save ${vendorName}`}
     </button>
   );
 }

@@ -189,7 +189,9 @@ export function deriveCustomerServiceRecordState(input: {
       ? 'Completed'
       : lifecycle === CUSTOMER_RECORD_LIFECYCLES.CANCELLED
         ? 'Cancelled'
-        : 'Status unavailable';
+        : legacyArchived
+          ? 'Archived historical record'
+          : 'Status unavailable';
 
   return {
     lifecycle,

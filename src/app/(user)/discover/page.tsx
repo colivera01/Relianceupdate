@@ -348,12 +348,13 @@ export default function UserDiscoverPage() {
             disabled={favoritesUnavailable || favoritesLoading || addFavorite.isPending || removeFavorite.isPending}
             onClick={() => handleToggleFavorite(item.serviceId)}
             className="border-white/15 bg-white/[0.04] px-3 text-white hover:bg-white/[0.08]"
-            aria-label={favoriteByServiceId.has(item.serviceId) ? 'Remove from favorites' : 'Add to favorites'}
+            aria-label={favoriteByServiceId.has(item.serviceId) ? 'Remove saved service' : 'Save service'}
             title={favoritesUnavailable ? 'Favorites unavailable in current auth context' : undefined}
           >
             <Heart
               className={`h-4 w-4 ${favoriteByServiceId.has(item.serviceId) ? 'fill-current text-pink-300' : 'text-slate-200'}`}
             />
+            <span>{favoriteByServiceId.has(item.serviceId) ? 'Saved service' : 'Save service'}</span>
           </Button>
         }
       />

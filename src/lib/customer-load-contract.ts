@@ -16,6 +16,8 @@ export const customerRecordsResponseSchema = z.object({
   bookings: z.array(z.object({ id: z.string().min(1), customer_record: recordState }).passthrough()),
   counts: customerRecordCountsSchema,
   selectedTab: z.enum(['upcoming', 'completed', 'needs_attention', 'cancelled', 'archived', 'unclassified']),
+  businesses: z.array(z.object({ id: z.string().min(1), name: z.string().min(1) })),
+  selectedBusinessId: z.string().min(1).nullable(),
   pagination: paginationSchema,
 });
 const readyReview = z.object({ bookingId: z.string(), serviceName: z.string(), vendorName: z.string() }).passthrough();

@@ -118,7 +118,7 @@ export default function ReviewsPage() {
                 {data.ready.map((item) => (
                   <article key={item.bookingId} className="flex flex-col justify-between gap-4 rounded-md border border-slate-200 bg-white p-5 sm:flex-row sm:items-center">
                     <div><h3 className="font-semibold text-slate-950">{item.serviceName}</h3><p className="text-sm text-slate-600">{item.vendorName} · {formatDate(item.serviceDate)}</p>{item.archived ? <p className="mt-1 text-xs text-slate-500">Archived Service Record</p> : null}</div>
-                    <Link href={`/my-bookings/${item.bookingId}#your-review`} className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Star className="h-4 w-4" /> Leave Review</Link>
+                    <Link href={`/my-bookings/${item.bookingId}?action=review&returnTo=${encodeURIComponent('/reviews')}#your-review`} className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Star className="h-4 w-4" /> Leave Review</Link>
                   </article>
                 ))}
               </div>

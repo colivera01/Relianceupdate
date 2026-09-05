@@ -6,7 +6,7 @@ const counts = { upcoming: 0, completed: 0, needs_attention: 0, cancelled: 0, ar
 const pagination = { page: 1, limit: 10, total: 0, totalPages: 0 };
 describe('customer load success/error contracts', () => {
   it('accepts authoritative zero only from a complete successful response', async () => {
-    const body = { bookings: [], counts, pagination, selectedTab: 'upcoming' };
+    const body = { bookings: [], counts, pagination, selectedTab: 'upcoming', businesses: [], selectedBusinessId: null };
     expect(await readCustomerResponse(Response.json(body), customerRecordsResponseSchema, 'Failed')).toEqual(body);
   });
   it.each([{}, { bookings: [] }, { bookings: [], counts, pagination }, { bookings: [], counts: { ...counts, upcoming: -1 }, pagination, selectedTab: 'upcoming' }, { bookings: [{}], counts, pagination, selectedTab: 'completed' }])('rejects malformed successful records response %j', async (body) => {

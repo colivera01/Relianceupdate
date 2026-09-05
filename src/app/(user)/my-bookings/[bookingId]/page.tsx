@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -153,6 +153,7 @@ function BookingMediaDetailPageContent() {
   const userId = resolveCustomerUserId(user?.id);
   const videoReadyFromLink = searchParams?.get('videoReady') === '1' || searchParams?.get('proofReady') === '1';
   const claimToken = String(searchParams?.get('claimToken') || '').trim();
+  const reviewActionRequested = searchParams?.get('action') === 'review';
   const returnToReviews = searchParams?.get('returnTo') === '/reviews';
   const returnHref = returnToReviews ? '/reviews' : '/my-bookings';
   const returnLabel = returnToReviews ? 'Back to My Reviews' : 'Back to My Service Records';
@@ -186,6 +187,7 @@ function BookingMediaDetailPageContent() {
   const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
   const [organizationBusy, setOrganizationBusy] = useState(false);
   const [organizationMessage, setOrganizationMessage] = useState<string | null>(null);
+  const reviewIntentHandled = useRef(false);
 
   const loadPage = useCallback(async () => {
     if (!bookingId || !userId) {
@@ -366,7 +368,7 @@ function BookingMediaDetailPageContent() {
     if (activeStage === 'after') setCompletePlaybackFinished(true);
   };
 
-  const beginReview = async () => {
+  const beginReview = useCallback(async () => {
     if (!canReview || !booking?.vendor?.id || reviewBusy) return;
     setReviewOpen(true);
     setReviewBusy(true);
@@ -392,7 +394,32 @@ function BookingMediaDetailPageContent() {
     } finally {
       setReviewBusy(false);
     }
-  };
+  }, [booking?.vendor?.id, bookingId, canReview, reviewBusy]);
+
+  useEffect(() => {
+    if (loading || !reviewActionRequested || reviewIntentHandled.current) return;
+    reviewIntentHandled.current = true;
+
+    const focusReview = () => window.setTimeout(() => {
+      document.getElementById('review-heading')?.focus({ preventScroll: false });
+    }, 0);
+    const consumeIntent = () => {
+      const next = new URLSearchParams(searchParams?.toString() || '');
+      next.delete('action');
+      router.replace(`/my-bookings/${bookingId}${next.toString() ? `?${next}` : ''}#your-review`, { scroll: false });
+    };
+
+    if (canReview) {
+      void beginReview().finally(() => {
+        focusReview();
+        consumeIntent();
+      });
+      return;
+    }
+
+    focusReview();
+    consumeIntent();
+  }, [beginReview, bookingId, canReview, loading, reviewActionRequested, router, searchParams]);
 
   const submitReview = async () => {
     if (!reviewWindowId || !booking?.vendor?.id || vendorRating < 1 || reviewBusy) {
@@ -629,7 +656,7 @@ function BookingMediaDetailPageContent() {
         ) : null}
 
         {completedRecord ? <section id="your-review" aria-labelledby="review-heading" className="border-t border-slate-200 pt-6">
-          <h2 id="review-heading" className="text-2xl font-semibold text-slate-950">Your Review</h2>
+          <h2 id="review-heading" tabIndex={-1} className="text-2xl font-semibold text-slate-950 outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Your Review</h2>
           {existingReview ? (
             <div className="mt-4 rounded-lg border border-emerald-200 bg-white p-5">
               <div className="flex items-center gap-2 text-emerald-800"><CheckCircle2 className="h-5 w-5" /><span className="font-semibold">Reviewed</span></div>

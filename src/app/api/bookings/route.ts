@@ -253,7 +253,7 @@ export async function GET(request: NextRequest) {
     }
     await ensureUserAccountCanAct(authUserId);
 
-    if (customerRecordsView && !vendorId) {
+    if (customerRecordsView) {
       if (requestedUserId && String(requestedUserId) !== authUserId) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
@@ -265,11 +265,14 @@ export async function GET(request: NextRequest) {
         page,
         limit,
         bookingId: searchParams.get('bookingId'),
+        businessId: searchParams.get('businessId'),
       }));
       return NextResponse.json({
         bookings: result.records,
         counts: result.counts,
         selectedTab: result.selectedTab,
+        businesses: result.businesses,
+        selectedBusinessId: result.selectedBusinessId,
         pagination: result.pagination,
       });
     }

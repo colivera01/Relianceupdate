@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Archive, ChevronLeft, ChevronRight, RotateCcw, Search } from 'lucide-react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Archive, Building2, ChevronLeft, ChevronRight, RotateCcw, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { resolveCustomerUserId } from '@/lib/customer-user-id';
 import type { CustomerRecordTab, CustomerServiceRecordState } from '@/lib/customer-service-record-state';
@@ -10,11 +11,21 @@ import { VendorFavoriteButton } from '@/components/favorites/VendorFavoriteButto
 import { CustomerLoadError } from '@/components/customer/CustomerLoadError';
 import { useCustomerLoad } from '@/hooks/useCustomerLoad';
 import { customerRecordsResponseSchema } from '@/lib/customer-load-contract';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { hasCustomerSchedulePassed } from '@/lib/customer-service-record-presentation';
 
 type CustomerRecordRow = {
   id: string;
   title: string | null;
   booking_date: string | null;
+  booking_time?: string | null;
   status: string;
   service: { id: string; name: string };
   vendor: { id: string; name: string };
@@ -54,32 +65,80 @@ function createRequestId(): string {
   return globalThis.crypto?.randomUUID?.() || `customer-record-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function MyServiceRecordsPage() {
+function parseRecordTab(value: string | null): CustomerRecordTab | null {
+  return TABS.some((tab) => tab.value === value) || value === 'unclassified'
+    ? value as CustomerRecordTab
+    : null;
+}
+
+function parsePage(value: string | null): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function MyServiceRecordsPageContent() {
   const { user, isLoading: authLoading } = useAuth();
   const customerUserId = resolveCustomerUserId(user?.id);
-  const [activeTab, setActiveTab] = useState<CustomerRecordTab | null>(null);
-  const [searchInput, setSearchInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeTab = parseRecordTab(searchParams?.get('tab') || null);
+  const search = String(searchParams?.get('q') || '').trim();
+  const requestedBusinessId = String(searchParams?.get('businessId') || '').trim();
+  const page = parsePage(searchParams?.get('page') || null);
+  const [searchInput, setSearchInput] = useState(search);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<CustomerRecordRow | null>(null);
+  const [cancellationReason, setCancellationReason] = useState('');
+  const [cancellationError, setCancellationError] = useState<string | null>(null);
+
+  const updateQuery = useCallback((updates: Record<string, string | null>, replace = false) => {
+    const next = new URLSearchParams(searchParams?.toString() || '');
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    const query = next.toString();
+    const basePath = pathname || '/my-bookings';
+    const href = query ? `${basePath}?${query}` : basePath;
+    if (replace) router.replace(href, { scroll: false });
+    else router.push(href, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 250);
+    setSearchInput(search);
+  }, [search]);
+
+  useEffect(() => {
+    const nextSearch = searchInput.trim();
+    if (nextSearch === search) return;
+    const timer = window.setTimeout(() => {
+      updateQuery({ q: nextSearch || null, page: null }, true);
+    }, 250);
     return () => window.clearTimeout(timer);
-  }, [searchInput]);
+  }, [search, searchInput, updateQuery]);
 
   const params = new URLSearchParams({ view: 'customer_service_records', page: String(page), limit: '10' });
   if (activeTab) params.set('tab', activeTab);
   if (search) params.set('q', search);
+  if (requestedBusinessId) params.set('businessId', requestedBusinessId);
   const load = useCustomerLoad(`/api/bookings?${params}`, customerUserId, !authLoading, customerRecordsResponseSchema, 'Unable to load your Service Records.');
   const records = (load.data?.bookings || []) as CustomerRecordRow[];
   const counts = load.data?.counts;
   const selectedTab = activeTab || load.data?.selectedTab;
+  const businesses = load.data?.businesses || [];
+  const selectedBusinessId = load.data?.selectedBusinessId || '';
   const totalPages = load.data?.pagination.totalPages || 0;
   const total = load.data?.pagination.total || 0;
   const currentPage = load.data?.pagination.page || page;
   const fetchRecords = load.reload;
+
+  useEffect(() => {
+    if (load.status === 'success' && requestedBusinessId && !load.data?.selectedBusinessId) {
+      updateQuery({ businessId: null, page: null }, true);
+    }
+  }, [load.data?.selectedBusinessId, load.status, requestedBusinessId, updateQuery]);
 
   const changeOrganization = async (record: CustomerRecordRow, action: 'ARCHIVE' | 'RESTORE') => {
     const confirmation = action === 'ARCHIVE'
@@ -105,17 +164,24 @@ export default function MyServiceRecordsPage() {
     }
   };
 
-  const cancelRecord = async (record: CustomerRecordRow) => {
-    const reason = window.prompt('Why are you cancelling this service?');
-    if (reason === null) return;
-    if (reason.trim().length < 3) {
-      setActionMessage('Enter a brief reason for cancelling this service.');
+  const openCancellation = (record: CustomerRecordRow) => {
+    setCancelTarget(record);
+    setCancellationReason('');
+    setCancellationError(null);
+  };
+
+  const cancelRecord = async () => {
+    if (!cancelTarget || busyId === cancelTarget.id) return;
+    const reason = cancellationReason.trim();
+    if (reason.length < 3) {
+      setCancellationError('Enter a brief reason for cancelling this service.');
       return;
     }
-    setBusyId(record.id);
+    setBusyId(cancelTarget.id);
     setActionMessage(null);
+    setCancellationError(null);
     try {
-      const response = await fetch(`/api/bookings/${encodeURIComponent(record.id)}/cancel`, {
+      const response = await fetch(`/api/bookings/${encodeURIComponent(cancelTarget.id)}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: reason.trim(), refund_requested: false }),
@@ -123,9 +189,11 @@ export default function MyServiceRecordsPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(body?.error || 'Unable to cancel this service.'));
       setActionMessage('Service cancelled.');
+      setCancelTarget(null);
+      setCancellationReason('');
       await fetchRecords();
     } catch (caught) {
-      setActionMessage(caught instanceof Error ? caught.message : 'Unable to cancel this service.');
+      setCancellationError(caught instanceof Error ? caught.message : 'Unable to cancel this service.');
     } finally {
       setBusyId(null);
     }
@@ -157,16 +225,30 @@ export default function MyServiceRecordsPage() {
         </header>
 
         <section aria-label="Find and filter Service Records" className="border-b border-white/10 py-5">
-          <label className="relative block max-w-lg">
-            <span className="sr-only">Search Service Records</span>
-            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
-            <input
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Search service, vendor, or reference"
-              className="h-10 w-full rounded-md border border-white/15 bg-slate-950 pl-9 pr-3 text-sm text-white outline-none focus:border-blue-400"
-            />
-          </label>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)]">
+            <label className="relative block">
+              <span className="sr-only">Search Service Records</span>
+              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search service, business, or reference"
+                className="h-10 w-full rounded-md border border-white/15 bg-slate-950 pl-9 pr-3 text-sm text-white outline-none focus:border-blue-400"
+              />
+            </label>
+            <label className="relative block">
+              <span className="sr-only">Filter by business</span>
+              <Building2 className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+              <select
+                value={selectedBusinessId}
+                onChange={(event) => updateQuery({ businessId: event.target.value || null, page: null })}
+                className="h-10 w-full rounded-md border border-white/15 bg-slate-950 pl-9 pr-9 text-sm text-white outline-none focus:border-blue-400"
+              >
+                <option value="">All Businesses</option>
+                {businesses.map((business) => <option key={business.id} value={business.id}>{business.name}</option>)}
+              </select>
+            </label>
+          </div>
           <div className="mt-4 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Service Record filters">
             {visibleTabs.map((tab) => (
               <button
@@ -174,7 +256,7 @@ export default function MyServiceRecordsPage() {
                 type="button"
                 role="tab"
                 aria-selected={selectedTab === tab.value}
-                onClick={() => { setActiveTab(tab.value); setPage(1); }}
+                onClick={() => updateQuery({ tab: tab.value, page: null })}
                 className={`shrink-0 rounded-md border px-3 py-2 text-sm font-medium ${selectedTab === tab.value ? 'border-blue-500 bg-blue-600 text-white' : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'}`}
               >
                 {tab.label} <span className="ml-1 text-xs opacity-75">{counts ? counts[tab.value] : <span aria-label="Count unavailable">--</span>}</span>
@@ -205,7 +287,7 @@ export default function MyServiceRecordsPage() {
                       <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase text-blue-300">{state.lifecycleLabel}</p>
                         <h2 className="mt-1 truncate text-xl font-semibold">{record.service?.name || record.title || 'Service Record'}</h2>
-                        <p className="mt-1 text-sm text-white/65">Vendor: {record.vendor?.name || 'Vendor unavailable'}</p>
+                        <p className="mt-1 text-sm text-white/65">Business: {record.vendor?.name || 'Business unavailable'}</p>
                       </div>
                       {state.attention.required ? <span className="shrink-0 rounded-full bg-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-950">Needs Attention</span> : state.archived ? <span className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-100">Archived</span> : null}
                     </div>
@@ -218,6 +300,12 @@ export default function MyServiceRecordsPage() {
                       {state.lifecycle === 'COMPLETED' && state.video.state === 'READY' ? <div><dt className="text-white/45">Visibility</dt><dd className="mt-0.5 font-medium">{state.visibility.label}</dd></div> : null}
                       <div><dt className="text-white/45">Reference</dt><dd className="mt-0.5 truncate font-mono text-xs">{record.id}</dd></div>
                     </dl>
+
+                    {state.lifecycle === 'UPCOMING' && hasCustomerSchedulePassed(record.booking_date, record.booking_time) ? (
+                      <p className="mt-4 rounded-md border border-blue-300/20 bg-blue-300/10 px-3 py-2 text-sm text-blue-100">
+                        Scheduled date has passed. Status update pending.
+                      </p>
+                    ) : null}
 
                     {state.attention.required ? (
                       <div className="mt-4 rounded-md border border-amber-300/30 bg-amber-300/10 px-3 py-3 text-sm">
@@ -234,15 +322,15 @@ export default function MyServiceRecordsPage() {
                       </dl>
                     ) : null}
 
-                    {state.legacyRestoreBlocked ? <p className="mt-4 text-sm text-white/60">This historical archive remains available to view, but its prior lifecycle cannot be safely restored. <Link href="/customer/support" className="font-medium text-blue-300 underline">Contact Support</Link>.</p> : null}
+                    {state.legacyRestoreBlocked ? <p className="mt-4 text-sm text-white/60">Some status details are unavailable for this older record. It remains available to view, but its prior lifecycle cannot be safely restored. <Link href="/customer/support" className="font-medium text-blue-300 underline">Contact Support</Link>.</p> : null}
 
                     <div className="mt-5 flex flex-wrap items-center gap-2">
                       <Link href={detailHref} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">View Service Record</Link>
-                      {state.review.state === 'LEAVE_REVIEW' ? <Link href={`${detailHref}#your-review`} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10">Leave a review</Link> : null}
-                      {state.lifecycle === 'COMPLETED' && record.vendor?.id ? <VendorFavoriteButton vendorId={record.vendor.id} vendorName={record.vendor.name || 'Vendor'} tone="dark" /> : null}
+                      {state.review.state === 'LEAVE_REVIEW' ? <Link href={`${detailHref}?action=review&returnTo=${encodeURIComponent('/my-bookings')}#your-review`} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10">Leave a review</Link> : null}
+                      {state.lifecycle === 'COMPLETED' && record.vendor?.id ? <VendorFavoriteButton vendorId={record.vendor.id} vendorName={record.vendor.name || 'Business'} tone="dark" /> : null}
                       {state.archiveEligible ? <button type="button" disabled={busyId === record.id} onClick={() => void changeOrganization(record, 'ARCHIVE')} className="ml-auto inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-xs font-medium text-white/60 hover:bg-white/5 hover:text-white disabled:opacity-50"><Archive className="h-4 w-4" /> Archive Service Record</button> : null}
                       {state.restoreEligible ? <button type="button" disabled={busyId === record.id} onClick={() => void changeOrganization(record, 'RESTORE')} className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"><RotateCcw className="h-4 w-4" /> Restore to Service Records</button> : null}
-                      {state.lifecycle === 'UPCOMING' && !state.archived ? <button type="button" disabled={busyId === record.id} onClick={() => void cancelRecord(record)} className="ml-auto rounded-md px-2 py-2 text-xs font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-50">Cancel service</button> : null}
+                      {state.lifecycle === 'UPCOMING' && !state.archived ? <button type="button" disabled={busyId === record.id} onClick={() => openCancellation(record)} className="ml-auto rounded-md px-2 py-2 text-xs font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-50">Cancel service</button> : null}
                     </div>
                   </article>
                 );
@@ -255,14 +343,56 @@ export default function MyServiceRecordsPage() {
           <nav aria-label="Service Record pages" className="flex items-center justify-between border-t border-white/10 py-5">
             <p className="text-sm text-white/55">Page {currentPage} of {totalPages} · {total} records</p>
             <div className="flex gap-2">
-              <button type="button" disabled={currentPage <= 1} onClick={() => setPage(Math.max(1, currentPage - 1))} aria-label="Previous page" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 text-white disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
-              <button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)} aria-label="Next page" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 text-white disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
+              <button type="button" disabled={currentPage <= 1} onClick={() => updateQuery({ page: String(Math.max(1, currentPage - 1)) })} aria-label="Previous page" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 text-white disabled:opacity-35"><ChevronLeft className="h-4 w-4" /></button>
+              <button type="button" disabled={currentPage >= totalPages} onClick={() => updateQuery({ page: String(currentPage + 1) })} aria-label="Next page" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 text-white disabled:opacity-35"><ChevronRight className="h-4 w-4" /></button>
             </div>
           </nav>
         ) : null}
 
         <p className="pb-8 text-sm text-white/50">Need help with a Service Record? <Link href="/customer/support" className="font-medium text-blue-300 underline">Support &amp; Help</Link></p>
       </div>
+
+      <Dialog open={Boolean(cancelTarget)} onOpenChange={(open) => {
+        if (open || (cancelTarget && busyId === cancelTarget.id)) return;
+        setCancelTarget(null);
+        setCancellationReason('');
+        setCancellationError(null);
+      }}>
+        <DialogContent className="max-w-md border-slate-200 bg-white text-slate-950" onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          window.setTimeout(() => document.getElementById('cancellation-reason')?.focus(), 0);
+        }}>
+          <DialogHeader>
+            <DialogTitle>Cancel this service?</DialogTitle>
+            <DialogDescription>
+              Tell us why you&apos;re cancelling {cancelTarget?.service?.name || 'this service'}.
+            </DialogDescription>
+          </DialogHeader>
+          <label htmlFor="cancellation-reason" className="text-sm font-medium text-slate-800">Reason</label>
+          <textarea
+            id="cancellation-reason"
+            value={cancellationReason}
+            onChange={(event) => setCancellationReason(event.target.value)}
+            rows={4}
+            disabled={Boolean(cancelTarget && busyId === cancelTarget.id)}
+            aria-describedby={cancellationError ? 'cancellation-error' : undefined}
+            className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+          />
+          {cancellationError ? <p id="cancellation-error" role="alert" className="text-sm text-red-700">{cancellationError}</p> : null}
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <button type="button" disabled={Boolean(cancelTarget && busyId === cancelTarget.id)} onClick={() => setCancelTarget(null)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Keep Service</button>
+            <button type="button" disabled={Boolean(cancelTarget && busyId === cancelTarget.id)} onClick={() => void cancelRecord()} className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">{cancelTarget && busyId === cancelTarget.id ? 'Cancelling...' : 'Cancel Service'}</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
+  );
+}
+
+export default function MyServiceRecordsPage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-12 text-sm text-white/70">Loading Service Records...</div>}>
+      <MyServiceRecordsPageContent />
+    </Suspense>
   );
 }
