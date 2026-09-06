@@ -1,11 +1,16 @@
 import { headers } from "next/headers";
 import { requireAdmin } from "@/lib/admin-auth";
-import { getAdminMediaModerationQueue } from "@/lib/admin-media-moderation-queue";
+import { getAdminMediaModerationQueueResult } from "@/lib/admin-media-moderation-queue";
 import { isAiFeatureEnabled } from "@/lib/ai/feature-flags";
 import AdminMediaModerationClient from "./AdminMediaModerationClient";
 
-export default async function AdminMediaModerationPage() {
+export default async function AdminMediaModerationPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ package?: string }>;
+}) {
   const requestHeaders = await headers();
+  const query = await searchParams;
 
   await requireAdmin(
     new Request("http://localhost/admin/media-moderation", {
@@ -14,10 +19,16 @@ export default async function AdminMediaModerationPage() {
   );
 
   try {
-    const packages = await getAdminMediaModerationQueue({ limit: 20 });
+    const result = await getAdminMediaModerationQueueResult({
+      limit: 200,
+      packageId: query.package || null,
+    });
     return (
       <AdminMediaModerationClient
-        initialPackages={packages as any}
+        initialPackages={result.packages as any}
+        initialDiagnostics={result.diagnostics}
+        initialTotalPending={result.totalPending}
+        initialTargetPackageId={query.package || ""}
         initialAiModerationEnabled={isAiFeatureEnabled("moderation_assistant")}
       />
     );
@@ -27,6 +38,7 @@ export default async function AdminMediaModerationPage() {
     return (
       <AdminMediaModerationClient
         initialPackages={[]}
+        initialDiagnostics={[]}
         initialError={message}
         initialAiModerationEnabled={isAiFeatureEnabled("moderation_assistant")}
       />

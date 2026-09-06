@@ -7,9 +7,9 @@ import { resolveOperationalPhase } from "@/lib/vendor-job-operational-phase";
 import { evaluateVendorJobPackageState } from "@/lib/vendor-job-package-state";
 import { getEmployeeRatingsForVendor, getVendorRatingStats } from "@/lib/review-attribution-aggregates";
 import { calculateStorageUsage } from "@/lib/storage-helpers";
+import { resolveCoreAdminAuditPendingPackages } from "@/lib/service-video-admin-audit";
 import {
   buildCompleteMediaModerationPackages,
-  countPendingMediaModerationPackages,
   REQUIRED_MEDIA_MODERATION_STAGE_KEYS,
 } from "@/lib/admin-media-moderation-packages";
 import { getCurrentVendorTrustScoreSnapshot, toVendorTrustScore } from "@/lib/trust-score-read";
@@ -25,11 +25,7 @@ import {
 import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
-import {
-  CORE_VENDOR_AUDIT_PASSED_NOTIFICATION_KIND,
-  CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND,
-} from "@/lib/service-video-admin-audit";
-import { coreAdminAuditRejectionCategoryLabel } from "@/lib/core-admin-audit-categories";
+import { listUnreadVendorManagerNotifications } from "@/lib/vendor-manager-notifications";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -201,7 +197,7 @@ async function withTransientDbRetry<T>(operation: () => Promise<T>): Promise<T> 
 /**
  * GET /api/vendors/[vendorId]/dashboard
  * Get complete dashboard data for a vendor (vendor-scoped)
- * Cached for 60 seconds per vendor
+ * Cached for 60 seconds per authenticated vendor membership
  */
 export async function GET(
   request: Request,
@@ -291,7 +287,13 @@ export async function GET(
     const useResponseCache = USE_DASHBOARD_CACHE && !jobsOnly;
 
     // Check cache
-    const cacheKey = `dashboard:${vendorId}:${jobsOnly ? "jobsOnly" : "full"}`;
+    const cacheKey = [
+      "dashboard",
+      vendorId,
+      membership.id,
+      String(membership.role || "UNKNOWN").toUpperCase(),
+      jobsOnly ? "jobsOnly" : "full",
+    ].join(":");
     const cached = useResponseCache ? cache.get(cacheKey) : null;
     if (useResponseCache && cached && cached.expiresAt > Date.now()) {
       return NextResponse.json(cached.data);
@@ -645,6 +647,15 @@ export async function GET(
           })
         )
       : [] as any[];
+    const canonicalAdminAuditPending = await withTransientDbRetry(() =>
+      resolveCoreAdminAuditPendingPackages(prisma as any, { vendorId }),
+    );
+    const canonicalAdminAuditPendingBookingIds = new Set(
+      canonicalAdminAuditPending.candidates.map((candidate: any) => String(candidate.booking.id)),
+    );
+    const adminAuditIssueByBookingId = new Map(
+      canonicalAdminAuditPending.issues.map((issue) => [issue.bookingId, issue.code]),
+    );
     const mediaSummaryByBookingId = new Map<string, { linkedSessionCount: number; linkedMediaCount: number }>();
     const sessionsForPhaseByBookingId = new Map<string, any[]>();
     const latestConsentByBookingId = new Map<string, any>();
@@ -768,6 +779,8 @@ export async function GET(
         amount: amountValue,
         status: effectiveStatus,
         operationalPhase,
+        canonicalAdminAuditPending: canonicalAdminAuditPendingBookingIds.has(String(booking.id)),
+        adminAuditIntegrityIssueCode: adminAuditIssueByBookingId.get(String(booking.id)) || null,
         assignedEmployees: assignedEmployeesRaw,
         assignedMembershipIds,
         uploadedVideoStages,
@@ -1141,7 +1154,7 @@ export async function GET(
         createdAt: asset.createdAt || null,
       }))
     );
-    const pendingModerationServiceOrders = countPendingMediaModerationPackages(moderationPackages);
+    const pendingModerationServiceOrders = canonicalAdminAuditPending.candidates.length;
     const approvedServiceOrders = moderationPackages.filter(
       (pack) =>
         pack.packageReadiness === "APPROVED" &&
@@ -1172,43 +1185,13 @@ export async function GET(
       }
     }
 
-    const auditNotificationRows = await (prisma as any).bookingNotification.findMany({
-      where: {
-        kind: { in: [CORE_VENDOR_AUDIT_PASSED_NOTIFICATION_KIND, CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND] },
-        booking: { vendorId },
-      },
-      include: { booking: { select: { id: true, title: true, service: { select: { name: true } } } } },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    });
-    const auditBookingIds = auditNotificationRows.map((row: any) => row.bookingId);
-    const auditDecisions = auditBookingIds.length
-      ? await (prisma as any).serviceVideoAdminAuditDecisionEvidence.findMany({
-          where: { bookingId: { in: auditBookingIds } },
-          orderBy: { decidedAt: "desc" },
+    const auditNotifications = String(membership.role || "").toUpperCase() === "MANAGER"
+      ? await listUnreadVendorManagerNotifications(prisma as any, {
+          vendorId,
+          membershipId: membership.id,
+          limit: 10,
         })
       : [];
-    const auditDecisionByBookingId = new Map(
-      auditDecisions.map((decision: any) => [String(decision.bookingId), decision]),
-    );
-    const auditNotifications = auditNotificationRows.flatMap((row: any) => {
-      const decision: any = auditDecisionByBookingId.get(String(row.bookingId));
-      if (!decision) return [];
-      const passed = String(decision.decision || "").toUpperCase() === "PASS";
-      const serviceName = row.booking?.service?.name || row.booking?.title || "Service Order";
-      return [{
-        id: row.id,
-        type: "audit",
-        title: passed ? "Reliance Audit Passed" : "Reliance Audit Failed",
-        message: passed
-          ? `${serviceName}: Private Proof was released to the customer. No video was made Public.`
-          : `${serviceName}: ${coreAdminAuditRejectionCategoryLabel(decision.rejectionCategory)}. ${decision.reason || "The Reliance work record is permanently closed."}`,
-        time: (decision.decidedAt || row.createdAt).toISOString(),
-        read: false,
-        priority: passed ? "medium" : "high",
-        href: `/vendor/jobs/${encodeURIComponent(row.bookingId)}`,
-      }];
-    });
 
     // Build response
     const response = {

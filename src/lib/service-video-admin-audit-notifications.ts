@@ -83,7 +83,7 @@ export async function sendCoreAdminAuditReadyNotification(input: {
         packageId: input.packageId,
         packageVersion: input.packageVersion,
       },
-      surfaceHref: "/admin/media-moderation",
+      surfaceHref: `/admin/media-moderation?package=${encodeURIComponent(input.packageId)}`,
       baseUrl: input.baseUrl,
       actorUserId: input.actorUserId,
     });

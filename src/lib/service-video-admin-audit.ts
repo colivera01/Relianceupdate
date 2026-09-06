@@ -13,6 +13,7 @@ import {
 } from "@/lib/service-video-evidence";
 import { isCoreAdminAuditRejectionCategory } from "@/lib/core-admin-audit-categories";
 import { interpretRecordingAssessment } from "@/lib/recording/assessment-reader";
+import { createVendorManagerAuditNotifications } from "@/lib/vendor-manager-notifications";
 
 export const CORE_ADMIN_AUDIT_EVIDENCE_VERSION = 1;
 export const CORE_ADMIN_AUDIT_DECISION_EVIDENCE_VERSION = 2;
@@ -40,6 +41,35 @@ type PackageStage = {
   stageVersion: number;
   mediaAssetId: string;
   contentHash: string;
+};
+
+type ManagerAttestationStage = PackageStage & {
+  assessmentId: string;
+  assessmentGeneration: number;
+  permissionEvidenceId: string;
+  recordingGateDecisionId: string;
+  scopeHash: string;
+};
+
+type ManagerSubmissionAttestation = {
+  evidenceVersion: number;
+  bookingId: string;
+  vendorId: string;
+  packageId: string;
+  packageVersion: number;
+  packageHash: string;
+  managerUserId: string;
+  managerMembershipId: string;
+  stages: ManagerAttestationStage[];
+};
+
+export type CoreAdminAuditQueueIssue = {
+  bookingId: string;
+  vendorId: string;
+  packageId: string;
+  code: string;
+  correlationId: string;
+  submittedAt: Date | null;
 };
 
 export class CoreAdminAuditError extends Error {
@@ -156,11 +186,21 @@ async function loadBoundMediaAssets(db: any, packageStages: PackageStage[]) {
     where: { id: { in: packageStages.map((row) => row.mediaAssetId) }, deletedAt: null },
     select: {
       id: true,
+      vendorId: true,
+      mediaSessionId: true,
+      uploadedByMembershipId: true,
       contentHash: true,
       stageVersion: true,
       uploadState: true,
       moderationStatus: true,
       visibilityStatus: true,
+      archiveStatus: true,
+      moderationReason: true,
+      moderatedAt: true,
+      createdAt: true,
+      mimeType: true,
+      bytes: true,
+      blobUrl: true,
       deletedAt: true,
       audioExpected: true,
       audioPresence: true,
@@ -168,6 +208,11 @@ async function loadBoundMediaAssets(db: any, packageStages: PackageStage[]) {
       audioCodec: true,
       audioDetectionMethod: true,
       audioEvidenceVersion: true,
+      mediaSession: {
+        select: {
+          employee: { select: { id: true, name: true } },
+        },
+      },
     },
   });
   if (rows.length !== packageStages.length) {
@@ -186,6 +231,74 @@ async function loadBoundMediaAssets(db: any, packageStages: PackageStage[]) {
     }
   }
   return packageStages.map((expected) => byId.get(expected.mediaAssetId));
+}
+
+function parseManagerSubmissionAttestation(value: unknown): ManagerSubmissionAttestation {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(String(value || ""));
+  } catch {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_MANAGER_ATTESTATION_INVALID");
+  }
+  if (!parsed || !Array.isArray(parsed.stages)) {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_MANAGER_ATTESTATION_INVALID");
+  }
+  return parsed as ManagerSubmissionAttestation;
+}
+
+function assertManagerSubmissionBinding(input: {
+  attestation: ManagerSubmissionAttestation;
+  managerDecision: any;
+  pkg: any;
+  booking: any;
+  packageStages: PackageStage[];
+  stageEvidence: any[];
+  recordingAssessment: any | null;
+}) {
+  const { attestation, managerDecision, pkg, booking, packageStages, stageEvidence, recordingAssessment } = input;
+  if (
+    Number(attestation.evidenceVersion) !== Number(managerDecision.evidenceVersion || CORE_ADMIN_AUDIT_EVIDENCE_VERSION) ||
+    String(attestation.bookingId || "") !== String(booking.id) ||
+    String(attestation.vendorId || "") !== String(booking.vendorId) ||
+    String(attestation.packageId || "") !== String(pkg.id) ||
+    Number(attestation.packageVersion) !== Number(pkg.version) ||
+    String(attestation.packageHash || "") !== String(pkg.packageHash) ||
+    String(attestation.managerUserId || "") !== String(managerDecision.managerUserId) ||
+    String(attestation.managerMembershipId || "") !== String(managerDecision.managerMembershipId) ||
+    attestation.stages.length !== packageStages.length
+  ) {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_MANAGER_ATTESTATION_BINDING_MISMATCH");
+  }
+
+  const attestedByStage = new Map(
+    attestation.stages.map((stage) => [String(stage.stage || "").toUpperCase(), stage]),
+  );
+  for (let index = 0; index < packageStages.length; index += 1) {
+    const expected = packageStages[index];
+    const evidence = stageEvidence[index];
+    const attested = attestedByStage.get(expected.stage);
+    if (
+      !attested ||
+      String(attested.stageEvidenceId || "") !== expected.stageEvidenceId ||
+      Number(attested.stageVersion) !== expected.stageVersion ||
+      String(attested.mediaAssetId || "") !== expected.mediaAssetId ||
+      String(attested.contentHash || "") !== expected.contentHash ||
+      String(attested.assessmentId || "") !== String(evidence.assessmentId || "") ||
+      Number(attested.assessmentGeneration) !== Number(evidence.assessmentGeneration) ||
+      String(attested.permissionEvidenceId || "") !== String(evidence.permissionEvidenceId || "") ||
+      String(attested.recordingGateDecisionId || "") !== String(evidence.recordingGateDecisionId || "")
+    ) {
+      throw new CoreAdminAuditError("ADMIN_AUDIT_MANAGER_ATTESTATION_BINDING_MISMATCH");
+    }
+    if (
+      recordingAssessment &&
+      (String(attested.assessmentId) !== String(recordingAssessment.id) ||
+        Number(attested.assessmentGeneration) !== Number(recordingAssessment.generation) ||
+        String(attested.scopeHash || "") !== String(recordingAssessment.scopeHash || ""))
+    ) {
+      throw new CoreAdminAuditError("ADMIN_AUDIT_RECORDING_SCOPE_MISMATCH");
+    }
+  }
 }
 
 function validatePackageAudio(
@@ -456,7 +569,7 @@ export async function loadCoreAdminAuditCandidate(db: any, bookingId: string) {
       customerMetadata: true,
       rejectionReason: true,
       user: { select: { name: true, email: true, phone: true } },
-      service: { select: { name: true } },
+      service: { select: { id: true, name: true } },
       vendor: { select: { name: true, businessName: true } },
     },
   });
@@ -486,6 +599,21 @@ export async function loadCoreAdminAuditCandidate(db: any, bookingId: string) {
   }
   if (sha256(managerDecision.attestationJson) !== managerDecision.attestationHash) {
     throw new CoreAdminAuditError("ADMIN_AUDIT_MANAGER_ATTESTATION_INVALID");
+  }
+  const managerMembership = db.vendorMembership?.findFirst
+    ? await db.vendorMembership.findFirst({
+        where: {
+          id: managerDecision.managerMembershipId,
+          vendorId: booking.vendorId,
+          userId: managerDecision.managerUserId,
+          role: "MANAGER",
+          status: "ACTIVE",
+        },
+        select: { id: true, user: { select: { name: true, email: true } } },
+      })
+    : { id: managerDecision.managerMembershipId };
+  if (!managerMembership) {
+    throw new CoreAdminAuditError("ADMIN_AUDIT_MANAGER_MEMBERSHIP_INVALID");
   }
   const existingDecision = await db.serviceVideoAdminAuditDecisionEvidence.findUnique({
     where: { packageId: pkg.id },
@@ -519,16 +647,20 @@ export async function loadCoreAdminAuditCandidate(db: any, bookingId: string) {
   const recordingAssessmentInterpretation = recordingAssessment
     ? interpretRecordingAssessment(recordingAssessment)
     : null;
-  if (
-    recordingAssessment &&
-    stageEvidence.some(
-      (stage: any) =>
-        Number(stage.assessmentGeneration) !== Number(recordingAssessment.generation) ||
-        String(stage.scopeHash || "") !== String(recordingAssessment.scopeHash || ""),
-    )
-  ) {
+  if (recordingAssessment && stageEvidence.some(
+    (stage: any) => Number(stage.assessmentGeneration) !== Number(recordingAssessment.generation),
+  )) {
     throw new CoreAdminAuditError("ADMIN_AUDIT_RECORDING_SCOPE_MISMATCH");
   }
+  assertManagerSubmissionBinding({
+    attestation: parseManagerSubmissionAttestation(managerDecision.attestationJson),
+    managerDecision,
+    pkg,
+    booking,
+    packageStages,
+    stageEvidence,
+    recordingAssessment,
+  });
   const audioAudit = validatePackageAudio(stageEvidence, mediaAssets, { strict: false });
   for (const asset of mediaAssets as any[]) {
     if (
@@ -542,6 +674,7 @@ export async function loadCoreAdminAuditCandidate(db: any, bookingId: string) {
     booking,
     package: pkg,
     managerDecision,
+    managerMembership,
     packageStages,
     stageEvidence,
     mediaAssets,
@@ -549,6 +682,49 @@ export async function loadCoreAdminAuditCandidate(db: any, bookingId: string) {
     recordingAssessment,
     recordingAssessmentInterpretation,
   };
+}
+
+export async function resolveCoreAdminAuditPendingPackages(
+  db: any,
+  options: { vendorId?: string | null; includeVendorIds?: string[] | null } = {},
+) {
+  const packageRows = await db.serviceVideoPackageEvidence.findMany({
+    where: {
+      isCurrent: true,
+      status: PACKAGE_AWAITING_ADMIN_AUDIT,
+      ...(options.vendorId ? { vendorId: options.vendorId } : {}),
+      ...(options.includeVendorIds?.length ? { vendorId: { in: options.includeVendorIds } } : {}),
+    },
+    select: { id: true, bookingId: true, vendorId: true, submittedAt: true },
+    orderBy: [{ submittedAt: "desc" }, { id: "asc" }],
+  });
+  const candidates: any[] = [];
+  const issues: CoreAdminAuditQueueIssue[] = [];
+  for (const row of packageRows) {
+    try {
+      candidates.push(await loadCoreAdminAuditCandidate(db, String(row.bookingId)));
+    } catch (error) {
+      const code = error instanceof CoreAdminAuditError
+        ? error.code
+        : "ADMIN_AUDIT_CANDIDATE_RESOLUTION_FAILED";
+      const correlationId = sha256(`admin-audit-queue:${row.id}:${code}`).slice(0, 12).toUpperCase();
+      issues.push({
+        bookingId: String(row.bookingId),
+        vendorId: String(row.vendorId),
+        packageId: String(row.id),
+        code,
+        correlationId,
+        submittedAt: row.submittedAt || null,
+      });
+      console.error("[core-admin-audit] pending package integrity issue", {
+        bookingId: row.bookingId,
+        packageId: row.id,
+        code,
+        correlationId,
+      });
+    }
+  }
+  return { candidates, issues };
 }
 
 export async function isCoreAdminAuditEligible(db: any, bookingId: string): Promise<boolean> {
@@ -832,6 +1008,24 @@ export async function decideCoreServiceVideoAdminAudit(input: {
           rejectedAt: now,
           rejectedBy: input.adminUserId,
         },
+      });
+    }
+
+    if (vendorNotification) {
+      const serviceName = candidate.booking.service?.name || candidate.booking.title || "Service Order";
+      await createVendorManagerAuditNotifications(tx, {
+        vendorId: candidate.booking.vendorId,
+        bookingId: input.bookingId,
+        packageId: candidate.package.id,
+        sourceAdminDecisionId: auditDecision.id,
+        sourceBookingNotificationId: vendorNotification.id,
+        notificationType: decision === "PASS"
+          ? CORE_VENDOR_AUDIT_PASSED_NOTIFICATION_KIND
+          : CORE_VENDOR_AUDIT_REJECTED_NOTIFICATION_KIND,
+        title: decision === "PASS" ? "Reliance Audit Passed" : "Reliance Audit Failed",
+        message: decision === "PASS"
+          ? `${serviceName}: Private Proof was released to the customer. No video was made Public.`
+          : `${serviceName}: ${rejectionCategory}. ${reason}`,
       });
     }
 

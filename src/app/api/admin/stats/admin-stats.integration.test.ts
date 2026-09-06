@@ -6,14 +6,13 @@ const hoisted = vi.hoisted(() => {
   const userCount = vi.fn();
   const vendorCount = vi.fn();
   const reviewCount = vi.fn();
-  const mediaAssetFindMany = vi.fn();
+  const getAdminMediaModerationQueueResult = vi.fn();
   const prisma = {
     user: { count: userCount },
     vendor: { count: vendorCount },
     review: { count: reviewCount },
-    mediaAsset: { findMany: mediaAssetFindMany },
   };
-  return { prisma, userCount, vendorCount, reviewCount, mediaAssetFindMany };
+  return { prisma, userCount, vendorCount, reviewCount, getAdminMediaModerationQueueResult };
 });
 
 vi.mock("@/server/db", () => ({
@@ -22,6 +21,10 @@ vi.mock("@/server/db", () => ({
 
 vi.mock("@/lib/admin-auth", () => ({
   requireAdmin: vi.fn(),
+}));
+
+vi.mock("@/lib/admin-media-moderation-queue", () => ({
+  getAdminMediaModerationQueueResult: hoisted.getAdminMediaModerationQueueResult,
 }));
 
 async function readJson(res: Response) {
@@ -35,7 +38,7 @@ describe("GET /api/admin/stats", () => {
     hoisted.userCount.mockReset();
     hoisted.vendorCount.mockReset();
     hoisted.reviewCount.mockReset();
-    hoisted.mediaAssetFindMany.mockReset();
+    hoisted.getAdminMediaModerationQueueResult.mockReset();
   });
 
   it("returns 403 when admin auth fails", async () => {
@@ -48,7 +51,7 @@ describe("GET /api/admin/stats", () => {
     expect(hoisted.userCount).not.toHaveBeenCalled();
     expect(hoisted.vendorCount).not.toHaveBeenCalled();
     expect(hoisted.reviewCount).not.toHaveBeenCalled();
-    expect(hoisted.mediaAssetFindMany).not.toHaveBeenCalled();
+    expect(hoisted.getAdminMediaModerationQueueResult).not.toHaveBeenCalled();
   });
 
   it("excludes media packages that are not actionable in Reliance Audit", async () => {
@@ -57,71 +60,11 @@ describe("GET /api/admin/stats", () => {
     hoisted.reviewCount
       .mockResolvedValueOnce(7)
       .mockResolvedValueOnce(1);
-    hoisted.mediaAssetFindMany.mockResolvedValue([
-      {
-        id: "asset-intro",
-        vendorId: "vendor-1",
-        uploadedByMembershipId: "membership-1",
-        moderationStatus: "pending_review",
-        visibilityStatus: "private",
-        createdAt: new Date("2026-04-15T09:00:00.000Z"),
-        vendor: { name: "Vendor One", businessName: "Vendor One LLC" },
-        mediaSession: {
-          title: "Intro proof",
-          vendorJobVideoStage: "INTRO",
-          sessionType: "JOB_SERVICE_VIDEO",
-          booking: {
-            id: "booking-1",
-            title: "Kitchen repair",
-            clientName: "Alex Johnson",
-            status: "CONFIRMED",
-          },
-          service: { name: "Repair" },
-        },
-      },
-      {
-        id: "asset-progress",
-        vendorId: "vendor-1",
-        uploadedByMembershipId: "membership-2",
-        moderationStatus: "approved",
-        visibilityStatus: "customer_only",
-        createdAt: new Date("2026-04-15T09:10:00.000Z"),
-        vendor: { name: "Vendor One", businessName: "Vendor One LLC" },
-        mediaSession: {
-          title: "Progress proof",
-          vendorJobVideoStage: "IN_PROGRESS",
-          sessionType: "JOB_SERVICE_VIDEO",
-          booking: {
-            id: "booking-1",
-            title: "Kitchen repair",
-            clientName: "Alex Johnson",
-            status: "CONFIRMED",
-          },
-          service: { name: "Repair" },
-        },
-      },
-      {
-        id: "asset-completed",
-        vendorId: "vendor-1",
-        uploadedByMembershipId: "membership-3",
-        moderationStatus: "approved",
-        visibilityStatus: "customer_only",
-        createdAt: new Date("2026-04-15T09:20:00.000Z"),
-        vendor: { name: "Vendor One", businessName: "Vendor One LLC" },
-        mediaSession: {
-          title: "Completion proof",
-          vendorJobVideoStage: "COMPLETED",
-          sessionType: "JOB_SERVICE_VIDEO",
-          booking: {
-            id: "booking-1",
-            title: "Kitchen repair",
-            clientName: "Alex Johnson",
-            status: "CONFIRMED",
-          },
-          service: { name: "Repair" },
-        },
-      },
-    ]);
+    hoisted.getAdminMediaModerationQueueResult.mockResolvedValue({
+      packages: [],
+      diagnostics: [],
+      totalPending: 0,
+    });
 
     const req = new Request("http://localhost/api/admin/stats", { method: "GET" });
     const res = await statsGET(req);
@@ -155,20 +98,6 @@ describe("GET /api/admin/stats", () => {
         moderationStatus: "pending_review",
       }),
     });
-    expect(hoisted.mediaAssetFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          deletedAt: null,
-          mediaSession: expect.objectContaining({
-            is: expect.objectContaining({
-              bookingId: { not: null },
-              vendorJobVideoStage: {
-                in: ["INTRO", "IN_PROGRESS", "COMPLETED"],
-              },
-            }),
-          }),
-        }),
-      })
-    );
+    expect(hoisted.getAdminMediaModerationQueueResult).toHaveBeenCalledWith({ limit: 200 });
   });
 });

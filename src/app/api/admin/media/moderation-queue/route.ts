@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
-import { getAdminMediaModerationQueue } from "@/lib/admin-media-moderation-queue";
+import { getAdminMediaModerationQueueResult } from "@/lib/admin-media-moderation-queue";
 
 /**
  * GET /api/admin/media/moderation-queue
@@ -16,14 +16,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     const uploadedByMembershipId = searchParams.get("uploadedByMembershipId");
     const date = searchParams.get("date"); // YYYY-MM-DD
     const search = searchParams.get("search");
+    const packageId = searchParams.get("package");
     const includeInternal = searchParams.get("includeInternal") === "1";
     const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "120", 10) || 120, 1), 200);
-    const filteredBySearch = await getAdminMediaModerationQueue({
+    const result = await getAdminMediaModerationQueueResult({
       moderationStatus,
       vendorId,
       uploadedByMembershipId,
       date,
       search,
+      packageId,
       includeInternal,
       limit,
     });
@@ -31,7 +33,9 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({
       success: true,
       message: "Moderation queue fetched successfully",
-      packages: filteredBySearch,
+      packages: result.packages,
+      diagnostics: result.diagnostics,
+      totalPending: result.totalPending,
     });
   } catch (error: any) {
     console.error("[admin/media/moderation-queue] GET error:", error);

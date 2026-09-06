@@ -111,7 +111,28 @@ function managerSubmissionTx() {
 
 function adminDecisionTx(decision: "PASS" | "REJECT") {
   const pkg = packageRow("AWAITING_ADMIN_REVIEW");
-  const attestationJson = JSON.stringify({ packageId: pkg.id, packageHash: pkg.packageHash });
+  const attestationJson = JSON.stringify({
+    evidenceVersion: 1,
+    bookingId: pkg.bookingId,
+    vendorId: pkg.vendorId,
+    packageId: pkg.id,
+    packageVersion: pkg.version,
+    packageHash: pkg.packageHash,
+    managerUserId: "manager-1",
+    managerMembershipId: "manager-membership-1",
+    stages: stageEvidenceRows().map((row) => ({
+      stage: row.stage,
+      stageEvidenceId: row.id,
+      stageVersion: row.stageVersion,
+      mediaAssetId: row.mediaAssetId,
+      contentHash: row.contentHash,
+      assessmentId: row.assessmentId,
+      assessmentGeneration: row.assessmentGeneration,
+      permissionEvidenceId: row.permissionEvidenceId,
+      recordingGateDecisionId: row.recordingGateDecisionId,
+      scopeHash: "scope-hash-1",
+    })),
+  });
   const managerDecision = {
     id: "manager-decision-1",
     packageId: pkg.id,
@@ -120,6 +141,9 @@ function adminDecisionTx(decision: "PASS" | "REJECT") {
     packageVersion: pkg.version,
     packageHash: pkg.packageHash,
     decision: "SUBMITTED_FOR_ADMIN_AUDIT",
+    managerUserId: "manager-1",
+    managerMembershipId: "manager-membership-1",
+    evidenceVersion: 1,
     attestationJson,
     attestationHash: createHash("sha256").update(attestationJson).digest("hex"),
   };
@@ -181,8 +205,13 @@ function adminDecisionTx(decision: "PASS" | "REJECT") {
       updateMany: vi.fn().mockResolvedValue({ count: 3 }),
     },
     bookingNotification: {
-      create: vi.fn().mockResolvedValue({ id: "customer-notification-1" }),
+      create: vi.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: data.id || "customer-notification-1", ...data })),
     },
+    vendorMembership: {
+      findFirst: vi.fn().mockResolvedValue({ id: "manager-membership-1", user: { name: "Morgan Manager" } }),
+      findMany: vi.fn().mockResolvedValue([{ id: "manager-membership-1" }]),
+    },
+    vendorManagerNotification: { upsert: vi.fn().mockResolvedValue({ id: "manager-notification-1" }) },
     adminAuditLog: { create: vi.fn().mockResolvedValue({ id: "audit-log-1" }) },
   };
   return { tx, pkg, booking, audit };
@@ -334,6 +363,13 @@ describe("core Service Video Admin Audit evidence", () => {
         publicEligibilityHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     });
+    expect(tx.vendorManagerNotification.upsert).toHaveBeenCalledTimes(1);
+    expect(tx.vendorManagerNotification.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        recipientMembershipId: "manager-membership-1",
+        title: "Reliance Audit Passed",
+      }),
+    }));
   });
 
   it("requires Admin to establish Public-display eligibility as part of PASS", async () => {
@@ -495,6 +531,27 @@ describe("core Service Video Admin Audit evidence", () => {
     });
     expect(tx.bookingNotification.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: "VENDOR_CORE_AUDIT_REJECTED_V1" }),
+    });
+    expect(tx.vendorManagerNotification.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        recipientMembershipId: "manager-membership-1",
+        title: "Reliance Audit Failed",
+      }),
+    }));
+  });
+
+  it("rejects a manager attestation whose exact stage binding differs", async () => {
+    const { tx } = adminDecisionTx("PASS");
+    const managerDecision = await tx.serviceVideoManagerDecisionEvidence.findFirst();
+    const attestation = JSON.parse(managerDecision.attestationJson);
+    attestation.stages[1].mediaAssetId = "different-asset";
+    managerDecision.attestationJson = JSON.stringify(attestation);
+    managerDecision.attestationHash = createHash("sha256").update(managerDecision.attestationJson).digest("hex");
+    tx.serviceVideoManagerDecisionEvidence.findFirst.mockResolvedValue(managerDecision);
+    const { loadCoreAdminAuditCandidate } = await import("./service-video-admin-audit");
+
+    await expect(loadCoreAdminAuditCandidate(tx, "booking-1")).rejects.toMatchObject({
+      code: "ADMIN_AUDIT_MANAGER_ATTESTATION_BINDING_MISMATCH",
     });
   });
 

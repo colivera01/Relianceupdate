@@ -16,7 +16,7 @@ vi.mock("@/server/db", () => ({
   },
 }));
 vi.mock("@/lib/admin-media-moderation-queue", () => ({
-  getAdminMediaModerationQueue: hoisted.queue,
+  getAdminMediaModerationQueueResult: hoisted.queue,
 }));
 
 describe("admin dashboard core audit count", () => {
@@ -25,7 +25,7 @@ describe("admin dashboard core audit count", () => {
     hoisted.userCount.mockResolvedValue(5);
     hoisted.vendorCount.mockResolvedValue(2);
     hoisted.reviewCount.mockResolvedValue(1);
-    hoisted.queue.mockResolvedValue([{ packageId: "package-1" }, { packageId: "package-2" }]);
+    hoisted.queue.mockResolvedValue({ packages: [], diagnostics: [], totalPending: 2 });
   });
 
   it("derives pending package count from the same canonical queue resolver", async () => {

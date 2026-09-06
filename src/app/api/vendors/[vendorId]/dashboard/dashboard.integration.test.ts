@@ -29,6 +29,7 @@ const hoisted = vi.hoisted(() => {
   const vendorMembershipFindMany = vi.fn();
   const serviceVideoPackageEvidenceFindMany = vi.fn();
   const serviceVideoAdminAuditDecisionEvidenceFindMany = vi.fn();
+  const listUnreadVendorManagerNotifications = vi.fn();
 
   const prisma = {
     vendor: {
@@ -89,6 +90,7 @@ const hoisted = vi.hoisted(() => {
     vendorMembershipFindMany,
     serviceVideoPackageEvidenceFindMany,
     serviceVideoAdminAuditDecisionEvidenceFindMany,
+    listUnreadVendorManagerNotifications,
   };
 });
 
@@ -109,6 +111,10 @@ vi.mock("@/lib/review-attribution-aggregates", () => ({
 
 vi.mock("@/lib/storage-helpers", () => ({
   calculateStorageUsage: vi.fn(),
+}));
+
+vi.mock("@/lib/vendor-manager-notifications", () => ({
+  listUnreadVendorManagerNotifications: hoisted.listUnreadVendorManagerNotifications,
 }));
 
 async function readJson(res: Response) {
@@ -185,6 +191,7 @@ function mockHappyPathData() {
   hoisted.mediaAssetGroupBy.mockResolvedValue([]);
   hoisted.mediaAssetCount.mockResolvedValue(0);
   hoisted.vendorMembershipFindMany.mockResolvedValue([]);
+  hoisted.listUnreadVendorManagerNotifications.mockResolvedValue([]);
   vi.mocked(calculateStorageUsage).mockResolvedValue({
     usedBytes: BigInt(0),
     limitBytes: BigInt(0),
@@ -219,6 +226,8 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     hoisted.mediaAssetFindMany.mockResolvedValue([]);
     hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.vendorMembershipFindMany.mockReset();
+    hoisted.listUnreadVendorManagerNotifications.mockReset();
+    hoisted.listUnreadVendorManagerNotifications.mockResolvedValue([]);
     vi.mocked(getVendorRatingStats).mockReset();
     vi.mocked(getEmployeeRatingsForVendor).mockReset();
     vi.mocked(calculateStorageUsage).mockReset();

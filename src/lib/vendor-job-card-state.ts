@@ -87,7 +87,8 @@ export function getVendorJobWorkflowBucket(job: VendorJobLike): VendorJobWorkflo
   if (
     phase === "AWAITING_ADMIN_REVIEW" &&
     currentPackageStatus === "AWAITING_ADMIN_REVIEW" &&
-    !decision
+    !decision &&
+    job?.canonicalAdminAuditPending !== false
   ) {
     return "moderator_review";
   }

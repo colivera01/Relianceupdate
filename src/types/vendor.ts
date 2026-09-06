@@ -64,8 +64,10 @@ export interface VendorNotification {
   message: string;
   time: string;
   read: boolean;
+  readAt?: string | null;
   priority: 'high' | 'medium' | 'low';
   href?: string;
+  historical?: boolean;
 }
 
 export interface VendorDashboardResponse {

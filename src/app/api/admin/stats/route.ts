@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { prisma } from "@/server/db";
-import { getAdminMediaModerationQueue } from "@/lib/admin-media-moderation-queue";
+import { getAdminMediaModerationQueueResult } from "@/lib/admin-media-moderation-queue";
 import {
   countableReviewWhere,
   countableUserWhere,
@@ -32,9 +32,9 @@ export async function GET(request: Request): Promise<NextResponse> {
             moderationStatus: "pending_review",
           }),
         }),
-        getAdminMediaModerationQueue({ limit: 200 }),
+        getAdminMediaModerationQueueResult({ limit: 200 }),
       ]);
-    const pendingMediaPackageModeration = adminAuditQueue.length;
+    const pendingMediaPackageModeration = adminAuditQueue.totalPending;
     const pendingModeration =
       pendingReviewModeration + pendingMediaPackageModeration;
 

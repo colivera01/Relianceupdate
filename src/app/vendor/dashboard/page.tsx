@@ -14,6 +14,7 @@ import VendorOnboardingStatusPanel from '@/components/vendor/VendorOnboardingSta
 import { tutorialGuides } from '@/lib/user-guidance';
 import VendorBusinessVisibilitySection from '@/components/vendor/VendorBusinessVisibilitySection';
 import { buildVendorGrowthSummary } from '@/lib/vendor-growth-summary';
+import { navigateAfterNotificationRead } from '@/lib/vendor-notification-navigation';
 
 type PromotionPackageOption = {
   packageKey: string;
@@ -83,6 +84,27 @@ export default function VendorDashboard() {
   const pageContentClass = 'space-y-8';
 
   const vendorIdForPromotion = data?.profile?.id || null;
+
+  const viewAuditNotification = async (notification: NonNullable<typeof data>["notifications"][number]) => {
+    const vendorId = data?.profile?.id;
+    if (!vendorId || !notification.href) return;
+    await navigateAfterNotificationRead({
+      href: notification.href,
+      markRead: async () => {
+        if (notification.read || notification.historical) return;
+        const response = await fetch(
+          `/api/vendors/${encodeURIComponent(vendorId)}/notifications/${encodeURIComponent(notification.id)}/read`,
+          { method: 'POST', headers: getClientSessionHeaders(user?.id) },
+        );
+        if (!response.ok) throw new Error('Unable to persist notification read state.');
+      },
+      navigate: (href) => router.push(href),
+      onReadError: (readError) => console.warn('[vendor/notifications] read state unavailable', {
+        notificationId: notification.id,
+        error: readError instanceof Error ? readError.message : 'unknown',
+      }),
+    });
+  };
 
   useEffect(() => {
     if (!PROMOTIONS_ENABLED || !vendorIdForPromotion) return;
@@ -564,21 +586,29 @@ export default function VendorDashboard() {
 
         {data.notifications?.length ? (
           <section aria-labelledby="reliance-audit-updates" className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Bell className="h-5 w-5 text-blue-700" />
-              <h2 id="reliance-audit-updates" className="text-lg font-semibold text-gray-950">Reliance Audit updates</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-blue-300" />
+                <h2 id="reliance-audit-updates" className="text-lg font-semibold text-white">Reliance Audit updates</h2>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => router.push('/vendor/notifications')}>
+                View notification history
+              </Button>
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
               {data.notifications.filter((notification) => notification.type === 'audit').map((notification) => (
                 <Card key={notification.id} className={notification.priority === 'high' ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50'}>
                   <CardContent className="flex items-start justify-between gap-4 p-4">
                     <div>
-                      <p className="font-semibold text-gray-950">{notification.title}</p>
+                      <p className="flex items-center gap-2 font-semibold text-slate-950">
+                        <span className="h-2 w-2 rounded-full bg-blue-600" aria-label="Unread" />
+                        {notification.title}
+                      </p>
                       <p className="mt-1 text-sm text-gray-700">{notification.message}</p>
                       <p className="mt-2 text-xs text-gray-500">{new Date(notification.time).toLocaleString()}</p>
                     </div>
                     {notification.href ? (
-                      <Button size="sm" variant="outline" onClick={() => router.push(notification.href!)}>
+                      <Button size="sm" variant="outline" onClick={() => void viewAuditNotification(notification)}>
                         View details
                       </Button>
                     ) : null}

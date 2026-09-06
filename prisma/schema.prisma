@@ -107,6 +107,7 @@ model Vendor {
   adminNotifications          AdminNotification[]
   promotionCampaigns          PromotionCampaign[]
   serviceIssues               BookingServiceIssue[]
+  managerNotifications        VendorManagerNotification[]
   operationalOutcomes         VendorOperationalOutcome[]
   trustScoreSnapshots         VendorTrustScoreSnapshot[]
   recordingAssessments        RecordingScopeAssessment[]
@@ -499,6 +500,7 @@ model Booking {
   recordingLocationExceptions RecordingLocationException[]
   recordingGateMetrics        RecordingGateMetric[]
   customerOrganizationEvents  CustomerServiceRecordOrganizationEvent[]
+  managerNotifications        VendorManagerNotification[]
 
   @@map("bookings")
 }
@@ -1529,6 +1531,35 @@ model BookingNotificationAttempt {
   @@map("booking_notification_attempts")
 }
 
+model VendorManagerNotification {
+  id                          String    @id @default(cuid())
+  vendorId                    String
+  bookingId                   String
+  packageId                   String
+  sourceAdminDecisionId       String
+  sourceBookingNotificationId String?
+  recipientMembershipId       String
+  notificationType            String
+  title                       String
+  message                     String    @db.NVarChar(Max)
+  targetUrl                   String    @db.NVarChar(2048)
+  presentationState           String    @default("UNREAD")
+  viewedAt                    DateTime?
+  readAt                      DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  vendor              Vendor           @relation(fields: [vendorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  booking             Booking          @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recipientMembership VendorMembership @relation(fields: [recipientMembershipId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sourceAdminDecisionId, recipientMembershipId, notificationType])
+  @@index([vendorId, recipientMembershipId, presentationState, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([packageId])
+  @@map("vendor_manager_notifications")
+}
+
 model Review {
   id                        String    @id @default(cuid())
   userId                    String
@@ -1695,6 +1726,7 @@ model VendorMembership {
   user                    User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments             DeviceAssignment[]
   recordingSafetyEvidence EmployeeRecordingSafetyEvidence[]
+  managerNotifications    VendorManagerNotification[]
 
   @@unique([vendorId, userId])
   @@index([vendorId, status])

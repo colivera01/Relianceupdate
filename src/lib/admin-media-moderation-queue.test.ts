@@ -1,104 +1,113 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const hoisted = vi.hoisted(() => ({
-  findMany: vi.fn(),
-  userFindUnique: vi.fn(),
-  buildPackages: vi.fn(),
-  loadCandidate: vi.fn(),
-}));
+const hoisted = vi.hoisted(() => ({ resolvePending: vi.fn() }));
 
-vi.mock("@/server/db", () => ({
-  prisma: {
-    mediaAsset: { findMany: hoisted.findMany },
-    user: { findUnique: hoisted.userFindUnique },
-  },
-}));
-vi.mock("@/lib/admin-media-moderation-packages", () => ({
-  REQUIRED_MEDIA_MODERATION_STAGE_KEYS: ["INTRO", "IN_PROGRESS", "COMPLETED"],
-  buildCompleteMediaModerationPackages: hoisted.buildPackages,
-}));
+vi.mock("@/server/db", () => ({ prisma: {} }));
 vi.mock("@/lib/internal-identities", () => ({ launchExcludedVendorIds: () => [] }));
 vi.mock("@/lib/service-video-admin-audit", () => ({
-  loadCoreAdminAuditCandidate: hoisted.loadCandidate,
+  resolveCoreAdminAuditPendingPackages: hoisted.resolvePending,
 }));
 
-const queuePackage = {
-  bookingId: "booking-1",
-  vendorId: "vendor-1",
-  bookingStatus: "COMPLETED",
-  moderationStatuses: ["pending_review"],
-  videosByStage: {
-    INTRO: { assetId: "asset-1", bookingOperationalPhase: "AWAITING_ADMIN_REVIEW" },
-    IN_PROGRESS: { assetId: "asset-2", bookingOperationalPhase: "AWAITING_ADMIN_REVIEW" },
-    COMPLETED: { assetId: "asset-3", bookingOperationalPhase: "AWAITING_ADMIN_REVIEW" },
-  },
-};
+function candidate(packageId = "package-1", bookingId = "booking-1") {
+  const stages = ["INTRO", "IN_PROGRESS", "COMPLETED"];
+  return {
+    booking: {
+      id: bookingId,
+      vendorId: "vendor-1",
+      title: "Outlet Installation",
+      status: "COMPLETED",
+      clientName: "Customer",
+      service: { id: "service-1", name: "Outlet Installation" },
+      vendor: { name: "Electro LLC", businessName: "Electro LLC" },
+    },
+    package: {
+      id: packageId,
+      version: 2,
+      packageHash: `hash-${packageId}`,
+      auditEvidenceVersion: 1,
+      submittedAt: new Date("2026-09-06T10:00:00Z"),
+    },
+    managerDecision: {
+      id: `decision-${packageId}`,
+      decidedAt: new Date("2026-09-06T10:00:00Z"),
+      attestationHash: `attestation-${packageId}`,
+    },
+    managerMembership: { user: { name: "Morgan Manager" } },
+    packageStages: stages.map((stage, index) => ({
+      stage,
+      stageEvidenceId: `stage-${index + 1}`,
+      stageVersion: 1,
+      mediaAssetId: `asset-${packageId}-${index + 1}`,
+      contentHash: `content-${index + 1}`,
+    })),
+    mediaAssets: stages.map((_, index) => ({
+      id: `asset-${packageId}-${index + 1}`,
+      moderationStatus: "pending_review",
+      visibilityStatus: "private",
+      uploadState: "SAVED",
+      audioExpected: false,
+      audioPresence: "LEGACY_UNKNOWN",
+      audioEvidenceVersion: 1,
+      bytes: BigInt(10),
+    })),
+    audioAudit: { expected: false, conformance: "CONFORMING", errors: [] },
+    recordingAssessmentInterpretation: null,
+  };
+}
 
-describe("core Admin Audit queue", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    hoisted.findMany.mockResolvedValue([]);
-    hoisted.userFindUnique.mockResolvedValue({ name: "Morgan Manager", email: "manager@example.com" });
-    hoisted.buildPackages.mockReturnValue([queuePackage]);
+describe("package-first Core Admin Audit queue", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("shows every canonically valid pending package exactly once without a media-row cap", async () => {
+    hoisted.resolvePending.mockResolvedValue({
+      candidates: Array.from({ length: 75 }, (_, index) => candidate(`package-${index}`, `booking-${index}`)),
+      issues: [],
+    });
+    const { getAdminMediaModerationQueueResult } = await import("./admin-media-moderation-queue");
+
+    const result = await getAdminMediaModerationQueueResult({ includeInternal: true, limit: 200 });
+
+    expect(result.totalPending).toBe(75);
+    expect(result.packages).toHaveLength(75);
+    expect(new Set(result.packages.map((item) => item.packageId)).size).toBe(75);
+    expect(result.packages[0].packageReadiness).toBe("READY_FOR_ADMIN_REVIEW");
   });
 
-  it("includes only a canonically eligible exact manager-submitted package", async () => {
-    hoisted.loadCandidate.mockResolvedValue({
-      package: {
-        id: "package-1",
-        version: 2,
-        packageHash: "package-hash",
-        auditEvidenceVersion: 1,
-      },
-      managerDecision: {
-        id: "manager-decision-1",
-        managerUserId: "manager-1",
-        decidedAt: new Date("2026-08-24T12:00:00.000Z"),
-        attestationHash: "attestation-hash",
-      },
-      packageStages: [
-        { mediaAssetId: "asset-1" },
-        { mediaAssetId: "asset-2" },
-        { mediaAssetId: "asset-3" },
-      ],
+  it("keeps invalid pending packages visible as safe Admin diagnostics", async () => {
+    hoisted.resolvePending.mockResolvedValue({
+      candidates: [candidate()],
+      issues: [{
+        bookingId: "booking-bad",
+        vendorId: "vendor-1",
+        packageId: "package-bad",
+        code: "ADMIN_AUDIT_MANAGER_ATTESTATION_BINDING_MISMATCH",
+        correlationId: "ABC123DEF456",
+        submittedAt: new Date("2026-09-06T09:00:00Z"),
+      }],
     });
-    const { getAdminMediaModerationQueue } = await import("./admin-media-moderation-queue");
+    const { getAdminMediaModerationQueueResult } = await import("./admin-media-moderation-queue");
 
-    const result = await getAdminMediaModerationQueue({ includeInternal: true });
+    const result = await getAdminMediaModerationQueueResult({ includeInternal: true });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({
-      bookingId: "booking-1",
-      packageId: "package-1",
-      packageVersion: 2,
-      packageHash: "package-hash",
-      managerDecisionId: "manager-decision-1",
-      managerSubmitterName: "Morgan Manager",
-      managerAttestationHash: "attestation-hash",
-      adminAuditEvidenceVersion: 1,
-    });
-    expect(hoisted.loadCandidate).toHaveBeenCalledWith(expect.anything(), "booking-1");
+    expect(result.packages).toHaveLength(1);
+    expect(result.totalPending).toBe(1);
+    expect(result.diagnostics).toEqual([expect.objectContaining({
+      packageId: "package-bad",
+      code: "ADMIN_AUDIT_MANAGER_ATTESTATION_BINDING_MISMATCH",
+      correlationId: "ABC123DEF456",
+    })]);
   });
 
-  it("excludes stranded or otherwise ineligible historical package rows", async () => {
-    hoisted.loadCandidate.mockRejectedValue(new Error("ADMIN_AUDIT_PACKAGE_NOT_ELIGIBLE"));
-    const { getAdminMediaModerationQueue } = await import("./admin-media-moderation-queue");
-
-    await expect(getAdminMediaModerationQueue({ includeInternal: true })).resolves.toEqual([]);
-  });
-
-  it("excludes a display package that does not match the exact attested media identities", async () => {
-    hoisted.loadCandidate.mockResolvedValue({
-      package: { id: "package-1", version: 2, packageHash: "package-hash" },
-      managerDecision: { id: "manager-decision-1" },
-      packageStages: [
-        { mediaAssetId: "asset-1" },
-        { mediaAssetId: "asset-2" },
-        { mediaAssetId: "different-asset" },
-      ],
+  it("deep-links to one package without changing the authoritative pending count", async () => {
+    hoisted.resolvePending.mockResolvedValue({
+      candidates: [candidate("package-1", "booking-1"), candidate("package-2", "booking-2")],
+      issues: [],
     });
-    const { getAdminMediaModerationQueue } = await import("./admin-media-moderation-queue");
+    const { getAdminMediaModerationQueueResult } = await import("./admin-media-moderation-queue");
 
-    await expect(getAdminMediaModerationQueue({ includeInternal: true })).resolves.toEqual([]);
+    const result = await getAdminMediaModerationQueueResult({ includeInternal: true, packageId: "package-2" });
+
+    expect(result.totalPending).toBe(2);
+    expect(result.packages.map((item) => item.packageId)).toEqual(["package-2"]);
   });
 });

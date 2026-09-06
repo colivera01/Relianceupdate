@@ -67,7 +67,7 @@ describe("core Admin Audit notifications", () => {
     expect(result).toMatchObject({ claimed: true, status: "SENT", emailSent: true });
     expect(hoisted.emailAdmin).toHaveBeenCalledWith(expect.objectContaining({
       notificationId: "admin-notification-1",
-      surfaceHref: "/admin/media-moderation",
+      surfaceHref: "/admin/media-moderation?package=package-1",
       metadata: expect.objectContaining({ packageId: "package-1", packageVersion: 2 }),
     }));
   });

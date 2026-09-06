@@ -191,6 +191,7 @@ async function installVendorFixture(
   },
 ) {
   let consentStatusRequestCount = 0;
+  let consentStatusOverride: string | null = null;
   const session = createAuthSessionCookie({
     userId: identity.userId,
     email: identity.email,
@@ -320,7 +321,9 @@ async function installVendorFixture(
           ]
         : consentStatusResponse;
       consentStatusRequestCount += 1;
-      const authoritativeConsentStatus = String(configuredStatus || jobs[0]?.consentStatus || "accepted");
+      const authoritativeConsentStatus = String(
+        consentStatusOverride || configuredStatus || jobs[0]?.consentStatus || "accepted"
+      );
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -356,6 +359,12 @@ async function installVendorFixture(
 
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true }) });
   });
+
+  return {
+    setConsentStatus(status: string) {
+      consentStatusOverride = status;
+    },
+  };
 }
 
 async function openVendorJobs(page: Page) {
@@ -642,10 +651,10 @@ test.describe("RV-8 Product Owner replay corrections", () => {
     page.on("request", (request) => {
       if (new URL(request.url()).pathname.includes("/actions")) actionRequests.push(request.url());
     });
-    // React can hydrate the same pending status twice before the first state update settles.
-    await installVendorFixture(page, [pendingConsentJob], ["pending", "pending", "accepted"]);
+    const fixture = await installVendorFixture(page, [pendingConsentJob], "pending");
     await openVendorJobs(page);
 
+    fixture.setConsentStatus("accepted");
     await page.getByRole("button", { name: "Refresh Permission Status" }).click();
     await expect(page.getByRole("status")).toHaveText("Customer permission approved.");
     expect(actionRequests).toEqual([]);

@@ -10,6 +10,7 @@ import {
   Activity,
   BarChart3,
   Star,
+  Bell,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -40,6 +41,8 @@ function buildVendorSupportHref(pathname: string): string {
     ? 'Back to Analytics & Trust'
     : pathname.startsWith('/vendor/reviews')
       ? 'Back to Reviews'
+    : pathname.startsWith('/vendor/notifications')
+      ? 'Back to Notification History'
     : pathname.startsWith('/vendor/telemetry')
         ? 'Back to Service Video Activity'
         : pathname.startsWith('/vendor/services')
@@ -65,6 +68,7 @@ const sidebarLinks: SidebarLink[] = [
   { label: 'Services Offered', icon: ClipboardList, href: '/vendor/services', iconClassName: 'text-sky-200' },
   { label: 'Profile & Settings', icon: Users, href: '/vendor/profile', iconClassName: 'text-violet-200' },
   { label: 'Manage Jobs', icon: Briefcase, href: '/vendor/jobs', iconClassName: 'text-orange-200' },
+  { label: 'Notifications', icon: Bell, href: '/vendor/notifications', iconClassName: 'text-blue-200' },
   { label: 'Employees', icon: Users, href: '/vendor/employees', iconClassName: 'text-teal-200' },
 ];
 
@@ -92,9 +96,9 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
     availableRoles.includes('customer') && availableRoles.includes('vendor');
   const mobileVendorLinks = [
     sidebarLinks[0],
-    sidebarLinks[4],
-    sidebarLinks[6],
     sidebarLinks[7],
+    sidebarLinks[6],
+    sidebarLinks[8],
     sidebarLinks[5],
   ];
 

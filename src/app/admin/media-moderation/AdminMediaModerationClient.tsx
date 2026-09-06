@@ -94,6 +94,14 @@ type QueuePackage = {
   } | null;
 };
 
+type QueueDiagnostic = {
+  bookingId: string;
+  packageId: string;
+  code: string;
+  correlationId: string;
+  submittedAt: string | Date | null;
+};
+
 type AiModerationSuggestion = {
   summary: string;
   decision: 'approve' | 'flag' | 'reject' | 'needs_human_review';
@@ -447,16 +455,24 @@ function AssetModerationControls({
 
 type AdminMediaModerationClientProps = {
   initialPackages?: QueuePackage[] | null;
+  initialDiagnostics?: QueueDiagnostic[];
+  initialTotalPending?: number;
+  initialTargetPackageId?: string;
   initialError?: string;
   initialAiModerationEnabled?: boolean;
 };
 
 export default function AdminMediaModerationClient({
   initialPackages = null,
+  initialDiagnostics = [],
+  initialTotalPending = 0,
+  initialTargetPackageId = '',
   initialError = '',
   initialAiModerationEnabled = false,
 }: AdminMediaModerationClientProps) {
   const [packages, setPackages] = useState<QueuePackage[]>(initialPackages ?? []);
+  const [diagnostics, setDiagnostics] = useState<QueueDiagnostic[]>(initialDiagnostics);
+  const [totalPending, setTotalPending] = useState(initialTotalPending);
   const [loading, setLoading] = useState(initialPackages == null && !initialError);
   const [error, setError] = useState(initialError);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -505,6 +521,7 @@ export default function AdminMediaModerationClient({
       if (vendorFilter !== 'all') params.set('vendorId', vendorFilter);
       if (uploaderFilter !== 'all') params.set('uploadedByMembershipId', uploaderFilter);
       if (search.trim()) params.set('search', search.trim());
+      if (initialTargetPackageId) params.set('package', initialTargetPackageId);
       params.set('limit', '30');
 
       const res = await fetch(`/api/admin/media/moderation-queue?${params.toString()}`, {
@@ -524,6 +541,8 @@ export default function AdminMediaModerationClient({
       const rawPackages = Array.isArray(json.packages) ? json.packages : [];
       const normalizedPackages = rawPackages.map((row: Record<string, unknown>) => normalizeQueuePackage(row));
       setPackages(normalizedPackages);
+      setDiagnostics(Array.isArray(json.diagnostics) ? json.diagnostics : []);
+      setTotalPending(Number(json.totalPending || normalizedPackages.length));
       setPackageVisibilityById((prev) => {
         const next = { ...prev };
         for (const pack of normalizedPackages) {
@@ -549,6 +568,14 @@ export default function AdminMediaModerationClient({
     fetchQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPackages, initialError]);
+
+  useEffect(() => {
+    if (!initialTargetPackageId) return;
+    document.getElementById(`admin-audit-package-${initialTargetPackageId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }, [initialTargetPackageId, packages]);
 
   const applyModerationAction = async (
     asset: QueueVideo,
@@ -1033,8 +1060,8 @@ export default function AdminMediaModerationClient({
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Ready For Review</div>
-              <div className="mt-2 text-2xl font-bold text-amber-900">{packageSummary.readyForReview}</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Ready for Reliance Audit</div>
+              <div className="mt-2 text-2xl font-bold text-amber-900">{totalPending || packageSummary.readyForReview}</div>
               <p className="mt-1 text-sm text-amber-800">Full 3-stage packages still needing an admin decision.</p>
             </div>
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
@@ -1063,6 +1090,27 @@ export default function AdminMediaModerationClient({
           </div>
         </CardContent>
       </Card>
+
+      {diagnostics.length ? (
+        <section aria-labelledby="audit-queue-issues" className="rounded-lg border border-rose-300/40 bg-rose-500/10 p-4 text-rose-50">
+          <h2 id="audit-queue-issues" className="font-semibold">Audit queue issue</h2>
+          <p className="mt-1 text-sm text-rose-100/80">
+            These submitted packages remain blocked from Reliance Audit until their evidence is reconciled.
+          </p>
+          <div className="mt-3 space-y-2">
+            {diagnostics.map((issue) => (
+              <div key={`${issue.packageId}:${issue.correlationId}`} className="rounded-md border border-rose-200/20 bg-black/10 p-3 text-sm">
+                <p className="font-medium">Package {issue.packageId}</p>
+                <p className="text-rose-100/80">Booking {issue.bookingId} · {issue.code}</p>
+                <p className="text-xs text-rose-100/70">
+                  Submitted {issue.submittedAt ? new Date(issue.submittedAt).toLocaleString() : 'time unavailable'}
+                </p>
+                <p className="text-xs text-rose-100/70">Reference {issue.correlationId}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {feedback && (
         <div
@@ -1184,7 +1232,10 @@ export default function AdminMediaModerationClient({
             return (
               <Card
                 key={pack.packageId}
-                className="border border-slate-700 bg-slate-900/95 text-slate-100 shadow-2xl shadow-black/25"
+                id={`admin-audit-package-${pack.packageId}`}
+                className={`border bg-slate-900/95 text-slate-100 shadow-2xl shadow-black/25 ${
+                  initialTargetPackageId === pack.packageId ? 'border-blue-300 ring-2 ring-blue-400/50' : 'border-slate-700'
+                }`}
               >
                 <CardContent className="pt-6">
                   <div className="flex flex-col gap-4">

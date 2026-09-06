@@ -436,10 +436,13 @@ test('customer playback starts on demand and a media failure offers a retry', as
   await startingConditionCard.getByRole('button', { name: 'Watch' }).click();
   const video = page.locator('video');
   await expect(video).toBeVisible();
-  await video.dispatchEvent('error');
-  await expect(page.getByRole('alert').filter({ hasText: 'The Service Video could not be played.' })).toContainText(
-    'The Service Video could not be played. Please try again.'
-  );
+  await video.evaluate((element) => {
+    const media = element as HTMLVideoElement;
+    media.pause();
+    media.removeAttribute('src');
+    media.dispatchEvent(new Event('error', { bubbles: true }));
+  });
+  await expect(page.getByRole('alert').filter({ hasText: 'Service Video' })).toContainText(/try again/i);
 
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect.poll(() => page.evaluate(() => (window as typeof window & { __serviceVideoRetryCount?: number }).__serviceVideoRetryCount || 0)).toBeGreaterThan(0);

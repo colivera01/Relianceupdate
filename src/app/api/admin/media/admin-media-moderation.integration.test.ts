@@ -18,6 +18,7 @@ const hoisted = vi.hoisted(() => {
   const bookingUpdate = vi.fn();
   const userFindUnique = vi.fn();
   const loadCoreAdminAuditCandidate = vi.fn();
+  const resolveCoreAdminAuditPendingPackages = vi.fn();
   const decideCoreServiceVideoAdminAudit = vi.fn();
   const sendCorePrivateProofReadyNotification = vi.fn();
   const sendCorePrivateProofRejectedNotification = vi.fn();
@@ -42,6 +43,7 @@ const hoisted = vi.hoisted(() => {
     bookingUpdate,
     userFindUnique,
     loadCoreAdminAuditCandidate,
+    resolveCoreAdminAuditPendingPackages,
     decideCoreServiceVideoAdminAudit,
     sendCorePrivateProofReadyNotification,
     sendCorePrivateProofRejectedNotification,
@@ -69,6 +71,7 @@ vi.mock("@/lib/service-video-admin-audit", () => {
       PRIVATE_ONLY: "PRIVATE_ONLY",
     },
     loadCoreAdminAuditCandidate: hoisted.loadCoreAdminAuditCandidate,
+    resolveCoreAdminAuditPendingPackages: hoisted.resolveCoreAdminAuditPendingPackages,
     decideCoreServiceVideoAdminAudit: hoisted.decideCoreServiceVideoAdminAudit,
   };
 });
@@ -232,6 +235,57 @@ describe("GET /api/admin/media/moderation-queue", () => {
     vi.mocked(requireAdmin).mockResolvedValue({ userId: "admin-1" } as any);
     hoisted.mediaAssetFindMany.mockReset();
     hoisted.loadCoreAdminAuditCandidate.mockReset();
+    hoisted.resolveCoreAdminAuditPendingPackages.mockReset();
+    hoisted.resolveCoreAdminAuditPendingPackages.mockImplementation(async () => {
+      const assets = await hoisted.mediaAssetFindMany({ take: 9 });
+      const groups = new Map<string, any[]>();
+      for (const asset of assets || []) {
+        const bookingId = String(asset?.mediaSession?.booking?.id || "");
+        if (!bookingId) continue;
+        groups.set(bookingId, [...(groups.get(bookingId) || []), asset]);
+      }
+      const candidates: any[] = [];
+      for (const [bookingId, rows] of Array.from(groups.entries())) {
+        const byStage = new Map<string, any>(
+          rows.map((row: any) => [String(row.mediaSession?.vendorJobVideoStage), row])
+        );
+        if (!["INTRO", "IN_PROGRESS", "COMPLETED"].every((stage) => byStage.has(stage))) continue;
+        const first = rows[0];
+        const loaded = await hoisted.loadCoreAdminAuditCandidate({}, bookingId);
+        const packageStages = ["INTRO", "IN_PROGRESS", "COMPLETED"].map((stage, index) => ({
+          stage,
+          stageEvidenceId: `stage-${bookingId}-${index + 1}`,
+          stageVersion: 1,
+          mediaAssetId: byStage.get(stage)!.id,
+          contentHash: `hash-${bookingId}-${index + 1}`,
+        }));
+        candidates.push({
+          booking: {
+            ...first.mediaSession.booking,
+            vendorId: first.vendorId,
+            service: first.mediaSession.service,
+            vendor: rows.find((row: any) => row.vendor?.businessName)?.vendor || first.vendor,
+          },
+          package: loaded?.package || {
+            id: `package-${bookingId}`,
+            version: 1,
+            packageHash: `hash-${bookingId}`,
+            auditEvidenceVersion: 1,
+          },
+          managerDecision: {
+            id: loaded?.managerDecision?.id || `manager-${bookingId}`,
+            decidedAt: first.createdAt,
+            attestationHash: "attestation-hash",
+          },
+          managerMembership: { user: { name: "Morgan Manager" } },
+          packageStages,
+          mediaAssets: packageStages.map((stage) => byStage.get(stage.stage)),
+          audioAudit: { expected: false, conformance: "CONFORMING", errors: [] },
+          recordingAssessmentInterpretation: null,
+        });
+      }
+      return { candidates, issues: [] };
+    });
     hoisted.userFindUnique.mockReset();
     hoisted.userFindUnique.mockResolvedValue({ name: "Morgan Manager", email: "manager@example.com" });
   });
