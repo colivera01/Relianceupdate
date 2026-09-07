@@ -41,6 +41,12 @@ type AssignedServiceProfessional = {
   name: string;
 };
 
+type AssignedServiceProfessionalAvailability = {
+  state: 'AVAILABLE' | 'NOT_AVAILABLE' | 'TEMPORARILY_UNAVAILABLE';
+  message?: string;
+  correlationId?: string;
+};
+
 type CustomerReview = {
   id: string;
   rating: number;
@@ -168,6 +174,9 @@ function BookingMediaDetailPageContent() {
   const [assets, setAssets] = useState<BookingMediaAsset[]>([]);
   const [privateProofAvailable, setPrivateProofAvailable] = useState(false);
   const [assignedProfessional, setAssignedProfessional] = useState<AssignedServiceProfessional | null>(null);
+  const [assignedProfessionalAvailability, setAssignedProfessionalAvailability] =
+    useState<AssignedServiceProfessionalAvailability>({ state: 'NOT_AVAILABLE' });
+  const [assignedProfessionalRetryBusy, setAssignedProfessionalRetryBusy] = useState(false);
   const [activeStage, setActiveStage] = useState<CustomerServiceVideoStage | null>(null);
   const [playbackQueue, setPlaybackQueue] = useState<CustomerServiceVideoStage[]>([]);
   const [autoPlayToken, setAutoPlayToken] = useState<number | null>(null);
@@ -245,6 +254,11 @@ function BookingMediaDetailPageContent() {
       setAssets(nextAssets);
       setPrivateProofAvailable(mediaResponse.ok && mediaJson?.privateProofStatus === 'AVAILABLE');
       setAssignedProfessional(bookingJson?.assignedServiceProfessional || null);
+      setAssignedProfessionalAvailability(
+        bookingJson?.assignedServiceProfessionalAvailability || {
+          state: bookingJson?.assignedServiceProfessional ? 'AVAILABLE' : 'NOT_AVAILABLE',
+        },
+      );
       // Playback begins only after the customer chooses a stage or the complete sequence.
       setActiveStage(null);
     } catch (caught) {
@@ -256,6 +270,33 @@ function BookingMediaDetailPageContent() {
       setLoading(false);
     }
   }, [bookingId, claimToken, router, searchParams, userId, videoReadyFromLink]);
+
+  const retryAssignedProfessional = useCallback(async () => {
+    if (!bookingId || assignedProfessionalRetryBusy) return;
+    setAssignedProfessionalRetryBusy(true);
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}`, { cache: 'no-store', credentials: 'include' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(customerLoadMessage(body, 'Unable to reload the service professional rating.'));
+      const professional = body?.assignedServiceProfessional || null;
+      setAssignedProfessional(professional);
+      setAssignedProfessionalAvailability(
+        body?.assignedServiceProfessionalAvailability || {
+          state: professional ? 'AVAILABLE' : 'NOT_AVAILABLE',
+        },
+      );
+      if (!professional) setEmployeeRating(0);
+    } catch {
+      setAssignedProfessional(null);
+      setEmployeeRating(0);
+      setAssignedProfessionalAvailability({
+        state: 'TEMPORARILY_UNAVAILABLE',
+        message: 'The optional service professional rating is temporarily unavailable.',
+      });
+    } finally {
+      setAssignedProfessionalRetryBusy(false);
+    }
+  }, [assignedProfessionalRetryBusy, bookingId]);
 
   useEffect(() => {
     if (!authLoading) void loadPage();
@@ -694,6 +735,21 @@ function BookingMediaDetailPageContent() {
                       <p className="mt-1 text-sm text-slate-600">Optional. This is separate from your rating of {vendorName}.</p>
                       <RatingButtons value={employeeRating} onChange={setEmployeeRating} label={`Rate ${assignedProfessional.name}`} />
                       {employeeRating ? <button type="button" onClick={() => setEmployeeRating(0)} className="mt-1 text-xs font-medium text-slate-600 underline">Clear employee rating</button> : null}
+                    </div>
+                  ) : assignedProfessionalAvailability.state === 'TEMPORARILY_UNAVAILABLE' ? (
+                    <div className="border-t border-slate-200 pt-4">
+                      <p className="font-semibold text-slate-950">Service professional rating</p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {assignedProfessionalAvailability.message || 'The optional service professional rating is temporarily unavailable.'} You can still submit your review of {vendorName}.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void retryAssignedProfessional()}
+                        disabled={assignedProfessionalRetryBusy}
+                        className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        <RotateCcw className="h-4 w-4" /> {assignedProfessionalRetryBusy ? 'Retrying...' : 'Retry service professional rating'}
+                      </button>
                     </div>
                   ) : null}
                   {reviewError ? (

@@ -28,7 +28,10 @@ async function installCustomerSession(page: Page) {
   });
 }
 
-async function installServiceRecord(page: Page, options: { reviewed?: boolean } = {}) {
+async function installServiceRecord(
+  page: Page,
+  options: { reviewed?: boolean; professionalTemporarilyUnavailable?: boolean } = {},
+) {
   await page.route('**/api/users/favorites**', async (route) => {
     if (route.request().method() === 'POST') {
       await route.fulfill({
@@ -71,11 +74,18 @@ async function installServiceRecord(page: Page, options: { reviewed?: boolean } 
           submittedAt: '2026-09-01T12:00:00.000Z',
           employeeRating: null,
         } : null,
-        assignedServiceProfessional: {
+        assignedServiceProfessional: options.professionalTemporarilyUnavailable ? null : {
           membershipId: 'membership-bradley',
           userId: 'employee-bradley',
           name: 'Bradley Coopers',
         },
+        assignedServiceProfessionalAvailability: options.professionalTemporarilyUnavailable
+          ? {
+              state: 'TEMPORARILY_UNAVAILABLE',
+              message: 'The optional service professional rating is temporarily unavailable.',
+              correlationId: 'optional-professional-correlation',
+            }
+          : { state: 'AVAILABLE' },
         customerRecord: {
           lifecycle: 'COMPLETED',
           lifecycleLabel: 'Completed',
@@ -313,6 +323,46 @@ test('review preparation failure is safe and retryable', async ({ page }) => {
   await expect(reviewRegion.getByRole('alert')).toHaveCount(0);
   await expect(page.getByRole('radiogroup', { name: 'Rate Electro LLC' })).toBeVisible();
   await expect(page.getByRole('radiogroup', { name: 'Rate Bradley Coopers' })).toBeVisible();
+});
+
+test('optional professional rating failure does not block the Vendor review', async ({ page }) => {
+  await installCustomerSession(page);
+  await installServiceRecord(page, { professionalTemporarilyUnavailable: true });
+  let detailLoads = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === `/api/bookings/${bookingId}`) detailLoads += 1;
+  });
+  await page.route('**/api/reviews/window/start', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, reviewWindow: { id: 'review-window-vendor-only' } }),
+    });
+  });
+  const submissions: Array<Record<string, unknown>> = [];
+  await page.route('**/api/reviews/create', async (route) => {
+    submissions.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, review: { id: 'review-vendor-only', bookingId } }),
+    });
+  });
+
+  await page.goto(`/test-fixtures/customer-service-record/${bookingId}`);
+  await page.getByRole('button', { name: 'Leave a review' }).first().click();
+  await expect(page.getByRole('radiogroup', { name: 'Rate Electro LLC' })).toBeVisible();
+  await expect(page.getByRole('radiogroup', { name: 'Rate Bradley Coopers' })).toHaveCount(0);
+  await expect(page.getByText(/You can still submit your review of Electro LLC/)).toBeVisible();
+  await page.getByRole('button', { name: 'Retry service professional rating' }).click();
+  await expect.poll(() => detailLoads).toBeGreaterThanOrEqual(2);
+  await page.getByRole('radiogroup', { name: 'Rate Electro LLC' }).getByRole('radio', { name: '5 stars' }).click();
+  await page.getByRole('button', { name: 'Submit review' }).click();
+  await expect(page.getByText('Thank you for your review.')).toBeVisible();
+  expect(submissions).toEqual([
+    expect.objectContaining({ bookingId, rating: 5, submittedVia: 'service_record' }),
+  ]);
+  expect(submissions[0]).not.toHaveProperty('employeeRating');
 });
 
 for (const viewport of [

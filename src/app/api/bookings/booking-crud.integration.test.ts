@@ -1288,6 +1288,9 @@ describe('GET /api/bookings/[id]', () => {
   beforeEach(() => {
     vi.mocked(getUserIdFromRequest).mockReset();
     hoisted.bookingFindUnique.mockReset();
+    hoisted.reviewFindFirst.mockReset();
+    hoisted.reviewFindFirst.mockResolvedValue(null);
+    hoisted.vendorMembershipFindFirst.mockReset();
     hoisted.loadCustomerServiceRecords.mockReset();
     hoisted.loadCustomerServiceRecords.mockResolvedValue({
       records: [{ customer_record: { lifecycle: 'COMPLETED' } }],
@@ -1339,6 +1342,45 @@ describe('GET /api/bookings/[id]', () => {
     const booking = j.booking as Record<string, unknown>;
     expect(booking.id).toBe('book-1');
     expect(booking.user_id).toBe('customer-1');
+  });
+
+  it('keeps the Service Record and Vendor review available when optional professional attribution fails', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      vi.mocked(getUserIdFromRequest).mockResolvedValue('customer-1');
+      hoisted.bookingFindUnique.mockResolvedValue(baseHydratedBooking({
+        status: 'COMPLETED',
+        customerMetadata: JSON.stringify({
+          vendor_job_assigned_membership_ids: ['membership-bradley'],
+          vendor_job_assigned_employees: ['Bradley Coopers'],
+        }),
+      }));
+      hoisted.vendorMembershipFindFirst.mockRejectedValue(new Error('private membership lookup failure'));
+
+      const res = await bookingDetailGET(jsonRequest('http://localhost/api/bookings/book-1'), {
+        params: Promise.resolve({ id: 'book-1' }),
+      });
+      expect(res.status).toBe(200);
+      const body = await readJson(res);
+      expect(body.assignedServiceProfessional).toBeNull();
+      expect(body.assignedServiceProfessionalAvailability).toMatchObject({
+        state: 'TEMPORARILY_UNAVAILABLE',
+        message: 'The optional service professional rating is temporarily unavailable.',
+      });
+      expect(String((body.assignedServiceProfessionalAvailability as { correlationId: string }).correlationId)).toMatch(/^[a-f0-9-]{36}$/);
+      expect(body.customerRecord).toEqual({ lifecycle: 'COMPLETED' });
+      expect(JSON.stringify(body)).not.toContain('membership lookup failure');
+      expect(log).toHaveBeenCalledWith(
+        '[bookings/detail] optional service professional lookup failed:',
+        expect.objectContaining({
+          bookingId: 'book-1',
+          membershipId: 'membership-bradley',
+          error: expect.any(Error),
+        }),
+      );
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 

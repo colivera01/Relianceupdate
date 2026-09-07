@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import { customerLoadError } from '@/lib/customer-load-error';
 import { prisma } from '@/server/db';
 import { getUserIdFromRequest } from '@/lib/auth';
@@ -138,23 +139,44 @@ export async function GET(
       userId: string;
       name: string;
     } | null = null;
+    let assignedServiceProfessionalAvailability: {
+      state: 'AVAILABLE' | 'NOT_AVAILABLE' | 'TEMPORARILY_UNAVAILABLE';
+      message?: string;
+      correlationId?: string;
+    } = { state: 'NOT_AVAILABLE' };
     if (assignment.assignedMembershipIds.length === 1) {
       const membershipId = assignment.assignedMembershipIds[0];
-      const membership = await prisma.vendorMembership.findFirst({
-        where: { id: membershipId, vendorId: booking.vendorId },
-        select: {
-          id: true,
-          userId: true,
-          user: { select: { name: true, email: true } },
-        },
-      });
-      if (membership?.userId) {
-        assignedServiceProfessional = {
-          membershipId: membership.id,
-          userId: membership.userId,
-          name:
-            String(assignment.primaryEmployeeName || membership.user?.name || membership.user?.email || '').trim() ||
-            'Assigned service professional',
+      try {
+        const membership = await prisma.vendorMembership.findFirst({
+          where: { id: membershipId, vendorId: booking.vendorId },
+          select: {
+            id: true,
+            userId: true,
+            user: { select: { name: true, email: true } },
+          },
+        });
+        if (membership?.userId) {
+          assignedServiceProfessional = {
+            membershipId: membership.id,
+            userId: membership.userId,
+            name:
+              String(assignment.primaryEmployeeName || membership.user?.name || membership.user?.email || '').trim() ||
+              'Assigned service professional',
+          };
+          assignedServiceProfessionalAvailability = { state: 'AVAILABLE' };
+        }
+      } catch (error) {
+        const correlationId = randomUUID();
+        console.error('[bookings/detail] optional service professional lookup failed:', {
+          correlationId,
+          bookingId,
+          membershipId,
+          error,
+        });
+        assignedServiceProfessionalAvailability = {
+          state: 'TEMPORARILY_UNAVAILABLE',
+          message: 'The optional service professional rating is temporarily unavailable.',
+          correlationId,
         };
       }
     }
@@ -196,6 +218,7 @@ export async function GET(
           }
         : null,
       assignedServiceProfessional,
+      assignedServiceProfessionalAvailability,
       customerRecord,
       customerLifecycle: {
         ...lifecycle,
