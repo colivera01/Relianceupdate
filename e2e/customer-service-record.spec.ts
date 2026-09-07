@@ -275,6 +275,46 @@ test('explicit review deep link opens the canonical form once and ignores an alr
   expect(reviewWindowStarts).toBe(0);
 });
 
+test('review preparation failure is safe and retryable', async ({ page }) => {
+  await installCustomerSession(page);
+  await installServiceRecord(page);
+  await page.unroute('**/api/reviews/window/start');
+  let starts = 0;
+  await page.route('**/api/reviews/window/start', async (route) => {
+    starts += 1;
+    if (starts === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          code: 'REVIEW_PREPARATION_FAILED',
+          message: "We couldn't start your review.",
+          correlationId: 'a93c0acb-e2a6-4c9b-8fa2-cd11bc2ff753',
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, reviewWindow: { id: 'review-window-retry' } }),
+    });
+  });
+
+  await page.goto(`/test-fixtures/customer-service-record/${bookingId}`);
+  await page.getByRole('button', { name: 'Leave a review' }).first().click();
+  const reviewRegion = page.getByRole('region', { name: 'Your Review' });
+  await expect(reviewRegion.getByRole('alert')).toContainText("We couldn't start your review.");
+  await expect(reviewRegion.getByRole('alert')).toContainText('Reference: a93c0acb-e2a6-4c9b-8fa2-cd11bc2ff753');
+  await expect(page.getByRole('button', { name: 'Submit review' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Retry' }).click();
+  await expect.poll(() => starts).toBe(2);
+  await expect(reviewRegion.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('radiogroup', { name: 'Rate Electro LLC' })).toBeVisible();
+  await expect(page.getByRole('radiogroup', { name: 'Rate Bradley Coopers' })).toBeVisible();
+});
+
 for (const viewport of [
   { width: 1280, height: 900 },
   { width: 390, height: 844 },

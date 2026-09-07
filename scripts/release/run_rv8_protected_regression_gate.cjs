@@ -11,6 +11,8 @@ const protectedTests = [
   "src/lib/customer-support-contract.test.ts",
   "src/lib/customer-service-video-playback.test.ts",
   "src/app/api/reviews/create/route.test.ts",
+  "src/app/api/reviews/review-window-start.integration.test.ts",
+  "src/lib/review-window-sqlserver-contract.test.ts",
   "src/app/api/employee/jobs/employee-job-lifecycle.integration.test.ts",
   "src/lib/job-assignment.test.ts",
   "src/lib/consent/canonical-recording-gate.test.ts",

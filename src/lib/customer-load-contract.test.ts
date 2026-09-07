@@ -18,6 +18,12 @@ describe('customer load success/error contracts', () => {
   it('reads safe message and correlation ID rather than only body.error', () => {
     expect(customerLoadMessage({ message: 'Unable to load your reviews.', correlationId: 'a93c0acb-e2a6-4c9b-8fa2-cd11bc2ff753' }, 'fallback')).toBe('Unable to load your reviews. Reference: a93c0acb-e2a6-4c9b-8fa2-cd11bc2ff753');
   });
+  it('renders the safe review-preparation message and reference', () => {
+    expect(customerLoadMessage(
+      { message: "We couldn't start your review.", correlationId: 'a93c0acb-e2a6-4c9b-8fa2-cd11bc2ff753' },
+      'fallback',
+    )).toBe("We couldn't start your review. Reference: a93c0acb-e2a6-4c9b-8fa2-cd11bc2ff753");
+  });
   it('does not echo arbitrary error reference content', () => {
     expect(customerLoadMessage({ error: 'SQL', correlationId: 'customer-private-id' }, 'Safe')).toBe('Safe');
   });

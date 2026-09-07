@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const validator = require("../../../scripts/release/validate_sqlserver_schema_contract.cjs") as {
   CONTRACT: {
     columns: Array<Record<string, unknown>>;
-    filteredUniqueIndexes: Array<{ table: string; columns: string[] }>;
+    filteredUniqueIndexes: Array<{ table: string; columns: string[]; name?: string }>;
     indexes: Array<{ table: string; columns: string[]; unique: boolean; included: string[] }>;
     foreignKeys: Array<Record<string, unknown>>;
   };
@@ -51,7 +51,7 @@ function validFixture() {
     indexes: [
       ...validator.CONTRACT.filteredUniqueIndexes.map((entry, index): MutableFixtureEntry => ({
         table: entry.table,
-        name: `live_filtered_${index}`,
+        name: entry.name ?? `live_filtered_${index}`,
         unique: true,
         filterDefinition: `([${entry.columns[0]}] IS NOT NULL)`,
         columns: entry.columns.map((name, ordinal) => ({ name, ordinal: ordinal + 1, included: false })),
@@ -118,7 +118,7 @@ describe("SQL Server semantic schema contract", () => {
     expect(validator.normalizeDefault("((1))")).toBe(1);
   });
 
-  it("accepts only equivalent defaults, name-only indexes, and the two filtered-unique Prisma limitations", () => {
+  it("accepts only equivalent defaults, name-only indexes, and the three filtered-unique Prisma limitations", () => {
     const fixture = validFixture();
     fixture.snapshot.columns.push({
       table: "example",
@@ -149,6 +149,9 @@ ALTER TABLE [dbo].[consent_records] ADD CONSTRAINT [consent_records_token_key] U
 -- CreateIndex
 ALTER TABLE [dbo].[users] ADD CONSTRAINT [users_phone_key] UNIQUE NONCLUSTERED ([phone]);
 
+-- CreateIndex
+ALTER TABLE [dbo].[review_windows] ADD CONSTRAINT [review_windows_reviewId_key] UNIQUE NONCLUSTERED ([reviewId]);
+
 -- RenameIndex
 EXEC SP_RENAME N'dbo.example.live_short_name', N'generated_long_name', N'INDEX';
 
@@ -159,7 +162,7 @@ END TRY`;
     expect(result.summary).toEqual({
       equivalentDefaults: 1,
       nameOnlyIndexes: 1,
-      filteredUniqueLimitations: 2,
+      filteredUniqueLimitations: 3,
     });
   });
 

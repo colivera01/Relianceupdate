@@ -9,6 +9,7 @@ import {
   ensureVendorAccountCanOperate,
 } from '@/lib/account-status';
 import { loadCustomerReviewEligibility } from '@/lib/customer-review-eligibility';
+import { randomUUID } from 'node:crypto';
 
 function publicEligibilityCode(code: string): string {
   if (code === 'SERVICE_NOT_COMPLETED') return 'BOOKING_NOT_COMPLETED';
@@ -109,29 +110,23 @@ export async function POST(request: NextRequest) {
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }
-    const errorMessage = error?.message || String(error);
-    const errorCode = error?.code || null;
-    const errorMeta = error?.meta || null;
+    const correlationId = randomUUID();
     const details = {
+      correlationId,
       step,
       bookingId,
       vendorId,
       mediaSessionId,
-      error: errorMessage,
-      code: errorCode,
-      meta: errorMeta,
+      error,
     };
-    console.error('[reviews/window/start] POST error:', {
-      ...details,
-    });
+    console.error('[reviews/window/start] POST error:', details);
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to prepare optional review',
-        step,
-        code: errorCode,
-        meta: errorMeta,
-        details,
+        code: 'REVIEW_PREPARATION_FAILED',
+        message: "We couldn't start your review.",
+        error: "We couldn't start your review.",
+        correlationId,
       },
       { status: 500 }
     );

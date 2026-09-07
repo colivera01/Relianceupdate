@@ -45,6 +45,7 @@ export const customerSummarySchemas = {
 const safeMessages = new Set([
   'Unable to load your Service Records.', 'Unable to load your reviews.',
   'Unable to load Favorites.', 'Unable to load this Service Record.',
+  "We couldn't start your review.",
 ]);
 export function customerLoadMessage(body: unknown, fallback: string): string {
   const value = body as { message?: unknown; error?: unknown; correlationId?: unknown } | null;

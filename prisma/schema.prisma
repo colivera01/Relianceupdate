@@ -2145,7 +2145,9 @@ model ReviewWindow {
   bookingId      String
   vendorId       String
   mediaSessionId String
-  reviewId       String?   @unique
+  // SQL Server implements this nullable uniqueness as a filtered index. The
+  // Prisma annotation preserves the one-to-one relation contract.
+  reviewId       String?   @unique(map: "review_windows_reviewId_key")
   status         String    @default("active")
   openedAt       DateTime  @default(now())
   expiresAt      DateTime // Deprecated compatibility field; not used to govern review eligibility.
@@ -2160,6 +2162,7 @@ model ReviewWindow {
   promptEvents ReviewPromptEvent[]
   sentiments   ReviewSentiment[]
 
+  @@unique([bookingId, vendorId, mediaSessionId], map: "review_windows_booking_vendor_media_key")
   @@index([bookingId, status])
   @@index([vendorId, createdAt])
   @@index([mediaSessionId])

@@ -339,6 +339,46 @@ describe('POST /api/reviews/window/start', () => {
     expect(vi.mocked(sendReviewInvitation)).not.toHaveBeenCalled();
   });
 
+  it('returns a safe correlated error when review preparation fails internally', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      hoisted.bookingFindUnique.mockResolvedValue({ id: 'b1', vendorId: 'v1', userId: 'u1', status: 'COMPLETED' });
+      hoisted.reviewWindowFindFirst.mockResolvedValue(null);
+      hoisted.reviewWindowCreate.mockRejectedValue({
+        code: 'P2002',
+        message: 'Unique constraint failed on dbo.review_windows',
+        meta: { privateDatabaseDetail: true },
+      });
+
+      const res = await reviewWindowStartPOST(
+        postJson({ bookingId: 'b1', vendorId: 'v1', mediaSessionId: 'ms1' })
+      );
+      expect(res.status).toBe(500);
+      const body = await readJson(res);
+      expect(body).toMatchObject({
+        success: false,
+        code: 'REVIEW_PREPARATION_FAILED',
+        message: "We couldn't start your review.",
+        error: "We couldn't start your review.",
+      });
+      expect(body.correlationId).toMatch(/^[a-f0-9-]{36}$/);
+      expect(body).not.toHaveProperty('step');
+      expect(body).not.toHaveProperty('meta');
+      expect(body).not.toHaveProperty('details');
+      expect(JSON.stringify(body)).not.toContain('review_windows');
+      expect(log).toHaveBeenCalledWith(
+        '[reviews/window/start] POST error:',
+        expect.objectContaining({
+          correlationId: body.correlationId,
+          step: 'review_window_get_or_create',
+          error: expect.objectContaining({ code: 'P2002' }),
+        })
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('returns 401 when requester user context is missing', async () => {
     vi.mocked(getUserIdFromRequest).mockResolvedValueOnce(null);
     const res = await reviewWindowStartPOST(

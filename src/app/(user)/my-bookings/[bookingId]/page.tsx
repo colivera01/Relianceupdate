@@ -384,13 +384,13 @@ function BookingMediaDetailPageContent() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok || !body?.reviewWindow?.id) {
-        throw new Error(String(body?.error || 'Unable to start your review.'));
+        throw new Error(customerLoadMessage(body, "We couldn't start your review."));
       }
       setReviewWindowId(String(body.reviewWindow.id));
       setReviewRequestId((current) => current || globalThis.crypto.randomUUID());
     } catch (caught) {
       setReviewWindowId(null);
-      setReviewError(caught instanceof Error ? caught.message : 'Unable to start your review.');
+      setReviewError(caught instanceof Error ? caught.message : "We couldn't start your review.");
     } finally {
       setReviewBusy(false);
     }
@@ -696,7 +696,21 @@ function BookingMediaDetailPageContent() {
                       {employeeRating ? <button type="button" onClick={() => setEmployeeRating(0)} className="mt-1 text-xs font-medium text-slate-600 underline">Clear employee rating</button> : null}
                     </div>
                   ) : null}
-                  {reviewError ? <p className="text-sm text-red-700">{reviewError}</p> : null}
+                  {reviewError ? (
+                    <div className="flex flex-wrap items-center gap-3" role="alert">
+                      <p className="text-sm text-red-700">{reviewError}</p>
+                      {!reviewWindowId ? (
+                        <button
+                          type="button"
+                          onClick={() => void beginReview()}
+                          disabled={reviewBusy}
+                          className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                        >
+                          <RotateCcw className="h-4 w-4" /> Retry
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => void submitReview()} disabled={reviewBusy || !reviewWindowId} className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">{reviewBusy ? 'Submitting...' : 'Submit review'}</button>
                     <button type="button" onClick={() => { setReviewOpen(false); setReviewError(null); }} className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>

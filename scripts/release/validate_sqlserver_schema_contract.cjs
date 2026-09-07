@@ -56,6 +56,7 @@ const CONTRACT = Object.freeze({
     { table: "bookings", columns: ["creationRequestKey"] },
     { table: "consent_records", columns: ["token"] },
     { table: "users", columns: ["phone"] },
+    { table: "review_windows", columns: ["reviewId"], name: "review_windows_reviewId_key" },
   ],
   indexes: [
     { table: "media_assets", columns: ["audioPresence"], unique: false, included: [] },
@@ -63,6 +64,12 @@ const CONTRACT = Object.freeze({
       table: "service_video_stage_evidence",
       columns: ["bookingId", "audioPresence"],
       unique: false,
+      included: [],
+    },
+    {
+      table: "review_windows",
+      columns: ["bookingId", "vendorId", "mediaSessionId"],
+      unique: true,
       included: [],
     },
   ],
@@ -157,6 +164,7 @@ function validateRawPrismaDiff(rawDiff, snapshot) {
   const allowedUniqueAdds = new Set([
     "consent_records.token",
     "users.phone",
+    "review_windows.reviewId",
   ]);
   let equivalentDefaults = 0;
   let nameOnlyIndexes = 0;
@@ -220,8 +228,8 @@ function validateRawPrismaDiff(rawDiff, snapshot) {
   if (blocks.length !== commentCount) {
     errors.push("Raw Prisma diff contains an unclassified operation block");
   }
-  if (filteredUniqueLimitations !== 2) {
-    errors.push(`Expected exactly two filtered-unique Prisma limitations, found ${filteredUniqueLimitations}`);
+  if (filteredUniqueLimitations !== 3) {
+    errors.push(`Expected exactly three filtered-unique Prisma limitations, found ${filteredUniqueLimitations}`);
   }
   return {
     ok: errors.length === 0,
@@ -263,6 +271,7 @@ function validateSnapshot(snapshot, repositoryMigrations, options = {}) {
     const index = snapshot.indexes.find(
       (candidate) =>
         candidate.table === expected.table &&
+        (!expected.name || candidate.name === expected.name) &&
         candidate.unique &&
         JSON.stringify(indexColumns(candidate)) === JSON.stringify(expected.columns),
     );
@@ -450,7 +459,10 @@ async function readSnapshot(connectionString) {
         (SELECT COUNT(*) FROM (SELECT [token] FROM dbo.[consent_records] WHERE [token] IS NOT NULL GROUP BY [token] HAVING COUNT(*) > 1) d)
       UNION ALL
       SELECT 'users', 'phone',
-        (SELECT COUNT(*) FROM (SELECT [phone] FROM dbo.[users] WHERE [phone] IS NOT NULL GROUP BY [phone] HAVING COUNT(*) > 1) d);
+        (SELECT COUNT(*) FROM (SELECT [phone] FROM dbo.[users] WHERE [phone] IS NOT NULL GROUP BY [phone] HAVING COUNT(*) > 1) d)
+      UNION ALL
+      SELECT 'review_windows', 'reviewId',
+        (SELECT COUNT(*) FROM (SELECT [reviewId] FROM dbo.[review_windows] WHERE [reviewId] IS NOT NULL GROUP BY [reviewId] HAVING COUNT(*) > 1) d);
     `);
     return {
       columns: columns.recordset,

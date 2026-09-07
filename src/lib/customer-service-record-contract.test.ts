@@ -42,6 +42,8 @@ describe("completed customer Service Record contract", () => {
       "const beginReview = useCallback(async"
     );
     expect(reviewWindowRoute).not.toContain("sendReviewInvitation");
+    expect(detailPage).toContain("We couldn't start your review.");
+    expect(detailPage).toContain("> Retry");
   });
 
   it("keeps vendor and employee ratings separate from Trust Score", () => {
