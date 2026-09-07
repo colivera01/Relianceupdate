@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Keep module transform work outside the first assertion's timeout budget.
+import "./service-video-admin-audit";
 
 const hoisted = vi.hoisted(() => ({
   prisma: { $transaction: vi.fn() },

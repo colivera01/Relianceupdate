@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Keep module transform work outside the first assertion's timeout budget.
+import "./service-video-publication";
 
 const hoisted = vi.hoisted(() => {
   const prisma: any = {

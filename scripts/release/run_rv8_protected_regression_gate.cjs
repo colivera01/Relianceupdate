@@ -1,5 +1,8 @@
 const { spawnSync } = require("node:child_process");
+const os = require("node:os");
 const path = require("node:path");
+
+const maxWorkers = Math.min(4, os.availableParallelism?.() || os.cpus().length || 1);
 
 const protectedTests = [
   "src/app/api/bookings/booking-crud.integration.test.ts",
@@ -38,7 +41,23 @@ const protectedTests = [
 ];
 
 const vitestEntrypoint = path.join(process.cwd(), "node_modules", "vitest", "vitest.mjs");
-const result = spawnSync(process.execPath, [vitestEntrypoint, "run", ...protectedTests], {
+const startedAt = Date.now();
+
+console.log("RV-8 protected regression gate execution", {
+  source: "local repository source and mocked test fixtures",
+  liveApplication: false,
+  liveDatabase: false,
+  fileParallelism: true,
+  maxWorkers,
+  protectedFiles: protectedTests.length,
+});
+
+const result = spawnSync(process.execPath, [
+  vitestEntrypoint,
+  "run",
+  `--maxWorkers=${maxWorkers}`,
+  ...protectedTests,
+], {
   cwd: process.cwd(),
   env: process.env,
   stdio: "inherit",
@@ -49,8 +68,14 @@ if (result.error) {
   process.exit(1);
 }
 if (result.status !== 0) {
-  console.error("RV-8 PROTECTED REGRESSION GATE: NO-GO");
+  console.error("RV-8 PROTECTED REGRESSION GATE: NO-GO", {
+    elapsedMs: Date.now() - startedAt,
+    maxWorkers,
+  });
   process.exit(result.status || 1);
 }
 
-console.log("RV-8 PROTECTED REGRESSION GATE: PASS");
+console.log("RV-8 PROTECTED REGRESSION GATE: PASS", {
+  elapsedMs: Date.now() - startedAt,
+  maxWorkers,
+});
