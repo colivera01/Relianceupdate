@@ -149,7 +149,7 @@ export default function VendorServicesPage() {
         vendorId,
         businessName: vendorProfile?.businessName || null,
         onboarding: vendorProfile?.onboarding || null,
-        publishedReviewCount: Number(vendorProfile?.ratingCount || 0),
+        verifiedRatingCount: Number(vendorProfile?.ratingCount || 0),
         approvedServiceVideoCount: 0,
       }),
     [vendorId, vendorProfile]
@@ -375,8 +375,8 @@ export default function VendorServicesPage() {
               ? `${Number(vendorProfile?.publishedServiceCount || 0)} published services offered already help customers find this business.`
               : 'No services are publicly published yet.',
             Number(vendorProfile?.ratingCount || 0) > 0
-              ? `${Number(vendorProfile?.ratingCount || 0)} public customer reviews are visible.`
-              : 'No public customer reviews are visible yet.',
+              ? `${Number(vendorProfile?.ratingCount || 0)} verified customer ratings support this business average.`
+              : 'No verified customer ratings are available yet.',
           ],
         }),
       });

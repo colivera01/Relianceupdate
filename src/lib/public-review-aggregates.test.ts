@@ -8,10 +8,25 @@ describe('public Vendor rating aggregate', () => {
   beforeEach(() => groupBy.mockReset());
 
   it('counts verified corrected-contract stars without requiring public comment approval', async () => {
-    groupBy.mockResolvedValue([{ vendorId: 'vendor-1', _avg: { rating: 4.5 }, _count: { _all: 2 } }]);
+    groupBy.mockResolvedValue([
+      { vendorId: 'vendor-1', rating: 5, _count: { _all: 1 } },
+      { vendorId: 'vendor-1', rating: 4, _count: { _all: 1 } },
+    ]);
     const result = await getVendorReviewAggregatesForPublic(['vendor-1']);
-    expect(result.get('vendor-1')).toEqual({ vendorId: 'vendor-1', rating: 4.5, reviewCount: 2 });
+    expect(result.get('vendor-1')).toEqual({
+      vendorId: 'vendor-1',
+      rating: 4.5,
+      reviewCount: 2,
+      distribution: [
+        { rating: 5, count: 1, percentage: 50 },
+        { rating: 4, count: 1, percentage: 50 },
+        { rating: 3, count: 0, percentage: 0 },
+        { rating: 2, count: 0, percentage: 0 },
+        { rating: 1, count: 0, percentage: 0 },
+      ],
+    });
     expect(groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      by: ['vendorId', 'rating'],
       where: expect.objectContaining({
         vendorId: { in: ['vendor-1'] },
         OR: expect.arrayContaining([

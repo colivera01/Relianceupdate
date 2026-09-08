@@ -1,11 +1,13 @@
-import { prisma } from "@/server/db";
-import { countableReviewWhere } from "@/lib/metrics-exclusion";
-import { canonicalVerifiedCustomerRatingWhere } from "@/lib/review-rating-validity";
+import {
+  getVendorRatingStatsForVendors,
+  type RatingDistributionEntry,
+} from "@/lib/review-attribution-aggregates";
 
 export interface VendorReviewAggregate {
   vendorId: string;
   rating: number | null;
   reviewCount: number;
+  distribution?: RatingDistributionEntry[];
 }
 
 /**
@@ -24,26 +26,15 @@ export async function getVendorReviewAggregatesForPublic(
     return result;
   }
 
-  const grouped = await prisma.review.groupBy({
-    by: ["vendorId"],
-    where: countableReviewWhere({
-      vendorId: { in: ids },
-      ...canonicalVerifiedCustomerRatingWhere(),
-    }),
-    _avg: {
-      rating: true,
-    },
-    _count: {
-      _all: true,
-    },
-  });
-
-  for (const row of grouped) {
-    const rawAvg = row._avg.rating;
-    result.set(row.vendorId, {
-      vendorId: row.vendorId,
-      rating: typeof rawAvg === "number" ? Number(rawAvg.toFixed(2)) : null,
-      reviewCount: row._count._all || 0,
+  const statsByVendor = await getVendorRatingStatsForVendors(ids);
+  for (const vendorId of ids) {
+    const stats = statsByVendor.get(vendorId);
+    if (!stats) continue;
+    result.set(vendorId, {
+      vendorId,
+      rating: stats.reviewCount > 0 ? stats.averageRating : null,
+      reviewCount: stats.reviewCount,
+      distribution: stats.distribution,
     });
   }
 

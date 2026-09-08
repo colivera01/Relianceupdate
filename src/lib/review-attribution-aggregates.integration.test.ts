@@ -7,17 +7,20 @@ import {
 
 const hoisted = vi.hoisted(() => {
   const reviewFindMany = vi.fn();
+  const reviewGroupBy = vi.fn();
   const employeeRatingFindMany = vi.fn();
   return {
     prisma: {
       review: {
         findMany: reviewFindMany,
+        groupBy: reviewGroupBy,
       },
       employeeCustomerRatingEvidence: {
         findMany: employeeRatingFindMany,
       },
     },
     reviewFindMany,
+    reviewGroupBy,
     employeeRatingFindMany,
   };
 });
@@ -29,22 +32,35 @@ vi.mock("@/server/db", () => ({
 describe("review attribution aggregates", () => {
   beforeEach(() => {
     hoisted.reviewFindMany.mockReset();
+    hoisted.reviewGroupBy.mockReset();
     hoisted.employeeRatingFindMany.mockReset();
     hoisted.employeeRatingFindMany.mockResolvedValue([]);
   });
 
   it("getVendorRatingStats includes all eligible vendor reviews", async () => {
-    hoisted.reviewFindMany.mockResolvedValue([{ rating: 5 }, { rating: 3 }, { rating: 4 }]);
+    hoisted.reviewGroupBy.mockResolvedValue([
+      { vendorId: "v1", rating: 5, _count: { _all: 1 } },
+      { vendorId: "v1", rating: 4, _count: { _all: 1 } },
+      { vendorId: "v1", rating: 3, _count: { _all: 1 } },
+    ]);
     const stats = await getVendorRatingStats("v1");
     expect(stats).toEqual({
       averageRating: 4,
       reviewCount: 3,
       ratingSum: 12,
+      distribution: [
+        { rating: 5, count: 1, percentage: 33.3 },
+        { rating: 4, count: 1, percentage: 33.3 },
+        { rating: 3, count: 1, percentage: 33.3 },
+        { rating: 2, count: 0, percentage: 0 },
+        { rating: 1, count: 0, percentage: 0 },
+      ],
     });
-    expect(hoisted.reviewFindMany).toHaveBeenCalledWith(
+    expect(hoisted.reviewGroupBy).toHaveBeenCalledWith(
       expect.objectContaining({
+        by: ["vendorId", "rating"],
         where: expect.objectContaining({
-          vendorId: "v1",
+          vendorId: { in: ["v1"] },
           source: "customer",
           OR: expect.arrayContaining([
             expect.objectContaining({ contractVersion: { gte: 2 }, ratingValidityStatus: "verified" }),
@@ -88,6 +104,26 @@ describe("review attribution aggregates", () => {
         }),
       })
     );
+  });
+
+  it("counts pending written comments and stars-only reviews in the same verified distribution", async () => {
+    hoisted.reviewGroupBy.mockResolvedValue([
+      { vendorId: "v1", rating: 5, _count: { _all: 1 } },
+      { vendorId: "v1", rating: 4, _count: { _all: 1 } },
+    ]);
+
+    const stats = await getVendorRatingStats("v1");
+
+    expect(stats).toMatchObject({ averageRating: 4.5, reviewCount: 2, ratingSum: 9 });
+    expect(stats.distribution).toEqual([
+      { rating: 5, count: 1, percentage: 50 },
+      { rating: 4, count: 1, percentage: 50 },
+      { rating: 3, count: 0, percentage: 0 },
+      { rating: 2, count: 0, percentage: 0 },
+      { rating: 1, count: 0, percentage: 0 },
+    ]);
+    expect(hoisted.reviewGroupBy.mock.calls[0][0].where).not.toHaveProperty("comment");
+    expect(hoisted.reviewGroupBy.mock.calls[0][0].where).not.toHaveProperty("visibilityStatus");
   });
 
   it("getEmployeeRatingsForVendor groups attributed reviews by membership", async () => {

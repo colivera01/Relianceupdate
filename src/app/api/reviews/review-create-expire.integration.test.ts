@@ -564,6 +564,9 @@ describe('POST /api/reviews/create', () => {
     expect(res.status).toBe(409);
     const j = await readJson(res);
     expect(j.code).toBe('REVIEW_ALREADY_EXISTS');
+    expect(j).not.toHaveProperty('message');
+    expect(j).not.toHaveProperty('meta');
+    expect(j).not.toHaveProperty('details');
   });
 });
 

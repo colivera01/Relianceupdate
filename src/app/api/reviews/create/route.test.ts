@@ -284,4 +284,52 @@ describe("POST /api/reviews/create attribution", () => {
     await expect(response.json()).resolves.toMatchObject({ code: "REVIEW_IDEMPOTENCY_CONFLICT" });
     expect(hoisted.reviewCreate).not.toHaveBeenCalled();
   });
+
+  it("converges concurrent distinct request IDs for one booking on one canonical review", async () => {
+    let canonicalReview: Record<string, unknown> | null = null;
+    let createAttempts = 0;
+    let releaseCreateAttempts!: () => void;
+    const bothCreateAttemptsReached = new Promise<void>((resolve) => {
+      releaseCreateAttempts = resolve;
+    });
+
+    hoisted.reviewFindFirst.mockImplementation(async ({ where }: any) => {
+      if (!canonicalReview) return null;
+      if (where?.submissionRequestId) {
+        return canonicalReview.submissionRequestId === where.submissionRequestId
+          ? canonicalReview
+          : null;
+      }
+      return where?.bookingId === "booking-1" ? canonicalReview : null;
+    });
+    hoisted.reviewCreate.mockImplementation(async ({ data }: any) => {
+      createAttempts += 1;
+      if (createAttempts === 2) releaseCreateAttempts();
+      await bothCreateAttemptsReached;
+      if (canonicalReview) {
+        throw { code: "P2002", message: "Unique constraint failed" };
+      }
+      canonicalReview = { id: "review-race-winner", ...data };
+      return canonicalReview;
+    });
+    hoisted.employeeCustomerRatingCreate.mockResolvedValue({ id: "employee-rating-1", rating: 3 });
+
+    const [first, second] = await Promise.all([
+      POST(reviewRequest({ requestId: "tab-a", employeeRating: 3 })),
+      POST(reviewRequest({ requestId: "tab-b", employeeRating: 3 })),
+    ]);
+    const bodies = await Promise.all([first.json(), second.json()]);
+
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(bodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ success: true, review: expect.objectContaining({ id: "review-race-winner" }) }),
+        expect.objectContaining({ success: true, idempotent: true, review: expect.objectContaining({ id: "review-race-winner" }) }),
+      ])
+    );
+    expect(hoisted.reviewCreate).toHaveBeenCalledTimes(2);
+    expect(hoisted.employeeCustomerRatingCreate).toHaveBeenCalledTimes(1);
+    expect(hoisted.reviewWindowUpdate).toHaveBeenCalledTimes(1);
+    expect(hoisted.reviewPromptEventCreate).toHaveBeenCalledTimes(1);
+  });
 });

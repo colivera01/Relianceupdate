@@ -2,10 +2,20 @@ import { prisma } from "@/server/db";
 import { countableReviewWhere } from "@/lib/metrics-exclusion";
 import { canonicalVerifiedCustomerRatingWhere } from "@/lib/review-rating-validity";
 
-type RatingStats = {
+export type RatingDistributionEntry = {
+  rating: 1 | 2 | 3 | 4 | 5;
+  count: number;
+  percentage: number;
+};
+
+export type RatingStats = {
   averageRating: number;
   reviewCount: number;
   ratingSum: number;
+};
+
+export type VendorRatingStats = RatingStats & {
+  distribution: RatingDistributionEntry[];
 };
 
 const ELIGIBLE_REVIEW_WHERE = canonicalVerifiedCustomerRatingWhere();
@@ -19,6 +29,51 @@ function roundToOneDecimal(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function emptyDistribution(): RatingDistributionEntry[] {
+  return [5, 4, 3, 2, 1].map((rating) => ({
+    rating: rating as RatingDistributionEntry["rating"],
+    count: 0,
+    percentage: 0,
+  }));
+}
+
+function emptyRatingStats(): RatingStats {
+  return { averageRating: 0, reviewCount: 0, ratingSum: 0 };
+}
+
+function emptyVendorRatingStats(): VendorRatingStats {
+  return {
+    ...emptyRatingStats(),
+    distribution: emptyDistribution(),
+  };
+}
+
+function toStatsFromRatingCounts(rows: Array<{ rating: number; count: number }>): VendorRatingStats {
+  const counts = new Map<number, number>();
+  for (const row of rows) {
+    const rating = normalizeRating(row.rating);
+    const count = Math.max(0, Number(row.count || 0));
+    if (Number.isInteger(rating) && rating >= 1 && rating <= 5 && count > 0) {
+      counts.set(rating, (counts.get(rating) || 0) + count);
+    }
+  }
+  const ratingSum = Array.from(counts.entries()).reduce(
+    (sum, [rating, count]) => sum + rating * count,
+    0
+  );
+  const reviewCount = Array.from(counts.values()).reduce((sum, count) => sum + count, 0);
+  const averageRating = reviewCount > 0 ? roundToOneDecimal(ratingSum / reviewCount) : 0;
+  const distribution = emptyDistribution().map((entry) => {
+    const count = counts.get(entry.rating) || 0;
+    return {
+      ...entry,
+      count,
+      percentage: reviewCount > 0 ? roundToOneDecimal((count / reviewCount) * 100) : 0,
+    };
+  });
+  return { averageRating, reviewCount, ratingSum, distribution };
+}
+
 function toStatsFromRows(rows: Array<{ rating: number }>): RatingStats {
   const ratingSum = rows.reduce((sum, row) => sum + normalizeRating(row.rating), 0);
   const reviewCount = rows.length;
@@ -26,18 +81,40 @@ function toStatsFromRows(rows: Array<{ rating: number }>): RatingStats {
   return { averageRating, reviewCount, ratingSum };
 }
 
-export async function getVendorRatingStats(vendorId: string): Promise<RatingStats> {
+export async function getVendorRatingStatsForVendors(
+  vendorIds: string[]
+): Promise<Map<string, VendorRatingStats>> {
+  const ids = Array.from(new Set(vendorIds.map((id) => String(id || "").trim()).filter(Boolean)));
+  const result = new Map<string, VendorRatingStats>();
+  if (ids.length === 0) return result;
+
+  const grouped = await prisma.review.groupBy({
+    by: ["vendorId", "rating"],
+    where: countableReviewWhere({
+      vendorId: { in: ids },
+      ...ELIGIBLE_REVIEW_WHERE,
+    }),
+    _count: { _all: true },
+  });
+
+  const rowsByVendor = new Map<string, Array<{ rating: number; count: number }>>();
+  for (const row of grouped) {
+    const rows = rowsByVendor.get(row.vendorId) || [];
+    rows.push({ rating: row.rating, count: row._count._all || 0 });
+    rowsByVendor.set(row.vendorId, rows);
+  }
+  for (const vendorId of ids) {
+    result.set(vendorId, toStatsFromRatingCounts(rowsByVendor.get(vendorId) || []));
+  }
+  return result;
+}
+
+export async function getVendorRatingStats(vendorId: string): Promise<VendorRatingStats> {
   try {
-    const rows = await prisma.review.findMany({
-      where: countableReviewWhere({
-        vendorId,
-        ...ELIGIBLE_REVIEW_WHERE,
-      }),
-      select: { rating: true },
-    });
-    return toStatsFromRows(rows);
+    const stats = await getVendorRatingStatsForVendors([vendorId]);
+    return stats.get(vendorId) || emptyVendorRatingStats();
   } catch {
-    return { averageRating: 0, reviewCount: 0, ratingSum: 0 };
+    return emptyVendorRatingStats();
   }
 }
 
@@ -47,7 +124,7 @@ export async function getEmployeeRatingStats(
 ): Promise<RatingStats> {
   const normalizedMembershipId = String(membershipId || "").trim();
   if (!normalizedMembershipId) {
-    return { averageRating: 0, reviewCount: 0, ratingSum: 0 };
+    return emptyRatingStats();
   }
   try {
     const [legacyRows, employeeRows] = await Promise.all([
@@ -71,7 +148,7 @@ export async function getEmployeeRatingStats(
     ]);
     return toStatsFromRows([...legacyRows, ...employeeRows]);
   } catch {
-    return { averageRating: 0, reviewCount: 0, ratingSum: 0 };
+    return emptyRatingStats();
   }
 }
 

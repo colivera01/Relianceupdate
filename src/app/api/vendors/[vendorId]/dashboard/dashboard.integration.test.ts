@@ -179,10 +179,12 @@ function mockHappyPathData() {
     .mockResolvedValueOnce([{ userId: "user-customer" }])
     .mockResolvedValueOnce([{ amount: 120 }]);
   hoisted.reviewFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+  hoisted.reviewCount.mockResolvedValue(0);
   vi.mocked(getVendorRatingStats).mockResolvedValue({
     averageRating: 0,
     reviewCount: 0,
     ratingSum: 0,
+    distribution: [5, 4, 3, 2, 1].map((rating) => ({ rating, count: 0, percentage: 0 })) as any,
   });
   vi.mocked(getEmployeeRatingsForVendor).mockResolvedValue([]);
   hoisted.mediaSessionFindMany.mockResolvedValue([]);
@@ -321,6 +323,56 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
     expect(body).not.toHaveProperty("error");
     expect(body).not.toHaveProperty("suggestedVendorId");
     expect(vi.mocked(requireVendorMembership)).toHaveBeenCalledWith(req, "v1");
+  });
+
+  it("separates verified star metrics from publicly approved written comments", async () => {
+    mockHappyPathData();
+    hoisted.reviewFindMany.mockReset().mockResolvedValue([]);
+    hoisted.reviewCount.mockResolvedValue(0);
+    vi.mocked(getVendorRatingStats).mockResolvedValue({
+      averageRating: 5,
+      reviewCount: 1,
+      ratingSum: 5,
+      distribution: [
+        { rating: 5, count: 1, percentage: 100 },
+        { rating: 4, count: 0, percentage: 0 },
+        { rating: 3, count: 0, percentage: 0 },
+        { rating: 2, count: 0, percentage: 0 },
+        { rating: 1, count: 0, percentage: 0 },
+      ],
+    });
+
+    const req = new Request("http://localhost/api/vendors/v1/dashboard", {
+      method: "GET",
+      headers: { "x-user-id": "user-1" },
+    });
+    const res = await GET(req, { params: Promise.resolve({ vendorId: "v1" }) });
+    const body = await readJson(res) as any;
+
+    expect(res.status).toBe(200);
+    expect(body.stats).toMatchObject({
+      rating: 5,
+      ratingCount: 1,
+      publicWrittenReviewCount: 0,
+      ratingDistribution: [
+        { rating: 5, count: 1, percentage: 100 },
+        { rating: 4, count: 0, percentage: 0 },
+        { rating: 3, count: 0, percentage: 0 },
+        { rating: 2, count: 0, percentage: 0 },
+        { rating: 1, count: 0, percentage: 0 },
+      ],
+    });
+    expect(body.recentReviews).toEqual([]);
+    expect(hoisted.reviewCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        vendorId: "v1",
+        source: "customer",
+        bookingId: { not: null },
+        comment: { not: null },
+        moderationStatus: "approved",
+        visibilityStatus: "public",
+      }),
+    });
   });
 
   it("reports the canonical declined residence state when mutable metadata has no matching location", async () => {
@@ -558,6 +610,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
       averageRating: 0,
       reviewCount: 0,
       ratingSum: 0,
+      distribution: [5, 4, 3, 2, 1].map((rating) => ({ rating, count: 0, percentage: 0 })) as any,
     });
     vi.mocked(getEmployeeRatingsForVendor).mockResolvedValue([]);
     hoisted.mediaSessionFindMany.mockResolvedValue([]);
@@ -643,6 +696,7 @@ describe("GET /api/vendors/[vendorId]/dashboard integration", () => {
       averageRating: 0,
       reviewCount: 0,
       ratingSum: 0,
+      distribution: [5, 4, 3, 2, 1].map((rating) => ({ rating, count: 0, percentage: 0 })) as any,
     });
     vi.mocked(getEmployeeRatingsForVendor).mockResolvedValue([]);
     hoisted.mediaSessionFindMany.mockResolvedValue([

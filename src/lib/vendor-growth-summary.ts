@@ -53,7 +53,7 @@ type BuildVendorGrowthSummaryInput = {
   vendorId?: string | null;
   businessName?: string | null;
   onboarding?: VendorOnboardingState | null;
-  publishedReviewCount?: number | null;
+  verifiedRatingCount?: number | null;
   approvedServiceVideoCount?: number | null;
   publicServiceOrderCount?: number | null;
   promotionBrowseReadiness?: PromotionBrowseReadiness | null;
@@ -78,7 +78,7 @@ export function buildVendorGrowthSummary(
 ): VendorGrowthSummary {
   const onboarding = input.onboarding || null;
   const vendorId = String(input.vendorId || "").trim();
-  const publishedReviewCount = toCount(input.publishedReviewCount);
+  const verifiedRatingCount = toCount(input.verifiedRatingCount);
   const approvedServiceVideoCount = toCount(input.approvedServiceVideoCount);
   const publicServiceOrderCount = toCount(input.publicServiceOrderCount ?? input.approvedServiceVideoCount);
   const publishedServiceCount = toCount(onboarding?.publishedServiceCount);
@@ -171,13 +171,13 @@ export function buildVendorGrowthSummary(
       tone: publishedServiceCount > 0 ? "success" : "warning",
     },
     {
-      label: "Published reviews",
-      value: String(publishedReviewCount),
+      label: "Verified customer ratings",
+      value: String(verifiedRatingCount),
       detail:
-        publishedReviewCount > 0
-          ? "Published reviews help customers feel confident choosing your business."
-          : "Public reviews will strengthen credibility as completed, approved review-ready jobs build up.",
-      tone: publishedReviewCount > 0 ? "success" : "neutral",
+        verifiedRatingCount > 0
+          ? "Verified customer ratings help customers feel confident choosing your business."
+          : "Verified customer ratings will strengthen credibility as completed, review-ready jobs build up.",
+      tone: verifiedRatingCount > 0 ? "success" : "neutral",
     },
     {
       label: "Public service orders",
@@ -225,11 +225,11 @@ export function buildVendorGrowthSummary(
     });
   }
 
-  if (publishedReviewCount === 0) {
+  if (verifiedRatingCount === 0) {
     nextSteps.push({
       label: "Keep the completed-job review loop healthy",
       detail:
-        "Published reviews are one of the fastest ways to add customer confidence once service videos and moderation are complete.",
+        "Verified customer ratings are one of the fastest ways to add confidence after completed service.",
       href: "/vendor/reviews",
     });
   }

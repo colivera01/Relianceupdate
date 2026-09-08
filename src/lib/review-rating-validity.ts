@@ -17,6 +17,19 @@ export function canonicalVerifiedCustomerRatingWhere(
   };
 }
 
+export function canonicalPublicWrittenReviewWhere(
+  extra: Record<string, unknown> = {}
+): Record<string, unknown> {
+  return {
+    source: 'customer',
+    bookingId: { not: null },
+    comment: { not: null },
+    moderationStatus: 'approved',
+    visibilityStatus: 'public',
+    ...extra,
+  };
+}
+
 export function customerCommentModerationState(input: {
   comment?: string | null;
   contractVersion?: number | null;

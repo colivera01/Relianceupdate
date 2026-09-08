@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { TutorialEntryPoint } from '@/components/guidance/TutorialEntryPoint';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, ShieldCheck, Bell } from 'lucide-react';
+import { CheckCircle, Calendar, Star, TrendingUp, Activity, Megaphone, MessageSquare, ShieldCheck, Bell } from 'lucide-react';
 import { useVendorDashboard } from '@/hooks/useVendorDashboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientSessionHeaders } from '@/lib/client-session';
@@ -353,7 +353,8 @@ export default function VendorDashboard() {
     typeof data.lifecycleCounts?.awaitingReview === 'number'
       ? data.lifecycleCounts.awaitingReview
       : recentJobs.filter((job) => job.status === 'awaiting_review').length;
-  const ratingCount = Number(dashboardStats.ratingCount || recentReviews.length || 0);
+  const ratingCount = Number(dashboardStats.ratingCount || 0);
+  const publicWrittenReviewCount = Number(dashboardStats.publicWrittenReviewCount || 0);
   const completionEligibleBookings = Number(
     dashboardStats.completionEligibleBookingCount ??
       jobsCompleted + jobsInProgress + awaitingReview +
@@ -404,7 +405,7 @@ export default function VendorDashboard() {
     vendorId: data?.profile?.id || vendorProfile?.id || null,
     businessName: data?.profile?.businessName || vendorProfile?.businessName || null,
     onboarding: vendorProfile?.onboarding || null,
-    publishedReviewCount: ratingCount,
+    verifiedRatingCount: ratingCount,
     approvedServiceVideoCount: approvedServiceOrders,
     publicServiceOrderCount: publicServiceOrders,
     promotionBrowseReadiness: PROMOTIONS_ENABLED ? promotionBrowseReadiness : null,
@@ -441,11 +442,18 @@ export default function VendorDashboard() {
       color: 'purple' as keyof typeof colorMap,
     },
     {
-      label: 'Public reviews',
+      label: 'Verified ratings',
       value: ratingCount.toString(),
-      detail: 'Customer comments currently visible to new customers.',
+      detail: 'Verified customer star ratings, separate from written-comment moderation.',
       icon: Star,
       color: 'yellow' as keyof typeof colorMap,
+    },
+    {
+      label: 'Public written reviews',
+      value: publicWrittenReviewCount.toString(),
+      detail: 'Written comments approved and currently visible to customers.',
+      icon: MessageSquare,
+      color: 'blue' as keyof typeof colorMap,
     },
     {
       label: 'Trust Score',
@@ -865,12 +873,12 @@ export default function VendorDashboard() {
             <CardHeader className="space-y-1 pb-2">
               <CardTitle className="text-base">Customer confidence snapshot</CardTitle>
               <p className="text-sm text-gray-600">
-                See how published feedback and reliable completed work are translating into public trust.
+                See verified customer ratings separately from written feedback published to customers.
               </p>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-gray-900">{Number(dashboardStats.rating || 0).toFixed(1)}</p>
-              <p className="text-sm text-gray-600">{ratingCount} public review{ratingCount === 1 ? '' : 's'}</p>
+              <p className="text-sm text-gray-600">{ratingCount} verified customer rating{ratingCount === 1 ? '' : 's'}</p>
             </CardContent>
           </Card>
           <Card className="bg-white">

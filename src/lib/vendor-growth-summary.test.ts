@@ -22,7 +22,7 @@ describe("vendor-growth-summary", () => {
         nextStep: "Your vendor listing is publicly visible.",
         checklist: [],
       },
-      publishedReviewCount: 3,
+      verifiedRatingCount: 3,
       approvedServiceVideoCount: 2,
       promotionServices: [{ id: "service-1", name: "Drain Cleaning", isPublished: true }],
     });
@@ -53,7 +53,7 @@ describe("vendor-growth-summary", () => {
         nextStep: "Finish your business profile.",
         checklist: [],
       },
-      publishedReviewCount: 0,
+      verifiedRatingCount: 0,
       approvedServiceVideoCount: 0,
     });
 

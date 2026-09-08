@@ -254,7 +254,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Nex
         serviceEligibilityRule:
           "Only active vendors with isPubliclyListed=true and services with isPublished=true are returned.",
         reviewEligibilityRule:
-          "Public review aggregates use vendor-level DB reviews where moderationStatus=approved and visibilityStatus=public.",
+          "Business rating aggregates use canonical verified customer star ratings; written comments retain separate public moderation.",
         omittedForSafety: [
           "internal settings",
           "admin/moderation internals",

@@ -26,6 +26,7 @@ import { parseRecordingComplianceMetadata } from "@/lib/job-assignment";
 import { toBookingNotificationState } from "@/lib/booking-notification-delivery";
 import { loadRecordingPermissionGate } from "@/lib/consent/recording-gate";
 import { listUnreadVendorManagerNotifications } from "@/lib/vendor-manager-notifications";
+import { canonicalPublicWrittenReviewWhere } from "@/lib/review-rating-validity";
 
 interface RouteParams {
   params: Promise<{ vendorId: string }>;
@@ -46,9 +47,7 @@ function approvedCustomerReviewWhereForVendor(
 ) {
   return countableReviewWhere({
     vendorId,
-    source: "customer",
-    moderationStatus: "approved",
-    bookingId: { not: null },
+    ...canonicalPublicWrittenReviewWhere(),
     ...extra,
   });
 }
@@ -306,6 +305,7 @@ export async function GET(
       recentBookings,
       archivedBookings,
       recentReviews,
+      publicWrittenReviewCount,
       confirmedOrCompletedBookings, // For client count (CONFIRMED + COMPLETED only)
       completedBookings,
       proofModerationGroups,
@@ -396,6 +396,12 @@ export async function GET(
         orderBy: { createdAt: "desc" },
         take: 5,
       }),
+
+      jobsOnly
+        ? Promise.resolve(0)
+        : prisma.review.count({
+            where: approvedCustomerReviewWhereForVendor(vendorId),
+          }),
 
       // Confirmed or Completed bookings for client count (exclude CANCELED and PENDING)
       jobsOnly
@@ -548,7 +554,16 @@ export async function GET(
         })
         .filter(Boolean)
     ).size;
-    let vendorRatingStats = { averageRating: 0, reviewCount: 0, ratingSum: 0 };
+    let vendorRatingStats = {
+      averageRating: 0,
+      reviewCount: 0,
+      ratingSum: 0,
+      distribution: [5, 4, 3, 2, 1].map((rating) => ({
+        rating: rating as 1 | 2 | 3 | 4 | 5,
+        count: 0,
+        percentage: 0,
+      })),
+    };
     try {
       vendorRatingStats = await getVendorRatingStats(vendorId);
     } catch (ratingError: any) {
@@ -1219,6 +1234,8 @@ export async function GET(
         totalClients,
         rating: vendorRatingStats.averageRating,
         ratingCount: vendorRatingStats.reviewCount,
+        publicWrittenReviewCount: Number(publicWrittenReviewCount || 0),
+        ratingDistribution: vendorRatingStats.distribution,
       },
       recentJobs,
       archivedJobs,

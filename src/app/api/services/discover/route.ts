@@ -656,7 +656,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             ? "Distance is calculated only for vendors with stored geocoded coordinates."
             : "Distance requires lat/lng origin coordinates; zipCode alone is accepted but not converted in this endpoint.",
         reviews:
-          "rating/reviewCount are vendor-level aggregates from reviews where moderationStatus=approved and visibilityStatus=public.",
+          "rating/reviewCount use canonical verified customer star ratings; written comments retain separate public moderation.",
         ranking:
           proofFirstRankingRequested
             ? "Public discovery only returns completed Public Service Videos, then prioritizes Service Videos, reviews, Trust Score maturity, and provider credibility."

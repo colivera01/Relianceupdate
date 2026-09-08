@@ -123,7 +123,9 @@ export default function VendorReviewsPage() {
   }
 
   const rating = Number(data.stats.rating || 0);
-  const reviewCount = Number(data.stats.ratingCount || data.recentReviews.length || 0);
+  const reviewCount = Number(data.stats.ratingCount || 0);
+  const publicWrittenReviewCount = Number(data.stats.publicWrittenReviewCount || 0);
+  const ratingDistribution = data.stats.ratingDistribution || [];
   const latestReview = data.recentReviews[0] || null;
   const teamRows = [...(data.employeePerformance || [])].sort((a, b) => {
     const bCount = Number(b.reviewCount || 0);
@@ -151,36 +153,48 @@ export default function VendorReviewsPage() {
                 </div>
               </div>
               <p className="max-w-3xl text-sm leading-6 text-slate-300">
-                Public reviews shape the business reputation customers see. Team performance is private
-                and only uses reviews Reliance can attribute to a specific assigned team member. Reliance
-                Trust Score remains separate from customer star ratings.
+                Verified customer ratings shape the business average. Public written reviews are the approved
+                comments customers can read. Team performance is private, and Reliance Trust Score remains
+                separate from both customer and employee star ratings.
               </p>
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Card className="border-slate-700 bg-slate-950/75 text-white">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Public Business Rating</CardTitle>
+              <CardTitle className="text-base">Verified Customer Rating</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-white">{formatRating(rating)}</p>
               <div className="mt-2 flex items-center gap-1">{renderStars(Math.round(rating))}</div>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                This is the customer-facing business average.
+                Average from verified customer star ratings.
               </p>
             </CardContent>
           </Card>
 
           <Card className="border-slate-700 bg-slate-950/75 text-white">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Published Public Reviews</CardTitle>
+              <CardTitle className="text-base">Verified Customer Ratings</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-white">{reviewCount}</p>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Approved customer reviews currently visible to customers.
+                Includes stars-only ratings and ratings with text awaiting moderation.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-700 bg-slate-950/75 text-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Public Written Reviews</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-white">{publicWrittenReviewCount}</p>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                Written comments approved and currently visible to customers.
               </p>
             </CardContent>
           </Card>
@@ -195,7 +209,7 @@ export default function VendorReviewsPage() {
             <CardContent>
               <p className="text-3xl font-bold text-white">{attributedTeamReviewCount}</p>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Reviews attributed to assigned team members. Not shown publicly.
+                Optional employee ratings bound to assigned team members. Not shown publicly.
               </p>
             </CardContent>
           </Card>
@@ -224,6 +238,38 @@ export default function VendorReviewsPage() {
           </Card>
         </div>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Verified Rating Distribution</CardTitle>
+            <p className="text-sm text-gray-600">
+              Every verified customer star rating is included, regardless of written-comment moderation.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {ratingDistribution.map((entry) => (
+              <div key={entry.rating} className="grid grid-cols-[4.5rem_1fr_6rem] items-center gap-3 text-sm">
+                <span className="font-medium text-gray-800">{entry.rating} stars</span>
+                <div
+                  className="h-2 overflow-hidden rounded-full bg-gray-100"
+                  role="progressbar"
+                  aria-label={`${entry.rating} star ratings`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={entry.percentage}
+                >
+                  <div
+                    className="h-full rounded-full bg-amber-500"
+                    style={{ width: `${Math.max(0, Math.min(100, entry.percentage))}%` }}
+                  />
+                </div>
+                <span className="text-right text-gray-600">
+                  {entry.count} / {entry.percentage.toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
         <Card className="border-blue-400/20 bg-blue-950/25 text-white">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -239,8 +285,8 @@ export default function VendorReviewsPage() {
           <CardContent>
             {teamRows.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-blue-300/25 bg-slate-950/45 p-6 text-sm text-slate-300">
-                Team performance appears after completed service records receive approved reviews that
-                Reliance can attribute to assigned team members.
+                Team performance appears after completed service records receive an optional customer rating
+                bound to an assigned team member.
               </div>
             ) : (
               <div className="reliance-mobile-scroll overflow-x-auto rounded-2xl border border-white/10">
@@ -277,7 +323,7 @@ export default function VendorReviewsPage() {
         <Card>
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Recent Published Reviews</CardTitle>
+              <CardTitle>Recent Public Written Reviews</CardTitle>
               <p className="mt-1 text-sm text-gray-600">
                 These are the customer reviews currently shaping how new customers judge your business.
               </p>

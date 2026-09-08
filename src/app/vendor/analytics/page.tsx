@@ -153,7 +153,7 @@ export default function VendorAnalyticsPage() {
     {
       label: "Customer rating",
       value: `${formatDecimal(derived.rating)}★`,
-      helper: `${derived.ratingCount} public approved reviews`,
+      helper: `${derived.ratingCount} verified customer ratings`,
       icon: Star,
     },
     {

@@ -29,6 +29,51 @@ function publicEligibilityCode(code: string): string {
   return code;
 }
 
+async function resolveReviewSubmissionConflict(
+  debug: Record<string, unknown>
+): Promise<NextResponse> {
+  const requestReplay = debug.submissionRequestId && debug.userId
+    ? await (prisma as any).review.findFirst({
+        where: {
+          userId: String(debug.userId),
+          submissionRequestId: String(debug.submissionRequestId),
+        },
+        select: { id: true, submissionRequestHash: true },
+      })
+    : null;
+  if (requestReplay) {
+    if (requestReplay.submissionRequestHash === debug.submissionRequestHash) {
+      return NextResponse.json({ success: true, idempotent: true, review: requestReplay });
+    }
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Review request conflicts with an earlier submission',
+        code: 'REVIEW_IDEMPOTENCY_CONFLICT',
+      },
+      { status: 409 }
+    );
+  }
+
+  const existing = debug.bookingId && debug.userId
+    ? await (prisma as any).review.findFirst({
+        where: { bookingId: String(debug.bookingId), userId: String(debug.userId) },
+        select: { id: true, submissionRequestId: true, submissionRequestHash: true },
+      })
+    : null;
+  if (existing?.submissionRequestHash === debug.submissionRequestHash) {
+    return NextResponse.json({ success: true, idempotent: true, review: existing });
+  }
+  return NextResponse.json(
+    {
+      success: false,
+      error: 'A review already exists for this booking',
+      code: 'REVIEW_ALREADY_EXISTS',
+    },
+    { status: 409 }
+  );
+}
+
 export async function POST(request: NextRequest) {
   let step = 'parse_request';
   let debug: Record<string, unknown> = {};
@@ -449,42 +494,12 @@ export async function POST(request: NextRequest) {
     if (error instanceof AccountStatusError) {
       return NextResponse.json(accountStatusErrorBody(error), { status: error.statusCode });
     }
-    if (error?.code === 'P2002') {
-      const requestReplay = debug.submissionRequestId && debug.userId
-        ? await (prisma as any).review.findFirst({
-            where: {
-              userId: String(debug.userId),
-              submissionRequestId: String(debug.submissionRequestId),
-            },
-            select: { id: true, submissionRequestHash: true },
-          })
-        : null;
-      if (requestReplay) {
-        if (requestReplay.submissionRequestHash === debug.submissionRequestHash) {
-          return NextResponse.json({ success: true, idempotent: true, review: requestReplay });
-        }
-        return NextResponse.json(
-          { success: false, error: 'Review request conflicts with an earlier submission', code: 'REVIEW_IDEMPOTENCY_CONFLICT' },
-          { status: 409 }
-        );
-      }
-      const existing = debug.bookingId && debug.userId
-        ? await (prisma as any).review.findFirst({
-            where: { bookingId: String(debug.bookingId), userId: String(debug.userId) },
-            select: { id: true, submissionRequestId: true, submissionRequestHash: true },
-          })
-        : null;
-      if (existing?.submissionRequestHash === debug.submissionRequestHash) {
-        return NextResponse.json({ success: true, idempotent: true, review: existing });
-      }
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'A review already exists for this booking',
-          code: 'REVIEW_ALREADY_EXISTS',
-        },
-        { status: 409 }
-      );
+    if (
+      error?.code === 'P2002' ||
+      error?.code === 'REVIEW_ALREADY_EXISTS' ||
+      error?.code === 'REVIEW_WINDOW_NOT_ACTIVE'
+    ) {
+      return resolveReviewSubmissionConflict(debug);
     }
     const errorMessage = error?.message || String(error);
     const errorCode = error?.code || null;
@@ -500,17 +515,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: 'Failed to create review',
-        code: errorCode,
-        step,
-        message: errorMessage,
-        meta: errorMeta,
-        details: {
-          ...debug,
-          step,
-          error: errorMessage,
-          code: errorCode,
-          meta: errorMeta,
-        },
+        code: 'REVIEW_SUBMISSION_FAILED',
       },
       { status: 500 }
     );

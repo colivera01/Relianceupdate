@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalVerifiedCustomerRatingWhere, customerCommentModerationState } from './review-rating-validity';
+import {
+  canonicalPublicWrittenReviewWhere,
+  canonicalVerifiedCustomerRatingWhere,
+  customerCommentModerationState,
+} from './review-rating-validity';
 
 describe('verified Customer Review rating contract', () => {
   it('counts corrected-contract verified stars independently of comment moderation', () => {
@@ -8,6 +12,16 @@ describe('verified Customer Review rating contract', () => {
         { contractVersion: { gte: 2 }, ratingValidityStatus: 'verified' },
         { contractVersion: null, ratingValidityStatus: null, moderationStatus: 'approved' },
       ]),
+    });
+  });
+
+  it('keeps public written comments on a separate approved-and-public contract', () => {
+    expect(canonicalPublicWrittenReviewWhere()).toEqual({
+      source: 'customer',
+      bookingId: { not: null },
+      comment: { not: null },
+      moderationStatus: 'approved',
+      visibilityStatus: 'public',
     });
   });
 

@@ -57,6 +57,7 @@ const CONTRACT = Object.freeze({
     { table: "consent_records", columns: ["token"] },
     { table: "users", columns: ["phone"] },
     { table: "review_windows", columns: ["reviewId"], name: "review_windows_reviewId_key" },
+    { table: "reviews", columns: ["bookingId"], name: "reviews_bookingId_unique_not_null" },
   ],
   indexes: [
     { table: "media_assets", columns: ["audioPresence"], unique: false, included: [] },
@@ -462,7 +463,10 @@ async function readSnapshot(connectionString) {
         (SELECT COUNT(*) FROM (SELECT [phone] FROM dbo.[users] WHERE [phone] IS NOT NULL GROUP BY [phone] HAVING COUNT(*) > 1) d)
       UNION ALL
       SELECT 'review_windows', 'reviewId',
-        (SELECT COUNT(*) FROM (SELECT [reviewId] FROM dbo.[review_windows] WHERE [reviewId] IS NOT NULL GROUP BY [reviewId] HAVING COUNT(*) > 1) d);
+        (SELECT COUNT(*) FROM (SELECT [reviewId] FROM dbo.[review_windows] WHERE [reviewId] IS NOT NULL GROUP BY [reviewId] HAVING COUNT(*) > 1) d)
+      UNION ALL
+      SELECT 'reviews', 'bookingId',
+        (SELECT COUNT(*) FROM (SELECT [bookingId] FROM dbo.[reviews] WHERE [bookingId] IS NOT NULL GROUP BY [bookingId] HAVING COUNT(*) > 1) d);
     `);
     return {
       columns: columns.recordset,

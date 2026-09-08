@@ -317,8 +317,8 @@ export default function VendorProfilePage() {
       ? `${Number(profile?.publishedServiceCount || 0)} published services offered help customers find this business.`
       : 'No services are publicly published yet.',
     Number(profile?.ratingCount || 0) > 0
-      ? `${Number(profile?.ratingCount || 0)} public customer reviews are visible.`
-      : 'No public customer reviews are visible yet.',
+      ? `${Number(profile?.ratingCount || 0)} verified customer ratings support this business average.`
+      : 'No verified customer ratings are available yet.',
   ].filter(Boolean) as string[];
   const savedBusinessHoursStatus = getBusinessHoursStatus(localFormData.businessHoursJson ? businessHours : null);
   const editedBusinessHoursStatus = getBusinessHoursStatus(businessHours);
